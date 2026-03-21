@@ -31,8 +31,8 @@ typedef struct zlink_service_event_t
 ```
 
 필드 의미:
-- `value`는 이벤트별 숫자 값입니다. `*_DELIVERY_READY_CHANGED`에서는 현재
-  readiness 상태/카운트를 뜻합니다.
+- `value`는 이벤트별 숫자 값입니다. 모든 `*_READY_CHANGED` 이벤트에서는
+  `current_ready_count` (절대 readiness 카운트)를 뜻합니다.
 - `subject`는 `detail_flags`에 `ZLINK_EVENT_DETAIL_SUBJECT`가 있을 때만
   유효합니다.
 - `subject_kind`는 `detail_flags`에
@@ -56,7 +56,7 @@ detail flag:
 
 - `PEER_UP` / `PEER_DOWN`: 연결 수준
 - `SUB_FILTER_APPLIED`: local subscriber filter 설치 완료
-- `SUBSCRIPTION_READY`: subscriber 쪽 subscription path 준비 완료
+- `SUBSCRIPTION_READY_CHANGED`: subscriber 쪽 subscription readiness 변화
 - `*_DELIVERY_READY_CHANGED`: 특정 subject에 대해 첫 delivery 보장 가능 상태
 
 권장 gate:
@@ -82,7 +82,7 @@ detail flag:
 | `ZLINK_EVENT_DISCONNECTED` | 세션 연결 해제 |
 | `ZLINK_EVENT_MONITOR_STOPPED` | socket monitor 종료 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | 상세 정보 없는 handshake 실패 |
-| `ZLINK_EVENT_CONNECTION_READY` | transport handshake 완료 |
+| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | transport handshake readiness 변화 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | protocol handshake 오류 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | auth handshake 오류 |
 
@@ -98,8 +98,6 @@ disconnect reason:
 
 | 상수 | 의미 |
 |---|---|
-| `ZLINK_MONITOR_EVENT_READY` | generic readiness alias |
-| `ZLINK_MONITOR_EVENT_LOST` | generic lost alias |
 | `ZLINK_MONITOR_EVENT_PEER_UP` | 피어 연결 |
 | `ZLINK_MONITOR_EVENT_PEER_DOWN` | 피어 연결 해제 |
 | `ZLINK_MONITOR_EVENT_ERROR` | 오류 발생 |
@@ -117,23 +115,22 @@ disconnect reason:
 
 | 상수 | 의미 |
 |---|---|
-| `ZLINK_GATEWAY_SERVICE_READY` | 로컬 service bind/register 준비 완료 |
-| `ZLINK_GATEWAY_SERVICE_LOST` | 로컬 service publication 제거됨 |
-| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send readiness 변화, `value`는 `0` 또는 `1` |
-| `ZLINK_GATEWAY_ROUTE_UP` | route 활성화, `value`는 현재 ready route 수 |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | route 비활성화, `value`는 현재 ready route 수 |
+| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | 로컬 service readiness 변화, `value`는 current_ready_count |
+| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send readiness 변화, `value`는 current_ready_count |
+| `ZLINK_GATEWAY_ROUTE_UP` | route 활성화, `value`는 current_ready_count |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | route 비활성화, `value`는 current_ready_count |
 
 ### SPOT
 
 | 상수 | 발생 주체 | 의미 |
 |---|---|---|
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | Spot sub / node-sub monitor | local filter 설치 완료 |
-| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | Spot sub / node-sub monitor | legacy subscription-ready 전이 |
+| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY_CHANGED` | Spot sub / node-sub monitor | subscription readiness 변화, `value`는 current_ready_count |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | Spot pub / node-pub monitor | PUB 큐가 가득 참 |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | Spot pub / node-pub monitor | PUB 큐가 비워짐 |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | subject별 delivery-ready 상태 변화. `value`는 `0` 또는 `1` |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | subject별 remote delivery-ready 카운트 변화. `value`는 현재 ready subscriber 수 |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | publisher가 제어 gate로 써야 하는 first-delivery-safe ready 카운트 변화 |
+| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | subject별 delivery-ready 상태 변화, `value`는 current_ready_count |
+| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | subject별 remote delivery-ready 카운트 변화, `value`는 current_ready_count |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | first-delivery-safe ready 카운트 변화, `value`는 current_ready_count; publisher 제어 gate로 사용 |
 
 SPOT subject 규칙:
 - sub 쪽은 exact topic / pattern에 대해 `subject_kind`가 채워집니다.

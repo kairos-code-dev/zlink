@@ -596,13 +596,13 @@ int spot_sub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
     out_->source_kind = ZLINK_MONITOR_SOURCE_SPOT_SUB;
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        const uint32_t ready_peer_count =
+        const uint32_t ready_count =
           static_cast<uint32_t> (_ready_peer_endpoints.size ());
-        if (out_->ready_peer_count < ready_peer_count)
-            out_->ready_peer_count = ready_peer_count;
+        if (out_->ready_count < ready_count)
+            out_->ready_count = ready_count;
     }
-    out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT;
-    if (out_->ready_peer_count > 0)
+    out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+    if (out_->ready_count > 0)
         out_->state_flags |= ZLINK_MONITOR_STATE_READY;
     else
         out_->state_flags &= ~ZLINK_MONITOR_STATE_READY;
@@ -711,14 +711,15 @@ void spot_sub_t::emit_filter_applied_event (const char *subject_,
 
 void spot_sub_t::emit_subscription_ready_event (const char *endpoint_,
                                                 const char *subject_,
-                                                uint32_t subject_kind_)
+                                                uint32_t subject_kind_,
+                                                uint32_t ready_count_)
 {
     zlink_service_event_t event;
     {
         scoped_lock_t lock (_sync);
-        fill_subject_monitor_event (&event, ZLINK_SPOT_SUB_SUBSCRIPTION_READY,
+        fill_subject_monitor_event (&event, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED,
                                     _routing_id, endpoint_, subject_,
-                                    subject_kind_, 1);
+                                    subject_kind_, ready_count_);
     }
     emit_monitor_event (event);
 }
@@ -732,7 +733,7 @@ void spot_sub_t::emit_delivery_ready_changed_event (const char *subject_,
     {
         scoped_lock_t lock (_sync);
         fill_subject_monitor_event (&event,
-                                    ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
+                                    ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED,
                                     _routing_id, endpoint_, subject_,
                                     subject_kind_, ready_);
     }
@@ -748,7 +749,7 @@ void spot_sub_t::mark_subject_subscription_ready (
         return;
 
     emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
-                                   subject_.subject_kind);
+                                   subject_.subject_kind, 1);
     mark_subject_ready (subject_, endpoint_);
 
     if (!endpoint_ || endpoint_[0] == '\0' || !_node)
@@ -1203,6 +1204,8 @@ void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
         _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
 
+    emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
+                                   subject_.subject_kind, 0);
     emit_delivery_ready_changed_event (subject_.subject.c_str (),
                                        subject_.subject_kind, 0, endpoint_);
 }
@@ -1397,7 +1400,7 @@ int spot_sub_t::ensure_monitor_bridge_started ()
 
     void *monitor_socket = open_socket_monitor_bridge (
       socket, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
-                 | ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED
+                 | ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED
                  | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
                  | ZLINK_EVENT_CLOSE_FAILED
                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
@@ -1491,17 +1494,24 @@ void spot_sub_t::monitor_loop ()
                 emit_monitor_event (event);
                 break;
 
-            case ZLINK_EVENT_CONNECTION_READY: {
+            case ZLINK_EVENT_CONNECTION_READY_CHANGED: {
                 {
                     scoped_lock_t lock (_sync);
-                    if (raw.remote_addr[0] != '\0')
-                        _ready_peer_endpoints.insert (raw.remote_addr);
+                    if (raw.remote_addr[0] != '\0') {
+                        const uint32_t ready_count = static_cast<uint32_t> (
+                          _ready_peer_endpoints.size ());
+                        if (raw.value == 0)
+                            _ready_peer_endpoints.erase (raw.remote_addr);
+                        else if (ready_count < raw.value)
+                            _ready_peer_endpoints.insert (raw.remote_addr);
+                        else if (ready_count > raw.value)
+                            _ready_peer_endpoints.erase (raw.remote_addr);
+                    }
                 }
-                fill_socket_monitor_event (&batch[0], ZLINK_MONITOR_EVENT_READY,
-                                           raw);
-                fill_socket_monitor_event (&batch[1], ZLINK_MONITOR_EVENT_PEER_UP,
-                                           raw);
-                emit_monitor_event_batch (&_monitor, batch, 2);
+                fill_socket_monitor_event (
+                  &batch[0], ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED, raw);
+                batch[0].value = raw.value > 0 ? 1u : 0u;
+                emit_monitor_event (batch[0]);
                 break;
             }
 
@@ -1511,11 +1521,9 @@ void spot_sub_t::monitor_loop ()
                     if (raw.remote_addr[0] != '\0')
                         _ready_peer_endpoints.erase (raw.remote_addr);
                 }
-                fill_socket_monitor_event (&batch[0], ZLINK_MONITOR_EVENT_LOST,
+                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_DOWN,
                                            raw);
-                fill_socket_monitor_event (&batch[1], ZLINK_MONITOR_EVENT_PEER_DOWN,
-                                           raw);
-                emit_monitor_event_batch (&_monitor, batch, 2);
+                emit_monitor_event (event);
                 break;
 
             case ZLINK_EVENT_BIND_FAILED:

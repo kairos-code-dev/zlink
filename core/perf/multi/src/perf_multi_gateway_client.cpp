@@ -95,7 +95,7 @@ bool open_gateway_ready_monitor(gateway_client_slot_t *slot)
         return false;
     return open_configured_service_monitor(
       slot->gateway,
-      ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
+      ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED | ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
       &slot->monitor);
 }
 
@@ -493,7 +493,7 @@ bool create_gateway_slots(gateway_client_state_t *state,
 
         if (!wait_for_service_monitor_event(
               slot->monitor,
-              ZLINK_GATEWAY_SEND_READY_CHANGED,
+              ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED,
               ZLINK_GATEWAY_MONITOR_EVENT_ERROR,
               settings.connect_ready_timeout_ms)) {
             if (bench_debug_enabled()) {

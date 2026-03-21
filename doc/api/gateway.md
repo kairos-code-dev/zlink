@@ -51,7 +51,7 @@ A single Gateway handle can be used concurrently from multiple threads
 - Use `zlink_set_option()` / `zlink_get_option()` for service-level tuning.
 - Use poller `ZLINK_POLLOUT` for send-side backpressure.
 - Use `zlink_service_monitor_open(gateway, &options)` for edge transitions
-  such as `ZLINK_GATEWAY_SEND_READY_CHANGED` and `ZLINK_GATEWAY_ROUTE_UP`.
+  such as `ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED` and `ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP`.
   Close with `zlink_monitor_close()`.
 - Use `zlink_monitor_snapshot()` on the monitor handle to read current local
   control state and queue depth.

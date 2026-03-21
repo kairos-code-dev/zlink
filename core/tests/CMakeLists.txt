@@ -458,6 +458,11 @@ if(TARGET test_service_introspection)
             ZLINK_TEST_CASE=test_discovery_monitor_and_routing_id
             $<TARGET_FILE:test_service_introspection>)
   add_test(
+    NAME test_service_introspection_discovery_ready_changed
+    COMMAND ${CMAKE_COMMAND} -E env
+            ZLINK_TEST_CASE=test_discovery_ready_changed_contract
+            $<TARGET_FILE:test_service_introspection>)
+  add_test(
     NAME test_service_introspection_gateway_options
     COMMAND ${CMAKE_COMMAND} -E env
             ZLINK_TEST_CASE=test_gateway_receiver_routing_ids_and_options
@@ -560,6 +565,7 @@ if(TARGET test_service_introspection)
 
   set_tests_properties(
     test_service_introspection_discovery_monitor
+    test_service_introspection_discovery_ready_changed
     test_service_introspection_gateway_options
     test_service_introspection_gateway_monitors
     test_service_introspection_topology_snapshot
@@ -676,6 +682,7 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_pub_sub_options_and_routing_ids
     test_spot_monitors_and_monitor_poller
     test_spot_late_connect_replays_existing_subscription
+    test_spot_subscription_ready_changed_reports_loss
     test_spot_callback_model_receive_regression
     test_spot_recv_model_receive_regression
     test_spot_unified_spot_basic
@@ -685,6 +692,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
     test_spot_service_introspection_monitors=test_spot_monitors_and_monitor_poller
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
+    test_spot_service_introspection_subscription_ready_loss=test_spot_subscription_ready_changed_reports_loss
     test_spot_service_introspection_callback_recv_regression=test_spot_callback_model_receive_regression
     test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
     test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
@@ -776,6 +784,7 @@ set(GATEWAY_TEST_SPECS
 
 set(SERVICE_INTROSPECTION_CASES
     test_discovery_monitor_and_routing_id
+    test_discovery_ready_changed_contract
     test_gateway_receiver_routing_ids_and_options
     test_gateway_receiver_monitors_and_monitor_poller
     test_registry_topology_snapshot_and_remote_query
@@ -795,6 +804,7 @@ set(SERVICE_INTROSPECTION_CASES
 
 set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_discovery_monitor=test_discovery_monitor_and_routing_id
+    test_service_introspection_discovery_ready_changed=test_discovery_ready_changed_contract
     test_service_introspection_gateway_options=test_gateway_receiver_routing_ids_and_options
     test_service_introspection_gateway_monitors=test_gateway_receiver_monitors_and_monitor_poller
     test_service_introspection_topology_snapshot=test_registry_topology_snapshot_and_remote_query

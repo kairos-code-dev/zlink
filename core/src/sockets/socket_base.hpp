@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <atomic>
 #include <deque>
+#include <set>
 #include <mutex>
 #include <vector>
 
@@ -189,9 +190,9 @@ class socket_base_t : public own_t,
     event_handshake_failed_auth (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                  int err_);
     void
-    event_connection_ready (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                            const unsigned char *routing_id_,
-                            size_t routing_id_size_);
+    event_connection_ready_changed (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                    const unsigned char *routing_id_,
+                                    size_t routing_id_size_);
     void emit_inproc_connection_ready (pipe_t *pipe_);
 
     //  Query the state of a specific peer. The default implementation
@@ -200,6 +201,7 @@ class socket_base_t : public own_t,
                                 size_t routing_id_size_) const;
 
     int monitor_snapshot (zlink_monitor_snapshot_t *out_);
+    bool monitor_has_attached_pipes () const;
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
     int socket_id () const;
 
@@ -238,6 +240,7 @@ class socket_base_t : public own_t,
                                       zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual void xdispatch_io ();
+    virtual uint32_t monitor_ready_count () const;
 
     //  i_pipe_events will be forwarded to these functions.
     virtual void xread_activated (pipe_t *pipe_);
@@ -538,6 +541,7 @@ class socket_base_t : public own_t,
     //  List of attached pipes.
     typedef array_t<pipe_t, 3> pipes_t;
     pipes_t _pipes;
+    std::set<std::string> _ready_connection_keys;
 
 #ifndef NDEBUG
     //  Diagnostic counters for termination accounting.

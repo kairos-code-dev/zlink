@@ -154,7 +154,7 @@ void socket_monitor_handler (const zlink_monitor_event_t *event_, void *userdata
         return;
 
     std::lock_guard<std::mutex> lock (probe->mutex);
-    if (event_->event == ZLINK_EVENT_CONNECTION_READY && !probe->ready_seen) {
+    if (event_->event == ZLINK_EVENT_CONNECTION_READY_CHANGED && !probe->ready_seen) {
         probe->ready_event = *event_;
         probe->ready_seen = true;
     } else if (event_->event == ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
@@ -236,7 +236,7 @@ bool wait_for_monitor_ready_recv (void *monitor_, int timeout_ms_)
                 != 0) {
                 break;
             }
-            if (event.event == ZLINK_EVENT_CONNECTION_READY)
+            if (event.event == ZLINK_EVENT_CONNECTION_READY_CHANGED)
                 return true;
         }
     }
@@ -262,7 +262,7 @@ bool wait_for_monitor_ready_recv_with_routing_id (
                 != 0) {
                 break;
             }
-            if (event.event != ZLINK_EVENT_CONNECTION_READY)
+            if (event.event != ZLINK_EVENT_CONNECTION_READY_CHANGED)
                 continue;
 
             if (routing_id_ && routing_id_size_) {
@@ -301,7 +301,7 @@ bool wait_for_monitor_ready_recv_with_activity (
                 != 0) {
                 break;
             }
-            if (event.event != ZLINK_EVENT_CONNECTION_READY)
+            if (event.event != ZLINK_EVENT_CONNECTION_READY_CHANGED)
                 continue;
             if (routing_id_ && routing_id_size_) {
                 *routing_id_size_ = event.routing_id.size;
@@ -511,6 +511,50 @@ void raw_client_handler (const zlink_routing_id_t *source_rid_,
             probe->parts[i][copy_size] = '\0';
             memcpy (probe->recorded_parts[slot][i], probe->parts[i], copy_size + 1);
         }
+        ++probe->calls;
+    }
+
+    close_message_parts (parts_, part_count_);
+    probe->cv.notify_all ();
+}
+
+void pubsub_subscribe_handler (const zlink_routing_id_t *source_rid_,
+                               const char *topic_,
+                               size_t topic_len_,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
+                               void *)
+{
+    raw_callback_probe_t *probe = g_sub_probe;
+    if (!probe || !topic_ || part_count_ == 0) {
+        close_message_parts (parts_, part_count_);
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (probe->mutex);
+        probe->rid_size = source_rid_ ? source_rid_->size : 0;
+        if (source_rid_ && source_rid_->size > 0)
+            memcpy (probe->rid, source_rid_->data, source_rid_->size);
+        probe->part_count = 2;
+        const int slot = probe->calls < 4 ? probe->calls : 3;
+        probe->recorded_part_counts[slot] = 2;
+
+        const size_t topic_copy =
+          topic_len_ < sizeof (probe->parts[0]) - 1 ? topic_len_
+                                                    : sizeof (probe->parts[0]) - 1;
+        memcpy (probe->parts[0], topic_, topic_copy);
+        probe->parts[0][topic_copy] = '\0';
+        memcpy (probe->recorded_parts[slot][0], probe->parts[0], topic_copy + 1);
+
+        const size_t size = zlink_msg_size (&parts_[0]);
+        const size_t payload_copy =
+          size < sizeof (probe->parts[1]) - 1 ? size
+                                              : sizeof (probe->parts[1]) - 1;
+        memcpy (probe->parts[1], zlink_msg_data (&parts_[0]), payload_copy);
+        probe->parts[1][payload_copy] = '\0';
+        memcpy (probe->recorded_parts[slot][1], probe->parts[1],
+                payload_copy + 1);
         ++probe->calls;
     }
 
@@ -740,18 +784,26 @@ void stream_handler (const zlink_routing_id_t *rid_,
         return;
     }
 
+    size_t size = 0;
     {
         std::lock_guard<std::mutex> lock (probe->mutex);
         memcpy (probe->routing_id, rid_->data, stream_routing_id_size);
-        const size_t size = zlink_msg_size (&parts_[0]);
+        size = zlink_msg_size (&parts_[0]);
         const size_t copy_size =
           size < sizeof (probe->payload) - 1 ? size : sizeof (probe->payload) - 1;
         memcpy (probe->payload, zlink_msg_data (&parts_[0]), copy_size);
         probe->payload[copy_size] = '\0';
         ++probe->calls;
-        probe->send_ok =
-          test_stream_send_single_msg (probe->socket, rid_, &parts_[0], 0)
-          == static_cast<int> (size);
+    }
+    probe->cv.notify_all ();
+
+    const bool send_ok =
+      test_stream_send_single_msg (probe->socket, rid_, &parts_[0], 0)
+      == static_cast<int> (size);
+
+    {
+        std::lock_guard<std::mutex> lock (probe->mutex);
+        probe->send_ok = send_ok;
     }
 
     for (size_t i = 1; i < part_count_; ++i)
@@ -768,7 +820,18 @@ bool wait_for_stream_callback (stream_callback_probe_t *probe_, int timeout_ms_)
     std::unique_lock<std::mutex> lock (probe_->mutex);
     return probe_->cv.wait_for (
       lock, std::chrono::milliseconds (timeout_ms_),
-      [probe_]() { return probe_->calls > 0 && probe_->send_ok; });
+      [probe_]() { return probe_->calls > 0; });
+}
+
+bool wait_for_stream_send_ok (stream_callback_probe_t *probe_, int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    return probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_]() { return probe_->send_ok; });
 }
 
 void run_pair_ready_matrix (monitor_mode_t monitor_mode_,
@@ -796,7 +859,7 @@ void run_pair_ready_matrix (monitor_mode_t monitor_mode_,
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
-    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY;
+    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     configure_pair_socket (monitor);
@@ -872,7 +935,7 @@ void run_dealer_router_ready_matrix (monitor_mode_t monitor_mode_,
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
-    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY;
+    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     configure_pair_socket (monitor);
@@ -980,7 +1043,7 @@ void run_router_router_ready_matrix (monitor_mode_t monitor_mode_,
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
-    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY;
+    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     configure_pair_socket (monitor);
@@ -1073,7 +1136,7 @@ void run_pubsub_ready_matrix (monitor_mode_t monitor_mode_,
     g_sub_probe = &sub_probe;
     if (socket_mode_ == socket_callback_mode) {
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_recv_handler (sub, &raw_client_handler, NULL));
+          zlink_subscribe_handler (sub, &pubsub_subscribe_handler, NULL));
     }
 
     zlink_socket_monitor_open_options_t sub_monitor_opts;
@@ -1167,7 +1230,7 @@ void run_stream_ready_matrix (monitor_mode_t monitor_mode_,
 
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
-    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY;
+    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     configure_pair_socket (monitor);
@@ -1222,8 +1285,11 @@ void run_stream_ready_matrix (monitor_mode_t monitor_mode_,
         size_t routing_id_size = 0;
         const bool ready =
           monitor_mode_ == monitor_recv_mode
-            ? wait_for_monitor_ready_recv_with_activity (
-                monitor, server, 3000, routing_id, &routing_id_size)
+            ? (socket_mode_ == socket_recv_mode
+                 ? wait_for_monitor_ready_recv_with_activity (
+                     monitor, server, 3000, routing_id, &routing_id_size)
+                 : wait_for_monitor_ready_recv_with_routing_id (
+                     monitor, 3000, routing_id, &routing_id_size))
             : wait_for_monitor_ready_callback_with_routing_id (
                 &monitor_probe, 3000, routing_id, &routing_id_size);
         TEST_ASSERT_TRUE (ready);
@@ -1232,6 +1298,7 @@ void run_stream_ready_matrix (monitor_mode_t monitor_mode_,
         TEST_ASSERT_EQUAL_MEMORY (routing_id, stream_probe.routing_id,
                                   stream_routing_id_size);
         TEST_ASSERT_EQUAL_STRING ("cli", stream_probe.payload);
+        TEST_ASSERT_TRUE (wait_for_stream_send_ok (&stream_probe, 3000));
     }
 
     unsigned char echo_buf[4];

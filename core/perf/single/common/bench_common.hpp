@@ -863,7 +863,7 @@ inline bool socket_monitor_event_ready(const zlink_socket_monitor_event_t &event
 {
     if (event_.event != success_event_)
         return false;
-    if (success_event_ == ZLINK_EVENT_CONNECTION_READY)
+    if (success_event_ == ZLINK_EVENT_CONNECTION_READY_CHANGED)
         return true;
     return event_.value > 0;
 }
@@ -1598,11 +1598,11 @@ inline bool setup_connected_pair(void *bind_socket_,
         return false;
 
     void *bind_monitor =
-      open_configured_socket_monitor(bind_socket_, ZLINK_EVENT_CONNECTION_READY);
+      open_configured_socket_monitor(bind_socket_, ZLINK_EVENT_CONNECTION_READY_CHANGED);
     if (!bind_monitor)
         return false;
     void *connect_monitor = open_configured_socket_monitor(
-      connect_socket_, ZLINK_EVENT_CONNECTION_READY);
+      connect_socket_, ZLINK_EVENT_CONNECTION_READY_CHANGED);
     if (!connect_monitor) {
         zlink_monitor_close(&bind_monitor);
         return false;
@@ -1621,11 +1621,11 @@ inline bool setup_connected_pair(void *bind_socket_,
     const int timeout_ms = parse_positive_env("PERF_CONNECT_READY_TIMEOUT_MS",
                                               3000);
     const bool bind_ready =
-      wait_for_socket_monitor_event(bind_monitor, ZLINK_EVENT_CONNECTION_READY,
+      wait_for_socket_monitor_event(bind_monitor, ZLINK_EVENT_CONNECTION_READY_CHANGED,
                                     timeout_ms);
     const bool connect_ready =
       wait_for_socket_monitor_event(connect_monitor,
-                                    ZLINK_EVENT_CONNECTION_READY,
+                                    ZLINK_EVENT_CONNECTION_READY_CHANGED,
                                     timeout_ms);
     zlink_monitor_close(&connect_monitor);
     zlink_monitor_close(&bind_monitor);

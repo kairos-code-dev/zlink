@@ -50,7 +50,7 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 | 필드 | 설명 |
 |------|------|
 | `event` | 이벤트 타입을 나타내는 비트마스크 (`ZLINK_EVENT_*` 상수 중 하나). |
-| `value` | 이벤트별 값. 연결 이벤트의 경우 파일 디스크립터; 에러 이벤트의 경우 errno 또는 프로토콜 에러 코드; 연결 해제 이벤트의 경우 `ZLINK_DISCONNECT_*` 사유. |
+| `value` | 이벤트별 값. 연결 이벤트의 경우 파일 디스크립터; 에러 이벤트의 경우 errno 또는 프로토콜 에러 코드; 연결 해제 이벤트의 경우 `ZLINK_DISCONNECT_*` 사유; `*_READY_CHANGED` 이벤트의 경우 현재 ready count. |
 | `routing_id` | 해당되는 경우 이벤트에 관련된 피어의 라우팅 아이덴티티. |
 | `local_addr` | null 종료 로컬 엔드포인트 주소 문자열. |
 | `remote_addr` | null 종료 원격 엔드포인트 주소 문자열. |
@@ -87,7 +87,7 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_source_kind_t source_kind;
     zlink_monitor_state_mask_t state_flags;
     zlink_monitor_snapshot_detail_mask_t detail_flags;
-    uint32_t ready_peer_count;
+    uint32_t ready_count;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
 } zlink_monitor_snapshot_t;
@@ -98,7 +98,7 @@ typedef struct zlink_monitor_snapshot_t
 | `source_kind` | snapshot source(`SOCKET`, `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`) |
 | `state_flags` | `READY`, `BOUND_READY`, `SEND_READY` 같은 aggregate 상태 |
 | `detail_flags` | 어떤 numeric field가 채워졌는지 표시 |
-| `ready_peer_count` | 지원되는 경우 aggregate ready/connected peer 수 |
+| `ready_count` | 지원되는 경우 aggregate ready/connected peer 수 |
 | `snd_pending_msgs` | 지원되는 경우 aggregate 로컬 송신 backlog |
 | `rcv_pending_msgs` | 지원되는 경우 aggregate 로컬 수신 backlog snapshot |
 
@@ -129,7 +129,7 @@ typedef enum zlink_monitor_source_kind_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT` | `1 << 0` | `ready_peer_count` 필드가 채워짐. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT` | `1 << 0` | `ready_count` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
 
@@ -152,11 +152,11 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_EVENT_DISCONNECTED` | `0x0200` | 세션 연결 해제됨. 이벤트 값에 `ZLINK_DISCONNECT_*` 사유가 포함됨. |
 | `ZLINK_EVENT_MONITOR_STOPPED` | `0x0400` | 모니터가 중지되어 더 이상 이벤트를 생성하지 않음. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 추가 세부 정보 없이 핸드셰이크 실패. |
-| `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | 연결이 데이터 전송 준비 완료 (핸드셰이크 완료). |
+| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | 연결 readiness 변화. `value`는 현재 ready count. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러로 인한 핸드셰이크 실패. 이벤트 값에 `ZLINK_PROTOCOL_ERROR_*` 코드가 포함됨. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패로 인한 핸드셰이크 실패. |
-| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription 전파 완료. `value` `1`=ready, `0`=lost. |
-| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 완료. `value` `1`=ready, `0`=lost. |
+| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness 변화. `value`는 현재 ready count. |
+| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness 변화. `value`는 현재 ready count. |
 | `ZLINK_EVENT_ALL` | `0xFFFF` | 모든 이벤트 구독. |
 
 ### 연결 해제 사유
@@ -378,8 +378,6 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_MONITOR_EVENT_READY` | `1 << 0` | 서비스 준비 완료 |
-| `ZLINK_MONITOR_EVENT_LOST` | `1 << 1` | 서비스 연결 손실 |
 | `ZLINK_MONITOR_EVENT_PEER_UP` | `1 << 2` | 피어 연결됨 |
 | `ZLINK_MONITOR_EVENT_PEER_DOWN` | `1 << 3` | 피어 연결 해제됨 |
 | `ZLINK_MONITOR_EVENT_ERROR` | `1 << 4` | 에러 발생 |
@@ -389,6 +387,7 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
+| `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | Discovery readiness 변화; `value`는 현재 ready count |
 | `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | 검색된 서비스가 활성화됨 |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | 검색된 서비스가 비활성화됨 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | 서비스 provider 집합이 변경됨 |
@@ -397,8 +396,7 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_GATEWAY_SERVICE_READY` | `1 << 8` | 로컬 Gateway service bind/register 준비 완료 |
-| `ZLINK_GATEWAY_SERVICE_LOST` | `1 << 9` | 로컬 Gateway service publication 제거됨 |
+| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | `1 << 8` | Gateway readiness 변화; `value`는 현재 ready count |
 | `ZLINK_GATEWAY_SEND_READY_CHANGED` | `1 << 10` | aggregate send readiness 변화, `value`는 `0` 또는 `1` |
 | `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | 피어로의 경로 활성화됨, `value`는 현재 ready route 수 |
 | `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | 피어로의 경로 비활성화됨, `value`는 현재 ready route 수 |
@@ -407,8 +405,9 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
+| `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | SPOT readiness 변화; `value`는 현재 ready count |
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | 구독 필터 적용됨 |
-| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | `1 << 14` | 구독 수신 준비 완료 |
+| `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` | `1 << 14` | 구독 readiness 변화; `value`는 현재 ready count |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB 큐가 가득 참 |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB 큐가 비워짐 |
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | subject별 remote delivery-ready 카운트 변화 |
@@ -425,14 +424,18 @@ canonical 이름입니다. 위 per-service 상수와 동일한 비트에 매핑�
 |------|----------|
 | `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | `ZLINK_MONITOR_EVENT_ERROR` |
 | `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | `ZLINK_MONITOR_EVENT_CLOSED` |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED` | `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SERVICE_READY` | `ZLINK_GATEWAY_SERVICE_READY` |
+| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
+| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_READY_CHANGED` | `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED` | `ZLINK_GATEWAY_SEND_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP` | `ZLINK_GATEWAY_ROUTE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN` | `ZLINK_GATEWAY_ROUTE_DOWN` |
+| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED` | `ZLINK_SPOT_SUB_FILTER_APPLIED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY` | `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` |
+| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` |
+| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_ALL` | 모든 서비스 이벤트 |

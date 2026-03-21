@@ -131,6 +131,7 @@ class discovery_t
                                  socket_base_t **dealer_out_);
     void handle_service_list (const std::vector<zlink_msg_t> &frames_);
     void notify_observers (const std::set<std::string> &services_);
+    void emit_ready_changed (uint32_t ready_count_);
     int ensure_topology_reporters ();
     int ensure_topology_reporter_locked (const std::string &uplink_endpoint_,
                                          socket_base_t **dealer_out_);
@@ -259,6 +260,7 @@ class discovery_t
     size_t _observer_callbacks_inflight;
     bool _destroying;
     uint64_t _update_seq;
+    uint32_t _monitor_ready_count;
     std::map<std::string, uint64_t> _service_seq;
     struct socket_opt_t
     {

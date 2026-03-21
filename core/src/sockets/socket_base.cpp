@@ -38,6 +38,23 @@
 #if defined ZLINK_HAVE_ASIO_SSL
 #include "transports/tls/asio_tls_listener.hpp"
 #endif
+
+namespace
+{
+std::string make_monitor_ready_key (const zlink::endpoint_uri_pair_t &endpoint_uri_pair_,
+                                    const unsigned char *routing_id_,
+                                    size_t routing_id_size_)
+{
+    std::string key = endpoint_uri_pair_.identifier ();
+    if (key.empty ())
+        key = endpoint_uri_pair_.remote;
+    key.push_back ('\0');
+    if (routing_id_ && routing_id_size_ > 0)
+        key.append (reinterpret_cast<const char *> (routing_id_),
+                    routing_id_size_);
+    return key;
+}
+}
 #if defined ZLINK_HAVE_WS
 #include "transports/ws/asio_ws_listener.hpp"
 #include "transports/ws/ws_address.hpp"
@@ -447,13 +464,13 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     memset (out_, 0, sizeof (*out_));
     out_->source_kind = ZLINK_MONITOR_SOURCE_SOCKET;
     out_->detail_flags =
-      ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT
+      ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT
       | ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
       | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
     {
         scoped_lock_t lock (_monitor_sync);
-        out_->ready_peer_count = static_cast<uint32_t> (_pipes.size ());
-        if (out_->ready_peer_count > 0)
+        out_->ready_count = monitor_ready_count ();
+        if (out_->ready_count > 0)
             out_->state_flags |= ZLINK_MONITOR_STATE_READY;
 
         for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
@@ -466,10 +483,20 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     return 0;
 }
 
+uint32_t zlink::socket_base_t::monitor_ready_count () const
+{
+    return static_cast<uint32_t> (_ready_connection_keys.size ());
+}
+
 bool zlink::socket_base_t::has_attached_pipes () const
 {
     scoped_lock_t lock (const_cast<socket_base_t *> (this)->_monitor_sync);
     return !const_cast<socket_base_t *> (this)->_pipes.empty ();
+}
+
+bool zlink::socket_base_t::monitor_has_attached_pipes () const
+{
+    return has_attached_pipes ();
 }
 
 void zlink::socket_base_t::socket_peer_remote_endpoints (
@@ -2537,6 +2564,18 @@ void zlink::socket_base_t::hiccuped (pipe_t *pipe_)
 
 void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 {
+    endpoint_uri_pair_t endpoint_pair;
+    const unsigned char *routing_id_data = NULL;
+    size_t routing_id_size = 0;
+    if (pipe_) {
+        endpoint_pair = pipe_->get_endpoint_pair ();
+        const blob_t &routing_id = pipe_->get_routing_id ();
+        if (routing_id.size () > 0) {
+            routing_id_data = routing_id.data ();
+            routing_id_size = routing_id.size ();
+        }
+    }
+
     //  Notify the specific socket type about the pipe termination.
     xpipe_terminated (pipe_);
 
@@ -2548,6 +2587,24 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
     {
         scoped_lock_t lock (_monitor_sync);
         _pipes.erase (pipe_);
+    }
+
+    uint32_t ready_count = 0;
+    bool ready_changed = false;
+    {
+        scoped_lock_t lock (_monitor_sync);
+        ready_changed =
+          _ready_connection_keys.erase (make_monitor_ready_key (
+                                          endpoint_pair, routing_id_data,
+                                          routing_id_size))
+          != 0;
+        if (ready_changed)
+            ready_count = monitor_ready_count ();
+    }
+    if (ready_changed) {
+        uint64_t values[1] = {ready_count};
+        event (endpoint_pair, routing_id_data, routing_id_size, values, 1,
+               ZLINK_EVENT_CONNECTION_READY_CHANGED);
     }
 
     // Remove the pipe from _endpoints (set it to NULL).
@@ -2741,6 +2798,24 @@ void zlink::socket_base_t::event_disconnected (
     uint64_t values[1] = {reason_};
     event (endpoint_uri_pair_, routing_id_, routing_id_size_, values, 1,
            ZLINK_EVENT_DISCONNECTED);
+
+    uint32_t ready_count = 0;
+    bool changed = false;
+    {
+        scoped_lock_t lock (_monitor_sync);
+        changed =
+          _ready_connection_keys.erase (make_monitor_ready_key (
+                                          endpoint_uri_pair_, routing_id_,
+                                          routing_id_size_))
+          != 0;
+        if (changed)
+            ready_count = monitor_ready_count ();
+    }
+    if (changed) {
+        uint64_t ready_values[1] = {ready_count};
+        event (endpoint_uri_pair_, routing_id_, routing_id_size_, ready_values,
+               1, ZLINK_EVENT_CONNECTION_READY_CHANGED);
+    }
 }
 
 void zlink::socket_base_t::event_handshake_failed_no_detail (
@@ -2767,14 +2842,29 @@ void zlink::socket_base_t::event_handshake_failed_auth (
            ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
 }
 
-void zlink::socket_base_t::event_connection_ready (
+void zlink::socket_base_t::event_connection_ready_changed (
   const endpoint_uri_pair_t &endpoint_uri_pair_,
   const unsigned char *routing_id_,
   size_t routing_id_size_)
 {
-    uint64_t values[1] = {0};
+    uint32_t ready_count = 0;
+    bool changed = false;
+    {
+        scoped_lock_t lock (_monitor_sync);
+        changed = _ready_connection_keys.insert (make_monitor_ready_key (
+                                                     endpoint_uri_pair_,
+                                                     routing_id_,
+                                                     routing_id_size_))
+                    .second;
+        if (changed)
+            ready_count = monitor_ready_count ();
+    }
+    if (!changed)
+        return;
+
+    uint64_t values[1] = {ready_count};
     event (endpoint_uri_pair_, routing_id_, routing_id_size_, values, 1,
-           ZLINK_EVENT_CONNECTION_READY);
+           ZLINK_EVENT_CONNECTION_READY_CHANGED);
 }
 
 void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
@@ -2789,8 +2879,8 @@ void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
     const blob_t &routing_id = pipe_->get_routing_id ();
     const unsigned char *routing_id_data =
       routing_id.size () > 0 ? routing_id.data () : NULL;
-    event_connection_ready (endpoint_pair, routing_id_data,
-                            routing_id.size ());
+    event_connection_ready_changed (endpoint_pair, routing_id_data,
+                                    routing_id.size ());
 }
 
 void zlink::socket_base_t::emit_socket_monitor_value_event (

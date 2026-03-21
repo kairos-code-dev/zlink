@@ -129,7 +129,7 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
 
     const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,
                                        ZLINK_EVENT_CONNECTED,
-                                       ZLINK_EVENT_CONNECTION_READY};
+                                       ZLINK_EVENT_CONNECTION_READY_CHANGED};
     expect_monitor_sequence (&probe, initial_events,
                              sizeof (initial_events) / sizeof (initial_events[0]),
                              3000);
@@ -138,7 +138,7 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
 
     const uint64_t reconnect_wait_events[] = {
       ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
-      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
+      ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_DISCONNECTED,
       ZLINK_EVENT_CONNECT_RETRIED};
     expect_monitor_sequence (
       &probe, reconnect_wait_events,
@@ -150,9 +150,9 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
 
     const uint64_t reconnect_success_events[] = {
       ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
-      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
+      ZLINK_EVENT_CONNECTION_READY_CHANGED, ZLINK_EVENT_DISCONNECTED,
       ZLINK_EVENT_CONNECT_RETRIED,  ZLINK_EVENT_CONNECT_DELAYED,
-      ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY};
+      ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY_CHANGED};
     expect_monitor_sequence (
       &probe, reconnect_success_events,
       sizeof (reconnect_success_events)

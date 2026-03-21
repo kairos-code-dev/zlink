@@ -372,7 +372,7 @@ int spot_pub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
     if (socket->monitor_snapshot (out_) != 0)
         return -1;
     out_->source_kind = ZLINK_MONITOR_SOURCE_SPOT_PUB;
-    if (out_->ready_peer_count > 0)
+    if (out_->ready_count > 0)
         out_->state_flags |=
           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
     return 0;
@@ -407,7 +407,7 @@ void spot_pub_t::emit_delivery_ready_changed_event (const char *subject_,
     {
         scoped_lock_t lock (_sync);
         fill_subject_monitor_event (&event,
-                                    ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED,
+                                    ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED,
                                     _routing_id, subject_,
                                     include_subject_kind_, subject_kind_,
                                     ready_count_);
@@ -425,7 +425,7 @@ void spot_pub_t::emit_first_delivery_ready_changed_event (
     {
         scoped_lock_t lock (_sync);
         fill_subject_monitor_event (&event,
-                                    ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED,
+                                    ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED,
                                     _routing_id, subject_,
                                     include_subject_kind_, subject_kind_,
                                     ready_count_);
@@ -474,7 +474,7 @@ int spot_pub_t::ensure_monitor_bridge_started ()
 
     void *monitor_socket = open_socket_monitor_bridge (
       socket, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
-                 | ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED
+                 | ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED
                  | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
                  | ZLINK_EVENT_CLOSE_FAILED
                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
@@ -568,20 +568,17 @@ void spot_pub_t::monitor_loop ()
                 emit_monitor_event (event);
                 break;
 
-            case ZLINK_EVENT_CONNECTION_READY:
-                fill_socket_monitor_event (&batch[0], ZLINK_MONITOR_EVENT_READY,
-                                           raw);
-                fill_socket_monitor_event (&batch[1], ZLINK_MONITOR_EVENT_PEER_UP,
-                                           raw);
-                emit_monitor_event_batch (&_monitor, batch, 2);
+            case ZLINK_EVENT_CONNECTION_READY_CHANGED:
+                fill_socket_monitor_event (
+                  &batch[0], ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED, raw);
+                batch[0].value = raw.value > 0 ? 1u : 0u;
+                emit_monitor_event (batch[0]);
                 break;
 
             case ZLINK_EVENT_DISCONNECTED:
-                fill_socket_monitor_event (&batch[0], ZLINK_MONITOR_EVENT_LOST,
+                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_DOWN,
                                            raw);
-                fill_socket_monitor_event (&batch[1], ZLINK_MONITOR_EVENT_PEER_DOWN,
-                                           raw);
-                emit_monitor_event_batch (&_monitor, batch, 2);
+                emit_monitor_event (event);
                 break;
 
             case ZLINK_EVENT_BIND_FAILED:

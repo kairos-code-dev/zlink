@@ -459,7 +459,7 @@ static void record_stream_monitor_event (stream_monitor_probe_t *probe_,
         case ZLINK_EVENT_ACCEPTED:
             ++probe_->accepted;
             break;
-        case ZLINK_EVENT_CONNECTION_READY:
+        case ZLINK_EVENT_CONNECTION_READY_CHANGED:
             ++probe_->connection_ready;
             if (event_->routing_id.size != stream_routing_id_size) {
                 ++probe_->bad_ready_routing_id;
@@ -612,7 +612,7 @@ static void collect_stream_ordering_monitor_events (
         const std::string key =
           make_routing_id_key (event.routing_id.data, event.routing_id.size);
         std::lock_guard<std::mutex> lk (probe_->mu);
-        if (event.event == ZLINK_EVENT_CONNECTION_READY) {
+        if (event.event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
             probe_->ready_routing_ids.insert (key);
             probe_->ready_events.fetch_add (1, std::memory_order_release);
         } else if (event.event == ZLINK_EVENT_DISCONNECTED) {
@@ -1238,7 +1238,7 @@ void test_stream_recv_ready_precedes_first_payload_contract ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
@@ -1313,7 +1313,7 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
@@ -1453,7 +1453,7 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
@@ -1527,7 +1527,7 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
@@ -1654,7 +1654,7 @@ void test_stream_tcp_basic ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1679,7 +1679,7 @@ void test_stream_tcp_basic ()
 
     unsigned char server_id[stream_routing_id_size];
     TEST_ASSERT_TRUE (wait_monitor_event (
-      monitor, server, ZLINK_EVENT_CONNECTION_READY, server_id, 2000));
+      monitor, server, ZLINK_EVENT_CONNECTION_READY_CHANGED, server_id, 2000));
     TEST_ASSERT_EQUAL_UINT8_ARRAY (
       server_id, probe.routing_id, stream_routing_id_size);
 
@@ -1722,7 +1722,7 @@ void test_stream_maxmsgsize ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1749,7 +1749,7 @@ void test_stream_maxmsgsize ()
 
     unsigned char connect_id[stream_routing_id_size];
     TEST_ASSERT_TRUE (wait_monitor_event (
-      monitor, server, ZLINK_EVENT_CONNECTION_READY, connect_id, 2000));
+      monitor, server, ZLINK_EVENT_CONNECTION_READY_CHANGED, connect_id, 2000));
     TEST_ASSERT_EQUAL_UINT8_ARRAY (
       connect_id, probe.routing_id, stream_routing_id_size);
 

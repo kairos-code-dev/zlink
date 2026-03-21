@@ -815,6 +815,6 @@ void zlink::stream_t::maybe_emit_connect_event (pipe_t *pipe_,
 
     unsigned char routing_id_data[4];
     put_uint32 (routing_id_data, resolved_routing_id);
-    event_connection_ready (pipe_->get_endpoint_pair (), routing_id_data,
+    event_connection_ready_changed(pipe_->get_endpoint_pair (), routing_id_data,
                             sizeof (routing_id_data));
 }

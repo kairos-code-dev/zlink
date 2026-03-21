@@ -503,7 +503,7 @@ inline void connect_monitor_handler(const zlink_monitor_event_t *event_,
     {
         std::lock_guard<std::mutex> lock(state->sync);
         switch (event_->event) {
-            case ZLINK_EVENT_CONNECTION_READY:
+            case ZLINK_EVENT_CONNECTION_READY_CHANGED:
                 ++state->connection_ready_count;
                 break;
 
@@ -547,7 +547,7 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
     zlink_socket_monitor_open_options_t monitor_opts;
     memset(&monitor_opts, 0, sizeof(monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED
+      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_BIND_FAILED
       | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
       | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
       | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
@@ -681,7 +681,7 @@ inline bool socket_monitor_event_ready(
 {
     if (event_.event != success_event_)
         return false;
-    if (success_event_ == ZLINK_EVENT_CONNECTION_READY)
+    if (success_event_ == ZLINK_EVENT_CONNECTION_READY_CHANGED)
         return true;
     return event_.value > 0;
 }

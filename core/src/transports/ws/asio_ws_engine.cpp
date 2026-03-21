@@ -722,7 +722,7 @@ void zlink::asio_ws_engine_t::on_read_complete (
 
         //  Notify socket about successful handshake
         if (_socket) {
-            _socket->event_connection_ready (_endpoint_uri_pair,
+            _socket->event_connection_ready_changed(_endpoint_uri_pair,
                                              _peer_routing_id,
                                              _peer_routing_id_size);
         }

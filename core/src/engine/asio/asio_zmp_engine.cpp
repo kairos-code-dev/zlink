@@ -326,7 +326,7 @@ bool zlink::asio_zmp_engine_t::handshake ()
         _has_handshake_timer = false;
     }
 
-    socket ()->event_connection_ready (_endpoint_uri_pair, _peer_routing_id,
+    socket ()->event_connection_ready_changed(_endpoint_uri_pair, _peer_routing_id,
                                        _peer_routing_id_size);
 
     if (_output_stopped)

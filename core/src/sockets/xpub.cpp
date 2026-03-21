@@ -27,7 +27,7 @@ zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _cached_match_generation (0),
     _dispatch_active (false),
     _dispatch_inflight (0),
-    _delivery_ready_state (false)
+    _delivery_ready_peer_count (0)
 {
     _last_pipe = NULL;
     options.type = ZLINK_CORE_SOCKET_XPUB;
@@ -46,21 +46,43 @@ zlink::xpub_t::~xpub_t ()
 
 bool zlink::xpub_t::compute_delivery_ready_state () const
 {
+    return compute_delivery_ready_count () > 0;
+}
+
+void zlink::xpub_t::collect_ready_pipe (pipe_t *pipe_,
+                                        std::set<pipe_t *> *out_)
+{
+    if (pipe_ && out_)
+        out_->insert (pipe_);
+}
+
+uint32_t zlink::xpub_t::compute_delivery_ready_count () const
+{
     if (_subscriptions.num_prefixes () == 0)
-        return false;
-    return has_attached_pipes ();
+        return 0;
+
+    std::set<pipe_t *> ready_pipes;
+    _subscriptions.visit_values (&collect_ready_pipe, &ready_pipes);
+    return static_cast<uint32_t> (ready_pipes.size ());
 }
 
 void zlink::xpub_t::refresh_delivery_ready_state (
   const endpoint_uri_pair_t &endpoint_uri_pair_)
 {
-    const bool ready = compute_delivery_ready_state ();
-    if (ready == _delivery_ready_state)
+    const uint32_t ready_count = compute_delivery_ready_count ();
+    const uint32_t previous =
+      _delivery_ready_peer_count.exchange (ready_count,
+                                           std::memory_order_acq_rel);
+    if (previous == ready_count)
         return;
 
-    _delivery_ready_state = ready;
     emit_socket_monitor_value_event (ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED,
-                                     ready ? 1u : 0u, endpoint_uri_pair_);
+                                     ready_count, endpoint_uri_pair_);
+}
+
+uint32_t zlink::xpub_t::monitor_ready_count () const
+{
+    return _delivery_ready_peer_count.load (std::memory_order_acquire);
 }
 
 void zlink::xpub_t::xattach_pipe (pipe_t *pipe_,

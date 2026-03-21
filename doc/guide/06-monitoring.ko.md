@@ -67,9 +67,9 @@ raw 소켓의 transport/session 상태를 알려준다.
 
 | 상수 | 값 | 설명 | `value` | `routing_id` | 발생 측 | 이후 가능한 동작 |
 |---|---|---|---|---|---|---|
-| `CONNECTION_READY` | `0x1000` | 핸드셰이크 완료, 메시징 가능 | — | ROUTER/STREAM: peer id | 양쪽 | **send/recv 시작** |
-| `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | — | 클라이언트 | `CONNECTION_READY` 대기 |
-| `ACCEPTED` | `0x0020` | 수신 연결 accept (핸드셰이크 전) | fd | — | 서버 | `CONNECTION_READY` 대기 |
+| `CONNECTION_READY_CHANGED` | `0x1000` | 핸드셰이크 완료, 메시징 가능 | `current_ready_count` | ROUTER/STREAM: peer id | 양쪽 | **send/recv 시작** |
+| `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | — | 클라이언트 | `CONNECTION_READY_CHANGED` 대기 |
+| `ACCEPTED` | `0x0020` | 수신 연결 accept (핸드셰이크 전) | fd | — | 서버 | `CONNECTION_READY_CHANGED` 대기 |
 | `DISCONNECTED` | `0x0200` | 세션 종료 | reason 코드 | 가능 | 양쪽 | 재연결 로직 실행 |
 | `LISTENING` | `0x0008` | bind 성공, 수신 대기 중 | fd | — | 서버 | — |
 | `CLOSED` | `0x0080` | 의도적 close 완료 | — | — | 양쪽 | — |
@@ -88,14 +88,15 @@ raw 소켓의 transport/session 상태를 알려준다.
 ### 연결 흐름
 
 ```
-클라이언트: CONNECT_DELAYED(선택) → CONNECTED → CONNECTION_READY → send/recv 시작
-서버:       LISTENING → ACCEPTED → CONNECTION_READY → send/recv 시작
-종료:       CONNECTION_READY → DISCONNECTED → CONNECT_DELAYED → 재연결...
+클라이언트: CONNECT_DELAYED(선택) → CONNECTED → CONNECTION_READY_CHANGED → send/recv 시작
+서버:       LISTENING → ACCEPTED → CONNECTION_READY_CHANGED → send/recv 시작
+종료:       CONNECTION_READY_CHANGED → DISCONNECTED → CONNECT_DELAYED → 재연결...
 ```
 
-### CONNECTION_READY 상세
+### CONNECTION_READY_CHANGED 상세
 
 핸드셰이크 완료 후 발생한다. 이 이벤트를 받으면 즉시 메시지를 보내고 받을 수 있다.
+`value` 필드에는 `current_ready_count` -- 현재 ready 피어의 절대 수가 포함된다.
 
 - ROUTER/STREAM에서는 `ev->routing_id`에 peer identity가 포함된다.
 - PAIR/DEALER에서는 `routing_id`가 비어 있다.
@@ -125,10 +126,10 @@ raw 소켓의 transport/session 상태를 알려준다.
 
 ```
 클라이언트 측:
-  CONNECT_DELAYED (선택) → CONNECTED → CONNECTION_READY
+  CONNECT_DELAYED (선택) → CONNECTED → CONNECTION_READY_CHANGED
 
 서버 측:
-  ACCEPTED → CONNECTION_READY
+  ACCEPTED → CONNECTION_READY_CHANGED
 ```
 
 ### 핸드셰이크 실패
@@ -144,14 +145,14 @@ raw 소켓의 transport/session 상태를 알려준다.
 ### 정상 해제
 
 ```
-CONNECTION_READY → DISCONNECTED (reason=LOCAL or REMOTE)
+CONNECTION_READY_CHANGED → DISCONNECTED (reason=LOCAL or REMOTE)
 ```
 
 ### 재연결
 
 ```
-CONNECTED → CONNECTION_READY → DISCONNECTED →
-CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY
+CONNECTED → CONNECTION_READY_CHANGED → DISCONNECTED →
+CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY_CHANGED
 ```
 
 ## 6. DISCONNECTED reason 코드
@@ -201,7 +202,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 ```c
 /* 연결/해제 이벤트만 */
 zlink_socket_monitor_open_options_t opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
+    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED,
 };
 void *mon = zlink_socket_monitor_open(server, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
@@ -211,7 +212,7 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 | 프리셋 | 이벤트 마스크 | 용도 |
 |--------|-------------|------|
-| 기본 | `CONNECTION_READY \| DISCONNECTED` | 연결 상태 추적 |
+| 기본 | `CONNECTION_READY_CHANGED \| DISCONNECTED` | 연결 상태 추적 |
 | 디버깅 | 기본 + `CONNECTED \| ACCEPTED \| CONNECT_DELAYED \| CONNECT_RETRIED` | 연결 과정 상세 |
 | 보안 | 기본 + `HANDSHAKE_FAILED_*` | 인증 실패 감지 |
 | 전체 | `ZLINK_EVENT_ALL` | 모든 이벤트 |
@@ -221,7 +222,7 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```c
 /* 기본 프리셋 */
 #define MONITOR_PRESET_BASIC \
-    (ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED)
+    (ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED)
 
 /* 디버깅 프리셋 */
 #define MONITOR_PRESET_DEBUG \
@@ -250,7 +251,7 @@ void *monitor = zlink_socket_monitor_open(socket, &opts);
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(monitor, &snapshot);
 printf("ready peers: %u, sndq=%llu, rcvq=%llu\n",
-       snapshot.ready_peer_count,
+       snapshot.ready_count,
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
 ```
@@ -260,10 +261,10 @@ event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
 ```c
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
-    if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
+    if (ev->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
         zlink_monitor_snapshot_t snapshot;
         zlink_monitor_snapshot(g_monitor, &snapshot);
-        printf("현재 ready peers: %u\n", snapshot.ready_peer_count);
+        printf("현재 ready peers: %u\n", snapshot.ready_count);
     }
 }
 ```
@@ -296,10 +297,10 @@ handle 종류는 런타임에 자동 판별된다.
 ```c
 void on_gateway_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_GATEWAY_SEND_READY_CHANGED) {
+    if (ev->event_type & ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED) {
         printf("send ready: %u\n", ev->value);
     }
-    if (ev->event_type & ZLINK_GATEWAY_ROUTE_UP) {
+    if (ev->event_type & ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP) {
         printf("route up, ready routes: %u\n", ev->value);
     }
 }
@@ -326,11 +327,10 @@ if (rc == 0) {
 
 | 상수 | 설명 | `value` | 이후 가능한 동작 |
 |---|---|---|---|
-| `GATEWAY_SERVICE_READY` | bind/register 완료 | — | — |
-| `GATEWAY_SEND_READY_CHANGED` | send 가능 상태 변화 | `1`=send 가능, `0`=send 불가 | **value=1이면 `zlink_gateway_send()` 시작** |
-| `GATEWAY_ROUTE_UP` | peer route 활성화 | 현재 ready route 수 | — |
-| `GATEWAY_ROUTE_DOWN` | peer route 비활성화 | 현재 ready route 수 | — |
-| `GATEWAY_SERVICE_LOST` | service publication 제거 | — | — |
+| `GATEWAY_MONITOR_EVENT_READY_CHANGED` | 서비스 준비 상태 변화 | `current_ready_count` | — |
+| `GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED` | send 가능 상태 변화 | `current_ready_count` | **value>0이면 `zlink_gateway_send()` 시작** |
+| `GATEWAY_MONITOR_EVENT_ROUTE_UP` | peer route 활성화 | 현재 ready route 수 | — |
+| `GATEWAY_MONITOR_EVENT_ROUTE_DOWN` | peer route 비활성화 | 현재 ready route 수 | — |
 
 #### SPOT 이벤트
 
@@ -442,19 +442,19 @@ perf/bench 구현은 아래 규칙을 따른다.
 
 ### 11.1 Raw 소켓 — PAIR, DEALER, ROUTER
 
-`CONNECTION_READY` 이벤트를 받으면 즉시 send/recv가 가능하다.
+`CONNECTION_READY_CHANGED` 이벤트를 받으면 즉시 send/recv가 가능하다.
 PAIR/DEALER/ROUTER 계열의 perf start gate는 이 이벤트 하나만 사용한다.
 
 ```c
 /* DEALER/ROUTER 예시 */
 zlink_socket_monitor_open_options_t opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY
+    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
 };
 void *mon = zlink_socket_monitor_open(router, &opts);
 
 /* monitor callback에서 ready 확인 */
 void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
-    if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
+    if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
         /* ROUTER: ev->routing_id에 peer identity가 들어있다 */
         /* 바로 routed send 가능 */
     }
@@ -464,9 +464,9 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| PAIR | 양쪽 `CONNECTION_READY` | 양방향 send/recv |
-| DEALER | `CONNECTION_READY` | send/recv |
-| ROUTER | `CONNECTION_READY` | `ev->routing_id`로 routed send/recv |
+| PAIR | 양쪽 `CONNECTION_READY_CHANGED` | 양방향 send/recv |
+| DEALER | `CONNECTION_READY_CHANGED` | send/recv |
+| ROUTER | `CONNECTION_READY_CHANGED` | `ev->routing_id`로 routed send/recv |
 
 ### 11.2 Raw 소켓 — STREAM
 
@@ -475,24 +475,24 @@ routing_id를 확보할 수 있다. 순서:
 
 1. 클라이언트가 raw TCP로 첫 payload를 보낸다
 2. 서버에서 첫 inbound 메시지를 recv하여 routing_id를 확보한다
-3. `CONNECTION_READY` 이벤트를 확인한다
+3. `CONNECTION_READY_CHANGED` 이벤트를 확인한다
 4. 확보한 routing_id로 reply를 보낸다
 
 ```c
-/* STREAM server: 먼저 recv로 routing_id 확보 → CONNECTION_READY 확인 → reply */
+/* STREAM server: 먼저 recv로 routing_id 확보 → CONNECTION_READY_CHANGED 확인 → reply */
 zlink_routing_id_t rid;
 zlink_msg_t payload;
 zlink_msg_init(&payload);
 recv_stream_routing_id_and_payload(server, &rid, &payload);
 
-/* 이 시점에서 CONNECTION_READY가 이미 발생했는지 monitor로 확인 */
+/* 이 시점에서 CONNECTION_READY_CHANGED가 이미 발생했는지 monitor로 확인 */
 /* rid로 reply 가능 */
 zlink_stream_send_msg(server, &rid, &payload, 0);
 ```
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| STREAM | 첫 inbound payload recv + `CONNECTION_READY` | `routing_id`로 reply send |
+| STREAM | 첫 inbound payload recv + `CONNECTION_READY_CHANGED` | `routing_id`로 reply send |
 
 perf start gate에서는 STREAM도 snapshot이 아니라 위 두 조건으로만 ready를
 판정한다.
@@ -500,7 +500,7 @@ perf start gate에서는 STREAM도 snapshot이 아니라 위 두 조건으로만
 ### 11.3 Raw 소켓 — PUB/SUB
 
 raw PUB/SUB 소켓은 socket monitor에서 delivery-ready 이벤트를 제공한다.
-PUB/SUB perf start gate는 `CONNECTION_READY`가 아니라 아래 delivery-ready
+PUB/SUB perf start gate는 `CONNECTION_READY_CHANGED`가 아니라 아래 delivery-ready
 이벤트를 사용한다. PUB과 SUB 각각에 별도 모니터를 열어서 양쪽 모두 ready를
 확인한 뒤 메시징한다.
 
@@ -538,20 +538,20 @@ zlink_monitor_close(&sub_mon);
 
 ### 11.4 서비스 — Gateway
 
-`GATEWAY_SEND_READY_CHANGED(value=1)` 이벤트를 받으면 바로 send가 가능하다.
+`GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED(value>0)` 이벤트를 받으면 바로 send가 가능하다.
 Gateway perf start gate는 이 이벤트 하나만 사용한다.
 
 ```c
 /* client gateway에 service monitor 열기 */
 zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_GATEWAY_SEND_READY_CHANGED
+    .events = ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
               | ZLINK_GATEWAY_MONITOR_EVENT_ERROR
 };
 void *mon = zlink_service_monitor_open(client, &opts);
 
 /* callback으로 ready 확인 */
 void on_gw(const zlink_service_event_t *ev, void *userdata) {
-    if (ev->event_type == ZLINK_GATEWAY_SEND_READY_CHANGED && ev->value == 1) {
+    if (ev->event_type == ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED && ev->value > 0) {
         /* route 준비 완료 — 바로 zlink_gateway_send() 가능 */
     }
 }
@@ -584,7 +584,7 @@ void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 
 | 서비스 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| Gateway | `GATEWAY_SEND_READY_CHANGED(value=1)` | `zlink_gateway_send()` |
+| Gateway | `GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED(value>0)` | `zlink_gateway_send()` |
 | SPOT sub | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 시작 |
 | SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | `zlink_publish()` delivery 시작 |
 

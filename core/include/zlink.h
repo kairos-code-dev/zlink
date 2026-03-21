@@ -486,7 +486,7 @@ typedef uint32_t zlink_socket_monitor_event_mask_t;
     ((zlink_socket_monitor_event_mask_t) 0xFFFFu)
 #define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL                \
     ((zlink_socket_monitor_event_mask_t) 0x0800u)
-#define ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY                          \
+#define ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED                  \
     ((zlink_socket_monitor_event_mask_t) 0x1000u)
 #define ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL                 \
     ((zlink_socket_monitor_event_mask_t) 0x2000u)
@@ -511,7 +511,8 @@ typedef uint32_t zlink_socket_monitor_event_mask_t;
 #define ZLINK_EVENT_ALL ZLINK_SOCKET_MONITOR_EVENT_ALL
 #define ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL                               \
     ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-#define ZLINK_EVENT_CONNECTION_READY ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY
+#define ZLINK_EVENT_CONNECTION_READY_CHANGED                                 \
+    ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED
 #define ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL                                \
     ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL
 #define ZLINK_EVENT_HANDSHAKE_FAILED_AUTH                                    \
@@ -863,7 +864,7 @@ typedef uint32_t zlink_monitor_snapshot_detail_mask_t;
     ((zlink_monitor_state_mask_t) (1u << 2))
 #define ZLINK_MONITOR_STATE_CLOSED ((zlink_monitor_state_mask_t) (1u << 3))
 
-#define ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT                    \
+#define ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT                         \
     ((zlink_monitor_snapshot_detail_mask_t) (1u << 0))
 #define ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS                    \
     ((zlink_monitor_snapshot_detail_mask_t) (1u << 1))
@@ -875,7 +876,7 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_source_kind_t source_kind;
     zlink_monitor_state_mask_t state_flags;
     zlink_monitor_snapshot_detail_mask_t detail_flags;
-    uint32_t ready_peer_count;
+    uint32_t ready_count;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
 } zlink_monitor_snapshot_t;
@@ -1150,10 +1151,8 @@ typedef uint32_t zlink_spot_monitor_event_mask_t;
 typedef uint32_t zlink_service_event_detail_mask_t;
 typedef uint32_t zlink_service_monitor_event_mask_t;
 
-#define ZLINK_DISCOVERY_MONITOR_EVENT_READY                                  \
+#define ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED                          \
     ((zlink_discovery_monitor_event_mask_t) (1u << 0))
-#define ZLINK_DISCOVERY_MONITOR_EVENT_LOST                                   \
-    ((zlink_discovery_monitor_event_mask_t) (1u << 1))
 #define ZLINK_DISCOVERY_MONITOR_EVENT_ERROR                                  \
     ((zlink_discovery_monitor_event_mask_t) (1u << 4))
 #define ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP                             \
@@ -1167,10 +1166,8 @@ typedef uint32_t zlink_service_monitor_event_mask_t;
 
 #define ZLINK_GATEWAY_MONITOR_EVENT_ERROR                                    \
     ((zlink_gateway_monitor_event_mask_t) (1u << 4))
-#define ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY                            \
+#define ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED                            \
     ((zlink_gateway_monitor_event_mask_t) (1u << 8))
-#define ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_LOST                             \
-    ((zlink_gateway_monitor_event_mask_t) (1u << 9))
 #define ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED                       \
     ((zlink_gateway_monitor_event_mask_t) (1u << 10))
 #define ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP                                 \
@@ -1180,10 +1177,8 @@ typedef uint32_t zlink_service_monitor_event_mask_t;
 #define ZLINK_GATEWAY_MONITOR_EVENT_CLOSED                                   \
     ((zlink_gateway_monitor_event_mask_t) (1u << 17))
 
-#define ZLINK_SPOT_MONITOR_EVENT_READY                                       \
+#define ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED                               \
     ((zlink_spot_monitor_event_mask_t) (1u << 0))
-#define ZLINK_SPOT_MONITOR_EVENT_LOST                                        \
-    ((zlink_spot_monitor_event_mask_t) (1u << 1))
 #define ZLINK_SPOT_MONITOR_EVENT_PEER_UP                                     \
     ((zlink_spot_monitor_event_mask_t) (1u << 2))
 #define ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN                                   \
@@ -1192,7 +1187,7 @@ typedef uint32_t zlink_service_monitor_event_mask_t;
     ((zlink_spot_monitor_event_mask_t) (1u << 4))
 #define ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED                          \
     ((zlink_spot_monitor_event_mask_t) (1u << 13))
-#define ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY                          \
+#define ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED                  \
     ((zlink_spot_monitor_event_mask_t) (1u << 14))
 #define ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL                              \
     ((zlink_spot_monitor_event_mask_t) (1u << 15))
@@ -1207,29 +1202,17 @@ typedef uint32_t zlink_service_monitor_event_mask_t;
 #define ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED            \
     ((zlink_spot_monitor_event_mask_t) (1u << 20))
 
-#define ZLINK_MONITOR_EVENT_READY ZLINK_DISCOVERY_MONITOR_EVENT_READY
-#define ZLINK_MONITOR_EVENT_LOST ZLINK_DISCOVERY_MONITOR_EVENT_LOST
 #define ZLINK_MONITOR_EVENT_PEER_UP ZLINK_SPOT_MONITOR_EVENT_PEER_UP
 #define ZLINK_MONITOR_EVENT_PEER_DOWN ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN
 #define ZLINK_MONITOR_EVENT_ERROR ZLINK_DISCOVERY_MONITOR_EVENT_ERROR
 #define ZLINK_DISCOVERY_SERVICE_UP ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
 #define ZLINK_DISCOVERY_SERVICE_DOWN ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
 #define ZLINK_DISCOVERY_PROVIDERS_CHANGED ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
-#define ZLINK_GATEWAY_SERVICE_READY ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY
-#define ZLINK_GATEWAY_SERVICE_LOST ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_LOST
-#define ZLINK_GATEWAY_SEND_READY_CHANGED ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
 #define ZLINK_GATEWAY_ROUTE_UP ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP
 #define ZLINK_GATEWAY_ROUTE_DOWN ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN
 #define ZLINK_SPOT_SUB_FILTER_APPLIED ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
-#define ZLINK_SPOT_SUB_SUBSCRIPTION_READY ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY
 #define ZLINK_SPOT_PUB_QUEUE_FULL ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL
 #define ZLINK_SPOT_PUB_QUEUE_DRAINED ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED
-#define ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED                                \
-    ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
-#define ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED                                \
-    ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
-#define ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED                          \
-    ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
 #define ZLINK_MONITOR_EVENT_CLOSED ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED
 #define ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME                              \
     ((zlink_service_event_detail_mask_t) 0x0001u)
@@ -1296,22 +1279,30 @@ typedef enum zlink_monitor_target_kind_t
 
 #define ZLINK_SERVICE_MONITOR_EVENT_ERROR ZLINK_DISCOVERY_MONITOR_EVENT_ERROR
 #define ZLINK_SERVICE_MONITOR_EVENT_CLOSED ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED
+#define ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED                  \
+    ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED
 #define ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP                      \
     ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
 #define ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN                    \
     ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
-#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SERVICE_READY                     \
-    ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY
+#define ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED              \
+    ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
+#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_READY_CHANGED                     \
+    ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED
 #define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED                \
     ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
 #define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP                          \
     ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP
 #define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN                        \
     ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN
+#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED                       \
+    ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
 #define ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED                       \
     ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
-#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY                   \
-    ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY
+#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED           \
+    ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED
+#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED          \
+    ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
 #define ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED           \
     ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
 #define ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED         \
@@ -1320,14 +1311,18 @@ typedef enum zlink_monitor_target_kind_t
     ((zlink_service_monitor_event_mask_t)                                     \
       (ZLINK_SERVICE_MONITOR_EVENT_ERROR                                      \
        | ZLINK_SERVICE_MONITOR_EVENT_CLOSED                                   \
+       | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED                  \
        | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP                     \
        | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN                   \
-       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SERVICE_READY                    \
+       | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED              \
+       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_READY_CHANGED                    \
        | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED               \
        | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP                         \
        | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN                       \
+       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED                       \
        | ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED                      \
-       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY                  \
+       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED          \
+       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED          \
        | ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED          \
        | ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED))
 

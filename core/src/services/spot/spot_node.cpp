@@ -1794,9 +1794,7 @@ int spot_node_t::wait_facade_peer (socket_base_t *socket_) const
 {
     const uint64_t deadline_ms = clock_t ().now_ms () + 1000;
     while (clock_t ().now_ms () < deadline_ms) {
-        zlink_monitor_snapshot_t snapshot;
-        if (socket_ && socket_->monitor_snapshot (&snapshot) == 0
-            && snapshot.ready_peer_count > 0)
+        if (socket_ && socket_->monitor_has_attached_pipes ())
             return 0;
         zlink::sleep_ms (1);
     }

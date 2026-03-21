@@ -57,6 +57,9 @@ template <typename T> class generic_mtrie_t
                 void (*func_) (value_t *value_, Arg arg_),
                 Arg arg_);
 
+    template <typename Arg>
+    void visit_values (void (*func_) (value_t *value_, Arg arg_), Arg arg_) const;
+
     //  Retrieve the number of prefixes stored in this trie (added - removed)
     //  Note this is a multithread safe function.
     uint32_t num_prefixes () const { return _num_prefixes.get (); }

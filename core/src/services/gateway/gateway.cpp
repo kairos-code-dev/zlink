@@ -111,7 +111,7 @@ static int apply_tls_client (socket_base_t *socket_,
 
 static int monitor_event_mask ()
 {
-    return ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED
+    return ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED
            | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
            | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
            | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
@@ -473,7 +473,7 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
             scoped_lock_t lock (_sync);
             _service_ready_emitted = true;
         }
-        emit_event (ZLINK_GATEWAY_SERVICE_READY, _service_name, bind_endpoint,
+        emit_event (ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED, _service_name, bind_endpoint,
                     NULL, 1, 0);
     }
 
@@ -1347,7 +1347,7 @@ int gateway_t::bind (const char *endpoint_)
             ready_endpoint =
               !_advertise_endpoint.empty () ? _advertise_endpoint : _bind_endpoint;
         }
-        emit_event (ZLINK_GATEWAY_SERVICE_READY, _service_name, ready_endpoint,
+        emit_event (ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED, _service_name, ready_endpoint,
                     NULL, 1, 0);
     }
 
@@ -1472,7 +1472,7 @@ int gateway_t::unregister_service ()
     _last_register_error.clear ();
     _service_ready_emitted = false;
 
-    emit_event (ZLINK_GATEWAY_SERVICE_LOST, service_name, endpoint, NULL, 0, 0);
+    emit_event (ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED, service_name, endpoint, NULL, 0, 0);
     report_topology (service_name, endpoint, ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0);
     return 0;
 }
@@ -1980,11 +1980,9 @@ void gateway_t::emit_events (const zlink_service_event_t *events_, size_t count_
         const zlink_service_event_t &ev = events_[i];
         uint16_t state = 0;
         switch (ev.event_type) {
-            case ZLINK_GATEWAY_SERVICE_READY:
-                state = ZLINK_TOPOLOGY_STATE_READY;
-                break;
-            case ZLINK_GATEWAY_SERVICE_LOST:
-                state = ZLINK_TOPOLOGY_STATE_LOST;
+            case ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED:
+                state = ev.value > 0 ? ZLINK_TOPOLOGY_STATE_READY
+                                     : ZLINK_TOPOLOGY_STATE_LOST;
                 break;
             case ZLINK_GATEWAY_ROUTE_UP:
             case ZLINK_GATEWAY_ROUTE_DOWN:
@@ -2081,16 +2079,16 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
     process_monitor_events ();
     memset (out_, 0, sizeof (*out_));
     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
-    out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_PEER_COUNT;
+    out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
     out_->state_flags =
       _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
     gateway_service_pool_t *pool = get_or_create_pool (_service_name);
     scoped_lock_t send_lock (_send_sync);
     const gateway_service_pool_t::send_snapshot_t *snapshot =
       pool ? pool->send_snapshot.get () : NULL;
-    out_->ready_peer_count =
+    out_->ready_count =
       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
-    if (out_->ready_peer_count > 0)
+    if (out_->ready_count > 0)
         out_->state_flags |=
           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
     if (_runtime->router_socket) {
@@ -2422,7 +2420,7 @@ void gateway_t::process_monitor_events ()
         if (endpoint.empty ())
             continue;
         std::string service_name;
-        if (event.event == ZLINK_EVENT_CONNECTION_READY) {
+        if (event.event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
             _runtime->down_endpoints.erase (endpoint);
             _runtime->down_until_ms.erase (endpoint);
             _runtime->ready_endpoints.insert (endpoint);
@@ -2460,7 +2458,7 @@ void gateway_t::process_monitor_events ()
               count_ready_for_service (service_name, _runtime->endpoint_to_service,
                                        _runtime->ready_endpoints);
             std::vector<gateway_route_delta_t> deltas;
-            if (event.event == ZLINK_EVENT_CONNECTION_READY) {
+            if (event.event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
                 const std::string peer_key =
                   gateway_peer_key (service_name, event.routing_id);
                 if (!peer_key.empty ()) {
@@ -2508,14 +2506,13 @@ void gateway_t::process_monitor_events ()
                 up_delta.routing_id = event.routing_id;
                 up_delta.ready_count = ready_count;
                 deltas.push_back (up_delta);
-                if (ready_count == 1) {
-                    gateway_route_delta_t ready_delta;
-                    ready_delta.event_type = ZLINK_GATEWAY_SEND_READY_CHANGED;
-                    ready_delta.service_name = service_name;
-                    ready_delta.endpoint = endpoint;
-                    ready_delta.ready_count = ready_count;
-                    deltas.push_back (ready_delta);
-                }
+                gateway_route_delta_t ready_delta;
+                ready_delta.event_type =
+                  ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED;
+                ready_delta.service_name = service_name;
+                ready_delta.endpoint = endpoint;
+                ready_delta.ready_count = ready_count;
+                deltas.push_back (ready_delta);
             } else if (event.event == ZLINK_EVENT_DISCONNECTED
                        || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
                        || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
@@ -2543,15 +2540,14 @@ void gateway_t::process_monitor_events ()
                 down_delta.ready_count = ready_count;
                 down_delta.error_code = static_cast<int32_t> (event.event);
                 deltas.push_back (down_delta);
-                if (ready_count == 0) {
-                    gateway_route_delta_t ready_delta;
-                    ready_delta.event_type = ZLINK_GATEWAY_SEND_READY_CHANGED;
-                    ready_delta.service_name = service_name;
-                    ready_delta.endpoint = endpoint;
-                    ready_delta.error_code =
-                      static_cast<int32_t> (event.event);
-                    deltas.push_back (ready_delta);
-                }
+                gateway_route_delta_t ready_delta;
+                ready_delta.event_type =
+                  ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED;
+                ready_delta.service_name = service_name;
+                ready_delta.endpoint = endpoint;
+                ready_delta.ready_count = ready_count;
+                ready_delta.error_code = static_cast<int32_t> (event.event);
+                deltas.push_back (ready_delta);
             }
             emit_route_deltas (deltas);
         }

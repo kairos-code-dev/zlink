@@ -66,6 +66,7 @@ class xsub_t : public socket_base_t
     void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xhiccuped (pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    uint32_t monitor_ready_count () const ZLINK_OVERRIDE;
 
   private:
     //  Check whether the message matches at least one subscription.
@@ -80,6 +81,7 @@ class xsub_t : public socket_base_t
     void notify_dispatch_stopped ();
     void refresh_delivery_ready_state (
       const endpoint_uri_pair_t &endpoint_uri_pair_);
+    uint32_t compute_delivery_ready_count () const;
     bool compute_delivery_ready_state () const;
 
     //  Fair queueing object for inbound pipes.
@@ -126,7 +128,7 @@ class xsub_t : public socket_base_t
     std::vector<zlink_msg_t> _dispatch_parts;
     std::vector<zlink_msg_t> _socket_dispatch_parts;
     bool _socket_dispatch_drop_message;
-    bool _delivery_ready_state;
+    std::atomic<uint32_t> _delivery_ready_count;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (xsub_t)
 };

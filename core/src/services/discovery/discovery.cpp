@@ -287,6 +287,7 @@ discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _update_seq (0),
     _observer_callbacks_inflight (0),
     _destroying (false),
+    _monitor_ready_count (0),
     _service_type (service_type_),
     _discovery_summary_enabled (true),
     _routing_id_locked (false),
@@ -306,6 +307,29 @@ discovery_t::~discovery_t ()
 bool discovery_t::check_tag () const
 {
     return _tag == discovery_tag_value;
+}
+
+void discovery_t::emit_ready_changed (uint32_t ready_count_)
+{
+    zlink_service_event_t event;
+    bool emit = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (_monitor_ready_count == ready_count_)
+            return;
+        _monitor_ready_count = ready_count_;
+        memset (&event, 0, sizeof (event));
+        event.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+        event.event_type = ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED;
+        event.value = ready_count_;
+        if (_routing_id.size > 0) {
+            event.detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT_RID;
+            event.routing_id = _routing_id;
+        }
+        emit = true;
+    }
+    if (emit)
+        _monitor.emit (event);
 }
 
 void discovery_t::set_discovery_summary_enabled (bool enabled_)
@@ -370,6 +394,7 @@ int discovery_t::connect_registry (const char *registry_endpoint_)
             runtime->wakeup_task (_task_id);
     }
 
+    emit_ready_changed (1);
     return 0;
 }
 
@@ -910,6 +935,7 @@ int discovery_t::destroy ()
         _destroying = true;
     }
     _stop.set (1);
+    emit_ready_changed (0);
     zlink_service_event_t terminal;
     memset (&terminal, 0, sizeof (terminal));
     terminal.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;

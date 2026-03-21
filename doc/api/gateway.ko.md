@@ -50,7 +50,7 @@ Gateway handle은 **recv 모드**로 시작합니다.
 - `zlink_set_option()` / `zlink_get_option()`으로 서비스 레벨 튜닝을 합니다.
 - 송신 측 백프레셔는 poller `ZLINK_POLLOUT`로 처리합니다.
 - `zlink_service_monitor_open(gateway, &options)`으로
-  `ZLINK_GATEWAY_SEND_READY_CHANGED`, `ZLINK_GATEWAY_ROUTE_UP` 같은 edge
+  `ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED`, `ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP` 같은 edge
   전이를 관찰합니다. `zlink_monitor_close()`로 닫습니다.
 - monitor handle에 대해 `zlink_monitor_snapshot()`으로 현재 로컬 제어 상태와
   queue depth를 읽습니다.

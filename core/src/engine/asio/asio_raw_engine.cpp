@@ -109,7 +109,7 @@ void zlink::asio_raw_engine_t::plug_internal ()
     if (session ())
         session ()->set_peer_routing_id (NULL, 0);
     if (_options.type != ZLINK_CORE_SOCKET_STREAM)
-        socket ()->event_connection_ready (_endpoint_uri_pair, NULL, 0);
+        socket ()->event_connection_ready_changed(_endpoint_uri_pair, NULL, 0);
 
     start_async_read ();
     start_async_write ();

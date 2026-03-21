@@ -156,8 +156,8 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
 
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
-                  | ZLINK_GATEWAY_SEND_READY_CHANGED
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED
+                  | ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
                   | ZLINK_GATEWAY_ROUTE_UP | ZLINK_GATEWAY_ROUTE_DOWN
                   | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (gateway_, &opts);

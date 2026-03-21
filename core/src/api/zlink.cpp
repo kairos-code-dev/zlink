@@ -3681,12 +3681,12 @@ static bool service_monitor_events_request_sub_facet (uint32_t events_)
 {
     const uint32_t sub_events =
       ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
-      | ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY
+      | ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED
       | ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED;
     return (events_ & sub_events) != 0;
 }
 
-static int infer_spot_monitor_role (uint32_t events_)
+static int infer_spot_monitor_role (void *target_, uint32_t events_)
 {
     const bool want_pub = service_monitor_events_request_pub_facet (events_);
     const bool want_sub = service_monitor_events_request_sub_facet (events_);
@@ -3696,6 +3696,27 @@ static int infer_spot_monitor_role (uint32_t events_)
     }
     if (want_pub)
         return ZLINK_SPOT_ROLE_PUB;
+    if (want_sub)
+        return ZLINK_SPOT_ROLE_SUB;
+
+    if (as_spot_pub_side_handle (target_))
+        return ZLINK_SPOT_ROLE_PUB;
+    if (as_spot_sub_side_handle (target_))
+        return ZLINK_SPOT_ROLE_SUB;
+
+    spot_handle_t *spot = as_spot_handle (target_);
+    if (!spot) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (spot->pub && !spot->sub)
+        return ZLINK_SPOT_ROLE_PUB;
+    if (spot->sub && !spot->pub)
+        return ZLINK_SPOT_ROLE_SUB;
+
+    // Generic readiness-only monitor requests are allowed on unified spot
+    // handles; default them to the sub facet because it exposes peer/upstream
+    // readiness without creating an unnecessary publish path.
     return ZLINK_SPOT_ROLE_SUB;
 }
 
@@ -3742,7 +3763,7 @@ void *zlink_service_monitor_open (
     }
 
     if (is_registered_spot_handle (target_)) {
-        const int role = infer_spot_monitor_role (options_->events);
+        const int role = infer_spot_monitor_role (target_, options_->events);
         if (role < 0)
             return NULL;
         return open_spot_service_monitor_internal (
@@ -3752,7 +3773,7 @@ void *zlink_service_monitor_open (
     }
 
     if (is_registered_spot_node_handle (target_)) {
-        const int role = infer_spot_monitor_role (options_->events);
+        const int role = infer_spot_monitor_role (target_, options_->events);
         if (role < 0)
             return NULL;
         return open_spot_node_service_monitor_internal (

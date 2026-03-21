@@ -28,8 +28,8 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
 
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
-                  | ZLINK_GATEWAY_SEND_READY_CHANGED
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED
+                  | ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
                   | ZLINK_GATEWAY_ROUTE_UP | ZLINK_GATEWAY_ROUTE_DOWN
                   | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (gateway_, &opts);
@@ -49,7 +49,7 @@ bool wait_for_ready_routes (void *gateway_, int expected_, int timeout_ms_)
         zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
         if (read_gateway_snapshot (gateway_, &snapshot)
-            && static_cast<int> (snapshot.ready_peer_count) >= expected_) {
+            && static_cast<int> (snapshot.ready_count) >= expected_) {
             return true;
         }
         msleep (step_ms);
@@ -58,7 +58,7 @@ bool wait_for_ready_routes (void *gateway_, int expected_, int timeout_ms_)
     zlink_monitor_snapshot_t snapshot;
     memset (&snapshot, 0, sizeof (snapshot));
     return read_gateway_snapshot (gateway_, &snapshot)
-           && static_cast<int> (snapshot.ready_peer_count) >= expected_;
+           && static_cast<int> (snapshot.ready_count) >= expected_;
 }
 
 void bind_gateway_with_port_seed (void *gateway_,

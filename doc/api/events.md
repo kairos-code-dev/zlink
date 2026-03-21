@@ -29,8 +29,8 @@ typedef struct zlink_service_event_t
 ```
 
 Field notes:
-- `value` is event-specific. For `*_DELIVERY_READY_CHANGED`, it is the current
-  readiness state/count.
+- `value` is event-specific. For all `*_READY_CHANGED` events, it is
+  `current_ready_count` (the absolute readiness count).
 - `subject` is populated when `detail_flags` contains
   `ZLINK_EVENT_DETAIL_SUBJECT`.
 - `subject_kind` is valid only when `detail_flags` contains
@@ -54,7 +54,7 @@ Detail flags:
 
 - `PEER_UP` / `PEER_DOWN`: connection-level visibility only
 - `SUB_FILTER_APPLIED`: local subscriber filter installed
-- `SUBSCRIPTION_READY`: subscriber-side subscription path became ready
+- `SUBSCRIPTION_READY_CHANGED`: subscriber-side subscription readiness changed
 - `*_DELIVERY_READY_CHANGED`: first-delivery contract for a specific subject
 
 Recommended gates:
@@ -80,7 +80,7 @@ Recommended gates:
 | `ZLINK_EVENT_DISCONNECTED` | Session disconnected |
 | `ZLINK_EVENT_MONITOR_STOPPED` | Socket monitor stopped |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | Handshake failed without detail |
-| `ZLINK_EVENT_CONNECTION_READY` | Transport handshake complete |
+| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | Transport handshake readiness changed |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | Protocol handshake error |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | Auth handshake error |
 
@@ -96,8 +96,6 @@ Disconnect reasons:
 
 | Constant | Meaning |
 |---|---|
-| `ZLINK_MONITOR_EVENT_READY` | Generic readiness alias |
-| `ZLINK_MONITOR_EVENT_LOST` | Generic lost alias |
 | `ZLINK_MONITOR_EVENT_PEER_UP` | Peer connected |
 | `ZLINK_MONITOR_EVENT_PEER_DOWN` | Peer disconnected |
 | `ZLINK_MONITOR_EVENT_ERROR` | Error occurred |
@@ -115,23 +113,22 @@ Disconnect reasons:
 
 | Constant | Meaning |
 |---|---|
-| `ZLINK_GATEWAY_SERVICE_READY` | Local service bind/register became ready |
-| `ZLINK_GATEWAY_SERVICE_LOST` | Local service publication was removed |
-| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send-readiness changed; `value` is `0` or `1` |
-| `ZLINK_GATEWAY_ROUTE_UP` | A route became active; `value` is current ready route count |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | A route became inactive; `value` is current ready route count |
+| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | Local service readiness changed; `value` is current_ready_count |
+| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send-readiness changed; `value` is current_ready_count |
+| `ZLINK_GATEWAY_ROUTE_UP` | A route became active; `value` is current_ready_count |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | A route became inactive; `value` is current_ready_count |
 
 ### SPOT
 
 | Constant | Producer | Meaning |
 |---|---|---|
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | Spot sub / node-sub monitor | Local filter installed |
-| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY` | Spot sub / node-sub monitor | Legacy subscription-ready transition |
+| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY_CHANGED` | Spot sub / node-sub monitor | Subscription readiness changed; `value` is current_ready_count |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | Spot pub / node-pub monitor | PUB queue is full |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | Spot pub / node-pub monitor | PUB queue has been drained |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | Subject-specific delivery-ready state changed; `value` is `0` or `1` |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | Subject-specific remote delivery-ready count changed; `value` is the current ready subscriber count |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | First-delivery-safe remote ready count changed; use this as the publisher control gate |
+| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | Subject-specific delivery-ready state changed; `value` is current_ready_count |
+| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | Subject-specific remote delivery-ready count changed; `value` is current_ready_count |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | First-delivery-safe remote ready count changed; `value` is current_ready_count; use this as the publisher control gate |
 
 SPOT subject rules:
 - sub-side `subject_kind` is populated for exact topic and pattern subscriptions

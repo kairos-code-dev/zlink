@@ -937,7 +937,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
                                strlen (spot_control_protocol::ctrl_prefix));
 
     mesh_xsub_monitor = static_cast<socket_base_t *> (open_socket_monitor_bridge (
-      mesh_xsub, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
+      mesh_xsub, ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED));
     if (!mesh_xsub_monitor) {
         const int err = errno != 0 ? errno : EIO;
         send_errno_reply (ctrl, err);
@@ -1314,7 +1314,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
                         }
 
                         switch (raw.event) {
-                            case ZLINK_EVENT_CONNECTION_READY:
+                            case ZLINK_EVENT_CONNECTION_READY_CHANGED:
                                 sync_mesh_xsub_connected_endpoint (runtime, raw,
                                                                    true);
                                 break;

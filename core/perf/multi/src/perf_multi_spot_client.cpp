@@ -273,7 +273,7 @@ bool open_spot_ready_monitor(spot_client_slot_t *slot)
 
     if (!open_configured_service_monitor(
           slot->node,
-          ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
+          ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
           &slot->monitor)) {
         return false;
     }
@@ -587,7 +587,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
             .count());
         if (!wait_for_service_monitor_event(
               (*slots_out)[i]->monitor,
-              ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED,
+              ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED,
               ZLINK_MONITOR_EVENT_ERROR,
               remaining_ms)) {
             if (bench_debug_enabled()) {

@@ -127,8 +127,9 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
 
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
-                  | ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED
+                  | ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
+                  | ZLINK_GATEWAY_ROUTE_UP
                   | ZLINK_GATEWAY_ROUTE_DOWN
                   | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (gateway_, &opts);
@@ -203,7 +204,7 @@ bool wait_gateway_connection_count (void *gateway_,
         zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
         if (read_gateway_snapshot (gateway_, &snapshot)
-            && static_cast<int> (snapshot.ready_peer_count) >= expected_min_) {
+            && static_cast<int> (snapshot.ready_count) >= expected_min_) {
             return true;
         }
         msleep (10);
@@ -568,6 +569,65 @@ static void test_discovery_monitor_and_routing_id ()
     g_monitor_a = NULL;
 }
 
+static void test_discovery_ready_changed_contract ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    int registry_seed = 22641;
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (discovery, "disc-ready", 10));
+
+    event_sequence_probe_t probe;
+    g_event_sequence_probe = &probe;
+
+    zlink_service_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events =
+      ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED | ZLINK_DISCOVERY_SERVICE_UP;
+    void *monitor = zlink_service_monitor_open (discovery, &monitor_opts);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_handler (
+      monitor, &service_monitor_sequence_handler, NULL));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      connect_discovery_registry_with_retry (discovery, registry_router, 2000));
+    TEST_ASSERT_TRUE (wait_for_event_sequence_count (&probe, 1, 3000));
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED,
+                              probe.events[0].event_type);
+    TEST_ASSERT_EQUAL_UINT32 (1, probe.events[0].value);
+    assert_routing_id_bytes (&probe.events[0].routing_id, "disc-ready");
+
+    gateway_server_t server;
+    char endpoint[MAX_SOCKET_STRING];
+    int bind_seed = 22602;
+    init_gateway_server_with_port_seed (&server, ctx, registry_router,
+                                        "svcmon-ready", "svcmon-ready-gw",
+                                        "tcp", &bind_seed, endpoint,
+                                        sizeof (endpoint),
+                                        &discard_gateway_message);
+
+    TEST_ASSERT_TRUE (wait_for_event_sequence_count (&probe, 2, 5000));
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_DISCOVERY_SERVICE_UP,
+                              probe.events[1].event_type);
+    TEST_ASSERT_EQUAL_STRING ("svcmon-ready", probe.events[1].service_name);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
+    destroy_gateway_server (&server);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    g_event_sequence_probe = NULL;
+}
+
 static void test_gateway_receiver_routing_ids_and_options ()
 {
     void *ctx = get_test_context ();
@@ -677,12 +737,12 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
     zlink_service_monitor_open_options_t client_monitor_opts;
     memset (&client_monitor_opts, 0, sizeof (client_monitor_opts));
     client_monitor_opts.events =
-      ZLINK_GATEWAY_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP;
+      ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED | ZLINK_GATEWAY_ROUTE_UP;
     void *client_monitor =
       zlink_service_monitor_open (client, &client_monitor_opts);
     zlink_service_monitor_open_options_t server_monitor_opts;
     memset (&server_monitor_opts, 0, sizeof (server_monitor_opts));
-    server_monitor_opts.events = ZLINK_GATEWAY_SERVICE_READY;
+    server_monitor_opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED;
     void *server_monitor =
       zlink_service_monitor_open (server.gateway, &server_monitor_opts);
     TEST_ASSERT_NOT_NULL (client_monitor);
@@ -700,7 +760,7 @@ static void test_gateway_receiver_monitors_and_monitor_poller ()
 
     TEST_ASSERT_EQUAL_UINT16 (ZLINK_SERVICE_KIND_GATEWAY,
                               server_probe.last_event.service_kind);
-    TEST_ASSERT_EQUAL_UINT32 (ZLINK_GATEWAY_SERVICE_READY,
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED,
                               server_probe.last_event.event_type);
     TEST_ASSERT_EQUAL_STRING ("svc-int", server_probe.last_event.service_name);
 
@@ -1641,6 +1701,7 @@ int main (int, char **)
             RUN_TEST (name);                                                   \
     } while (0)
     RUN_SERVICE_INTROSPECTION_TEST (test_discovery_monitor_and_routing_id);
+    RUN_SERVICE_INTROSPECTION_TEST (test_discovery_ready_changed_contract);
     RUN_SERVICE_INTROSPECTION_TEST (test_gateway_receiver_routing_ids_and_options);
     RUN_SERVICE_INTROSPECTION_TEST (test_gateway_receiver_monitors_and_monitor_poller);
     RUN_SERVICE_INTROSPECTION_TEST (test_registry_topology_snapshot_and_remote_query);

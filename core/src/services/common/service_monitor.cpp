@@ -144,42 +144,7 @@ void *service_monitor_hub_t::open (int events_)
 uint32_t service_monitor_hub_t::event_delivery_mask (
   const zlink_service_event_t &event_)
 {
-    uint32_t mask = event_.event_type;
-    switch (event_.event_type) {
-        case ZLINK_DISCOVERY_SERVICE_UP:
-        case ZLINK_GATEWAY_SERVICE_READY:
-        case ZLINK_SPOT_SUB_SUBSCRIPTION_READY:
-            mask |= ZLINK_MONITOR_EVENT_READY;
-            break;
-        case ZLINK_DISCOVERY_SERVICE_DOWN:
-        case ZLINK_GATEWAY_SERVICE_LOST:
-            mask |= ZLINK_MONITOR_EVENT_LOST;
-            break;
-        case ZLINK_GATEWAY_SEND_READY_CHANGED:
-            mask |= event_.value > 0 ? ZLINK_MONITOR_EVENT_READY
-                                     : ZLINK_MONITOR_EVENT_LOST;
-            break;
-        case ZLINK_GATEWAY_ROUTE_UP:
-            mask |= ZLINK_MONITOR_EVENT_PEER_UP;
-            break;
-        case ZLINK_GATEWAY_ROUTE_DOWN:
-            mask |= ZLINK_MONITOR_EVENT_PEER_DOWN;
-            break;
-        case ZLINK_SPOT_PUB_QUEUE_FULL:
-            mask |= ZLINK_MONITOR_EVENT_ERROR;
-            break;
-        case ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED:
-        case ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED:
-            mask |= event_.value > 0 ? ZLINK_MONITOR_EVENT_READY
-                                     : ZLINK_MONITOR_EVENT_LOST;
-            break;
-        case ZLINK_MONITOR_EVENT_CLOSED:
-            mask |= ZLINK_MONITOR_EVENT_CLOSED;
-            break;
-        default:
-            break;
-    }
-    return mask;
+    return event_.event_type;
 }
 
 void service_monitor_hub_t::emit (const zlink_service_event_t &event_)
@@ -273,7 +238,7 @@ void service_monitor_hub_t::prune_closed_watchers ()
             zlink_monitor_snapshot_t snapshot;
             memset (&snapshot, 0, sizeof (snapshot));
             if (it->server->monitor_snapshot (&snapshot) == 0
-                && snapshot.ready_peer_count == 0) {
+                && snapshot.ready_count == 0) {
                 stale_servers.push_back (it->server);
                 it = _watchers.erase (it);
                 continue;

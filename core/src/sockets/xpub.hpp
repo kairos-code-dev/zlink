@@ -51,6 +51,7 @@ class xpub_t : public socket_base_t
     xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
     int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    uint32_t monitor_ready_count () const ZLINK_OVERRIDE;
 
   private:
     //  Function to be applied to the trie to send all the subscriptions
@@ -127,7 +128,7 @@ class xpub_t : public socket_base_t
     std::vector<pipe_t *> _cache_build_pipes;
     std::atomic<bool> _dispatch_active;
     std::atomic<uint32_t> _dispatch_inflight;
-    bool _delivery_ready_state;
+    std::atomic<uint32_t> _delivery_ready_peer_count;
     mutable std::mutex _dispatch_control_mu;
     mutable std::mutex _dispatch_inflight_mu;
     std::condition_variable _dispatch_inflight_cv;
@@ -138,7 +139,10 @@ class xpub_t : public socket_base_t
     void invalidate_match_cache ();
     void refresh_delivery_ready_state (
       const endpoint_uri_pair_t &endpoint_uri_pair_);
+    uint32_t compute_delivery_ready_count () const;
     bool compute_delivery_ready_state () const;
+    static void collect_ready_pipe (zlink::pipe_t *pipe_,
+                                    std::set<zlink::pipe_t *> *out_);
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (xpub_t)
 };

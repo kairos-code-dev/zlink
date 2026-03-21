@@ -322,7 +322,7 @@ void gateway_monitor_handler (const zlink_service_event_t *event_, void *)
         return;
 
     std::lock_guard<std::mutex> lock (probe->mutex);
-    if (event_->event_type == ZLINK_GATEWAY_SEND_READY_CHANGED
+    if (event_->event_type == ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
         && event_->value == 1) {
         probe->send_ready = true;
     } else if (event_->event_type == ZLINK_GATEWAY_MONITOR_EVENT_ERROR) {
@@ -413,7 +413,7 @@ void test_gateway_ready_with_monitor_callback_across_process ()
 
     zlink_service_monitor_open_options_t monitor_opts;
     std::memset (&monitor_opts, 0, sizeof (monitor_opts));
-    monitor_opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED
+    monitor_opts.events = ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
                           | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (client, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);

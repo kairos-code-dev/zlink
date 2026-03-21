@@ -560,6 +560,33 @@ void generic_mtrie_t<T>::match (prefix_t data_,
     }
 }
 
+template <typename T>
+template <typename Arg>
+void generic_mtrie_t<T>::visit_values (void (*func_) (value_t *value_, Arg arg_),
+                                       Arg arg_) const
+{
+    if (_pipes) {
+        for (typename pipes_t::const_iterator it = _pipes->begin (),
+                                              end = _pipes->end ();
+             it != end; ++it)
+            func_ (*it, arg_);
+    }
+
+    if (_count == 0)
+        return;
+
+    if (_count == 1) {
+        if (_next.node)
+            _next.node->visit_values (func_, arg_);
+        return;
+    }
+
+    for (unsigned short i = 0; i != _count; ++i) {
+        if (_next.table[i])
+            _next.table[i]->visit_values (func_, arg_);
+    }
+}
+
 template <typename T> bool generic_mtrie_t<T>::is_redundant () const
 {
     return !_pipes && _live_nodes == 0;

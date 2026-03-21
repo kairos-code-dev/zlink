@@ -348,7 +348,7 @@ const char *get_zlinkEventName (uint64_t event)
             return "MONITOR_STOPPED";
         case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
             return "HANDSHAKE_FAILED_NO_DETAIL";
-        case ZLINK_EVENT_CONNECTION_READY:
+        case ZLINK_EVENT_CONNECTION_READY_CHANGED:
             return "CONNECTION_READY";
         case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
             return "HANDSHAKE_FAILED_PROTOCOL";

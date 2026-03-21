@@ -88,7 +88,8 @@ class spot_sub_t
                                     uint32_t subject_kind_);
     void emit_subscription_ready_event (const char *endpoint_,
                                         const char *subject_,
-                                        uint32_t subject_kind_);
+                                        uint32_t subject_kind_,
+                                        uint32_t ready_count_);
     void mark_subject_subscription_ready (const subject_descriptor_t &subject_,
                                           const char *endpoint_);
     void emit_delivery_ready_changed_event (const char *subject_,

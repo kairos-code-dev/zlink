@@ -109,7 +109,7 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _dispatch_inflight (0),
     _dispatch_parts (),
     _socket_dispatch_drop_message (false),
-    _delivery_ready_state (false)
+    _delivery_ready_count (0)
 {
     options.type = ZLINK_CORE_SOCKET_XSUB;
 
@@ -125,26 +125,37 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 
 bool zlink::xsub_t::compute_delivery_ready_state () const
 {
+    return compute_delivery_ready_count () > 0;
+}
+
+uint32_t zlink::xsub_t::compute_delivery_ready_count () const
+{
 #ifdef ZLINK_USE_RADIX_TREE
     const bool has_filters = _subscriptions.size () > 0;
 #else
     const bool has_filters = _subscriptions.num_prefixes () > 0;
 #endif
     if (!has_filters)
-        return false;
-    return has_attached_pipes ();
+        return 0;
+    return has_attached_pipes () ? 1u : 0u;
 }
 
 void zlink::xsub_t::refresh_delivery_ready_state (
   const endpoint_uri_pair_t &endpoint_uri_pair_)
 {
-    const bool ready = compute_delivery_ready_state ();
-    if (ready == _delivery_ready_state)
+    const uint32_t ready_count = compute_delivery_ready_count ();
+    const uint32_t previous =
+      _delivery_ready_count.exchange (ready_count, std::memory_order_acq_rel);
+    if (ready_count == previous)
         return;
 
-    _delivery_ready_state = ready;
     emit_socket_monitor_value_event (ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED,
-                                     ready ? 1u : 0u, endpoint_uri_pair_);
+                                     ready_count, endpoint_uri_pair_);
+}
+
+uint32_t zlink::xsub_t::monitor_ready_count () const
+{
+    return _delivery_ready_count.load (std::memory_order_acquire);
 }
 
 zlink::xsub_t::~xsub_t ()

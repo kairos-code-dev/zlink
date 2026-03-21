@@ -41,7 +41,7 @@ bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_)
 
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
+    opts.events = ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
                   | ZLINK_MONITOR_EVENT_PEER_UP
                   | ZLINK_MONITOR_EVENT_PEER_DOWN
                   | ZLINK_MONITOR_EVENT_ERROR;
@@ -495,7 +495,7 @@ static bool monitor_snapshot_matches (const zlink_monitor_snapshot_t &snapshot_,
 {
     if ((snapshot_.state_flags & flags_) != flags_)
         return false;
-    return snapshot_.ready_peer_count >= min_ready_peer_count_;
+    return snapshot_.ready_count >= min_ready_peer_count_;
 }
 
 static bool wait_for_monitor_snapshot_state (void *monitor_,
@@ -611,9 +611,9 @@ bool wait_for_spot_ready_state (void *spot_,
     service_monitor_probe_t probe;
     void *monitor = open_spot_monitor_with_probe (
       spot_,
-      ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
-        | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
-        | ZLINK_MONITOR_EVENT_ERROR,
+      ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
+      | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
+      | ZLINK_MONITOR_EVENT_ERROR,
       &probe);
     if (!monitor)
         return false;
@@ -634,9 +634,9 @@ bool wait_for_spot_node_ready_state (
     service_monitor_probe_t probe;
     void *monitor = open_spot_node_monitor_with_probe (
       node_, role_,
-      ZLINK_MONITOR_EVENT_READY | ZLINK_MONITOR_EVENT_LOST
-        | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
-        | ZLINK_MONITOR_EVENT_ERROR,
+      ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
+      | ZLINK_MONITOR_EVENT_PEER_UP | ZLINK_MONITOR_EVENT_PEER_DOWN
+      | ZLINK_MONITOR_EVENT_ERROR,
       &probe);
     if (!monitor)
         return false;
@@ -830,7 +830,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
     service_monitor_probe_t node_b_monitor_probe;
     void *node_b_monitor = open_spot_node_monitor_with_probe (
       node_b, ZLINK_SPOT_ROLE_SUB,
-      ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_SUB_SUBSCRIPTION_READY
+      ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED
         | ZLINK_MONITOR_EVENT_CLOSED | ZLINK_MONITOR_EVENT_ERROR,
       &node_b_monitor_probe);
     TEST_ASSERT_NOT_NULL (node_b_monitor);
@@ -879,7 +879,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
     TEST_ASSERT_TRUE (wait_for_service_event (
       &node_b_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
-      &node_b_monitor_probe, ZLINK_SPOT_SUB_SUBSCRIPTION_READY, endpoint_a,
+      &node_b_monitor_probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, endpoint_a,
       use_tls ? 10000 : 3000));
 
     zlink_msg_t parts[1];

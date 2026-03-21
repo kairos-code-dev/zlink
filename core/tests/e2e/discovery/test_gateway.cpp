@@ -99,8 +99,8 @@ bool read_gateway_snapshot (void *gateway_, zlink_monitor_snapshot_t *out_)
 
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_GATEWAY_SERVICE_READY | ZLINK_GATEWAY_SERVICE_LOST
-                  | ZLINK_GATEWAY_SEND_READY_CHANGED
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED
+                  | ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
                   | ZLINK_GATEWAY_ROUTE_UP | ZLINK_GATEWAY_ROUTE_DOWN
                   | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (gateway_, &opts);
@@ -300,7 +300,7 @@ void wait_gateway_connections (void *gateway_,
         zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
         if (read_gateway_snapshot (gateway_, &snapshot)
-            && static_cast<int> (snapshot.ready_peer_count) >= expected_) {
+            && static_cast<int> (snapshot.ready_count) >= expected_) {
             return;
         }
         msleep (step_ms);
@@ -318,7 +318,7 @@ void wait_gateway_connection_count_exact (void *gateway_,
         zlink_monitor_snapshot_t snapshot;
         memset (&snapshot, 0, sizeof (snapshot));
         if (read_gateway_snapshot (gateway_, &snapshot)
-            && static_cast<int> (snapshot.ready_peer_count) == expected_) {
+            && static_cast<int> (snapshot.ready_count) == expected_) {
             return;
         }
         msleep (step_ms);
@@ -897,7 +897,7 @@ static void test_gateway_can_be_polled_via_service_instance ()
       gateway, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY;
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED;
     void *monitor = zlink_service_monitor_open (gateway, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
@@ -1061,7 +1061,7 @@ static void test_gateway_monitor_callback_parent_destroy_returns_ebusy ()
 
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_GATEWAY_SERVICE_READY;
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED;
     void *monitor = zlink_service_monitor_open (gateway, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1810,13 +1810,13 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
         memset (&snapshot, 0, sizeof (snapshot));
         for (int i = 0; i < attempts; ++i) {
             if (read_gateway_snapshot (client, &snapshot)
-                && snapshot.ready_peer_count == 0) {
+                && snapshot.ready_count == 0) {
                 break;
             }
             msleep (step_ms);
         }
         TEST_ASSERT_TRUE (read_gateway_snapshot (client, &snapshot));
-        TEST_ASSERT_EQUAL_INT (0, static_cast<int> (snapshot.ready_peer_count));
+        TEST_ASSERT_EQUAL_INT (0, static_cast<int> (snapshot.ready_count));
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_attach_discovery (client, discovery));
@@ -2321,7 +2321,7 @@ static void test_gateway_attach_and_monitor_queries_are_safe_same_handle ()
 
                 zlink_service_monitor_open_options_t opts;
                 memset (&opts, 0, sizeof (opts));
-                opts.events = ZLINK_GATEWAY_SERVICE_READY;
+                opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED;
                 void *monitor = zlink_service_monitor_open (gateway, &opts);
                 if (!monitor) {
                     query_fail.fetch_add (1);

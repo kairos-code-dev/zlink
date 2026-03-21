@@ -89,7 +89,7 @@ void spot_sub_monitor_handler (const zlink_service_event_t *event_, void *userda
         std::lock_guard<std::mutex> lock (probe->mutex);
         if (event_->event_type == ZLINK_SPOT_SUB_FILTER_APPLIED)
             probe->sub_filter_applied = true;
-        else if (event_->event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED)
+        else if (event_->event_type == ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED)
             probe->sub_delivery_ready = event_->value > 0;
         else if (event_->event_type == ZLINK_MONITOR_EVENT_ERROR
                  && probe->error_code == 0)
@@ -108,7 +108,7 @@ void spot_pub_monitor_handler (const zlink_service_event_t *event_, void *userda
 
     {
         std::lock_guard<std::mutex> lock (probe->mutex);
-        if (event_->event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED)
+        if (event_->event_type == ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED)
             probe->pub_first_ready = event_->value > 0;
         else if (event_->event_type == ZLINK_MONITOR_EVENT_ERROR
                  && probe->error_code == 0)
@@ -320,11 +320,11 @@ void test_spot_node_pollin_matches_subscribe_surface ()
     zlink_service_monitor_open_options_t sub_monitor_opts;
     memset (&sub_monitor_opts, 0, sizeof (sub_monitor_opts));
     sub_monitor_opts.events = ZLINK_SPOT_SUB_FILTER_APPLIED
-                              | ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+                              | ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
                               | ZLINK_MONITOR_EVENT_ERROR;
     zlink_service_monitor_open_options_t pub_monitor_opts;
     memset (&pub_monitor_opts, 0, sizeof (pub_monitor_opts));
-    pub_monitor_opts.events = ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+    pub_monitor_opts.events = ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
                               | ZLINK_MONITOR_EVENT_ERROR;
 
     void *sub_monitor = zlink_service_monitor_open (client, &sub_monitor_opts);

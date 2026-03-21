@@ -176,7 +176,7 @@ void gateway_monitor_handler (const zlink_service_event_t *event_, void *)
         return;
 
     std::lock_guard<std::mutex> lock (probe->mutex);
-    if (event_->event_type == ZLINK_GATEWAY_SEND_READY_CHANGED
+    if (event_->event_type == ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
         && event_->value == 1) {
         probe->send_ready = true;
     } else if (event_->event_type == ZLINK_GATEWAY_MONITOR_EVENT_ERROR) {
@@ -218,7 +218,7 @@ bool wait_for_gateway_ready_recv (void *monitor_, int timeout_ms_)
                 errno = event.error_code != 0 ? event.error_code : EIO;
                 return false;
             }
-            if (event.event_type == ZLINK_GATEWAY_SEND_READY_CHANGED
+            if (event.event_type == ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
                 && event.value == 1) {
                 return true;
             }
@@ -303,10 +303,10 @@ void spot_monitor_handler (const zlink_service_event_t *event_, void *)
         return;
 
     std::lock_guard<std::mutex> lock (probe->mutex);
-    if (event_->event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+    if (event_->event_type == ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
         && event_->value == 1) {
         probe->sub_ready = true;
-    } else if (event_->event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+    } else if (event_->event_type == ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
                && event_->value == 1) {
         probe->pub_ready = true;
     } else if (event_->event_type == ZLINK_MONITOR_EVENT_ERROR) {
@@ -360,11 +360,11 @@ bool wait_for_spot_ready_recv (void *sub_monitor_,
                     errno = event.error_code != 0 ? event.error_code : EIO;
                     return false;
                 }
-                if (event.event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
+                if (event.event_type == ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
                     && event.value == 1) {
                     sub_ready = true;
                 }
-                if (event.event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
+                if (event.event_type == ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
                     && event.value == 1) {
                     pub_ready = true;
                 }
@@ -455,7 +455,7 @@ void run_gateway_ready_matrix (monitor_mode_t monitor_mode_)
 
     zlink_service_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
-    monitor_opts.events = ZLINK_GATEWAY_SEND_READY_CHANGED
+    monitor_opts.events = ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
                           | ZLINK_GATEWAY_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (client, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
@@ -541,14 +541,14 @@ void run_spot_ready_matrix (monitor_mode_t monitor_mode_,
     zlink_service_monitor_open_options_t sub_monitor_opts;
     memset (&sub_monitor_opts, 0, sizeof (sub_monitor_opts));
     sub_monitor_opts.events =
-      ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
+      ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
     void *sub_monitor = zlink_service_monitor_open (sub, &sub_monitor_opts);
     TEST_ASSERT_NOT_NULL (sub_monitor);
 
     zlink_service_monitor_open_options_t pub_monitor_opts;
     memset (&pub_monitor_opts, 0, sizeof (pub_monitor_opts));
     pub_monitor_opts.events =
-      ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
+      ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
     void *pub_monitor = zlink_service_monitor_open (pub, &pub_monitor_opts);
     TEST_ASSERT_NOT_NULL (pub_monitor);
     configure_service_handle (sub_monitor);

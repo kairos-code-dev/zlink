@@ -78,11 +78,11 @@ struct gateway_recv_loop_t
 bool wait_gateway_send_ready_event (void *gateway_, int timeout_ms_)
 {
     void *monitor =
-      open_configured_service_monitor (gateway_, ZLINK_GATEWAY_SEND_READY_CHANGED);
+      open_configured_service_monitor (gateway_, ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED);
     if (!monitor)
         return false;
     const bool ready = wait_for_service_monitor_event (
-      monitor, ZLINK_GATEWAY_SEND_READY_CHANGED, 0, timeout_ms_);
+      monitor, ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED, 0, timeout_ms_);
     zlink_monitor_close (&monitor);
     return ready;
 }

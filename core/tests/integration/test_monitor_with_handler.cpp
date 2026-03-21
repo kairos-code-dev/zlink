@@ -488,7 +488,7 @@ void test_socket_monitor_open_dispatches_events ()
 
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
+    opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -497,7 +497,7 @@ void test_socket_monitor_open_dispatches_events ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     TEST_ASSERT_TRUE (wait_for_calls (&probe.primary_calls, 1, 3000));
-    TEST_ASSERT_EQUAL_UINT64 (ZLINK_EVENT_CONNECTION_READY,
+    TEST_ASSERT_EQUAL_UINT64 (ZLINK_EVENT_CONNECTION_READY_CHANGED,
                               probe.primary_event.event);
     TEST_ASSERT_TRUE (probe.primary_event.routing_id.size > 0);
 
@@ -613,10 +613,8 @@ void test_socket_send_ready_handler_rejects_sub_and_xsub ()
     TEST_ASSERT_NOT_NULL (sub);
     TEST_ASSERT_NOT_NULL (xsub);
 
-    TEST_ASSERT_EQUAL_INT (
-      -1,
+    TEST_ASSERT_SUCCESS_ERRNO (
       zlink_send_ready_handler (pair, &raw_send_ready_counting_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_send_ready_handler (sub, &raw_send_ready_counting_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
@@ -638,7 +636,7 @@ void test_socket_monitor_open_requires_handler ()
 
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
     void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
 
@@ -658,7 +656,7 @@ void test_socket_monitor_open_accepts_ignore_handler ()
 
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
     void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     close_socket_zero_linger (monitor);
@@ -716,7 +714,7 @@ void test_gateway_monitor_open_requires_handler ()
 
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY;
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED;
     void *monitor = zlink_service_monitor_open (gateway, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
 
@@ -738,7 +736,7 @@ void test_gateway_monitor_open_accepts_ignore_handler ()
 
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_SERVICE_READY;
+    opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED;
     void *monitor = zlink_service_monitor_open (gateway, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
@@ -854,7 +852,7 @@ void test_socket_monitor_self_close_defers_until_callback_return ()
     callback_close_probe_t probe;
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
     void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -890,7 +888,7 @@ void test_socket_monitor_close_during_callback_returns_ebusy ()
     callback_close_probe_t probe;
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_CONNECTION_READY;
+    opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
     void *monitor = zlink_socket_monitor_open (server, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1200,7 +1198,7 @@ void test_service_parent_destroy_rejects_open_monitor_children ()
     TEST_ASSERT_NOT_NULL (gateway);
     zlink_service_monitor_open_options_t gateway_opts;
     memset (&gateway_opts, 0, sizeof (gateway_opts));
-    gateway_opts.events = ZLINK_GATEWAY_SERVICE_READY;
+    gateway_opts.events = ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED;
     void *gateway_monitor = zlink_service_monitor_open (gateway, &gateway_opts);
     TEST_ASSERT_NOT_NULL (gateway_monitor);
 

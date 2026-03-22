@@ -213,9 +213,9 @@ Options:
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
-                         (default: 2, stream=4).
+                         (default: 4).
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
-                         (default: 2, stream=4).
+                         (default: 4).
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
   --warmup N             Optional override for multi warmup seconds (default 2).
@@ -370,7 +370,7 @@ DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
-EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-2}}"
+EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}"
 COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
 SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
 CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"

@@ -54,6 +54,43 @@ int zlink::recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
                                                                    : INT_MAX);
 }
 
+int zlink::recv_msg_routed_internal (void *socket_,
+                                     zlink_msg_t *msg_,
+                                     zlink_routing_id_t *source_rid_out_,
+                                     int flags_)
+{
+    socket_base_t *socket = static_cast<socket_base_t *> (socket_);
+    if (!socket || !socket->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (socket->socket_msg_dispatch_active ()) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    int type = -1;
+    size_t type_len = sizeof (type);
+    if (socket->getsockopt (ZLINK_INTERNAL_OPT_TYPE, &type, &type_len) != 0)
+        return -1;
+
+    if (type != ZLINK_CORE_SOCKET_ROUTER) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    const int rc =
+      socket->recv_routed (reinterpret_cast<msg_t *> (msg_), source_rid_out_,
+                           flags_);
+    if (rc < 0)
+        return -1;
+
+    const size_t size = zlink_msg_size (msg_);
+    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
+                                                                   : INT_MAX);
+}
+
 int zlink::recv_buffer_internal (void *socket_,
                                  void *buf_,
                                  size_t len_,

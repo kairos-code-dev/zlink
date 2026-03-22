@@ -38,6 +38,7 @@ struct gateway_client_slot_t
         inflight(false),
         send_enabled(false),
         auto_send_on_recv(false),
+        poller_events(0),
         completed_replies(0),
         run_id(0),
         msg_size(0),
@@ -56,6 +57,7 @@ struct gateway_client_slot_t
     bool inflight;
     bool send_enabled;
     bool auto_send_on_recv;
+    short poller_events;
     unsigned long long completed_replies;
     zlink_routing_id_t target_routing_id;
     uint32_t run_id;
@@ -216,12 +218,22 @@ send_status_t send_gateway_request(gateway_client_slot_t *slot)
 
     const size_t payload_size =
       std::max(slot->msg_size, perf_multi_metric::header_size());
+    if (slot->payload.size() < payload_size)
+        slot->payload.resize(payload_size, 'g');
 
     zlink_msg_t part;
-    if (zlink_msg_init_size(&part, payload_size) != 0)
+    if (zlink_msg_init_data(
+          &part,
+          payload_size > 0
+            ? static_cast<void *>(slot->payload.data())
+            : static_cast<void *>(NULL),
+          payload_size,
+          NULL,
+          NULL)
+        != 0)
         return send_fatal;
     if (!perf_multi_metric::stamp_payload(
-          zlink_msg_data(&part),
+          slot->payload.data(),
           payload_size,
           slot->run_id,
           slot->phase,
@@ -375,15 +387,18 @@ bool service_gateway_slots(gateway_client_state_t *state,
         return true;
 
     for (size_t i = 0; i < state->slots.size(); ++i) {
-        const gateway_client_slot_t *slot = state->slots[i];
+        gateway_client_slot_t *slot = state->slots[i];
         if (!slot || !slot->gateway)
             continue;
         short events = ZLINK_POLLIN;
         if (slot->send_pending && slot->send_enabled)
             events = static_cast<short>(events | ZLINK_POLLOUT);
-        if (zlink_poller_modify(state->poller, slot->gateway, events) != 0) {
-            mark_fatal(zlink_errno());
-            return false;
+        if (slot->poller_events != events) {
+            if (zlink_poller_modify(state->poller, slot->gateway, events) != 0) {
+                mark_fatal(zlink_errno());
+                return false;
+            }
+            slot->poller_events = events;
         }
     }
 
@@ -542,6 +557,7 @@ void configure_phase_slots(const std::vector<gateway_client_slot_t *> &slots,
         slot->inflight = false;
         slot->send_enabled = send_enabled;
         slot->auto_send_on_recv = send_enabled;
+        slot->poller_events = 0;
     }
 }
 

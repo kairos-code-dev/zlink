@@ -92,9 +92,16 @@ inline send_status_t send_one_message (void *socket,
     }
 
     zlink_msg_t part;
-    if (zlink_msg_init_size (&part, payload_size) != 0)
+    if (zlink_msg_init_data (
+          &part,
+          payload_size > 0
+            ? static_cast<void *> (payload.data ())
+            : static_cast<void *> (NULL),
+          payload_size,
+          NULL,
+          NULL)
+        != 0)
         return send_status_fatal;
-    std::memcpy (zlink_msg_data (&part), payload.data (), payload_size);
     const int rc = ::zlink_send (socket, &part, 1, ZLINK_DONTWAIT);
     if (rc < 0)
         zlink_msg_close (&part);

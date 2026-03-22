@@ -50,9 +50,7 @@ inline void emit_requested_queue_probe (const std::string &lib_name,
       lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
-inline bool relay_router_once (void *server,
-                               std::vector<char> &id_buf,
-                               std::vector<char> &payload_buf)
+inline bool relay_router_once (void *server)
 {
     zlink_routing_id_t source_rid;
     source_rid.size = 0;
@@ -64,38 +62,31 @@ inline bool relay_router_once (void *server,
         return err == EAGAIN || err == EINTR;
     }
 
-    const size_t routing_len = source_rid.size;
-    if (routing_len > 0)
-        std::memcpy (
-          id_buf.data (), source_rid.data, std::min (id_buf.size (), routing_len));
-    size_t payload_len = 0;
-    if (part_count > 0) {
-        payload_len = std::min (payload_buf.size (), zlink_msg_size (&parts[0]));
-        if (payload_len > 0)
-            std::memcpy (
-              payload_buf.data (), zlink_msg_data (&parts[0]), payload_len);
+    if (part_count == 0 || !parts) {
+        zlink_msg_t empty_part;
+        if (zlink_msg_init_size (&empty_part, 0) != 0)
+            return false;
+        const int send_rc =
+          ::zlink_send_rid (server, &source_rid, &empty_part, 1, 0);
+        if (send_rc >= 0)
+            return true;
+        const int err = zlink_errno ();
+        zlink_msg_close (&empty_part);
+        return err == EAGAIN || err == EINTR;
     }
+
+    const int send_rc = ::zlink_send_rid (server, &source_rid, parts, part_count, 0);
+    if (send_rc >= 0) {
+        free (parts);
+        return true;
+    }
+
+    const int err = zlink_errno ();
     if (parts) {
         zlink_multipart_close (parts, part_count);
         free (parts);
     }
-
-    zlink_msg_t reply_parts[2];
-    if (zlink_msg_init_size (&reply_parts[0], routing_len) != 0)
-        return false;
-    if (zlink_msg_init_size (&reply_parts[1], payload_len) != 0) {
-        zlink_msg_close (&reply_parts[0]);
-        return false;
-    }
-    if (routing_len > 0)
-        std::memcpy (
-          zlink_msg_data (&reply_parts[0]), source_rid.data, routing_len);
-    if (payload_len > 0)
-        std::memcpy (
-          zlink_msg_data (&reply_parts[1]), payload_buf.data (), payload_len);
-    if (::zlink_send (server, reply_parts, 2, 0) < 0)
-        return zlink_errno () == EINTR || zlink_errno () == EAGAIN;
-    return true;
+    return err == EAGAIN || err == EINTR;
 }
 
 inline void print_server_metrics (
@@ -130,9 +121,7 @@ inline void print_server_metrics (
 inline bool run_server_loop (void *server,
                              const multi_bench_settings_t &settings,
                              const std::string &lib_name,
-                             const std::string &transport,
-                             std::vector<char> &router_id_buf,
-                             std::vector<char> &router_payload_buf)
+                             const std::string &transport)
 {
     (void) settings;
     if (!server)
@@ -140,7 +129,7 @@ inline bool run_server_loop (void *server,
 
     while (!perf_stop_requested ().load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
-        if (!relay_router_once (server, router_id_buf, router_payload_buf)) {
+        if (!relay_router_once (server)) {
             return false;
         }
     }
@@ -230,21 +219,11 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     std::cout << "READY," << endpoint << std::endl;
 
-    std::vector<char> router_id_buf (
-      std::max<size_t> (256, static_cast<size_t> (1024)), '\0');
-    std::vector<char> router_payload_buf (
-      std::max<size_t> (
-        max_msg_size + 256,
-        static_cast<size_t> (1024)),
-      '\0');
-
     const bool loop_ok = run_server_loop (
       server,
       settings,
       lib_name,
-      transport,
-      router_id_buf,
-      router_payload_buf);
+      transport);
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);

@@ -219,7 +219,6 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
             _pending_flags.push_back (msg.flags ());
             _pending_pipes.push_back (pipe_);
         }
-
         msg.close ();
     }
 

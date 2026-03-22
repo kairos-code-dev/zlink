@@ -78,34 +78,37 @@ inline send_status_t send_echo_message_flags (void *socket,
                                               bool router_send,
                                               zlink_send_flags_t base_flags)
 {
+    zlink_msg_t part;
+    if (zlink_msg_init_data (
+          &part,
+          payload_size > 0
+            ? static_cast<void *> (payload.data ())
+            : static_cast<void *> (NULL),
+          payload_size,
+          NULL,
+          NULL)
+        != 0)
+        return send_error;
+
     if (router_send) {
         if (server_id.empty ())
             return send_error;
 
-        zlink_msg_t parts[2];
-        if (zlink_msg_init_size (&parts[0], server_id.size ()) != 0)
+        if (server_id.size () > sizeof (zlink_routing_id_t ().data))
             return send_error;
-        if (zlink_msg_init_size (&parts[1], payload_size) != 0) {
-            zlink_msg_close (&parts[0]);
-            return send_error;
-        }
-        std::memcpy (zlink_msg_data (&parts[0]), server_id.data (),
-                     server_id.size ());
-        if (payload_size > 0)
+
+        zlink_routing_id_t target_rid;
+        target_rid.size = static_cast<uint8_t> (server_id.size ());
+        if (target_rid.size > 0) {
             std::memcpy (
-              zlink_msg_data (&parts[1]), payload.data (), payload_size);
-        const int id_rc = ::zlink_send (socket, parts, 2, base_flags);
-        const send_status_t id_status = classify_send_result (id_rc);
-        if (id_status != send_ok)
-            return id_status;
-        return id_status;
+              target_rid.data,
+              server_id.data (),
+              static_cast<size_t> (target_rid.size));
+        }
+        return classify_send_result (
+          ::zlink_send_rid (socket, &target_rid, &part, 1, base_flags));
     }
 
-    zlink_msg_t part;
-    if (zlink_msg_init_size (&part, payload_size) != 0)
-        return send_error;
-    if (payload_size > 0)
-        std::memcpy (zlink_msg_data (&part), payload.data (), payload_size);
     const int payload_rc = ::zlink_send (socket, &part, 1, base_flags);
     return classify_send_result (payload_rc);
 }
@@ -146,9 +149,6 @@ inline int recv_one_message (void *socket,
             return 0;
         return -1;
     }
-
-    if (capture_bytes > 0 && !scratch.empty ())
-        std::fill (scratch.begin (), scratch.end (), '\0');
 
     size_t write_offset = 0;
     for (size_t i = 0; i < part_count; ++i) {
@@ -428,20 +428,20 @@ inline size_t metric_capture_bytes ()
     return perf_multi_metric::header_size () + static_cast<size_t> (64);
 }
 
-inline bool decode_metric_header_from_capture (
-  const std::vector<char> &scratch,
-  perf_multi_metric::header_t *header_out)
+inline bool decode_metric_header_from_capture (const char *data,
+                                               size_t size,
+                                               perf_multi_metric::header_t *header_out)
 {
-    if (!header_out || scratch.size () < perf_multi_metric::header_size ())
+    if (!header_out || !data || size < perf_multi_metric::header_size ())
         return false;
 
     for (size_t offset = 0;
-         (offset + perf_multi_metric::header_size ()) <= scratch.size ();
+         (offset + perf_multi_metric::header_size ()) <= size;
          ++offset) {
         perf_multi_metric::header_t candidate;
         if (!perf_multi_metric::decode_header (
-              scratch.data () + offset,
-              scratch.size () - offset,
+              data + offset,
+              size - offset,
               &candidate)) {
             continue;
         }
@@ -452,6 +452,73 @@ inline bool decode_metric_header_from_capture (
     }
 
     return false;
+}
+
+inline bool decode_metric_header_from_capture (
+  const std::vector<char> &scratch,
+  perf_multi_metric::header_t *header_out)
+{
+    return decode_metric_header_from_capture (
+      scratch.data (), scratch.size (), header_out);
+}
+
+inline int recv_one_message_header (void *socket,
+                                    std::vector<char> &scratch,
+                                    int flags,
+                                    size_t capture_bytes,
+                                    perf_multi_metric::header_t *header_out,
+                                    bool *decoded_out)
+{
+    if (!socket)
+        return -1;
+
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = ::zlink_recv (
+      socket, &source_rid, &parts, &part_count,
+      static_cast<zlink_send_flags_t> (flags));
+    if (rc < 0) {
+        const int err = zlink_errno ();
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
+
+    bool decoded = false;
+    if (header_out && part_count > 0) {
+        decoded = perf_multi_metric::decode_payload_header (
+          zlink_msg_data (&parts[0]), zlink_msg_size (&parts[0]), header_out);
+        if (!decoded && capture_bytes > 0 && !scratch.empty ()) {
+            size_t write_offset = 0;
+            const size_t limit = std::min (capture_bytes, scratch.size ());
+            for (size_t i = 0; i < part_count && write_offset < limit; ++i) {
+                const size_t remaining = limit - write_offset;
+                const size_t copy_size =
+                  std::min (remaining, zlink_msg_size (&parts[i]));
+                if (copy_size == 0)
+                    continue;
+                std::memcpy (scratch.data () + write_offset,
+                             zlink_msg_data (&parts[i]), copy_size);
+                write_offset += copy_size;
+            }
+            if (write_offset >= perf_multi_metric::header_size ()) {
+                decoded = decode_metric_header_from_capture (
+                  scratch.data (), write_offset, header_out);
+            }
+        }
+    }
+
+    if (decoded_out)
+        *decoded_out = decoded;
+
+    if (parts) {
+        zlink_multipart_close (parts, part_count);
+        free (parts);
+    }
+
+    return 1;
 }
 
 inline bool drain_socket_non_blocking (
@@ -471,15 +538,21 @@ inline bool drain_socket_non_blocking (
 
     long local_recv = 0;
     while (true) {
-        const int rc = recv_one_message (
-          socket, scratch, ZLINK_DONTWAIT, scratch.size ());
+        perf_multi_metric::header_t header;
+        bool decoded = false;
+        const int rc = recv_one_message_header (
+          socket,
+          scratch,
+          ZLINK_DONTWAIT,
+          scratch.size (),
+          &header,
+          &decoded);
         if (rc < 0)
             return false;
         if (rc == 0)
             break;
 
-        perf_multi_metric::header_t header;
-        if (!decode_metric_header_from_capture (scratch, &header)) {
+        if (!decoded) {
             if (bench_debug_enabled()
                 && g_debug_one_way_logs.fetch_add(1, std::memory_order_acq_rel)
                      < 12) {
@@ -894,11 +967,15 @@ inline bool run_echo_window_round_robin (
 
             if ((revents & ZLINK_POLLIN) != 0) {
                 while (true) {
-                    const int recv_rc = recv_one_message (
+                    perf_multi_metric::header_t header;
+                    bool decoded = false;
+                    const int recv_rc = recv_one_message_header (
                       sockets[idx],
                       scratch,
                       ZLINK_DONTWAIT,
-                      scratch.size ());
+                      scratch.size (),
+                      &header,
+                      &decoded);
                     if (recv_rc < 0) {
                         if (bench_debug_enabled()) {
                             std::cerr << "[perf-multi-echo] recv error phase="
@@ -914,9 +991,6 @@ inline bool run_echo_window_round_robin (
 
                     awaiting_reply[idx] = 0;
 
-                    perf_multi_metric::header_t header;
-                    const bool decoded =
-                      decode_metric_header_from_capture (scratch, &header);
                     if (decoded
                         && metric_header_matches (
                           header, run_id, phase, expected_msg_size)) {

@@ -337,6 +337,59 @@ int zlink::router_t::xsend (msg_t *msg_)
     return 0;
 }
 
+int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
+                                   msg_t *msg_)
+{
+    zlink_assert (!_more_out);
+    zlink_assert (!_current_out);
+
+    _more_out = (msg_->flags () & msg_t::more) != 0;
+
+    out_pipe_t *out_pipe = lookup_out_pipe (
+      blob_t (const_cast<unsigned char *> (target_rid_->data),
+              target_rid_->size, zlink::reference_tag_t ()));
+
+    if (out_pipe) {
+        _current_out = out_pipe->pipe;
+
+        if (!_current_out->check_write ()) {
+            const bool pipe_full = !_current_out->check_hwm ();
+            out_pipe->active = false;
+            _current_out = NULL;
+
+            if (_mandatory) {
+                _more_out = false;
+                errno = pipe_full ? EAGAIN : EHOSTUNREACH;
+                return -1;
+            }
+        }
+    } else if (_mandatory) {
+        _more_out = false;
+        errno = EHOSTUNREACH;
+        return -1;
+    }
+
+    if (_current_out) {
+        const bool ok = _current_out->write (msg_);
+        if (unlikely (!ok)) {
+            const int rc = msg_->close ();
+            errno_assert (rc == 0);
+            _current_out->rollback ();
+            _current_out = NULL;
+        } else if (!_more_out) {
+            _current_out->flush ();
+            _current_out = NULL;
+        }
+    } else {
+        const int rc = msg_->close ();
+        errno_assert (rc == 0);
+    }
+
+    const int rc = msg_->init ();
+    errno_assert (rc == 0);
+    return 0;
+}
+
 int zlink::router_t::xrecv (msg_t *msg_)
 {
     if (_prefetched) {
@@ -403,6 +456,65 @@ int zlink::router_t::xrecv (msg_t *msg_)
         if (_prefetched_msg.metadata ())
             msg_->set_metadata (_prefetched_msg.metadata ());
         _routing_id_sent = true;
+    }
+
+    return 0;
+}
+
+int zlink::router_t::xrecv_routed (msg_t *msg_,
+                                   zlink_routing_id_t *source_rid_out_)
+{
+    if (source_rid_out_)
+        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+
+    if (_prefetched) {
+        if (_current_in && source_rid_out_)
+            resolve_socket_msg_source_rid (_current_in, source_rid_out_);
+
+        const int rc = msg_->move (_prefetched_msg);
+        errno_assert (rc == 0);
+        _prefetched = false;
+        _routing_id_sent = true;
+        _more_in = (msg_->flags () & msg_t::more) != 0;
+
+        if (!_more_in) {
+            if (_terminate_current_in) {
+                _current_in->terminate (true);
+                _terminate_current_in = false;
+            }
+            _current_in = NULL;
+        }
+        return 0;
+    }
+
+    pipe_t *pipe = NULL;
+    int rc = _fq.recvpipe (msg_, &pipe);
+
+    while (rc == 0 && msg_->is_routing_id ())
+        rc = _fq.recvpipe (msg_, &pipe);
+
+    if (rc != 0)
+        return -1;
+
+    zlink_assert (pipe != NULL);
+
+    if (!_more_in) {
+        _current_in = pipe;
+        if (source_rid_out_)
+            resolve_socket_msg_source_rid (pipe, source_rid_out_);
+        _routing_id_sent = true;
+    } else if (_current_in && source_rid_out_) {
+        resolve_socket_msg_source_rid (_current_in, source_rid_out_);
+    }
+
+    _more_in = (msg_->flags () & msg_t::more) != 0;
+
+    if (!_more_in) {
+        if (_terminate_current_in) {
+            _current_in->terminate (true);
+            _terminate_current_in = false;
+        }
+        _current_in = NULL;
     }
 
     return 0;

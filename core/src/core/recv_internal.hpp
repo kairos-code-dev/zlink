@@ -8,6 +8,10 @@
 namespace zlink
 {
 int recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_);
+int recv_msg_routed_internal (void *socket_,
+                              zlink_msg_t *msg_,
+                              zlink_routing_id_t *source_rid_out_,
+                              int flags_);
 int recv_buffer_internal (void *socket_,
                           void *buf_,
                           size_t len_,

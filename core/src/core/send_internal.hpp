@@ -8,6 +8,10 @@
 namespace zlink
 {
 int send_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_);
+int send_msg_routed_internal (void *socket_,
+                              const zlink_routing_id_t *target_rid_,
+                              zlink_msg_t *msg_,
+                              int flags_);
 }
 
 #endif

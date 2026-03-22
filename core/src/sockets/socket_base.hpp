@@ -56,6 +56,7 @@ class socket_base_t : public own_t,
   public:
     //  Returns false if object is not a socket.
     bool check_tag () const;
+    int socket_type () const;
 
     //  Create a socket of a specified type.
     static socket_base_t *
@@ -78,7 +79,13 @@ class socket_base_t : public own_t,
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
     int send (zlink::msg_t *msg_, int flags_);
+    int send_routed (const zlink_routing_id_t *target_rid_,
+                     zlink::msg_t *msg_,
+                     int flags_);
     int recv (zlink::msg_t *msg_, int flags_);
+    int recv_routed (zlink::msg_t *msg_,
+                     zlink_routing_id_t *source_rid_out_,
+                     int flags_);
     int close ();
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int socket_set_msg_handler (zlink_socket_msg_handler_fn handler_);
@@ -232,10 +239,14 @@ class socket_base_t : public own_t,
     //  The default implementation assumes that send is not supported.
     virtual bool xhas_out ();
     virtual int xsend (zlink::msg_t *msg_);
+    virtual int xsend_routed (const zlink_routing_id_t *target_rid_,
+                              zlink::msg_t *msg_);
 
     //  The default implementation assumes that recv in not supported.
     virtual bool xhas_in ();
     virtual int xrecv (zlink::msg_t *msg_);
+    virtual int xrecv_routed (zlink::msg_t *msg_,
+                              zlink_routing_id_t *source_rid_out_);
     virtual int xsocket_msg_dispatch (zlink::msg_t *msg_,
                                       zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);

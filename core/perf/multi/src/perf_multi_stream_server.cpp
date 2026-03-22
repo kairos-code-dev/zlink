@@ -650,7 +650,7 @@ int main (int argc, char **argv)
             continue;
         }
         drain_stream_pending_queue ();
-        if (perf_socket_poll (NULL, 0, 50) < 0 && zlink_errno () != EINTR) {
+        if (perf_socket_poll (NULL, 0, 1) < 0 && zlink_errno () != EINTR) {
             rc = 1;
             break;
         }

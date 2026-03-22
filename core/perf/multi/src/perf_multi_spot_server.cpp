@@ -296,8 +296,7 @@ send_status_t try_publish_locked(spot_server_state_t *state)
         ++state->next_seq;
         return send_status_ok;
     }
-    if (saved_errno == EAGAIN || saved_errno == EHOSTUNREACH
-        || saved_errno == ENOTCONN || saved_errno == ETIMEDOUT) {
+    if (saved_errno == EAGAIN) {
         state->send_pending.store(true, std::memory_order_release);
         errno = saved_errno;
         return send_status_blocked;

@@ -102,8 +102,7 @@ inline send_status_t send_one_message (void *socket,
         return send_status_ok;
 
     const int err = zlink_errno ();
-    if (err == EINTR || err == EAGAIN || err == ENOTCONN
-        || err == EHOSTUNREACH || err == ENOENT)
+    if (err == EAGAIN)
         return send_status_blocked;
 
     return send_status_fatal;

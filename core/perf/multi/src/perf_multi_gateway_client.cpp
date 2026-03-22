@@ -263,8 +263,7 @@ send_status_t send_gateway_request(gateway_client_slot_t *slot)
     const int saved_errno = errno;
     (void) zlink_msg_close(&part);
 
-    if (saved_errno == EAGAIN || saved_errno == EHOSTUNREACH
-        || saved_errno == ENOTCONN) {
+    if (saved_errno == EAGAIN) {
         if (bench_debug_enabled()
             && g_debug_send_logs.fetch_add(1, std::memory_order_acq_rel) < 8) {
             std::cerr << "[multi-gateway-client] send blocked slot="

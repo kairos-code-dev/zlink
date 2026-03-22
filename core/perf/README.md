@@ -101,8 +101,8 @@ and delegates execution to `run_benchmarks.sh`.
 | `--recv MODE` | `recv` | Receive model (`recv` or `callback`) |
 | `--pin-cpu` | off | Pin CPU core |
 | `--io-threads N` | — | Set both server/client io threads |
-| `--server-io-threads N` | non-stream=`4`, stream=`4` | Set server io threads |
-| `--client-io-threads N` | non-stream=`4`, stream=`4` | Set client io threads |
+| `--server-io-threads N` | non-stream=`2`, stream=`2` | Set server io threads |
+| `--client-io-threads N` | non-stream=`2`, stream=`2` | Set client io threads |
 | `--msg-sizes LIST` | env/default | Comma-separated sizes |
 | `--transports LIST` | `tcp,tls,ws,wss` | Comma-separated transports |
 | `--warmup N` | `2` | Multi warmup seconds |

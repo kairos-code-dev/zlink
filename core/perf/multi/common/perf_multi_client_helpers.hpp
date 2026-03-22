@@ -65,8 +65,7 @@ inline send_status_t classify_send_result (int rc)
     if (rc >= 0)
         return send_ok;
     const int err = zlink_errno ();
-    if (err == EAGAIN || err == EINTR || err == ENOENT
-        || err == ENOTCONN || err == EHOSTUNREACH)
+    if (err == EAGAIN)
         return send_blocked;
     return send_error;
 }

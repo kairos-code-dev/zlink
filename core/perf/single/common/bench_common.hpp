@@ -599,7 +599,7 @@ inline void stop_single_metric_worker (single_metric_worker_t<StateT> *worker_)
 
 inline int bench_io_threads()
 {
-    return parse_positive_env("PERF_IO_THREADS", 2);
+    return parse_positive_env("PERF_IO_THREADS", 1);
 }
 
 inline int bench_max_sockets()

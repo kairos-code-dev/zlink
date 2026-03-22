@@ -1238,8 +1238,8 @@ def pattern_default_hwm(pattern_name):
 
 def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        return 4
-    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
+        return 2
+    return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 2))
 
 
 def resolve_pattern_connect_concurrency(clients):
@@ -3948,7 +3948,7 @@ def build_effective_option_items(args, selected_patterns):
         )
         explicit_perf_io = _read_env_value("PERF_IO_THREADS") or ""
         if explicit_server_io:
-            server_io_threads = max(1, parse_env_int("PERF_SERVER_IO_THREADS", 4))
+            server_io_threads = max(1, parse_env_int("PERF_SERVER_IO_THREADS", 2))
             server_io_display = str(server_io_threads)
         elif (
             explicit_stream_server_io
@@ -3956,11 +3956,11 @@ def build_effective_option_items(args, selected_patterns):
             and all(p in STREAM_VARIANT_PATTERNS for p in selected_patterns)
         ):
             server_io_threads = max(
-                1, parse_env_int("PERF_STREAM_SERVER_IO_THREADS", 4)
+                1, parse_env_int("PERF_STREAM_SERVER_IO_THREADS", 2)
             )
             server_io_display = f"{server_io_threads} (stream override)"
         elif explicit_perf_io:
-            server_io_threads = max(1, parse_env_int("PERF_IO_THREADS", 4))
+            server_io_threads = max(1, parse_env_int("PERF_IO_THREADS", 2))
             server_io_display = f"{server_io_threads} (from PERF_IO_THREADS)"
         else:
             default_server_io_values = {
@@ -3979,7 +3979,7 @@ def build_effective_option_items(args, selected_patterns):
                 )
 
         if explicit_client_io:
-            client_io_threads = max(1, parse_env_int("PERF_CLIENT_IO_THREADS", 4))
+            client_io_threads = max(1, parse_env_int("PERF_CLIENT_IO_THREADS", 2))
             client_io_display = str(client_io_threads)
         elif (
             explicit_stream_client_io
@@ -3987,11 +3987,11 @@ def build_effective_option_items(args, selected_patterns):
             and all(p in STREAM_VARIANT_PATTERNS for p in selected_patterns)
         ):
             client_io_threads = max(
-                1, parse_env_int("PERF_STREAM_CLIENT_IO_THREADS", 4)
+                1, parse_env_int("PERF_STREAM_CLIENT_IO_THREADS", 2)
             )
             client_io_display = f"{client_io_threads} (stream override)"
         elif explicit_perf_io:
-            client_io_threads = max(1, parse_env_int("PERF_IO_THREADS", 4))
+            client_io_threads = max(1, parse_env_int("PERF_IO_THREADS", 2))
             client_io_display = f"{client_io_threads} (from PERF_IO_THREADS)"
         else:
             default_client_io_values = {

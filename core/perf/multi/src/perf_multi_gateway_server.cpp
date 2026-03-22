@@ -171,8 +171,7 @@ send_status_t try_send_gateway_reply(void *gateway,
         return send_status_ok;
 
     const int saved_errno = errno;
-    if (saved_errno == EAGAIN || saved_errno == EINTR
-        || saved_errno == EHOSTUNREACH || saved_errno == ENOTCONN) {
+    if (saved_errno == EAGAIN) {
         errno = saved_errno;
         return send_status_blocked;
     }
@@ -250,8 +249,7 @@ send_status_t try_send_pending_reply(void *gateway,
         return send_status_ok;
 
     const int saved_errno = errno;
-    if (saved_errno == EAGAIN || saved_errno == EINTR
-        || saved_errno == EHOSTUNREACH || saved_errno == ENOTCONN) {
+    if (saved_errno == EAGAIN) {
         errno = saved_errno;
         return send_status_blocked;
     }

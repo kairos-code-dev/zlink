@@ -192,7 +192,9 @@ inline bool publish_once (void *server,
         return false;
     std::memcpy (zlink_msg_data (&payload_part), payload.data (), send_size);
 
-    if (::zlink_publish (server, k_pubsub_topic, &payload_part, 1, 0) >= 0) {
+    if (::zlink_publish (
+          server, k_pubsub_topic, &payload_part, 1, ZLINK_DONTWAIT)
+        >= 0) {
         if (bench_debug_enabled ()
             && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
             std::cerr << "[multi-pubsub-server] publish ok phase="
@@ -206,9 +208,7 @@ inline bool publish_once (void *server,
     zlink_msg_close (&payload_part);
 
     const int err = zlink_errno ();
-    if (err == EINTR)
-        return true;
-    if (err == EAGAIN || err == ETIMEDOUT) {
+    if (err == EAGAIN) {
         if (bench_debug_enabled ()
             && g_debug_pub_logs.fetch_add (1, std::memory_order_acq_rel) < 8) {
             std::cerr << "[multi-pubsub-server] publish blocked err=" << err

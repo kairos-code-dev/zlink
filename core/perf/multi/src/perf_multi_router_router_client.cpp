@@ -217,8 +217,7 @@ send_status_t send_router_request(router_client_slot_t *slot)
 
     const int saved_errno = errno;
     (void) zlink_msg_close(&part);
-    if (saved_errno == EAGAIN || saved_errno == EINTR
-        || saved_errno == ENOTCONN || saved_errno == EHOSTUNREACH) {
+    if (saved_errno == EAGAIN) {
         slot->send_pending = true;
         slot->inflight = false;
         errno = saved_errno;

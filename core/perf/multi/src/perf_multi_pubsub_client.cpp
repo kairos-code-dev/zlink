@@ -99,7 +99,32 @@ int recv_one_pubsub_message (void *socket,
     return 1;
 }
 
+bool create_pubsub_poller (const std::vector<void *> &sockets,
+                           void **poller_out)
+{
+    if (!poller_out)
+        return false;
+
+    *poller_out = NULL;
+    void *poller = zlink_poller_new ();
+    if (!poller)
+        return false;
+
+    for (size_t i = 0; i < sockets.size (); ++i) {
+        if (!sockets[i])
+            continue;
+        if (zlink_poller_add (poller, sockets[i], sockets[i], ZLINK_POLLIN) != 0) {
+            zlink_poller_destroy (&poller);
+            return false;
+        }
+    }
+
+    *poller_out = poller;
+    return true;
+}
+
 bool run_recv_duration (const std::vector<void *> &sockets,
+                        void *poller,
                         const multi_bench_settings_t &settings,
                         size_t msg_size,
                         uint32_t run_id,
@@ -107,7 +132,8 @@ bool run_recv_duration (const std::vector<void *> &sockets,
                         bench_latency_stats_t *latency_out,
                         bench_multi_resource_metrics_t *metrics_out)
 {
-    if (!throughput_out || !latency_out || !metrics_out || sockets.empty ())
+    if (!throughput_out || !latency_out || !metrics_out || sockets.empty ()
+        || !poller)
         return false;
 
     const double active_seconds =
@@ -130,53 +156,78 @@ bool run_recv_duration (const std::vector<void *> &sockets,
     bool active_started = false;
     bench_multi_cpu_sample_t sample_start;
     auto active_deadline = std::chrono::steady_clock::time_point ();
+    std::vector<zlink_poller_event_t> events (sockets.size ());
 
     while (true) {
         const std::chrono::steady_clock::time_point now =
           std::chrono::steady_clock::now ();
-        if (!active_started && now >= start_wait_deadline)
+        const std::chrono::steady_clock::time_point deadline =
+          active_started ? active_deadline : start_wait_deadline;
+        if (now >= deadline)
             break;
-        if (active_started && now >= active_deadline)
-            break;
+
+        const int timeout_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - now)
+            .count ());
+        const int poll_rc =
+          zlink_poller_wait_all (poller, events.empty () ? NULL : &events[0],
+                                 static_cast<int> (events.size ()),
+                                 timeout_ms > 5 ? 5 : std::max (1, timeout_ms));
+        if (poll_rc < 0) {
+            const int err = zlink_errno ();
+            if (err == EINTR || err == EAGAIN)
+                continue;
+            return false;
+        }
 
         bool progressed = false;
-        for (size_t i = 0; i < sockets.size (); ++i) {
-            perf_multi_metric::header_t header;
-            std::memset (&header, 0, sizeof (header));
-            double sample_us = 0.0;
-            bool have_sample = false;
-            const int recv_rc = recv_one_pubsub_message (
-              sockets[i], msg_size, run_id, &header, &sample_us, &have_sample);
-            if (recv_rc < 0)
-                return false;
-            progressed = progressed || recv_rc > 0;
-            if (recv_rc <= 0
-                || header.phase
-                     != static_cast<uint32_t> (perf_multi_metric::phase_active)) {
+        for (int i = 0; i < poll_rc; ++i) {
+            if ((events[i].events & ZLINK_POLLIN) == 0)
                 continue;
-            }
 
-            if (!active_started) {
-                active_started = true;
-                recv_count = 0;
-                lat_sum = 0.0;
-                lat_count = 0;
-                lat_samples = bench_latency_sampler_t ();
-                sample_start = bench_multi_capture_cpu_sample ();
-                active_deadline =
-                  std::chrono::steady_clock::now ()
-                  + std::chrono::duration_cast<
-                    std::chrono::steady_clock::duration> (
-                    std::chrono::duration<double> (active_seconds));
-            }
+            void *socket = events[i].socket;
+            while (socket) {
+                perf_multi_metric::header_t header;
+                std::memset (&header, 0, sizeof (header));
+                double sample_us = 0.0;
+                bool have_sample = false;
+                const int recv_rc = recv_one_pubsub_message (
+                  socket, msg_size, run_id, &header, &sample_us, &have_sample);
+                if (recv_rc < 0)
+                    return false;
+                if (recv_rc == 0)
+                    break;
 
-            ++recv_count;
-            if (have_sample) {
-                lat_sum += sample_us;
-                ++lat_count;
-                lat_samples.add (sample_us);
+                progressed = true;
+                if (header.phase
+                    != static_cast<uint32_t> (perf_multi_metric::phase_active)) {
+                    continue;
+                }
+
+                if (!active_started) {
+                    active_started = true;
+                    recv_count = 0;
+                    lat_sum = 0.0;
+                    lat_count = 0;
+                    lat_samples = bench_latency_sampler_t ();
+                    sample_start = bench_multi_capture_cpu_sample ();
+                    active_deadline =
+                      std::chrono::steady_clock::now ()
+                      + std::chrono::duration_cast<
+                        std::chrono::steady_clock::duration> (
+                        std::chrono::duration<double> (active_seconds));
+                }
+
+                ++recv_count;
+                if (have_sample) {
+                    lat_sum += sample_us;
+                    ++lat_count;
+                    lat_samples.add (sample_us);
+                }
             }
         }
+
         if (!progressed && perf_socket_poll (NULL, 0, 1) < 0
             && zlink_errno () != EINTR) {
             return false;
@@ -264,6 +315,7 @@ inline bool create_client_sockets (
 }
 
 inline bool run_single_size_case (const std::vector<void *> &sockets,
+                                  void *poller,
                                   const multi_bench_settings_t &base_settings,
                                   size_t scratch_capacity,
                                   const std::string &lib_name,
@@ -275,6 +327,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
     bench_multi_resource_metrics_t metrics;
     const bool ok = run_recv_duration (
       sockets,
+      poller,
       base_settings,
       msg_size,
       k_metric_run_id,
@@ -324,6 +377,7 @@ inline int run_client_benchmark (const std::string &lib_name,
 
     std::vector<void *> sockets;
     std::vector<ready_monitor_t> monitors;
+    void *poller = NULL;
     if (!create_client_sockets (
           ctx,
           transport,
@@ -331,6 +385,12 @@ inline int run_client_benchmark (const std::string &lib_name,
           base_settings,
           &sockets,
           &monitors)) {
+        close_client_monitors (&monitors);
+        close_client_sockets (&sockets);
+        return 1;
+    }
+
+    if (!create_pubsub_poller (sockets, &poller)) {
         close_client_monitors (&monitors);
         close_client_sockets (&sockets);
         return 1;
@@ -345,6 +405,7 @@ inline int run_client_benchmark (const std::string &lib_name,
                 std::cerr << "[multi-pubsub-client] sub ready wait failed slot="
                           << i << std::endl;
             }
+            zlink_poller_destroy (&poller);
             close_client_monitors (&monitors);
             close_client_sockets (&sockets);
             return 1;
@@ -358,6 +419,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         std::cout << "CLIENT_READY," << msg_size << std::endl;
         if (!run_single_size_case (
               sockets,
+              poller,
               base_settings,
               scratch_capacity,
               lib_name,
@@ -367,12 +429,14 @@ inline int run_client_benchmark (const std::string &lib_name,
                 std::cerr << "[multi-pubsub-client] size case failed size="
                           << msg_size << std::endl;
             }
+            zlink_poller_destroy (&poller);
             close_client_monitors (&monitors);
             close_client_sockets (&sockets);
             return 1;
         }
         std::cout << "CLIENT_DONE," << msg_size << std::endl;
     }
+    zlink_poller_destroy (&poller);
     close_client_monitors (&monitors);
     close_client_sockets (&sockets);
     return 0;

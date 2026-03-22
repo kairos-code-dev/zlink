@@ -70,38 +70,31 @@ inline bool create_client_sockets (
 }
 
 inline send_status_t send_one_message (void *socket,
-                                       std::vector<char> &payload,
                                        size_t payload_size,
                                        uint32_t run_id,
                                        perf_multi_metric::phase_t phase,
                                        size_t msg_size,
                                        uint64_t seq)
 {
-    if (!socket || payload_size == 0 || payload_size > payload.size ())
+    if (!socket || payload_size == 0)
+        return send_status_fatal;
+
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, payload_size) != 0)
         return send_status_fatal;
 
     if (!perf_multi_metric::stamp_payload (
-          payload.data (),
+          static_cast<char *> (zlink_msg_data (&part)),
           payload_size,
           run_id,
           phase,
           msg_size,
           seq,
           perf_multi_metric::now_us ())) {
+        zlink_msg_close (&part);
         return send_status_fatal;
     }
 
-    zlink_msg_t part;
-    if (zlink_msg_init_data (
-          &part,
-          payload_size > 0
-            ? static_cast<void *> (payload.data ())
-            : static_cast<void *> (NULL),
-          payload_size,
-          NULL,
-          NULL)
-        != 0)
-        return send_status_fatal;
     const int rc = ::zlink_send (socket, &part, 1, ZLINK_DONTWAIT);
     if (rc < 0)
         zlink_msg_close (&part);
@@ -117,7 +110,6 @@ inline send_status_t send_one_message (void *socket,
 }
 
 inline bool run_send_window (const std::vector<void *> &sockets,
-                             std::vector<char> &payload,
                              size_t payload_size,
                              uint32_t run_id,
                              perf_multi_metric::phase_t phase,
@@ -192,7 +184,6 @@ inline bool run_send_window (const std::vector<void *> &sockets,
 
             const send_status_t send_rc = send_one_message (
               sockets[i],
-              payload,
               payload_size,
               run_id,
               phase,
@@ -210,7 +201,6 @@ inline bool run_send_window (const std::vector<void *> &sockets,
 
 inline bool run_single_size_case (const std::vector<void *> &sockets,
                                   const multi_bench_settings_t &settings,
-                                  std::vector<char> &payload,
                                   size_t msg_size,
                                   uint32_t run_id)
 {
@@ -224,7 +214,6 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
     uint64_t seq = 1;
     if (!run_send_window (
           sockets,
-          payload,
           payload_size,
           run_id,
           perf_multi_metric::phase_warmup,
@@ -237,7 +226,6 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
 
     if (!run_send_window (
           sockets,
-          payload,
           payload_size,
           run_id,
           perf_multi_metric::phase_active,
@@ -309,13 +297,6 @@ inline int run_client_benchmark (const std::string &lib_name,
     g_stop_requested.store (false, std::memory_order_release);
     install_signal_handlers ();
 
-    size_t max_size = 64;
-    for (size_t i = 0; i < msg_sizes.size (); ++i)
-        max_size = std::max (max_size, msg_sizes[i]);
-    max_size = std::max<size_t> (max_size, perf_multi_metric::header_size ());
-
-    std::vector<char> payload (max_size, 'd');
-
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         if (g_stop_requested.load (std::memory_order_acquire)) {
             close_client_sockets (&sockets);
@@ -326,7 +307,6 @@ inline int run_client_benchmark (const std::string &lib_name,
         if (!run_single_size_case (
               sockets,
               settings,
-              payload,
               msg_sizes[si],
               run_id)) {
             if (bench_debug_enabled ())

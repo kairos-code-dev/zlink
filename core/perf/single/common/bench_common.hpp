@@ -1225,25 +1225,67 @@ inline int resolve_single_queue_sample_every_msgs()
     return parse_positive_env("PERF_SINGLE_QUEUE_SAMPLE_EVERY_MSGS", 64);
 }
 
+inline void *open_single_queue_probe_monitor(void *target_)
+{
+    if (!target_)
+        return NULL;
+
+    void *monitor =
+      open_configured_service_monitor(target_, ZLINK_SERVICE_MONITOR_EVENT_CLOSED);
+    if (monitor)
+        return monitor;
+
+    return open_configured_socket_monitor(target_, ZLINK_EVENT_CLOSED);
+}
+
+inline bool single_read_monitor_pending_msgs(void *monitor_,
+                                             bool send_,
+                                             unsigned long long *pending_out_)
+{
+    if (!monitor_ || !pending_out_)
+        return false;
+
+    zlink_monitor_snapshot_t snapshot;
+    memset(&snapshot, 0, sizeof(snapshot));
+    if (zlink_monitor_snapshot(monitor_, &snapshot) != 0)
+        return false;
+
+    const zlink_monitor_snapshot_detail_mask_t detail =
+      send_ ? ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+            : ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
+    if ((snapshot.detail_flags & detail) == 0)
+        return false;
+
+    *pending_out_ = static_cast<unsigned long long>(
+      send_ ? snapshot.snd_pending_msgs : snapshot.rcv_pending_msgs);
+    return true;
+}
+
 class queue_probe_t {
 public:
     queue_probe_t(void *send_socket_, void *recv_socket_) :
-        _send_socket(send_socket_),
-        _recv_socket(recv_socket_),
+        _send_monitor(open_single_queue_probe_monitor(send_socket_)),
+        _recv_monitor(open_single_queue_probe_monitor(recv_socket_)),
         _sample_interval_ns(resolve_sample_interval_ns()),
         _sample_every_msgs(resolve_sample_every_msgs()),
         _send_last_sample_ns(0),
         _recv_last_sample_ns(0),
         _send_msgs_since_sample(0),
         _recv_msgs_since_sample(0),
-        _send_total(0),
-        _recv_total(0),
         _snd_pending_max(0),
         _rcv_pending_max(0),
         _rcv_pending_end(0),
         _snd_seen(false),
         _rcv_seen(false)
     {}
+
+    ~queue_probe_t()
+    {
+        if (_send_monitor)
+            zlink_monitor_close(&_send_monitor);
+        if (_recv_monitor)
+            zlink_monitor_close(&_recv_monitor);
+    }
 
     void sample_send_if_due() { maybe_sample_send(false); }
     void sample_recv_if_due() { maybe_sample_recv(false); }
@@ -1267,15 +1309,6 @@ public:
               _rcv_pending_end.load(std::memory_order_acquire));
         }
         return out;
-    }
-
-    unsigned long long pending_count() const
-    {
-        const unsigned long long send_total =
-          _send_total.load(std::memory_order_acquire);
-        const unsigned long long recv_total =
-          _recv_total.load(std::memory_order_acquire);
-        return send_total > recv_total ? (send_total - recv_total) : 0ULL;
     }
 
 private:
@@ -1303,11 +1336,8 @@ private:
 
     void maybe_sample_send(bool force_)
     {
-        if (!_send_socket)
+        if (!_send_monitor)
             return;
-
-        if (!force_)
-            _send_total.fetch_add(1, std::memory_order_acq_rel);
 
         if (force_) {
             _send_msgs_since_sample.store(0, std::memory_order_release);
@@ -1329,7 +1359,9 @@ private:
         }
         _send_last_sample_ns.store(now, std::memory_order_release);
 
-        const unsigned long long pending = pending_count();
+        unsigned long long pending = 0;
+        if (!single_read_monitor_pending_msgs(_send_monitor, true, &pending))
+            return;
         unsigned long long current_max =
           _snd_pending_max.load(std::memory_order_acquire);
         while (pending > current_max
@@ -1341,11 +1373,8 @@ private:
 
     void maybe_sample_recv(bool force_)
     {
-        if (!_recv_socket)
+        if (!_recv_monitor)
             return;
-
-        if (!force_)
-            _recv_total.fetch_add(1, std::memory_order_acq_rel);
 
         if (force_) {
             _recv_msgs_since_sample.store(0, std::memory_order_release);
@@ -1367,7 +1396,9 @@ private:
         }
         _recv_last_sample_ns.store(now, std::memory_order_release);
 
-        const unsigned long long pending = pending_count();
+        unsigned long long pending = 0;
+        if (!single_read_monitor_pending_msgs(_recv_monitor, false, &pending))
+            return;
         unsigned long long current_max =
           _rcv_pending_max.load(std::memory_order_acquire);
         while (pending > current_max
@@ -1378,16 +1409,14 @@ private:
         _rcv_seen.store(true, std::memory_order_release);
     }
 
-    void *_send_socket;
-    void *_recv_socket;
+    void *_send_monitor;
+    void *_recv_monitor;
     unsigned long long _sample_interval_ns;
     unsigned int _sample_every_msgs;
     std::atomic<unsigned long long> _send_last_sample_ns;
     std::atomic<unsigned long long> _recv_last_sample_ns;
     std::atomic<unsigned int> _send_msgs_since_sample;
     std::atomic<unsigned int> _recv_msgs_since_sample;
-    std::atomic<unsigned long long> _send_total;
-    std::atomic<unsigned long long> _recv_total;
     std::atomic<unsigned long long> _snd_pending_max;
     std::atomic<unsigned long long> _rcv_pending_max;
     std::atomic<unsigned long long> _rcv_pending_end;

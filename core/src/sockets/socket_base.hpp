@@ -82,6 +82,7 @@ class socket_base_t : public own_t,
     int send_routed (const zlink_routing_id_t *target_rid_,
                      zlink::msg_t *msg_,
                      int flags_);
+    int rollback ();
     int recv (zlink::msg_t *msg_, int flags_);
     int recv_routed (zlink::msg_t *msg_,
                      zlink_routing_id_t *source_rid_out_,
@@ -241,6 +242,7 @@ class socket_base_t : public own_t,
     virtual int xsend (zlink::msg_t *msg_);
     virtual int xsend_routed (const zlink_routing_id_t *target_rid_,
                               zlink::msg_t *msg_);
+    virtual int xrollback ();
 
     //  The default implementation assumes that recv in not supported.
     virtual bool xhas_in ();

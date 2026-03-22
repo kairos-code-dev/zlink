@@ -1584,6 +1584,24 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
     return 0;
 }
 
+int zlink::socket_base_t::rollback ()
+{
+    if (!enter_public_api ())
+        return -1;
+
+    if (unlikely (_ctx_terminated)) {
+        leave_public_api ();
+        errno = ETERM;
+        return -1;
+    }
+
+    lock_public_api_sync ();
+    const int rc = xrollback ();
+    unlock_public_api_sync ();
+    leave_public_api ();
+    return rc;
+}
+
 int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
 {
 
@@ -2578,6 +2596,11 @@ int zlink::socket_base_t::xsend_routed (const zlink_routing_id_t *target_rid_,
     return -1;
 }
 
+int zlink::socket_base_t::xrollback ()
+{
+    return 0;
+}
+
 bool zlink::socket_base_t::xhas_in ()
 {
     return false;
@@ -2912,13 +2935,6 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     if (rc == -1)
         stop_monitor (false);
     else {
-        if ((events_ & ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED) != 0
-            && (options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB)
-            && xpub_dispatch_start () != 0) {
-            stop_monitor (false);
-            return -1;
-        }
-
         _monitor_queue_sync.lock ();
         _monitor_queue.clear ();
         _monitor_queue_stop = false;

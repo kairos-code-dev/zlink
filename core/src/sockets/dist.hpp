@@ -51,8 +51,11 @@ class dist_t
 
     static bool has_out ();
 
-    // check HWM of all pipes matching
+    //  Check HWM of all matching pipes.
     bool check_hwm ();
+
+    //  Roll back any queued multipart prefix and restore normal state.
+    void rollback ();
 
   private:
     //  Write the message to the pipe. Make the pipe inactive if writing

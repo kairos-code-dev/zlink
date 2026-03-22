@@ -2,6 +2,7 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "../../src/sockets/socket_base.hpp"
 
 #include <condition_variable>
 #include <chrono>
@@ -484,6 +485,7 @@ void recv_subscribe_expect_topic_and_payload_eventually (
 
     TEST_FAIL_MESSAGE ("timed out waiting for subscribed payload");
 }
+
 } // namespace
 
 void test_router_recv_with_source_rid_strips_routing_envelope_from_dealer ()
@@ -866,6 +868,54 @@ void test_pubsub_subscribe_can_skip_topic_copy_and_keep_multipart_payload ()
     test_context_socket_close_zero_linger (pub);
 }
 
+void test_pubsub_publish_rollback_preserves_next_topic_boundary ()
+{
+    void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
+
+    set_timeout_opts (pub);
+    set_timeout_opts (sub);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, k_pubsub_topic));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (pub, "inproc://pubsub_publish_eagain_preserves_boundary"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (sub, "inproc://pubsub_publish_eagain_preserves_boundary"));
+    const uint8_t subscription_frame[] = {
+      1, 'b', 'e', 'n', 'c', 'h'
+    };
+    recv_array_expect_success (pub, subscription_frame, sizeof (subscription_frame));
+
+    zlink_msg_t topic_part;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&topic_part, std::strlen (k_pubsub_topic)));
+    memcpy (zlink_msg_data (&topic_part), k_pubsub_topic,
+            std::strlen (k_pubsub_topic));
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (std::strlen (k_pubsub_topic)),
+      test_send_single_msg (&topic_part, pub, ZLINK_SNDMORE));
+
+    zlink::socket_base_t *pub_socket =
+      static_cast<zlink::socket_base_t *> (pub);
+    TEST_ASSERT_SUCCESS_ERRNO (pub_socket->rollback ());
+
+    char topic[32];
+    memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_FAILURE_ERRNO (
+      EAGAIN,
+      zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
+                       ZLINK_DONTWAIT));
+
+    const std::string recovered_payload = make_fixed_size_payload ('W', 1, 64);
+    publish_payload (pub, recovered_payload);
+    recv_subscribe_expect_topic_and_payload (sub, recovered_payload);
+    test_context_socket_close_zero_linger (sub);
+    test_context_socket_close_zero_linger (pub);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -879,5 +929,6 @@ int main ()
     RUN_TEST (test_pubsub_repeated_topic_stops_delivery_after_unsubscribe);
     RUN_TEST (test_pubsub_repeated_topic_keeps_delivering_after_peer_disconnect);
     RUN_TEST (test_pubsub_subscribe_can_skip_topic_copy_and_keep_multipart_payload);
+    RUN_TEST (test_pubsub_publish_rollback_preserves_next_topic_boundary);
     return UNITY_END ();
 }

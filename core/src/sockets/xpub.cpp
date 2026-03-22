@@ -400,6 +400,13 @@ int zlink::xpub_t::xsend (msg_t *msg_)
     return rc;
 }
 
+int zlink::xpub_t::xrollback ()
+{
+    _dist.rollback ();
+    _more_send = false;
+    return 0;
+}
+
 bool zlink::xpub_t::xhas_out ()
 {
     return _dist.has_out ();

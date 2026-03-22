@@ -57,6 +57,7 @@ struct iovec
 #include "utils/config.hpp"
 #include "utils/likely.hpp"
 #include "utils/clock.hpp"
+#include "utils/sleep.hpp"
 #include "core/ctx.hpp"
 #include "utils/err.hpp"
 #include "core/msg.hpp"
@@ -6408,6 +6409,7 @@ static int publish_socket_parts (socket_handle_t handle_,
         return -1;
     }
     const int base_flags = flags_ & ZLINK_DONTWAIT;
+    bool sent_prefix = false;
     if (topic_id_ != NULL) {
         const size_t topic_len = strlen (topic_id_);
         zlink_msg_t topic_msg;
@@ -6424,18 +6426,85 @@ static int publish_socket_parts (socket_handle_t handle_,
             errno = err;
             return -1;
         }
+        sent_prefix = part_count_ > 0;
     }
 
     for (size_t i = 0; i < part_count_; ++i) {
         const bool more = i + 1 < part_count_;
         if (s_sendmsg (handle_, &parts_[i], base_flags | (more ? ZLINK_SNDMORE : 0))
             < 0) {
+            const int err = errno;
+            if (sent_prefix)
+                (void) handle_.socket->rollback ();
+            errno = err;
             return -1;
         }
+        sent_prefix = more;
     }
 
     errno = 0;
     return 0;
+}
+
+static int socket_sndtimeo_ms (socket_handle_t handle_)
+{
+    if (!handle_.socket) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    int timeout_ms = -1;
+    size_t size = sizeof (timeout_ms);
+    if (handle_.socket->getsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &timeout_ms,
+                                    &size)
+        != 0) {
+        return -1;
+    }
+
+    return timeout_ms;
+}
+
+static int publish_socket_parts_blocking (socket_handle_t handle_,
+                                          const char *topic_id_,
+                                          zlink_msg_t *parts_,
+                                          size_t part_count_,
+                                          zlink_send_flags_t flags_)
+{
+    const int sndtimeo_ms = socket_sndtimeo_ms (handle_);
+    if (sndtimeo_ms < 0 && errno != 0)
+        return -1;
+
+    zlink::clock_t clock;
+    const uint64_t deadline_ms =
+      sndtimeo_ms > 0
+        ? clock.now_ms () + static_cast<uint64_t> (sndtimeo_ms)
+        : 0;
+
+    while (true) {
+        if (publish_socket_parts (handle_, topic_id_, parts_, part_count_,
+                                  flags_ | ZLINK_DONTWAIT)
+            == 0) {
+            return 0;
+        }
+
+        const int err = errno;
+        if (err != EAGAIN && err != EINTR) {
+            errno = err;
+            return -1;
+        }
+
+        if (sndtimeo_ms == 0) {
+            errno = EAGAIN;
+            return -1;
+        }
+
+        if (sndtimeo_ms > 0 && clock.now_ms () >= deadline_ms) {
+            errno = EAGAIN;
+            return -1;
+        }
+
+        zlink::sleep_ms (1);
+    }
 }
 
 static int recv_socket_subscribe_parts (socket_handle_t handle_,
@@ -6741,8 +6810,11 @@ int zlink_publish (void *subject_,
     if (zlink::socket_base_t *socket = try_as_socket (subject_)) {
         socket_handle_t handle;
         handle.socket = socket;
-        return publish_socket_parts (handle, topic_id_, parts_, part_count_,
-                                     flags_);
+        if ((flags_ & ZLINK_DONTWAIT) != 0)
+            return publish_socket_parts (handle, topic_id_, parts_, part_count_,
+                                         flags_);
+        return publish_socket_parts_blocking (handle, topic_id_, parts_,
+                                              part_count_, flags_);
     }
 
     if (spot_handle_t *spot = as_spot_handle (subject_)) {

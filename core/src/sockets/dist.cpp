@@ -217,3 +217,13 @@ bool zlink::dist_t::check_hwm ()
 
     return true;
 }
+
+void zlink::dist_t::rollback ()
+{
+    for (pipes_t::size_type i = 0; i < _matching; ++i)
+        _pipes[i]->rollback ();
+
+    _matching = 0;
+    _active = _eligible;
+    _more = false;
+}

@@ -34,12 +34,11 @@ int recv_one_pubsub_message (void *socket,
                              double *sample_us_out,
                              bool *have_sample_out)
 {
-    char topic_buf[256];
-    size_t topic_len = sizeof (topic_buf);
+    size_t topic_len = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const int rc = zlink_subscribe (
-      socket, &parts, &part_count, ZLINK_DONTWAIT, topic_buf, &topic_len);
+      socket, &parts, &part_count, ZLINK_DONTWAIT, NULL, &topic_len);
     if (rc != 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
@@ -47,10 +46,8 @@ int recv_one_pubsub_message (void *socket,
         return -1;
     }
 
-    const bool topic_ok =
-      topic_len == std::strlen (k_pubsub_topic)
-      && std::memcmp (topic_buf, k_pubsub_topic, topic_len) == 0;
-    if (!topic_ok || !parts || part_count == 0) {
+    if (topic_len != std::strlen (k_pubsub_topic) || !parts
+        || part_count == 0) {
         if (bench_debug_enabled ()) {
             std::cerr << "[multi-pubsub-client] recv shape mismatch topic_len="
                       << topic_len << " part_count=" << part_count << std::endl;

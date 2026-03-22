@@ -18,11 +18,17 @@ namespace
 {
 struct delivery_ready_monitor_state_t
 {
-    delivery_ready_monitor_state_t () : ready (false), error_code (0) {}
+    delivery_ready_monitor_state_t () :
+        ready (false),
+        ready_count (0),
+        error_code (0)
+    {
+    }
 
     std::mutex sync;
     std::condition_variable cv;
     bool ready;
+    uint32_t ready_count;
     int error_code;
 };
 
@@ -131,6 +137,7 @@ void delivery_ready_monitor_handler (const zlink_monitor_event_t *event_,
             case ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED:
             case ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED:
                 state->ready = event_->value > 0;
+                state->ready_count = static_cast<uint32_t> (event_->value);
                 break;
             case ZLINK_EVENT_BIND_FAILED:
             case ZLINK_EVENT_ACCEPT_FAILED:
@@ -207,6 +214,24 @@ bool wait_delivery_ready (delivery_ready_monitor_t *monitor_, int timeout_ms_)
           return monitor_->state->error_code != 0 || monitor_->state->ready;
       })
            && monitor_->state->error_code == 0 && monitor_->state->ready;
+}
+
+bool wait_delivery_ready_count (delivery_ready_monitor_t *monitor_,
+                                uint32_t expected_count_,
+                                int timeout_ms_)
+{
+    if (!monitor_ || !monitor_->state)
+        return false;
+
+    std::unique_lock<std::mutex> lock (monitor_->state->sync);
+    return monitor_->state->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
+      [monitor_, expected_count_] () {
+          return monitor_->state->error_code != 0
+                 || monitor_->state->ready_count == expected_count_;
+      })
+           && monitor_->state->error_code == 0
+           && monitor_->state->ready_count == expected_count_;
 }
 
 void close_delivery_ready_monitor (delivery_ready_monitor_t *monitor_)
@@ -328,6 +353,21 @@ void publish_payload (void *pub_, const std::string &payload_)
       zlink_publish (pub_, k_pubsub_topic, &part, 1, 0));
 }
 
+void publish_two_part_payload (void *pub_,
+                               const std::string &part_a_,
+                               const std::string &part_b_)
+{
+    zlink_msg_t parts[2];
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&parts[0], part_a_.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&parts[1], part_b_.size ()));
+    memcpy (zlink_msg_data (&parts[0]), part_a_.data (), part_a_.size ());
+    memcpy (zlink_msg_data (&parts[1]), part_b_.data (), part_b_.size ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_, k_pubsub_topic, parts, 2, 0));
+}
+
 void recv_subscribe_expect_topic_and_payload (void *sub_,
                                               const std::string &payload_)
 {
@@ -346,6 +386,52 @@ void recv_subscribe_expect_topic_and_payload (void *sub_,
     TEST_ASSERT_EQUAL_UINT64 (payload_.size (), zlink_msg_size (&parts[0]));
     TEST_ASSERT_EQUAL_MEMORY (payload_.data (), zlink_msg_data (&parts[0]),
                               payload_.size ());
+
+    zlink_multipart_close (parts, part_count);
+    free (parts);
+}
+
+void recv_subscribe_expect_payload_without_topic_copy (
+  void *sub_,
+  const std::string &payload_)
+{
+    size_t topic_len = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe (sub_, NULL, &parts, &part_count, NULL, &topic_len, 0));
+    TEST_ASSERT_EQUAL_UINT64 (std::strlen (k_pubsub_topic), topic_len);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_NOT_NULL (parts);
+    TEST_ASSERT_EQUAL_UINT64 (payload_.size (), zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY (payload_.data (), zlink_msg_data (&parts[0]),
+                              payload_.size ());
+
+    zlink_multipart_close (parts, part_count);
+    free (parts);
+}
+
+void recv_subscribe_expect_payload_parts_without_topic_copy (
+  void *sub_,
+  const std::string &part_a_,
+  const std::string &part_b_)
+{
+    size_t topic_len = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe (sub_, NULL, &parts, &part_count, NULL, &topic_len, 0));
+    TEST_ASSERT_EQUAL_UINT64 (std::strlen (k_pubsub_topic), topic_len);
+    TEST_ASSERT_EQUAL_UINT64 (2, part_count);
+    TEST_ASSERT_NOT_NULL (parts);
+    TEST_ASSERT_EQUAL_UINT64 (part_a_.size (), zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY (part_a_.data (), zlink_msg_data (&parts[0]),
+                              part_a_.size ());
+    TEST_ASSERT_EQUAL_UINT64 (part_b_.size (), zlink_msg_size (&parts[1]));
+    TEST_ASSERT_EQUAL_MEMORY (part_b_.data (), zlink_msg_data (&parts[1]),
+                              part_b_.size ());
 
     zlink_multipart_close (parts, part_count);
     free (parts);
@@ -617,6 +703,114 @@ void test_pubsub_subscribe_dontwait_preserves_perf_contract_during_burst ()
     test_context_socket_close_zero_linger (pub);
 }
 
+void test_pubsub_repeated_topic_stops_delivery_after_unsubscribe ()
+{
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub_a = test_context_socket (ZLINK_SOCKET_SUB);
+    void *sub_b = test_context_socket (ZLINK_SOCKET_SUB);
+
+    set_timeout_opts (pub);
+    set_timeout_opts (sub_a);
+    set_timeout_opts (sub_b);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_a, k_pubsub_topic));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_b, k_pubsub_topic));
+
+    delivery_ready_monitor_t pub_monitor;
+    delivery_ready_monitor_t sub_a_monitor;
+    delivery_ready_monitor_t sub_b_monitor;
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      pub, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, &pub_monitor));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      sub_a, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &sub_a_monitor));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      sub_b, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &sub_b_monitor));
+
+    char endpoint[MAX_SOCKET_STRING];
+    test_bind (pub, "tcp://127.0.0.1:*", endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_a, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_b, endpoint));
+
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&pub_monitor, 2, 5000));
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&sub_a_monitor, 1, 5000));
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&sub_b_monitor, 1, 5000));
+
+    for (size_t i = 0; i < 4; ++i) {
+        const std::string payload = make_fixed_size_payload ('W', i, 64);
+        publish_payload (pub, payload);
+        recv_subscribe_expect_topic_and_payload (sub_a, payload);
+        recv_subscribe_expect_topic_and_payload (sub_b, payload);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_unset_subscription (sub_b, k_pubsub_topic));
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&pub_monitor, 1, 5000));
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&sub_b_monitor, 0, 5000));
+
+    for (size_t i = 0; i < 8; ++i) {
+        const std::string payload = make_fixed_size_payload ('A', i, 64);
+        publish_payload (pub, payload);
+        recv_subscribe_expect_topic_and_payload (sub_a, payload);
+
+        char topic[32];
+        memset (topic, 0, sizeof (topic));
+        size_t topic_len = sizeof (topic);
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        const int rc = zlink_subscribe (
+          sub_b, NULL, &parts, &part_count, topic, &topic_len, ZLINK_DONTWAIT);
+        TEST_ASSERT_EQUAL_INT (-1, rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    }
+
+    close_delivery_ready_monitor (&sub_b_monitor);
+    close_delivery_ready_monitor (&sub_a_monitor);
+    close_delivery_ready_monitor (&pub_monitor);
+    test_context_socket_close_zero_linger (sub_b);
+    test_context_socket_close_zero_linger (sub_a);
+    test_context_socket_close_zero_linger (pub);
+}
+
+void test_pubsub_subscribe_can_skip_topic_copy_and_keep_multipart_payload ()
+{
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
+
+    set_timeout_opts (pub);
+    set_timeout_opts (sub);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, k_pubsub_topic));
+
+    delivery_ready_monitor_t pub_monitor;
+    delivery_ready_monitor_t sub_monitor;
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      pub, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, &pub_monitor));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      sub, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &sub_monitor));
+
+    char endpoint[MAX_SOCKET_STRING];
+    test_bind (pub, "tcp://127.0.0.1:*", endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&pub_monitor, 1, 5000));
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&sub_monitor, 1, 5000));
+
+    const std::string single = make_fixed_size_payload ('S', 1, 64);
+    publish_payload (pub, single);
+    recv_subscribe_expect_payload_without_topic_copy (sub, single);
+
+    const std::string part_a = make_fixed_size_payload ('A', 2, 32);
+    const std::string part_b = make_fixed_size_payload ('B', 3, 48);
+    publish_two_part_payload (pub, part_a, part_b);
+    recv_subscribe_expect_payload_parts_without_topic_copy (
+      sub, part_a, part_b);
+
+    close_delivery_ready_monitor (&sub_monitor);
+    close_delivery_ready_monitor (&pub_monitor);
+    test_context_socket_close_zero_linger (sub);
+    test_context_socket_close_zero_linger (pub);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -627,5 +821,7 @@ int main ()
     RUN_TEST (test_pubsub_callback_is_supported_on_raw_sub_sockets);
     RUN_TEST (test_pubsub_subscribe_preserves_topic_and_payload_shape_across_warmup);
     RUN_TEST (test_pubsub_subscribe_dontwait_preserves_perf_contract_during_burst);
+    RUN_TEST (test_pubsub_repeated_topic_stops_delivery_after_unsubscribe);
+    RUN_TEST (test_pubsub_subscribe_can_skip_topic_copy_and_keep_multipart_payload);
     return UNITY_END ();
 }

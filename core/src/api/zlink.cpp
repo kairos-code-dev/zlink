@@ -193,9 +193,10 @@ static int copy_topic_to_output (const char *topic_data_,
         return -1;
     }
 
-    if (!topic_id_out_ && *topic_id_len_out_ != 0) {
-        errno = EFAULT;
-        return -1;
+    if (!topic_id_out_) {
+        *topic_id_len_out_ = topic_size_;
+        errno = 0;
+        return 0;
     }
 
     if (*topic_id_len_out_ < topic_size_) {
@@ -6508,7 +6509,7 @@ static int recv_socket_subscribe_parts (socket_handle_t handle_,
         frames.push_back (frame);
     }
 
-    const size_t payload_count = frames.size () - 1;
+    const size_t payload_count = frames.size ();
     if (payload_count == 0) {
         close_spot_parts (frames.data (), frames.size ());
         errno = 0;

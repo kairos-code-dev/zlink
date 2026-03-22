@@ -428,8 +428,14 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    queue_probe_t client_probe (client_gateway, server_gateway);
-    probe = &client_probe;
+    queue_probe_t *client_probe = new (std::nothrow)
+      queue_probe_t (client_gateway, server_gateway);
+    if (!client_probe) {
+        print_fail ();
+        cleanup_gateway_case (&client_gateway, &server_gateway);
+        return 1;
+    }
+    probe = client_probe;
 
     const int linger = 0;
     const int sndhwm = resolve_single_socket_hwm (true);
@@ -450,6 +456,7 @@ int run_case (const std::string &lib_name_,
     if (!setup_tls_server (server_gateway, transport_)
         || !setup_tls_client (client_gateway, transport_)) {
         print_fail ();
+        delete client_probe;
         cleanup_gateway_case (&client_gateway, &server_gateway);
         return 1;
     }
@@ -460,6 +467,7 @@ int run_case (const std::string &lib_name_,
       bind_server_gateway (server_gateway, transport_, base_port);
     if (endpoint.empty ()) {
         print_fail ();
+        delete client_probe;
         cleanup_gateway_case (&client_gateway, &server_gateway);
         return 1;
     }
@@ -468,6 +476,7 @@ int run_case (const std::string &lib_name_,
     std::memset (&server_rid, 0, sizeof (server_rid));
     if (zlink_get_routing_id (server_gateway, &server_rid) != 0) {
         print_fail ();
+        delete client_probe;
         cleanup_gateway_case (&client_gateway, &server_gateway);
         return 1;
     }
@@ -476,6 +485,7 @@ int run_case (const std::string &lib_name_,
         != 0
         || !wait_gateway_send_ready_event (client_gateway, 5000)) {
         print_fail ();
+        delete client_probe;
         cleanup_gateway_case (&client_gateway, &server_gateway);
         return 1;
     }
@@ -490,11 +500,13 @@ int run_case (const std::string &lib_name_,
                             &server_state)
         != 0) {
         print_fail ();
+        delete client_probe;
         cleanup_gateway_case (&client_gateway, &server_gateway);
         return 1;
     }
     if (!start_single_metric_worker (&metric_worker)) {
         print_fail ();
+        delete client_probe;
         cleanup_gateway_case (&client_gateway, &server_gateway);
         return 1;
     }
@@ -507,6 +519,8 @@ int run_case (const std::string &lib_name_,
         const queue_stats_t queue_stats = probe->snapshot ();
         server_state.probe = NULL;
         stop_single_metric_worker (&metric_worker);
+        delete client_probe;
+        probe = NULL;
         print_result (lib_name_,
                       k_pattern,
                       transport_,
@@ -528,6 +542,8 @@ int run_case (const std::string &lib_name_,
     stop_single_metric_worker (&metric_worker);
     const queue_stats_t queue_stats = probe->snapshot ();
     server_state.probe = NULL;
+    delete client_probe;
+    probe = NULL;
     print_result (lib_name_,
                   k_pattern,
                   transport_,

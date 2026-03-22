@@ -331,6 +331,21 @@ inline bool create_client_sockets (
     return true;
 }
 
+inline bool make_routing_id (const char *text, zlink_routing_id_t *routing_id)
+{
+    if (!text || !routing_id)
+        return false;
+
+    const size_t size = std::strlen (text);
+    if (size == 0 || size > sizeof (routing_id->data))
+        return false;
+
+    std::memset (routing_id, 0, sizeof (*routing_id));
+    std::memcpy (routing_id->data, text, size);
+    routing_id->size = static_cast<uint8_t> (size);
+    return true;
+}
+
 inline int remaining_poll_timeout_ms (
   const std::chrono::steady_clock::time_point &deadline)
 {

@@ -1167,7 +1167,9 @@ inline bool single_perf_callback_supported_for_pattern(const char *pattern)
 
 inline bool single_perf_recv_supported_for_pattern(const char *pattern)
 {
-    return pattern && std::string(pattern) == "SPOT";
+    return pattern
+           && (std::string(pattern) == "SPOT"
+               || std::string(pattern) == "PUBSUB");
 }
 
 inline bool single_perf_validate_recv_mode_for_pattern(const char *pattern)

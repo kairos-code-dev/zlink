@@ -46,7 +46,7 @@ PATTERN_TO_BINARY = {
 
 SUPPORTED_RECV_MODES = {
     "PAIR": ("callback",),
-    "PUBSUB": ("callback",),
+    "PUBSUB": ("callback", "recv"),
     "DEALER_DEALER": ("callback",),
     "DEALER_ROUTER": ("callback",),
     "ROUTER_ROUTER": ("callback",),

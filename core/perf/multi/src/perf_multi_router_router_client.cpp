@@ -1,10 +1,10 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_echo_policy.hpp"
 #include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -18,15 +18,21 @@ namespace {
 static const char *k_pattern = "MULTI_ROUTER_ROUTER";
 static const int k_client_socket_type = ZLINK_SOCKET_ROUTER;
 static const char *k_server_routing_id = "SERVER";
+namespace perf_multi_echo = perf_multi_echo_policy;
 
 using perf_multi_client::close_client_monitors;
 using perf_multi_client::create_client_sockets;
 using perf_multi_client::is_supported_transport;
+using perf_multi_client::make_routing_id;
 using perf_multi_client::next_metric_run_id;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
 using perf_multi_client::resolve_case_max_msg_size;
 using perf_multi_client::resolve_case_msg_sizes;
+using perf_multi_client::send_blocked;
+using perf_multi_client::send_error;
+using perf_multi_client::send_ok;
+using perf_multi_client::send_status_t;
 using perf_multi_client::wait_all_client_connect_ready;
 
 struct router_client_slot_t
@@ -87,12 +93,20 @@ struct router_client_state_t
     std::atomic<int> fatal_errno;
 };
 
-enum send_status_t
+template <typename Fn>
+void for_each_router_slot (std::vector<router_client_slot_t> &slots, const Fn &fn)
 {
-    send_status_ok = 0,
-    send_status_blocked = 1,
-    send_status_fatal = 2
-};
+    for (size_t i = 0; i < slots.size (); ++i)
+        fn (&slots[i]);
+}
+
+template <typename Fn>
+void for_each_router_slot (const std::vector<router_client_slot_t> &slots,
+                           const Fn &fn)
+{
+    for (size_t i = 0; i < slots.size (); ++i)
+        fn (&slots[i]);
+}
 
 enum recv_status_t
 {
@@ -100,41 +114,6 @@ enum recv_status_t
     recv_status_none = 1,
     recv_status_fatal = 2
 };
-
-bool make_routing_id(const char *text, zlink_routing_id_t *routing_id)
-{
-    if (!text || !routing_id)
-        return false;
-
-    const size_t size = std::strlen(text);
-    if (size == 0 || size > sizeof(routing_id->data))
-        return false;
-
-    std::memset(routing_id, 0, sizeof(*routing_id));
-    std::memcpy(routing_id->data, text, size);
-    routing_id->size = static_cast<uint8_t>(size);
-    return true;
-}
-
-double percentile_from_sorted(const std::vector<double> &sorted_samples,
-                              double quantile)
-{
-    if (sorted_samples.empty())
-        return 0.0;
-    if (quantile <= 0.0)
-        return sorted_samples.front();
-    if (quantile >= 1.0)
-        return sorted_samples.back();
-
-    const double pos =
-      (static_cast<double>(sorted_samples.size()) - 1.0) * quantile;
-    const size_t lo = static_cast<size_t>(pos);
-    const size_t hi =
-      lo + 1 < sorted_samples.size() ? lo + 1 : lo;
-    const double frac = pos - static_cast<double>(lo);
-    return sorted_samples[lo]
-           + (sorted_samples[hi] - sorted_samples[lo]) * frac;
-}
 
 void close_router_slots(router_client_state_t *state)
 {
@@ -161,19 +140,10 @@ void close_router_slots(router_client_state_t *state)
     state->sockets.clear();
 }
 
-void mark_fatal(router_client_state_t *state, int err)
-{
-    if (!state)
-        return;
-
-    state->fatal.store(true, std::memory_order_release);
-    state->fatal_errno.store(err != 0 ? err : EIO, std::memory_order_release);
-}
-
 send_status_t send_router_request(router_client_slot_t *slot)
 {
     if (!slot || !slot->socket || slot->msg_size == 0 || !slot->send_enabled)
-        return send_status_fatal;
+        return send_error;
 
     const size_t payload_size =
       std::max(slot->msg_size, perf_multi_metric::header_size());
@@ -190,7 +160,7 @@ send_status_t send_router_request(router_client_slot_t *slot)
           NULL,
           NULL)
         != 0) {
-        return send_status_fatal;
+        return send_error;
     }
 
     if (!perf_multi_metric::stamp_payload(
@@ -202,7 +172,7 @@ send_status_t send_router_request(router_client_slot_t *slot)
           (static_cast<uint64_t>(slot->slot_index) << 48) | slot->next_seq,
           perf_multi_metric::now_us())) {
         zlink_msg_close(&part);
-        return send_status_fatal;
+        return send_error;
     }
 
     const int rc =
@@ -212,20 +182,20 @@ send_status_t send_router_request(router_client_slot_t *slot)
         slot->send_pending = false;
         slot->inflight = true;
         ++slot->next_seq;
-        return send_status_ok;
+        return send_ok;
     }
 
     const int saved_errno = errno;
     (void) zlink_msg_close(&part);
-    if (saved_errno == EAGAIN) {
+    if (perf_multi_echo::echo_is_blocked_send_errno(saved_errno)) {
         slot->send_pending = true;
         slot->inflight = false;
         errno = saved_errno;
-        return send_status_blocked;
+        return send_blocked;
     }
 
     errno = saved_errno;
-    return send_status_fatal;
+    return send_error;
 }
 
 recv_status_t receive_router_reply(router_client_state_t *state,
@@ -282,7 +252,7 @@ recv_status_t receive_router_reply(router_client_state_t *state,
 
     if (slot->send_enabled && slot->auto_send_on_recv) {
         const send_status_t send_rc = send_router_request(slot);
-        if (send_rc == send_status_fatal)
+        if (send_rc == send_error)
             return recv_status_fatal;
     }
 
@@ -326,7 +296,7 @@ bool service_router_slots(router_client_state_t *state,
             events = static_cast<short>(events | ZLINK_POLLOUT);
         if (slot.poller_events != events) {
             if (zlink_poller_modify(state->poller, slot.socket, events) != 0) {
-                mark_fatal(state, zlink_errno());
+                perf_multi_echo::echo_mark_fatal(state, zlink_errno());
                 return false;
             }
             slot.poller_events = events;
@@ -343,7 +313,7 @@ bool service_router_slots(router_client_state_t *state,
     if (poll_rc < 0) {
         const int err = zlink_errno();
         if (err != EINTR && err != EAGAIN) {
-            mark_fatal(state, err);
+            perf_multi_echo::echo_mark_fatal(state, err);
             return false;
         }
     }
@@ -357,7 +327,7 @@ bool service_router_slots(router_client_state_t *state,
         if ((events[i].events & ZLINK_POLLIN) != 0) {
             bool recv_progressed = false;
             if (!drain_router_replies(state, slot, &recv_progressed)) {
-                mark_fatal(state, errno);
+                perf_multi_echo::echo_mark_fatal(state, errno);
                 return false;
             }
             progressed = progressed || recv_progressed;
@@ -367,11 +337,11 @@ bool service_router_slots(router_client_state_t *state,
             && slot->send_pending
             && slot->send_enabled) {
             const send_status_t send_rc = send_router_request(slot);
-            if (send_rc == send_status_fatal) {
-                mark_fatal(state, errno);
+            if (send_rc == send_error) {
+                perf_multi_echo::echo_mark_fatal(state, errno);
                 return false;
             }
-            progressed = progressed || send_rc == send_status_ok;
+            progressed = progressed || send_rc == send_ok;
         }
     }
 
@@ -439,12 +409,10 @@ void reset_active_metrics(router_client_state_t *state,
     if (!state)
         return;
 
-    state->collect_active.store(false, std::memory_order_release);
-    state->active_run_id.store(run_id, std::memory_order_release);
-    state->active_msg_size.store(msg_size, std::memory_order_release);
-    state->active_received.store(0, std::memory_order_release);
-    for (size_t i = 0; i < state->slots.size(); ++i)
-        state->slots[i].latency = bench_latency_sampler_t();
+    perf_multi_echo::echo_reset_active_metrics(state, run_id, msg_size);
+    for_each_router_slot(state->slots, [] (router_client_slot_t *slot) {
+        perf_multi_echo::echo_reset_slot_latency(slot);
+    });
 }
 
 void configure_phase_slots(router_client_state_t *state,
@@ -456,60 +424,44 @@ void configure_phase_slots(router_client_state_t *state,
     if (!state)
         return;
 
-    for (size_t i = 0; i < state->slots.size(); ++i) {
-        router_client_slot_t &slot = state->slots[i];
-        slot.run_id = run_id;
-        slot.msg_size = msg_size;
-        slot.phase = phase;
-        slot.next_seq = 1;
-        slot.send_pending = false;
-        slot.inflight = false;
-        slot.send_enabled = send_enabled;
-        slot.auto_send_on_recv = send_enabled;
-        slot.poller_events = 0;
-    }
+    for_each_router_slot(
+      state->slots,
+      [run_id, msg_size, phase, send_enabled] (router_client_slot_t *slot) {
+          perf_multi_echo::echo_configure_phase_slot(
+            slot, run_id, msg_size, phase, send_enabled);
+      });
 }
 
-bool start_phase_requests(router_client_state_t *state,
-                          int timeout_ms)
+bool seed_phase_requests(router_client_state_t *state, bool *all_started_out)
 {
+    if (all_started_out)
+        *all_started_out = true;
     if (!state)
         return false;
 
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1, timeout_ms));
+    bool all_started = true;
+    bool failed = false;
+    for_each_router_slot(state->slots, [&] (router_client_slot_t *slot) {
+        if (failed)
+            return;
+        if (!slot->socket || slot->inflight || !slot->send_enabled)
+            return;
 
-    while (std::chrono::steady_clock::now() < deadline) {
-        bool all_started = true;
-        for (size_t i = 0; i < state->slots.size(); ++i) {
-            router_client_slot_t &slot = state->slots[i];
-            if (!slot.socket || slot.inflight || !slot.send_enabled)
-                continue;
-
-            const send_status_t send_rc = send_router_request(&slot);
-            if (send_rc == send_status_fatal) {
-                mark_fatal(state, errno);
-                return false;
-            }
-            if (send_rc != send_status_ok)
-                all_started = false;
+        const send_status_t send_rc = send_router_request(slot);
+        if (send_rc == send_error) {
+            failed = true;
+            all_started = false;
+            return;
         }
+        if (send_rc != send_ok)
+            all_started = false;
+    });
 
-        if (all_started)
-            return true;
-
-        const int remaining_ms = static_cast<int>(
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-            deadline - std::chrono::steady_clock::now())
-            .count());
-        if (remaining_ms <= 0)
-            break;
-        if (!service_router_slots(state, std::min(remaining_ms, 10), NULL))
-            return false;
-    }
-
-    return false;
+    if (failed || state->fatal.load(std::memory_order_acquire))
+        return false;
+    if (all_started_out)
+        *all_started_out = all_started;
+    return true;
 }
 
 void stop_phase(router_client_state_t *state)
@@ -517,38 +469,28 @@ void stop_phase(router_client_state_t *state)
     if (!state)
         return;
 
-    for (size_t i = 0; i < state->slots.size(); ++i) {
-        state->slots[i].send_enabled = false;
-        state->slots[i].send_pending = false;
-        state->slots[i].auto_send_on_recv = false;
-    }
+    for_each_router_slot(state->slots, [] (router_client_slot_t *slot) {
+        perf_multi_echo::echo_stop_phase_slot(slot);
+    });
 }
 
-bool wait_phase_duration(router_client_state_t *state, double seconds)
+bool build_latency_stats(const std::vector<router_client_slot_t> &slots,
+                         bench_latency_stats_t *latency_out,
+                         unsigned long long *latency_count_out)
 {
-    if (!state)
-        return false;
-    if (seconds <= 0.0)
-        return true;
+    unsigned long long latency_count = 0;
+    double latency_sum_us = 0.0;
+    std::vector<double> latency_samples;
 
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-          std::chrono::duration<double>(seconds));
+    for_each_router_slot(slots, [&] (const router_client_slot_t *slot) {
+        perf_multi_echo::echo_append_slot_latency(
+          slot, &latency_count, &latency_sum_us, &latency_samples);
+    });
 
-    while (!state->fatal.load(std::memory_order_acquire)
-           && std::chrono::steady_clock::now() < deadline) {
-        const int remaining_ms = static_cast<int>(
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-            deadline - std::chrono::steady_clock::now())
-            .count());
-        if (remaining_ms <= 0)
-            break;
-        if (!service_router_slots(state, std::min(remaining_ms, 10), NULL))
-            return false;
-    }
-
-    return !state->fatal.load(std::memory_order_acquire);
+    if (latency_count_out)
+        *latency_count_out = latency_count;
+    return perf_multi_echo::echo_finalize_latency_stats(
+      latency_count, latency_sum_us, latency_samples, latency_out);
 }
 
 bool run_single_size_case(router_client_state_t *state,
@@ -563,27 +505,43 @@ bool run_single_size_case(router_client_state_t *state,
     const uint32_t run_id = next_metric_run_id();
     reset_active_metrics(state, run_id, msg_size);
 
-    configure_phase_slots(state, run_id, msg_size,
-                          perf_multi_metric::phase_warmup, true);
-    if (!start_phase_requests(state, settings.connect_ready_timeout_ms))
+    configure_phase_slots(
+      state, run_id, msg_size, perf_multi_metric::phase_warmup, true);
+    if (!perf_multi_echo::echo_start_phase_requests(
+          state,
+          settings.connect_ready_timeout_ms,
+          [&] (bool *all_started_out) {
+              return seed_phase_requests(state, all_started_out);
+          },
+          service_router_slots))
         return false;
-    if (!wait_phase_duration(
-          state, static_cast<double>(std::max(0, settings.warmup_seconds)))) {
+    if (!perf_multi_echo::echo_wait_phase_duration(
+          state,
+          static_cast<double>(std::max(0, settings.warmup_seconds)),
+          service_router_slots)) {
         return false;
     }
 
     stop_phase(state);
     reset_active_metrics(state, run_id, msg_size);
     state->collect_active.store(true, std::memory_order_release);
-    configure_phase_slots(state, run_id, msg_size,
-                          perf_multi_metric::phase_active, true);
-    if (!start_phase_requests(state, settings.connect_ready_timeout_ms))
+    configure_phase_slots(
+      state, run_id, msg_size, perf_multi_metric::phase_active, true);
+    if (!perf_multi_echo::echo_start_phase_requests(
+          state,
+          settings.connect_ready_timeout_ms,
+          [&] (bool *all_started_out) {
+              return seed_phase_requests(state, all_started_out);
+          },
+          service_router_slots))
         return false;
 
     const bench_multi_cpu_sample_t sample_start =
       bench_multi_capture_cpu_sample();
-    if (!wait_phase_duration(
-          state, static_cast<double>(std::max(1, settings.duration_seconds)))) {
+    if (!perf_multi_echo::echo_wait_phase_duration(
+          state,
+          static_cast<double>(std::max(1, settings.duration_seconds)),
+          service_router_slots)) {
         return false;
     }
 
@@ -596,30 +554,16 @@ bool run_single_size_case(router_client_state_t *state,
       state->active_received.load(std::memory_order_acquire);
 
     unsigned long long latency_count = 0;
-    double latency_sum_us = 0.0;
-    std::vector<double> latency_samples;
-    for (size_t i = 0; i < state->slots.size(); ++i) {
-        latency_count += state->slots[i].latency.count();
-        latency_sum_us += state->slots[i].latency.sum_us();
-        state->slots[i].latency.append_samples(&latency_samples);
-    }
+    bench_latency_stats_t latency;
+    const bool have_latency =
+      build_latency_stats(state->slots, &latency, &latency_count);
 
     if (state->fatal.load(std::memory_order_acquire) || active_received == 0
         || latency_count == 0) {
         return false;
     }
-
-    bench_latency_stats_t latency;
-    latency.mean_us =
-      latency_sum_us / static_cast<double>(latency_count);
-    if (latency_samples.empty()) {
-        latency.p95_us = latency.mean_us;
-        latency.p99_us = latency.mean_us;
-    } else {
-        std::sort(latency_samples.begin(), latency_samples.end());
-        latency.p95_us = percentile_from_sorted(latency_samples, 0.95);
-        latency.p99_us = percentile_from_sorted(latency_samples, 0.99);
-    }
+    if (!have_latency)
+        return false;
 
     const double throughput =
       static_cast<double>(active_received)

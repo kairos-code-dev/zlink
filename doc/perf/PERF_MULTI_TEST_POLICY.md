@@ -288,11 +288,28 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 ### 3.6 코어 로직 인라인 원칙
 
-각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 상세 규칙은 [PERF_POLICY.md § 8.5](PERF_POLICY.md)를 참조한다.
+각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는
+샘플 역할을 해야 한다. 상세 규칙은 [PERF_POLICY.md § 8.5](PERF_POLICY.md)를
+참조한다.
 
-- **server 바이너리**: 소켓 생성, bind, recv callback/send-ready handler 등록, phase 제어가 각 파일에 인라인으로 존재해야 한다.
-- **client 바이너리**: 소켓 생성, connect, monitor-ready gate, phase 진행, send/recv 흐름, routing/backpressure 처리가 각 파일에 인라인으로 존재해야 한다. 설정/출력/cleanup/metric 유틸리티는 공통화할 수 있지만, `run_multi_echo_client_benchmark` / `run_multi_oneway_client_benchmark` 같은 skeleton helper로 핵심 측정 흐름 전체를 위임해서는 안 된다.
+- **server 바이너리**: 소켓 생성, bind, recv callback/send-ready handler 등록,
+  phase 제어가 각 파일에 인라인으로 존재해야 한다.
+- **client 바이너리**: 소켓 생성, connect, monitor-ready gate, send/recv API
+  호출이 각 파일에 인라인으로 존재해야 한다. 설정/출력/cleanup/metric
+  유틸리티는 공통화할 수 있다.
 - **동일 파일 내 extract method(의미 단위 함수 분리)** 는 허용/권장한다.
+- **template policy 패턴**: 동일 구조의 echo/relay 패턴에서 send/recv API
+  호출만 다른 경우, 각 패턴 파일이 policy struct로 send/recv API를
+  명시적으로 정의하고 공통 phase/event loop를 template header에 두는 것을
+  허용한다. 조건:
+  - 패턴 파일에 policy struct(send/recv API 호출)와 소켓/handle 생성이
+    인라인으로 존재해야 한다.
+  - template은 compile-time inline이어야 하며 런타임 간접 호출을 사용하지
+    않는다.
+  - template 내부에 pattern별 분기가 없어야 한다.
+  - 구조가 다른 패턴을 같은 template에 합치지 않는다.
+  - 상세 기준은 [PERF_POLICY.md § 8.5 "template policy 예외"](PERF_POLICY.md)
+    참조.
 
 예외: STREAM client(`core/perf/common/streamclient/`)는 검증 인프라 코드로
 분류하며 공통 모듈화를 허용한다. 단, multi 실행 경로/phase 정책 준수는

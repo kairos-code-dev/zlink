@@ -701,24 +701,50 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 
 아래 로직은 각 benchmark 소스 파일 안에서 명시적으로 드러나야 한다.
 
-- 핵심 send/recv loop
-- echo / relay / one-way의 실제 메시지 흐름
+- 해당 패턴이 사용하는 **send/recv API 호출** (어떤 zlink API를 쓰는지)
 - routing frame 조립/해석
-- `EAGAIN` 이후 pending flag / pending deque 처리 전략
-- `recv + poller` 와 `callback + bounded queue + metric worker` 중 어떤 실행 경로를 쓰는지
+- `EAGAIN` 이후 pending flag / pending deque 처리 전략 (패턴별 backpressure
+  방식이 다를 때)
+- `recv + poller` 와 `callback + bounded queue + metric worker` 중 어떤 실행
+  경로를 쓰는지
 - ready gate 통과 이후 benchmark를 시작하는 실제 조건
+- 소켓/handle 생성 및 연결 방식
 
-즉, 파일 하나만 읽어도 해당 패턴의 zlink API 사용법과 성능 측정 의미를 이해할 수
-있어야 한다.
+즉, 파일 하나만 읽어도 해당 패턴이 **어떤 zlink API를 어떻게 사용하는지**
+이해할 수 있어야 한다.
+
+#### template policy 예외
+
+동일 구조의 echo/relay 패턴에서 send/recv API 호출만 다르고 phase 제어,
+poller event loop, latency 집계 등의 **공통 골격이 95% 이상 동일**한 경우,
+아래 조건을 모두 만족하면 template header로 공통 골격을 추출할 수 있다.
+
+- 각 패턴 파일이 **policy struct**로 send/recv API 호출을 명시적으로 정의한다.
+  policy struct를 보면 해당 패턴이 어떤 zlink API를 쓰는지 즉시 알 수 있어야
+  한다.
+- 소켓/handle 생성, 연결, monitor-ready gate는 패턴 파일에 인라인으로 남긴다.
+- template은 C++ template instantiation으로 컴파일 시 inline되어 **런타임
+  비용이 0**이어야 한다. function pointer, virtual dispatch, `std::function`
+  기반 간접 호출은 허용하지 않는다.
+- template header 내부에 pattern별 분기(`if`/`switch`)가 없어야 한다.
+  패턴 차이는 오직 template parameter(policy struct)로만 표현한다.
+- 구조가 다른 패턴(one-way publish, stream framing, deque backpressure 등)을
+  같은 template에 억지로 끼워 넣지 않는다.
+
+이 예외는 **동일 코드 복붙을 줄여 유지보수 비용을 낮추기 위한 것**이며,
+서로 다른 측정 구조를 하나의 추상화에 합치는 용도가 아니다.
 
 #### 과도한 공통화 판정 기준
 
 아래 중 하나라도 만족하면 과도한 공통화로 간주하고 분리한다.
 
-- helper 안의 pattern별 분기 수가 늘어나 새 패턴 추가 시 helper를 계속 수정해야 한다.
-- wrapper 파일이 상수 전달 외에는 아무 의미를 보여주지 못한다.
-- backpressure, routing, phase 의미가 helper 내부로 숨어 파일만 봐서는 설명이 안 된다.
+- helper/template 안에 pattern별 분기(`if`/`switch`)가 늘어나 새 패턴 추가 시
+  helper를 계속 수정해야 한다.
+- backpressure, routing, phase 의미가 helper 내부로 숨어 파일만 봐서는 설명이
+  안 된다.
 - 공통화 이후 변경 증폭이 줄지 않고 오히려 여러 패턴이 한 helper에 결합된다.
+- 구조가 다른 패턴을 하나의 template/helper에 합치기 위해 조건부 로직이
+  추가된다.
 
 #### STREAM client 예외 (검증 인프라)
 

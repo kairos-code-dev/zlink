@@ -181,8 +181,14 @@ inline bool run_oneway_phase (void *dealer,
             send_failed = true;
             break;
         }
-        if (send_rc == 0)
-            break;
+        if (send_rc == 0) {
+            ::zlink_msg_close (&part);
+            if (!single_wait_for_send_backpressure (queue_probe)) {
+                send_failed = true;
+                break;
+            }
+            continue;
+        }
         ++successful_send_count;
         ++(*seq);
         if (active_phase && queue_probe)

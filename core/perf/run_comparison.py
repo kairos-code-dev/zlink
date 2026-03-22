@@ -1784,6 +1784,7 @@ def run_sizes_test_stream_shared(
             }
 
         line_transport = transport.lower()
+        final_size = sizes[-1] if sizes else fallback_size
         sample_server_metrics, close_server_sampler = create_external_process_sampler(
             server_proc.pid
         )
@@ -2460,7 +2461,7 @@ def run_sizes_test_split(
                 return
             done_size = parse_client_done_size(line)
             if done_size is not None:
-                if done_size not in stop_requested_sizes:
+                if done_size == final_size and done_size not in stop_requested_sizes:
                     try:
                         if server_proc.stdin:
                             server_proc.stdin.write("STOP\n")

@@ -1434,6 +1434,19 @@ inline queue_stats_t sample_queue_stats(queue_probe_t *queue_probe_)
     return queue_probe_->snapshot();
 }
 
+inline bool single_wait_for_send_backpressure(queue_probe_t *queue_probe_)
+{
+    if (queue_probe_)
+        queue_probe_->sample_send_if_due();
+
+    const int rc = perf_socket_poll(NULL, 0, 1);
+    if (rc >= 0)
+        return true;
+
+    const int err = zlink_errno();
+    return err == EINTR || err == EAGAIN;
+}
+
 inline void print_failure_diagnostics(const std::string &lib_type,
                                       const std::string &pattern,
                                       const std::string &transport,

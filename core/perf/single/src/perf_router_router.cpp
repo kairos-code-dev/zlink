@@ -249,7 +249,11 @@ inline bool run_oneway_phase (void *sender,
                     } else if (send_rc == 0) {
                         zlink_msg_close (&parts[0]);
                         zlink_msg_close (&parts[1]);
-                        break;
+                        if (!single_wait_for_send_backpressure (queue_probe)) {
+                            send_failed = true;
+                            break;
+                        }
+                        continue;
                     }
                 } else {
                     zlink_msg_close (&parts[0]);

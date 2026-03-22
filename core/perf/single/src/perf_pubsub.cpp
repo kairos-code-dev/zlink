@@ -220,13 +220,13 @@ inline bool setup_connected_pubsub_pair (void *pub_socket_,
     return sub_ready && pub_ready;
 }
 
-inline int send_pubsub_sample_blocking (void *pub_socket_,
-                                        std::vector<char> *payload_,
-                                        size_t payload_size_,
-                                        size_t msg_size_,
-                                        uint32_t run_id_,
-                                        uint64_t *seq_,
-                                        perf_single_metric::phase_t phase_)
+inline int send_pubsub_sample_nonblocking (void *pub_socket_,
+                                           std::vector<char> *payload_,
+                                           size_t payload_size_,
+                                           size_t msg_size_,
+                                           uint32_t run_id_,
+                                           uint64_t *seq_,
+                                           perf_single_metric::phase_t phase_)
 {
     while (true) {
         if (send_pubsub_sample (pub_socket_,
@@ -236,7 +236,7 @@ inline int send_pubsub_sample_blocking (void *pub_socket_,
                                 run_id_,
                                 seq_,
                                 phase_,
-                                0)) {
+                                ZLINK_DONTWAIT)) {
             return 1;
         }
 
@@ -245,6 +245,21 @@ inline int send_pubsub_sample_blocking (void *pub_socket_,
             continue;
         return err == EAGAIN ? 0 : -1;
     }
+}
+
+inline bool wait_pubsub_send_ready (void *pub_socket_,
+                                    queue_probe_t *queue_probe_)
+{
+    if (queue_probe_)
+        queue_probe_->sample_send_if_due ();
+
+    short revents = 0;
+    const int rc = poll_socket_event (pub_socket_, ZLINK_POLLOUT, 1, &revents);
+    if (rc >= 0)
+        return true;
+
+    const int err = zlink_errno ();
+    return err == EINTR || err == EAGAIN;
 }
 
 inline bool run_oneway_phase (void *pub_socket,
@@ -286,7 +301,7 @@ inline bool run_oneway_phase (void *pub_socket,
         queue_probe->force_sample_send ();
 
     while (std::chrono::steady_clock::now () < deadline) {
-        const int send_rc = send_pubsub_sample_blocking (
+        const int send_rc = send_pubsub_sample_nonblocking (
           pub_socket,
           payload,
           state->payload_size,
@@ -298,8 +313,13 @@ inline bool run_oneway_phase (void *pub_socket,
             send_failed = true;
             break;
         }
-        if (send_rc == 0)
-            break;
+        if (send_rc == 0) {
+            if (!wait_pubsub_send_ready (pub_socket, queue_probe)) {
+                send_failed = true;
+                break;
+            }
+            continue;
+        }
         ++successful_send_count;
         if (active_phase && queue_probe)
             queue_probe->sample_send_if_due ();

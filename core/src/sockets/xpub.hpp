@@ -105,7 +105,6 @@ class xpub_t : public socket_base_t
 
     //  Function to be applied to match the last pipe.
     static void mark_last_pipe_as_matching (zlink::pipe_t *pipe_, xpub_t *self_);
-    static void capture_and_mark_as_matching (zlink::pipe_t *pipe_, xpub_t *self_);
 
     //  Last pipe that sent subscription message, only used if xpub is on manual
     pipe_t *_last_pipe;
@@ -121,11 +120,6 @@ class xpub_t : public socket_base_t
     std::deque<blob_t> _pending_data;
     std::deque<metadata_t *> _pending_metadata;
     std::deque<unsigned char> _pending_flags;
-    uint64_t _subscription_generation;
-    uint64_t _cached_match_generation;
-    std::vector<unsigned char> _cached_match_topic;
-    std::vector<pipe_t *> _cached_match_pipes;
-    std::vector<pipe_t *> _cache_build_pipes;
     std::atomic<bool> _dispatch_active;
     std::atomic<uint32_t> _dispatch_inflight;
     std::atomic<uint32_t> _delivery_ready_peer_count;
@@ -136,7 +130,6 @@ class xpub_t : public socket_base_t
     int dispatch_ready_messages ();
     int dispatch_message (zlink::msg_t *msg_);
     void notify_dispatch_stopped ();
-    void invalidate_match_cache ();
     void refresh_delivery_ready_state (
       const endpoint_uri_pair_t &endpoint_uri_pair_);
     uint32_t compute_delivery_ready_count () const;

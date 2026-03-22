@@ -791,7 +791,10 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _active_peer_count (0),
     _default_pub (NULL),
     _default_sub (NULL),
-    _internal_receiver (NULL)
+    _internal_receiver (NULL),
+    _default_pub_fast (NULL),
+    _default_sub_fast (NULL),
+    _internal_receiver_fast (NULL)
 {
     _lifecycle.transition_to (service_state_starting);
     _service_name = service_name_ ? service_name_ : "";
@@ -3027,8 +3030,10 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
         if (node_owned_default_) {
             if (_default_pub && _default_pub != pub)
                 published_default_pub = _default_pub;
-            else
+            else {
                 _default_pub = pub;
+                _default_pub_fast.store (pub, std::memory_order_release);
+            }
         }
         bound = !_bound_endpoint.empty ();
     }
@@ -3103,8 +3108,10 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
     {
         scoped_lock_t lock (_sync);
         _subs.insert (sub);
-        if (node_owned_default_)
+        if (node_owned_default_) {
             _default_sub = sub;
+            _default_sub_fast.store (sub, std::memory_order_release);
+        }
     }
     sub->emit_ready_event ();
     submit_sub_summary (sub, ZLINK_TOPOLOGY_STATE_CONNECTING, 0);
@@ -3127,6 +3134,11 @@ spot_sub_t *spot_node_t::create_spot_sub ()
 
 spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
 {
+    spot_internal_receiver_t *receiver =
+      _internal_receiver_fast.load (std::memory_order_acquire);
+    if (receiver)
+        return receiver;
+
     spot_sub_t *previous_default_sub = NULL;
     {
         scoped_lock_t lock (_sync);
@@ -3147,7 +3159,7 @@ spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
     spot_sub_t *sub = create_spot_sub_with_defaults (defaults, true);
     if (!sub)
         return NULL;
-    spot_internal_receiver_t *receiver =
+    receiver =
       new (std::nothrow) spot_internal_receiver_t (sub);
     if (!receiver) {
         (void) sub->abort_create ();
@@ -3170,6 +3182,8 @@ spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
             return _internal_receiver;
         }
         _internal_receiver = receiver;
+        _internal_receiver_fast.store (receiver, std::memory_order_release);
+        _default_sub_fast.store (_default_sub, std::memory_order_release);
     }
 
     return receiver;
@@ -3177,6 +3191,10 @@ spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
 
 spot_pub_t *spot_node_t::ensure_default_pub ()
 {
+    spot_pub_t *pub = _default_pub_fast.load (std::memory_order_acquire);
+    if (pub)
+        return pub;
+
     {
         scoped_lock_t lock (_sync);
         if (_default_pub)
@@ -3196,6 +3214,10 @@ spot_pub_t *spot_node_t::ensure_default_pub ()
 
 spot_sub_t *spot_node_t::ensure_default_sub ()
 {
+    spot_sub_t *sub = _default_sub_fast.load (std::memory_order_acquire);
+    if (sub)
+        return sub;
+
     {
         scoped_lock_t lock (_sync);
         if (_default_sub)
@@ -3234,18 +3256,24 @@ spot_sub_t *spot_node_t::default_sub () const
 void spot_node_t::remove_spot_pub (spot_pub_t *pub_)
 {
     scoped_lock_t lock (_sync);
-    if (_default_pub == pub_)
+    if (_default_pub == pub_) {
         _default_pub = NULL;
+        _default_pub_fast.store (NULL, std::memory_order_release);
+    }
     _pubs.erase (pub_);
 }
 
 void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
 {
     scoped_lock_t lock (_sync);
-    if (_default_sub == sub_)
+    if (_default_sub == sub_) {
         _default_sub = NULL;
-    if (_internal_receiver && _internal_receiver->impl () == sub_)
+        _default_sub_fast.store (NULL, std::memory_order_release);
+    }
+    if (_internal_receiver && _internal_receiver->impl () == sub_) {
         _internal_receiver = NULL;
+        _internal_receiver_fast.store (NULL, std::memory_order_release);
+    }
     _subs.erase (sub_);
     if (sub_ && sub_->has_filters ())
         note_local_sub_filters_changed (true, false);
@@ -3267,6 +3295,9 @@ int spot_node_t::destroy_handles ()
         }
         _default_pub = NULL;
         _default_sub = NULL;
+        _default_pub_fast.store (NULL, std::memory_order_release);
+        _default_sub_fast.store (NULL, std::memory_order_release);
+        _internal_receiver_fast.store (NULL, std::memory_order_release);
         for (size_t i = 0; i < pubs.size (); ++i)
             _pubs.erase (pubs[i]);
         for (size_t i = 0; i < subs.size (); ++i)
@@ -3295,6 +3326,7 @@ int spot_node_t::destroy_internal_receiver ()
         scoped_lock_t lock (_sync);
         receiver = _internal_receiver;
         _internal_receiver = NULL;
+        _internal_receiver_fast.store (NULL, std::memory_order_release);
         if (receiver)
             _subs.erase (receiver->impl ());
     }

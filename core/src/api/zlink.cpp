@@ -719,6 +719,14 @@ static zlink::spot_sub_t *as_spot_sub_side_handle (void *handle_)
     return sub->check_tag () ? sub : NULL;
 }
 
+static zlink::spot_node_t *as_spot_node_handle (void *handle_)
+{
+    if (!handle_)
+        return NULL;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (handle_);
+    return node->check_tag () ? node : NULL;
+}
+
 static int spot_node_transition_to_callback_mode (zlink::spot_node_t *node_)
 {
     if (!node_) {
@@ -6737,30 +6745,30 @@ int zlink_publish (void *subject_,
                                      flags_);
     }
 
-    if (is_registered_spot_handle (subject_)) {
+    if (spot_handle_t *spot = as_spot_handle (subject_)) {
         if (!topic_id_) {
             errno = EINVAL;
             return -1;
         }
-        return spot_publish_internal (subject_, topic_id_, parts_, part_count_,
+        return spot_publish_internal (spot, topic_id_, parts_, part_count_,
                                       flags_);
     }
 
-    if (as_spot_pub_side_handle (subject_)) {
+    if (zlink::spot_pub_t *pub = as_spot_pub_side_handle (subject_)) {
         if (!topic_id_) {
             errno = EINVAL;
             return -1;
         }
-        return spot_pub_publish_internal (subject_, topic_id_, parts_,
+        return spot_pub_publish_internal (pub, topic_id_, parts_,
                                           part_count_, flags_);
     }
 
-    if (is_registered_spot_node_handle (subject_)) {
+    if (zlink::spot_node_t *node = as_spot_node_handle (subject_)) {
         if (!topic_id_) {
             errno = EINVAL;
             return -1;
         }
-        return spot_node_publish_internal (subject_, topic_id_, parts_,
+        return spot_node_publish_internal (node, topic_id_, parts_,
                                            part_count_, flags_);
     }
 
@@ -6848,18 +6856,18 @@ int zlink_subscribe (void *subject_,
                                             topic_id_len_out_, flags_);
     }
 
-    if (as_spot_sub_side_handle (subject_))
-        return spot_sub_recv_internal (subject_, source_rid_out_, parts_out_,
+    if (zlink::spot_sub_t *sub = as_spot_sub_side_handle (subject_))
+        return spot_sub_recv_internal (sub, source_rid_out_, parts_out_,
                                        part_count_out_, topic_id_out_,
                                        topic_id_len_out_, flags_);
 
-    if (is_registered_spot_handle (subject_))
-        return spot_sub_recv_internal (subject_, source_rid_out_, parts_out_,
+    if (spot_handle_t *spot = as_spot_handle (subject_))
+        return spot_sub_recv_internal (spot, source_rid_out_, parts_out_,
                                        part_count_out_, topic_id_out_,
                                        topic_id_len_out_, flags_);
 
-    if (is_registered_spot_node_handle (subject_))
-        return spot_node_recv_internal (subject_, source_rid_out_, parts_out_,
+    if (zlink::spot_node_t *node = as_spot_node_handle (subject_))
+        return spot_node_recv_internal (node, source_rid_out_, parts_out_,
                                         part_count_out_, topic_id_out_,
                                         topic_id_len_out_, flags_);
 

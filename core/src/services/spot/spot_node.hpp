@@ -283,6 +283,9 @@ class spot_node_t : public discovery_observer_t
     spot_pub_t *_default_pub;
     spot_sub_t *_default_sub;
     spot_internal_receiver_t *_internal_receiver;
+    std::atomic<spot_pub_t *> _default_pub_fast;
+    std::atomic<spot_sub_t *> _default_sub_fast;
+    std::atomic<spot_internal_receiver_t *> _internal_receiver_fast;
     pub_defaults_t _pub_defaults;
     sub_defaults_t _sub_defaults;
     std::set<spot_pub_t *> _pubs;

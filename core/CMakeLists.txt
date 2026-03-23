@@ -939,12 +939,33 @@ endif()
 # source files
 
 set(api-sources
+    src/api/context_api.cpp
+    src/api/message_api.cpp
+    src/api/monitor_api.cpp
+    src/api/monitor_query_api.cpp
+    src/api/monitor_service_api.cpp
+    src/api/poller_api.cpp
+  src/api/service_api.cpp
+  src/api/service_discovery_api.cpp
+  src/api/service_gateway_api.cpp
+  src/api/service_handler_api.cpp
+  src/api/service_mode_api.cpp
+  src/api/service_poller_api.cpp
+  src/api/service_registry_api.cpp
+  src/api/service_spot_node_api.cpp
+    src/api/service_spot_api.cpp
+    src/api/service_spot_subject_api.cpp
+    src/api/service_option_api.cpp
+    src/api/service_option_spot_api.cpp
+    src/api/socket_message_api.cpp
+    src/api/socket_api.cpp
     src/api/zlink.cpp
     src/api/zlink_option.cpp
     src/api/zlink_utils.cpp)
 
 set(core-sources
     src/core/msg.cpp
+    src/core/multipart_send_txn.cpp
     src/core/recv_internal.cpp
     src/core/send_internal.cpp
     src/core/ctx.cpp
@@ -959,6 +980,7 @@ set(core-sources
     src/core/thread.cpp
     src/core/timers.cpp
     src/core/options.cpp
+    src/core/options_dispatch.cpp
     src/core/poller_base.cpp
     src/core/socket_poller.cpp
     src/core/session_base.cpp
@@ -977,19 +999,41 @@ set(protocol-sources
 set(discovery-sources
     src/services/control/service_control_runtime.cpp
     src/services/common/service_monitor.cpp
+    src/services/discovery/discovery_access.cpp
     src/services/discovery/registry.cpp
     src/services/discovery/discovery.cpp
-    src/services/gateway/gateway.cpp)
+    src/services/discovery/discovery_registry_client.cpp
+    src/services/discovery/discovery_state.cpp
+    src/services/discovery/discovery_uplink.cpp
+    src/services/discovery/discovery_update.cpp
+    src/services/gateway/gateway_access.cpp
+    src/services/gateway/gateway.cpp
+    src/services/gateway/gateway_facade.cpp
+    src/services/gateway/gateway_lifecycle.cpp
+    src/services/gateway/gateway_monitor.cpp
+    src/services/gateway/gateway_pool.cpp)
 
 set(spot-sources
     src/services/spot/spot_data_plane.cpp
+    src/services/spot/spot_node_access.cpp
     src/services/spot/spot_node.cpp
+    src/services/spot/spot_node_control.cpp
+    src/services/spot/spot_node_handles.cpp
+    src/services/spot/spot_node_lifecycle.cpp
+    src/services/spot/spot_node_summary.cpp
     src/services/spot/spot_pub.cpp
+    src/services/spot/spot_runtime.cpp
     src/services/spot/spot_sub.cpp)
 
 set(socket-sources
     src/sockets/socket_close_ops.cpp
     src/sockets/socket_base.cpp
+    src/sockets/socket_base_api.cpp
+    src/sockets/socket_base_dispatch.cpp
+    src/sockets/socket_base_endpoint.cpp
+    src/sockets/socket_base_lifecycle.cpp
+    src/sockets/socket_base_msg.cpp
+    src/sockets/socket_base_monitor.cpp
     src/sockets/dealer.cpp
     src/sockets/router.cpp
     src/sockets/stream.cpp

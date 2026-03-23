@@ -293,6 +293,10 @@ static void test_sleep_ms (int delay_ms_)
 #endif
 }
 
+static void noop_stream_send_ready_handler (void *, void *)
+{
+}
+
 static bool wait_counter_at_least (std::atomic<int> *counter_,
                                    int expected_,
                                    int timeout_ms_)
@@ -334,6 +338,19 @@ struct stream_callback_probe_t
 };
 
 static stream_callback_probe_t *g_stream_callback_probe = NULL;
+
+struct stream_chunk_probe_t
+{
+    stream_chunk_probe_t () : chunk_sizes (), mutex (), cv ()
+    {
+    }
+
+    std::vector<size_t> chunk_sizes;
+    std::mutex mutex;
+    std::condition_variable cv;
+};
+
+static stream_chunk_probe_t *g_stream_chunk_probe = NULL;
 
 struct stream_raw_stash_t
 {
@@ -417,6 +434,27 @@ static void release_stream_callback_msg (zlink_msg_t *msg_)
 {
     if (msg_)
         (void) zlink_msg_close (msg_);
+}
+
+static void record_stream_chunk_handler (const zlink_routing_id_t *,
+                                         zlink_msg_t *parts_,
+                                         size_t part_count_,
+                                         void *)
+{
+    stream_chunk_probe_t *probe = g_stream_chunk_probe;
+    if (!probe || !parts_)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lk (probe->mutex);
+        for (size_t i = 0; i < part_count_; ++i) {
+            const size_t chunk_size = zlink_msg_size (&parts_[i]);
+            if (chunk_size > 0)
+                probe->chunk_sizes.push_back (chunk_size);
+            (void) zlink_msg_close (&parts_[i]);
+        }
+    }
+    probe->cv.notify_all ();
 }
 
 static std::string make_routing_id_key (const unsigned char *data_, size_t size_)
@@ -1371,6 +1409,60 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
     test_context_socket_close_zero_linger (server);
 }
 
+void test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_regression_socket (server, 256);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    stream_chunk_probe_t probe;
+    g_stream_chunk_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (server, &record_stream_chunk_handler, NULL));
+
+    const int client_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (client_fd, 3000));
+
+    const unsigned char header[4] = {0x00, 0x00, 0x00, 0x08};
+    const unsigned char payload[8] = {'r', 'a', 'w', '-', 'c', 'h', 'u', 'n'};
+
+    TEST_ASSERT_EQUAL_INT (0, send_all (client_fd, header, sizeof (header)));
+    {
+        std::unique_lock<std::mutex> lk (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lk, std::chrono::seconds (5), [&probe] () {
+              return !probe.chunk_sizes.empty ();
+          }));
+        TEST_ASSERT_EQUAL_UINT (
+          static_cast<unsigned int> (sizeof (header)),
+          static_cast<unsigned int> (probe.chunk_sizes[0]));
+    }
+
+    TEST_ASSERT_EQUAL_INT (0, send_all (client_fd, payload, sizeof (payload)));
+    {
+        std::unique_lock<std::mutex> lk (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lk, std::chrono::seconds (5), [&probe] () {
+              return probe.chunk_sizes.size () >= 2;
+          }));
+        TEST_ASSERT_EQUAL_UINT (
+          static_cast<unsigned int> (sizeof (payload)),
+          static_cast<unsigned int> (probe.chunk_sizes[1]));
+    }
+
+    g_stream_chunk_probe = NULL;
+    close_raw_fd (client_fd);
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
 static void run_stream_raw_client_load (const char *endpoint_,
                                         uint32_t client_id_,
                                         int phases_,
@@ -1639,6 +1731,56 @@ void test_stream_raw_multiclient_load_integrity ()
     test_context_socket_close_zero_linger (server);
 }
 
+void test_stream_raw_multiclient_load_integrity_with_send_ready_handler ()
+{
+    const int client_count = 48;
+    const int phases = 2;
+    const int messages_per_phase = 48;
+    const size_t payload_size = 192;
+    const int expected_msgs = client_count * phases * messages_per_phase;
+
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (server, &noop_stream_send_ready_handler, NULL));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    stream_raw_load_probe_t probe;
+    probe.socket = server;
+    probe.expected_payload_size = payload_size;
+    g_stream_raw_load_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      attach_stream_msg_handler (server, stream_raw_load_msg_handler));
+
+    std::atomic<int> client_failures (0);
+    std::vector<std::thread> clients;
+    clients.reserve (client_count);
+    for (int i = 0; i < client_count; ++i) {
+        clients.push_back (
+          std::thread (run_stream_raw_client_load, endpoint,
+                       static_cast<uint32_t> (i), phases, messages_per_phase,
+                       payload_size, &client_failures));
+    }
+    for (size_t i = 0; i < clients.size (); ++i)
+        clients[i].join ();
+
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+    TEST_ASSERT_TRUE (
+      wait_counter_at_least (&probe.echoed_msgs, expected_msgs, 10000));
+    TEST_ASSERT_EQUAL_INT (
+      0, probe.parse_error.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
+
+    g_stream_raw_load_probe = NULL;
+    test_context_socket_close_zero_linger (server);
+}
+
 void test_stream_tcp_basic ()
 {
     void *server = test_context_socket (ZLINK_SOCKET_STREAM);
@@ -1821,10 +1963,12 @@ int main (void)
     RUN_TEST (test_stream_callback_echo_single_zero_byte);
     RUN_TEST (test_stream_recv_ready_precedes_first_payload_contract);
     RUN_TEST (test_stream_raw_callback_ready_precedes_first_payload_contract);
+    RUN_TEST (test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames);
 #if !defined(ZLINK_HAVE_WINDOWS)
     RUN_TEST (test_stream_raw_multiclient_strict_ready_gating_regression);
     RUN_TEST (test_stream_recv_multiclient_strict_ready_gating_regression);
     RUN_TEST (test_stream_raw_multiclient_load_integrity);
+    RUN_TEST (test_stream_raw_multiclient_load_integrity_with_send_ready_handler);
 #endif
     RUN_TEST (test_stream_connect_rejected);
 

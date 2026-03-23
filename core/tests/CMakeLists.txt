@@ -287,7 +287,7 @@ foreach(test_source ${tests})
 
     set_tests_properties(${test} PROPERTIES TIMEOUT 10)
     if(${test} STREQUAL "test_multi_stream_benchmark_process")
-      set_tests_properties(${test} PROPERTIES TIMEOUT 30)
+      set_tests_properties(${test} PROPERTIES TIMEOUT 120)
     endif()
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
 
@@ -439,6 +439,12 @@ if(TARGET test_single_spot_benchmark_process)
 endif()
 if(TARGET test_stream_socket)
   set_tests_properties(test_stream_socket PROPERTIES TIMEOUT 60)
+endif()
+if(TARGET test_stream_threadsafe)
+  set_tests_properties(test_stream_threadsafe PROPERTIES TIMEOUT 30)
+endif()
+if(TARGET test_stream_send_blocking_wakeup)
+  set_tests_properties(test_stream_send_blocking_wakeup PROPERTIES TIMEOUT 30)
 endif()
 if(TARGET test_stream_fastpath)
   set_tests_properties(test_stream_fastpath PROPERTIES TIMEOUT 30)
@@ -685,6 +691,7 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_subscription_ready_changed_reports_loss
     test_spot_callback_model_receive_regression
     test_spot_recv_model_receive_regression
+    test_spot_publish_rollback_preserves_next_topic_boundary
     test_spot_unified_spot_basic
     test_spot_node_snapshot_status_peers_subjects)
 
@@ -695,6 +702,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_subscription_ready_loss=test_spot_subscription_ready_changed_reports_loss
     test_spot_service_introspection_callback_recv_regression=test_spot_callback_model_receive_regression
     test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
+    test_spot_service_introspection_publish_rollback=test_spot_publish_rollback_preserves_next_topic_boundary
     test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
     test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects)
 

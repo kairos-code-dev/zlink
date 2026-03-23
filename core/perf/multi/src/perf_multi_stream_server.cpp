@@ -11,6 +11,7 @@
 #include <iostream>
 #include <deque>
 #include <condition_variable>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -38,9 +39,12 @@ static std::atomic<size_t> g_queue_probe_size (0);
 static std::atomic<unsigned long long> g_callback_recv_count (0);
 static std::atomic<unsigned long long> g_callback_send_count (0);
 static std::atomic<unsigned long long> g_callback_pending_count (0);
+static std::atomic<unsigned long long> g_callback_frame_count (0);
 static std::mutex g_pending_send_queue_sync;
 static std::mutex g_callback_send_wait_sync;
+static std::mutex g_stream_callback_stash_sync;
 static std::condition_variable g_callback_send_wait_cv;
+static std::map<std::string, std::vector<unsigned char> > g_stream_callback_stashes;
 
 void mark_stream_callback_failed ();
 
@@ -103,6 +107,21 @@ struct queued_stream_message_t
     queued_stream_message_t (const queued_stream_message_t &);
     queued_stream_message_t &operator= (const queued_stream_message_t &);
 };
+
+inline uint32_t load_u32_be (const unsigned char *src)
+{
+    return (static_cast<uint32_t> (src[0]) << 24)
+           | (static_cast<uint32_t> (src[1]) << 16)
+           | (static_cast<uint32_t> (src[2]) << 8)
+           | static_cast<uint32_t> (src[3]);
+}
+
+inline std::string routing_id_key (const zlink_routing_id_t *rid)
+{
+    if (!rid || rid->size == 0)
+        return std::string ();
+    return std::string (reinterpret_cast<const char *> (rid->data), rid->size);
+}
 
 static std::deque<queued_stream_message_t> g_pending_send_queue;
 static moodycamel::ConcurrentQueue<queued_stream_message_t> g_callback_send_queue;
@@ -247,6 +266,12 @@ void mark_stream_callback_failed ()
     notify_callback_sender ();
 }
 
+void clear_stream_callback_stashes ()
+{
+    std::lock_guard<std::mutex> lock (g_stream_callback_stash_sync);
+    g_stream_callback_stashes.clear ();
+}
+
 void drain_stream_pending_queue ()
 {
     while (true) {
@@ -309,7 +334,6 @@ void callback_stream_sender_loop ()
                 std::unique_lock<std::mutex> lock (g_callback_send_wait_sync);
                 g_callback_send_wait_cv.wait_for (
                   lock, std::chrono::milliseconds (1));
-                continue;
             }
 
             const stream_send_result_t send_result =
@@ -373,9 +397,79 @@ bool process_stream_chunk (const zlink_routing_id_t *rid, zlink_msg_t *msg)
     return enqueue_stream_message (rid, msg);
 }
 
+bool process_stream_callback_chunk (const zlink_routing_id_t *rid,
+                                    zlink_msg_t *msg)
+{
+    if (!rid || !msg || !g_server_socket)
+        return false;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (msg));
+    const size_t payload_size = zlink_msg_size (msg);
+    if (is_stream_event_payload (payload, payload_size))
+        return true;
+    if (!payload || payload_size == 0)
+        return false;
+
+    g_callback_recv_count.fetch_add (1, std::memory_order_relaxed);
+
+    std::vector<std::vector<unsigned char> > complete_frames;
+    {
+        const std::string key = routing_id_key (rid);
+        std::lock_guard<std::mutex> lock (g_stream_callback_stash_sync);
+        std::vector<unsigned char> &stash = g_stream_callback_stashes[key];
+        stash.insert (stash.end (), payload, payload + payload_size);
+
+        size_t consumed = 0;
+        while (consumed + 4 <= stash.size ()) {
+            const unsigned char *frame = &stash[consumed];
+            const size_t body_size = static_cast<size_t> (load_u32_be (frame));
+            if (body_size > 4 * 1024 * 1024) {
+                stash.clear ();
+                return false;
+            }
+
+            const size_t frame_size = 4 + body_size;
+            if (consumed + frame_size > stash.size ())
+                break;
+
+            complete_frames.push_back (std::vector<unsigned char> (frame_size));
+            std::memcpy (&complete_frames.back ()[0], frame, frame_size);
+            consumed += frame_size;
+        }
+
+        if (consumed > 0) {
+            if (consumed == stash.size ()) {
+                stash.clear ();
+            } else {
+                stash.erase (stash.begin (),
+                             stash.begin () + static_cast<std::ptrdiff_t> (consumed));
+            }
+        }
+    }
+
+    for (size_t i = 0; i < complete_frames.size (); ++i) {
+        g_callback_frame_count.fetch_add (1, std::memory_order_relaxed);
+        queued_stream_message_t queued;
+        queued.routing_id = *rid;
+        (void) zlink_msg_close (&queued.msg);
+        if (zlink_msg_init_size (&queued.msg, complete_frames[i].size ()) != 0
+            || (complete_frames[i].size () > 0
+                && !zlink_msg_data (&queued.msg))) {
+            return false;
+        }
+        std::memcpy (zlink_msg_data (&queued.msg), &complete_frames[i][0],
+                     complete_frames[i].size ());
+        if (!enqueue_stream_message (&queued.routing_id, &queued.msg))
+            return false;
+    }
+
+    return true;
+}
+
 int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg, void *)
 {
-    const bool ok = process_stream_chunk (rid, msg);
+    const bool ok = process_stream_callback_chunk (rid, msg);
     (void) zlink_msg_close (msg);
     return ok ? 0 : 1;
 }
@@ -499,6 +593,7 @@ int main (int argc, char **argv)
     g_callback_recv_count.store (0, std::memory_order_release);
     g_callback_send_count.store (0, std::memory_order_release);
     g_callback_pending_count.store (0, std::memory_order_release);
+    g_callback_frame_count.store (0, std::memory_order_release);
     g_callback_mode_enabled.store (false, std::memory_order_release);
     g_callback_send_ready.store (false, std::memory_order_release);
     g_server_socket = server;
@@ -506,6 +601,7 @@ int main (int argc, char **argv)
         std::lock_guard<std::mutex> queue_lock (g_pending_send_queue_sync);
         g_pending_send_queue.clear ();
     }
+    clear_stream_callback_stashes ();
     {
         queued_stream_message_t queued;
         while (g_callback_send_queue.try_dequeue (queued)) {
@@ -599,6 +695,18 @@ int main (int argc, char **argv)
     if (g_callback_failed.load (std::memory_order_acquire))
         rc = 1;
 
+    if (bench_debug_enabled () && callback_mode) {
+        std::cerr << "[multi-stream-server] callback summary recv="
+                  << g_callback_recv_count.load (std::memory_order_relaxed)
+                  << " frames="
+                  << g_callback_frame_count.load (std::memory_order_relaxed)
+                  << " send="
+                  << g_callback_send_count.load (std::memory_order_relaxed)
+                  << " pending="
+                  << g_callback_pending_count.load (std::memory_order_relaxed)
+                  << std::endl;
+    }
+
     notify_callback_sender ();
     if (callback_send_worker.joinable ())
         callback_send_worker.join ();
@@ -610,6 +718,7 @@ int main (int argc, char **argv)
         std::lock_guard<std::mutex> queue_lock (g_pending_send_queue_sync);
         g_pending_send_queue.clear ();
     }
+    clear_stream_callback_stashes ();
     {
         queued_stream_message_t queued;
         while (g_callback_send_queue.try_dequeue (queued)) {

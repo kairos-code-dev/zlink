@@ -298,6 +298,44 @@ void fill_stream_send_queue_until_hwm (void *server_, const zlink_routing_id_t *
     TEST_ASSERT_GREATER_THAN_INT (0, sent);
     TEST_ASSERT_TRUE (reached_full);
 }
+
+bool drain_stream_until_send_reopens (void *server_,
+                                      int raw_fd_,
+                                      const zlink_routing_id_t *rid_,
+                                      const unsigned char *payload_,
+                                      size_t payload_size_)
+{
+    if (!server_ || raw_fd_ < 0 || !rid_ || !payload_ || payload_size_ == 0)
+        return false;
+
+    unsigned char drain_buf[64 * 1024];
+    int drained = 0;
+    const int drain_target =
+      static_cast<int> (payload_size_ * ((kStreamHwm + 1) / 2 + 2));
+    const auto drain_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (1000);
+    while (std::chrono::steady_clock::now () < drain_deadline
+           && drained < drain_target) {
+        const int n = recv_raw (raw_fd_, drain_buf, sizeof (drain_buf));
+        if (n > 0)
+            drained += n;
+    }
+
+    const auto reopen_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (1500);
+    while (std::chrono::steady_clock::now () < reopen_deadline) {
+        const int send_rc = test_stream_send_bytes (
+          server_, rid_, payload_, payload_size_, ZLINK_DONTWAIT);
+        if (send_rc == static_cast<int> (payload_size_))
+            return true;
+
+        TEST_ASSERT_EQUAL_INT (-1, send_rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+        (void) recv_raw (raw_fd_, drain_buf, sizeof (drain_buf));
+    }
+
+    return false;
+}
 } // namespace
 
 void test_stream_queue_reopens_after_peer_reads ()
@@ -400,6 +438,57 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
 #endif
 }
 
+void test_stream_nonblocking_send_preserves_message_for_retry ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    char endpoint[MAX_SOCKET_STRING];
+    memset (endpoint, 0, sizeof (endpoint));
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int raw_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT (0, raw_fd);
+    set_raw_timeout (raw_fd, 200);
+
+    zlink_routing_id_t rid;
+    establish_stream_route (server, raw_fd, &rid);
+    fill_stream_send_queue_until_hwm (server, &rid);
+
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, kPayloadSize));
+    memset (zlink_msg_data (&msg), 0x6C, kPayloadSize);
+
+    const int send_rc = zlink_send_rid (server, &rid, &msg, 1, ZLINK_DONTWAIT);
+    TEST_ASSERT_EQUAL_INT (-1, send_rc);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    TEST_ASSERT_EQUAL_UINT64 (kPayloadSize, zlink_msg_size (&msg));
+
+    const unsigned char *msg_data =
+      static_cast<const unsigned char *> (zlink_msg_data (&msg));
+    TEST_ASSERT_NOT_NULL (msg_data);
+    for (size_t i = 0; i < kPayloadSize; ++i)
+        TEST_ASSERT_EQUAL_UINT8 (0x6C, msg_data[i]);
+
+    std::vector<unsigned char> probe_payload (kPayloadSize, 0x41);
+    TEST_ASSERT_TRUE (drain_stream_until_send_reopens (
+      server, raw_fd, &rid, &probe_payload[0], probe_payload.size ()));
+
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (kPayloadSize),
+      test_stream_send_single_msg (server, &rid, &msg, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&msg));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+    close_raw_fd (raw_fd);
+    test_context_socket_close (server);
+#endif
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -407,5 +496,6 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_stream_queue_reopens_after_peer_reads);
     RUN_TEST (test_stream_blocking_send_times_out_without_peer_reads);
+    RUN_TEST (test_stream_nonblocking_send_preserves_message_for_retry);
     return UNITY_END ();
 }

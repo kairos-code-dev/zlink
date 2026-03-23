@@ -8,7 +8,10 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <map>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -91,9 +94,131 @@ struct worker_probe_t
     zlink_msg_t msg;
 };
 
+struct queued_stream_message_t
+{
+    queued_stream_message_t ()
+    {
+        memset (&rid, 0, sizeof (rid));
+        if (zlink_msg_init (&msg) != 0)
+            std::abort ();
+    }
+
+    ~queued_stream_message_t () { (void) zlink_msg_close (&msg); }
+
+    queued_stream_message_t (queued_stream_message_t &&other) noexcept
+    {
+        memset (&rid, 0, sizeof (rid));
+        if (zlink_msg_init (&msg) != 0)
+            std::abort ();
+        rid = other.rid;
+        if (zlink_msg_move (&msg, &other.msg) != 0)
+            std::abort ();
+    }
+
+    queued_stream_message_t &operator= (queued_stream_message_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        rid = other.rid;
+        (void) zlink_msg_close (&msg);
+        if (zlink_msg_init (&msg) != 0)
+            std::abort ();
+        if (zlink_msg_move (&msg, &other.msg) != 0)
+            std::abort ();
+        return *this;
+    }
+
+    zlink_routing_id_t rid;
+    zlink_msg_t msg;
+
+  private:
+    queued_stream_message_t (const queued_stream_message_t &);
+    queued_stream_message_t &operator= (const queued_stream_message_t &);
+};
+
+struct stream_raw_stash_t
+{
+    stream_raw_stash_t () : data (), offset (0) {}
+
+    size_t available () const { return data.size () - offset; }
+
+    void append (const unsigned char *src_, size_t size_)
+    {
+        if (!src_ || size_ == 0)
+            return;
+
+        const size_t old_size = data.size ();
+        data.resize (old_size + size_);
+        memcpy (&data[old_size], src_, size_);
+    }
+
+    void compact ()
+    {
+        if (offset == 0)
+            return;
+        if (offset >= data.size ()) {
+            data.clear ();
+            offset = 0;
+            return;
+        }
+        if (offset > 4096 || offset * 2 >= data.size ()) {
+            const size_t remain = data.size () - offset;
+            memmove (&data[0], &data[offset], remain);
+            data.resize (remain);
+            offset = 0;
+        }
+    }
+
+    void reset ()
+    {
+        data.clear ();
+        offset = 0;
+    }
+
+    std::vector<unsigned char> data;
+    size_t offset;
+};
+
+struct queued_worker_probe_t
+{
+    queued_worker_probe_t () :
+        socket (NULL),
+        done (false),
+        failed (false),
+        enqueued_messages (0),
+        expected_messages (0),
+        processed_messages (0),
+        send_errors (0),
+        ready_ticks (0),
+        parse_errors (0),
+        control_chunks (0),
+        stashes (),
+        stash_mu ()
+    {
+    }
+
+    void *socket;
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::deque<queued_stream_message_t> queue;
+    bool done;
+    bool failed;
+    int enqueued_messages;
+    int expected_messages;
+    int processed_messages;
+    int send_errors;
+    int ready_ticks;
+    int parse_errors;
+    int control_chunks;
+    std::map<std::string, stream_raw_stash_t> stashes;
+    std::mutex stash_mu;
+};
+
 route_probe_t *g_route_probe = NULL;
 lifecycle_probe_t *g_lifecycle_probe = NULL;
 worker_probe_t *g_worker_probe = NULL;
+queued_worker_probe_t *g_queued_worker_probe = NULL;
 
 void configure_stream_socket (void *socket_)
 {
@@ -357,6 +482,51 @@ bool recv_exact_bytes (int fd_, unsigned char *buf_, size_t size_)
     return true;
 }
 
+bool recv_exact_or_fail (int fd_, unsigned char *buf_, size_t size_)
+{
+    size_t off = 0;
+    while (off < size_) {
+        const ssize_t n = recv (fd_, buf_ + off, size_ - off, 0);
+        if (n > 0) {
+            off += static_cast<size_t> (n);
+            continue;
+        }
+        if (n < 0 && errno == EINTR)
+            continue;
+        return false;
+    }
+    return true;
+}
+
+static bool is_stream_control_chunk (const unsigned char *data_, size_t size_)
+{
+    LIBZLINK_UNUSED (data_);
+    return size_ == 0;
+}
+
+static uint32_t load_u32_be (const unsigned char *src_)
+{
+    return (static_cast<uint32_t> (src_[0]) << 24)
+           | (static_cast<uint32_t> (src_[1]) << 16)
+           | (static_cast<uint32_t> (src_[2]) << 8)
+           | static_cast<uint32_t> (src_[3]);
+}
+
+static void store_u32_be (unsigned char *dst_, uint32_t value_)
+{
+    dst_[0] = static_cast<unsigned char> ((value_ >> 24) & 0xFF);
+    dst_[1] = static_cast<unsigned char> ((value_ >> 16) & 0xFF);
+    dst_[2] = static_cast<unsigned char> ((value_ >> 8) & 0xFF);
+    dst_[3] = static_cast<unsigned char> (value_ & 0xFF);
+}
+
+static void run_stream_raw_client_load (const char *endpoint_,
+                                        uint32_t client_id_,
+                                        int phases_,
+                                        int messages_per_phase_,
+                                        size_t payload_size_,
+                                        std::atomic<int> *client_failures_);
+
 void read_last_endpoint_loop (void *socket_,
                               const char *expected_,
                               std::atomic<int> *stop_,
@@ -469,6 +639,317 @@ void worker_send_msg_run (worker_probe_t *probe_)
     probe_->done = true;
     lk.unlock ();
     probe_->cv.notify_one ();
+}
+
+void queued_send_ready_handler (void *subject_, void *)
+{
+    queued_worker_probe_t *probe =
+      static_cast<queued_worker_probe_t *> (subject_);
+    if (!probe)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lk (probe->mutex);
+        ++probe->ready_ticks;
+    }
+    probe->cv.notify_all ();
+}
+
+int queue_handoff_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+{
+    queued_worker_probe_t *probe = g_queued_worker_probe;
+    if (!probe || !rid_ || !msg_)
+        return 0;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (msg_));
+    const size_t payload_size = zlink_msg_size (msg_);
+    if (is_stream_control_chunk (payload, payload_size)) {
+        std::lock_guard<std::mutex> lk (probe->mutex);
+        ++probe->control_chunks;
+        (void) zlink_msg_close (msg_);
+        return 0;
+    }
+
+    std::vector<std::vector<unsigned char> > complete_frames;
+    bool invalid = false;
+    {
+        const std::string key (reinterpret_cast<const char *> (rid_->data),
+                               rid_->size);
+        std::lock_guard<std::mutex> lk (probe->stash_mu);
+        stream_raw_stash_t &stash = probe->stashes[key];
+        stash.append (payload, payload_size);
+
+        size_t consumed = 0;
+        const size_t available = stash.available ();
+        while (consumed + 4 <= available) {
+            const unsigned char *frame = &stash.data[stash.offset + consumed];
+            const size_t body_size = static_cast<size_t> (load_u32_be (frame));
+
+            if (body_size < 8 || body_size > 4 * 1024 * 1024
+                || body_size != kPayloadSize) {
+                invalid = true;
+                break;
+            }
+
+            const size_t frame_size = 4 + body_size;
+            if (consumed + frame_size > available)
+                break;
+
+            complete_frames.push_back (std::vector<unsigned char> (frame_size));
+            memcpy (&complete_frames.back ()[0], frame, frame_size);
+            consumed += frame_size;
+        }
+
+        if (invalid) {
+            stash.reset ();
+        } else if (consumed > 0) {
+            stash.offset += consumed;
+            stash.compact ();
+        }
+    }
+
+    (void) zlink_msg_close (msg_);
+
+    if (invalid) {
+        std::lock_guard<std::mutex> lk (probe->mutex);
+        ++probe->parse_errors;
+        return 0;
+    }
+
+    {
+        std::lock_guard<std::mutex> lk (probe->mutex);
+        for (size_t i = 0; i < complete_frames.size (); ++i) {
+            queued_stream_message_t queued;
+            queued.rid = *rid_;
+            TEST_ASSERT_EQUAL_INT (0, zlink_msg_close (&queued.msg));
+            TEST_ASSERT_EQUAL_INT (
+              0, zlink_msg_init_size (&queued.msg, complete_frames[i].size ()));
+            memcpy (zlink_msg_data (&queued.msg), &complete_frames[i][0],
+                    complete_frames[i].size ());
+            probe->queue.push_back (std::move (queued));
+        }
+        probe->enqueued_messages += static_cast<int> (complete_frames.size ());
+    }
+    probe->cv.notify_all ();
+    return 0;
+}
+
+void queue_handoff_msg_handler (const zlink_routing_id_t *rid_,
+                                zlink_msg_t *parts_,
+                                size_t part_count_,
+                                void *)
+{
+    if (!parts_)
+        return;
+
+    for (size_t i = 0; i < part_count_; ++i)
+        (void) queue_handoff_callback (rid_, &parts_[i]);
+}
+
+void queued_worker_send_run (queued_worker_probe_t *probe_)
+{
+    queued_stream_message_t blocked;
+    bool has_blocked = false;
+    int ready_checkpoint = 0;
+
+    for (;;) {
+        if (has_blocked) {
+            const size_t msg_size = zlink_msg_size (&blocked.msg);
+            errno = 0;
+            const int rc = test_stream_send_single_msg (
+              probe_->socket, &blocked.rid, &blocked.msg, ZLINK_DONTWAIT);
+            if (rc == static_cast<int> (msg_size)) {
+                std::lock_guard<std::mutex> lk (probe_->mutex);
+                ++probe_->processed_messages;
+                has_blocked = false;
+                if (probe_->processed_messages >= probe_->expected_messages) {
+                    probe_->done = true;
+                    probe_->cv.notify_all ();
+                    return;
+                }
+                continue;
+            }
+
+            if (errno != EAGAIN) {
+                std::lock_guard<std::mutex> lk (probe_->mutex);
+                ++probe_->send_errors;
+                probe_->failed = true;
+                probe_->done = true;
+                probe_->cv.notify_all ();
+                return;
+            }
+
+            std::unique_lock<std::mutex> lk (probe_->mutex);
+            probe_->cv.wait_for (
+              lk, std::chrono::milliseconds (10), [&]() {
+                  return probe_->failed || probe_->ready_ticks != ready_checkpoint;
+              });
+            ready_checkpoint = probe_->ready_ticks;
+            continue;
+        }
+
+        queued_stream_message_t queued;
+        {
+            std::unique_lock<std::mutex> lk (probe_->mutex);
+            probe_->cv.wait_for (
+              lk, std::chrono::milliseconds (10), [&]() {
+                  return probe_->failed
+                         || probe_->processed_messages >= probe_->expected_messages
+                         || !probe_->queue.empty ();
+              });
+
+            if (probe_->failed) {
+                probe_->done = true;
+                probe_->cv.notify_all ();
+                return;
+            }
+            if (probe_->processed_messages >= probe_->expected_messages) {
+                probe_->done = true;
+                probe_->cv.notify_all ();
+                return;
+            }
+            if (probe_->queue.empty ())
+                continue;
+
+            queued = std::move (probe_->queue.front ());
+            probe_->queue.pop_front ();
+            ready_checkpoint = probe_->ready_ticks;
+        }
+
+        errno = 0;
+        const size_t msg_size = zlink_msg_size (&queued.msg);
+        const int rc = test_stream_send_single_msg (
+          probe_->socket, &queued.rid, &queued.msg, ZLINK_DONTWAIT);
+        if (rc == static_cast<int> (msg_size)) {
+            std::lock_guard<std::mutex> lk (probe_->mutex);
+            ++probe_->processed_messages;
+            if (probe_->processed_messages >= probe_->expected_messages) {
+                probe_->done = true;
+                probe_->cv.notify_all ();
+                return;
+            }
+            continue;
+        }
+
+        if (errno == EAGAIN) {
+            blocked = std::move (queued);
+            has_blocked = true;
+            continue;
+        }
+
+        std::lock_guard<std::mutex> lk (probe_->mutex);
+        ++probe_->send_errors;
+        probe_->failed = true;
+        probe_->done = true;
+        probe_->cv.notify_all ();
+        return;
+    }
+}
+
+static void run_stream_raw_client_load (const char *endpoint_,
+                                        uint32_t client_id_,
+                                        int phases_,
+                                        int messages_per_phase_,
+                                        size_t payload_size_,
+                                        std::atomic<int> *client_failures_)
+{
+    if (!endpoint_ || !client_failures_ || payload_size_ < 8)
+        return;
+
+    std::vector<unsigned char> payload (payload_size_);
+    std::vector<unsigned char> frame (payload_size_ + 4);
+    std::vector<unsigned char> recv_frame (payload_size_ + 4);
+
+    for (int phase = 0; phase < phases_; ++phase) {
+        const int fd = connect_raw_tcp (endpoint_);
+        if (fd < 0) {
+            client_failures_->fetch_add (1, std::memory_order_release);
+            return;
+        }
+
+        set_raw_timeout (fd, 5000);
+
+        for (int i = 0; i < messages_per_phase_; ++i) {
+            const uint32_t seq =
+              static_cast<uint32_t> (phase * messages_per_phase_ + i);
+            store_u32_be (&payload[0], client_id_);
+            store_u32_be (&payload[4], seq);
+            for (size_t j = 8; j < payload_size_; ++j)
+                payload[j] = static_cast<unsigned char> ((client_id_ + seq + j) & 0xFF);
+
+            store_u32_be (&frame[0], static_cast<uint32_t> (payload_size_));
+            memcpy (&frame[4], &payload[0], payload_size_);
+
+            const size_t split =
+              1 + ((static_cast<size_t> (client_id_) + seq) % (frame.size () - 1));
+            if (send_all (fd, &frame[0], split) != 0
+                || send_all (fd, &frame[split], frame.size () - split) != 0
+                || !recv_exact_or_fail (fd, &recv_frame[0], recv_frame.size ())
+                || load_u32_be (&recv_frame[0]) != payload_size_
+                || memcmp (&recv_frame[4], &payload[0], payload_size_) != 0) {
+                client_failures_->fetch_add (1, std::memory_order_release);
+                close_raw_fd (fd);
+                return;
+            }
+        }
+
+        close_raw_fd (fd);
+    }
+}
+
+static void run_stream_raw_client_timed_window (const char *endpoint_,
+                                                uint32_t client_id_,
+                                                size_t payload_size_,
+                                                std::atomic<int> *stop_,
+                                                std::atomic<int> *client_failures_,
+                                                std::atomic<int> *sent_messages_)
+{
+    if (!endpoint_ || !stop_ || !client_failures_ || !sent_messages_
+        || payload_size_ < 8)
+        return;
+
+    const int fd = connect_raw_tcp (endpoint_);
+    if (fd < 0) {
+        client_failures_->fetch_add (1, std::memory_order_release);
+        return;
+    }
+
+    set_raw_timeout (fd, 5000);
+
+    std::vector<unsigned char> payload (payload_size_);
+    std::vector<unsigned char> frame (payload_size_ + 4);
+    std::vector<unsigned char> recv_frame (payload_size_ + 4);
+    int local_sent = 0;
+
+    while (stop_->load (std::memory_order_acquire) == 0) {
+        const uint32_t seq = static_cast<uint32_t> (local_sent);
+        store_u32_be (&payload[0], client_id_);
+        store_u32_be (&payload[4], seq);
+        for (size_t j = 8; j < payload_size_; ++j)
+            payload[j] =
+              static_cast<unsigned char> ((client_id_ + seq + j) & 0xFF);
+
+        store_u32_be (&frame[0], static_cast<uint32_t> (payload_size_));
+        memcpy (&frame[4], &payload[0], payload_size_);
+
+        const size_t split =
+          1 + ((static_cast<size_t> (client_id_) + seq) % (frame.size () - 1));
+        if (send_all (fd, &frame[0], split) != 0
+            || send_all (fd, &frame[split], frame.size () - split) != 0
+            || !recv_exact_or_fail (fd, &recv_frame[0], recv_frame.size ())
+            || load_u32_be (&recv_frame[0]) != payload_size_
+            || memcmp (&recv_frame[4], &payload[0], payload_size_) != 0) {
+            client_failures_->fetch_add (1, std::memory_order_release);
+            close_raw_fd (fd);
+            return;
+        }
+
+        ++local_sent;
+    }
+
+    sent_messages_->fetch_add (local_sent, std::memory_order_release);
+    close_raw_fd (fd);
 }
 }
 
@@ -664,6 +1145,228 @@ void test_stream_callback_handoff_to_worker_thread_send_msg_is_safe ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_worker_probe = NULL;
     close_raw_fd (raw_fd);
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+void test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    const int client_count = 4;
+    const int messages_per_client = 32;
+    const size_t payload_size = 64;
+    const int expected_messages = client_count * messages_per_client;
+
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    const int hwm = 10;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    queued_worker_probe_t probe;
+    probe.socket = server;
+    probe.expected_messages = expected_messages;
+    g_queued_worker_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (server, &queued_send_ready_handler, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (server, queue_handoff_callback));
+
+    std::thread worker (queued_worker_send_run, &probe);
+
+    std::atomic<int> client_failures (0);
+    std::vector<std::thread> clients;
+    clients.reserve (client_count);
+    for (int i = 0; i < client_count; ++i) {
+        clients.push_back (
+          std::thread (run_stream_raw_client_load, endpoint,
+                       static_cast<uint32_t> (i), 1, messages_per_client,
+                       payload_size, &client_failures));
+    }
+
+    for (size_t i = 0; i < clients.size (); ++i)
+        clients[i].join ();
+
+    {
+        std::unique_lock<std::mutex> lk (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lk, std::chrono::seconds (10), [&probe]() { return probe.done; }));
+    }
+
+    worker.join ();
+
+    {
+        std::lock_guard<std::mutex> lk (probe.mutex);
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_INT (0, probe.send_errors);
+        TEST_ASSERT_EQUAL_INT (expected_messages, probe.processed_messages);
+        TEST_ASSERT_TRUE (probe.queue.empty ());
+    }
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
+    g_queued_worker_probe = NULL;
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+void test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    const int client_count = 4;
+    const int messages_per_client = 32;
+    const size_t payload_size = 64;
+    const int expected_messages = client_count * messages_per_client;
+
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    const int hwm = 10;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    queued_worker_probe_t probe;
+    probe.socket = server;
+    probe.expected_messages = expected_messages;
+    g_queued_worker_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (server, &queued_send_ready_handler, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (server, &queue_handoff_msg_handler, NULL));
+
+    std::thread worker (queued_worker_send_run, &probe);
+
+    std::atomic<int> client_failures (0);
+    std::vector<std::thread> clients;
+    clients.reserve (client_count);
+    for (int i = 0; i < client_count; ++i) {
+        clients.push_back (
+          std::thread (run_stream_raw_client_load, endpoint,
+                       static_cast<uint32_t> (i), 1, messages_per_client,
+                       payload_size, &client_failures));
+    }
+
+    for (size_t i = 0; i < clients.size (); ++i)
+        clients[i].join ();
+
+    {
+        std::unique_lock<std::mutex> lk (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lk, std::chrono::seconds (10), [&probe] () { return probe.done; }));
+    }
+
+    worker.join ();
+
+    {
+        std::lock_guard<std::mutex> lk (probe.mutex);
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_INT (0, probe.send_errors);
+        TEST_ASSERT_EQUAL_INT (expected_messages, probe.processed_messages);
+        TEST_ASSERT_TRUE (probe.queue.empty ());
+    }
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+
+    g_queued_worker_probe = NULL;
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+#else
+    const int client_count = 4;
+    const size_t payload_size = 64;
+    const int run_ms = 1500;
+
+    void *server = test_context_socket (ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_stream_socket (server);
+
+    const int hwm = 10;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    queued_worker_probe_t probe;
+    probe.socket = server;
+    probe.expected_messages = INT_MAX / 2;
+    g_queued_worker_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (server, &queued_send_ready_handler, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv_handler (server, &queue_handoff_msg_handler, NULL));
+
+    std::thread worker (queued_worker_send_run, &probe);
+
+    std::atomic<int> stop (0);
+    std::atomic<int> client_failures (0);
+    std::atomic<int> sent_messages (0);
+    std::vector<std::thread> clients;
+    clients.reserve (client_count);
+    for (int i = 0; i < client_count; ++i) {
+        clients.push_back (
+          std::thread (run_stream_raw_client_timed_window, endpoint,
+                       static_cast<uint32_t> (i), payload_size, &stop,
+                       &client_failures, &sent_messages));
+    }
+
+    std::this_thread::sleep_for (std::chrono::milliseconds (run_ms));
+    stop.store (1, std::memory_order_release);
+
+    for (size_t i = 0; i < clients.size (); ++i)
+        clients[i].join ();
+
+    {
+        std::lock_guard<std::mutex> lk (probe.mutex);
+        probe.expected_messages = probe.enqueued_messages;
+    }
+    probe.cv.notify_all ();
+
+    {
+        std::unique_lock<std::mutex> lk (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lk, std::chrono::seconds (10), [&probe] () { return probe.done; }));
+    }
+
+    worker.join ();
+
+    {
+        std::lock_guard<std::mutex> lk (probe.mutex);
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_INT (0, probe.send_errors);
+        TEST_ASSERT_EQUAL_INT (0, probe.parse_errors);
+        TEST_ASSERT_TRUE (probe.queue.empty ());
+        TEST_ASSERT_GREATER_THAN_INT (0, probe.enqueued_messages);
+        TEST_ASSERT_EQUAL_INT (probe.enqueued_messages, probe.processed_messages);
+    }
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      sent_messages.load (std::memory_order_acquire), probe.processed_messages);
+
+    g_queued_worker_probe = NULL;
     test_context_socket_close_zero_linger (server);
 #endif
 }
@@ -990,6 +1693,9 @@ int main ()
     RUN_TEST (test_stream_send_and_detach_race_is_safe);
     RUN_TEST (test_stream_send_and_close_race_is_safe);
     RUN_TEST (test_stream_callback_handoff_to_worker_thread_send_msg_is_safe);
+    RUN_TEST (test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe);
+    RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe);
+    RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly);
     RUN_TEST (test_stream_reattach_after_detach);
     RUN_TEST (test_stream_send_msg_is_thread_safe);
     RUN_TEST (test_stream_runtime_reads_are_safe_during_send);

@@ -9,6 +9,7 @@
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
+#include "core/multipart_send_txn.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 #include "utils/err.hpp"
@@ -80,120 +81,6 @@ static void copy_endpoint (char *dst_, size_t dst_size_, const char *src_)
 static void copy_subject (char *dst_, size_t dst_size_, const char *src_)
 {
     copy_endpoint (dst_, dst_size_, src_);
-}
-
-static int spot_socket_sndtimeo_ms (socket_base_t *socket_)
-{
-    if (!socket_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    int timeout_ms = -1;
-    size_t optlen = sizeof (timeout_ms);
-    if (socket_->getsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &timeout_ms, &optlen)
-        != 0) {
-        return -1;
-    }
-
-    return timeout_ms;
-}
-
-static int publish_spot_parts (socket_base_t *socket_,
-                               const char *topic_,
-                               zlink_msg_t *parts_,
-                               size_t part_count_,
-                               int flags_)
-{
-    if (!socket_ || !topic_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    msg_t topic_msg;
-    const size_t topic_size = strlen (topic_);
-    bool sent_prefix = false;
-
-    if (topic_msg.init_size (topic_size) != 0)
-        return -1;
-
-    memcpy (topic_msg.data (), topic_, topic_size);
-    if (socket_->send (&topic_msg,
-                       (part_count_ > 0 ? ZLINK_SNDMORE : 0)
-                         | (flags_ & ZLINK_DONTWAIT))
-        != 0) {
-        const int err = errno;
-        topic_msg.close ();
-        errno = err;
-        return -1;
-    }
-    sent_prefix = part_count_ > 0;
-    topic_msg.close ();
-
-    for (size_t i = 0; i < part_count_; ++i) {
-        const bool more = i + 1 < part_count_;
-        msg_t *part = reinterpret_cast<msg_t *> (&parts_[i]);
-        if (socket_->send (part,
-                           (more ? ZLINK_SNDMORE : 0)
-                             | (flags_ & ZLINK_DONTWAIT))
-            != 0) {
-            const int err = errno;
-            if (sent_prefix)
-                (void) socket_->rollback ();
-            errno = err;
-            return -1;
-        }
-        sent_prefix = more;
-    }
-
-    errno = 0;
-    return 0;
-}
-
-static int publish_spot_parts_blocking (socket_base_t *socket_,
-                                        const char *topic_,
-                                        zlink_msg_t *parts_,
-                                        size_t part_count_,
-                                        int flags_)
-{
-    const int sndtimeo_ms = spot_socket_sndtimeo_ms (socket_);
-    if (sndtimeo_ms < 0 && errno != 0) {
-        // Preserve legacy blocking semantics for sockets that do not expose
-        // SNDTIMEO through the internal getsockopt path, while still using
-        // rollback on multipart failure.
-        return publish_spot_parts (socket_, topic_, parts_, part_count_, flags_);
-    }
-
-    clock_t clock;
-    const uint64_t deadline_ms =
-      sndtimeo_ms > 0 ? clock.now_ms () + static_cast<uint64_t> (sndtimeo_ms)
-                      : 0;
-
-    while (true) {
-        if (publish_spot_parts (socket_, topic_, parts_, part_count_,
-                                flags_ | ZLINK_DONTWAIT)
-            == 0) {
-            return 0;
-        }
-
-        const int err = errno;
-        if (err != EAGAIN && err != EINTR) {
-            errno = err;
-            return -1;
-        }
-
-        if (sndtimeo_ms == 0) {
-            errno = EAGAIN;
-            return -1;
-        }
-
-        if (sndtimeo_ms > 0 && clock.now_ms () >= deadline_ms) {
-            errno = EAGAIN;
-            return -1;
-        }
-
-        sleep_ms (1);
-    }
 }
 
 static void fill_socket_monitor_event (zlink_service_event_t *event_,
@@ -348,11 +235,8 @@ int spot_pub_t::publish (const char *topic_,
     lock_routing_id ();
 
     scoped_lock_t publish_lock (_publish_sync);
-    const int rc = (flags_ & ZLINK_DONTWAIT)
-                     ? publish_spot_parts (socket, topic_, parts_, part_count_,
-                                           flags_)
-                     : publish_spot_parts_blocking (socket, topic_, parts_,
-                                                    part_count_, flags_);
+    const int rc = zlink::logical_multipart_publish (
+      socket, topic_, parts_, part_count_, flags_, true);
     const int saved_errno = rc == 0 ? 0 : errno;
 
     if (saved_errno != 0) {

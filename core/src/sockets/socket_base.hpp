@@ -25,6 +25,7 @@
 #include "core/endpoint.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
+#include "sockets/socket_runtime.hpp"
 #include "zlink.h"
 
 extern "C" {
@@ -313,19 +314,18 @@ class socket_base_t : public own_t,
     enum
     {
         monitor_queue_hwm = 4096,
-        monitor_max_values = 4
+        monitor_max_values = zlink::socket_monitor_max_values
     };
 
-    struct monitor_event_record_t
-    {
-        monitor_event_record_t ();
-
-        uint64_t event;
-        uint64_t values[monitor_max_values];
-        uint64_t values_count;
-        zlink_routing_id_t routing_id;
-        endpoint_uri_pair_t endpoint_uri_pair;
-    };
+    typedef zlink::socket_monitor_event_record_t monitor_event_record_t;
+    typedef zlink::socket_endpoint_pipe_t endpoint_pipe_t;
+    typedef zlink::socket_endpoints_t endpoints_t;
+    typedef zlink::socket_inprocs_t inprocs_t;
+    typedef zlink::socket_endpoint_registry_t endpoint_registry_t;
+    typedef zlink::socket_monitor_bridge_t monitor_bridge_t;
+    typedef zlink::socket_dispatch_bridge_t dispatch_bridge_t;
+    typedef zlink::socket_lifecycle_hooks_t lifecycle_hooks_t;
+    typedef zlink::socket_runtime_t socket_runtime_t;
 
     // test if event should be sent and then dispatch it
     void event (const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -358,126 +358,6 @@ class socket_base_t : public own_t,
     void add_endpoint (const endpoint_uri_pair_t &endpoint_pair_,
                        own_t *endpoint_,
                        pipe_t *pipe_);
-
-    //  Map of open endpoints.
-    typedef std::pair<own_t *, pipe_t *> endpoint_pipe_t;
-    typedef std::multimap<std::string, endpoint_pipe_t> endpoints_t;
-
-    //  Map of open inproc endpoints.
-    class inprocs_t
-    {
-      public:
-        void emplace (const char *endpoint_uri_, pipe_t *pipe_);
-        int erase_pipes (const std::string &endpoint_uri_str_);
-        void erase_pipe (const pipe_t *pipe_);
-
-      private:
-        typedef std::multimap<std::string, pipe_t *> map_t;
-        map_t _inprocs;
-    };
-
-    struct endpoint_registry_t
-    {
-        endpoints_t endpoints;
-        inprocs_t inprocs;
-    };
-
-    struct monitor_bridge_t
-    {
-        monitor_bridge_t () :
-            socket (NULL),
-            events (0),
-            events_atomic (0),
-            lossy (true),
-            queue_stop (false),
-            thread_started (false)
-        {
-        }
-
-        void *socket;
-        int64_t events;
-        std::atomic<int64_t> events_atomic;
-        bool lossy;
-        mutex_t sync;
-        mutex_t queue_sync;
-        condition_variable_t queue_cv;
-        std::deque<monitor_event_record_t> queue;
-        bool queue_stop;
-        thread_t thread;
-        bool thread_started;
-    };
-
-    struct dispatch_bridge_t
-    {
-        dispatch_bridge_t () :
-            socket_msg_handler (NULL),
-            socket_msg_handler_subject (NULL),
-            socket_msg_handler_userdata (NULL),
-            spot_handler (NULL),
-            spot_handler_userdata (NULL),
-            public_api_state (0),
-            public_api_sync (),
-            callback_api_depth (0),
-            close_deferred (false),
-            send_ready_handler (NULL),
-            send_ready_handler_subject (NULL),
-            send_ready_handler_userdata (NULL),
-            send_ready_seq (0),
-            send_ready_armed (false),
-            last_recv_source_rid (),
-            last_recv_source_rid_valid (false)
-        {
-        }
-
-        std::atomic<zlink_socket_msg_handler_fn> socket_msg_handler;
-        std::atomic<void *> socket_msg_handler_subject;
-        std::atomic<void *> socket_msg_handler_userdata;
-        std::atomic<zlink_subscribe_handler_fn> spot_handler;
-        std::atomic<void *> spot_handler_userdata;
-        std::atomic<uint32_t> public_api_state;
-        std::atomic<bool> public_api_sync;
-        std::atomic<uint32_t> callback_api_depth;
-        std::atomic<bool> close_deferred;
-        std::atomic<zlink_send_ready_handler_fn> send_ready_handler;
-        std::atomic<void *> send_ready_handler_subject;
-        std::atomic<void *> send_ready_handler_userdata;
-        std::atomic<uint32_t> send_ready_seq;
-        mutex_t send_ready_writer_sync;
-        std::atomic<bool> send_ready_armed;
-        std::recursive_mutex socket_msg_dispatch_sync;
-        zlink_routing_id_t last_recv_source_rid;
-        bool last_recv_source_rid_valid;
-    };
-
-    struct lifecycle_hooks_t
-    {
-        lifecycle_hooks_t () :
-            mailbox_refcnt (0),
-            destroy_pending (false),
-            monitor_async_mailbox_owned (false),
-            async_mailbox_active (false),
-            async_quiesce_pending (false),
-            async_processing_done (true)
-        {
-        }
-
-        atomic_counter_t mailbox_refcnt;
-        bool destroy_pending;
-        bool monitor_async_mailbox_owned;
-        std::atomic<bool> async_mailbox_active;
-        std::atomic<bool> async_quiesce_pending;
-        std::atomic<bool> async_processing_done;
-        mutex_t async_done_mu;
-        condition_variable_t async_done_cv;
-    };
-
-    struct socket_runtime_t
-    {
-        endpoint_registry_t endpoint_registry;
-        monitor_bridge_t monitor_bridge;
-        dispatch_bridge_t dispatch_bridge;
-        lifecycle_hooks_t lifecycle_hooks;
-    };
 
     //  To be called after processing commands or invoking any command
     //  handlers explicitly. If required, it will deallocate the socket.
@@ -556,11 +436,10 @@ class socket_base_t : public own_t,
     pipes_t _pipes;
     std::set<std::string> _ready_connection_keys;
 
-#ifndef NDEBUG
-    //  Diagnostic counters for termination accounting.
+    //  Keep these counters in all builds so the class layout does not vary
+    //  across translation units compiled with different debug settings.
     int _term_pipe_acks_registered;
     int _term_pipe_acks_received;
-#endif
 
     //  Reaper's poller.
     poller_t *_poller;

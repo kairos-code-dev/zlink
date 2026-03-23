@@ -542,14 +542,17 @@ class bench_client_t : public bench_client_iface_t
             const auto drain_deadline =
               std::chrono::steady_clock::now ()
               + std::chrono::milliseconds (drain_ms);
-            std::unique_lock<std::mutex> lk (drain_mu);
-            while (outstanding_total.load (std::memory_order_relaxed) > 0) {
-                if (drain_cv.wait_until (lk, drain_deadline)
-                    == std::cv_status::timeout)
-                    break;
-            }
+            long remaining = 0;
+            {
+                std::unique_lock<std::mutex> lk (drain_mu);
+                while (outstanding_total.load (std::memory_order_relaxed) > 0) {
+                    if (drain_cv.wait_until (lk, drain_deadline)
+                        == std::cv_status::timeout)
+                        break;
+                }
 
-            const long remaining = outstanding_total.load (std::memory_order_relaxed);
+                remaining = outstanding_total.load (std::memory_order_relaxed);
+            }
             if (remaining > 0) {
                 on_timeout (remaining);
                 on_abandon (remaining);

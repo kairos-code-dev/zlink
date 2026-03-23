@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../../testutil.hpp"
+#include "../../testutil_unity.hpp"
+#include "../../../src/services/spot/spot_node.hpp"
+#include "../../../src/services/spot/spot_pub.hpp"
+#include "../../../src/core/msg.hpp"
 
 #include <unity.h>
 
@@ -14,19 +18,6 @@
 #include <vector>
 
 namespace {
-
-static void assert_success_errno (int rc_, const char *expr_, int line_)
-{
-    if (rc_ == 0)
-        return;
-    char message[128];
-    snprintf (message, sizeof (message), "%s failed: errno=%d", expr_,
-              zlink_errno ());
-    UnityFail (message, line_);
-}
-
-#define TEST_ASSERT_SUCCESS_ERRNO(expr)                                       \
-    assert_success_errno ((expr), #expr, __LINE__)
 
 struct service_monitor_probe_t
 {
@@ -338,6 +329,38 @@ static int publish_text (void *subject_,
     return rc;
 }
 
+static int publish_two_parts (void *subject_,
+                              const char *topic_,
+                              const char *part_a_,
+                              const char *part_b_)
+{
+    zlink_msg_t parts[2];
+    const size_t size_a = part_a_ ? strlen (part_a_) : 0;
+    const size_t size_b = part_b_ ? strlen (part_b_) : 0;
+    if (zlink_msg_init_size (&parts[0], size_a) != 0)
+        return -1;
+    if (size_a > 0)
+        memcpy (zlink_msg_data (&parts[0]), part_a_, size_a);
+
+    if (zlink_msg_init_size (&parts[1], size_b) != 0) {
+        const int err = zlink_errno ();
+        zlink_msg_close (&parts[0]);
+        errno = err;
+        return -1;
+    }
+    if (size_b > 0)
+        memcpy (zlink_msg_data (&parts[1]), part_b_, size_b);
+
+    const int rc = zlink_publish (subject_, topic_, parts, 2, 0);
+    if (rc != 0) {
+        const int err = zlink_errno ();
+        zlink_msg_close (&parts[0]);
+        zlink_msg_close (&parts[1]);
+        errno = err;
+    }
+    return rc;
+}
+
 static bool wait_for_subscribe_payload (void *subject_,
                                         const char *expected_topic_,
                                         const char *expected_payload_,
@@ -368,6 +391,48 @@ static bool wait_for_subscribe_payload (void *subject_,
         zlink_msg_close (&parts[i]);
     free (parts);
     return got_topic == expected_topic_ && got_payload == expected_payload_;
+}
+
+static bool wait_for_subscribe_payload_parts (void *subject_,
+                                              const char *expected_topic_,
+                                              const char *expected_part_a_,
+                                              const char *expected_part_b_,
+                                              int timeout_ms_)
+{
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (subject_, ZLINK_OPT_RCVTIMEO, &timeout_ms_,
+                        sizeof (timeout_ms_)));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[256];
+    memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    if (zlink_subscribe (subject_, NULL, &parts, &part_count, topic,
+                         &topic_len, 0)
+        != 0) {
+        return false;
+    }
+
+    const std::string got_topic (topic, topic_len);
+    std::string got_part_a;
+    std::string got_part_b;
+    if (part_count > 0) {
+        got_part_a.assign (
+          static_cast<const char *> (zlink_msg_data (&parts[0])),
+          zlink_msg_size (&parts[0]));
+    }
+    if (part_count > 1) {
+        got_part_b.assign (
+          static_cast<const char *> (zlink_msg_data (&parts[1])),
+          zlink_msg_size (&parts[1]));
+    }
+    for (size_t i = 0; i < part_count; ++i)
+        zlink_msg_close (&parts[i]);
+    free (parts);
+
+    return got_topic == expected_topic_ && part_count == 2
+           && got_part_a == expected_part_a_ && got_part_b == expected_part_b_;
 }
 
 static bool wait_for_callback_payload (subscribe_probe_t *probe_,
@@ -767,6 +832,63 @@ static void test_spot_node_snapshot_status_peers_subjects ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_publish_rollback_preserves_next_topic_boundary ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_node (ctx, "spot-rollback");
+    void *sub_node = create_node (ctx, "spot-rollback");
+
+    const int timeout_ms = 200;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      pub_node, ZLINK_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      sub_node, ZLINK_OPT_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int port_seed = next_port_seed ();
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (sub_node, endpoint));
+    TEST_ASSERT_TRUE (
+      wait_for_subscription_ready (sub_node, endpoint, "topic.rollback"));
+    TEST_ASSERT_TRUE (wait_for_pub_ready (pub_node));
+
+    zlink::spot_node_t *pub_impl =
+      static_cast<zlink::spot_node_t *> (pub_node);
+    zlink::spot_pub_t *spot_pub = pub_impl->ensure_default_pub ();
+    TEST_ASSERT_NOT_NULL (spot_pub);
+    zlink::socket_base_t *pub_socket = spot_pub->poller_socket ();
+    TEST_ASSERT_NOT_NULL (pub_socket);
+
+    zlink::msg_t topic_part;
+    TEST_ASSERT_SUCCESS_ERRNO (topic_part.init_size (strlen ("topic.rollback")));
+    memcpy (topic_part.data (), "topic.rollback", strlen ("topic.rollback"));
+    TEST_ASSERT_SUCCESS_ERRNO (pub_socket->send (&topic_part, ZLINK_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (pub_socket->rollback ());
+    topic_part.close ();
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[256];
+    memset (topic, 0, sizeof (topic));
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_FAILURE_ERRNO (
+      EAGAIN,
+      zlink_subscribe (sub_node, NULL, &parts, &part_count, topic, &topic_len,
+                       ZLINK_DONTWAIT));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_two_parts (pub_node, "topic.rollback", "part-a", "part-b"));
+    TEST_ASSERT_TRUE (wait_for_subscribe_payload_parts (
+      sub_node, "topic.rollback", "part-a", "part-b", 3000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 static bool should_run_spot_introspection_test (const char *name_)
 {
     const char *selected = getenv ("ZLINK_TEST_CASE");
@@ -789,6 +911,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_subscription_ready_changed_reports_loss);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_callback_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_publish_rollback_preserves_next_topic_boundary);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_snapshot_status_peers_subjects);
 #undef RUN_SPOT_INTROSPECTION_TEST

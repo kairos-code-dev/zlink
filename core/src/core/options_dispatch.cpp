@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "core/options.hpp"
+#include "core/options_owner.hpp"
 #include "utils/err.hpp"
 
 #ifndef ZLINK_HAVE_WINDOWS
@@ -58,12 +59,12 @@ do_setsockopt_string_allow_empty_strict (const void *const optval_,
     return sockopt_invalid ();
 }
 
-static int setsockopt_general (zlink::options_t *self_,
-                               int option_,
-                               const void *optval_,
-                               size_t optvallen_,
-                               bool is_int_,
-                               int value_)
+static int setsockopt_core_socket (zlink::options_t *self_,
+                                   int option_,
+                                   const void *optval_,
+                                   size_t optvallen_,
+                                   bool is_int_,
+                                   int value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDHWM:
@@ -177,12 +178,12 @@ static int setsockopt_general (zlink::options_t *self_,
     return -1;
 }
 
-static int setsockopt_transport (zlink::options_t *self_,
-                                 int option_,
-                                 const void *optval_,
-                                 size_t optvallen_,
-                                 bool is_int_,
-                                 int value_)
+static int setsockopt_transport_network (zlink::options_t *self_,
+                                         int option_,
+                                         const void *optval_,
+                                         size_t optvallen_,
+                                         bool is_int_,
+                                         int value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDBUF:
@@ -308,12 +309,12 @@ static int setsockopt_transport (zlink::options_t *self_,
     return -1;
 }
 
-static int setsockopt_security (zlink::options_t *self_,
-                                int option_,
-                                const void *optval_,
-                                size_t optvallen_,
-                                bool is_int_,
-                                int value_)
+static int setsockopt_protocol_metadata (zlink::options_t *self_,
+                                         int option_,
+                                         const void *optval_,
+                                         size_t optvallen_,
+                                         bool is_int_,
+                                         int value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_HEARTBEAT_TTL:
@@ -367,12 +368,12 @@ static int setsockopt_security (zlink::options_t *self_,
     return -1;
 }
 
-static int getsockopt_general (const zlink::options_t *self_,
-                               int option_,
-                               void *optval_,
-                               size_t *optvallen_,
-                               bool is_int_,
-                               int *value_)
+static int getsockopt_core_socket (const zlink::options_t *self_,
+                                   int option_,
+                                   void *optval_,
+                                   size_t *optvallen_,
+                                   bool is_int_,
+                                   int *value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDHWM:
@@ -494,12 +495,12 @@ static int getsockopt_general (const zlink::options_t *self_,
     return -1;
 }
 
-static int getsockopt_transport (const zlink::options_t *self_,
-                                 int option_,
-                                 void *optval_,
-                                 size_t *optvallen_,
-                                 bool is_int_,
-                                 int *value_)
+static int getsockopt_transport_network (const zlink::options_t *self_,
+                                         int option_,
+                                         void *optval_,
+                                         size_t *optvallen_,
+                                         bool is_int_,
+                                         int *value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDBUF:
@@ -608,12 +609,12 @@ static int getsockopt_transport (const zlink::options_t *self_,
     return -1;
 }
 
-static int getsockopt_security (const zlink::options_t *self_,
-                                int option_,
-                                void *optval_,
-                                size_t *optvallen_,
-                                bool is_int_,
-                                int *value_)
+static int getsockopt_protocol_metadata (const zlink::options_t *self_,
+                                         int option_,
+                                         void *optval_,
+                                         size_t *optvallen_,
+                                         bool is_int_,
+                                         int *value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_HEARTBEAT_TTL:
@@ -673,16 +674,30 @@ int zlink::options_t::setsockopt (int option_,
     if (is_int)
         memcpy (&value, optval_, sizeof (int));
 
-    if (setsockopt_general (this, option_, optval_, optvallen_, is_int, value)
-        == 0)
-        return 0;
-    if (setsockopt_transport (
-          this, option_, optval_, optvallen_, is_int, value)
-        == 0)
-        return 0;
-    if (setsockopt_security (this, option_, optval_, optvallen_, is_int, value)
-        == 0)
-        return 0;
+    switch (option_owner_of (option_)) {
+        case options_owner_core_socket:
+            if (setsockopt_core_socket (
+                  this, option_, optval_, optvallen_, is_int, value)
+                == 0)
+                return 0;
+            break;
+        case options_owner_transport_network:
+            if (setsockopt_transport_network (
+                  this, option_, optval_, optvallen_, is_int, value)
+                == 0)
+                return 0;
+            break;
+        case options_owner_protocol_metadata:
+            if (setsockopt_protocol_metadata (
+                  this, option_, optval_, optvallen_, is_int, value)
+                == 0)
+                return 0;
+            break;
+        case options_owner_service_specific:
+        case options_owner_unknown:
+        default:
+            break;
+    }
 
     errno = EINVAL;
     return -1;
@@ -695,17 +710,30 @@ int zlink::options_t::getsockopt (int option_,
     const bool is_int = (*optvallen_ == sizeof (int));
     int *value = static_cast<int *> (optval_);
 
-    if (getsockopt_general (this, option_, optval_, optvallen_, is_int, value)
-        == 0)
-        return 0;
-    if (getsockopt_transport (
-          this, option_, optval_, optvallen_, is_int, value)
-        == 0)
-        return 0;
-    if (getsockopt_security (
-          this, option_, optval_, optvallen_, is_int, value)
-        == 0)
-        return 0;
+    switch (option_owner_of (option_)) {
+        case options_owner_core_socket:
+            if (getsockopt_core_socket (
+                  this, option_, optval_, optvallen_, is_int, value)
+                == 0)
+                return 0;
+            break;
+        case options_owner_transport_network:
+            if (getsockopt_transport_network (
+                  this, option_, optval_, optvallen_, is_int, value)
+                == 0)
+                return 0;
+            break;
+        case options_owner_protocol_metadata:
+            if (getsockopt_protocol_metadata (
+                  this, option_, optval_, optvallen_, is_int, value)
+                == 0)
+                return 0;
+            break;
+        case options_owner_service_specific:
+        case options_owner_unknown:
+        default:
+            break;
+    }
 
     errno = EINVAL;
     return -1;

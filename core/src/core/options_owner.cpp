@@ -1,0 +1,102 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "core/internal_defs.hpp"
+#include "core/options_owner.hpp"
+
+zlink::options_owner_t zlink::option_owner_of (int option_)
+{
+    switch (option_) {
+        case ZLINK_INTERNAL_OPT_AFFINITY:
+        case ZLINK_INTERNAL_OPT_ROUTING_ID:
+        case ZLINK_INTERNAL_OPT_RATE:
+        case ZLINK_INTERNAL_OPT_RECOVERY_IVL:
+        case ZLINK_INTERNAL_OPT_MAXMSGSIZE:
+        case ZLINK_INTERNAL_OPT_MULTICAST_HOPS:
+        case ZLINK_INTERNAL_OPT_MULTICAST_MAXTPDU:
+        case ZLINK_INTERNAL_OPT_SNDHWM:
+        case ZLINK_INTERNAL_OPT_RCVHWM:
+        case ZLINK_INTERNAL_OPT_IPV6:
+        case ZLINK_INTERNAL_OPT_IMMEDIATE:
+        case ZLINK_INTERNAL_OPT_CONFLATE:
+        case ZLINK_INTERNAL_OPT_HANDSHAKE_IVL:
+        case ZLINK_INTERNAL_OPT_INVERT_MATCHING:
+        case ZLINK_INTERNAL_OPT_STREAM_NOTIFY:
+        case ZLINK_INTERNAL_OPT_TYPE:
+        case ZLINK_INTERNAL_OPT_ZMP_METADATA:
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT:
+            return options_owner_core_socket;
+
+        case ZLINK_INTERNAL_OPT_SNDBUF:
+        case ZLINK_INTERNAL_OPT_RCVBUF:
+        case ZLINK_INTERNAL_OPT_LINGER:
+        case ZLINK_INTERNAL_OPT_RECONNECT_IVL:
+        case ZLINK_INTERNAL_OPT_BACKLOG:
+        case ZLINK_INTERNAL_OPT_RECONNECT_IVL_MAX:
+        case ZLINK_INTERNAL_OPT_RCVTIMEO:
+        case ZLINK_INTERNAL_OPT_SNDTIMEO:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_CNT:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_IDLE:
+        case ZLINK_INTERNAL_OPT_TCP_KEEPALIVE_INTVL:
+        case ZLINK_INTERNAL_OPT_TOS:
+        case ZLINK_INTERNAL_OPT_CONNECT_TIMEOUT:
+        case ZLINK_INTERNAL_OPT_TCP_MAXRT:
+        case ZLINK_INTERNAL_OPT_BINDTODEVICE:
+        case ZLINK_INTERNAL_OPT_TCP_NODELAY:
+            return options_owner_transport_network;
+
+#ifdef ZLINK_HAVE_TLS
+        case ZLINK_INTERNAL_OPT_TLS_CERT:
+        case ZLINK_INTERNAL_OPT_TLS_KEY:
+        case ZLINK_INTERNAL_OPT_TLS_CA:
+        case ZLINK_INTERNAL_OPT_TLS_VERIFY:
+        case ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT:
+        case ZLINK_INTERNAL_OPT_TLS_HOSTNAME:
+        case ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM:
+        case ZLINK_INTERNAL_OPT_TLS_PASSWORD:
+            return options_owner_protocol_metadata;
+#endif
+
+        case ZLINK_INTERNAL_OPT_HEARTBEAT_TTL:
+            return options_owner_protocol_metadata;
+
+        case ZLINK_INTERNAL_OPT_SUBSCRIBE:
+        case ZLINK_INTERNAL_OPT_UNSUBSCRIBE:
+        case ZLINK_INTERNAL_OPT_ROUTER_MANDATORY:
+        case ZLINK_INTERNAL_OPT_PROBE_ROUTER:
+        case ZLINK_INTERNAL_OPT_ROUTER_HANDOVER:
+        case ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID:
+        case ZLINK_INTERNAL_OPT_XPUB_VERBOSE:
+        case ZLINK_INTERNAL_OPT_XPUB_NODROP:
+        case ZLINK_INTERNAL_OPT_XPUB_MANUAL:
+        case ZLINK_INTERNAL_OPT_XPUB_WELCOME_MSG:
+        case ZLINK_INTERNAL_OPT_XPUB_VERBOSER:
+        case ZLINK_INTERNAL_OPT_TOPICS_COUNT:
+        case ZLINK_INTERNAL_OPT_FD:
+        case ZLINK_INTERNAL_OPT_EVENTS:
+        case ZLINK_INTERNAL_OPT_LAST_ENDPOINT:
+            return options_owner_service_specific;
+
+        default:
+            return options_owner_unknown;
+    }
+}
+
+const char *zlink::option_owner_name (options_owner_t owner_)
+{
+    switch (owner_) {
+        case options_owner_core_socket:
+            return "core-socket";
+        case options_owner_transport_network:
+            return "transport-network";
+        case options_owner_protocol_metadata:
+            return "protocol-metadata";
+        case options_owner_service_specific:
+            return "service-specific";
+        default:
+            return "unknown";
+    }
+}

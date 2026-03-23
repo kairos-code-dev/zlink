@@ -3,6 +3,8 @@
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
 
+#include "core/internal_defs.hpp"
+
 #include <string.h>
 #include <unity.h>
 
@@ -48,6 +50,30 @@ void test_typed_raw_socket_options ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_SNDHWM, &value, &size));
     TEST_ASSERT_EQUAL_INT (42, value);
+
+    value = 1;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (stream, ZLINK_OPT_IPV6, &value, sizeof (value)));
+    value = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (stream, ZLINK_OPT_IPV6, &value, &size));
+    TEST_ASSERT_EQUAL_INT (1, value);
+
+    value = 2500;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      dealer, ZLINK_OPT_HEARTBEAT_IVL, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (dealer, ZLINK_OPT_HEARTBEAT_IVL, &value, &size));
+    TEST_ASSERT_EQUAL_INT (2500, value);
+
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (xpub, ZLINK_OPT_TYPE, &value, &size));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CORE_SOCKET_XPUB, value);
 
     value = 1;
     size = sizeof (value);

@@ -948,12 +948,15 @@ set(api-sources
   src/api/service_api.cpp
   src/api/service_discovery_api.cpp
   src/api/service_gateway_api.cpp
-  src/api/service_handler_api.cpp
-  src/api/service_mode_api.cpp
+    src/api/service_handler_api.cpp
+    src/api/service_handler_spot_api.cpp
+    src/api/service_mode_api.cpp
   src/api/service_poller_api.cpp
   src/api/service_registry_api.cpp
   src/api/service_spot_node_api.cpp
     src/api/service_spot_api.cpp
+    src/api/service_spot_subject_option_api.cpp
+    src/api/service_spot_subject_subscription_api.cpp
     src/api/service_spot_subject_api.cpp
     src/api/service_option_api.cpp
     src/api/service_option_spot_api.cpp
@@ -981,6 +984,7 @@ set(core-sources
     src/core/timers.cpp
     src/core/options.cpp
     src/core/options_dispatch.cpp
+    src/core/options_owner.cpp
     src/core/poller_base.cpp
     src/core/socket_poller.cpp
     src/core/session_base.cpp
@@ -1002,6 +1006,7 @@ set(discovery-sources
     src/services/discovery/discovery_access.cpp
     src/services/discovery/registry.cpp
     src/services/discovery/discovery.cpp
+    src/services/discovery/discovery_bootstrap.cpp
     src/services/discovery/discovery_registry_client.cpp
     src/services/discovery/discovery_state.cpp
     src/services/discovery/discovery_uplink.cpp
@@ -1011,7 +1016,9 @@ set(discovery-sources
     src/services/gateway/gateway_facade.cpp
     src/services/gateway/gateway_lifecycle.cpp
     src/services/gateway/gateway_monitor.cpp
-    src/services/gateway/gateway_pool.cpp)
+    src/services/gateway/gateway_pool.cpp
+    src/services/gateway/gateway_socket.cpp
+    src/services/gateway/gateway_refresh.cpp)
 
 set(spot-sources
     src/services/spot/spot_data_plane.cpp
@@ -1023,6 +1030,8 @@ set(spot-sources
     src/services/spot/spot_node_summary.cpp
     src/services/spot/spot_pub.cpp
     src/services/spot/spot_runtime.cpp
+    src/services/spot/spot_sub_lifecycle.cpp
+    src/services/spot/spot_sub_subject_state.cpp
     src/services/spot/spot_sub.cpp)
 
 set(socket-sources

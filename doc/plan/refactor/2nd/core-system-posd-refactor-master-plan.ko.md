@@ -396,7 +396,7 @@ core/src/
   services/
     common/
       service_runtime_base.*
-      service_public_api.*   # public admission/close guard, not semantic service API
+      service_public_api.*
     discovery/
       discovery_access.*
       facade/*
@@ -434,6 +434,7 @@ core/src/
 - `engine/`는 poller/io_context/mailbox execution backbone을 가진다.
 - `sockets/base/`는 공통 mechanism, `sockets/families/`는 family semantic을 가진다.
 - `services/*/facade`와 `services/*/runtime`은 분리된다.
+- `services/common/service_public_api.*`는 semantic service API가 아니라 public admission/close guard다.
 - service access seam은 common hub가 아니라 service-local seam으로 둔다.
 - `transports/adapter/`는 상위가 scheme 세부를 몰라도 되게 만드는 경계다.
 
@@ -492,26 +493,25 @@ api facade
 runtime contracts
   |- ctx / shutdown / close_drain / finalization
   |- socket runtime components
-  \- service runtime contracts
-        |
-        v
-engine / io backend
-  \- poller / io_thread / asio backend
-        |
-        +------------------+
-        |                  |
-        v                  v
+  |- service runtime contracts
+  \- engine binding
+       \- poller / io_thread / asio backend
+         ^
+         |
+protocol / transport capability
+  |- raw / zmp / metadata
+  \- tcp / ipc / tls / ws / pgm
+         ^
+         |
+         +------------------+
+         |                  |
+         v                  v
 socket families        service facades/runtimes
   |- pair              |- discovery
   |- pubsub            |- gateway
   |- dealer            \- spot
   |- router
   \- stream
-        |
-        v
-protocol / transport capability
-  |- raw / zmp / metadata
-  \- tcp / ipc / tls / ws / pgm
 ```
 
 핵심 차이:
@@ -651,7 +651,7 @@ Checkpoint 규칙:
 
 - 각 sub-phase 종료 시 core 기본 게이트와 C 계약 확인을 통과해야 다음 sub-phase로 넘어간다.
 - Phase 1a, 1b는 core 기본 게이트 + C 계약 확인을 기본으로 한다.
-- Phase 1c는 service facade와 service entrypoint를 직접 건드리므로,
+- Phase 1c는 existing service seam과 service entrypoint를 직접 건드리므로,
   종료 시점에 대표 bindings smoke를 최소 1회 **의무**로 수행한다.
 
 ### Phase 2 파일 묶음

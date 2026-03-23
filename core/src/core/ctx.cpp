@@ -67,6 +67,31 @@ stream_sched_mode_t parse_stream_session_sched_mode ()
 
     return stream_sched_rr;
 }
+
+const char *socket_type_name (int type_)
+{
+    switch (type_) {
+        case ZLINK_CORE_SOCKET_PAIR:
+            return "PAIR";
+        case ZLINK_CORE_SOCKET_PUB:
+            return "PUB";
+        case ZLINK_CORE_SOCKET_SUB:
+            return "SUB";
+        case ZLINK_CORE_SOCKET_DEALER:
+            return "DEALER";
+        case ZLINK_CORE_SOCKET_ROUTER:
+            return "ROUTER";
+        case ZLINK_CORE_SOCKET_STREAM:
+            return "STREAM";
+        case ZLINK_CORE_SOCKET_XPUB:
+            return "XPUB";
+        case ZLINK_CORE_SOCKET_XSUB:
+            return "XSUB";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 }
 
 zlink::ctx_t::ctx_t () :
@@ -175,7 +200,23 @@ zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
 
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
 {
-    LIBZLINK_UNUSED (phase_);
+    if (!std::getenv ("ZLINK_CTX_DEBUG_SOCKETS"))
+        return;
+
+    sockets_t &sockets = const_cast<sockets_t &> (_sockets);
+    fprintf (stderr, "[ctx] %s socket_count=%u\n", phase_ ? phase_ : "state",
+             static_cast<unsigned> (sockets.size ()));
+    for (sockets_t::size_type i = 0, size = sockets.size (); i != size; ++i) {
+        const socket_base_t *socket = sockets[i];
+        if (!socket)
+            continue;
+
+        fprintf (stderr, "[ctx]   socket[%u]=%p type=%s(%d) sid=%d\n",
+                 static_cast<unsigned> (i), static_cast<const void *> (socket),
+                 socket_type_name (socket->socket_type ()),
+                 socket->socket_type (), socket->socket_id ());
+    }
+    fflush (stderr);
 }
 
 int zlink::ctx_t::terminate ()

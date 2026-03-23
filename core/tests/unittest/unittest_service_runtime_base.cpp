@@ -74,11 +74,47 @@ void test_force_wait_remaining_recovers_after_wait_timeout ()
     TEST_ASSERT_SUCCESS_ERRNO (ctx->terminate ());
 }
 
+void test_close_socket_and_wait_clears_closing_tracking ()
+{
+    zlink::ctx_t *ctx = create_ctx ();
+    zlink::service_runtime_base_t lifecycle (ctx);
+    zlink::socket_base_t *socket = create_socket (ctx);
+
+    lifecycle.register_socket (socket);
+    TEST_ASSERT_EQUAL_UINT (1u, lifecycle.owned_socket_count ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (lifecycle.close_socket_and_wait (socket, 2000));
+    TEST_ASSERT_NULL (socket);
+    TEST_ASSERT_EQUAL_UINT (0u, lifecycle.owned_socket_count ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (ctx->terminate ());
+}
+
+void test_register_socket_rejects_new_socket_while_stopping ()
+{
+    zlink::ctx_t *ctx = create_ctx ();
+    zlink::service_runtime_base_t lifecycle (ctx);
+    zlink::socket_base_t *socket = create_socket (ctx);
+
+    TEST_ASSERT_TRUE (lifecycle.transition_to (zlink::service_state_starting));
+    TEST_ASSERT_TRUE (lifecycle.transition_to (zlink::service_state_running));
+    TEST_ASSERT_TRUE (lifecycle.transition_to (zlink::service_state_stopping));
+
+    lifecycle.register_socket (socket);
+    TEST_ASSERT_EQUAL_UINT (0u, lifecycle.owned_socket_count ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (ctx->close_socket_and_wait (socket, 2000));
+    TEST_ASSERT_NULL (socket);
+    TEST_ASSERT_SUCCESS_ERRNO (ctx->terminate ());
+}
+
 int main (void)
 {
     setup_test_environment ();
 
     UNITY_BEGIN ();
+    RUN_TEST (test_close_socket_and_wait_clears_closing_tracking);
+    RUN_TEST (test_register_socket_rejects_new_socket_while_stopping);
     RUN_TEST (test_wait_drained_timeout_preserves_closing_tracking);
     RUN_TEST (test_force_wait_remaining_recovers_after_wait_timeout);
     return UNITY_END ();

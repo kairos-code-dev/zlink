@@ -1,0 +1,3022 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: high
+reasoning summaries: none
+session id: 019d1c9e-d9d2-7f53-8dc1-bfc635c313b6
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+  이 문서의 남은 작업을 중단 없이 끝까지 진행한다.
+
+작업 규칙:
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh 를 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+codex
+팀장님, 실행 가이드 문서에서 첫 미완료 항목을 찾고 현재 작업 트리 상태와 관련 파일을 먼저 확인하겠습니다. 필요한 경우 문서 상태표를 즉시 맞춰가면서 순서대로 구현, 검증, gate 추적까지 이어가겠습니다.
+exec
+/bin/bash -lc "pwd && git status --short && sed -n '1,260p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink
+ M core/CMakeLists.txt
+ M core/src/api/monitor_api.cpp
+ M core/src/api/monitor_api_internal.hpp
+ M core/src/api/monitor_service_api.cpp
+ M core/src/api/zlink_option.cpp
+ M core/src/core/ctx.cpp
+ M core/src/services/common/service_monitor.cpp
+ M core/src/services/gateway/gateway_lifecycle.cpp
+ M core/src/services/gateway/gateway_pool.cpp
+ M core/src/services/gateway/gateway_refresh.cpp
+ M core/src/services/gateway/gateway_runtime.hpp
+ M core/src/services/gateway/gateway_socket.cpp
+ M core/src/sockets/socket_base.cpp
+ M core/src/sockets/socket_base_monitor.cpp
+ M core/src/sockets/socket_runtime.hpp
+ M core/tests/CMakeLists.txt
+ M core/tests/README.md
+ M core/tests/e2e/discovery/test_gateway.cpp
+ M core/tests/e2e/spot/test_spot_service_introspection.cpp
+exec
+/bin/bash -lc "rg -n \"\\[ \\]|미완료|TODO|남은 작업|체크리스트|상태표\" doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+13:이 문서는 마스터 플랜의 "남은 작업"만을 대상으로,
+57:6. 한 항목을 `완료`로 바꾼 직후에는 다음 미완료 항목으로 즉시 이동한다.
+80:- 미완료 표의 다음 행이 남아 있는 상태
+85:남은 작업은 아래 루프로 끝까지 반복한다.
+87:1. 미완료 항목 목록에서 가장 위의 항목 하나를 고른다.
+91:5. 문서의 미완료 목록에서 해당 항목을 줄이거나 제거한다.
+356:## 5. 남은 작업 체크리스트
+358:아래 체크리스트를 위에서부터 순서대로 닫는다.
+418:- 장시간 검증을 시작한 뒤에는 다른 미완료 행으로 넘어가지 않는다.
+422:- 장시간 검증이 성공하면 즉시 5.0 표와 해당 체크리스트를 갱신하고 다음 미완료 행으로 이동한다.
+425:- 실패한 장시간 검증은 아래 순서를 끝까지 수행한 뒤에만 다음 미완료 행으로 넘어갈 수 있다.
+434:6. 원래 장시간 gate 성공 로그까지 확보한 뒤에만 5.0 표와 체크리스트를 갱신하고 다음 미완료 행으로 이동한다.
+471:5.0 표의 첫 미완료 행보다 아래 행을 먼저 진행하는 것은 금지한다.
+493:- [ ] `Phase 2` 완료 기준인 thread-safe stress를 수행한다.
+503:- [ ] `service_runtime_base_t`, `service_socket_registry_t`, `ctx_t`, `socket_close_ops_t`의 의미 경계를 더 선명하게 만든다.
+504:- [ ] close/wait/drain 의미 owner를 코드 구조로 설명 가능하게 만든다.
+505:- [ ] lifecycle coordinator와 global removal tracking의 협력 지점을 더 명시적으로 드러낸다.
+506:- [ ] `Phase 3` 완료 기준인 thread-safe stress를 수행한다.
+516:- [ ] `core/src/core/options_dispatch.cpp`를 owner별 validation/apply module로 더 쪼갠다.
+517:- [ ] owner map이 실제 handler 배치와 항상 일치하도록 유지한다.
+codex
+팀장님, 문서 5장 상태표와 체크리스트를 기준으로 실제 첫 미완료 항목을 특정하겠습니다. 그 다음 해당 범위 코드와 테스트를 읽어서 바로 수정 지점을 좁히겠습니다.
+exec
+/bin/bash -lc "sed -n '340,590p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    print("OK")
+    sys.exit(0)
+
+print("REGRESSIONS")
+for rel, key, base, cur in reg[:20]:
+    print(f"{key[0]},{key[1]},{key[2]},baseline={base:.3f},current={cur:.3f},rel={rel:.6f}")
+sys.exit(1)
+PY
+```
+
+smoke 실패 처리 규칙은 아래처럼 고정한다.
+
+- smoke가 실패하면 full perf로 넘어가지 않는다.
+- smoke 실패는 harness 또는 `core` correctness blocker로 본다.
+- failing pattern/transport/size를 제외하지 않고 바로 수정한다.
+
+## 5. 남은 작업 체크리스트
+
+아래 체크리스트를 위에서부터 순서대로 닫는다.
+각 항목은 체크 직전까지 실제 코드와 검증으로 닫혀 있어야 한다.
+exec
+/bin/bash -lc "sed -n '590,760p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+- 최종 완료 직전: `./core/tests/run_test_lanes.sh --include-e2e`
+
+### 6.3 최종 완료 게이트
+
+아래를 모두 만족해야 "문서 완료"로 본다.
+
+- 마스터 플랜 커버리지 추적 표의 미완료 상태가 0개
+- 본 문서 5장의 체크리스트가 전부 체크됨
+- `./core/tests/run_test_lanes.sh --include-e2e` 통과
+- `Phase 1c` 대표 core API smoke 완료
+- `Phase 5~6` full service core smoke 완료
+- `Phase 2`, `Phase 3` 의무 stress 완료
+- 최종 단계에서 `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과 확보
+- 최종 perf phase `core/perf` single/multi smoke 정상 종료
+- 최종 perf phase `core/perf` single/multi full perf 결과가 baseline 이상
+- ABI surface 무변경 확인
+- 남은 허브가 문서의 original concern 묶음을 다시 재집중시키지 않음
+
+## 7. 작업 순서 고정
+
+codex
+팀장님, 현재 첫 미완료 항목은 `5.2`의 `thread-safe stress`입니다. 기존 진행 로그가 표에 걸려 있으므로 먼저 이전 gate가 끝났는지 확인하고, 이어서 문서 규칙대로 preflight 후 동일 gate를 끝까지 추적하겠습니다.
+exec
+/bin/bash -lc "ls -l doc/plan/refactor/2nd/logs && echo '---' && sed -n '1,220p' core/tools/run_execution_gate_loop.sh && echo '---' && sed -n '1,260p' core/tests/run_thread_safe_contract_stress.sh" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+total 3732
+drwxr-xr-x 2 hep7 hep7   4096 Mar 24 06:34 codex_execution_guide_loop_20260324_025553
+-rw-r--r-- 1 hep7 hep7   1369 Mar 24 06:02 discovery_ordering_debug_20260324_060218.log
+-rw-r--r-- 1 hep7 hep7  60620 Mar 24 06:05 discovery_ordering_pair_after_fix_20260324_060524.log
+-rw-r--r-- 1 hep7 hep7 133624 Mar 24 06:04 discovery_ordering_pair_repro_20260324_060403.log
+-rw-r--r-- 1 hep7 hep7 696134 Mar 24 06:03 discovery_ordering_single_loop_20260324_060243.log
+-rw-r--r-- 1 hep7 hep7    671 Mar 24 02:54 dryrun_thread_safe_stress.status
+-rw-r--r-- 1 hep7 hep7   7572 Mar 24 02:54 dryrun_thread_safe_stress_20260324_025328.log
+-rw-r--r-- 1 hep7 hep7      2 Mar 24 02:54 dryrun_thread_safe_stress_20260324_025328.log.exitcode
+-rw-r--r-- 1 hep7 hep7    337 Mar 24 02:54 dryrun_thread_safe_stress_20260324_025328.log.summary
+-rw-r--r-- 1 hep7 hep7    585 Mar 24 02:54 dryrun_thread_safe_stress_next_20260324_025328.log
+-rw-r--r-- 1 hep7 hep7      2 Mar 24 02:54 dryrun_thread_safe_stress_next_20260324_025328.log.exitcode
+-rw-r--r-- 1 hep7 hep7  42216 Mar 24 05:55 gateway_send_ready_self_close_direct_20260324_055025.log
+-rw-r--r-- 1 hep7 hep7    450 Mar 24 05:03 phase2_gateway_monitor_snapshot_churn_20260324_050000.log
+-rw-r--r-- 1 hep7 hep7  11425 Mar 24 03:57 phase2_gateway_runtime_reads_debug_repro_20260324_035728.log
+-rw-r--r-- 1 hep7 hep7  38027 Mar 24 04:49 phase2_gateway_runtime_reads_repeat_20260324_044805.log
+-rw-r--r-- 1 hep7 hep7      2 Mar 24 04:49 phase2_gateway_runtime_reads_repeat_20260324_044805.log.exitcode
+-rw-r--r-- 1 hep7 hep7  56040 Mar 24 04:52 phase2_gateway_runtime_reads_repeat_debug_20260324_045213.log
+-rw-r--r-- 1 hep7 hep7      2 Mar 24 04:52 phase2_gateway_runtime_reads_repeat_debug_20260324_045213.log.exitcode
+-rw-r--r-- 1 hep7 hep7  22053 Mar 24 04:51 phase2_gateway_runtime_reads_repeat_postfix_20260324_045009.log
+exec
+/bin/bash -lc "if [ -f .pid ]; then echo '.pid:'; cat .pid; fi
+pgrep -af 'run_thread_safe_contract_stress|run_execution_gate_loop|ctest' || true
+printf '\\n--- last log tail ---\\n'
+if [ -f doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050334.log ]; then tail -n 80 doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050334.log; fi" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+.pid:
+1774030
+2188193 /bin/bash -c ctest --test-dir core/build -N | rg 'test_gateway_runtime_reads|test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_gateway_monitor_snapshot_churn|test_thread_safe_contract|test_monitor_service_contract'
+2188194 /bin/bash -c if [ -f .pid ]; then echo '.pid:'; cat .pid; fi pgrep -af 'run_thread_safe_contract_stress|run_execution_gate_loop|ctest' || true printf '\n--- last log tail ---\n' if [ -f doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050334.log ]; then tail -n 80 doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050334.log; fi
+2188195 ctest --test-dir core/build -N
+
+--- last log tail ---
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+exec
+/bin/bash -lc "ctest --test-dir core/build -N | rg 'test_gateway_runtime_reads|test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_gateway_monitor_snapshot_churn|test_thread_safe_contract|test_monitor_service_contract'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+  Test   #2: test_thread_safe_contract_policy
+  Test  #12: test_monitor_service_contract
+  Test  #27: test_stream_socket
+  Test  #28: test_stream_threadsafe
+  Test  #29: test_stream_send_blocking_wakeup
+  Test  #98: test_gateway_runtime_reads
+  Test  #99: test_gateway_monitor_snapshot_churn
+codex
+팀장님, 현재 활성 gate 프로세스는 없고 이전 stress 로그는 중간 진행분만 남아 있습니다. 바로 preflight와 최신 실패 이력을 확인해, 새 gate를 시작하기 전에 같은 문제가 반복되지 않게 하겠습니다.
+exec
+/bin/bash -lc "echo '--- status ---'
+cat doc/plan/refactor/2nd/logs/phase2_thread_safe_stress.status
+printf '\\n--- latest summaries ---\\n'
+ls -t doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_*.log.summary 2>/dev/null | head -n 5 | xargs -r -I{} sh -c 'echo \"### {}\"; cat \"{}\"; echo'
+printf '\\n--- latest exitcodes ---\\n'
+ls -t doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_*.log.exitcode 2>/dev/null | head -n 5 | xargs -r -I{} sh -c 'echo -n \"{}: \"; cat \"{}\"; echo'
+" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--- status ---
+status=stale
+label=phase2_thread_safe_stress
+updated_at=2026-03-24 06:34:25 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_063126.log
+
+--- latest summaries ---
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log.summary
+status=failure
+started_at=2026-03-24 05:59:48 +0900
+completed_at=2026-03-24 06:00:42 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log
+stress_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log.exitcode
+
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050720.log.summary
+status=failure
+started_at=2026-03-24 05:07:20 +0900
+completed_at=2026-03-24 05:35:05 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050720.log
+stress_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050720.log.exitcode
+exec
+/bin/bash -lc "printf '--- preflight script tail ---\\n'
+latest="'$(ls -t doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_preflight_*.log | head -n 1)
+echo "$latest"
+tail -n 120 "$latest"
+' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/bin/bash: line 1: printf: --: invalid option
+printf: usage: printf [-v var] format [arguments]
+doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_preflight_20260324_063121.log
+  Test  #29: test_stream_send_blocking_wakeup
+  Test  #30: test_stream_fastpath
+  Test  #31: test_transport_matrix
+  Test  #32: test_router_auto_id_format
+  Test  #33: test_stream_routing_id_size
+  Test  #34: test_service_discovery
+  Test  #35: test_service_introspection
+  Test  #36: test_spot_pubsub_scenario
+  Test  #37: test_spot_service_introspection
+  Test  #38: test_scenario_stream_client
+  Test  #39: test_scenario_stream_zlink
+  Test  #40: test_scenario_stream_asio
+  Test  #41: test_scenario_stream_zmq
+  Test  #42: test_service_introspection_discovery_monitor
+  Test  #43: test_service_introspection_discovery_ready_changed
+  Test  #44: test_service_introspection_gateway_options
+  Test  #45: test_service_introspection_gateway_monitors
+exec
+/bin/bash -lc "printf '--- last 120 of latest stress log ---\\n'
+latest="'$(ls -t doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_*.log | head -n 1)
+echo "$latest"
+tail -n 120 "$latest"
+' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/bin/bash: line 1: printf: --: invalid option
+printf: usage: printf [-v var] format [arguments]
+doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_063126.log
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+codex
+팀장님, 이전 stress는 최근에도 `exit 8`로 실패한 이력이 있습니다. 문서 규칙상 실패 원인부터 단일 재현으로 닫아야 하므로, 가장 최근 실패 로그에서 정확히 어떤 테스트가 깨졌는지 먼저 추출하겠습니다.
+exec
+/bin/bash -lc 'latest=doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log
+rg -n "tests failed|Failed|The following tests FAILED|Error|Timed out|Segmentation|Assertion|FAILED" "$latest" | tail -n 80
+' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+207:100% tests passed, 0 tests failed out of 1
+381:0% tests passed, 1 tests failed out of 1
+385:The following tests FAILED:
+387:Errors while running CTest
+exec
+/bin/bash -lc 'latest=doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050720.log
+rg -n "tests failed|Failed|The following tests FAILED|Error|Timed out|Segmentation|Assertion|FAILED" "$latest" | tail -n 80
+' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+207:100% tests passed, 0 tests failed out of 1
+414:100% tests passed, 0 tests failed out of 1
+621:100% tests passed, 0 tests failed out of 1
+828:100% tests passed, 0 tests failed out of 1
+1035:100% tests passed, 0 tests failed out of 1
+1242:100% tests passed, 0 tests failed out of 1
+1449:100% tests passed, 0 tests failed out of 1
+1660:100% tests passed, 0 tests failed out of 1
+1871:100% tests passed, 0 tests failed out of 1
+2023:0% tests passed, 1 tests failed out of 1
+2031:The following tests FAILED:
+2033:Errors while running CTest
+exec
+/bin/bash -lc 'for f in $(ls -t doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_*.log.exitcode | head -n 8 | sed '"'s/\\.exitcode"'$//'"'); do echo \"### "'$f"; rg -n "The following tests FAILED|Test #[0-9]+: .*'"\\*\\*\\*Failed|Assertion|Segmentation|Timed out|FAILED\" \""'$f" | tail -n 20; echo; done' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log
+385:The following tests FAILED:
+
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050720.log
+2031:The following tests FAILED:
+
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_045309.log
+1454:The following tests FAILED:
+
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_044355.log
+1300:The following tests FAILED:
+
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_035146.log
+1432:The following tests FAILED:
+
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_013739.log
+2862:    Test #74: test_spot_service_introspection_subscription_ready_loss ...***Failed    0.55 sec
+2878:The following tests FAILED:
+
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260323_233518.log
+exec
+/bin/bash -lc 'f=doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_013739.log
+line=$(rg -n '"'test_spot_service_introspection_subscription_ready_loss .*\\*\\*\\*Failed' \""'$f" | cut -d: -f1 | head -n1)
+start=$((line-20)); [ $start -lt 1 ] && start=1
+sed -n "${start},$((line+30))p" "$f"' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.62 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.62 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.64 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.62 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.62 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.62 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.62 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.62 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.59 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+    Test #74: test_spot_service_introspection_subscription_ready_loss ...   Passed    4.67 sec
+    Start 74: test_spot_service_introspection_subscription_ready_loss
+exec
+/bin/bash -lc 'for f in doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050720.log doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_045309.log; do echo "### $f"; line=$(rg -n '"'The following tests FAILED:' \""'$f" | tail -n1 | cut -d: -f1); if [ -n "$line" ]; then start=$((line-12)); [ $start -lt 1 ] && start=1; sed -n "${start},$((line+8))p" "$f"; fi; echo; done' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...***Timeout  30.02 sec
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =  33.34 sec
+
+The following tests FAILED:
+	 50 - test_service_introspection_discovery_ordering (Timeout)
+Errors while running CTest
+
+### doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_050720.log
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...***Timeout  60.02 sec
+codex
+팀장님, 현재 5.2는 코드보다 gate 검증이 남아 있고 최근 실패 케이스가 `discovery_ordering`, `gateway_send_ready_self_close`, `gateway_runtime_reads`로 남아 있습니다. 다음 순서로 진행하겠습니다.
+
+1. 현재 수정본을 `core/build/`에서 다시 빌드합니다.
+2. 최근 실패 세 케이스를 문서 규칙대로 단일 재현으로 먼저 확인합니다.
+3. 재현되면 관련 `core/`만 수정하고 해당 단일 회귀를 먼저 green으로 만듭니다.
+4. 그 뒤 원래 `thread-safe stress` gate를 preflight 포함으로 다시 끝까지 실행합니다.
+5. 성공하면 문서 5.0 표와 5.2 체크리스트를 갱신하고 바로 5.3으로 넘어갑니다.
+Plan update
+  → Rebuild current core changes in core/build and inspect recent stress failures via single-test repros
+  • Fix any reproduced Phase 2 stress failures in core/ and validate with targeted regressions
+  • Rerun Phase 2 thread-safe stress gate with preflight, update execution guide status, then advance to Phase 3
+codex
+팀장님, 지금부터 `core/build/` 기준으로 현재 수정본을 다시 컴파일하고, 성공하면 실패 이력 세 케이스를 바로 단일 재현으로 돌리겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlink succeeded in 153ms:
+[ 50%] Built target objects
+[ 50%] Built target libzlink
+[ 50%] Built target libzlink-static
+[ 52%] Built target perf_dealer_router
+[ 52%] Built target perf_pubsub
+[ 53%] Built target comp_src_dealer_router_server
+[ 53%] Built target perf_gateway
+[ 54%] Built target perf_router_router
+[ 54%] Built target comp_src_dealer_dealer_server
+[ 55%] Built target perf_pair
+[ 55%] Built target perf_dealer_dealer
+[ 56%] Built target comp_src_router_router_server
+[ 57%] Built target perf_spot
+[ 57%] Built target comp_src_dealer_dealer_client
+[ 58%] Built target comp_src_spot_server
+[ 58%] Built target comp_src_pubsub_server
+[ 60%] Built target testutil
+[ 60%] Built target comp_src_dealer_router_client
+[ 61%] Built target comp_src_gateway_client
+[ 62%] Built target comp_src_pubsub_client
+codex
+팀장님, 빌드는 통과했습니다. 최신 실패 순서대로 `discovery_ordering`부터 단일 재현을 걸고, 살아 있으면 그 자리에서 원인 파일을 좁히겠습니다.
+exec
+/bin/bash -lc 'log=doc/plan/refactor/2nd/logs/phase2_single_repro_test_service_introspection_discovery_ordering_$(date '"'+%Y%m%d_%H%M%S').log
+ctest --test-dir core/build --output-on-failure --repeat until-fail:100 -R '"'^test_service_introspection_discovery_ordering$'"' 2>&1 | tee \""'$log"
+rc=${PIPESTATUS[0]}
+printf '"'%s
+' \""'$rc" > "$log.exitcode"
+exit "$rc"' in /home/hep7/project/kairos/zlinkcodex
+팀장님, `discovery_ordering` 단일 반복 재현은 현재까지 연속 통과 중입니다. 끝까지 지켜본 뒤 바로 다음 실패 이력인 `gateway_send_ready_self_close`로 넘어가겠습니다.
+ succeeded in 3.92s:
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+exec
+/bin/bash -lc 'log=doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_send_ready_self_close_$(date '"'+%Y%m%d_%H%M%S').log
+ctest --test-dir core/build --output-on-failure --repeat until-fail:100 -R '"'^test_gateway_send_ready_self_close$'"' 2>&1 | tee \""'$log"
+rc=${PIPESTATUS[0]}
+printf '"'%s
+' \""'$rc" > "$log.exitcode"
+exit "$rc"' in /home/hep7/project/kairos/zlinkcodex
+팀장님, `gateway_send_ready_self_close` 단일 반복도 다시 돌리고 있습니다. 이 케이스는 이전에는 60초 timeout이었지만 현재는 fast path로 통과 중이라 끝까지 확인하겠습니다.
+codex
+팀장님, `gateway_send_ready_self_close`는 반복마다 0.02초에서 8초 정도로 편차가 있지만 아직 timeout 재현은 없습니다. 이 검증이 끝나면 마지막으로 `gateway_runtime_reads`를 같은 방식으로 확인한 뒤 바로 stress 본 gate로 들어가겠습니다.
+codex
+팀장님, 이 케이스는 느리지만 안정적으로 누적 통과 중입니다. 이전 60초 timeout은 현재 수정본 기준으로 바로 재현되지 않아, 그대로 100회까지 끝내서 불안정성이 남아 있는지 확인하겠습니다.
+codex
+팀장님, `gateway_send_ready_self_close`는 여전히 timeout 없이 진행 중입니다. 이 케이스가 100회까지 닫히면 최근 세 실패 중 둘은 현재 수정본에서 사라진 셈이라, 마지막 `gateway_runtime_reads` 확인 후 stress 전체 gate를 다시 태우겠습니다.
+codex
+팀장님, 이 단일 재현은 아직 실패 없이 이어지고 있습니다. 시간이 걸리는 만큼 현재 수정본에서 hang 대신 완료로 귀결되는지 보는 목적이어서, 여기서 끊지 않고 100회 판정을 끝내겠습니다.
+codex
+팀장님, `gateway_send_ready_self_close`는 장시간 반복에서도 hang으로 꺾이지 않고 있습니다. 단일 재현 100회를 끝낸 뒤에는 더 지체하지 않고 `gateway_runtime_reads` 확인과 stress 전체 gate 재실행으로 넘어가겠습니다.
+ succeeded in 6m 46s:
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   12.07 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.05 sec
+    Start 97: test_gateway_send_ready_self_close
+exec
+/bin/bash -lc 'log=doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_runtime_reads_$(date '"'+%Y%m%d_%H%M%S').log
+ctest --test-dir core/build --output-on-failure --repeat until-fail:200 -R '"'^test_gateway_runtime_reads$'"' 2>&1 | tee \""'$log"
+rc=${PIPESTATUS[0]}
+printf '"'%s
+' \""'$rc" > "$log.exitcode"
+exit "$rc"' in /home/hep7/project/kairos/zlinkcodex
+팀장님, `gateway_runtime_reads`는 짧은 반복이라 빠르게 끝날 예정입니다. 여기까지 재현이 모두 잠잠하면 현재 수정본으로 stress 본 gate를 다시 태워 5.2를 닫겠습니다.
+codex
+팀장님, `gateway_runtime_reads`는 출력 없이 마무리 단계에 들어간 상태입니다. 이 케이스까지 통과하면 최근 실패 3건은 현재 수정본에서 모두 단일 재현되지 않은 것으로 보고 바로 Phase 2 stress 전체를 재실행하겠습니다.
+ exited 8 in 1m 05s:
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+codex
+팀장님, `gateway_runtime_reads`는 현재 수정본에서도 단일 재현으로 다시 60초 timeout이 났습니다. 이제 문서 규칙대로 이 케이스를 원인 분석 대상으로 고정하고, 관련 테스트 본문과 gateway runtime 소유 코드를 읽어 hang 지점을 좁히겠습니다.
+Plan update
+  ✓ Rebuild current core changes in core/build and inspect recent stress failures via single-test repros
+  → Fix any reproduced Phase 2 stress failures in core/ and validate with targeted regressions
+  • Rerun Phase 2 thread-safe stress gate with preflight, update execution guide status, then advance to Phase 3
+exec
+/bin/bash -lc "git diff -- core/src/services/gateway core/src/sockets/socket_base.cpp core/src/sockets/socket_runtime.cpp core/tests/e2e/discovery/test_gateway.cpp core/tests/e2e/spot/test_spot_service_introspection.cpp | sed -n '1,260p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/src/services/gateway/gateway_lifecycle.cpp b/core/src/services/gateway/gateway_lifecycle.cpp
+index aa841f47..fa9ca44c 100644
+--- a/core/src/services/gateway/gateway_lifecycle.cpp
++++ b/core/src/services/gateway/gateway_lifecycle.cpp
+@@ -34,6 +34,39 @@ static void gateway_diag_log_local (const char *stage_)
+              stage_ ? stage_ : "?");
+     fclose (fp);
+ }
++
++static int unregister_gateway_service_with_retry_local (
++  discovery_t *discovery_,
++  const std::string &service_name_,
++  const std::string &advertise_endpoint_,
++  zlink::clock_t *clock_,
++  uint64_t timeout_ms_)
++{
++    if (!discovery_ || service_name_.empty () || advertise_endpoint_.empty ()) {
++        errno = EINVAL;
++        return -1;
++    }
+exec
+/bin/bash -lc 'rg -n "test_gateway_runtime_reads|gateway_runtime_reads" core/tests core/src' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/tests/run_thread_safe_contract_tsan.sh:14:  test_gateway_runtime_reads
+core/tests/run_thread_safe_contract_stress.sh:17:  test_gateway_runtime_reads
+core/tests/e2e/discovery/test_gateway.cpp:2122:static void test_gateway_runtime_reads_are_safe_during_concurrent_send ()
+core/tests/e2e/discovery/test_gateway.cpp:2124:    step_log ("test_gateway_runtime_reads: begin");
+core/tests/e2e/discovery/test_gateway.cpp:2135:    step_log ("test_gateway_runtime_reads: registry ready");
+core/tests/e2e/discovery/test_gateway.cpp:2142:    step_log ("test_gateway_runtime_reads: discovery ready");
+core/tests/e2e/discovery/test_gateway.cpp:2148:    step_log ("test_gateway_runtime_reads: client ready");
+core/tests/e2e/discovery/test_gateway.cpp:2155:    step_log ("test_gateway_runtime_reads: server ready");
+core/tests/e2e/discovery/test_gateway.cpp:2162:    step_log ("test_gateway_runtime_reads: gateway ready");
+core/tests/e2e/discovery/test_gateway.cpp:2202:    step_log ("test_gateway_runtime_reads: workers started");
+core/tests/e2e/discovery/test_gateway.cpp:2206:    step_log ("test_gateway_runtime_reads: workers joined");
+core/tests/e2e/discovery/test_gateway.cpp:2210:    step_log ("test_gateway_runtime_reads: reader joined");
+core/tests/e2e/discovery/test_gateway.cpp:2215:    step_log ("test_gateway_runtime_reads: waiting for probe");
+core/tests/e2e/discovery/test_gateway.cpp:2218:    step_log ("test_gateway_runtime_reads: destroy server");
+core/tests/e2e/discovery/test_gateway.cpp:2220:    step_log ("test_gateway_runtime_reads: destroy client");
+core/tests/e2e/discovery/test_gateway.cpp:2222:    step_log ("test_gateway_runtime_reads: destroy discovery");
+core/tests/e2e/discovery/test_gateway.cpp:2224:    step_log ("test_gateway_runtime_reads: destroy registry");
+core/tests/e2e/discovery/test_gateway.cpp:2482:    RUN_GATEWAY_TEST (test_gateway_runtime_reads_are_safe_during_concurrent_send);
+core/tests/CMakeLists.txt:786:    test_gateway_runtime_reads_are_safe_during_concurrent_send
+core/tests/CMakeLists.txt:809:    test_gateway_runtime_reads=test_gateway_runtime_reads_are_safe_during_concurrent_send
+exec
+/bin/bash -lc "sed -n '1,260p' core/tests/e2e/discovery/test_gateway.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../../testutil.hpp"
+#include "../../testutil_unity.hpp"
+
+#include <atomic>
+#include <stdlib.h>
+#include <string.h>
+#include <thread>
+#include <vector>
+
+SETUP_TEARDOWN_TESTCONTEXT
+
+namespace
+{
+struct gateway_probe_t
+{
+    gateway_probe_t () : requests (0)
+    {
+        memset (payload, 0, sizeof (payload));
+exec
+/bin/bash -lc "sed -n '2100,2248p' core/tests/e2e/discovery/test_gateway.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    for (size_t i = 0; i < threads.size (); ++i)
+        threads[i].join ();
+    step_log ("test_gateway_concurrent_send_and_updates: workers joined");
+    updater.join ();
+    step_log ("test_gateway_concurrent_send_and_updates: updater joined");
+
+    TEST_ASSERT_EQUAL_INT (0, send_fail.load ());
+    TEST_ASSERT_EQUAL_INT (0, update_fail.load ());
+    step_log ("test_gateway_concurrent_send_and_updates: waiting for probe");
+    TEST_ASSERT_TRUE (wait_for_calls (&probe.requests, send_ok.load (), 5000));
+
+    step_log ("test_gateway_concurrent_send_and_updates: destroy server");
+    destroy_server_gateway (&server);
+    step_log ("test_gateway_concurrent_send_and_updates: destroy client");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    step_log ("test_gateway_concurrent_send_and_updates: destroy discovery");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    step_log ("test_gateway_concurrent_send_and_updates: destroy registry");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    g_probe_a = NULL;
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/gateway/gateway_socket.cpp
+printf '\\n---\\n'
+sed -n '1,320p' core/src/services/gateway/gateway_refresh.cpp
+printf '\\n---\\n'
+sed -n '200,340p' core/src/services/gateway/gateway_pool.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/gateway/gateway.hpp"
+
+#include "core/pipe.hpp"
+#include "services/common/socket_monitor_bridge.hpp"
+#include "services/gateway/gateway_access.hpp"
+#include "services/gateway/gateway_runtime.hpp"
+#include "services/gateway/routing_id_utils.hpp"
+
+#include <cerrno>
+#include <cstring>
+
+namespace zlink
+{
+namespace
+{
+static void gateway_router_msg_handler (const zlink_routing_id_t *source_rid_,
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/gateway/gateway_runtime.hpp
+printf '\\n---\\n'
+sed -n '1,260p' core/src/services/gateway/gateway_lifecycle.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_GATEWAY_RUNTIME_HPP_INCLUDED__
+#define __ZLINK_GATEWAY_RUNTIME_HPP_INCLUDED__
+
+#include "services/common/service_runtime_base.hpp"
+#include "services/gateway/gateway.hpp"
+
+#include "utils/clock.hpp"
+#include "utils/atomic_counter.hpp"
+#include "utils/stdint.hpp"
+
+#include <map>
+#include <set>
+#include <string>
+
+namespace zlink
+{
+class socket_base_t;
+class gateway_t;
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/common/service_monitor.cpp
+printf '\\n---\\n'
+sed -n '1,260p' core/src/api/monitor_service_open_api.cpp
+printf '\\n---\\n'
+sed -n '1,260p' core/src/api/monitor_service_snapshot_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/common/service_monitor.hpp"
+
+#include "utils/random.hpp"
+
+#include <stdio.h>
+#include <string.h>
+
+namespace zlink
+{
+namespace
+{
+void close_monitor_servers (ctx_t *ctx_,
+                            const std::vector<socket_base_t *> &servers_,
+                            int timeout_ms_)
+{
+    if (servers_.empty ())
+exec
+/bin/bash -lc 'rg -n "dispatch_send_ready|send_ready_available|send_ready_callback_pending|monitor_snapshot|service_monitor_open|snapshot" core/src/services/gateway core/src/services/common core/src/api core/src/sockets' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/services/common/service_monitor.cpp:138:    // Each snapshot-style monitor open closes the client immediately after
+core/src/services/common/service_monitor.cpp:273:            zlink_monitor_snapshot_t snapshot;
+core/src/services/common/service_monitor.cpp:274:            memset (&snapshot, 0, sizeof (snapshot));
+core/src/services/common/service_monitor.cpp:275:            if (it->server->monitor_snapshot (&snapshot) == 0
+core/src/services/common/service_monitor.cpp:276:                && snapshot.ready_count == 0) {
+core/src/services/gateway/gateway_runtime.hpp:60:    bool send_ready_available;
+core/src/services/gateway/gateway_runtime.hpp:61:    bool send_ready_callback_pending;
+core/src/services/gateway/gateway_access.hpp:16:    static void dispatch_send_ready (gateway_t *gateway_);
+core/src/services/gateway/gateway_socket.cpp:41:    gateway_access_t::dispatch_send_ready (gateway);
+core/src/services/gateway/gateway_socket.cpp:435:void gateway_t::dispatch_send_ready ()
+core/src/services/gateway/gateway_monitor.cpp:210:    _discovery->snapshot_providers (service_name_, &providers);
+core/src/services/gateway/gateway_monitor.cpp:263:int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
+core/src/services/gateway/gateway_monitor.cpp:286:    const gateway_service_pool_t::send_snapshot_t *snapshot =
+core/src/services/gateway/gateway_monitor.cpp:287:      pool ? pool->send_snapshot.get () : NULL;
+core/src/services/gateway/gateway_monitor.cpp:289:      snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+core/src/services/gateway/gateway_monitor.cpp:294:        zlink_monitor_snapshot_t router_snapshot;
+core/src/services/gateway/gateway_monitor.cpp:295:        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
+core/src/services/gateway/gateway_monitor.cpp:296:            out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+core/src/services/gateway/gateway_monitor.cpp:297:            out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+core/src/services/gateway/gateway_monitor.cpp:305:int gateway_t::snapshot_status (zlink_gateway_status_t *out_) const
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/gateway/gateway_access.hpp
+printf '\\n---\\n'
+sed -n '1,320p' core/src/services/gateway/gateway_access.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_DISCOVERY_GATEWAY_ACCESS_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_GATEWAY_ACCESS_HPP_INCLUDED__
+
+#include <zlink.h>
+
+namespace zlink
+{
+class gateway_t;
+class socket_base_t;
+
+struct gateway_access_t
+{
+    static socket_base_t *router_socket (gateway_t *gateway_);
+    static void dispatch_send_ready (gateway_t *gateway_);
+    static void dispatch_message (gateway_t *gateway_,
+                                  const zlink_routing_id_t *source_rid_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_);
+exec
+/bin/bash -lc "sed -n '420,520p' core/src/services/gateway/gateway_socket.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_)
+{
+    zlink_socket_msg_handler_fn handler =
+      _handler.load (std::memory_order_acquire);
+    if (!handler) {
+        for (size_t i = 0; i < part_count_; ++i)
+            zlink_msg_close (&parts_[i]);
+        return;
+    }
+
+    handler (source_rid_, parts_, part_count_,
+             _handler_userdata.load (std::memory_order_acquire));
+}
+
+void gateway_t::dispatch_send_ready ()
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return;
+exec
+/bin/bash -lc "sed -n '250,340p' core/src/services/gateway/gateway_monitor.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+{
+    scoped_lock_t lock (_sync);
+    if (_discovery != discovery_)
+        return;
+    _discovery = NULL;
+    _runtime->pending_updates.clear ();
+    _runtime->force_refresh_all = false;
+    _server_service_name.clear ();
+    _advertise_endpoint.clear ();
+    _last_register_error.clear ();
+    _summary_last_changed_ms = _runtime ? _runtime->clock.now_ms () : 0;
+}
+
+int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!out_ || _service_name.empty ()) {
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/sockets/socket_base_monitor.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "core/send_internal.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/sleep.hpp"
+#include "zlink.h"
+
+namespace
+{
+std::string make_monitor_ready_key (
+  const zlink::endpoint_uri_pair_t &endpoint_uri_pair_,
+  const unsigned char *routing_id_,
+  size_t routing_id_size_)
+{
+    std::string key = endpoint_uri_pair_.identifier ();
+    if (key.empty ())
+        key = endpoint_uri_pair_.remote;
+    key.push_back ('\0');
+codex
+팀장님, timeout은 assertion이 아니라 hang 계열이라 마지막으로 어디까지 갔는지 봐야 합니다. 테스트의 내장 `step_log`를 켜서 같은 단일 재현을 다시 돌리고, 실패 시 마지막 단계가 `monitor snapshot`인지 `routing_id read`인지 `destroy`인지 바로 확인하겠습니다.
+exec
+/bin/bash -lc 'log=doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_runtime_reads_debug_$(date '"'+%Y%m%d_%H%M%S').log
+ZLINK_TEST_DEBUG=1 ctest --test-dir core/build --output-on-failure --repeat until-fail:200 -R '"'^test_gateway_runtime_reads$'"' 2>&1 | tee \""'$log"
+rc=${PIPESTATUS[0]}
+printf '"'%s
+' \""'$rc" > "$log.exitcode"
+exit "$rc"' in /home/hep7/project/kairos/zlinkcodex
+팀장님, debug 재현도 같은 케이스를 반복 중입니다. 실패가 나면 `step_log`로 마지막 단계가 남으니 그 지점 기준으로 lock 순서나 monitor open/close 경로를 바로 손보겠습니다.
+ succeeded in 6.05s:
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+codex
+팀장님, 같은 debug 재현은 200회가 전부 통과했습니다. 즉 재현은 timing-sensitive하므로, 이전 debug failure 로그를 읽어 마지막으로 멈춘 단계와 현재 코드 diff를 같이 대조하겠습니다.
+exec
+/bin/bash -lc "sed -n '120,220p' core/src/services/gateway/gateway_facade.cpp
+printf '\\n---\\n'
+sed -n '220,340p' core/src/services/gateway/gateway_facade.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        gateway_manual_route_t route;
+        memset (&route, 0, sizeof (route));
+        route.routing_id = *routing_id_;
+        route.weight = 1;
+
+        std::map<std::string, gateway_manual_route_t>::iterator it =
+          _runtime->manual_routes.find (endpoint_);
+        if (it != _runtime->manual_routes.end ()) {
+            if (routing_id_equals (it->second.routing_id, *routing_id_))
+                return 0;
+            errno = EBUSY;
+            return -1;
+        }
+
+        _runtime->manual_routes[endpoint_] = route;
+        _summary_last_changed_ms = _runtime->clock.now_ms ();
+        gateway_service_pool_t *pool = get_or_create_pool_cached ();
+        if (!pool)
+            return -1;
+        pool->dirty = true;
+exec
+/bin/bash -lc 'for f in doc/plan/refactor/2nd/logs/phase2_gateway_runtime_reads_debug_repro_20260324_035728.log doc/plan/refactor/2nd/logs/phase2_gateway_runtime_reads_repro_20260324_035319.log doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_runtime_reads_20260324_044535.log doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_runtime_reads_20260324_*.log; do [ -f "$f" ] || continue; echo "### $f"; rg -n "test_gateway_runtime_reads:|Timeout|FAILED|The following tests FAILED|workers joined|reader joined|waiting for probe|destroy" "$f" | tail -n 80; echo; done' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+### doc/plan/refactor/2nd/logs/phase2_gateway_runtime_reads_debug_repro_20260324_035728.log
+
+### doc/plan/refactor/2nd/logs/phase2_gateway_runtime_reads_repro_20260324_035319.log
+172:    Test #98: test_gateway_runtime_reads .......***Timeout  60.00 sec
+183:The following tests FAILED:
+184:	 98 - test_gateway_runtime_reads (Timeout)
+
+### doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_runtime_reads_20260324_044535.log
+
+### doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_runtime_reads_20260324_044535.log
+
+### doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_runtime_reads_20260324_064219.log
+334:    Test #98: test_gateway_runtime_reads .......***Timeout  60.11 sec
+345:The following tests FAILED:
+346:	 98 - test_gateway_runtime_reads (Timeout)
+
+exec
+/bin/bash -lc 'rg -n "wait_gateway_ready|create_server_gateway|destroy_server_gateway|send_worker|wait_for_calls" core/tests/e2e/discovery/test_gateway.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+242:bool wait_for_calls (std::atomic<int> *counter_, int expected_, int timeout_ms_)
+276:void wait_gateway_ready (void *gateway_,
+642:void create_server_gateway (gateway_server_t *server_,
+697:void destroy_server_gateway (gateway_server_t *server_)
+706:        step_log ("destroy_server_gateway: gateway destroy begin");
+708:        step_log ("destroy_server_gateway: gateway destroy end");
+711:        step_log ("destroy_server_gateway: discovery destroy begin");
+713:        step_log ("destroy_server_gateway: discovery destroy end");
+754:struct send_worker_args_t
+771:void send_worker (void *arg_)
+773:    send_worker_args_t *args = static_cast<send_worker_args_t *> (arg_);
+863:    destroy_server_gateway (&server);
+913:    create_server_gateway (&server, ctx, registry_router, "ready-svc",
+920:    TEST_ASSERT_TRUE (wait_for_calls (&ready_calls, 1, 3000));
+924:    destroy_server_gateway (&server);
+965:    create_server_gateway (&server, ctx, registry_router, "ready-reentrant",
+972:    TEST_ASSERT_TRUE (wait_for_calls (&ready_calls, 1, 3000));
+979:    destroy_server_gateway (&server);
+1016:    create_server_gateway (&server, ctx, registry_router, "ready-self-close",
+1040:    destroy_server_gateway (&server);
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/services/gateway/gateway_monitor.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '260,340p' core/tests/e2e/discovery/test_gateway.cpp
+printf '\\n---\\n'
+sed -n '642,790p' core/tests/e2e/discovery/test_gateway.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/gateway/gateway.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "services/common/socket_monitor_bridge.hpp"
+#include "services/control/service_control_runtime.hpp"
+#include "services/gateway/gateway_runtime.hpp"
+
+#include <cerrno>
+#include <cstring>
+
+namespace zlink
+{
+namespace
+{
+static bool routing_id_equals_local (const zlink_routing_id_t &a_,
+                                     const zlink_routing_id_t &b_)
+ succeeded in 0ms:
+    const int attempts = timeout_ms_ / step_ms;
+    for (int i = 0; i < attempts; ++i) {
+        if (counter_a_->load () + counter_b_->load () >= expected_)
+            return true;
+        msleep (step_ms);
+    }
+    if (getenv ("ZLINK_TEST_DEBUG")) {
+        char buffer[128];
+        snprintf (buffer, sizeof (buffer),
+                  "wait_for_total_calls timeout: a=%d b=%d expected=%d",
+                  counter_a_->load (), counter_b_->load (), expected_);
+        step_log (buffer);
+    }
+    return counter_a_->load () + counter_b_->load () >= expected_;
+}
+
+void wait_gateway_ready (void *gateway_,
+                         int timeout_ms_)
+{
+    const int step_ms = 10;
+exec
+/bin/bash -lc "rg -n \"prune_closed_watchers|dispatch_thread|watcher_count|close_all|handshake_monitor_pair|service_monitor_hub_t::open\" core/src/services/common/service_monitor.cpp && sed -n '220,420p' core/src/services/common/service_monitor.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+55:    _watcher_count (0),
+58:    _dispatch_thread_started (false)
+64:    stop_dispatch_thread ();
+65:    close_all ();
+95:static bool handshake_monitor_pair (socket_base_t *server_, socket_base_t *client_)
+131:void *service_monitor_hub_t::open (int events_)
+142:    prune_closed_watchers ();
+169:    if (!handshake_monitor_pair (server, client)) {
+181:    ensure_dispatch_thread_started ();
+185:    _watcher_count.store (_watchers.size (), std::memory_order_release);
+205:    if (_watcher_count.load (std::memory_order_acquire) == 0)
+208:    ensure_dispatch_thread_started ();
+218:void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_event_)
+220:    stop_dispatch_thread ();
+250:        _watcher_count.store (0, std::memory_order_release);
+256:size_t service_monitor_hub_t::watcher_count () const
+258:    return _watcher_count.load (std::memory_order_acquire);
+261:void service_monitor_hub_t::prune_closed_watchers ()
+284:        _watcher_count.store (_watchers.size (), std::memory_order_release);
+290:void service_monitor_hub_t::dispatch_thread_main (void *arg_)
+exec
+/bin/bash -lc 'rg -n "_send_sync" core/src/services/gateway/*.cpp core/src/services/gateway/*.hpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/services/gateway/gateway_monitor.cpp:285:    scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway_monitor.cpp:346:        scoped_lock_t send_lock (const_cast<mutex_t &> (_send_sync));
+core/src/services/gateway/gateway_monitor.cpp:467:                        scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway_facade.cpp:235:    scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway_facade.cpp:331:    scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway_facade.cpp:415:        scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway_pool.cpp:253:            scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway.hpp:213:    mutex_t _send_sync;
+exec
+/bin/bash -lc "rg -n \"scoped_lock_t lock \\(_sync\\)|scoped_lock_t send_lock \\(_send_sync\\)|_send_sync\\.lock|_send_sync\\.unlock\" core/src/services/gateway/*.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/services/gateway/gateway_socket.cpp:200:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_socket.cpp:228:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_socket.cpp:290:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_socket.cpp:309:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_socket.cpp:321:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_socket.cpp:345:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_socket.cpp:380:        scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_socket.cpp:402:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_refresh.cpp:133:        scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_refresh.cpp:178:            scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_refresh.cpp:191:        scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_monitor.cpp:119:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_monitor.cpp:236:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_monitor.cpp:251:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_monitor.cpp:274:    scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_monitor.cpp:285:    scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway_monitor.cpp:467:                        scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway_pool.cpp:253:            scoped_lock_t send_lock (_send_sync);
+core/src/services/gateway/gateway_facade.cpp:112:        scoped_lock_t lock (_sync);
+core/src/services/gateway/gateway_facade.cpp:167:        scoped_lock_t lock (_sync);
+exec
+/bin/bash -lc "rg -n \"class service_public_api_guard_t|service_public_api_scope_t\" core/src -g'*.*'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/api/service_spot_node_api.cpp:217:    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/service_spot_node_api.cpp:236:    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/service_spot_node_api.cpp:259:    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/service_spot_node_api.cpp:283:    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/monitor_service_open_api.cpp:206:    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/monitor_service_open_api.cpp:246:        zlink::service_public_api_scope_t admission (
+core/src/api/monitor_service_open_api.cpp:268:        zlink::service_public_api_scope_t admission (
+core/src/api/monitor_service_open_api.cpp:297:    zlink::service_public_api_scope_t admission (spot->public_api);
+core/src/api/service_spot_subject_option_api.cpp:93:    zlink::service_public_api_scope_t admission (spot->public_api);
+core/src/api/service_spot_subject_option_api.cpp:115:    zlink::service_public_api_scope_t admission (spot->public_api);
+core/src/api/service_spot_subject_option_api.cpp:241:        zlink::service_public_api_scope_t admission (spot->public_api);
+core/src/api/service_spot_subject_option_api.cpp:263:        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/service_spot_subject_option_api.cpp:294:        zlink::service_public_api_scope_t admission (spot->public_api);
+core/src/api/service_spot_subject_option_api.cpp:317:        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/service_spot_subject_option_api.cpp:378:        zlink::service_public_api_scope_t admission (spot->public_api);
+core/src/api/service_spot_subject_option_api.cpp:392:        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/service_spot_subject_option_api.cpp:431:        zlink::service_public_api_scope_t admission (spot->public_api);
+core/src/api/service_spot_subject_option_api.cpp:439:        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+core/src/api/service_spot_subject_option_api.cpp:454:        zlink::service_public_api_scope_t admission (spot->public_api);
+core/src/api/service_spot_subject_option_api.cpp:462:        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+exec
+/bin/bash -lc "sed -n '1,180p' core/src/services/common/service_public_api.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SERVICES_COMMON_SERVICE_PUBLIC_API_HPP_INCLUDED__
+#define __ZLINK_SERVICES_COMMON_SERVICE_PUBLIC_API_HPP_INCLUDED__
+
+#include <atomic>
+#include <cerrno>
+#include <stdint.h>
+
+namespace zlink
+{
+class service_public_api_guard_t
+{
+  public:
+    service_public_api_guard_t () : _state (0) {}
+
+    bool enter_public_api ()
+    {
+        const uint32_t old = _state.fetch_add (1, std::memory_order_acq_rel);
+        if ((old & closing_bit) == 0)
+exec
+/bin/bash -lc "sed -n '360,520p' core/src/services/gateway/gateway_lifecycle.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        if (_server_service_name.empty () || _advertise_endpoint.empty ()
+            || _server_service_name != _service_name) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        discovery = _discovery;
+        service_name = _server_service_name;
+        endpoint = _advertise_endpoint;
+    }
+
+    if (unregister_gateway_service_with_retry_local (
+          discovery, service_name, endpoint, &_runtime->clock, 15000)
+        != 0)
+        return -1;
+
+    {
+        scoped_lock_t lock (_sync);
+        _server_service_name.clear ();
+        _advertise_endpoint.clear ();
+exec
+/bin/bash -lc "sed -n '520,680p' core/src/services/gateway/gateway_lifecycle.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    gateway_diag_log_local ("destroy.after-monitor-socket-close");
+    gateway_diag_log_local ("destroy.before-wait-drained");
+    (void) _runtime->lifecycle.wait_drained (10000);
+    gateway_diag_log_local ("destroy.after-wait-drained");
+    return 0;
+}
+}
+codex
+팀장님, 현재 failure 패턴은 `gateway_runtime_reads` 하나로 보이지만 최근 timeout 이력들이 모두 gateway destroy/unregister 쪽과 맞물려 있습니다. `destroy` 경로와 `unregister_service` contract를 읽어서 60초 stall 원인이 retry/close/wait 쪽인지 먼저 확인하겠습니다.
+exec
+/bin/bash -lc "rg -n \"unregister_service\\s*\\(|EAGAIN|upsert_gateway_peer_summary|remove_observer|service_update_seq|snapshot_providers\" core/src/services/discovery core/src/services/gateway core/src/core" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/core/session_base.cpp:138:        errno = EAGAIN;
+core/src/core/session_base.cpp:182:    errno = EAGAIN;
+core/src/core/mailbox.cpp:66:                errno_assert (errno == EAGAIN);
+core/src/core/mailbox.cpp:72:                errno_assert (errno == EAGAIN || errno == EINTR);
+core/src/core/mailbox.cpp:77:                errno_assert (errno == EAGAIN);
+core/src/core/mailbox.cpp:91:    errno = EAGAIN;
+core/src/core/socket_poller.cpp:446:        errno = EAGAIN;
+core/src/core/socket_poller.cpp:457:        errno = EAGAIN;
+core/src/core/socket_poller.cpp:508:    errno = EAGAIN;
+core/src/core/socket_poller.cpp:575:    errno = EAGAIN;
+core/src/core/reaper.cpp:115:            if (rc != 0 && errno == EAGAIN)
+core/src/core/io_thread.cpp:71:        errno_assert (rc != 0 && errno == EAGAIN);
+core/src/services/gateway/gateway_monitor.cpp:89:    _discovery->upsert_gateway_peer_summary (entry);
+core/src/services/gateway/gateway_monitor.cpp:210:    _discovery->snapshot_providers (service_name_, &providers);
+core/src/services/gateway/gateway_monitor.cpp:404:            if (errno == EAGAIN)
+core/src/services/gateway/gateway_refresh.cpp:175:                _discovery->snapshot_providers (service, &providers);
+core/src/services/gateway/gateway_refresh.cpp:176:                seq = _discovery->service_update_seq (service);
+core/src/core/multipart_send_txn.cpp:22:    return err_ == EAGAIN || err_ == EINTR;
+core/src/core/multipart_send_txn.cpp:309:            errno = EAGAIN;
+core/src/core/multipart_send_txn.cpp:313:            errno = EAGAIN;
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/common/service_runtime_base.hpp
+printf '\\n---\\n'
+sed -n '1,320p' core/src/services/common/service_runtime_base.cpp" in /home/hep7/project/kairos/zlink exited 2 in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SERVICES_COMMON_SERVICE_RUNTIME_BASE_HPP_INCLUDED__
+#define __ZLINK_SERVICES_COMMON_SERVICE_RUNTIME_BASE_HPP_INCLUDED__
+
+#include "core/ctx.hpp"
+#include "services/common/service_socket_registry.hpp"
+#include "utils/mutex.hpp"
+
+namespace zlink
+{
+enum service_lifecycle_state_t
+{
+    service_state_idle = 0,
+    service_state_starting = 1,
+    service_state_running = 2,
+    service_state_stopping = 3,
+    service_state_stopped = 4,
+    service_state_faulted = 5
+};
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/discovery/discovery.hpp
+printf '\\n---\\n'
+sed -n '1,320p' core/src/services/discovery/discovery_state.cpp
+printf '\\n---\\n'
+sed -n '1,360p' core/src/services/discovery/discovery_bootstrap.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
+
+#include "core/ctx.hpp"
+#include "services/common/service_public_api.hpp"
+#include "services/common/service_runtime_base.hpp"
+#include "services/common/service_monitor.hpp"
+#include "utils/atomic_counter.hpp"
+#include "utils/condition_variable.hpp"
+#include "utils/mutex.hpp"
+
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace zlink
+{
+exec
+/bin/bash -lc "sed -n '380,470p' core/src/services/discovery/discovery_registry_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    registered_service_key_t key;
+    key.service_type = service_type_;
+    key.service_name = service_name_;
+    key.endpoint = endpoint_;
+    std::map<registered_service_key_t, registered_service_t>::iterator it =
+      _registered_services.find (key);
+    if (it != _registered_services.end ())
+        it->second.weight = value;
+    return 0;
+}
+
+int discovery_t::unregister_service (uint16_t service_type_,
+                                     const char *service_name_,
+                                     const char *endpoint_)
+{
+exec
+/bin/bash -lc "sed -n '470,540p' core/src/services/discovery/discovery_registry_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    scoped_lock_t lock (_sync);
+    registered_service_key_t key;
+    key.service_type = service_type_;
+    key.service_name = service_name_;
+    key.endpoint = endpoint_;
+    _registered_services.erase (key);
+    return 0;
+}
+}
+exec
+/bin/bash -lc "sed -n '392,448p' core/src/services/gateway/gateway_facade.cpp
+printf '\\n---\\n'
+sed -n '452,492p' core/src/services/gateway/gateway_monitor.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    bool found = false;
+    for (size_t i = 0; i < providers.size (); ++i) {
+        if (routing_id_equals (providers[i].routing_id, *routing_id_)) {
+            endpoint = providers[i].endpoint;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    const uint32_t value = weight_;
+    if (_discovery->update_service_weight (
+          discovery_protocol::service_type_gateway_receiver, _service_name.c_str (),
+          endpoint.c_str (), value)
+        != 0)
+        return -1;
+codex
+팀장님, 원인 후보를 gateway monitor snapshot 경로로 좁혔습니다. 현재 구현은 `gateway`의 `_sync`와 `_send_sync`를 잡은 채 내부 router socket snapshot까지 내려가서, concurrent send/refresh와 장시간 lock 경합을 만들 수 있습니다. 이 부분을 락 외부 snapshot 구조로 정리하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/gateway/gateway_monitor.cpp
+@@ -118,5 +118,7 @@
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+@@ -273,7 +275,2 @@
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+@@ -281,8 +278,23 @@
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+@@ -292,5 +304,5 @@
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+apply_patch(auto_approved=true) exited 0 in 15ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/gateway/gateway_monitor.cpp
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, `gateway_monitor`에서 monitor open과 monitor snapshot의 lock 범위를 줄였습니다. 먼저 빌드 후 방금 깨진 `gateway_runtime_reads` 단일 재현부터 다시 돌려서 timeout이 사라졌는지 확인하겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+ succeeded in 12.47s:
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/gateway/gateway_monitor.cpp.o
+[ 50%] Built target objects
+[ 50%] Linking CXX shared library ../lib/libzlink.so
+[ 50%] Linking CXX static library ../lib/libzlink.a
+[ 50%] Built target libzlink-static
+[ 51%] Built target testutil-static
+[ 51%] Linking CXX executable ../../../bin/unittest_ypipe
+[ 51%] Linking CXX executable ../../../bin/unittest_radix_tree
+[ 51%] Linking CXX executable ../../../bin/unittest_zmp_decoder
+[ 52%] Linking CXX executable ../../../bin/unittest_mtrie
+[ 53%] Linking CXX executable ../../../bin/unittest_raw_decoder
+[ 53%] Linking CXX executable ../../../bin/unittest_msg_view
+[ 53%] Linking CXX executable ../../../bin/unittest_poller
+[ 53%] Linking CXX executable ../../../bin/unittest_ip_resolver
+[ 53%] Linking CXX executable ../../../bin/unittest_service_mode_policy
+[ 53%] Linking CXX executable ../../../bin/unittest_service_runtime_base
+[ 54%] Linking CXX executable ../../../bin/unittest_typed_option
+[ 54%] Built target unittest_ypipe
+[ 55%] Built target unittest_msg_view
+[ 56%] Built target unittest_radix_tree
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+exec
+/bin/bash -lc 'log=doc/plan/refactor/2nd/logs/phase2_single_repro_test_gateway_runtime_reads_postfix_$(date '"'+%Y%m%d_%H%M%S').log
+ctest --test-dir core/build --output-on-failure --repeat until-fail:200 -R '"'^test_gateway_runtime_reads$'"' 2>&1 | tee \""'$log"
+rc=${PIPESTATUS[0]}
+printf '"'%s
+' \""'$rc" > "$log.exitcode"
+exit "$rc"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, 수정 후 `gateway_runtime_reads` 재현은 현재까지 안정적으로 진행 중입니다. 끝까지 통과하면 동일 증상에 직접 연결된 socket 회귀 묶음을 다시 확인한 뒤 Phase 2 stress 본 gate로 넘어가겠습니다.
+ succeeded in 6.06s:
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+exec
+/bin/bash -lc 'log=doc/plan/refactor/2nd/logs/phase2_socket_regressions_postfix_$(date '"'+%Y%m%d_%H%M%S').log
+ctest --test-dir core/build --output-on-failure -R '"'^(test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_gateway_monitor_snapshot_churn|test_gateway_runtime_reads)$'"' 2>&1 | tee \""'$log"
+rc=${PIPESTATUS[0]}
+printf '"'%s
+' \""'$rc" > "$log.exitcode"
+exit "$rc"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, 실패 단일 재현은 사라졌고 지금은 5.2 대표 socket 회귀를 다시 묶어서 확인 중입니다. 이 묶음이 green이면 문서 규칙대로 preflight 포함 stress 본 gate를 바로 foreground로 실행하겠습니다.
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+ succeeded in 21.20s:
+1/5 Test #27: test_stream_socket ....................   Passed    8.46 sec
+    Start 28: test_stream_threadsafe
+2/5 Test #28: test_stream_threadsafe ................   Passed    9.71 sec
+    Start 29: test_stream_send_blocking_wakeup
+3/5 Test #29: test_stream_send_blocking_wakeup ......   Passed    3.07 sec
+    Start 98: test_gateway_runtime_reads
+4/5 Test #98: test_gateway_runtime_reads ............   Passed    0.03 sec
+    Start 99: test_gateway_monitor_snapshot_churn
+5/5 Test #99: test_gateway_monitor_snapshot_churn ...   Passed    0.08 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Label Time Summary:
+integration    =  21.34 sec*proc (5 tests)
+serial         =  21.34 sec*proc (5 tests)
+
+Total Test time (real) =  21.34 sec
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, 5.2 직접 회귀 묶음은 모두 다시 green입니다. 이제 문서 규칙대로 preflight 성공 로그를 남기고, 같은 셸에서 `thread-safe stress` gate를 끝까지 추적하겠습니다.
+exec
+/bin/bash -lc "sed -n '220,420p' core/tools/run_execution_gate_loop.sh" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    echo "=== Gate loop waiting ($(date '+%Y-%m-%d %H:%M:%S %z')) ==="
+  fi
+done
+
+set +e
+wait "${stress_pid}"
+stress_rc=$?
+set -e
+
+printf '%s\n' "${stress_rc}" > "${stress_exit}"
+
+if [[ "${stress_rc}" -eq 0 ]]; then
+  write_status "running" "next_success"
+  echo "=== Gate loop success ==="
+  if [[ -n "${NEXT_SUCCESS_CMD}" ]]; then
+    next_log="${LOGS_DIR}/${LABEL}_next_${timestamp}.log"
+    next_exit="${next_log}.exitcode"
+    echo "=== Running next success command ==="
+    echo "Command: ${NEXT_SUCCESS_CMD}"
+    echo "Log: ${next_log}"
+exec
+/bin/bash -lc 'latest_status=doc/plan/refactor/2nd/logs/phase2_thread_safe_stress.status
+[ -f "$latest_status" ] && cat "$latest_status" || true
+ls -d doc/plan/refactor/2nd/logs/phase2_thread_safe_stress.lock 2>/dev/null || true' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+status=stale
+label=phase2_thread_safe_stress
+updated_at=2026-03-24 06:34:25 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_063126.log
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, gate 본 실행 전에 문서가 요구한 preflight를 별도 로그로 먼저 남기겠습니다. CTest 구성과 stress 대상 테스트 16개 등록을 확인한 뒤, 바로 `run_execution_gate_loop.sh`로 본 gate를 foreground 추적하겠습니다.
+exec
+/bin/bash -lc 'ts=$(date '"'+%Y%m%d_%H%M%S')
+log=doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_preflight_"'${ts}.log
+{
+  echo "=== Phase 2 stress preflight start ==="
+  echo "started_at=$(date '"'+%Y-%m-%d %H:%M:%S %z')\"
+  test -f core/build/CTestTestfile.cmake
+  ctest --test-dir core/build -N
+  ctest --test-dir core/build -N | rg 'test_service_introspection_discovery_control_path|test_service_introspection_discovery_ordering|test_service_introspection_discovery_self_close|test_service_introspection_discovery_lifecycle|test_service_introspection_registry_lifecycle|test_service_introspection_registry_query_lifecycle|test_gateway_runtime_reads|test_gateway_send_plane_updates|test_gateway_attach_query_ordering|test_gateway_send_ready_self_close|test_gateway_monitor_self_close|test_spot_service_introspection_monitors|test_spot_service_introspection_late_connect|test_spot_service_introspection_subscription_ready_loss|test_spot_service_introspection_handler_monitor_close|test_spot_service_introspection_snapshots'
+  echo \"=== Phase 2 stress preflight success ===\"
+} 2>&1 | tee \""'$log"
+rc=${PIPESTATUS[0]}
+printf '"'%s\\n' \""'$rc" > "$log.exitcode"
+exit "$rc"' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+=== Phase 2 stress preflight start ===
+started_at=2026-03-24 06:47:50 +0900
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+  Test   #1: test_ancillaries
+  Test   #2: test_thread_safe_contract_policy
+  Test   #3: test_monitor_enhanced
+  Test   #4: test_monitor_socket_contract
+  Test   #5: test_monitor_perf_contract
+  Test   #6: test_multi_pubsub_benchmark_process
+  Test   #7: test_multi_spot_benchmark_process
+  Test   #8: test_multi_stream_benchmark_process
+  Test   #9: test_gateway_monitor_process
+  Test  #10: test_single_pair_benchmark_process
+  Test  #11: test_single_spot_benchmark_process
+  Test  #12: test_monitor_service_contract
+  Test  #13: test_monitor_with_handler
+  Test  #14: test_socket_with_handler
+  Test  #15: test_connect_resolve
+  Test  #16: test_gateway
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+exec
+/bin/bash -lc './core/tools/run_execution_gate_loop.sh --build-dir /home/hep7/project/kairos/zlink/core/build --count 100 --logs-dir /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs --label phase2_thread_safe_stress --poll-seconds 30' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, Phase 2 stress 본 gate는 현재 foreground에서 정상 진행 중입니다. `control_path` 100회는 통과했고, 지금은 다음 케이스인 `discovery_ordering` 반복을 소화 중이라 이 세션을 유지한 채 완료 또는 첫 실패까지 그대로 추적하겠습니다.
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, stress gate는 현재 `gateway_runtime_reads` 100회를 넘겼고 지금은 상대적으로 오래 걸리는 `test_gateway_send_plane_updates` 구간입니다. 앞선 discovery 계열과 `gateway_runtime_reads`는 모두 무사 통과했으니, 이 상태로 계속 끝까지 추적하겠습니다.
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, 현재 장시간 구간은 `test_gateway_send_plane_updates`입니다. iteration마다 12초에서 24초 정도로 편차는 있지만 timeout 없이 계속 완료되고 있어, 문서 순서대로 여기서 이탈하지 않고 gate 성공 여부만 추적하겠습니다.
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, 이 gate는 현재 `send_plane_updates`의 장시간 안정성 구간이어서 시간이 걸립니다. 실패 시 즉시 같은 행에서 단일 재현과 core 수정으로 되돌아갈 수 있도록 세션을 유지한 채 그대로 감시 중입니다.
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+팀장님, 장시간 gate는 아직 `test_gateway_send_plane_updates` 반복을 소화 중이고 현재까지 timeout이나 실패는 없습니다. 이번 iteration에서는 failure triage 구간까지 도달하지 않았으므로 gate가 끝날 때까지 계속 추적이 필요합니다.
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+codex
+계속 진행 필요
+file update:
+diff --git a/core/src/services/gateway/gateway_monitor.cpp b/core/src/services/gateway/gateway_monitor.cpp
+index bb9606e95e45f94cd9387013d790a6feee4f3955..cc94dfd5e929894d2061e6c1cd20a58fc2de00b0
+--- a/core/src/services/gateway/gateway_monitor.cpp
++++ b/core/src/services/gateway/gateway_monitor.cpp
+@@ -116,9 +116,11 @@
+     if (!admission.acquired ())
+         return NULL;
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_refresh_task_running () != 0)
+-        return NULL;
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_refresh_task_running () != 0)
++            return NULL;
++    }
+     return _monitor.open (events_);
+ }
+ 
+@@ -271,28 +273,38 @@
+         return -1;
+     }
+ 
+-    scoped_lock_t lock (_sync);
+-    if (ensure_facade_mode () != 0)
+-        return -1;
+-    lock_routing_id ();
+-    process_monitor_events ();
+     memset (out_, 0, sizeof (*out_));
+     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
+     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
+-    out_->state_flags =
+-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
+-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+-    scoped_lock_t send_lock (_send_sync);
+-    const gateway_service_pool_t::send_snapshot_t *snapshot =
+-      pool ? pool->send_snapshot.get () : NULL;
++    socket_base_t *router_socket = NULL;
++    bool is_bound_ready = false;
++    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
++
++    {
++        scoped_lock_t lock (_sync);
++        if (ensure_facade_mode () != 0)
++            return -1;
++        lock_routing_id ();
++        process_monitor_events ();
++        is_bound_ready = !_bind_endpoint.empty ();
++        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
++        {
++            scoped_lock_t send_lock (_send_sync);
++            if (pool)
++                snapshot = pool->send_snapshot;
++        }
++        router_socket = _runtime->router_socket;
++    }
++
++    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
+     out_->ready_count =
+       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
+     if (out_->ready_count > 0)
+         out_->state_flags |=
+           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+-    if (_runtime->router_socket) {
++    if (router_socket) {
+         zlink_monitor_snapshot_t router_snapshot;
+-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
++        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
+             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
+             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
+             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+
+tokens used
+199,877
+계속 진행 필요

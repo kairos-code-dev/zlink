@@ -376,6 +376,11 @@ int gateway_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
             return -1;
         }
     }
+    {
+        scoped_lock_t lock (_sync);
+        if (!_service_name.empty () && !get_or_create_pool_cached ())
+            return -1;
+    }
     _send_ready_handler_userdata.store (userdata_, std::memory_order_release);
     _send_ready_handler.store (handler_, std::memory_order_release);
     return 0;

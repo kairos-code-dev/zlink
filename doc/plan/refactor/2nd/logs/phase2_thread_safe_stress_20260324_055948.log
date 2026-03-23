@@ -1,0 +1,387 @@
+=== Verifying stress test registration ===
+=== Stress test registration verified ===
+=== Repeating test_service_introspection_discovery_control_path (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.02 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+1/1 Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.78 sec
+=== Repeating test_service_introspection_discovery_ordering (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...***Timeout  30.02 sec
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =  33.34 sec
+
+The following tests FAILED:
+	 50 - test_service_introspection_discovery_ordering (Timeout)
+Errors while running CTest

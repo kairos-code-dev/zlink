@@ -234,6 +234,8 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
     const auto commit_refresh = [&]() {
         const gateway_service_pool_t::send_snapshot_t *published =
           pool_->send_snapshot.get ();
+        const bool was_send_ready =
+          published != NULL && !published->routing_ids.empty ();
         if (published) {
             for (size_t i = 0; i < published->endpoints.size (); ++i)
                 _runtime->endpoint_to_service.erase (published->endpoints[i]);
@@ -255,6 +257,8 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
         }
         const gateway_service_pool_t::send_snapshot_t *current =
           pool_->send_snapshot.get ();
+        const bool is_send_ready =
+          current != NULL && !current->routing_ids.empty ();
         for (size_t i = 0; current && i < current->routing_ids.size (); ++i) {
             const std::string key =
               routing_id_key_local (current->routing_ids[i]);
@@ -271,6 +275,12 @@ void gateway_t::refresh_pool (gateway_service_pool_t *pool_,
         for (size_t i = 0; current && i < current->endpoints.size (); ++i)
             _runtime->endpoint_to_service[current->endpoints[i]] =
               pool_->service_name;
+
+        if (pool_ == _runtime->primary_pool) {
+            if (is_send_ready && !was_send_ready)
+                _runtime->send_ready_callback_pending = true;
+            _runtime->send_ready_available = is_send_ready;
+        }
 
         for (size_t i = 0;
              current && i < current->routing_ids.size ()

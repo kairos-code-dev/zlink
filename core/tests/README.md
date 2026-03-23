@@ -65,8 +65,14 @@ Thread-safe contract stress runner:
 
 ```bash
 ./core/tests/run_thread_safe_contract_stress.sh
-./core/tests/run_thread_safe_contract_stress.sh --count 100
+./core/tests/run_thread_safe_contract_stress.sh --count 10
+./core/tools/run_execution_gate_loop.sh --count 10
+./core/tools/run_codex_execution_guide_loop.sh
+./core/tools/run_codex_execution_guide_loop.sh --stress-count 10
 ```
+
+- `10`은 thread-safe stress의 기본/최소 반복 횟수다.
+- 더 높은 신뢰도나 flake 재현이 필요하면 `--count` 또는 `--stress-count`를 더 크게 줄 수 있다.
 
 Thread-safe contract perf runner:
 
@@ -137,6 +143,14 @@ ctest --test-dir core/build \
 - `run_thread_safe_contract_stress.sh` repeats the selected thread-safe
   contract cases at the CTest layer. It does not add retry logic inside the
   tests themselves.
+- `run_execution_gate_loop.sh` is a repo-local wrapper for long-running stress
+  gates. It keeps one shell process alive across gate completion, writes
+  timestamped logs under `doc/plan/refactor/2nd/logs/`, and automatically runs
+  a single-test repro when the stress gate fails.
+- `run_codex_execution_guide_loop.sh` is a higher-level Codex supervisor for
+  the remaining execution guide. It repeatedly runs `codex exec`, tells Codex
+  to continue from the first incomplete guide item, and stops only on exact
+  sentinel output (`미적용 사항이 없습니다.` or `사용자 입력 필요: ...`).
 - The stress lane currently covers discovery control-path teardown, gateway
   runtime read and attach/query ordering, gateway send-ready self-close,
   spot runtime read, spot monitor-child destroy, and spot send-ready

@@ -6,7 +6,6 @@
 #include "core/ctx.hpp"
 #include "sockets/socket_base.hpp"
 #include "sockets/socket_close_ops.hpp"
-#include "utils/clock.hpp"
 #include "utils/mutex.hpp"
 
 #include <map>
@@ -18,6 +17,8 @@ namespace zlink
 class service_socket_registry_t
 {
   public:
+    typedef std::map<int, const socket_base_t *> socket_map_t;
+
     service_socket_registry_t ()
     {
     }
@@ -41,7 +42,8 @@ class service_socket_registry_t
         _closing_sockets.erase (socket_->socket_id ());
     }
 
-    int close_socket (socket_base_t *&socket_)
+    int close_socket (socket_base_t *&socket_,
+                      const socket_base_t **closed_socket_ = NULL)
     {
         if (!socket_)
             return 0;
@@ -53,132 +55,31 @@ class service_socket_registry_t
             _owned_sockets.erase (socket_id);
             _closing_sockets[socket_id] = socket;
         }
+        if (closed_socket_)
+            *closed_socket_ = socket;
         return socket_close_ops_t::request_close (socket_);
     }
 
-    int close_socket_and_wait (ctx_t *ctx_,
-                               socket_base_t *&socket_,
-                               int timeout_ms_)
+    void snapshot_drain_state (size_t *owned_count_, socket_map_t *closing_) const
     {
-        if (!socket_)
-            return 0;
-
-        socket_base_t *socket = socket_;
-        const int socket_id = socket->socket_id ();
-        {
-            scoped_lock_t lock (_sync);
-            _owned_sockets.erase (socket_id);
-            _closing_sockets[socket_id] = socket;
-        }
-        const int rc =
-          socket_close_ops_t::request_close_and_wait (ctx_, socket_, timeout_ms_);
-        if (rc == 0)
-            erase_closing_socket (socket_id);
-        return rc;
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        if (owned_count_)
+            *owned_count_ = _owned_sockets.size ();
+        if (closing_)
+            *closing_ = _closing_sockets;
     }
 
-    int wait_drained (ctx_t *ctx_, int timeout_ms_)
+    void handoff_owned_to_closing (socket_map_t *owned_, socket_map_t *closing_)
     {
-        if (!ctx_)
-            return 0;
-
-        const uint64_t deadline_ms =
-          timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
-
-        while (true) {
-            std::map<int, const socket_base_t *> sockets;
-            size_t owned_count = 0;
-            {
-                scoped_lock_t lock (_sync);
-                owned_count = _owned_sockets.size ();
-                sockets = _closing_sockets;
-            }
-
-            if (owned_count == 0 && sockets.empty ())
-                return 0;
-            if (timeout_ms_ >= 0) {
-                const uint64_t now_ms = zlink::clock_t ().now_ms ();
-                if (now_ms >= deadline_ms) {
-                    debug_dump ("[service-drain] timeout");
-                    errno = ETIMEDOUT;
-                    return -1;
-                }
-            }
-
-            for (std::map<int, const socket_base_t *>::const_iterator it =
-                   sockets.begin ();
-                 it != sockets.end (); ++it) {
-                const uint64_t now_ms = zlink::clock_t ().now_ms ();
-                const int remaining_ms =
-                  timeout_ms_ < 0 ? -1
-                                  : static_cast<int> (deadline_ms - now_ms);
-                if (socket_close_ops_t::wait_until_closed (
-                      ctx_, it->second, remaining_ms)
-                    != 0)
-                    return -1;
-                erase_closing_socket (it->first);
-            }
-        }
-    }
-
-    int force_wait_remaining (ctx_t *ctx_, int timeout_ms_)
-    {
-        if (!ctx_)
-            return 0;
-
-        const uint64_t deadline_ms =
-          timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
-
-        while (true) {
-            std::map<int, const socket_base_t *> owned;
-            std::map<int, const socket_base_t *> closing;
-            {
-                scoped_lock_t lock (_sync);
-                owned = _owned_sockets;
-                for (std::map<int, const socket_base_t *>::const_iterator it =
-                       owned.begin ();
-                     it != owned.end (); ++it) {
-                    _closing_sockets[it->first] = it->second;
-                }
-                _owned_sockets.clear ();
-                closing = _closing_sockets;
-            }
-
-            if (owned.empty () && closing.empty ())
-                return 0;
-            if (timeout_ms_ >= 0) {
-                const uint64_t now_ms = zlink::clock_t ().now_ms ();
-                if (now_ms >= deadline_ms) {
-                    debug_dump ("[service-force-drain] timeout");
-                    errno = ETIMEDOUT;
-                    return -1;
-                }
-            }
-
-            for (std::map<int, const socket_base_t *>::const_iterator it =
-                   owned.begin ();
-                 it != owned.end (); ++it) {
-                socket_base_t *socket =
-                  const_cast<socket_base_t *> (it->second);
-                if (!socket)
-                    continue;
-                socket_close_ops_t::request_close (socket);
-            }
-
-            for (std::map<int, const socket_base_t *>::const_iterator it =
-                   closing.begin ();
-                 it != closing.end (); ++it) {
-                const uint64_t now_ms = zlink::clock_t ().now_ms ();
-                const int remaining_ms =
-                  timeout_ms_ < 0 ? -1
-                                  : static_cast<int> (deadline_ms - now_ms);
-                if (socket_close_ops_t::wait_until_closed (
-                      ctx_, it->second, remaining_ms)
-                    != 0)
-                    return -1;
-                erase_closing_socket (it->first);
-            }
-        }
+        scoped_lock_t lock (_sync);
+        if (owned_)
+            *owned_ = _owned_sockets;
+        for (socket_map_t::const_iterator it = _owned_sockets.begin ();
+             it != _owned_sockets.end (); ++it)
+            _closing_sockets[it->first] = it->second;
+        _owned_sockets.clear ();
+        if (closing_)
+            *closing_ = _closing_sockets;
     }
 
     size_t socket_count () const
@@ -194,7 +95,6 @@ class service_socket_registry_t
         _closing_sockets.clear ();
     }
 
-  private:
     void erase_closing_socket (int socket_id_)
     {
         scoped_lock_t lock (_sync);
@@ -222,8 +122,8 @@ class service_socket_registry_t
     }
 
     mutable mutex_t _sync;
-    std::map<int, const socket_base_t *> _owned_sockets;
-    std::map<int, const socket_base_t *> _closing_sockets;
+    socket_map_t _owned_sockets;
+    socket_map_t _closing_sockets;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (service_socket_registry_t)
 };

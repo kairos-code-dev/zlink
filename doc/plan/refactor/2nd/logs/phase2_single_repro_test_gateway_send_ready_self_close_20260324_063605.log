@@ -1,0 +1,210 @@
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   12.07 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   12.08 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   12.08 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   16.09 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   12.08 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   10.08 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   10.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   10.07 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   14.10 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.08 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   12.07 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    6.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   10.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    6.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   10.07 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   12.08 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    6.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    6.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.03 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   10.08 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   10.07 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed   12.06 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    2.02 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 97: test_gateway_send_ready_self_close
+    Test #97: test_gateway_send_ready_self_close ...   Passed    6.05 sec
+    Start 97: test_gateway_send_ready_self_close
+1/1 Test #97: test_gateway_send_ready_self_close ...   Passed    8.05 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =   8.05 sec*proc (1 test)
+serial         =   8.05 sec*proc (1 test)
+
+Total Test time (real) = 406.28 sec

@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "sockets/socket_base.hpp"
+#include "utils/mutex.hpp"
 
 namespace zlink
 {
@@ -49,6 +50,7 @@ struct monitor_handler_state_t
     std::atomic<bool> stop;
     std::atomic<int> callback_depth;
     std::atomic<bool> close_requested;
+    zlink::mutex_t dispatch_sync;
     bool service;
     std::thread worker;
 };

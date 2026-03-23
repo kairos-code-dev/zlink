@@ -2,6 +2,7 @@
 
 #include "../../testutil.hpp"
 #include "../../testutil_unity.hpp"
+#include "../../testutil_monitoring.hpp"
 #include "../../../src/services/spot/spot_node.hpp"
 #include "../../../src/services/spot/spot_pub.hpp"
 #include "../../../src/core/msg.hpp"
@@ -18,16 +19,6 @@
 #include <vector>
 
 namespace {
-
-struct service_monitor_probe_t
-{
-    service_monitor_probe_t () : event_count (0) {}
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::vector<zlink_service_event_t> events;
-    uint64_t event_count;
-};
 
 struct subscribe_probe_t
 {
@@ -49,6 +40,15 @@ struct send_ready_probe_t
     int calls;
 };
 
+struct service_monitor_probe_t
+{
+    service_monitor_probe_t () {}
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::vector<zlink_service_event_t> events;
+};
+
 static std::atomic<int> g_port_seed (22618);
 
 static int next_port_seed ()
@@ -56,8 +56,89 @@ static int next_port_seed ()
     return g_port_seed.fetch_add (8);
 }
 
-static void monitor_probe_handler (const zlink_service_event_t *event_,
-                                   void *userdata_)
+static bool service_event_matches (const zlink_service_event_t &event_,
+                                   uint32_t expected_event_type_,
+                                   const char *endpoint_prefix_)
+{
+    if (event_.event_type != expected_event_type_)
+        return false;
+    if (!endpoint_prefix_ || endpoint_prefix_[0] == '\0')
+        return true;
+    if ((event_.detail_flags & ZLINK_EVENT_DETAIL_ENDPOINT) == 0)
+        return false;
+    return strncmp (event_.endpoint, endpoint_prefix_, strlen (endpoint_prefix_))
+           == 0;
+}
+
+static bool wait_for_service_event (void *monitor_,
+                                    uint32_t expected_event_type_,
+                                    const char *endpoint_prefix_,
+                                    int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const long remaining_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ();
+        zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
+        const int rc =
+          zlink_poll (&item, 1, remaining_ms > 0 ? remaining_ms : 0);
+        if (rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        zlink_service_event_t event;
+        if (recv_service_event_from_socket (monitor_, &event, 0) != 0)
+            continue;
+        if (service_event_matches (event, expected_event_type_,
+                                   endpoint_prefix_)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool wait_for_service_event_value (void *monitor_,
+                                          uint32_t expected_event_type_,
+                                          uint32_t expected_value_,
+                                          const char *endpoint_prefix_,
+                                          int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const long remaining_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ();
+        zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
+        const int rc =
+          zlink_poll (&item, 1, remaining_ms > 0 ? remaining_ms : 0);
+        if (rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        zlink_service_event_t event;
+        if (recv_service_event_from_socket (monitor_, &event, 0) != 0)
+            continue;
+        if (event.value != expected_value_)
+            continue;
+        if (service_event_matches (event, expected_event_type_,
+                                   endpoint_prefix_)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void service_monitor_probe_handler (const zlink_service_event_t *event_,
+                                           void *userdata_)
 {
     service_monitor_probe_t *probe =
       static_cast<service_monitor_probe_t *> (userdata_);
@@ -67,96 +148,56 @@ static void monitor_probe_handler (const zlink_service_event_t *event_,
     {
         std::lock_guard<std::mutex> lock (probe->mutex);
         probe->events.push_back (*event_);
-        ++probe->event_count;
     }
     probe->cv.notify_all ();
 }
 
-static bool pop_event_locked (service_monitor_probe_t *probe_,
-                              uint32_t expected_event_type_,
-                              const char *endpoint_prefix_)
+static bool pop_probe_service_event_value_locked (
+  service_monitor_probe_t *probe_,
+  uint32_t expected_event_type_,
+  uint32_t expected_value_,
+  const char *endpoint_prefix_)
 {
     for (std::vector<zlink_service_event_t>::iterator it =
            probe_->events.begin ();
          it != probe_->events.end (); ++it) {
-        if (it->event_type != expected_event_type_)
+        if (it->value != expected_value_)
             continue;
-        if (endpoint_prefix_ && endpoint_prefix_[0] != '\0') {
-            if ((it->detail_flags & ZLINK_EVENT_DETAIL_ENDPOINT) == 0)
-                continue;
-            if (strncmp (it->endpoint, endpoint_prefix_,
-                         strlen (endpoint_prefix_))
-                != 0) {
-                continue;
-            }
-        }
+        if (!service_event_matches (*it, expected_event_type_, endpoint_prefix_))
+            continue;
+
         probe_->events.erase (it);
         return true;
     }
+
     return false;
 }
 
-static bool wait_for_event (service_monitor_probe_t *probe_,
-                            uint32_t expected_event_type_,
-                            const char *endpoint_prefix_,
-                            int timeout_ms_)
+static bool wait_for_probe_service_event_value (
+  service_monitor_probe_t *probe_,
+  uint32_t expected_event_type_,
+  uint32_t expected_value_,
+  const char *endpoint_prefix_,
+  int timeout_ms_)
 {
     std::unique_lock<std::mutex> lock (probe_->mutex);
-    if (pop_event_locked (probe_, expected_event_type_, endpoint_prefix_))
+    if (pop_probe_service_event_value_locked (
+          probe_, expected_event_type_, expected_value_, endpoint_prefix_)) {
         return true;
+    }
 
     return probe_->cv.wait_for (
       lock, std::chrono::milliseconds (timeout_ms_),
-      [probe_, expected_event_type_, endpoint_prefix_]() {
-          return pop_event_locked (probe_, expected_event_type_,
-                                   endpoint_prefix_);
+      [probe_, expected_event_type_, expected_value_, endpoint_prefix_]() {
+          return pop_probe_service_event_value_locked (
+            probe_, expected_event_type_, expected_value_, endpoint_prefix_);
       });
-}
-
-static bool wait_for_event_value (service_monitor_probe_t *probe_,
-                                  uint32_t expected_event_type_,
-                                  uint32_t expected_value_,
-                                  const char *endpoint_prefix_,
-                                  int timeout_ms_)
-{
-    std::unique_lock<std::mutex> lock (probe_->mutex);
-    const auto pop_matching = [probe_, expected_event_type_, expected_value_,
-                               endpoint_prefix_]() {
-        for (std::vector<zlink_service_event_t>::iterator it =
-               probe_->events.begin ();
-             it != probe_->events.end (); ++it) {
-            if (it->event_type != expected_event_type_
-                || it->value != expected_value_) {
-                continue;
-            }
-            if (endpoint_prefix_ && endpoint_prefix_[0] != '\0') {
-                if ((it->detail_flags & ZLINK_EVENT_DETAIL_ENDPOINT) == 0)
-                    continue;
-                if (strncmp (it->endpoint, endpoint_prefix_,
-                             strlen (endpoint_prefix_))
-                    != 0) {
-                    continue;
-                }
-            }
-            probe_->events.erase (it);
-            return true;
-        }
-        return false;
-    };
-
-    if (pop_matching ())
-        return true;
-
-    return probe_->cv.wait_for (
-      lock, std::chrono::milliseconds (timeout_ms_),
-      [&pop_matching]() { return pop_matching (); });
 }
 
 static bool wait_for_subscription_ready (void *sub_node_,
                                          const char *endpoint_,
                                          const char *topic_)
 {
-    service_monitor_probe_t probe;
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
     opts.events = ZLINK_SPOT_SUB_FILTER_APPLIED
@@ -165,17 +206,14 @@ static bool wait_for_subscription_ready (void *sub_node_,
     void *monitor = zlink_service_monitor_open (sub_node_, &opts);
     if (!monitor)
         return false;
-    if (zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe)
-        != 0) {
-        zlink_monitor_close (&monitor);
-        return false;
-    }
 
     const bool ok =
       zlink_set_subscription (sub_node_, topic_) == 0
-      && wait_for_event (&probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000)
-      && wait_for_event (&probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, endpoint_,
-                         3000);
+      && wait_for_service_event (monitor, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL,
+                                 3000)
+      && wait_for_service_event (
+        monitor, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, endpoint_,
+        3000);
     zlink_monitor_close (&monitor);
     return ok;
 }
@@ -183,28 +221,22 @@ static bool wait_for_subscription_ready (void *sub_node_,
 static bool wait_for_existing_subscription_ready (void *sub_node_,
                                                   const char *endpoint_)
 {
-    service_monitor_probe_t probe;
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
     opts.events = ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (sub_node_, &opts);
     if (!monitor)
         return false;
-    if (zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe)
-        != 0) {
-        zlink_monitor_close (&monitor);
-        return false;
-    }
 
-    const bool ok = wait_for_event (&probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED,
-                                    endpoint_, 3000);
+    const bool ok = wait_for_service_event (
+      monitor, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, endpoint_,
+      3000);
     zlink_monitor_close (&monitor);
     return ok;
 }
 
 static bool wait_for_pub_ready (void *pub_node_)
 {
-    service_monitor_probe_t probe;
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
     opts.events = ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
@@ -214,11 +246,6 @@ static bool wait_for_pub_ready (void *pub_node_)
     void *monitor = zlink_service_monitor_open (pub_node_, &opts);
     if (!monitor)
         return false;
-    if (zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe)
-        != 0) {
-        zlink_monitor_close (&monitor);
-        return false;
-    }
 
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
@@ -229,8 +256,8 @@ static bool wait_for_pub_ready (void *pub_node_)
             zlink_monitor_close (&monitor);
             return true;
         }
-        (void) wait_for_event (&probe, ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED,
-                               NULL, 200);
+        (void) wait_for_service_event (monitor, ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED,
+                                       NULL, 200);
     }
 
     zlink_monitor_close (&monitor);
@@ -536,7 +563,6 @@ static void test_spot_monitors_and_monitor_poller ()
     int port_seed = next_port_seed ();
     TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
 
-    service_monitor_probe_t probe;
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
     opts.events = ZLINK_SPOT_SUB_FILTER_APPLIED
@@ -545,18 +571,17 @@ static void test_spot_monitors_and_monitor_poller ()
                   | ZLINK_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (sub_node, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_node, "topic.monitor"));
 
-    TEST_ASSERT_TRUE (wait_for_event (
-      &probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
-    TEST_ASSERT_TRUE (wait_for_event (
-      &probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, endpoint, 3000));
+    TEST_ASSERT_TRUE (wait_for_service_event (
+      monitor, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
+    TEST_ASSERT_TRUE (wait_for_service_event (
+      monitor, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, endpoint,
+      3000));
 
     zlink_monitor_snapshot_t snapshot;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_snapshot (monitor, &snapshot));
@@ -610,31 +635,74 @@ static void test_spot_subscription_ready_changed_reports_loss ()
     int port_seed = next_port_seed ();
     TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
 
-    service_monitor_probe_t probe;
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
     opts.events =
       ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
     void *monitor = zlink_service_monitor_open (sub_node, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_service_monitor_handler (monitor, &monitor_probe_handler, &probe));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_node, "topic.loss"));
-    TEST_ASSERT_TRUE (wait_for_event_value (
-      &probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, 1, endpoint,
+    TEST_ASSERT_TRUE (wait_for_service_event_value (
+      monitor, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, 1, endpoint,
       3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_unset_subscription (sub_node, "topic.loss"));
-    TEST_ASSERT_TRUE (wait_for_event_value (
-      &probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, 0, NULL,
+    TEST_ASSERT_TRUE (wait_for_service_event_value (
+      monitor, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, 0, NULL,
       3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_handler_monitor_close_after_ready_change_is_stable ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *pub_node = create_node (ctx, "spot-sub-handler-close");
+    void *sub_node = create_node (ctx, "spot-sub-handler-close");
+
+    char endpoint[MAX_SOCKET_STRING];
+    int port_seed = next_port_seed ();
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (sub_node, endpoint));
+
+    for (int iteration = 0; iteration < 32; ++iteration) {
+        service_monitor_probe_t probe;
+        zlink_service_monitor_open_options_t opts;
+        memset (&opts, 0, sizeof (opts));
+        opts.events = ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED
+                      | ZLINK_MONITOR_EVENT_ERROR;
+
+        void *monitor = zlink_service_monitor_open (sub_node, &opts);
+        TEST_ASSERT_NOT_NULL (monitor);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_handler (
+          monitor, &service_monitor_probe_handler, &probe));
+
+        char topic[64];
+        snprintf (topic, sizeof (topic), "topic.handler-close.%d", iteration);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_node, topic));
+        TEST_ASSERT_TRUE (wait_for_probe_service_event_value (
+          &probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, 1,
+          endpoint, 3000));
+
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (sub_node, topic));
+        TEST_ASSERT_TRUE (wait_for_probe_service_event_value (
+          &probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, 0, NULL,
+          3000));
+
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
+    }
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
@@ -909,6 +977,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_monitors_and_monitor_poller);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_late_connect_replays_existing_subscription);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_subscription_ready_changed_reports_loss);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_handler_monitor_close_after_ready_change_is_stable);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_callback_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_publish_rollback_preserves_next_topic_boundary);

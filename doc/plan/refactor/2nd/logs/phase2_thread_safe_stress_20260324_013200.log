@@ -1,0 +1,1713 @@
+=== Repeating test_service_introspection_discovery_control_path (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+1/1 Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.88 sec
+=== Repeating test_service_introspection_discovery_ordering (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.05 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+    Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+    Start 50: test_service_introspection_discovery_ordering
+1/1 Test #50: test_service_introspection_discovery_ordering ...   Passed    0.04 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   4.20 sec
+=== Repeating test_service_introspection_discovery_self_close (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.04 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+    Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+    Start 51: test_service_introspection_discovery_self_close
+1/1 Test #51: test_service_introspection_discovery_self_close ...   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   3.34 sec
+=== Repeating test_gateway_runtime_reads (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+    Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 97: test_gateway_runtime_reads
+1/1 Test #97: test_gateway_runtime_reads .......   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =   0.03 sec*proc (1 test)
+serial         =   0.03 sec*proc (1 test)
+
+Total Test time (real) =   3.26 sec
+=== Repeating test_gateway_send_plane_updates (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   22.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.16 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.28 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.19 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   10.15 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.24 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   22.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.19 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   22.26 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.26 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.24 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   22.27 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   10.15 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.28 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.27 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.17 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   32.33 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.19 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.19 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.27 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.27 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   22.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   10.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   22.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.17 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.16 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.24 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.26 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.17 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.26 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.24 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.24 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   22.26 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.24 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.17 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   26.29 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.24 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.25 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.18 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.23 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.22 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   16.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   18.21 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   12.19 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   20.24 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   14.20 sec
+    Start 98: test_gateway_send_plane_updates
+    Test #98: test_gateway_send_plane_updates ...   Passed   24.27 sec
+    Start 98: test_gateway_send_plane_updates
+1/1 Test #98: test_gateway_send_plane_updates ...   Passed   18.23 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+regression    =  18.23 sec*proc (1 test)
+serial        =  18.23 sec*proc (1 test)
+
+Total Test time (real) = 1746.09 sec
+=== Repeating test_gateway_attach_query_ordering (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+    Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+    Start 99: test_gateway_attach_query_ordering
+1/1 Test #99: test_gateway_attach_query_ordering ...   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =   0.02 sec*proc (1 test)
+serial         =   0.02 sec*proc (1 test)
+
+Total Test time (real) =   1.87 sec
+=== Repeating test_gateway_send_ready_self_close (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    6.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    8.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    8.07 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed   10.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    6.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    6.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed   10.08 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed   10.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    6.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    6.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    8.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed   12.08 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    4.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.04 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed   10.05 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    6.06 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    6.07 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.03 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+    Start 96: test_gateway_send_ready_self_close
+    Test #96: test_gateway_send_ready_self_close ...   Passed    2.03 sec
+    Start 96: test_gateway_send_ready_self_close
+1/1 Test #96: test_gateway_send_ready_self_close ...   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =   0.02 sec*proc (1 test)
+serial         =   0.02 sec*proc (1 test)
+
+Total Test time (real) = 295.73 sec
+=== Repeating test_gateway_monitor_self_close (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.04 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.04 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+    Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+    Start 100: test_gateway_monitor_self_close
+1/1 Test #100: test_gateway_monitor_self_close ...   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =   0.03 sec*proc (1 test)
+serial         =   0.03 sec*proc (1 test)
+
+Total Test time (real) =   3.07 sec
+=== Repeating test_spot_service_introspection_runtime_reads (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Repeating test_spot_service_introspection_monitor_child_destroy (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Repeating test_spot_service_introspection_send_ready_self_close (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Repeating test_spot_service_introspection_monitor_self_close (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Repeating test_spot_service_introspection_node_monitor_self_close (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Repeating test_spot_service_introspection_child_open_after_close (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Repeating test_gateway_lifecycle_contract (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Repeating test_spot_service_introspection_lifecycle_contract (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Repeating test_spot_service_introspection_handle_lifecycle (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+No tests were found!!!
+=== Thread-safe contract stress completed ===

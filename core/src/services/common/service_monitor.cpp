@@ -11,6 +11,45 @@
 
 namespace zlink
 {
+namespace
+{
+void close_monitor_servers (ctx_t *ctx_,
+                            const std::vector<socket_base_t *> &servers_,
+                            int timeout_ms_)
+{
+    if (servers_.empty ())
+        return;
+
+    for (size_t i = 0; i < servers_.size (); ++i) {
+        socket_base_t *server = servers_[i];
+        if (!server)
+            continue;
+        server->stop ();
+        server->close ();
+    }
+
+    if (!ctx_)
+        return;
+
+    const uint64_t deadline_ms =
+      timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
+    for (size_t i = 0; i < servers_.size (); ++i) {
+        const socket_base_t *server = servers_[i];
+        if (!server)
+            continue;
+
+        const int remaining_ms =
+          timeout_ms_ < 0
+            ? -1
+            : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
+        if (timeout_ms_ >= 0 && remaining_ms <= 0)
+            break;
+
+        (void) ctx_->wait_for_socket_removal (server, remaining_ms);
+    }
+}
+}
+
 service_monitor_hub_t::service_monitor_hub_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _watcher_count (0),
@@ -95,6 +134,12 @@ void *service_monitor_hub_t::open (int events_)
         errno = EINVAL;
         return NULL;
     }
+
+    // Each snapshot-style monitor open closes the client immediately after
+    // reading. Prune stale server peers before allocating the next watcher so
+    // destroy paths do not inherit an unbounded backlog of already-closed
+    // monitor sockets.
+    prune_closed_watchers ();
 
     socket_base_t *server = _ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
     socket_base_t *client = _ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
@@ -205,17 +250,7 @@ void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_eve
         _watcher_count.store (0, std::memory_order_release);
     }
 
-    for (size_t i = 0; i < servers.size (); ++i) {
-        socket_base_t *server = servers[i];
-        if (!server)
-            continue;
-        if (_ctx)
-            (void) _ctx->close_socket_and_wait (server, 2000);
-        else {
-            server->stop ();
-            server->close ();
-        }
-    }
+    close_monitor_servers (_ctx, servers, 2000);
 }
 
 size_t service_monitor_hub_t::watcher_count () const
@@ -249,17 +284,7 @@ void service_monitor_hub_t::prune_closed_watchers ()
         _watcher_count.store (_watchers.size (), std::memory_order_release);
     }
 
-    for (size_t i = 0; i < stale_servers.size (); ++i) {
-        socket_base_t *server = stale_servers[i];
-        if (!server)
-            continue;
-        if (_ctx)
-            (void) _ctx->close_socket_and_wait (server, 2000);
-        else {
-            server->stop ();
-            server->close ();
-        }
-    }
+    close_monitor_servers (NULL, stale_servers, 0);
 }
 
 void service_monitor_hub_t::dispatch_thread_main (void *arg_)

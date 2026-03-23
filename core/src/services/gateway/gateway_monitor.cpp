@@ -116,9 +116,11 @@ void *gateway_t::monitor_open (int events_)
     if (!admission.acquired ())
         return NULL;
 
-    scoped_lock_t lock (_sync);
-    if (ensure_refresh_task_running () != 0)
-        return NULL;
+    {
+        scoped_lock_t lock (_sync);
+        if (ensure_refresh_task_running () != 0)
+            return NULL;
+    }
     return _monitor.open (events_);
 }
 
@@ -271,28 +273,38 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
-    if (ensure_facade_mode () != 0)
-        return -1;
-    lock_routing_id ();
-    process_monitor_events ();
     memset (out_, 0, sizeof (*out_));
     out_->source_kind = ZLINK_MONITOR_SOURCE_GATEWAY;
     out_->detail_flags = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
-    out_->state_flags =
-      _bind_endpoint.empty () ? 0 : ZLINK_MONITOR_STATE_BOUND_READY;
-    gateway_service_pool_t *pool = get_or_create_pool (_service_name);
-    scoped_lock_t send_lock (_send_sync);
-    const gateway_service_pool_t::send_snapshot_t *snapshot =
-      pool ? pool->send_snapshot.get () : NULL;
+    socket_base_t *router_socket = NULL;
+    bool is_bound_ready = false;
+    std::shared_ptr<const gateway_service_pool_t::send_snapshot_t> snapshot;
+
+    {
+        scoped_lock_t lock (_sync);
+        if (ensure_facade_mode () != 0)
+            return -1;
+        lock_routing_id ();
+        process_monitor_events ();
+        is_bound_ready = !_bind_endpoint.empty ();
+        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+        {
+            scoped_lock_t send_lock (_send_sync);
+            if (pool)
+                snapshot = pool->send_snapshot;
+        }
+        router_socket = _runtime->router_socket;
+    }
+
+    out_->state_flags = is_bound_ready ? ZLINK_MONITOR_STATE_BOUND_READY : 0;
     out_->ready_count =
       snapshot ? static_cast<uint32_t> (snapshot->endpoints.size ()) : 0;
     if (out_->ready_count > 0)
         out_->state_flags |=
           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
-    if (_runtime->router_socket) {
+    if (router_socket) {
         zlink_monitor_snapshot_t router_snapshot;
-        if (_runtime->router_socket->monitor_snapshot (&router_snapshot) == 0) {
+        if (router_socket->monitor_snapshot (&router_snapshot) == 0) {
             out_->snd_pending_msgs = router_snapshot.snd_pending_msgs;
             out_->rcv_pending_msgs = router_snapshot.rcv_pending_msgs;
             out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS

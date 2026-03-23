@@ -9,6 +9,7 @@
 > - `doc/plan/refactor/1st/04-core-system-phase2-socket-runtime-split.ko.md`
 > - `doc/plan/refactor/1st/05-core-system-phase3-engine-transport-service-plan.ko.md`
 > - `doc/plan/thread-safe/thread-safe-socket-plan.ko.md`
+> - `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`
 
 ## 1. 문서 목적
 
@@ -46,6 +47,16 @@
 - 허브 객체를 deep module로 대체한다.
 - 변경 하나가 넓게 번지는 구조를 줄인다.
 - 리팩토링 후에도 테스트와 thread-safe 계약을 유지한다.
+
+성능 관련 해석 규칙은 아래처럼 고정한다.
+
+- 이 마스터 플랜은 성능 비퇴행을 **설계 원칙**으로만 다룬다.
+- perf baseline, smoke, full run, 회복 루프, artifact 관리, `run_thread_safe_contract_perf.sh`
+  실행 여부와 판정은 모두
+  `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`
+  에서만 확인한다.
+- 따라서 perf 관련 실행 절차와 완료 판정은 이 문서가 아니라 실행 가이드를
+  단일 소스로 삼는다.
 
 성공 기준은 아래 한 줄이다.
 
@@ -759,8 +770,7 @@ Checkpoint 규칙:
 
 - 각 sub-phase 종료 시 core 기본 게이트와 C 계약 확인을 통과해야 다음 sub-phase로 넘어간다.
 - Phase 1a, 1b는 core 기본 게이트 + C 계약 확인을 기본으로 한다.
-- Phase 1c는 existing service seam과 service entrypoint를 직접 건드리므로,
-  종료 시점에 대표 bindings smoke를 최소 1회 **의무**로 수행한다.
+- Phase 1c의 상세 게이트 판정은 실행 가이드 기준을 따른다.
 
 ### Phase 2 파일 묶음
 
@@ -836,9 +846,6 @@ phase 롤백/병합 규칙:
 - `unittest`, `integration`을 기본 게이트로 삼는다.
 - public API 기본 흐름, close/drain, callback/monitor, service lifecycle을
   회귀 판단 축으로 고정한다.
-- 성능 비퇴행 확인을 위해 Phase 0에서 최소 1회 perf baseline을 기록한다.
-  이 문서의 직접 수정 범위는 `core/perf/`가 아니지만,
-  구조 리팩토링 전후 비교를 위한 읽기 전용 기준선은 확보한다.
 - `core/include/zlink.h`와 bindings가 기대하는 native 계약을
   리팩토링의 최상위 고정 제약으로 문서화한다.
 - 1차 이후 추가된 현행 기능/옵션 목록을 리팩토링 보존 대상으로 문서에 못 박는다.
@@ -862,7 +869,7 @@ phase 롤백/병합 규칙:
 - 기준선 테스트 결과와 핵심 검증 축이 문서/작업 로그 수준에서 고정돼 있다.
 - no-touch 파일(`core/include/zlink.h`, `core/src/libzlink.vers`, bindings 소스)이
   이번 리팩토링 범위 밖이라는 점이 명시돼 있다.
-- 기능 기준선과 함께 최소 1회 perf baseline 기록이 존재한다.
+- perf 관련 실행 절차와 판정 기준이 실행 가이드로 위임돼 있다.
 
 ### 6.2 Phase 1: API facade 분해
 
@@ -1241,7 +1248,6 @@ Phase별 추가 게이트는 아래처럼 고정한다.
 bindings 계약을 고려한 추가 검증 원칙:
 
 - C API/ABI에 닿는 리팩토링 단계에서는 최소한 header/struct/symbol 영향 여부를 점검한다.
-- 공개 C surface를 간접 소비하는 bindings smoke를 phase별 규칙에 따라 확인한다.
 - release 준비 성격의 변경이면 `bindings/update_zlink_libs.sh` 흐름과 충돌이 없는지 확인한다.
 - thread-safe teardown/close/drain 리스크가 큰 phase는 thread-safe stress를 의무 게이트로 둔다.
 
@@ -1257,51 +1263,17 @@ ctest --test-dir core/build --output-on-failure -L unittest -j"$(nproc)"
 ctest --test-dir core/build --output-on-failure -L integration -j1
 ```
 
-### perf baseline 기록
+### perf 검증 위임
 
-```bash
-# 수정 없이 기준선만 기록한다.
-mkdir -p core/perf/results
-python3 core/perf/single/run_comparison.py \
-  --build-dir core/build \
-  --runs 1 \
-  --duration 3 \
-  --result-file core/perf/results/phase0-single-baseline.json
-PERF_ALLOW_MULTI=1 python3 core/perf/run_comparison.py ALL \
-  --build-dir core/build \
-  --runs 1 \
-  --duration 3 \
-  --result-file core/perf/results/phase0-multi-baseline.json
-```
+perf 관련 기준은 아래처럼 고정한다.
 
-기록 규칙:
-
-- Phase 0에서는 대표 single baseline과 multi baseline을 실제로 1회씩 실행해 결과 파일을 남긴다.
-- `phase0-single-baseline.json`은 single pattern baseline이다.
-- `phase0-multi-baseline.json`은 `PERF_ALLOW_MULTI=1`을 명시한 multi pattern baseline이다.
-- multi 실행이 불가능한 환경이면 `phase0-multi-baseline.json`을 생략하고, 실행 불가 사유를 작업 로그에 남긴다.
-- perf 자체를 수정하지는 않지만, 리팩토링 전후 비교 가능한 결과 파일 또는 실행 로그를 남긴다.
-- 최종 단계에서는 동일 조건으로 같은 명령을 다시 실행해 전후 결과를 비교한다.
-
-현재 문서 기준으로 이미 확보된 baseline artifact는 아래 파일로 고정한다.
-
-- single baseline:
-  - `/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`
-  - 해석 기준: `recv_mode=callback`, `io_threads=1`,
-    `patterns=PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,GATEWAY,SPOT`,
-    `transports=inproc,ipc,tcp,tls,ws,wss`
-- multi baseline:
-  - `/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`
-  - 해석 기준: `recv_mode=recv`, `server_io_threads=4`, `client_io_threads=4`,
-    `patterns=MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM`,
-    `transports=tcp,tls,ws,wss`
-  - 파일 내 `META,commit=9ef080f7`을 현재 multi 기준 commit으로 사용한다.
-
-새 컨텍스트에서 작업을 재개할 때는 아래 순서로 baseline을 읽는다.
-
-1. 위 artifact 파일을 먼저 기준선으로 삼는다.
-2. 현재 checkout 상태가 baseline commit과 다르면 차이를 작업 로그에 남긴다.
-3. 리팩토링 전후 perf 비교는 가능하면 같은 옵션/같은 transport set으로 다시 실행해 비교한다.
+- 이 문서는 성능 비퇴행을 **지켜야 할 설계 제약**으로만 선언한다.
+- perf baseline artifact, 실행 명령, smoke/full run, baseline 비교, 회복 루프,
+  worst regression 우선순위, 결과 파일 보관 규칙은
+  `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`
+  에서만 정의한다.
+- 새 컨텍스트에서 작업을 재개할 때도 perf 기준선 확인은 마스터 플랜이 아니라
+  실행 가이드의 해당 절차를 먼저 따른다.
 
 ### C 계약 변경 금지 확인
 
@@ -1319,61 +1291,22 @@ nm -D core/build/lib/libzlink.so | rg " zlink_"
 
 ```bash
 ./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 100
-./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85
 ```
 
 적용 규칙:
 
 - Phase 2와 Phase 3 종료 시에는 `run_thread_safe_contract_stress.sh`를 **의무**로 수행한다.
-- Phase 0과 최종 단계에서는 `run_thread_safe_contract_perf.sh` 결과도 함께 보관한다.
+- `run_thread_safe_contract_perf.sh`를 포함한 perf 계열 판정은 실행 가이드에서만 다룬다.
 - TSan은 환경 비용이 크므로 상시 의무 게이트는 아니지만, close/drain 회귀가 의심되면 우선 추가한다.
 
-### bindings smoke 검증
+### bindings 검증 위임
 
-```bash
-ROOT_DIR="$(pwd)"
+bindings 관련 기준은 아래처럼 고정한다.
 
-bash bindings/cpp/build.sh ON
-ctest --test-dir bindings/cpp/build --output-on-failure -R test_cpp_
-
-ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
-  dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -v minimal
-
-(
-  cd "$ROOT_DIR/bindings/java"
-  chmod +x ./gradlew
-  ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
-    ./gradlew --no-daemon test integrationTest
-)
-
-(
-  cd "$ROOT_DIR/bindings/node"
-  ZLINK_LIB_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
-    npx --yes node-gyp rebuild
-  LD_LIBRARY_PATH="$ROOT_DIR/core/build/lib:${LD_LIBRARY_PATH:-}" \
-    npm test
-)
-
-(
-  cd "$ROOT_DIR/bindings/python"
-  ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
-    PYTHONPATH=src \
-    python -m pytest -q tests
-)
-```
-
-적용 규칙:
-
-- 대표 bindings smoke는 `C++ + Node + Python` 조합으로 고정한다.
-- full bindings smoke는 `C++ + .NET + Java + Node + Python` 전체 조합으로 고정한다.
-- Phase 1a, 1b는 core 기본 게이트 + C 계약 확인을 기본으로 삼는다.
-- Phase 1c는 core 기본 게이트 + C 계약 확인 + 대표 bindings smoke를 **의무**로 수행한다.
-- Phase 2~4는 core 기본 게이트 + C 계약 확인을 기본으로 하되,
-  Phase 2~3은 thread-safe stress를 **의무**로 수행한다.
-- Phase 5~6 또는 release 전 검증에서는 full bindings smoke까지 포함한다.
-- bindings smoke 실패 시 bindings 코드를 먼저 고치지 말고 `core` 리팩토링의 계약 침범 여부를 먼저 확인한다.
-- Java/.NET/Python은 `ZLINK_LIBRARY_PATH`로 현재 `core/build` 산출물을 직접 가리킨다.
-- Node는 addon 재빌드가 필요하므로 `ZLINK_LIB_PATH`로 현재 `core/build` 산출물을 링크한 뒤 검증한다.
+- 이 마스터 플랜은 bindings를 **보호해야 할 외부 계약**으로 다룬다.
+- 그러나 bindings smoke 실행 명령, 대표/full 조합, phase별 의무 여부,
+  blocker 판정은 실행 가이드 또는 별도 후속 검증 문서에서만 다룬다.
+- 따라서 이 문서의 phase 완료 판정은 bindings smoke 통과를 직접 요구하지 않는다.
 
 ### 8.2 단계별 검증 포인트
 
@@ -1391,7 +1324,6 @@ ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
 - Phase 1b.5 종료 시 `test_spot_service_introspection`와
   gateway 대표 integration을 의무로 수행해
   service caller delegate 전환이 boundary/runtime 회귀를 만들지 않았음을 확인한다
-- Phase 1c 종료 시 대표 bindings smoke 통과
 
 ### Phase 2 이후
 
@@ -1447,7 +1379,6 @@ ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
 - 서비스 변경이 public API 허브와 socket base 대형 파일을 전역 수정하게 만들지 않는다.
 - 그 과정에서도 `core/include/zlink.h`와 bindings native 계약은 유지된다.
 - `unittest`, `integration` 기본 게이트가 유지된다.
-- 최종 병합 전 최소 1회는 bindings smoke 검증까지 통과한다.
 
 ## 10. 범위와 가정
 

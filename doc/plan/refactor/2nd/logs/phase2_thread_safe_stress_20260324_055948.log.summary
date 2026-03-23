@@ -1,0 +1,5 @@
+status=failure
+started_at=2026-03-24 05:59:48 +0900
+completed_at=2026-03-24 06:00:42 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log
+stress_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_055948.log.exitcode

@@ -4,13 +4,11 @@
 
 #include "api/monitor_api_internal.hpp"
 
-#include <cstring>
 #include <map>
 #include <thread>
 
 #include "api/socket_api_internal.hpp"
 #include "utils/mutex.hpp"
-#include "utils/random.hpp"
 
 namespace
 {
@@ -20,13 +18,13 @@ struct monitor_handler_registry_t
     std::map<zlink::socket_base_t *, monitor_handler_state_t *> handlers;
 };
 
-static monitor_handler_registry_t &monitor_handler_registry ()
+monitor_handler_registry_t &monitor_handler_registry ()
 {
     static monitor_handler_registry_t registry;
     return registry;
 }
 
-static void stop_monitor_handler_state (monitor_handler_state_t *state_)
+void stop_monitor_handler_state (monitor_handler_state_t *state_)
 {
     if (!state_)
         return;
@@ -37,8 +35,20 @@ static void stop_monitor_handler_state (monitor_handler_state_t *state_)
     delete state_;
 }
 
-static void erase_monitor_handler_state (zlink::socket_base_t *socket_,
-                                         monitor_handler_state_t *state_)
+void stop_monitor_handler_worker (monitor_handler_state_t *state_)
+{
+    if (!state_)
+        return;
+
+    state_->stop.store (true, std::memory_order_release);
+    if (state_->socket)
+        state_->socket->stop ();
+    if (state_->worker.joinable ())
+        state_->worker.join ();
+}
+
+void erase_monitor_handler_state (zlink::socket_base_t *socket_,
+                                  monitor_handler_state_t *state_)
 {
     if (!socket_ || !state_)
         return;
@@ -51,7 +61,7 @@ static void erase_monitor_handler_state (zlink::socket_base_t *socket_,
         registry.handlers.erase (it);
 }
 
-static void finalize_monitor_handler_self_close (monitor_handler_state_t *state_)
+void finalize_monitor_handler_self_close (monitor_handler_state_t *state_)
 {
     if (!state_)
         return;
@@ -69,7 +79,7 @@ static void finalize_monitor_handler_self_close (monitor_handler_state_t *state_
     delete state_;
 }
 
-static void monitor_handler_worker (monitor_handler_state_t *state_)
+void monitor_handler_worker (monitor_handler_state_t *state_)
 {
     if (!state_ || !state_->socket)
         return;
@@ -86,16 +96,31 @@ static void monitor_handler_worker (monitor_handler_state_t *state_)
                     break;
                 drained = true;
 
-                zlink_monitor_handler_fn handler =
-                  state_->socket_handler.load (std::memory_order_acquire);
+                zlink_monitor_handler_fn handler = NULL;
+                void *handler_userdata = NULL;
+                {
+                    zlink::scoped_lock_t lock (state_->dispatch_sync);
+                    if (state_->stop.load (std::memory_order_acquire)
+                        || state_->close_requested.load (
+                             std::memory_order_acquire)) {
+                        break;
+                    }
+
+                    handler =
+                      state_->socket_handler.load (std::memory_order_acquire);
+                    if (!handler)
+                        break;
+
+                    handler_userdata = state_->socket_handler_userdata.load (
+                      std::memory_order_acquire);
+                    state_->callback_depth.fetch_add (
+                      1, std::memory_order_acq_rel);
+                }
                 if (handler) {
                     monitor_handler_state_t *previous =
                       g_current_monitor_handler_state;
                     g_current_monitor_handler_state = state_;
-                    state_->callback_depth.fetch_add (
-                      1, std::memory_order_acq_rel);
-                    handler (&event, state_->socket_handler_userdata.load (
-                                       std::memory_order_acquire));
+                    handler (&event, handler_userdata);
                     const int depth_after =
                       state_->callback_depth.fetch_sub (
                         1, std::memory_order_acq_rel)
@@ -115,16 +140,32 @@ static void monitor_handler_worker (monitor_handler_state_t *state_)
                     break;
                 drained = true;
 
-                zlink_service_monitor_handler_fn handler =
-                  state_->service_handler.load (std::memory_order_acquire);
+                zlink_service_monitor_handler_fn handler = NULL;
+                void *handler_userdata = NULL;
+                {
+                    zlink::scoped_lock_t lock (state_->dispatch_sync);
+                    if (state_->stop.load (std::memory_order_acquire)
+                        || state_->close_requested.load (
+                             std::memory_order_acquire)) {
+                        break;
+                    }
+
+                    handler =
+                      state_->service_handler.load (std::memory_order_acquire);
+                    if (!handler)
+                        break;
+
+                    handler_userdata =
+                      state_->service_handler_userdata.load (
+                        std::memory_order_acquire);
+                    state_->callback_depth.fetch_add (
+                      1, std::memory_order_acq_rel);
+                }
                 if (handler) {
                     monitor_handler_state_t *previous =
                       g_current_monitor_handler_state;
                     g_current_monitor_handler_state = state_;
-                    state_->callback_depth.fetch_add (
-                      1, std::memory_order_acq_rel);
-                    handler (&event, state_->service_handler_userdata.load (
-                                       std::memory_order_acquire));
+                    handler (&event, handler_userdata);
                     const int depth_after =
                       state_->callback_depth.fetch_sub (
                         1, std::memory_order_acq_rel)
@@ -141,135 +182,6 @@ static void monitor_handler_worker (monitor_handler_state_t *state_)
         if (!drained)
             std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
-}
-
-static int attach_socket_monitor_handler_state (
-  void *monitor_,
-  zlink_socket_monitor_handler_fn handler_,
-  void *userdata_)
-{
-    if (!monitor_) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (!handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    socket_handle_t handle = as_socket_handle (monitor_);
-    if (!handle.socket)
-        return -1;
-
-    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
-    if (!state || state->service) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (state->socket_handler.load (std::memory_order_acquire)
-        || state->service_handler.load (std::memory_order_acquire)) {
-        errno = EBUSY;
-        return -1;
-    }
-
-    return set_monitor_handler_state (
-      handle.socket, handler_, NULL, false,
-      state->snapshot_provider.load (std::memory_order_acquire),
-      state->snapshot_subject.load (std::memory_order_acquire), userdata_,
-      NULL);
-}
-
-static int attach_service_monitor_handler_state (
-  void *monitor_,
-  zlink_service_monitor_handler_fn handler_,
-  void *userdata_)
-{
-    if (!monitor_) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (!handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    socket_handle_t handle = as_socket_handle (monitor_);
-    if (!handle.socket)
-        return -1;
-
-    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
-    if (!state || !state->service) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (state->socket_handler.load (std::memory_order_acquire)
-        || state->service_handler.load (std::memory_order_acquire)) {
-        errno = EBUSY;
-        return -1;
-    }
-
-    return set_monitor_handler_state (
-      handle.socket, NULL, handler_, true,
-      state->snapshot_provider.load (std::memory_order_acquire),
-      state->snapshot_subject.load (std::memory_order_acquire), NULL, userdata_);
-}
-
-static void *open_socket_monitor_with_handler_internal (
-  void *s_,
-  zlink_socket_monitor_event_mask_t events_,
-  zlink_monitor_handler_fn handler_,
-  void *userdata_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return NULL;
-    if (!handler_) {
-        errno = EINVAL;
-        return NULL;
-    }
-
-    zlink_monitor_handler_fn effective_handler = handler_;
-    if (handler_ == &zlink_monitor_ignore_handler)
-        effective_handler = NULL;
-
-    char endpoint[128];
-    const uint32_t rand_id = zlink::generate_random ();
-    snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u",
-              static_cast<void *> (s_), rand_id);
-
-    const int monitor_rc =
-      handle.socket->monitor (endpoint, events_, 3, ZLINK_CORE_SOCKET_PAIR);
-    if (monitor_rc != 0)
-        return NULL;
-
-    zlink::socket_base_t *monitor_socket_base =
-      handle.socket->get_ctx ()->create_socket (ZLINK_CORE_SOCKET_PAIR);
-    void *monitor_socket = static_cast<void *> (monitor_socket_base);
-    if (!monitor_socket) {
-        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
-        return NULL;
-    }
-
-    if (zlink_connect (monitor_socket, endpoint) != 0) {
-        zlink_close (monitor_socket);
-        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
-        return NULL;
-    }
-
-    if (set_monitor_handler_state (monitor_socket_base, effective_handler, NULL,
-                                   false,
-                                   &socket_monitor_snapshot_provider,
-                                   static_cast<void *> (handle.socket),
-                                   userdata_, NULL)
-        != 0) {
-        const int err = errno;
-        zlink_close (monitor_socket);
-        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
-        errno = err;
-        return NULL;
-    }
-
-    return monitor_socket;
 }
 }
 
@@ -479,10 +391,25 @@ int zlink_monitor_close (void **monitor_p_)
         errno = EBUSY;
         return -1;
     }
-    if (monitor_state && had_dispatch_monitor) {
-        monitor_state->socket_handler.store (NULL, std::memory_order_release);
-        monitor_state->service_handler.store (NULL,
-                                              std::memory_order_release);
+    bool stop_socket_before_close = no_dispatch_monitor;
+    if (monitor_state) {
+        zlink::scoped_lock_t dispatch_lock (monitor_state->dispatch_sync);
+        if (monitor_state->callback_depth.load (std::memory_order_acquire) > 0
+            && g_current_monitor_handler_state != monitor_state) {
+            errno = EBUSY;
+            return -1;
+        }
+
+        if (had_dispatch_monitor) {
+            monitor_state->socket_handler.store (NULL,
+                                                 std::memory_order_release);
+            monitor_state->service_handler.store (NULL,
+                                                  std::memory_order_release);
+            if (g_current_monitor_handler_state != monitor_state) {
+                monitor_state->stop.store (true, std::memory_order_release);
+                stop_socket_before_close = true;
+            }
+        }
     }
     if (monitor_state && g_current_monitor_handler_state == monitor_state) {
         const int rc = zlink_close (monitor);
@@ -490,41 +417,11 @@ int zlink_monitor_close (void **monitor_p_)
             *monitor_p_ = NULL;
         return rc;
     }
-    if (no_dispatch_monitor) {
+    if (stop_socket_before_close) {
         socket->stop ();
-    } else if (monitor_state
-               && monitor_state->callback_depth.load (std::memory_order_acquire)
-                    > 0) {
-        errno = EBUSY;
-        return -1;
     }
     const int rc = zlink_close (monitor);
     if (rc == 0)
         *monitor_p_ = NULL;
     return rc;
-}
-
-void *zlink_socket_monitor_open (
-  void *s_, const zlink_socket_monitor_open_options_t *options_)
-{
-    if (!options_) {
-        errno = EINVAL;
-        return NULL;
-    }
-    return open_socket_monitor_with_handler_internal (
-      s_, options_->events, &zlink_monitor_ignore_handler, NULL);
-}
-
-int zlink_socket_monitor_handler (void *monitor_,
-                                  zlink_socket_monitor_handler_fn handler_,
-                                  void *userdata_)
-{
-    return attach_socket_monitor_handler_state (monitor_, handler_, userdata_);
-}
-
-int zlink_service_monitor_handler (void *monitor_,
-                                   zlink_service_monitor_handler_fn handler_,
-                                   void *userdata_)
-{
-    return attach_service_monitor_handler_state (monitor_, handler_, userdata_);
 }

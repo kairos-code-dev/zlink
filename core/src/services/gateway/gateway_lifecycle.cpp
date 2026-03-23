@@ -34,6 +34,39 @@ static void gateway_diag_log_local (const char *stage_)
              stage_ ? stage_ : "?");
     fclose (fp);
 }
+
+static int unregister_gateway_service_with_retry_local (
+  discovery_t *discovery_,
+  const std::string &service_name_,
+  const std::string &advertise_endpoint_,
+  zlink::clock_t *clock_,
+  uint64_t timeout_ms_)
+{
+    if (!discovery_ || service_name_.empty () || advertise_endpoint_.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::clock_t fallback_clock;
+    zlink::clock_t *clock = clock_ ? clock_ : &fallback_clock;
+    const uint64_t deadline_ms = clock->now_ms () + timeout_ms_;
+
+    while (true) {
+        if (discovery_->unregister_service (
+              discovery_protocol::service_type_gateway_receiver,
+              service_name_.c_str (), advertise_endpoint_.c_str ())
+            == 0)
+            return 0;
+
+        const int err = errno;
+        if (err != EAGAIN || clock->now_ms () >= deadline_ms) {
+            errno = err;
+            return -1;
+        }
+
+        zlink::sleep_ms (1);
+    }
+}
 }
 
 int gateway_t::attach_discovery (discovery_t *discovery_)
@@ -313,33 +346,40 @@ int gateway_t::unregister_service ()
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
-    if (ensure_facade_mode () != 0)
-        return -1;
-    if (!_discovery) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    if (_server_service_name.empty () || _advertise_endpoint.empty ()
-        || _server_service_name != _service_name) {
-        errno = EINVAL;
+    discovery_t *discovery = NULL;
+    std::string service_name;
+    std::string endpoint;
+    {
+        scoped_lock_t lock (_sync);
+        if (ensure_facade_mode () != 0)
+            return -1;
+        if (!_discovery) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        if (_server_service_name.empty () || _advertise_endpoint.empty ()
+            || _server_service_name != _service_name) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        discovery = _discovery;
+        service_name = _server_service_name;
+        endpoint = _advertise_endpoint;
     }
 
-    if (_server_service_name.empty () || _advertise_endpoint.empty ()
-        || _server_service_name != _service_name
-        || _discovery->unregister_service (
-             discovery_protocol::service_type_gateway_receiver,
-             _service_name.c_str (), _advertise_endpoint.c_str ())
-             != 0) {
+    if (unregister_gateway_service_with_retry_local (
+          discovery, service_name, endpoint, &_runtime->clock, 15000)
+        != 0)
         return -1;
-    }
 
-    const std::string service_name (_server_service_name);
-    const std::string endpoint (_advertise_endpoint);
-    _server_service_name.clear ();
-    _advertise_endpoint.clear ();
-    _last_register_error.clear ();
-    _service_ready_emitted = false;
+    {
+        scoped_lock_t lock (_sync);
+        _server_service_name.clear ();
+        _advertise_endpoint.clear ();
+        _last_register_error.clear ();
+        _service_ready_emitted = false;
+    }
 
     emit_event (ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED, service_name,
                 endpoint, NULL, 0, 0);
@@ -396,15 +436,15 @@ int gateway_t::destroy ()
     gateway_diag_log_local ("destroy.after-remove-task");
     _runtime->refresh_task_id = 0;
     const auto destroy_detach_phase = [&]() {
-        if (_discovery)
-            _discovery->remove_observer (this);
-        if (_discovery && !_server_service_name.empty ()
-            && !_advertise_endpoint.empty ()) {
-            const std::string service_name (_server_service_name);
-            const std::string endpoint (_advertise_endpoint);
-            (void) _discovery->unregister_service (
-              discovery_protocol::service_type_gateway_receiver,
-              _server_service_name.c_str (), _advertise_endpoint.c_str ());
+        discovery_t *discovery = _discovery;
+        const std::string service_name (_server_service_name);
+        const std::string endpoint (_advertise_endpoint);
+
+        if (discovery)
+            discovery->remove_observer (this);
+        if (discovery && !service_name.empty () && !endpoint.empty ()) {
+            (void) unregister_gateway_service_with_retry_local (
+              discovery, service_name, endpoint, &_runtime->clock, 15000);
             report_topology (service_name, endpoint,
                              ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0);
         }

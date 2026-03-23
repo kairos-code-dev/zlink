@@ -11,20 +11,19 @@ TEST_NAMES=(
   test_service_introspection_discovery_control_path
   test_service_introspection_discovery_ordering
   test_service_introspection_discovery_self_close
+  test_service_introspection_discovery_lifecycle
+  test_service_introspection_registry_lifecycle
+  test_service_introspection_registry_query_lifecycle
   test_gateway_runtime_reads
   test_gateway_send_plane_updates
   test_gateway_attach_query_ordering
   test_gateway_send_ready_self_close
   test_gateway_monitor_self_close
-  test_spot_service_introspection_runtime_reads
-  test_spot_service_introspection_monitor_child_destroy
-  test_spot_service_introspection_send_ready_self_close
-  test_spot_service_introspection_monitor_self_close
-  test_spot_service_introspection_node_monitor_self_close
-  test_spot_service_introspection_child_open_after_close
-  test_gateway_lifecycle_contract
-  test_spot_service_introspection_lifecycle_contract
-  test_spot_service_introspection_handle_lifecycle
+  test_spot_service_introspection_monitors
+  test_spot_service_introspection_late_connect
+  test_spot_service_introspection_subscription_ready_loss
+  test_spot_service_introspection_handler_monitor_close
+  test_spot_service_introspection_snapshots
 )
 
 usage() {
@@ -73,12 +72,26 @@ if [[ ! -f "${BUILD_DIR}/CTestTestfile.cmake" ]]; then
   exit 1
 fi
 
+echo "=== Verifying stress test registration ==="
+AVAILABLE_TESTS="$(ctest --test-dir "${BUILD_DIR}" -N)"
+for test_name in "${TEST_NAMES[@]}"; do
+  if ! printf '%s\n' "${AVAILABLE_TESTS}" | grep -Eq "Test +#[0-9]+: ${test_name}$"; then
+    echo "Configured stress test is not registered in CTest: ${test_name}" >&2
+    exit 1
+  fi
+done
+echo "=== Stress test registration verified ==="
+
 for test_name in "${TEST_NAMES[@]}"; do
   echo "=== Repeating ${test_name} (${REPEAT_COUNT} iterations) ==="
-  ctest --test-dir "${BUILD_DIR}" \
-    --output-on-failure \
-    --repeat "until-fail:${REPEAT_COUNT}" \
-    -R "^${test_name}$"
+  iteration=1
+  while [[ "${iteration}" -le "${REPEAT_COUNT}" ]]; do
+    echo "--- ${test_name} iteration ${iteration}/${REPEAT_COUNT} ---"
+    ctest --test-dir "${BUILD_DIR}" \
+      --output-on-failure \
+      -R "^${test_name}$"
+    iteration=$((iteration + 1))
+  done
 done
 
 echo "=== Thread-safe contract stress completed ==="

@@ -53,7 +53,9 @@ gateway_runtime_t::gateway_runtime_t (gateway_t *owner_) :
     refresh_task_id (0),
     primary_pool (NULL),
     next_gateway_peer_report_ms (0),
-    force_refresh_all (false)
+    force_refresh_all (false),
+    send_ready_available (false),
+    send_ready_callback_pending (false)
 {
 }
 
@@ -124,6 +126,7 @@ void gateway_t::refresh_tick ()
         return;
 
     const uint64_t refresh_task_id = _runtime->refresh_task_id;
+    bool should_dispatch_send_ready = false;
     std::vector<std::string> services_to_refresh;
     uint64_t now_ms = 0;
     {
@@ -187,6 +190,8 @@ void gateway_t::refresh_tick ()
     {
         scoped_lock_t lock (_sync);
         sync_gateway_peer_reports (now_ms);
+        should_dispatch_send_ready = _runtime->send_ready_callback_pending;
+        _runtime->send_ready_callback_pending = false;
         stop_refresh_task =
           refresh_task_id != 0 && _runtime->refresh_task_id == refresh_task_id
           && can_suspend_refresh_task ();
@@ -199,6 +204,8 @@ void gateway_t::refresh_tick ()
         if (runtime)
             (void) runtime->remove_task (refresh_task_id);
     }
+    if (should_dispatch_send_ready)
+        dispatch_send_ready ();
 }
 
 int gateway_t::ensure_refresh_task_running ()

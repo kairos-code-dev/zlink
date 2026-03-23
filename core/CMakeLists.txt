@@ -943,7 +943,10 @@ set(api-sources
     src/api/message_api.cpp
     src/api/monitor_api.cpp
     src/api/monitor_query_api.cpp
+    src/api/monitor_service_open_api.cpp
     src/api/monitor_service_api.cpp
+    src/api/monitor_service_snapshot_api.cpp
+    src/api/monitor_socket_api.cpp
     src/api/poller_api.cpp
   src/api/service_api.cpp
   src/api/service_discovery_api.cpp
@@ -964,6 +967,8 @@ set(api-sources
     src/api/socket_api.cpp
     src/api/zlink.cpp
     src/api/zlink_option.cpp
+    src/api/zlink_option_specialized_api.cpp
+    src/api/zlink_option_subscription_api.cpp
     src/api/zlink_utils.cpp)
 
 set(core-sources
@@ -1003,6 +1008,7 @@ set(protocol-sources
 set(discovery-sources
     src/services/control/service_control_runtime.cpp
     src/services/common/service_monitor.cpp
+    src/services/common/service_runtime_base.cpp
     src/services/discovery/discovery_access.cpp
     src/services/discovery/registry.cpp
     src/services/discovery/discovery.cpp
@@ -1043,6 +1049,8 @@ set(socket-sources
     src/sockets/socket_base_lifecycle.cpp
     src/sockets/socket_base_msg.cpp
     src/sockets/socket_base_monitor.cpp
+    src/sockets/socket_base_routing.cpp
+    src/sockets/socket_runtime.cpp
     src/sockets/dealer.cpp
     src/sockets/router.cpp
     src/sockets/stream.cpp

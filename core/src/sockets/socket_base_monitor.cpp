@@ -140,6 +140,16 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     if (rc == -1)
         stop_monitor (false);
 
+    // The monitor worker retries non-lossy deliveries in user space. Keep the
+    // underlying PAIR socket non-blocking so shutdown can stop the worker even
+    // if the peer disappears mid-send.
+    const int sndtimeo = 0;
+    rc = static_cast<socket_base_t *> (_monitor_socket)
+           ->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo,
+                         sizeof (sndtimeo));
+    if (rc == -1)
+        stop_monitor (false);
+
     rc = zlink_bind (_monitor_socket, endpoint_);
     if (rc == -1)
         stop_monitor (false);

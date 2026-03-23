@@ -57,6 +57,8 @@ struct gateway_runtime_t
     std::map<std::string, gateway_peer_report_t> ready_peer_reports;
     uint64_t next_gateway_peer_report_ms;
     bool force_refresh_all;
+    bool send_ready_available;
+    bool send_ready_callback_pending;
     std::set<std::string> pending_updates;
     clock_t clock;
 };

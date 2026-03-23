@@ -105,6 +105,21 @@ void test_typed_raw_socket_options ()
       zlink_set_pub_option (xpub, ZLINK_PUB_OPT_NODROP, &value, sizeof (value)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (xsub, "topic"));
 
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_sub_option (xsub, ZLINK_SUB_OPT_TOPICS_COUNT, &value, &size));
+    TEST_ASSERT_EQUAL_INT (1, value);
+
+    char filter[32];
+    size_t filter_len = sizeof (filter);
+    int is_pattern = -1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscription_at (xsub, 0, filter, &filter_len, &is_pattern));
+    TEST_ASSERT_EQUAL_UINT (5, (unsigned int) filter_len);
+    TEST_ASSERT_EQUAL_MEMORY ("topic", filter, 5);
+    TEST_ASSERT_EQUAL_INT (0, is_pattern);
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (dealer));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (stream));

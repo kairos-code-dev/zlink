@@ -22,127 +22,26 @@ enum service_lifecycle_state_t
 class service_runtime_base_t
 {
   public:
-    explicit service_runtime_base_t (ctx_t *ctx_ = NULL) :
-        _ctx (ctx_),
-        _state (service_state_idle),
-        _fault_errno (0)
-    {
-    }
+    explicit service_runtime_base_t (ctx_t *ctx_ = NULL);
 
-    void set_ctx (ctx_t *ctx_)
-    {
-        scoped_lock_t lock (_sync);
-        _ctx = ctx_;
-    }
+    void set_ctx (ctx_t *ctx_);
+    bool transition_to (service_lifecycle_state_t target_);
+    service_lifecycle_state_t state () const;
+    bool is_running () const;
+    bool is_stopping () const;
+    bool is_stopped () const;
+    void mark_faulted (int err_);
+    int fault_errno () const;
+    void register_socket (socket_base_t *socket_);
+    void unregister_socket (const socket_base_t *socket_);
+    int close_socket (socket_base_t *&socket_, int timeout_ms_ = 10000);
+    int close_socket_and_wait (socket_base_t *&socket_, int timeout_ms_ = 10000);
+    int wait_drained (int timeout_ms_);
+    int force_wait_remaining (int timeout_ms_);
+    size_t owned_socket_count () const;
+    void clear_tracked_sockets ();
 
-    bool transition_to (service_lifecycle_state_t target_)
-    {
-        scoped_lock_t lock (_sync);
-        bool valid = false;
-        switch (target_) {
-            case service_state_starting:
-                valid = (_state == service_state_idle);
-                break;
-            case service_state_running:
-                valid = (_state == service_state_starting);
-                break;
-            case service_state_stopping:
-                valid = (_state == service_state_running);
-                break;
-            case service_state_stopped:
-                valid = (_state == service_state_stopping);
-                break;
-            case service_state_faulted:
-                valid = (_state == service_state_starting
-                         || _state == service_state_running
-                         || _state == service_state_stopping);
-                break;
-            default:
-                break;
-        }
-        if (!valid) {
-            errno = EFSM;
-            return false;
-        }
-        _state = target_;
-        return true;
-    }
-
-    service_lifecycle_state_t state () const
-    {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        return _state;
-    }
-
-    bool is_running () const
-    {
-        return state () == service_state_running;
-    }
-
-    bool is_stopping () const
-    {
-        return state () == service_state_stopping;
-    }
-
-    bool is_stopped () const
-    {
-        return state () == service_state_stopped;
-    }
-
-    void mark_faulted (int err_)
-    {
-        scoped_lock_t lock (_sync);
-        _state = service_state_faulted;
-        _fault_errno = err_;
-    }
-
-    int fault_errno () const
-    {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        return _fault_errno;
-    }
-
-    void register_socket (socket_base_t *socket_)
-    {
-        _sockets.register_socket (socket_, state () < service_state_stopping);
-    }
-
-    void unregister_socket (const socket_base_t *socket_)
-    {
-        _sockets.unregister_socket (socket_);
-    }
-
-    int close_socket (socket_base_t *&socket_, int timeout_ms_ = 10000)
-    {
-        LIBZLINK_UNUSED (timeout_ms_);
-        return _sockets.close_socket (socket_);
-    }
-
-    int close_socket_and_wait (socket_base_t *&socket_, int timeout_ms_ = 10000)
-    {
-        return _sockets.close_socket_and_wait (_ctx, socket_, timeout_ms_);
-    }
-
-    int wait_drained (int timeout_ms_)
-    {
-        return _sockets.wait_drained (_ctx, timeout_ms_);
-    }
-
-    int force_wait_remaining (int timeout_ms_)
-    {
-        return _sockets.force_wait_remaining (_ctx, timeout_ms_);
-    }
-
-    size_t owned_socket_count () const
-    {
-        return _sockets.socket_count ();
-    }
-
-    void clear_tracked_sockets ()
-    {
-        _sockets.clear ();
-    }
-
+  private:
     ctx_t *_ctx;
     service_lifecycle_state_t _state;
     int _fault_errno;

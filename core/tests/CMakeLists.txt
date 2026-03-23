@@ -384,10 +384,16 @@ if(TARGET test_monitor_perf_contract)
   set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)
 endif()
 if(TARGET test_multi_pubsub_benchmark_process)
-  add_dependencies(
-    test_multi_pubsub_benchmark_process
-    comp_src_pubsub_server
-    comp_src_pubsub_client)
+  if(TARGET comp_src_pubsub_server)
+    add_dependencies(
+      test_multi_pubsub_benchmark_process
+      comp_src_pubsub_server)
+  endif()
+  if(TARGET comp_src_pubsub_client)
+    add_dependencies(
+      test_multi_pubsub_benchmark_process
+      comp_src_pubsub_client)
+  endif()
   set_tests_properties(
     test_multi_pubsub_benchmark_process
     PROPERTIES
@@ -396,10 +402,16 @@ if(TARGET test_multi_pubsub_benchmark_process)
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_multi_spot_benchmark_process)
-  add_dependencies(
-    test_multi_spot_benchmark_process
-    comp_src_spot_server
-    comp_src_spot_client)
+  if(TARGET comp_src_spot_server)
+    add_dependencies(
+      test_multi_spot_benchmark_process
+      comp_src_spot_server)
+  endif()
+  if(TARGET comp_src_spot_client)
+    add_dependencies(
+      test_multi_spot_benchmark_process
+      comp_src_spot_client)
+  endif()
   set_tests_properties(
     test_multi_spot_benchmark_process
     PROPERTIES
@@ -416,9 +428,11 @@ if(TARGET test_gateway_monitor_process)
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_single_pair_benchmark_process)
-  add_dependencies(
-    test_single_pair_benchmark_process
-    perf_pair)
+  if(TARGET perf_pair)
+    add_dependencies(
+      test_single_pair_benchmark_process
+      perf_pair)
+  endif()
   set_tests_properties(
     test_single_pair_benchmark_process
     PROPERTIES
@@ -427,9 +441,11 @@ if(TARGET test_single_pair_benchmark_process)
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_single_spot_benchmark_process)
-  add_dependencies(
-    test_single_spot_benchmark_process
-    perf_spot)
+  if(TARGET perf_spot)
+    add_dependencies(
+      test_single_spot_benchmark_process
+      perf_spot)
+  endif()
   set_tests_properties(
     test_single_spot_benchmark_process
     PROPERTIES
@@ -689,6 +705,7 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_monitors_and_monitor_poller
     test_spot_late_connect_replays_existing_subscription
     test_spot_subscription_ready_changed_reports_loss
+    test_spot_handler_monitor_close_after_ready_change_is_stable
     test_spot_callback_model_receive_regression
     test_spot_recv_model_receive_regression
     test_spot_publish_rollback_preserves_next_topic_boundary
@@ -700,6 +717,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_monitors=test_spot_monitors_and_monitor_poller
     test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
     test_spot_service_introspection_subscription_ready_loss=test_spot_subscription_ready_changed_reports_loss
+    test_spot_service_introspection_handler_monitor_close=test_spot_handler_monitor_close_after_ready_change_is_stable
     test_spot_service_introspection_callback_recv_regression=test_spot_callback_model_receive_regression
     test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
     test_spot_service_introspection_publish_rollback=test_spot_publish_rollback_preserves_next_topic_boundary
@@ -764,7 +782,9 @@ set(GATEWAY_CASES
     test_gateway_recv_model_receive_regression
     test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero_is_preserved
+    test_gateway_send_ready_handler_self_close_is_safe
     test_gateway_runtime_reads_are_safe_during_concurrent_send
+    test_gateway_snapshot_monitor_churn_does_not_stall_destroy
     test_gateway_concurrent_send_and_send_rid_and_updates
     test_gateway_attach_and_monitor_queries_are_safe_same_handle)
 
@@ -785,7 +805,9 @@ set(GATEWAY_TEST_SPECS
     test_gateway_recv_model_regression=test_gateway_recv_model_receive_regression
     test_gateway_manual_topology_ownership=test_gateway_manual_connect_disconnect_topology_ownership
     test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved
+    test_gateway_send_ready_self_close=test_gateway_send_ready_handler_self_close_is_safe
     test_gateway_runtime_reads=test_gateway_runtime_reads_are_safe_during_concurrent_send
+    test_gateway_monitor_snapshot_churn=test_gateway_snapshot_monitor_churn_does_not_stall_destroy
     test_gateway_send_plane_updates=test_gateway_concurrent_send_and_send_rid_and_updates
     test_gateway_attach_query_ordering=test_gateway_attach_and_monitor_queries_are_safe_same_handle
     test_gateway_monitor_self_close=test_gateway_monitor_callback_parent_destroy_returns_ebusy)

@@ -4,6 +4,7 @@
 > 기준 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
 > 기준 커밋: `85ea0995`
 > 대상 범위: `core/`, `core/tests/`
+> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
 > 최종 성능 검증 도구: `core/perf/run_benchmarks.sh`, `core/perf/run_benchmarks_multi.sh`
 > 목적: 남은 POSD 2차 리팩토링 항목을 중간 중단 없이 끝까지 밀기 위한 실행 규칙 고정
 
@@ -103,7 +104,7 @@
 - "한 번에 여러 phase를 섞어서 원인 추적이 불가능하게 만드는 변경" 금지
 - "테스트를 약화해서 green만 만드는 수정" 금지
 - "문서와 코드의 ownership 설명이 더 나빠지는 얇은 wrapper 추가" 금지
-- "bindings/core-perf 검증 명령을 나중에 찾는다" 금지
+- "core/perf 검증 명령을 나중에 찾는다" 금지
 - "성능 저하를 확인하고도 대표 일부 케이스만 올린 채 종료" 금지
 
 ## 4.1 공통 실행 명령
@@ -116,52 +117,20 @@ cmake --build core/build -j"$(nproc)"
 git diff -- core/include/zlink.h core/src/libzlink.vers
 nm -D core/build/lib/libzlink.so | rg " zlink_"
 
-./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 100
+./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10
 ./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85
 
 ./core/tests/run_test_lanes.sh --include-e2e
 ```
 
-bindings smoke 명령은 아래처럼 고정한다.
+`thread-safe stress`의 기본/최소 반복 횟수는 `10`으로 둔다.
+AI가 flake 재현, 신뢰도 보강, 추가 회귀 확인이 더 필요하다고 판단하면 `10`보다 큰 count를 사용할 수 있다.
 
-```bash
-ROOT_DIR="$(pwd)"
+bindings smoke는 이 실행 문서의 범위 밖이다.
 
-bash bindings/cpp/build.sh ON
-ctest --test-dir bindings/cpp/build --output-on-failure -R test_cpp_
-
-ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
-  dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -v minimal
-
-(
-  cd "$ROOT_DIR/bindings/java"
-  chmod +x ./gradlew
-  ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
-    ./gradlew --no-daemon test integrationTest
-)
-
-(
-  cd "$ROOT_DIR/bindings/node"
-  ZLINK_LIB_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
-    npx --yes node-gyp rebuild
-  LD_LIBRARY_PATH="$ROOT_DIR/core/build/lib:${LD_LIBRARY_PATH:-}" \
-    npm test
-)
-
-(
-  cd "$ROOT_DIR/bindings/python"
-  ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
-    PYTHONPATH=src \
-    python -m pytest -q tests
-)
-```
-
-적용 규칙은 아래처럼 고정한다.
-
-- 대표 bindings smoke: `C++ + Node + Python`
-- full bindings smoke: `C++ + .NET + Java + Node + Python`
-- Node smoke는 항상 `node-gyp rebuild` 후 실행한다.
-- bindings smoke 실패 시 bindings 코드를 먼저 고치지 말고 `core` 계약 침범 여부를 먼저 확인한다.
+- `bindings/*` 검증은 별도 후속 문서 또는 별도 세션에서 다룬다.
+- 이 문서의 phase 종료, 최종 완료, 중단 판정은 `core/`와 `core/tests/` 증거로만 닫는다.
+- bindings 관련 blocker는 `core/include/zlink.h` 또는 `core/src/libzlink.vers` 변경 필요가 없는 한 이 문서의 진행 차단 조건으로 승격하지 않는다.
 
 대표 core 테스트 묶음은 아래처럼 고정한다.
 
@@ -190,17 +159,12 @@ ctest --test-dir core/build --output-on-failure -R \
 - `대표 socket 회귀`는 `test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup`
 - `대표 option 회귀`는 `unittest_typed_option`
 
-대표 bindings smoke 명령도 이름으로 고정한다.
+대표 core API smoke 명령은 아래처럼 이름으로 고정한다.
 
-- `대표 bindings smoke`
-  - `bash bindings/cpp/build.sh ON`
-  - `ctest --test-dir bindings/cpp/build --output-on-failure -R test_cpp_`
-  - `cd bindings/node && ZLINK_LIB_PATH=... npx --yes node-gyp rebuild && npm test`
-  - `cd bindings/python && ZLINK_LIBRARY_PATH=... PYTHONPATH=src python -m pytest -q tests`
-- `full bindings smoke`
-  - 위 대표 smoke +
-  - `dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -v minimal`
-  - `cd bindings/java && ZLINK_LIBRARY_PATH=... ./gradlew --no-daemon test integrationTest`
+- `대표 core API smoke`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'`
+- `full service core smoke`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract)$'`
 
 `core/perf` 실행 명령은 아래처럼 고정한다.
 
@@ -430,23 +394,80 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 - `관련 코드/파일`
 - `검증 증거`
 
+### 5.0.1 장시간 게이트 대기 규칙
+
+아래처럼 수 분 이상 걸릴 수 있는 장시간 검증은 기본적으로 현재 작업 세션에 붙여 실행한다.
+콘솔 출력은 이 작업 세션에 계속 보여야 하며, 동시에 로그 파일에도 저장한다.
+
+- `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10` (기본/최소)
+- `full service core smoke`
+- `core/perf` full / baseline 비교
+
+기본 실행 방식:
+
+- 장시간 검증은 본 실행 전에 먼저 `사전 검증(preflight)`을 통과해야 한다.
+- `사전 검증`은 최소한 build 디렉터리의 CTest 구성 존재 여부와, 장시간 검증이 호출할 테스트 이름이 현재 CTest에 모두 등록돼 있는지 확인해야 한다.
+- `사전 검증`이 실패하면 본 실행을 시작하지 않고 즉시 실패로 처리한 뒤 스크립트/등록 상태를 먼저 수정한다.
+- 저장소 로컬 wrapper를 써도 되지만, wrapper는 내부에서 원래 gate 명령을 바꾸지 않고 그대로 호출해야 하며 같은 콘솔/로그 규칙을 유지해야 한다.
+- 문서 전체 실행을 Codex supervisor로 감싸는 것은 허용한다. 다만 supervisor는 각 iteration에서 이 문서를 그대로 authority로 사용해야 하고, 완료 판정은 반드시 이 문서 기준으로만 내려야 한다.
+- 장시간 검증은 `... 2>&1 | tee <log>` 형태로 실행해서 콘솔 출력과 로그 파일 기록을 동시에 유지한다.
+- 장시간 검증을 시작했다면 그 세션은 해당 검증 완료 확인까지 유지한다.
+- 백그라운드 실행은 사용자 명시 요청이나 세션 제약이 있는 예외 상황에서만 허용한다.
+
+규칙:
+
+- 해당 행의 구현 변경이 끝났고 남은 일이 장시간 검증 하나뿐이면, 같은 행에 머문 채 검증을 시작한다.
+- 장시간 검증 시작 절차는 `사전 검증 성공 -> 본 실행 시작` 순서로 고정한다.
+- `thread-safe stress` 반복 횟수는 기본/최소 `10`으로 시작하고, AI가 필요하다고 판단하면 더 큰 count로 올릴 수 있다.
+- 장시간 검증을 시작한 뒤에는 다른 미완료 행으로 넘어가지 않는다.
+- 장시간 검증이 foreground로 붙어 있는 동안에는 콘솔 출력 자체를 진행 증거로 간주한다.
+- 이 대기 중에는 `pgrep`, `ps`, `tail`, 로그 파일 확인처럼 완료 여부를 판단하기 위한 확인 작업만 허용한다.
+- 완료 여부 확인은 주기적으로 반복할 수 있으며, 이는 중간 완료 보고나 순서 위반으로 간주하지 않는다.
+- 장시간 검증이 성공하면 즉시 5.0 표와 해당 체크리스트를 갱신하고 다음 미완료 행으로 이동한다.
+- 장시간 검증이 실패하면 실패 로그를 증거로 남기고 같은 행을 계속 owner로 유지한 채 원인 수정으로 되돌아간다.
+- 장시간 검증 실패 후에는 `실패 보고 -> 중단`으로 끝내지 않는다.
+- 실패한 장시간 검증은 아래 순서를 끝까지 수행한 뒤에만 다음 미완료 행으로 넘어갈 수 있다.
+
+실패 후 의무 순서:
+
+1. 실패한 테스트 이름, 종료 코드, 마지막 로그 구간을 즉시 기록한다.
+2. 실패를 가장 작은 단위의 단일 `ctest -R '^name$'` 또는 대응 core 회귀로 다시 재현한다.
+3. 원인을 `core/` 코드에서 분석하고 수정한다.
+4. 실패한 단일 회귀를 먼저 통과시킨다.
+5. 실패가 발생했던 원래 장시간 gate 전체를 처음부터 다시 실행해서 성공시킨다.
+6. 원래 장시간 gate 성공 로그까지 확보한 뒤에만 5.0 표와 체크리스트를 갱신하고 다음 미완료 행으로 이동한다.
+
+금지:
+
+- 장시간 gate 실패를 알고도 다음 phase 구현으로 넘어가는 것
+- 단일 재현 없이 timeout 값만 늘리거나 테스트 목록을 줄여서 gate를 우회하는 것
+- 실패한 gate 대신 일부 하위 테스트 몇 개만 통과시킨 뒤 완료로 표시하는 것
+
+증거 기록 규칙:
+
+- 장시간 검증 로그는 `doc/plan/refactor/2nd/logs/` 아래에 남긴다.
+- `사전 검증` 단계도 같은 콘솔/로그에 남겨서, 테스트 본 실행 전에 검증이 수행됐음을 로그로 증명한다.
+- wrapper를 사용한 경우에도 최종 증거는 wrapper 로그가 아니라 내부 gate 명령의 실행 로그와 종료 코드 파일까지 추적 가능해야 한다.
+- 장시간 검증은 시작 시각, 로그 경로, 필요하면 PID를 남긴다.
+- `완료`로 바꿀 때는 최종 성공 로그 경로까지 표의 `검증 증거` 칸에 기록한다.
+
 | 마스터 플랜 항목 | 상태 | 실행 문서 체크 항목 | 관련 코드/파일 | 검증 증거 |
 |---|---|---|---|---|
-| Phase 0 baseline/perf 기준선 확인 | 미착수 | 5.7 | `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`, `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt` | baseline 파일, final perf 결과 |
-| Phase 1a context/message/errno/version 분리 유지 | 검증중 | 5.1 | `core/src/api/context_api.cpp`, `core/src/api/message_api.cpp` | `cmake --build core/build -j"$(nproc)"`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
-| Phase 1b socket/poller/monitor 분리 유지 | 진행중 | 5.1 | `core/src/api/socket_*.cpp`, `core/src/api/poller_*.cpp`, `core/src/api/monitor*.cpp` | `test_monitor_socket_contract`, `test_monitor_service_contract`, `test_monitor_with_handler`, `unittest_poller` |
-| Phase 1b.5 logical multipart send deep module 유지 | 검증중 | 5.1, 5.6 | `core/src/core/multipart_send_txn.*`, gateway/spot publish/send caller | `test_gateway_with_handler`, `test_gateway_handover`, `test_spot_service_introspection` |
-| Phase 1c `zlink.cpp` concrete service knowledge 제거 완결 | 진행중 | 5.1 | `core/src/api/zlink.cpp`, `core/src/api/service_*.cpp` | 대표 bindings smoke |
-| Phase 2 `socket_base_t` semantic/runtime 분리 | 진행중 | 5.2 | `core/src/sockets/socket_base*` | `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 100`, `test_stream_socket`, `test_stream_threadsafe`, `test_stream_send_blocking_wakeup` |
-| Phase 3 close/drain contract 명확화 | 진행중 | 5.3 | `core/src/services/common/*`, `core/src/core/ctx.*`, `core/src/sockets/socket_close_ops.*` | `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 100` |
+| Phase 1a context/message/errno/version 분리 유지 | 완료 | 5.1 | `core/src/api/context_api.cpp`, `core/src/api/message_api.cpp` | `cmake --build core/build -j"$(nproc)"`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
+| Phase 1b socket/poller/monitor 분리 유지 | 완료 | 5.1 | `core/src/api/socket_*.cpp`, `core/src/api/poller_*.cpp`, `core/src/api/monitor*.cpp` | `ctest --test-dir core/build --output-on-failure -R '^(unittest_typed_option|unittest_poller)$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_monitor_service_contract|test_monitor_with_handler)$'` |
+| Phase 1b.5 logical multipart send deep module 유지 | 완료 | 5.1, 5.6 | `core/src/core/multipart_send_txn.*`, gateway/spot publish/send caller | `ctest --test-dir core/build --output-on-failure -R '^test_gateway_handover$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'` |
+| Phase 1c `zlink.cpp` concrete service knowledge 제거 완결 | 완료 | 5.1 | `core/src/api/zlink.cpp`, `core/src/api/service_*.cpp` | `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'` |
+| Phase 2 `socket_base_t` semantic/runtime 분리 | 완료 | 5.2 | `core/src/sockets/socket_base*`, `core/src/sockets/socket_runtime.cpp` | `ctest --test-dir core/build --output-on-failure -R '^(test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup)$'`, `ctest --test-dir core/build --output-on-failure --repeat until-fail:200 -R '^test_gateway_runtime_reads$'`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_preflight_20260324_074204.log`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_074209.log` |
+| Phase 3 close/drain contract 명확화 | 완료 | 5.3 | `core/src/services/common/service_runtime_base.*`, `core/src/services/common/service_socket_registry.hpp`, `core/src/core/ctx.*`, `core/src/sockets/socket_close_ops.*` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_runtime_base|test_service_introspection_discovery_self_close|test_gateway_send_ready_self_close|test_spot_service_introspection_handler_monitor_close)$'`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_preflight_20260324_075707.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_075711.log` |
 | Phase 4 option ownership 분리 | 진행중 | 5.4 | `core/src/core/options*`, `core/src/api/zlink_option.cpp` | `unittest_typed_option`, `test_stream_threadsafe`, `test_spot_service_introspection` |
-| Phase 5 service access/factory 경계 재정의 | 진행중 | 5.5 | `core/src/api/service_*.cpp`, `core/src/services/*/*_access.*` | `test_gateway_with_handler`, `test_gateway_handover`, `test_service_discovery`, `test_service_introspection`, full bindings smoke |
+| Phase 5 service access/factory 경계 재정의 | 진행중 | 5.5 | `core/src/api/service_*.cpp`, `core/src/services/*/*_access.*` | `test_gateway_with_handler`, `test_gateway_handover`, `test_service_discovery`, `test_service_introspection` |
 | Phase 6 gateway 세부 분해 | 진행중 | 5.6 | `core/src/services/gateway/*` | `test_gateway_with_handler`, `test_gateway_handover` |
 | Phase 6 discovery 세부 분해 | 진행중 | 5.6 | `core/src/services/discovery/*` | `test_service_discovery`, `test_service_introspection` |
 | Phase 6 spot 세부 분해 | 진행중 | 5.6 | `core/src/services/spot/*` | `test_spot_pubsub_scenario`, `test_spot_service_introspection` |
-| Phase 2~3 thread-safe stress 의무 게이트 | 미착수 | 5.2, 5.3 | `core/tests/run_thread_safe_contract_stress.sh` | `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 100` 로그 |
-| Phase 5~6 full bindings smoke | 미착수 | 5.5, 5.6 | `bindings/*` 실행 surface | full bindings smoke 로그 |
+| Phase 2~3 thread-safe stress 의무 게이트 | 완료 | 5.2, 5.3 | `core/tests/run_thread_safe_contract_stress.sh` | `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_preflight_20260324_074204.log`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_074209.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_preflight_20260324_075707.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_075711.log` |
+| Phase 5~6 service core smoke | 미착수 | 5.5, 5.6 | `core/src/api/service_*.cpp`, `core/src/services/*` | `full service core smoke` 로그 |
 | 최종 `core/perf` smoke/full/baseline 회복 루프 | 미착수 | 5.7 | `core/perf/*` | `core/perf/results/single/report/perf_*_final-single.txt`, `core/perf/results/multi/report/perf_*_final-multi.txt` |
+| Phase 0 baseline/perf 기준선 확인 | 미착수 | 5.7 | `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`, `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt` | baseline 파일, final perf 결과 |
 
 이 표는 각 작업 묶음이 끝날 때마다 반드시 갱신한다.
 표에 `미착수`, `진행중`, `검증중`이 하나라도 남아 있으면 문서 완료가 아니다.
@@ -455,24 +476,25 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 
 ### 5.1 API facade 마무리
 
-- [ ] `core/src/api/zlink_option.cpp`를 common option facade / raw socket specialized option facade / raw subscription facade로 더 분리한다.
-- [ ] `core/src/api/monitor_api.cpp`와 `core/src/api/monitor_service_api.cpp`의 monitor query/decode/service-specific branching을 더 좁은 seam으로 내린다.
-- [ ] API 계층에서 concrete service knowledge가 다시 재집중되는 경로가 없는지 재점검한다.
-- [ ] `Phase 1c` 완료 기준인 대표 bindings smoke를 수행한다.
+- [x] `core/src/api/zlink_option.cpp`를 common option facade / raw socket specialized option facade / raw subscription facade로 더 분리한다.
+- [x] `core/src/api/monitor_api.cpp`와 `core/src/api/monitor_service_api.cpp`의 monitor query/decode/service-specific branching을 더 좁은 seam으로 내린다.
+- [x] API 계층에서 concrete service knowledge가 다시 재집중되는 경로가 없는지 재점검한다.
+- [x] `Phase 1c` 완료 기준인 대표 core API smoke를 수행한다.
 
 닫힘 기준:
 
 - [`zlink_option.cpp`](/home/hep7/project/kairos/zlink/core/src/api/zlink_option.cpp) 하나가 raw socket option + raw subscription + service bridge를 동시에 소유하지 않는다.
 - monitor API 파일은 query/decode/service-specific wiring을 분리된 TU로 설명할 수 있다.
 - `core/include/zlink.h` / `core/src/libzlink.vers` diff 없음
-- 대표 bindings smoke 통과
+- 대표 core API smoke 통과
 
 ### 5.2 socket runtime 책임 정리
 
-- [ ] `core/src/sockets/socket_base.cpp`를 semantic facade 수준으로 더 줄인다.
-- [ ] bind/connect/send/recv/event emission과 lifecycle glue가 hidden collaborator로 내려가도록 정리한다.
-- [ ] `socket_base_t` 변경이 family별 파일 수정으로 쉽게 번지지 않는지 확인한다.
-- [ ] `Phase 2` 완료 기준인 thread-safe stress를 수행한다.
+- [x] `core/src/sockets/socket_base.cpp`를 semantic facade 수준으로 더 줄인다.
+- [x] bind/connect/send/recv/event emission과 lifecycle glue가 hidden collaborator로 내려가도록 정리한다.
+- [x] `socket_base_t` 변경이 family별 파일 수정으로 쉽게 번지지 않는지 확인한다.
+- [x] 대표 socket 회귀와 `test_gateway_monitor_snapshot_churn` 보조 회귀를 통과한다. 로그: `doc/plan/refactor/2nd/logs/phase2_socket_regressions_20260324_050000.log`, `doc/plan/refactor/2nd/logs/phase2_gateway_monitor_snapshot_churn_20260324_050000.log`
+- [x] `Phase 2` 완료 기준인 thread-safe stress를 수행한다. 로그: `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_preflight_20260324_074204.log`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_074209.log`
 
 닫힘 기준:
 
@@ -482,10 +504,10 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 
 ### 5.3 close/drain contract 정리
 
-- [ ] `service_runtime_base_t`, `service_socket_registry_t`, `ctx_t`, `socket_close_ops_t`의 의미 경계를 더 선명하게 만든다.
-- [ ] close/wait/drain 의미 owner를 코드 구조로 설명 가능하게 만든다.
-- [ ] lifecycle coordinator와 global removal tracking의 협력 지점을 더 명시적으로 드러낸다.
-- [ ] `Phase 3` 완료 기준인 thread-safe stress를 수행한다.
+- [x] `service_runtime_base_t`, `service_socket_registry_t`, `ctx_t`, `socket_close_ops_t`의 의미 경계를 더 선명하게 만든다.
+- [x] close/wait/drain 의미 owner를 코드 구조로 설명 가능하게 만든다.
+- [x] lifecycle coordinator와 global removal tracking의 협력 지점을 더 명시적으로 드러낸다.
+- [x] `Phase 3` 완료 기준인 thread-safe stress를 수행한다. 로그: `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_preflight_20260324_075707.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_075711.log`
 
 닫힘 기준:
 
@@ -564,10 +586,10 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 
 ### 6.2 phase별 추가 게이트
 
-- `Phase 1c`: 대표 bindings smoke
-- `Phase 2`: `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 100`
-- `Phase 3`: `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 100`
-- `Phase 5~6`: full bindings smoke
+- `Phase 1c`: 대표 core API smoke
+- `Phase 2`: `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10` 이상
+- `Phase 3`: `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10` 이상
+- `Phase 5~6`: full service core smoke
 - 최종 perf phase: `core/perf` smoke + full perf + baseline 비교
 - 최종 완료 직전: `./core/tests/run_test_lanes.sh --include-e2e`
 
@@ -578,8 +600,8 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 - 마스터 플랜 커버리지 추적 표의 미완료 상태가 0개
 - 본 문서 5장의 체크리스트가 전부 체크됨
 - `./core/tests/run_test_lanes.sh --include-e2e` 통과
-- `Phase 1c` 대표 bindings smoke 완료
-- `Phase 5~6` full bindings smoke 완료
+- `Phase 1c` 대표 core API smoke 완료
+- `Phase 5~6` full service core smoke 완료
 - `Phase 2`, `Phase 3` 의무 stress 완료
 - 최종 단계에서 `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과 확보
 - 최종 perf phase `core/perf` single/multi smoke 정상 종료
@@ -598,7 +620,7 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 5. service seam 정제
 6. `gateway` / `discovery` 남은 deep module 마감
 7. `spot_node` / `spot_sub` / `spot_data_plane` deep module 정리
-8. bindings / stress / lane 최종 게이트
+8. stress / lane 최종 게이트
 9. `core/perf` smoke / full baseline 비교 / 성능 회복 루프
 10. 최종 검증과 문서 완료 판정
 

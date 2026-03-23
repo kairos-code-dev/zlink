@@ -2121,6 +2121,7 @@ static void test_gateway_concurrent_send_and_updates ()
 
 static void test_gateway_runtime_reads_are_safe_during_concurrent_send ()
 {
+    step_log ("test_gateway_runtime_reads: begin");
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
@@ -2131,29 +2132,34 @@ static void test_gateway_runtime_reads_are_safe_during_concurrent_send ()
       ctx, &registry_seed, registry_pub, sizeof (registry_pub),
       registry_router, sizeof (registry_router));
     TEST_ASSERT_NOT_NULL (registry);
+    step_log ("test_gateway_runtime_reads: registry ready");
 
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
+    step_log ("test_gateway_runtime_reads: discovery ready");
 
     void *client =
       create_gateway_attached (ctx, discovery, "svc-runtime-read", NULL,
                                &discard_gateway_message);
     TEST_ASSERT_NOT_NULL (client);
+    step_log ("test_gateway_runtime_reads: client ready");
 
     gateway_probe_t probe;
     g_probe_a = &probe;
     gateway_server_t server;
     create_server_gateway (&server, ctx, registry_router, "svc-runtime-read",
                            "READ", &gateway_handler_a);
+    step_log ("test_gateway_runtime_reads: server ready");
 
     char endpoint[256];
     int bind_seed = 22594;
     bind_gateway_with_port_seed (server.gateway, "tcp", &bind_seed, endpoint,
                                  sizeof (endpoint), 3000);
     wait_gateway_ready (client, 2000);
+    step_log ("test_gateway_runtime_reads: gateway ready");
 
     const int send_threads = 4;
     const int send_per_thread = 40;
@@ -2193,23 +2199,79 @@ static void test_gateway_runtime_reads_are_safe_during_concurrent_send ()
         args[i].fail = &send_fail;
         threads.push_back (std::thread (&send_worker, &args[i]));
     }
+    step_log ("test_gateway_runtime_reads: workers started");
 
     for (size_t i = 0; i < threads.size (); ++i)
         threads[i].join ();
+    step_log ("test_gateway_runtime_reads: workers joined");
 
     stop_reads.store (1);
     reader.join ();
+    step_log ("test_gateway_runtime_reads: reader joined");
 
     TEST_ASSERT_EQUAL_INT (0, send_fail.load ());
     TEST_ASSERT_EQUAL_INT (0, read_fail.load ());
     TEST_ASSERT_GREATER_THAN_INT (0, read_iterations.load ());
+    step_log ("test_gateway_runtime_reads: waiting for probe");
     TEST_ASSERT_TRUE (wait_for_calls (&probe.requests, send_ok.load (), 5000));
+
+    step_log ("test_gateway_runtime_reads: destroy server");
+    destroy_server_gateway (&server);
+    step_log ("test_gateway_runtime_reads: destroy client");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+    step_log ("test_gateway_runtime_reads: destroy discovery");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    step_log ("test_gateway_runtime_reads: destroy registry");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    g_probe_a = NULL;
+}
+
+static void test_gateway_snapshot_monitor_churn_does_not_stall_destroy ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    int registry_seed = 25968;
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
+      discovery, registry_router));
+
+    void *client =
+      create_gateway_attached (ctx, discovery, "svc-monitor-churn", NULL,
+                               &discard_gateway_message);
+    TEST_ASSERT_NOT_NULL (client);
+
+    gateway_server_t server;
+    create_server_gateway (&server, ctx, registry_router, "svc-monitor-churn",
+                           "CHURN", &gateway_handler_a);
+
+    char endpoint[256];
+    int bind_seed = 22596;
+    bind_gateway_with_port_seed (server.gateway, "tcp", &bind_seed, endpoint,
+                                 sizeof (endpoint), 3000);
+    wait_gateway_ready (client, 2000);
+
+    for (int i = 0; i < 256; ++i) {
+        zlink_monitor_snapshot_t snapshot;
+        memset (&snapshot, 0, sizeof (snapshot));
+        TEST_ASSERT_TRUE (read_gateway_snapshot (client, &snapshot));
+        TEST_ASSERT_TRUE (
+          (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0);
+    }
 
     destroy_server_gateway (&server);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-    g_probe_a = NULL;
 }
 
 static void test_gateway_concurrent_send_and_send_rid_and_updates ()
@@ -2416,7 +2478,9 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_recv_model_receive_regression);
     RUN_GATEWAY_TEST (test_gateway_manual_connect_disconnect_topology_ownership);
     RUN_GATEWAY_TEST (test_gateway_local_weight_zero_is_preserved);
+    RUN_GATEWAY_TEST (test_gateway_send_ready_handler_self_close_is_safe);
     RUN_GATEWAY_TEST (test_gateway_runtime_reads_are_safe_during_concurrent_send);
+    RUN_GATEWAY_TEST (test_gateway_snapshot_monitor_churn_does_not_stall_destroy);
     RUN_GATEWAY_TEST (test_gateway_concurrent_send_and_send_rid_and_updates);
     RUN_GATEWAY_TEST (test_gateway_attach_and_monitor_queries_are_safe_same_handle);
 #undef RUN_GATEWAY_TEST

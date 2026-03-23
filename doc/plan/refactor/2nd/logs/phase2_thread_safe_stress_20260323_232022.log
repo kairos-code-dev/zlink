@@ -1,0 +1,12 @@
+=== Repeating test_service_introspection_discovery_control_path (100 iterations) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.02 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path
+    Test #57: test_service_introspection_discovery_control_path ...   Passed    0.01 sec
+    Start 57: test_service_introspection_discovery_control_path

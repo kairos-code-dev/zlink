@@ -1,0 +1,122 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "api/monitor_api_internal.hpp"
+#include "api/socket_api_internal.hpp"
+
+#include "utils/random.hpp"
+
+namespace
+{
+int attach_socket_monitor_handler_state (void *monitor_,
+                                         zlink_socket_monitor_handler_fn handler_,
+                                         void *userdata_)
+{
+    if (!monitor_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!handler_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    socket_handle_t handle = as_socket_handle (monitor_);
+    if (!handle.socket)
+        return -1;
+
+    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
+    if (!state || state->service) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (state->socket_handler.load (std::memory_order_acquire)
+        || state->service_handler.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    return set_monitor_handler_state (
+      handle.socket, handler_, NULL, false,
+      state->snapshot_provider.load (std::memory_order_acquire),
+      state->snapshot_subject.load (std::memory_order_acquire), userdata_,
+      NULL);
+}
+
+void *open_socket_monitor_with_handler_internal (
+  void *s_,
+  zlink_socket_monitor_event_mask_t events_,
+  zlink_monitor_handler_fn handler_,
+  void *userdata_)
+{
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
+        return NULL;
+    if (!handler_) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    zlink_monitor_handler_fn effective_handler = handler_;
+    if (handler_ == &zlink_monitor_ignore_handler)
+        effective_handler = NULL;
+
+    char endpoint[128];
+    const uint32_t rand_id = zlink::generate_random ();
+    snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u",
+              static_cast<void *> (s_), rand_id);
+
+    const int monitor_rc =
+      handle.socket->monitor (endpoint, events_, 3, ZLINK_CORE_SOCKET_PAIR);
+    if (monitor_rc != 0)
+        return NULL;
+
+    zlink::socket_base_t *monitor_socket_base =
+      handle.socket->get_ctx ()->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    void *monitor_socket = static_cast<void *> (monitor_socket_base);
+    if (!monitor_socket) {
+        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
+        return NULL;
+    }
+
+    if (zlink_connect (monitor_socket, endpoint) != 0) {
+        zlink_close (monitor_socket);
+        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
+        return NULL;
+    }
+
+    if (set_monitor_handler_state (monitor_socket_base, effective_handler, NULL,
+                                   false,
+                                   &socket_monitor_snapshot_provider,
+                                   static_cast<void *> (handle.socket),
+                                   userdata_, NULL)
+        != 0) {
+        const int err = errno;
+        zlink_close (monitor_socket);
+        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
+        errno = err;
+        return NULL;
+    }
+
+    return monitor_socket;
+}
+}
+
+void *zlink_socket_monitor_open (
+  void *s_, const zlink_socket_monitor_open_options_t *options_)
+{
+    if (!options_) {
+        errno = EINVAL;
+        return NULL;
+    }
+    return open_socket_monitor_with_handler_internal (
+      s_, options_->events, &zlink_monitor_ignore_handler, NULL);
+}
+
+int zlink_socket_monitor_handler (void *monitor_,
+                                  zlink_socket_monitor_handler_fn handler_,
+                                  void *userdata_)
+{
+    return attach_socket_monitor_handler_state (monitor_, handler_, userdata_);
+}

@@ -1,0 +1,410 @@
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.04 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+    Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+    Start 98: test_gateway_runtime_reads
+1/1 Test #98: test_gateway_runtime_reads .......   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =   0.03 sec*proc (1 test)
+serial         =   0.03 sec*proc (1 test)
+
+Total Test time (real) =   6.19 sec

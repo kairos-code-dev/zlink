@@ -664,6 +664,30 @@ void test_socket_monitor_open_accepts_ignore_handler ()
     close_socket_zero_linger (server);
 }
 
+void test_socket_monitor_handler_rejects_service_monitor_handle ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_DISCOVERY_SERVICE_UP;
+    void *monitor = zlink_service_monitor_open (discovery, &opts);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_socket_monitor_handler (monitor, &raw_monitor_primary_handler,
+                                        NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+}
+
 void test_discovery_monitor_open_requires_handler ()
 {
     void *ctx = get_test_context ();
@@ -742,6 +766,29 @@ void test_gateway_monitor_open_accepts_ignore_handler ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+}
+
+void test_service_monitor_handler_rejects_socket_monitor_handle ()
+{
+    void *ctx = get_test_context ();
+    void *server = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (server);
+
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    void *monitor = zlink_socket_monitor_open (server, &opts);
+    TEST_ASSERT_NOT_NULL (monitor);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1,
+      zlink_service_monitor_handler (monitor, &service_monitor_primary_handler,
+                                     NULL));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    close_socket_zero_linger (monitor);
+    close_socket_zero_linger (server);
 }
 
 void test_service_monitor_open_dispatches_events ()
@@ -1217,10 +1264,12 @@ int main (int, char **)
     UNITY_BEGIN ();
     RUN_TEST (test_socket_monitor_open_requires_handler);
     RUN_TEST (test_socket_monitor_open_accepts_ignore_handler);
+    RUN_TEST (test_socket_monitor_handler_rejects_service_monitor_handle);
     RUN_TEST (test_discovery_monitor_open_requires_handler);
     RUN_TEST (test_discovery_monitor_open_accepts_ignore_handler);
     RUN_TEST (test_gateway_monitor_open_requires_handler);
     RUN_TEST (test_gateway_monitor_open_accepts_ignore_handler);
+    RUN_TEST (test_service_monitor_handler_rejects_socket_monitor_handle);
     RUN_TEST (test_socket_send_ready_handler_requires_handler);
     RUN_TEST (test_socket_send_ready_handler_rejects_sub_and_xsub);
     RUN_TEST (test_socket_monitor_open_dispatches_events);

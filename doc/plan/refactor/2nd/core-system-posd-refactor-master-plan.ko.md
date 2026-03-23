@@ -182,6 +182,71 @@ service가 소유한 socket 집합을 추적하는 runtime helper이기도 하�
 새 기능이 추가될수록 `api` 허브, `socket_base_t`, `options_t`,
 service runtime 공통부로 복잡도가 재집중될 가능성이 높다.
 
+### 2.3.6 logical multipart send semantics가 상위 surface에 흩어져 있다
+
+현재 코드에는 "논리적으로 하나의 multipart message를 보낸다"는 계약이
+여러 상위 surface에 나뉘어 있다.
+
+- `api/zlink.cpp`의 `zlink_send`, `zlink_send_rid`, `zlink_publish`
+- `services/gateway/gateway.cpp`의 `send` / `send_rid`
+- `services/spot/spot_pub.cpp`의 `publish`
+
+반면 하위 `pipe/router/xpub/dist`는 이미
+partial multipart state, rollback, complete-message 기준 HWM/accounting 같은
+기초 메커니즘을 가지고 있다.
+
+문제는 이 기초 메커니즘 위에서
+`topic + payload`, `rid + payload`, `payload parts`를
+"성공 또는 실패" 단위로 보내는 책임이 상위 wrapper마다 따로 구현되어
+중복되고, 일부 경로에서는 빠지기 쉽다는 점이다.
+
+POSD 관점에서 이는 helper 부족 문제가 아니라,
+**logical multipart send라는 하나의 use-case 모듈이
+하위 deep module로 존재하지 않는 상태**로 보는 편이 더 정확하다.
+
+따라서 2차 리팩토링에는 `api` 분해와 별개로,
+public/service surface가 공통으로 사용하는
+`logical multipart send` deep module 추출 작업을 함께 포함한다.
+
+이 작업의 기준 모델은 `libzmq`가 현재 보이는 방향과 맞춘다.
+
+- `pipe`는 complete-message 기준 accounting/HWM을 유지한다.
+- `router/xpub/dist`는 partial multipart state와 rollback을 lower layer에서 유지한다.
+- 상위 public/service surface는 이 lower primitive를 재사용해
+  logical multipart message를 whole-message 단위로 해석한다.
+
+즉 새 lower-layer transaction buffering을 발명하는 것이 아니라,
+**기존 lower semantics를 기준으로 upper surface 계약을 일관되게 맞춘다**는 것이
+이번 문서의 원칙이다.
+
+구현 시 직접 참조할 `libzmq` 로컬 위치는 아래로 고정한다.
+
+- `/home/hep7/project/kairos/libzmq/src/pipe.cpp:222-247`
+  - `pipe_t::write()`가 마지막 part이면서 routing-id가 아닐 때만
+    `_msgs_written`를 올리고,
+    `rollback()`이 incomplete multipart를 제거하는 기준 구현
+- `/home/hep7/project/kairos/libzmq/src/xpub.cpp:290-325`
+  - `xpub_t::xsend()`가 첫 part에서 matching set을 계산하고,
+    multipart 종료 시 `unmatch()`하며,
+    실패한 nonblocking send 이후 stale matching이 남지 않게 정리하는 기준 구현
+- `/home/hep7/project/kairos/libzmq/src/dist.cpp:127-141`
+  - `dist_t::send_to_matching()`이 multipart 종료 시점에만
+    `_active = _eligible`로 전환하는 fanout-side complete-message 기준 구현
+- `/home/hep7/project/kairos/libzmq/src/router.cpp:161-220`
+  - `router_t::xsend()`가 routing-id prefix를 해석하고
+    lower pipe/HWM 상태에 따라 `EAGAIN`/`EHOSTUNREACH`를 반환하는
+    routed multipart lower semantics 기준 구현
+- `/home/hep7/project/kairos/libzmq/doc/zmq_sendmsg.txt:17-39`
+  - public `zmq_sendmsg()` surface가 "네트워크 송신 완료"가 아니라
+    "socket queue가 메시지를 인수했다"는 의미임을 명시하는 문서 근거
+
+추가 히스토리 참고:
+
+- `/home/hep7/project/kairos/libzmq` commit `27bf9bf7`
+  - `Problem: XPUB keeps matched pipes between failed non-blocking sends`
+  - `XPUB`도 multipart partial-send 정합성 문제가 실제로 존재했고,
+    upstream이 lower layer state 정리로 고쳤다는 직접 근거
+
 ### 2.4 현행 기능 보존 목록
 
 이번 리팩토링에서 보존 기준으로 삼을 현행 기능 축을 먼저 고정한다.
@@ -367,6 +432,7 @@ core/src/
     mailbox.*
     pipe.*
     poller.*
+    multipart_send_txn.*
     close_drain/*
     finalization/*
 
@@ -431,6 +497,9 @@ core/src/
 - `api/`는 validate + delegate를 기본으로 하되,
   공개 handle admission/lifetime 확인 같은 per-handle orchestration만 제한적으로 가진다.
 - `core/`는 close/drain/finalization 포함 runtime primitive를 가진다.
+- `core/multipart_send_txn.*`는 socket family semantic이 아니라,
+  `api`, `gateway`, `spot`가 공통으로 사용하는
+  logical multipart send runtime/use-case primitive이므로 `core/`에 둔다.
 - `engine/`는 poller/io_context/mailbox execution backbone을 가진다.
 - `sockets/base/`는 공통 mechanism, `sockets/families/`는 family semantic을 가진다.
 - `services/*/facade`와 `services/*/runtime`은 분리된다.
@@ -518,6 +587,8 @@ socket families        service facades/runtimes
 
 - `api/zlink.cpp`는 더 이상 concrete service 조립 허브가 아니다.
 - `socket_base_t`는 family semantic entrypoint로 축소된다.
+- `core/multipart_send_txn.*`는 public/service surface가 공통으로 쓰는
+  logical multipart message send contract를 소유한다.
 - close/drain 의미는 runtime contract에 있고, option owner 재배치는 별도 경계에서 다룬다.
 - bindings는 계속 C 계약만 보고, 내부 구조는 교체 가능해진다.
 
@@ -621,6 +692,9 @@ Phase별 구현 시작점은 아래처럼 고정한다.
 
 - `core/src/api/zlink.cpp`
 - `core/src/api/zlink_option.cpp`
+- `core/src/core/multipart_send_txn.*`
+- `core/src/services/gateway/gateway.cpp`
+- `core/src/services/spot/spot_pub.cpp`
 - Phase 1c에서 concrete service include 제거에 꼭 필요하면 기존 seam을 우선 활용하는 최소 contract shell:
   - `core/src/services/common/service_public_api.hpp`
   - `core/src/services/*/*_access.*`
@@ -635,6 +709,7 @@ Phase 1은 아래 sub-phase checkpoint로 나눈다.
 
 - Phase 1a: context/message/errno/version 계열 분리
 - Phase 1b: socket/poller/monitor 계열 분리
+- Phase 1b.5: `logical multipart send` deep module 추출
 - Phase 1c: existing service seam 기준 `zlink.cpp` concrete knowledge 제거
 
 Phase 1c 선행 규칙:
@@ -646,6 +721,39 @@ Phase 1c 선행 규칙:
 - 이 최소 contract 작성은 Phase 1c 범위에 포함할 수 있다.
 - Phase 5는 이 최소 contract를 공통 규약으로 확장하고 정제하는 단계이지,
   Phase 1c가 임시 wrapper 분산으로 끝나는 것을 허용하는 단계가 아니다.
+
+Phase 1b.5 규칙:
+
+- 이 단계의 목표는 `zlink_send`, `zlink_send_rid`, `zlink_publish`,
+  `gateway send/send_rid`, `spot publish`가
+  공통 `logical multipart send` 모듈을 사용하도록 만드는 것이다.
+- 범위는 public/service high-level multipart surface 전부로 고정한다.
+- 이 단계는 새 helper 추가만이 아니라,
+  `gateway`와 `spot` caller를 최소 delegate 형태로 실제 전환하는 것까지 포함한다.
+- 다만 이 단계에서 `gateway`/`spot`의 topology, runtime, data plane 분해까지
+  같이 수행하지는 않는다. 그 구조 분해는 Phase 6에 남긴다.
+- 따라서 `gateway.cpp`, `spot_pub.cpp` 수정은
+  `send/send_rid/publish` caller가 공통 helper에 위임하도록 바꾸는 최소 범위로 제한한다.
+- raw `pipe/router/xpub/dist`의 frame-streaming lower layer 자체를
+  transactional send로 재설계하는 것은 이 단계 범위가 아니다.
+- `logical multipart send` 모듈은 아래 semantics를 공통으로 소유한다.
+  - nonblocking: one-shot attempt + partial local state rollback
+  - blocking: `sndtimeo` deadline까지 whole-message retry
+  - retry 대상: `EAGAIN`, `EINTR`
+  - 그 외 오류는 즉시 실패
+- 구현 기준은 `libzmq`와 같은 방향으로 고정한다.
+  - `pipe/router/xpub/dist` lower layer의 existing rollback/HWM/message-boundary semantics를 재사용한다.
+  - 새 lower transaction buffer 계층을 추가하지 않는다.
+  - public/service surface가 lower primitive 위에서 whole-message contract를 공통으로 맞춘다.
+  - 구현자가 확인해야 할 기준 파일은
+    `/home/hep7/project/kairos/libzmq/src/pipe.cpp`,
+    `/home/hep7/project/kairos/libzmq/src/xpub.cpp`,
+    `/home/hep7/project/kairos/libzmq/src/dist.cpp`,
+    `/home/hep7/project/kairos/libzmq/src/router.cpp`,
+    `/home/hep7/project/kairos/libzmq/doc/zmq_sendmsg.txt`
+    로 고정한다.
+- `api/zlink.cpp`, `gateway`, `spot`에
+  개별 multipart retry/rollback loop가 남는 상태는 이 단계 완료로 보지 않는다.
 
 Checkpoint 규칙:
 
@@ -1175,6 +1283,26 @@ PERF_ALLOW_MULTI=1 python3 core/perf/run_comparison.py ALL \
 - perf 자체를 수정하지는 않지만, 리팩토링 전후 비교 가능한 결과 파일 또는 실행 로그를 남긴다.
 - 최종 단계에서는 동일 조건으로 같은 명령을 다시 실행해 전후 결과를 비교한다.
 
+현재 문서 기준으로 이미 확보된 baseline artifact는 아래 파일로 고정한다.
+
+- single baseline:
+  - `/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`
+  - 해석 기준: `recv_mode=callback`, `io_threads=1`,
+    `patterns=PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,GATEWAY,SPOT`,
+    `transports=inproc,ipc,tcp,tls,ws,wss`
+- multi baseline:
+  - `/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`
+  - 해석 기준: `recv_mode=recv`, `server_io_threads=4`, `client_io_threads=4`,
+    `patterns=MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM`,
+    `transports=tcp,tls,ws,wss`
+  - 파일 내 `META,commit=9ef080f7`을 현재 multi 기준 commit으로 사용한다.
+
+새 컨텍스트에서 작업을 재개할 때는 아래 순서로 baseline을 읽는다.
+
+1. 위 artifact 파일을 먼저 기준선으로 삼는다.
+2. 현재 checkout 상태가 baseline commit과 다르면 차이를 작업 로그에 남긴다.
+3. 리팩토링 전후 perf 비교는 가능하면 같은 옵션/같은 transport set으로 다시 실행해 비교한다.
+
 ### C 계약 변경 금지 확인
 
 ```bash
@@ -1254,8 +1382,15 @@ ZLINK_LIBRARY_PATH="$ROOT_DIR/core/build/lib/libzlink.so" \
 - handle validation 회귀 없음
 - context/socket/message/service 공개 함수 동작 유지
 - option routing, poller/monitor API 회귀 없음
+- `zlink_send`, `zlink_send_rid`, `zlink_publish`,
+  `gateway send/send_rid`, `spot publish`가
+  whole-message 기준으로 boundary를 보존한다
+- public/service surface에 개별 multipart retry/rollback loop가 남지 않는다
 - 1차 이후 추가된 service handle 및 callback surface 회귀 없음
 - bindings가 직접 호출하는 대표 `zlink_*` 진입점 계약 회귀 없음
+- Phase 1b.5 종료 시 `test_spot_service_introspection`와
+  gateway 대표 integration을 의무로 수행해
+  service caller delegate 전환이 boundary/runtime 회귀를 만들지 않았음을 확인한다
 - Phase 1c 종료 시 대표 bindings smoke 통과
 
 ### Phase 2 이후

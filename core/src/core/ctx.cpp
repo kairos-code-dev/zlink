@@ -15,6 +15,8 @@
 #include <string.h>
 
 #include "core/ctx.hpp"
+#include "core/ctx_bootstrap.hpp"
+#include "core/ctx_termination.hpp"
 #include "sockets/socket_base.hpp"
 #include "core/io_thread.hpp"
 #include "core/reaper.hpp"
@@ -125,30 +127,7 @@ zlink::ctx_t::~ctx_t ()
 {
     //  Check that there are no remaining _sockets.
     zlink_assert (_sockets.empty ());
-
-    if (_service_control_runtime) {
-        _service_control_runtime->stop ();
-        delete _service_control_runtime;
-        _service_control_runtime = NULL;
-    }
-
-    //  Ask I/O threads to terminate. If stop signal wasn't sent to I/O
-    //  thread subsequent invocation of destructor would hang-up.
-    const io_threads_t::size_type io_threads_size = _io_threads.size ();
-    for (io_threads_t::size_type i = 0; i != io_threads_size; i++) {
-        _io_threads[i]->stop ();
-    }
-
-    //  Wait till I/O threads actually terminate.
-    for (io_threads_t::size_type i = 0; i != io_threads_size; i++) {
-        LIBZLINK_DELETE (_io_threads[i]);
-    }
-
-    //  Deallocate the reaper thread object.
-    LIBZLINK_DELETE (_reaper);
-
-    //  The mailboxes in _slots themselves were deallocated with their
-    //  corresponding io_thread/socket objects.
+    ctx_termination_t::teardown_runtime (*this);
 
     //  De-initialise crypto library, if needed.
     zlink::random_close ();
@@ -164,38 +143,7 @@ bool zlink::ctx_t::valid () const
 
 zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
 {
-    int last_errno = ENOTSUP;
-    for (int attempt = 0; attempt < 50; ++attempt) {
-        _slot_sync.lock ();
-        if (_terminating) {
-            _slot_sync.unlock ();
-            errno = ETERM;
-            return NULL;
-        }
-        if (_service_control_runtime) {
-            service_control_runtime_t *runtime = _service_control_runtime;
-            _slot_sync.unlock ();
-            return runtime;
-        }
-        if (!_starting) {
-            _slot_sync.unlock ();
-            errno = ENOTSUP;
-            return NULL;
-        }
-
-        const bool started = start ();
-        service_control_runtime_t *runtime = _service_control_runtime;
-        last_errno = errno;
-        _slot_sync.unlock ();
-        if (started && runtime)
-            return runtime;
-#ifndef ZLINK_HAVE_WINDOWS
-        usleep (1000);
-#endif
-    }
-
-    errno = last_errno;
-    return NULL;
+    return ctx_bootstrap_t::ensure_service_runtime (*this);
 }
 
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
@@ -222,62 +170,12 @@ void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
 int zlink::ctx_t::terminate ()
 {
     _slot_sync.lock ();
+    ctx_termination_t::flush_pending_inproc_locked (*this);
 
-    const bool save_terminating = _terminating;
-    _terminating = false;
-
-    // Connect up any pending inproc connections, otherwise we will hang
-    pending_connections_t copy = _pending_connections;
-    for (pending_connections_t::iterator p = copy.begin (), end = copy.end ();
-         p != end; ++p) {
-        zlink::socket_base_t *s = create_socket (ZLINK_CORE_SOCKET_PAIR);
-        // create_socket might fail eg: out of memory/sockets limit reached
-        zlink_assert (s);
-        s->bind (p->first.c_str ());
-        s->close ();
-    }
-    _terminating = save_terminating;
-
-    if (!_starting) {
-#ifdef HAVE_FORK
-        if (_pid != getpid ()) {
-            // we are a forked child process. Close all file descriptors
-            // inherited from the parent.
-            for (sockets_t::size_type i = 0, size = _sockets.size (); i != size;
-                 i++) {
-                _sockets[i]->get_mailbox ()->forked ();
-            }
-            _term_mailbox.forked ();
-        }
-#endif
-
-        //  Check whether termination was already underway, but interrupted and now
-        //  restarted.
-        const bool restarted = _terminating;
-        _terminating = true;
-
-        //  First attempt to terminate the context.
-        if (!restarted) {
-            //  First send stop command to sockets so that any blocking calls
-            //  can be interrupted. If there are no sockets we can ask reaper
-            //  thread to stop.
-            debug_dump_sockets_locked ("terminate-before-stop");
-            for (sockets_t::size_type i = 0, size = _sockets.size (); i != size;
-                 i++) {
-                _sockets[i]->stop ();
-            }
-            if (_sockets.empty ())
-                _reaper->stop ();
-        }
+    if (ctx_termination_t::begin_shutdown_locked (*this, true)) {
         _slot_sync.unlock ();
-
-        //  Wait till reaper thread closes all the sockets.
-        command_t cmd;
-        const int rc = _term_mailbox.recv (&cmd, -1);
-        if (rc == -1 && errno == EINTR)
+        if (ctx_termination_t::wait_for_reaper_done (*this) == -1)
             return -1;
-        errno_assert (rc == 0);
-        zlink_assert (cmd.type == command_t::done);
         _slot_sync.lock ();
         zlink_assert (_sockets.empty ());
     }
@@ -293,23 +191,7 @@ int zlink::ctx_t::terminate ()
 int zlink::ctx_t::shutdown ()
 {
     scoped_lock_t locker (_slot_sync);
-
-    if (!_terminating) {
-        _terminating = true;
-
-        if (!_starting) {
-            //  Send stop command to sockets so that any blocking calls
-            //  can be interrupted. If there are no sockets we can ask reaper
-            //  thread to stop.
-            for (sockets_t::size_type i = 0, size = _sockets.size (); i != size;
-                 i++) {
-                _sockets[i]->stop ();
-            }
-            if (_sockets.empty ())
-                _reaper->stop ();
-        }
-    }
-
+    (void) ctx_termination_t::begin_shutdown_locked (*this, false);
     return 0;
 }
 
@@ -456,87 +338,7 @@ int zlink::ctx_t::get (int option_)
 
 bool zlink::ctx_t::start ()
 {
-    //  Initialise the array of mailboxes. Additional two slots are for
-    //  zlink_ctx_term thread and reaper thread.
-    _opt_sync.lock ();
-    const int term_and_reaper_threads_count = 2;
-    const int mazlink = _max_sockets;
-    const int ios = _io_thread_count;
-    _opt_sync.unlock ();
-    const int slot_count = mazlink + ios + term_and_reaper_threads_count;
-    try {
-        _slots.reserve (slot_count);
-        _empty_slots.reserve (slot_count - term_and_reaper_threads_count);
-    }
-    catch (const std::bad_alloc &) {
-        errno = ENOMEM;
-        return false;
-    }
-    _slots.resize (term_and_reaper_threads_count);
-
-    //  Initialise the infrastructure for zlink_ctx_term thread.
-    _slots[term_tid] = &_term_mailbox;
-
-    //  Create the reaper thread.
-    _reaper = new (std::nothrow) reaper_t (this, reaper_tid);
-    if (!_reaper) {
-        errno = ENOMEM;
-        goto fail_cleanup_slots;
-    }
-    if (!_reaper->get_mailbox ()->valid ())
-        goto fail_cleanup_reaper;
-    _slots[reaper_tid] = _reaper->get_mailbox ();
-    _reaper->start ();
-
-    _service_control_runtime = new (std::nothrow) service_control_runtime_t (this);
-    if (!_service_control_runtime) {
-        errno = ENOMEM;
-        goto fail_cleanup_reaper;
-    }
-    if (!_service_control_runtime->start ())
-        goto fail_cleanup_reaper;
-
-    //  Create I/O thread objects and launch them.
-    _slots.resize (slot_count, NULL);
-
-    for (int i = term_and_reaper_threads_count;
-         i != ios + term_and_reaper_threads_count; i++) {
-        io_thread_t *io_thread = new (std::nothrow) io_thread_t (this, i);
-        if (!io_thread) {
-            errno = ENOMEM;
-            goto fail_cleanup_reaper;
-        }
-        if (!io_thread->get_mailbox ()->valid ()) {
-            delete io_thread;
-            goto fail_cleanup_reaper;
-        }
-        _io_threads.push_back (io_thread);
-        _slots[i] = io_thread->get_mailbox ();
-        io_thread->start ();
-    }
-
-    //  In the unused part of the slot array, create a list of empty slots.
-    for (int32_t i = static_cast<int32_t> (_slots.size ()) - 1;
-         i >= static_cast<int32_t> (ios) + term_and_reaper_threads_count; i--) {
-        _empty_slots.push_back (i);
-    }
-
-    _starting = false;
-    return true;
-
-fail_cleanup_reaper:
-    if (_service_control_runtime) {
-        _service_control_runtime->stop ();
-        delete _service_control_runtime;
-        _service_control_runtime = NULL;
-    }
-    _reaper->stop ();
-    delete _reaper;
-    _reaper = NULL;
-
-fail_cleanup_slots:
-    _slots.clear ();
-    return false;
+    return ctx_bootstrap_t::start_runtime_locked (*this);
 }
 
 zlink::socket_base_t *zlink::ctx_t::create_socket (int type_)

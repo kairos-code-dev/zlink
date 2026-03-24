@@ -976,6 +976,8 @@ set(core-sources
     src/core/recv_internal.cpp
     src/core/send_internal.cpp
     src/core/ctx.cpp
+    src/core/ctx_bootstrap.cpp
+    src/core/ctx_termination.cpp
     src/core/pipe.cpp
     src/core/mailbox.cpp
     src/core/object.cpp

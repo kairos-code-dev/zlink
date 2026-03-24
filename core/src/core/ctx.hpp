@@ -26,6 +26,8 @@ class socket_base_t;
 class reaper_t;
 class pipe_t;
 class service_control_runtime_t;
+class ctx_bootstrap_t;
+class ctx_termination_t;
 
 //  Information associated with inproc endpoint. Note that endpoint options
 //  are registered as well so that the peer can access them without a need
@@ -145,6 +147,9 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     service_control_runtime_t *service_control_runtime ();
 
   private:
+    friend class ctx_bootstrap_t;
+    friend class ctx_termination_t;
+
     bool start ();
     void debug_dump_sockets_locked (const char *phase_) const;
 

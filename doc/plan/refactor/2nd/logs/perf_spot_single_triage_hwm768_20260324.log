@@ -1,0 +1,113 @@
+
+## Effective Options (start)
+- runs: 1
+- recv_mode: callback
+- duration_seconds: 5
+- timeout_seconds: 45
+- io_threads: 1
+- hwm: 1000
+- sndhwm: 1000
+- rcvhwm: 1000
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- patterns: SPOT
+- transports: tcp,tls
+- msg_sizes: 256,1024,131072,262144
+## PATTERN: SPOT (one-way)
+  > Benchmarking current for SPOT...
+    Testing tcp:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | CPU% | Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|------------------|--------------|--------------|--------------|--------------|------|--------|-----------|-----------|-----------|
+      | 256B     |    489.36 Kmsg/s |   125.28 MB/s |      1.45 ms |      4.09 ms |      6.56 ms |  6.5 |   12.1 |       N/A |       N/A |       N/A |
+      | 1024B    |    438.51 Kmsg/s |   449.04 MB/s |      1.18 ms |      2.18 ms |      4.90 ms |  6.9 |   12.0 |       N/A |       N/A |       N/A |
+      | 131072B  |     24.27 Kmsg/s |  3180.96 MB/s |     22.24 ms |     31.54 ms |     34.80 ms |  7.0 |   12.5 |       N/A |       N/A |       N/A |
+      | 262144B  |     22.62 Kmsg/s |  5930.12 MB/s |     22.64 ms |     28.38 ms |     30.78 ms |  6.8 |   66.9 |       N/A |       N/A |       N/A |
+    Testing tcp: Done
+    Testing tls:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | CPU% | Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|------------------|--------------|--------------|--------------|--------------|------|--------|-----------|-----------|-----------|
+      | 256B     |    588.67 Kmsg/s |   150.70 MB/s |      0.86 ms |      1.76 ms |      3.58 ms |  6.4 |   17.3 |       N/A |       N/A |       N/A |
+      | 1024B    |    376.93 Kmsg/s |   385.98 MB/s |      1.36 ms |      2.33 ms |      3.71 ms |  6.5 |   17.9 |       N/A |       N/A |       N/A |
+      | 131072B  |     10.14 Kmsg/s |  1328.76 MB/s |     55.34 ms |     72.87 ms |     79.99 ms |  6.7 |   19.5 |       N/A |       N/A |       N/A |
+      | 262144B  |      5.61 Kmsg/s |  1469.68 MB/s |     99.90 ms |    131.77 ms |    141.36 ms |  6.2 |   22.4 |       N/A |       N/A |       N/A |
+    Testing tls: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: callback
+- duration_seconds: 5
+- timeout_seconds: 45
+- io_threads: 1
+- hwm: 1000
+- sndhwm: 1000
+- rcvhwm: 1000
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- patterns: SPOT
+- transports: tcp,tls
+- msg_sizes: 256,1024,131072,262144
+
+## Result Data
+RESULT,current,SPOT,tcp,256,throughput,489360.600
+RESULT,current,SPOT,tcp,256,bandwidth,125.280
+RESULT,current,SPOT,tcp,256,latency,1447.940
+RESULT,current,SPOT,tcp,256,latency_p95,4087.000
+RESULT,current,SPOT,tcp,256,latency_p99,6557.000
+RESULT,current,SPOT,tcp,256,cpu_pct,6.505
+RESULT,current,SPOT,tcp,256,mem_mb,12.098
+RESULT,current,SPOT,tcp,1024,throughput,438514.800
+RESULT,current,SPOT,tcp,1024,bandwidth,449.040
+RESULT,current,SPOT,tcp,1024,latency,1176.850
+RESULT,current,SPOT,tcp,1024,latency_p95,2179.000
+RESULT,current,SPOT,tcp,1024,latency_p99,4897.010
+RESULT,current,SPOT,tcp,1024,cpu_pct,6.879
+RESULT,current,SPOT,tcp,1024,mem_mb,12.035
+RESULT,current,SPOT,tcp,131072,throughput,24268.800
+RESULT,current,SPOT,tcp,131072,bandwidth,3180.960
+RESULT,current,SPOT,tcp,131072,latency,22242.760
+RESULT,current,SPOT,tcp,131072,latency_p95,31542.850
+RESULT,current,SPOT,tcp,131072,latency_p99,34803.140
+RESULT,current,SPOT,tcp,131072,cpu_pct,7.031
+RESULT,current,SPOT,tcp,131072,mem_mb,12.480
+RESULT,current,SPOT,tcp,262144,throughput,22621.600
+RESULT,current,SPOT,tcp,262144,bandwidth,5930.120
+RESULT,current,SPOT,tcp,262144,latency,22644.960
+RESULT,current,SPOT,tcp,262144,latency_p95,28383.000
+RESULT,current,SPOT,tcp,262144,latency_p99,30781.860
+RESULT,current,SPOT,tcp,262144,cpu_pct,6.834
+RESULT,current,SPOT,tcp,262144,mem_mb,66.949
+RESULT,current,SPOT,tls,256,throughput,588672.000
+RESULT,current,SPOT,tls,256,bandwidth,150.700
+RESULT,current,SPOT,tls,256,latency,859.760
+RESULT,current,SPOT,tls,256,latency_p95,1758.000
+RESULT,current,SPOT,tls,256,latency_p99,3575.000
+RESULT,current,SPOT,tls,256,cpu_pct,6.375
+RESULT,current,SPOT,tls,256,mem_mb,17.344
+RESULT,current,SPOT,tls,1024,throughput,376934.400
+RESULT,current,SPOT,tls,1024,bandwidth,385.980
+RESULT,current,SPOT,tls,1024,latency,1362.520
+RESULT,current,SPOT,tls,1024,latency_p95,2335.000
+RESULT,current,SPOT,tls,1024,latency_p99,3714.000
+RESULT,current,SPOT,tls,1024,cpu_pct,6.520
+RESULT,current,SPOT,tls,1024,mem_mb,17.926
+RESULT,current,SPOT,tls,131072,throughput,10137.600
+RESULT,current,SPOT,tls,131072,bandwidth,1328.760
+RESULT,current,SPOT,tls,131072,latency,55344.760
+RESULT,current,SPOT,tls,131072,latency_p95,72865.650
+RESULT,current,SPOT,tls,131072,latency_p99,79989.560
+RESULT,current,SPOT,tls,131072,cpu_pct,6.694
+RESULT,current,SPOT,tls,131072,mem_mb,19.469
+RESULT,current,SPOT,tls,262144,throughput,5606.400
+RESULT,current,SPOT,tls,262144,bandwidth,1469.680
+RESULT,current,SPOT,tls,262144,latency,99901.450
+RESULT,current,SPOT,tls,262144,latency_p95,131765.600
+RESULT,current,SPOT,tls,262144,latency_p99,141359.320
+RESULT,current,SPOT,tls,262144,cpu_pct,6.159
+RESULT,current,SPOT,tls,262144,mem_mb,22.352
+
+## Completion
+- status: complete
+- expected_result_lines: 40
+- actual_result_lines: 40
+
+Saved result file: /home/hep7/project/kairos/zlink/core/perf/results/single/report/perf_linux_callback_20260324_173237_triage-single-fixed-hwm768.txt (status=complete)

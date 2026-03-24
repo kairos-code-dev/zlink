@@ -243,30 +243,13 @@ zlink_connect(socket, "tls://server:5555");
 
 | 제약 | 설명 |
 |------|------|
-| ws/wss → STREAM만 | ws, wss transport는 STREAM 소켓만 지원. tls는 모든 소켓 타입 사용 가능 |
-| inproc bind 우선 | inproc는 bind가 connect보다 먼저 호출 필요 |
-| ipc 플랫폼 | ipc는 Unix/Linux/macOS만 지원 (Windows 미지원) |
-| 동일 context | inproc는 동일 context 내에서만 사용 |
-| IPC 경로 길이 | Unix 도메인 소켓 경로 최대 108자 |
+| ws/wss | STREAM 소켓만 지원. tls는 모든 소켓 가능 |
+| inproc | bind가 connect보다 먼저 호출 필요 |
+| ipc | Unix/Linux/macOS만 지원 (Windows 미지원) |
+| inproc context | 동일 context 내에서만 사용 |
+| IPC 경로 | Unix 도메인 소켓 경로 최대 108자 |
 
-## 9. Transport 선택 의사결정 플로우
-
-```
-통신 상대가 외부 클라이언트인가?
-├── Yes → 암호화 필요?
-│         ├── Yes → WebSocket? → wss://
-│         │         └── No → tls://
-│         └── No → WebSocket? → ws://
-│                   └── No → tcp:// (STREAM)
-└── No → 같은 프로세스?
-         ├── Yes → inproc://
-         └── No → 같은 머신?
-                  ├── Yes → Unix? → ipc://
-                  │         └── Windows → tcp://
-                  └── No → 암호화 필요?
-                           ├── Yes → tls://
-                           └── No → tcp://
-```
+## 9. Transport 선택 가이드
 
 | 사용 사례 | 추천 Transport | 비고 |
 |-----------|---------------|------|

@@ -4,7 +4,8 @@
 
 ## 1. 개요
 
-zlink는 OpenSSL을 통해 `tls://`와 `wss://` transport를 네이티브 지원한다. 외부 프록시 없이 암호화된 통신을 직접 구성할 수 있다.
+zlink는 OpenSSL을 통해 `tls://`와 `wss://` transport를 네이티브 지원한다.
+외부 프록시 없이 암호화된 통신을 직접 구성할 수 있다.
 
 ## 2. TLS 서버 설정
 

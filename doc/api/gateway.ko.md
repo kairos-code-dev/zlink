@@ -11,11 +11,11 @@ Gateway는 서비스 바인딩된 로드 밸런싱 요청/응답 핸들입니다
 
 Gateway handle은 **recv 모드**로 시작합니다.
 
-| | 기본 Gateway | `zlink_recv_handler()` 이후 | `zlink_send_ready_handler()` 이후 |
-|---|---|---|---|
-| **수신** | `zlink_gateway_recv()` / `zlink_recv()` | callback dispatch, direct recv = `EBUSY` | unchanged |
+| 동작 | 기본 Gateway | `recv_handler()` 이후 | `send_ready_handler()` 이후 |
+|------|-------------|------------------------|-------------------------------|
+| **수신** | `gateway_recv()` / `recv()` | callback dispatch | unchanged |
 | **읽기 poller** | `ZLINK_POLLIN` | `EBUSY` | unchanged |
-| **쓰기 준비 감지** | poller `ZLINK_POLLOUT` | unchanged | callback dispatch, `ZLINK_POLLOUT` = `EBUSY` |
+| **쓰기 준비** | poller `ZLINK_POLLOUT` | unchanged | callback dispatch |
 
 - `zlink_recv_handler(gateway, ...)`는 지원됩니다.
 - `zlink_send_ready_handler(gateway, ...)`는 지원되며 receive callback 선행 조건이 없습니다.
@@ -49,9 +49,10 @@ Gateway handle은 **recv 모드**로 시작합니다.
   합니다 (discovery 연결 전에만 허용).
 - `zlink_set_option()` / `zlink_get_option()`으로 서비스 레벨 튜닝을 합니다.
 - 송신 측 백프레셔는 poller `ZLINK_POLLOUT`로 처리합니다.
-- `zlink_service_monitor_open(gateway, &options)`으로
-  `ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED`, `ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP` 같은 edge
-  전이를 관찰합니다. `zlink_monitor_close()`로 닫습니다.
+- `zlink_service_monitor_open(gateway, &options)`으로 edge 전이를 관찰합니다.
+  - `ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED`
+  - `ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP`
+  - `zlink_monitor_close()`로 닫습니다.
 - monitor handle에 대해 `zlink_monitor_snapshot()`으로 현재 로컬 제어 상태와
   queue depth를 읽습니다.
 - 운영적인 peer 조회는 registry gateway-peer query API를 사용합니다.
@@ -97,9 +98,9 @@ Gateway는 `zlink_set_router_option` / `zlink_get_router_option`을 통해
 
 | 상수 | 설명 |
 |------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | 라우팅 불가능한 피어에 대한 전송을 drop 대신 실패 처리 |
-| `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수하도록 허용 |
-| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 피어 연결 시 사용할 routing id 설정 |
+| `ZLINK_ROUTER_OPT_MANDATORY` | 라우팅 불가 시 drop 대신 실패 처리 |
+| `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수 허용 |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 피어 연결 시 routing id 설정 |
 
 전체 `zlink_router_option_t` 참조는 [socket.ko.md](socket.ko.md)를 참조하세요.
 

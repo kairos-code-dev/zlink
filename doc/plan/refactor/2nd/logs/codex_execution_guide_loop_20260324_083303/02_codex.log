@@ -1,0 +1,4886 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: high
+reasoning summaries: none
+session id: 019d1d1a-5297-7be2-8ffd-32ac2de5e6bd
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+  이 문서의 남은 작업을 중단 없이 끝까지 진행한다.
+
+작업 규칙:
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --label phase2_thread_safe_stress --count 10 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 10보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+codex
+팀장님, 실행 가이드 문서를 읽고 첫 미완료 항목부터 현재 상태를 확인하겠습니다. 이어서 해당 항목이 요구하는 코드, 테스트, gate, 문서 갱신까지 순서대로 바로 진행하겠습니다.
+exec
+/bin/bash -lc "pwd && sed -n '1,260p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink
+# POSD 2차 리팩토링 잔여 작업 실행 가이드
+
+> 상태: active
+> 기준 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
+> 기준 커밋: `85ea0995`
+> 대상 범위: `core/`, `core/tests/`
+> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
+> 최종 성능 검증 도구: `core/perf/run_benchmarks.sh`, `core/perf/run_benchmarks_multi.sh`
+> 목적: 남은 POSD 2차 리팩토링 항목을 중간 중단 없이 끝까지 밀기 위한 실행 규칙 고정
+
+## 1. 문서 목적
+
+이 문서는 마스터 플랜의 "남은 작업"만을 대상으로,
+실제 구현자가 어떤 순서와 어떤 정지 규칙으로 끝까지 진행해야 하는지를 고정한다.
+
+이 문서는 새 설계를 제안하는 문서가 아니다.
+이미 반영된 2차 리팩토링 결과 위에서,
+남은 허브와 남은 ownership 정리를 끝까지 닫는 실행 문서다.
+
+exec
+/bin/bash -lc 'git status --short' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+ M core/CMakeLists.txt
+ M core/src/api/service_discovery_api.cpp
+ M core/src/api/service_gateway_api.cpp
+ M core/src/api/service_registry_api.cpp
+ M core/src/core/options_dispatch.cpp
+ M core/src/services/discovery/discovery_access.cpp
+ M core/src/services/discovery/discovery_access.hpp
+ M core/src/services/gateway/gateway_access.cpp
+ M core/src/services/gateway/gateway_access.hpp
+ M core/tests/unittest/unittest_typed_option.cpp
+ M doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+ M doc/plan/refactor/2nd/logs/codex_execution_guide_loop_20260324_083303/01_codex.log
+ D doc/plan/refactor/2nd/logs/discovery_ordering_debug_20260324_060218.log
+ D doc/plan/refactor/2nd/logs/discovery_ordering_pair_after_fix_20260324_060524.log
+ D doc/plan/refactor/2nd/logs/discovery_ordering_pair_repro_20260324_060403.log
+ D doc/plan/refactor/2nd/logs/discovery_ordering_single_loop_20260324_060243.log
+ D doc/plan/refactor/2nd/logs/dryrun_thread_safe_stress.status
+ D doc/plan/refactor/2nd/logs/dryrun_thread_safe_stress_20260324_025328.log
+ D doc/plan/refactor/2nd/logs/dryrun_thread_safe_stress_20260324_025328.log.exitcode
+ D doc/plan/refactor/2nd/logs/dryrun_thread_safe_stress_20260324_025328.log.summary
+codex
+팀장님, 문서와 작업 트리에 이미 진행 중인 변경이 있어 현재 상태를 먼저 대조하고 있습니다. 다음은 상태표와 체크리스트를 읽어 첫 미완료 항목을 특정한 뒤, 기존 변경과 충돌 없이 그 항목부터 닫겠습니다.
+exec
+/bin/bash -lc "rg -n \"5\\.0|미완료|완료|체크리스트|TODO|\\[ \\]|\\[x\\]\" doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+7:> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
+36:- 문서 본체 완료 뒤에는 `core/perf` 기반 perf smoke, full perf, baseline 비교, 성능 회복 루프까지 포함한다.
+54:3. 중간 상태 설명, 부분 요약, 임시 완료 보고는 하지 않는다.
+57:6. 한 항목을 `완료`로 바꾼 직후에는 다음 미완료 항목으로 즉시 이동한다.
+80:- 미완료 표의 다음 행이 남아 있는 상태
+87:1. 미완료 항목 목록에서 가장 위의 항목 하나를 고른다.
+91:5. 문서의 미완료 목록에서 해당 항목을 줄이거나 제거한다.
+96:1. 방금 끝낸 항목의 상태를 5.0 표에 반영한다.
+97:2. 5.0 표에서 `완료`가 아닌 첫 행을 다시 찾는다.
+99:4. 5.0 표가 전부 `완료`일 때만 6.3 최종 게이트로 간다.
+132:- 이 문서의 phase 종료, 최종 완료, 중단 판정은 `core/`와 `core/tests/` 증거로만 닫는다.
+359:## 5. 남은 작업 체크리스트
+361:아래 체크리스트를 위에서부터 순서대로 닫는다.
+364:## 5.0 마스터 플랜 커버리지 추적 표
+374:- `완료`
+380:- `검증중 -> 완료`: 검증 증거 파일/명령/로그 위치까지 표에 기록한 시점
+381:- `완료 -> 진행중`: 이후 변경으로 해당 항목 owner 또는 검증 결과가 다시 흔들린 시점
+385:1. 5.0 표를 먼저 읽는다.
+386:2. `완료`가 아닌 첫 행을 이번 세션의 우선 작업으로 잡는다.
+388:4. 증거가 비어 있으면 `완료`로 간주하지 않는다.
+exec
+/bin/bash -lc "sed -n '261,520p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+            size = cols[0]
+            thr = re.search(r"([0-9]+(?:\.[0-9]+)?)", cols[1])
+            if thr:
+                rows[(pattern, transport, size)] = float(thr.group(1))
+    return rows
+
+baseline = parse(baseline_path)
+current = parse(current_path)
+missing = sorted(set(baseline) - set(current))
+if missing:
+    print("MISSING_TUPLES")
+    for key in missing:
+        print(",".join(key))
+    sys.exit(2)
+
+reg = []
+for key, base in baseline.items():
+    cur = current[key]
+    if cur < base:
+        rel = (cur - base) / base
+exec
+/bin/bash -lc "sed -n '520,610p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+- [x] `core/src/core/options_dispatch.cpp`를 owner별 validation/apply module로 더 쪼갠다.
+- [x] owner map이 실제 handler 배치와 항상 일치하도록 유지한다.
+- [x] `options_t` field는 유지하되, 누가 어떤 option을 해석하는지가 더 좁은 owner 경계로 설명되게 만든다.
+- [x] option owner map을 문서와 코드 모두에 명시한다.
+
+Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
+
+- `core-socket`
+  - `sndhwm`, `rcvhwm`, `affinity`, `routing_id`, `ipv6`, `immediate`, `conflate`
+  - `stream_notify`, `handshake_ivl`, `heartbeat_ivl`, `heartbeat_timeout`, `zmp_metadata`
+- `transport-network`
+  - `sndbuf`, `rcvbuf`, `linger`, `connect_timeout`, `tcp_maxrt`, `reconnect_*`
+  - `tcp_keepalive*`, `tcp_nodelay`, `bindtodevice`, `tos`, `backlog`, `rcvtimeo`, `sndtimeo`
+- `protocol-metadata`
+  - `heartbeat_ttl`
+  - `tls_cert`, `tls_key`, `tls_ca`, `tls_verify`, `tls_require_client_cert`, `tls_hostname`, `tls_trust_system`, `tls_password`
+- `service-specific`
+  - `subscribe`, `unsubscribe`, `topics_count`
+  - router/xpub 계열 option, `FD`, `EVENTS`, `LAST_ENDPOINT`
+  - central `options_t` bag이 직접 해석하지 않고 service/socket seam 뒤에서 처리
+exec
+/bin/bash -lc 'git diff -- core/src/api/service_discovery_api.cpp core/src/api/service_gateway_api.cpp core/src/api/service_registry_api.cpp core/src/services/discovery/discovery_access.cpp core/src/services/discovery/discovery_access.hpp core/src/services/discovery/registry_access.cpp core/src/services/discovery/registry_access.hpp core/src/services/gateway/gateway_access.cpp core/src/services/gateway/gateway_access.hpp core/CMakeLists.txt' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/CMakeLists.txt b/core/CMakeLists.txt
+index 5fc1f50b..876ad19e 100644
+--- a/core/CMakeLists.txt
++++ b/core/CMakeLists.txt
+@@ -989,6 +989,9 @@ set(core-sources
+     src/core/timers.cpp
+     src/core/options.cpp
+     src/core/options_dispatch.cpp
++    src/core/options_core_socket.cpp
++    src/core/options_transport_network.cpp
++    src/core/options_protocol_metadata.cpp
+     src/core/options_owner.cpp
+     src/core/poller_base.cpp
+     src/core/socket_poller.cpp
+@@ -1010,6 +1013,7 @@ set(discovery-sources
+     src/services/common/service_monitor.cpp
+     src/services/common/service_runtime_base.cpp
+     src/services/discovery/discovery_access.cpp
++    src/services/discovery/registry_access.cpp
+     src/services/discovery/registry.cpp
+codex
+팀장님, Phase 5는 이미 일부 코드가 들어가 있지만 아직 검증 증거가 비어 있어 문서상 미완료입니다. 지금은 service API와 access seam 분리가 실제로 깊은 모듈 역할을 하는지 확인하고, 부족하면 코드 보강 후 대표 회귀로 닫겠습니다.
+Plan update
+첫 미완료 행인 Phase 5를 먼저 닫고, 문서 규칙에 따라 이후 Phase 6과 최종 게이트로 연속 진행합니다.
+  → Phase 5 service seam 관련 변경 상태를 읽고 부족한 역할 분리를 보강한다
+  • core/build로 빌드하고 Phase 5 대표 회귀를 실행해 검증 증거를 확보한다
+  • 문서 5.0/5.5 상태를 갱신하고 다음 미완료 항목인 Phase 6으로 이동한다
+  • Phase 6 서비스별 deep module 남은 허브를 순서대로 정리하고 관련 회귀 및 full service core smoke를 통과시킨다
+  • 최종 test lanes와 perf smoke/full/baseline 비교를 수행하고 문서를 완료 상태로 갱신한다
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_gateway_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "utils/err.hpp"
+#include "api/monitor_api_internal.hpp"
+#include "api/service_api_internal.hpp"
+
+#include "core/msg.hpp"
+#include "services/gateway/gateway.hpp"
+#include "services/gateway/gateway_access.hpp"
+
+#include <string.h>
+#include <vector>
+
+namespace
+{
+static void close_gateway_parts (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_)
+exec
+/bin/bash -lc 'rg -n "''^void '"\\*zlink_|"'^int zlink_|''^int gateway_|''^int registry_" core/src/api/service_*.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/api/service_gateway_api.cpp:201:void *zlink_gateway_new (void *ctx_, const char *service_name_)
+core/src/api/service_gateway_api.cpp:220:int zlink_gateway_attach_discovery (void *gateway_, void *discovery_)
+core/src/api/service_gateway_api.cpp:228:int zlink_gateway_bind (void *gateway_, const char *bind_endpoint_)
+core/src/api/service_gateway_api.cpp:235:int zlink_gateway_connect (void *gateway_,
+core/src/api/service_gateway_api.cpp:245:int zlink_gateway_disconnect (void *gateway_, const char *endpoint_)
+core/src/api/service_gateway_api.cpp:252:int zlink_gateway_status_snapshot (void *gateway_,
+core/src/api/service_gateway_api.cpp:260:int zlink_gateway_set_lb_strategy (void *gateway_,
+core/src/api/service_gateway_api.cpp:269:int zlink_gateway_update_peer_weight (void *gateway_,
+core/src/api/service_gateway_api.cpp:279:int zlink_gateway_destroy (void **gateway_p_)
+core/src/api/service_gateway_api.cpp:306:int gateway_send_parts (void *gateway_,
+core/src/api/service_gateway_api.cpp:317:int gateway_send_parts_rid (void *gateway_,
+core/src/api/service_gateway_api.cpp:329:int zlink_service_msg_recv_handler_internal (
+core/src/api/service_gateway_api.cpp:348:int zlink_service_send_internal (void *handle_,
+core/src/api/service_gateway_api.cpp:360:int zlink_service_send_rid_internal (void *handle_,
+core/src/api/service_gateway_api.cpp:374:int zlink_service_recv_internal (void *handle_,
+core/src/api/service_spot_subject_subscription_api.cpp:219:int zlink_spot_subject_get_sub_option_internal (void *handle_,
+core/src/api/service_spot_subject_subscription_api.cpp:299:int zlink_spot_subject_set_subscription_internal (void *handle_,
+core/src/api/service_spot_subject_subscription_api.cpp:322:int zlink_spot_subject_unset_subscription_internal (void *handle_,
+core/src/api/service_spot_subject_subscription_api.cpp:342:int zlink_spot_subject_subscription_at_internal (void *handle_,
+core/src/api/service_discovery_api.cpp:13:void *zlink_discovery_new (void *ctx_, zlink_service_type_t service_type_)
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_discovery_api.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,420p' core/src/api/service_registry_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "utils/err.hpp"
+#include "api/monitor_api_internal.hpp"
+#include "api/service_api_internal.hpp"
+
+#include "services/discovery/discovery_access.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/registry.hpp"
+
+void *zlink_discovery_new (void *ctx_, zlink_service_type_t service_type_)
+{
+    if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    if (service_type_ != ZLINK_SERVICE_TYPE_GATEWAY
+        && service_type_ != ZLINK_SERVICE_TYPE_SPOT) {
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "utils/err.hpp"
+#include "api/service_api_internal.hpp"
+#include "api/zlink_testing.hpp"
+
+#include <new>
+#include <string.h>
+#include <vector>
+
+#include "core/recv_internal.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/registry_access.hpp"
+#include "utils/random.hpp"
+
+namespace
+{
+struct registry_query_client_t
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/discovery/registry_access.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_DISCOVERY_REGISTRY_ACCESS_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_REGISTRY_ACCESS_HPP_INCLUDED__
+
+#include <zlink.h>
+
+#include <vector>
+
+namespace zlink
+{
+class ctx_t;
+class registry_t;
+
+struct registry_access_t
+{
+    static void *create (ctx_t *ctx_);
+    static registry_t *from_handle (void *registry_);
+    static int bind (registry_t *registry_,
+                     const char *pub_endpoint_,
+exec
+/bin/bash -lc "sed -n '1,320p' core/src/services/discovery/registry_access.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include <new>
+
+#include "services/discovery/registry_access.hpp"
+
+#include "services/discovery/registry.hpp"
+
+namespace zlink
+{
+void *registry_access_t::create (ctx_t *ctx_)
+{
+    registry_t *registry = new (std::nothrow) registry_t (ctx_);
+    if (!registry) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return registry;
+exec
+/bin/bash -lc "sed -n '1,240p' core/src/services/gateway/gateway_access.hpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,320p' core/src/services/gateway/gateway_access.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_DISCOVERY_GATEWAY_ACCESS_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_GATEWAY_ACCESS_HPP_INCLUDED__
+
+#include <zlink.h>
+
+namespace zlink
+{
+class ctx_t;
+class discovery_t;
+class gateway_t;
+class socket_base_t;
+
+struct gateway_access_t
+{
+    static void *create (ctx_t *ctx_, const char *service_name_);
+    static gateway_t *from_handle (void *gateway_);
+    static int attach_discovery (gateway_t *gateway_, void *discovery_);
+    static int bind (gateway_t *gateway_, const char *bind_endpoint_);
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/gateway/gateway_access.hpp"
+
+#include <new>
+
+#include "services/discovery/discovery.hpp"
+#include "services/gateway/gateway.hpp"
+
+namespace zlink
+{
+void *gateway_access_t::create (ctx_t *ctx_, const char *service_name_)
+{
+    gateway_t *gateway =
+      new (std::nothrow) gateway_t (ctx_, service_name_, NULL);
+    if (!gateway) {
+        errno = ENOMEM;
+        return NULL;
+exec
+/bin/bash -lc "ls core/src/services/spot | sed -n '1,200p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+spot_control_protocol.hpp
+spot_data_plane.cpp
+spot_data_plane.hpp
+spot_dispatch_internal.hpp
+spot_internal_receiver.hpp
+spot_node.cpp
+spot_node.hpp
+spot_node_access.cpp
+spot_node_access.hpp
+spot_node_control.cpp
+spot_node_handles.cpp
+spot_node_lifecycle.cpp
+spot_node_summary.cpp
+spot_pub.cpp
+spot_pub.hpp
+spot_runtime.cpp
+spot_runtime.hpp
+spot_sub.cpp
+spot_sub.hpp
+spot_sub_lifecycle.cpp
+exec
+/bin/bash -lc "rg -n \"_access_t|from_handle|create \\(|destroy \\(|attach_discovery|status_snapshot|topology\" core/src/services core/src/api/service_* core/src/api/monitor*_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/api/service_poller_api.cpp:93:          zlink::spot_node_access_t::ensure_internal_receiver (node);
+core/src/api/service_poller_api.cpp:148:    zlink::socket_base_t *socket = zlink::gateway_access_t::router_socket (gateway);
+core/src/api/monitor_service_open_api.cpp:221:          zlink::spot_node_access_t::ensure_internal_receiver (node);
+core/src/api/service_handler_spot_api.cpp:151:        (void) sub->destroy ();
+core/src/api/service_handler_spot_api.cpp:184:        (void) sub->destroy ();
+core/src/api/service_handler_spot_api.cpp:251:      zlink::spot_node_access_t::ensure_internal_receiver (node_);
+core/src/api/monitor_service_api.cpp:20:      zlink::spot_node_access_t::internal_receiver (node_);
+core/src/api/monitor_service_api.cpp:44:      zlink::spot_node_access_t::internal_receiver (node_);
+core/src/api/service_spot_subject_subscription_api.cpp:64:      zlink::spot_node_access_t::ensure_internal_receiver (node);
+core/src/api/service_spot_subject_subscription_api.cpp:84:      zlink::spot_node_access_t::ensure_internal_receiver (node);
+core/src/api/service_spot_subject_subscription_api.cpp:104:      zlink::spot_node_access_t::ensure_internal_receiver (node);
+core/src/api/service_discovery_api.cpp:31:    return zlink::discovery_access_t::create (
+core/src/api/service_discovery_api.cpp:39:      zlink::discovery_access_t::from_handle (discovery_);
+core/src/api/service_discovery_api.cpp:40:    return discovery ? zlink::discovery_access_t::connect_registry (
+core/src/api/service_discovery_api.cpp:51:      zlink::discovery_access_t::from_handle (discovery_);
+core/src/api/service_discovery_api.cpp:52:    return discovery ? zlink::discovery_access_t::set_tls_client (
+core/src/api/service_discovery_api.cpp:62:      zlink::discovery_access_t::from_handle (discovery_);
+core/src/api/service_discovery_api.cpp:63:    return discovery ? zlink::discovery_access_t::set_routing_id (
+core/src/api/service_discovery_api.cpp:71:      zlink::discovery_access_t::from_handle (discovery_);
+core/src/api/service_discovery_api.cpp:72:    return discovery ? zlink::discovery_access_t::routing_id (discovery, out_)
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_spot_node_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "api/monitor_api_internal.hpp"
+#include "utils/err.hpp"
+#include "api/service_api_internal.hpp"
+#include "api/zlink_testing.hpp"
+
+#include <new>
+#include <vector>
+
+#include "services/discovery/discovery.hpp"
+
+namespace
+{
+template <typename Row>
+static int copy_snapshot_rows (const std::vector<Row> &rows_,
+                               Row *entries_,
+                               size_t *count_)
+exec
+/bin/bash -lc "sed -n '1,240p' core/src/services/spot/spot_node_access.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+#define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+
+namespace zlink
+{
+class spot_runtime_t;
+class spot_internal_receiver_t;
+class spot_node_t;
+
+struct spot_node_access_t
+{
+    static spot_runtime_t *runtime (spot_node_t *node_);
+    static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+    static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+    static void wake_control_task (spot_node_t *node_);
+    static void schedule_subscription_replay (spot_node_t *node_);
+};
+}
+exec
+/bin/bash -lc "sed -n '1,280p' core/src/services/spot/spot_node_access.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/spot/spot_node_access.hpp"
+
+#include "services/spot/spot_node.hpp"
+
+namespace zlink
+{
+spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+{
+    return node_ ? node_->runtime () : NULL;
+}
+
+spot_internal_receiver_t *
+spot_node_access_t::ensure_internal_receiver (spot_node_t *node_)
+{
+    return node_ ? node_->ensure_internal_receiver () : NULL;
+}
+exec
+/bin/bash -lc "sed -n '1,240p' core/src/api/service_poller_api.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,260p' core/src/api/monitor_service_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "utils/err.hpp"
+#include "api/service_api_internal.hpp"
+
+#include "services/gateway/gateway_access.hpp"
+#include "services/spot/spot_internal_receiver.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_sub.hpp"
+
+int validate_spot_generic_poller_events (short events_, bool *is_pub_out_)
+{
+    if (!is_pub_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (events_ == ZLINK_POLLOUT) {
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "api/monitor_api_internal.hpp"
+
+#include "services/spot/spot_internal_receiver.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_pub.hpp"
+
+bool has_open_spot_node_monitor_child (zlink::spot_node_t *node_)
+{
+    if (!node_)
+        return false;
+    if (has_open_service_monitor_for_subject (node_))
+        return true;
+
+    zlink::spot_internal_receiver_t *receiver =
+      zlink::spot_node_access_t::internal_receiver (node_);
+exec
+/bin/bash -lc "rg -n \"Phase 5|service access|factory|service seam|service_\\*_api|spot_node\" doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+269:- `gateway`, `discovery`, `spot` 서비스 경로와 관련 service access surface
+489:      spot_node_access.*
+518:- service access seam은 common hub가 아니라 service-local seam으로 둔다.
+724:- Phase 1c: existing service seam 기준 `zlink.cpp` concrete knowledge 제거
+730:  `zlink.cpp`가 concrete service include를 직접 덜 보게 만드는 **최소 service access/factory contract**
+733:- Phase 5는 이 최소 contract를 공통 규약으로 확장하고 정제하는 단계이지,
+805:### Phase 5 파일 묶음
+1058:### 6.6 Phase 5: service access / factory 경계 재정의
+1067:- Phase 1c에서 정리한 최소 service access/factory contract를
+1078:- 서비스별 access/factory 경계가 코드 탐색 시 바로 드러난다.
+1208:- service access seam은 service-local seam으로 두고,
+1352:### Phase 5~6 이후
+exec
+/bin/bash -lc "sed -n '1058,1128p' doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+### 6.6 Phase 5: service access / factory 경계 재정의
+
+### 목적
+
+1차 이후 확장된 service 경로가 public API 허브를 통해 concrete detail을
+다시 노출하지 않게 만든다.
+
+### 변경 내용
+
+- Phase 1c에서 정리한 최소 service access/factory contract를
+  **service-local access seam 중심**으로 정제하고 확장한다.
+- API 계층은 service contract만 보고 concrete implementation detail은 보지 않는다.
+- create/attach/start/stop/handler registration/query를 서비스 facade로 모은다.
+- `service_public_api_guard_t`는 semantic service API가 아니라
+  **public admission/close guard**로 두되,
+  access seam 자체는 common hub로 끌어올리지 않는다.
+
+### 산출물
+
+- API 계층은 service contract만 알고 concrete service 조립 로직은 줄어든다.
+exec
+/bin/bash -lc "sed -n '800,860p' doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+- `core/src/core/options.hpp`
+- `core/src/core/options.cpp`
+- option owner가 있는 각 subsystem 적용 지점
+
+### Phase 5 파일 묶음
+
+- `core/src/api/zlink.cpp`
+- `core/src/services/common/service_public_api.hpp`
+- `core/src/services/*/*_access.*`
+- 서비스 생성/attach/query 진입점
+
+### Phase 6 파일 묶음
+
+- `core/src/services/gateway/`
+- `core/src/services/discovery/`
+- `core/src/services/spot/`
+
+구현 순서 규칙:
+
+codex
+팀장님, Phase 5의 설계 기준을 대조해 보니 `gateway`와 `discovery`는 seam 쪽으로 이동했지만 `service_spot_node_api.cpp`는 아직 concrete 타입 지식이 API에 남아 있습니다. 이 부분까지 service-local seam으로 내리지 않으면 5.5의 닫힘 기준이 약합니다.
+exec
+/bin/bash -lc "sed -n '1,420p' core/src/api/service_spot_node_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "api/monitor_api_internal.hpp"
+#include "utils/err.hpp"
+#include "api/service_api_internal.hpp"
+#include "api/zlink_testing.hpp"
+
+#include <new>
+#include <vector>
+
+#include "services/discovery/discovery.hpp"
+
+namespace
+{
+template <typename Row>
+static int copy_snapshot_rows (const std::vector<Row> &rows_,
+                               Row *entries_,
+                               size_t *count_)
+exec
+/bin/bash -lc "sed -n '1,240p' core/src/api/zlink_testing.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_API_ZLINK_TESTING_HPP_INCLUDED__
+#define __ZLINK_API_ZLINK_TESTING_HPP_INCLUDED__
+
+#include "services/common/service_public_api.hpp"
+
+namespace zlink
+{
+service_public_api_guard_t *registry_query_public_api_guard_for_testing (
+  void *client_);
+void destroy_registry_query_client_for_testing (void *client_);
+
+service_public_api_guard_t *spot_public_api_guard_for_testing (void *spot_);
+void destroy_spot_handle_for_testing (void *spot_);
+}
+
+#endif
+exec
+/bin/bash -lc "rg -n \"destroy_spot_handle_for_testing|register_spot_mode_state|register_spot_node_mode_state|erase_spot_node_mode_state|clear_spot_node_handler_registration|in_spot_node_send_ready_callback\" core/src/api core/src/services -g'*.[ch]pp'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/api/service_spot_node_api.cpp:78:    register_spot_mode_state (spot);
+core/src/api/service_spot_node_api.cpp:79:    register_spot_node_mode_state (node);
+core/src/api/service_spot_node_api.cpp:100:    if (in_spot_node_send_ready_callback (node)
+core/src/api/service_spot_node_api.cpp:107:    zlink::destroy_spot_handle_for_testing (spot);
+core/src/api/service_spot_node_api.cpp:136:    register_spot_node_mode_state (node);
+core/src/api/service_spot_node_api.cpp:151:    if (in_spot_node_send_ready_callback (node)
+core/src/api/service_spot_node_api.cpp:158:    clear_spot_node_handler_registration (node);
+core/src/api/service_spot_node_api.cpp:163:    erase_spot_node_mode_state (node);
+core/src/api/service_api_internal.hpp:57:void register_spot_node_mode_state (zlink::spot_node_t *node_);
+core/src/api/service_api_internal.hpp:58:void register_spot_mode_state (spot_handle_t *spot_);
+core/src/api/service_api_internal.hpp:60:void erase_spot_node_mode_state (zlink::spot_node_t *node_);
+core/src/api/service_api_internal.hpp:80:bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_);
+core/src/api/service_api_internal.hpp:81:void clear_spot_node_handler_registration (zlink::spot_node_t *node_);
+core/src/api/service_handler_spot_api.cpp:194:bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
+core/src/api/service_handler_spot_api.cpp:208:void clear_spot_node_handler_registration (zlink::spot_node_t *node_)
+core/src/api/service_api.cpp:27:void destroy_spot_handle_for_testing (void *spot_)
+core/src/api/service_mode_api.cpp:185:void register_spot_node_mode_state (zlink::spot_node_t *node_)
+core/src/api/service_mode_api.cpp:194:void register_spot_mode_state (spot_handle_t *spot_)
+core/src/api/service_mode_api.cpp:212:void erase_spot_node_mode_state (zlink::spot_node_t *node_)
+core/src/api/zlink_testing.hpp:15:void destroy_spot_handle_for_testing (void *spot_);
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/services/spot/spot_node.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SPOT_NODE_HPP_INCLUDED__
+#define __ZLINK_SPOT_NODE_HPP_INCLUDED__
+
+#include "core/ctx.hpp"
+#include "core/msg.hpp"
+#include "core/thread.hpp"
+#include "services/common/service_public_api.hpp"
+#include "services/common/service_runtime_base.hpp"
+#include "services/discovery/discovery.hpp"
+#include "services/spot/spot_internal_receiver.hpp"
+#include "utils/atomic_counter.hpp"
+#include "utils/mutex.hpp"
+
+#include <atomic>
+#include <map>
+#include <set>
+#include <string>
+
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_api_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_API_SERVICE_API_INTERNAL_HPP_INCLUDED__
+#define __ZLINK_API_SERVICE_API_INTERNAL_HPP_INCLUDED__
+
+#include "zlink.h"
+
+#include "api/poller_api_internal.hpp"
+#include "services/common/service_public_api.hpp"
+#include "services/spot/spot_node.hpp"
+
+namespace zlink
+{
+class gateway_t;
+class spot_pub_t;
+class spot_sub_t;
+}
+
+struct spot_handle_t
+{
+exec
+/bin/bash -lc "sed -n '260,460p' core/src/api/service_gateway_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+int zlink_gateway_set_lb_strategy (void *gateway_,
+                                   zlink_gateway_lb_strategy_t strategy_)
+{
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::set_lb_strategy (gateway,
+                                                               strategy_)
+                   : -1;
+}
+
+int zlink_gateway_update_peer_weight (void *gateway_,
+                                      const zlink_routing_id_t *routing_id_,
+                                      uint32_t weight_)
+{
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::update_peer_weight (
+                       gateway, routing_id_, weight_)
+                   : -1;
+}
+
+int zlink_gateway_destroy (void **gateway_p_)
+exec
+/bin/bash -lc 'rg -n "spot_node_access.cpp|gateway_access.cpp|registry_access.cpp|discovery_access.cpp" core/CMakeLists.txt' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+1015:    src/services/discovery/discovery_access.cpp
+1016:    src/services/discovery/registry_access.cpp
+1024:    src/services/gateway/gateway_access.cpp
+1035:    src/services/spot/spot_node_access.cpp
+codex
+팀장님, 이제 Phase 5 보강 편집에 들어갑니다. 핵심은 `spot_node` 경로도 `gateway/discovery`와 같은 수준의 service-local seam으로 맞춰서 `service_spot_node_api.cpp`가 concrete lifecycle/query를 직접 소유하지 않게 만드는 것입니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/api/service_spot_node_api.cpp
+@@ -12,3 +12,3 @@
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+@@ -56,14 +56,7 @@
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+@@ -71,3 +64,3 @@
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+@@ -93,7 +86,5 @@
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+@@ -121,16 +112,9 @@
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+@@ -145,7 +129,5 @@
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+@@ -155,7 +137,7 @@
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+@@ -163,3 +145,3 @@
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+@@ -170,10 +152,4 @@
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+@@ -182,10 +158,5 @@
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+@@ -194,10 +165,6 @@
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+@@ -207,15 +174,4 @@
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+@@ -226,16 +182,7 @@
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+@@ -249,16 +196,7 @@
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+@@ -273,16 +211,8 @@
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+@@ -293,15 +223,6 @@
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_access.cpp
+@@ -6,2 +6,5 @@
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+@@ -10,2 +13,124 @@
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_access.hpp
+@@ -5,4 +5,10 @@
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+@@ -13,2 +19,23 @@
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+apply_patch(auto_approved=true) exited 0 in 15ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_access.hpp
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_access.cpp
+M /home/hep7/project/kairos/zlink/core/src/api/service_spot_node_api.cpp
+file update:
+diff --git a/core/src/api/service_spot_node_api.cpp b/core/src/api/service_spot_node_api.cpp
+index 62d59c2b95d27b5c54373e508bf38dedce1d1931..59fb214e4dd92310f984aa115cce62bd3b119be6
+--- a/core/src/api/service_spot_node_api.cpp
++++ b/core/src/api/service_spot_node_api.cpp
+@@ -10,7 +10,7 @@
+ #include <new>
+ #include <vector>
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+ namespace
+ {
+@@ -54,22 +54,15 @@
+         return NULL;
+     }
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+         return NULL;
+     }
+@@ -91,11 +84,9 @@
+     if (!spot)
+         return -1;
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+@@ -119,20 +110,13 @@
+     }
+     if (!service_name_ || service_name_[0] == '\0') {
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+     return static_cast<void *> (node);
+ }
+@@ -143,101 +127,64 @@
+         errno = EFAULT;
+         return -1;
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+         errno = EBUSY;
+         return -1;
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+     }
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+     return 0;
+ }
+ 
+ int zlink_spot_node_bind (void *node_, const char *endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+ 
+ int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+ 
+ int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+ 
+ int zlink_spot_node_status_snapshot (void *node_,
+                                      zlink_spot_node_status_t *out_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+ 
+ int zlink_spot_node_peers_snapshot (void *node_,
+                                     zlink_spot_node_peer_entry_t *entries_,
+                                     size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -247,20 +194,11 @@
+                                  zlink_spot_node_peer_entry_t *entries_,
+                                  size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -271,37 +209,20 @@
+   zlink_spot_node_subject_entry_t *entries_,
+   size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+ 
+ int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+diff --git a/core/src/services/spot/spot_node_access.cpp b/core/src/services/spot/spot_node_access.cpp
+index 86916f214ed22771e8be3ef097363ad89180b2b9..85d798b8d0c63749267a06dbff193623d7c02440
+--- a/core/src/services/spot/spot_node_access.cpp
++++ b/core/src/services/spot/spot_node_access.cpp
+@@ -4,10 +4,135 @@
+ 
+ #include "services/spot/spot_node_access.hpp"
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+ 
+ namespace zlink
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+ {
+     return node_ ? node_->runtime () : NULL;
+diff --git a/core/src/services/spot/spot_node_access.hpp b/core/src/services/spot/spot_node_access.hpp
+index 4feb352ff73abd26f08677a7ed868f9f7b553f5a..1b891e64740f60317346e544c7956771c6e38e9b
+--- a/core/src/services/spot/spot_node_access.hpp
++++ b/core/src/services/spot/spot_node_access.hpp
+@@ -3,14 +3,41 @@
+ #ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ #define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+ class spot_internal_receiver_t;
+ class spot_node_t;
+ 
+ struct spot_node_access_t
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+
+file update:
+diff --git a/core/src/api/service_spot_node_api.cpp b/core/src/api/service_spot_node_api.cpp
+index 62d59c2b95d27b5c54373e508bf38dedce1d1931..59fb214e4dd92310f984aa115cce62bd3b119be6
+--- a/core/src/api/service_spot_node_api.cpp
++++ b/core/src/api/service_spot_node_api.cpp
+@@ -10,7 +10,7 @@
+ #include <new>
+ #include <vector>
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+ namespace
+ {
+@@ -54,22 +54,15 @@
+         return NULL;
+     }
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+         return NULL;
+     }
+@@ -91,11 +84,9 @@
+     if (!spot)
+         return -1;
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+@@ -119,20 +110,13 @@
+     }
+     if (!service_name_ || service_name_[0] == '\0') {
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+     return static_cast<void *> (node);
+ }
+@@ -143,101 +127,64 @@
+         errno = EFAULT;
+         return -1;
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+         errno = EBUSY;
+         return -1;
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+     }
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+     return 0;
+ }
+ 
+ int zlink_spot_node_bind (void *node_, const char *endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+ 
+ int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+ 
+ int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+ 
+ int zlink_spot_node_status_snapshot (void *node_,
+                                      zlink_spot_node_status_t *out_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+ 
+ int zlink_spot_node_peers_snapshot (void *node_,
+                                     zlink_spot_node_peer_entry_t *entries_,
+                                     size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -247,20 +194,11 @@
+                                  zlink_spot_node_peer_entry_t *entries_,
+                                  size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -271,37 +209,20 @@
+   zlink_spot_node_subject_entry_t *entries_,
+   size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+ 
+ int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+diff --git a/core/src/services/spot/spot_node_access.cpp b/core/src/services/spot/spot_node_access.cpp
+index 86916f214ed22771e8be3ef097363ad89180b2b9..85d798b8d0c63749267a06dbff193623d7c02440
+--- a/core/src/services/spot/spot_node_access.cpp
++++ b/core/src/services/spot/spot_node_access.cpp
+@@ -4,10 +4,135 @@
+ 
+ #include "services/spot/spot_node_access.hpp"
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+ 
+ namespace zlink
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+ {
+     return node_ ? node_->runtime () : NULL;
+diff --git a/core/src/services/spot/spot_node_access.hpp b/core/src/services/spot/spot_node_access.hpp
+index 4feb352ff73abd26f08677a7ed868f9f7b553f5a..1b891e64740f60317346e544c7956771c6e38e9b
+--- a/core/src/services/spot/spot_node_access.hpp
++++ b/core/src/services/spot/spot_node_access.hpp
+@@ -3,14 +3,41 @@
+ #ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ #define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+ class spot_internal_receiver_t;
+ class spot_node_t;
+ 
+ struct spot_node_access_t
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+
+codex
+팀장님, `spot_node` API 경로를 seam 쪽으로 내렸습니다. 이제 빌드로 깨지는 지점을 잡고, Phase 5 대표 회귀부터 확인한 뒤 문서 상태를 올리겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/spot/spot_node_access.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/spot/spot_node_access.hpp"
+
+#include <new>
+
+#include "services/discovery/discovery_access.hpp"
+#include "services/spot/spot_node.hpp"
+
+namespace zlink
+{
+void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
+{
+    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
+    if (!node) {
+        errno = ENOMEM;
+        return NULL;
+    }
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_spot_node_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "api/monitor_api_internal.hpp"
+#include "utils/err.hpp"
+#include "api/service_api_internal.hpp"
+#include "api/zlink_testing.hpp"
+
+#include <new>
+#include <vector>
+
+#include "services/spot/spot_node_access.hpp"
+
+namespace
+{
+template <typename Row>
+static int copy_snapshot_rows (const std::vector<Row> &rows_,
+                               Row *entries_,
+                               size_t *count_)
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/api/service_spot_node_api.cpp b/core/src/api/service_spot_node_api.cpp
+index 62d59c2b95d27b5c54373e508bf38dedce1d1931..59fb214e4dd92310f984aa115cce62bd3b119be6
+--- a/core/src/api/service_spot_node_api.cpp
++++ b/core/src/api/service_spot_node_api.cpp
+@@ -10,7 +10,7 @@
+ #include <new>
+ #include <vector>
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+ namespace
+ {
+@@ -54,22 +54,15 @@
+         return NULL;
+     }
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+         return NULL;
+     }
+@@ -91,11 +84,9 @@
+     if (!spot)
+         return -1;
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+@@ -119,20 +110,13 @@
+     }
+     if (!service_name_ || service_name_[0] == '\0') {
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+     return static_cast<void *> (node);
+ }
+@@ -143,101 +127,64 @@
+         errno = EFAULT;
+         return -1;
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+         errno = EBUSY;
+         return -1;
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+     }
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+     return 0;
+ }
+ 
+ int zlink_spot_node_bind (void *node_, const char *endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+ 
+ int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+ 
+ int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+ 
+ int zlink_spot_node_status_snapshot (void *node_,
+                                      zlink_spot_node_status_t *out_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+ 
+ int zlink_spot_node_peers_snapshot (void *node_,
+                                     zlink_spot_node_peer_entry_t *entries_,
+                                     size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -247,20 +194,11 @@
+                                  zlink_spot_node_peer_entry_t *entries_,
+                                  size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -271,37 +209,20 @@
+   zlink_spot_node_subject_entry_t *entries_,
+   size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+ 
+ int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+diff --git a/core/src/services/spot/spot_node_access.cpp b/core/src/services/spot/spot_node_access.cpp
+index 86916f214ed22771e8be3ef097363ad89180b2b9..85d798b8d0c63749267a06dbff193623d7c02440
+--- a/core/src/services/spot/spot_node_access.cpp
++++ b/core/src/services/spot/spot_node_access.cpp
+@@ -4,10 +4,135 @@
+ 
+ #include "services/spot/spot_node_access.hpp"
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+ 
+ namespace zlink
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+ {
+     return node_ ? node_->runtime () : NULL;
+diff --git a/core/src/services/spot/spot_node_access.hpp b/core/src/services/spot/spot_node_access.hpp
+index 4feb352ff73abd26f08677a7ed868f9f7b553f5a..1b891e64740f60317346e544c7956771c6e38e9b
+--- a/core/src/services/spot/spot_node_access.hpp
++++ b/core/src/services/spot/spot_node_access.hpp
+@@ -3,14 +3,41 @@
+ #ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ #define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+ class spot_internal_receiver_t;
+ class spot_node_t;
+ 
+ struct spot_node_access_t
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+
+file update:
+diff --git a/core/src/api/service_spot_node_api.cpp b/core/src/api/service_spot_node_api.cpp
+index 62d59c2b95d27b5c54373e508bf38dedce1d1931..59fb214e4dd92310f984aa115cce62bd3b119be6
+--- a/core/src/api/service_spot_node_api.cpp
++++ b/core/src/api/service_spot_node_api.cpp
+@@ -10,7 +10,7 @@
+ #include <new>
+ #include <vector>
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+ namespace
+ {
+@@ -54,22 +54,15 @@
+         return NULL;
+     }
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+         return NULL;
+     }
+@@ -91,11 +84,9 @@
+     if (!spot)
+         return -1;
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+@@ -119,20 +110,13 @@
+     }
+     if (!service_name_ || service_name_[0] == '\0') {
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+     return static_cast<void *> (node);
+ }
+@@ -143,101 +127,64 @@
+         errno = EFAULT;
+         return -1;
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+         errno = EBUSY;
+         return -1;
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+     }
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+     return 0;
+ }
+ 
+ int zlink_spot_node_bind (void *node_, const char *endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+ 
+ int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+ 
+ int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+ 
+ int zlink_spot_node_status_snapshot (void *node_,
+                                      zlink_spot_node_status_t *out_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+ 
+ int zlink_spot_node_peers_snapshot (void *node_,
+                                     zlink_spot_node_peer_entry_t *entries_,
+                                     size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -247,20 +194,11 @@
+                                  zlink_spot_node_peer_entry_t *entries_,
+                                  size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -271,37 +209,20 @@
+   zlink_spot_node_subject_entry_t *entries_,
+   size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+ 
+ int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+diff --git a/core/src/services/spot/spot_node_access.cpp b/core/src/services/spot/spot_node_access.cpp
+index 86916f214ed22771e8be3ef097363ad89180b2b9..85d798b8d0c63749267a06dbff193623d7c02440
+--- a/core/src/services/spot/spot_node_access.cpp
++++ b/core/src/services/spot/spot_node_access.cpp
+@@ -4,10 +4,135 @@
+ 
+ #include "services/spot/spot_node_access.hpp"
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+ 
+ namespace zlink
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+ {
+     return node_ ? node_->runtime () : NULL;
+diff --git a/core/src/services/spot/spot_node_access.hpp b/core/src/services/spot/spot_node_access.hpp
+index 4feb352ff73abd26f08677a7ed868f9f7b553f5a..1b891e64740f60317346e544c7956771c6e38e9b
+--- a/core/src/services/spot/spot_node_access.hpp
++++ b/core/src/services/spot/spot_node_access.hpp
+@@ -3,14 +3,41 @@
+ #ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ #define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+ class spot_internal_receiver_t;
+ class spot_node_t;
+ 
+ struct spot_node_access_t
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+
+ succeeded in 13.71s:
+[  1%] Building CXX object core/CMakeFiles/objects.dir/src/api/monitor_service_open_api.cpp.o
+[  1%] Building CXX object core/CMakeFiles/objects.dir/src/api/monitor_service_api.cpp.o
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/api/service_handler_spot_api.cpp.o
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/api/service_poller_api.cpp.o
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/api/service_spot_node_api.cpp.o
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/api/service_spot_api.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/api/service_spot_subject_option_api.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/api/service_spot_subject_subscription_api.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_node_access.cpp.o
+[ 49%] Built target objects
+[ 49%] Linking CXX static library ../lib/libzlink.a
+[ 49%] Linking CXX shared library ../lib/libzlink.so
+[ 49%] Built target libzlink-static
+[ 50%] Built target testutil-static
+[ 50%] Linking CXX executable ../../../bin/unittest_zmp_decoder
+[ 50%] Linking CXX executable ../../../bin/unittest_radix_tree
+[ 50%] Linking CXX executable ../../../bin/unittest_mtrie
+[ 51%] Linking CXX executable ../../../bin/unittest_raw_decoder
+[ 51%] Linking CXX executable ../../../bin/unittest_ypipe
+file update:
+diff --git a/core/src/api/service_spot_node_api.cpp b/core/src/api/service_spot_node_api.cpp
+index 62d59c2b95d27b5c54373e508bf38dedce1d1931..59fb214e4dd92310f984aa115cce62bd3b119be6
+--- a/core/src/api/service_spot_node_api.cpp
++++ b/core/src/api/service_spot_node_api.cpp
+@@ -10,7 +10,7 @@
+ #include <new>
+ #include <vector>
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+ namespace
+ {
+@@ -54,22 +54,15 @@
+         return NULL;
+     }
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+         return NULL;
+     }
+@@ -91,11 +84,9 @@
+     if (!spot)
+         return -1;
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+@@ -119,20 +110,13 @@
+     }
+     if (!service_name_ || service_name_[0] == '\0') {
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+     return static_cast<void *> (node);
+ }
+@@ -143,101 +127,64 @@
+         errno = EFAULT;
+         return -1;
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+         errno = EBUSY;
+         return -1;
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+     }
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+     return 0;
+ }
+ 
+ int zlink_spot_node_bind (void *node_, const char *endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+ 
+ int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+ 
+ int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+ 
+ int zlink_spot_node_status_snapshot (void *node_,
+                                      zlink_spot_node_status_t *out_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+ 
+ int zlink_spot_node_peers_snapshot (void *node_,
+                                     zlink_spot_node_peer_entry_t *entries_,
+                                     size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -247,20 +194,11 @@
+                                  zlink_spot_node_peer_entry_t *entries_,
+                                  size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -271,37 +209,20 @@
+   zlink_spot_node_subject_entry_t *entries_,
+   size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+ 
+ int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+diff --git a/core/src/services/spot/spot_node_access.cpp b/core/src/services/spot/spot_node_access.cpp
+index 86916f214ed22771e8be3ef097363ad89180b2b9..85d798b8d0c63749267a06dbff193623d7c02440
+--- a/core/src/services/spot/spot_node_access.cpp
++++ b/core/src/services/spot/spot_node_access.cpp
+@@ -4,10 +4,135 @@
+ 
+ #include "services/spot/spot_node_access.hpp"
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+ 
+ namespace zlink
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+ {
+     return node_ ? node_->runtime () : NULL;
+diff --git a/core/src/services/spot/spot_node_access.hpp b/core/src/services/spot/spot_node_access.hpp
+index 4feb352ff73abd26f08677a7ed868f9f7b553f5a..1b891e64740f60317346e544c7956771c6e38e9b
+--- a/core/src/services/spot/spot_node_access.hpp
++++ b/core/src/services/spot/spot_node_access.hpp
+@@ -3,14 +3,41 @@
+ #ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ #define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+ class spot_internal_receiver_t;
+ class spot_node_t;
+ 
+ struct spot_node_access_t
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+
+codex
+팀장님, 빌드는 통과했습니다. 이제 Phase 5 닫힘 기준인 gateway/discovery 대표 회귀를 먼저 실행하고, 제가 건드린 `spot_node` 경로는 추가 spot 회귀로 같이 확인하겠습니다.
+exec
+/bin/bash -lc 'git diff -- core/include/zlink.h core/src/libzlink.vers' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection)$'"'" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(test_spot_pubsub_scenario|test_spot_service_introspection)$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/api/service_spot_node_api.cpp b/core/src/api/service_spot_node_api.cpp
+index 62d59c2b95d27b5c54373e508bf38dedce1d1931..59fb214e4dd92310f984aa115cce62bd3b119be6
+--- a/core/src/api/service_spot_node_api.cpp
++++ b/core/src/api/service_spot_node_api.cpp
+@@ -10,7 +10,7 @@
+ #include <new>
+ #include <vector>
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+ namespace
+ {
+@@ -54,22 +54,15 @@
+         return NULL;
+     }
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+         return NULL;
+     }
+@@ -91,11 +84,9 @@
+     if (!spot)
+         return -1;
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+@@ -119,20 +110,13 @@
+     }
+     if (!service_name_ || service_name_[0] == '\0') {
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+     return static_cast<void *> (node);
+ }
+@@ -143,101 +127,64 @@
+         errno = EFAULT;
+         return -1;
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+         errno = EBUSY;
+         return -1;
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+     }
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+     return 0;
+ }
+ 
+ int zlink_spot_node_bind (void *node_, const char *endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+ 
+ int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+ 
+ int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+ 
+ int zlink_spot_node_status_snapshot (void *node_,
+                                      zlink_spot_node_status_t *out_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+ 
+ int zlink_spot_node_peers_snapshot (void *node_,
+                                     zlink_spot_node_peer_entry_t *entries_,
+                                     size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -247,20 +194,11 @@
+                                  zlink_spot_node_peer_entry_t *entries_,
+                                  size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -271,37 +209,20 @@
+   zlink_spot_node_subject_entry_t *entries_,
+   size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+ 
+ int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+diff --git a/core/src/services/spot/spot_node_access.cpp b/core/src/services/spot/spot_node_access.cpp
+index 86916f214ed22771e8be3ef097363ad89180b2b9..85d798b8d0c63749267a06dbff193623d7c02440
+--- a/core/src/services/spot/spot_node_access.cpp
++++ b/core/src/services/spot/spot_node_access.cpp
+@@ -4,10 +4,135 @@
+ 
+ #include "services/spot/spot_node_access.hpp"
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+ 
+ namespace zlink
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+ {
+     return node_ ? node_->runtime () : NULL;
+diff --git a/core/src/services/spot/spot_node_access.hpp b/core/src/services/spot/spot_node_access.hpp
+index 4feb352ff73abd26f08677a7ed868f9f7b553f5a..1b891e64740f60317346e544c7956771c6e38e9b
+--- a/core/src/services/spot/spot_node_access.hpp
++++ b/core/src/services/spot/spot_node_access.hpp
+@@ -3,14 +3,41 @@
+ #ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ #define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+ class spot_internal_receiver_t;
+ class spot_node_t;
+ 
+ struct spot_node_access_t
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+
+file update:
+diff --git a/core/src/api/service_spot_node_api.cpp b/core/src/api/service_spot_node_api.cpp
+index 62d59c2b95d27b5c54373e508bf38dedce1d1931..59fb214e4dd92310f984aa115cce62bd3b119be6
+--- a/core/src/api/service_spot_node_api.cpp
++++ b/core/src/api/service_spot_node_api.cpp
+@@ -10,7 +10,7 @@
+ #include <new>
+ #include <vector>
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+ namespace
+ {
+@@ -54,22 +54,15 @@
+         return NULL;
+     }
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+         return NULL;
+     }
+@@ -91,11 +84,9 @@
+     if (!spot)
+         return -1;
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+@@ -119,20 +110,13 @@
+     }
+     if (!service_name_ || service_name_[0] == '\0') {
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+     return static_cast<void *> (node);
+ }
+@@ -143,101 +127,64 @@
+         errno = EFAULT;
+         return -1;
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+         errno = EBUSY;
+         return -1;
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+     }
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+     return 0;
+ }
+ 
+ int zlink_spot_node_bind (void *node_, const char *endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+ 
+ int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+ 
+ int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+ 
+ int zlink_spot_node_status_snapshot (void *node_,
+                                      zlink_spot_node_status_t *out_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+ 
+ int zlink_spot_node_peers_snapshot (void *node_,
+                                     zlink_spot_node_peer_entry_t *entries_,
+                                     size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -247,20 +194,11 @@
+                                  zlink_spot_node_peer_entry_t *entries_,
+                                  size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -271,37 +209,20 @@
+   zlink_spot_node_subject_entry_t *entries_,
+   size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+ 
+ int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+diff --git a/core/src/services/spot/spot_node_access.cpp b/core/src/services/spot/spot_node_access.cpp
+index 86916f214ed22771e8be3ef097363ad89180b2b9..85d798b8d0c63749267a06dbff193623d7c02440
+--- a/core/src/services/spot/spot_node_access.cpp
++++ b/core/src/services/spot/spot_node_access.cpp
+@@ -4,10 +4,135 @@
+ 
+ #include "services/spot/spot_node_access.hpp"
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+ 
+ namespace zlink
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+ {
+     return node_ ? node_->runtime () : NULL;
+diff --git a/core/src/services/spot/spot_node_access.hpp b/core/src/services/spot/spot_node_access.hpp
+index 4feb352ff73abd26f08677a7ed868f9f7b553f5a..1b891e64740f60317346e544c7956771c6e38e9b
+--- a/core/src/services/spot/spot_node_access.hpp
++++ b/core/src/services/spot/spot_node_access.hpp
+@@ -3,14 +3,41 @@
+ #ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ #define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+ class spot_internal_receiver_t;
+ class spot_node_t;
+ 
+ struct spot_node_access_t
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+
+ succeeded in 15.14s:
+3/4 Test #34: test_service_discovery ...........   Passed    0.61 sec
+    Start 35: test_service_introspection
+4/4 Test #35: test_service_introspection .......   Passed   14.59 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+e2e            =  15.20 sec*proc (2 tests)
+integration    =   0.06 sec*proc (2 tests)
+serial         =  15.27 sec*proc (4 tests)
+
+Total Test time (real) =  15.27 sec
+file update:
+diff --git a/core/src/api/service_spot_node_api.cpp b/core/src/api/service_spot_node_api.cpp
+index 62d59c2b95d27b5c54373e508bf38dedce1d1931..59fb214e4dd92310f984aa115cce62bd3b119be6
+--- a/core/src/api/service_spot_node_api.cpp
++++ b/core/src/api/service_spot_node_api.cpp
+@@ -10,7 +10,7 @@
+ #include <new>
+ #include <vector>
+ 
+-#include "services/discovery/discovery.hpp"
++#include "services/spot/spot_node_access.hpp"
+ 
+ namespace
+ {
+@@ -54,22 +54,15 @@
+         return NULL;
+     }
+ 
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+-        return NULL;
+-    }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+ 
+     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+     if (!spot) {
+-        delete node;
++        zlink::spot_node_access_t::delete_handle (node);
+         errno = ENOMEM;
+         return NULL;
+     }
+@@ -91,11 +84,9 @@
+     if (!spot)
+         return -1;
+ 
+-    zlink::spot_node_t *node = spot->node;
+-    if (!node || !node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
++    if (!node)
+         return -1;
+-    }
+ 
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+@@ -119,20 +110,13 @@
+     }
+     if (!service_name_ || service_name_[0] == '\0') {
+         errno = EINVAL;
+-        return NULL;
+-    }
+-    zlink::spot_node_t *node =
+-      new (std::nothrow)
+-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
+-    if (!node) {
+-        errno = ENOMEM;
+         return NULL;
+     }
+-    if (!node->check_tag ()) {
+-        delete node;
+-        errno = EINVAL;
++    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
++      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
++                                         service_name_));
++    if (!node)
+         return NULL;
+-    }
+     register_spot_node_mode_state (node);
+     return static_cast<void *> (node);
+ }
+@@ -143,101 +127,64 @@
+         errno = EFAULT;
+         return -1;
+     }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
++    if (!node)
+         return -1;
+-    }
+     if (in_spot_node_send_ready_callback (node)
+         || in_spot_node_monitor_callback (node)) {
+         errno = EBUSY;
+         return -1;
+     }
+-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
++    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
+         return -1;
+     clear_spot_node_handler_registration (node);
+-    if (node->destroy () != 0) {
+-        node->public_api_guard ().cancel_close ();
++    if (zlink::spot_node_access_t::destroy (node) != 0) {
++        zlink::spot_node_access_t::cancel_close (node);
+         return -1;
+     }
+     erase_spot_node_mode_state (node);
+-    delete node;
++    zlink::spot_node_access_t::delete_handle (node);
+     *node_p_ = NULL;
+     return 0;
+ }
+ 
+ int zlink_spot_node_bind (void *node_, const char *endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->bind (endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
+ }
+ 
+ int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->connect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
++                : -1;
+ }
+ 
+ int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
+ {
+-    if (!node_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->disconnect_peer_pub (peer_endpoint_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node
++             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
++             : -1;
+ }
+ 
+ int zlink_spot_node_status_snapshot (void *node_,
+                                      zlink_spot_node_status_t *out_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
+-        return -1;
+-    return node->snapshot_status (out_);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
+ }
+ 
+ int zlink_spot_node_peers_snapshot (void *node_,
+                                     zlink_spot_node_peer_entry_t *entries_,
+                                     size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (NULL, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -247,20 +194,11 @@
+                                  zlink_spot_node_peer_entry_t *entries_,
+                                  size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_peer_entry_t> rows;
+-    if (node->snapshot_peers (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+@@ -271,37 +209,20 @@
+   zlink_spot_node_subject_entry_t *entries_,
+   size_t *count_)
+ {
+-    if (!node_) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+-    if (!admission.acquired ())
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    if (!node)
+         return -1;
+     std::vector<zlink_spot_node_subject_entry_t> rows;
+-    if (node->snapshot_subjects (filter_, &rows) != 0)
++    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
++        != 0)
+         return -1;
+     return copy_snapshot_rows (rows, entries_, count_);
+ }
+ 
+ int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
+ {
+-    if (!node_ || !discovery_)
+-        return -1;
+-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+-    if (!node->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
+-    if (!disc->check_tag ()) {
+-        errno = EFAULT;
+-        return -1;
+-    }
+-    return node->attach_discovery (disc);
++    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
++    return node ? zlink::spot_node_access_t::attach_discovery (
++                    node, discovery_)
++                : -1;
+ }
+diff --git a/core/src/services/spot/spot_node_access.cpp b/core/src/services/spot/spot_node_access.cpp
+index 86916f214ed22771e8be3ef097363ad89180b2b9..85d798b8d0c63749267a06dbff193623d7c02440
+--- a/core/src/services/spot/spot_node_access.cpp
++++ b/core/src/services/spot/spot_node_access.cpp
+@@ -4,10 +4,135 @@
+ 
+ #include "services/spot/spot_node_access.hpp"
+ 
++#include <new>
++
++#include "services/discovery/discovery_access.hpp"
+ #include "services/spot/spot_node.hpp"
+ 
+ namespace zlink
+ {
++void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
++{
++    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
++    if (!node) {
++        errno = ENOMEM;
++        return NULL;
++    }
++    if (!node->check_tag ()) {
++        delete node;
++        errno = EINVAL;
++        return NULL;
++    }
++    return node;
++}
++
++spot_node_t *spot_node_access_t::from_handle (void *node_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return NULL;
++    }
++
++    spot_node_t *node = static_cast<spot_node_t *> (node_);
++    if (!node->check_tag ()) {
++        errno = EFAULT;
++        return NULL;
++    }
++    return node;
++}
++
++int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
++{
++    return node_ ? node_->bind (endpoint_) : -1;
++}
++
++int spot_node_access_t::connect_peer (spot_node_t *node_,
++                                      const char *peer_endpoint_)
++{
++    return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::disconnect_peer (spot_node_t *node_,
++                                         const char *peer_endpoint_)
++{
++    return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
++}
++
++int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
++{
++    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
++                                                                           : -1;
++}
++
++void spot_node_access_t::cancel_close (spot_node_t *node_)
++{
++    if (node_)
++        node_->public_api_guard ().cancel_close ();
++}
++
++int spot_node_access_t::destroy (spot_node_t *node_)
++{
++    return node_ ? node_->destroy () : -1;
++}
++
++void spot_node_access_t::delete_handle (spot_node_t *node_)
++{
++    delete node_;
++}
++
++int spot_node_access_t::status_snapshot (spot_node_t *node_,
++                                         zlink_spot_node_status_t *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_status (out_);
++}
++
++int spot_node_access_t::peers_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_peer_filter_t *filter_,
++  std::vector<zlink_spot_node_peer_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_peers (filter_, out_);
++}
++
++int spot_node_access_t::subjects_snapshot (
++  spot_node_t *node_,
++  const zlink_spot_node_subject_filter_t *filter_,
++  std::vector<zlink_spot_node_subject_entry_t> *out_)
++{
++    if (!node_) {
++        errno = EFAULT;
++        return -1;
++    }
++    service_public_api_scope_t admission (node_->public_api_guard ());
++    if (!admission.acquired ())
++        return -1;
++    return node_->snapshot_subjects (filter_, out_);
++}
++
++int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
++{
++    if (!node_ || !discovery_) {
++        errno = EFAULT;
++        return -1;
++    }
++    discovery_t *discovery = discovery_access_t::from_handle (discovery_);
++    return discovery ? node_->attach_discovery (discovery) : -1;
++}
++
+ spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
+ {
+     return node_ ? node_->runtime () : NULL;
+diff --git a/core/src/services/spot/spot_node_access.hpp b/core/src/services/spot/spot_node_access.hpp
+index 4feb352ff73abd26f08677a7ed868f9f7b553f5a..1b891e64740f60317346e544c7956771c6e38e9b
+--- a/core/src/services/spot/spot_node_access.hpp
++++ b/core/src/services/spot/spot_node_access.hpp
+@@ -3,14 +3,41 @@
+ #ifndef __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ #define __ZLINK_SPOT_NODE_ACCESS_HPP_INCLUDED__
+ 
++#include <zlink.h>
++
++#include <vector>
++
+ namespace zlink
+ {
++class ctx_t;
++class discovery_t;
+ class spot_runtime_t;
+ class spot_internal_receiver_t;
+ class spot_node_t;
+ 
+ struct spot_node_access_t
+ {
++    static void *create (ctx_t *ctx_, const char *service_name_);
++    static spot_node_t *from_handle (void *node_);
++    static int bind (spot_node_t *node_, const char *endpoint_);
++    static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
++    static int disconnect_peer (spot_node_t *node_,
++                                const char *peer_endpoint_);
++    static int begin_close_or_fail_busy (spot_node_t *node_);
++    static void cancel_close (spot_node_t *node_);
++    static int destroy (spot_node_t *node_);
++    static void delete_handle (spot_node_t *node_);
++    static int status_snapshot (spot_node_t *node_,
++                                zlink_spot_node_status_t *out_);
++    static int peers_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_peer_filter_t *filter_,
++      std::vector<zlink_spot_node_peer_entry_t> *out_);
++    static int subjects_snapshot (
++      spot_node_t *node_,
++      const zlink_spot_node_subject_filter_t *filter_,
++      std::vector<zlink_spot_node_subject_entry_t> *out_);
++    static int attach_discovery (spot_node_t *node_, void *discovery_);
+     static spot_runtime_t *runtime (spot_node_t *node_);
+     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
+     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+
+codex
+팀장님, Phase 5 필수 회귀 4개는 모두 통과했습니다. 추가로 `spot_node` 경로를 건드린 만큼 spot 회귀까지 이어서 확인 중입니다.

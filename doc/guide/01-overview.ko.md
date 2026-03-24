@@ -4,12 +4,13 @@
 
 ## 1. zlink이란?
 
-zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리이다. 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공한다.
+zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리이다.
+핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공한다.
 
 ### libzmq 대비 변경 사항
 
-| | libzmq | zlink |
-|---|--------|-------|
+| 항목 | libzmq | zlink |
+|------|--------|-------|
 | **Socket Types** | 17종 (draft 포함) | **8종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
 | **I/O Engine** | 자체 poll/epoll/kqueue | **Boost.Asio** (번들, 외부 의존성 없음) |
 | **암호화** | CURVE (libsodium) | **TLS** (OpenSSL) — `tls://`, `wss://` |
@@ -22,18 +23,33 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  Application Layer                                    │
-│  zlink_ctx_new() · zlink_socket() · zlink_send() · callback dispatch │
+│  Application / Bindings                               │
+│  C callers · cpp · dotnet · java · node · python      │
 ├──────────────────────────────────────────────────────┤
-│  Socket Logic Layer                                   │
+│  Public API Facade  (core/src/api/)                   │
+│  context_api · socket_api · message_api               │
+│  service_api · poller_api · monitor_api               │
+│  validate + delegate, per-handle admission guard      │
+├──────────────────────────────────────────────────────┤
+│  Service Layer                                        │
+│  Gateway · Discovery · SPOT · Registry                │
+│  service access seam (*_access) · lifecycle · runtime │
+├──────────────────────────────────────────────────────┤
+│  Socket Semantic / Runtime                            │
 │  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM│
-│  라우팅: lb_t(Round-robin) · fq_t · dist_t            │
+│  semantic entrypoint + runtime components             │
+│  (dispatch · monitor · endpoint · lifecycle)          │
+├──────────────────────────────────────────────────────┤
+│  Runtime Core  (core/src/core/)                       │
+│  ctx · own · reaper · multipart_send_txn              │
+│  options dispatch (core_socket · transport · protocol)│
+│  close/drain/finalization contract                    │
 ├──────────────────────────────────────────────────────┤
 │  Engine Layer (Boost.Asio)                            │
 │  asio_zmp_engine — ZMP v1.0 Protocol (8B 고정 헤더)   │
 │  Proactor 패턴 · Speculative I/O · Backpressure       │
 ├──────────────────────────────────────────────────────┤
-│  Transport Layer                                      │
+│  Transport / Protocol                                 │
 │  tcp · ipc · inproc · ws — 평문                       │
 │  tls · wss             — OpenSSL 암호화               │
 ├──────────────────────────────────────────────────────┤
@@ -42,6 +58,17 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 │  ctx_t(I/O Thread Pool) · session_base_t(Bridge)      │
 └──────────────────────────────────────────────────────┘
 ```
+
+각 계층의 핵심 역할:
+
+| 계층 | 역할 |
+|------|------|
+| Public API Facade | C API 진입점. validate + delegate만 수행 |
+| Service Layer | 서비스 의미와 lifecycle. access seam으로 API와 연결 |
+| Socket Semantic/Runtime | socket family 의미와 공통 runtime이 분리 |
+| Runtime Core | context, shutdown, option dispatch, multipart send |
+| Engine Layer | Boost.Asio 기반 poller, io_context 실행 기반 |
+| Transport/Protocol | wire format, TLS handshake, address scheme |
 
 ## 3. 핵심 설계
 

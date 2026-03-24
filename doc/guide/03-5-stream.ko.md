@@ -40,55 +40,26 @@ zlink_bind(stream, "tcp://0.0.0.0:8080");
 
 ---
 
-## 3. 메시지 모델
+## 3. STREAM 고유 동작
 
-### 3.1 wire (네트워크)
+STREAM은 다른 소켓과 동일한 recv/callback 모델을 사용한다.
+STREAM만의 고유 동작은 다음과 같다.
 
-```
-+----------------------+-------------------+
-| body_len (4B, BE)    | body (N bytes)    |
-+----------------------+-------------------+
-```
+- `source_rid`는 서버가 연결별로 자동 할당하며,
+  고정 4바이트(`uint32`, big-endian)이다.
+- 연결/해제 이벤트가 메시지로 전달된다:
 
-### 3.2 zlink STREAM API (애플리케이션)
-
-STREAM 소켓에서 애플리케이션이 보는 형태:
-
-```
-Frame 0: routing_id (4 bytes)
-Frame 1: payload (N bytes)
-```
-
-- `routing_id`는 서버가 연결별로 자동 할당한다.
-- 고정 4바이트(`uint32`, big-endian)이다.
-
-### 3.3 이벤트 payload
-
-| payload | 의미 |
-|---|---|
+| payload 값 | 의미 |
+|------------|------|
 | `0x01` (1 byte) | connect 이벤트 |
 | `0x00` (1 byte) | disconnect 이벤트 |
 | 그 외 | 일반 데이터 |
 
 ---
 
-## 4. 수신 모델과 콜백 Dispatch
+## 4. 콜백 예시
 
-STREAM은 `recv()` 기반 수신과 callback 기반 수신을 모두 지원한다.
-기본 recv surface와 callback surface는 아래 공통 규칙으로 정렬된다.
-
-- `zlink_recv_handler()`를 붙이면 STREAM 수신 surface가 callback 쪽으로 전환된다.
-- callback이 활성인 동안 `zlink_recv()` / `zlink_msg_recv()`는 `EBUSY`로 실패한다.
-- callback이 활성인 동안 data-plane `ZLINK_POLLIN` poller 등록도 `EBUSY`로
-  실패한다.
-- `zlink_send_ready_handler()`는 receive callback과 독립적으로 붙일 수 있다.
-- send-ready가 활성인 동안 data-plane `ZLINK_POLLOUT` poller 등록은 `EBUSY`로
-  실패한다.
-
-즉 STREAM은 "callback only" 소켓이 아니라, recv model에서 시작해서 callback
-attach 시 receive surface만 callback 쪽으로 바뀌는 dual-surface 소켓이다.
-
-### 콜백 Dispatch 예시
+STREAM의 콜백에서는 connect/disconnect 이벤트와 데이터를 구분해야 한다.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -163,8 +134,15 @@ recv(fd, body, body_len, MSG_WAITALL);
 ## 6. 옵션 및 런타임 정책
 
 주요 옵션:
-- 지원: `ZLINK_OPT_MAXMSGSIZE`, `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF`, `ZLINK_OPT_BACKLOG`, `ZLINK_OPT_LINGER`
-- TLS/WSS 서버: `zlink_set_tls_server()` / TLS 클라이언트: `zlink_set_tls_client()`
+
+- 지원:
+  - `ZLINK_OPT_MAXMSGSIZE`
+  - `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`
+  - `ZLINK_OPT_SNDBUF` / `ZLINK_OPT_RCVBUF`
+  - `ZLINK_OPT_BACKLOG`
+  - `ZLINK_OPT_LINGER`
+- TLS/WSS 서버: `zlink_set_tls_server()`
+- TLS 클라이언트: `zlink_set_tls_client()`
 
 비지원/변경:
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`를 STREAM에 설정하면 `EOPNOTSUPP`
@@ -179,26 +157,8 @@ recv(fd, body, body_len, MSG_WAITALL);
 - STREAM accept 동시성 기본값: `4` (최대 `128`로 clamp)
 - STREAM 세션 스케줄링 기본값: `rr`
 
-### 6.2 STREAM 런타임 환경변수 (현재 유지)
-
-- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY` (기본 `4`, STREAM listener 전용)
-- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`, 기본 `rr`)
-- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ` (기본 off)
-- `ZLINK_ASIO_STREAM_DISABLE_GATHER` (기본 off, gather on)
-- `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE` (기본 on)
-- `ZLINK_ASIO_STREAM_BATCH_SIZE` (기본 `12288`)
-
-### 6.3 STREAM 튜닝 환경변수 제거(내부 상수 고정)
-
-다음 STREAM env 토글은 제거되었고 코드 상수로 고정됨:
-- `ZLINK_ASIO_STREAM_ENABLE_HANDLER_ALLOC` -> 항상 활성
-- `ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN` -> 항상 활성
-- `ZLINK_ASIO_STREAM_ENABLE_SPECULATIVE_WRITE` -> STREAM/TCP 경로에서 상시 on 고정
-- `ZLINK_ASIO_STREAM_ENABLE_RX_SLAB` -> 항상 활성
-- `ZLINK_ASIO_STREAM_GATHER_THRESHOLD` -> `8192` 고정
-- `ZLINK_ASIO_STREAM_SPEC_WRITE_BUDGET_BYTES` -> `2097152` 고정
-- `ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS` -> `16` 고정
-- `ZLINK_ASIO_STREAM_READ_DRAIN_MAX_BYTES` -> `1048576` 고정
+> STREAM 런타임 환경변수 및 내부 튜닝 상수는
+> [STREAM 내부 문서](../internals/stream-socket.ko.md)를 참고.
 
 ---
 
@@ -221,4 +181,4 @@ recv(fd, body, body_len, MSG_WAITALL);
 위 테스트들은 STREAM 서버 + raw client 경로를 기준으로 동작한다.
 
 ---
-[← ROUTER](03-4-router.ko.md) | [Transport →](04-transports.ko.md)
+[← ROUTER](03-4-router.ko.md) | [Proxy →](03-6-proxy.ko.md) | [Transport →](04-transports.ko.md)

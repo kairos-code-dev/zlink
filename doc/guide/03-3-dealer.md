@@ -4,13 +4,12 @@
 
 ## 1. Overview
 
-The DEALER socket is an asynchronous request socket. It sends to multiple peers using **round-robin** distribution and receives using **fair-queue**. Unlike the REQ socket, there is no enforced send/recv ordering, enabling free asynchronous messaging.
+The DEALER socket is an asynchronous request socket. It sends to multiple peers using **round-robin** distribution and receives using **fair-queue**. There is no enforced send/recv ordering, enabling free asynchronous messaging.
 
 **Key characteristics:**
 - Send: Round-robin (`lb_t`) -- cyclic distribution across connected peers
 - Receive: Fair-queue (`fq_t`) -- fair reception from all peers
 - No enforced send/recv ordering (asynchronous)
-- No automatic routing_id frame handling
 
 **Valid socket combinations:** DEALER ↔ ROUTER, DEALER ↔ DEALER
 
@@ -59,9 +58,7 @@ zlink_send(dealer, &msg3, 1, 0);
 
 ### Receive Modes
 
-DEALER is recv/poller-only in the public API. Use `zlink_recv()` to
-receive synchronously. `source_rid` is always empty because DEALER strips
-the routing-id frame.
+Use `zlink_recv()` to receive synchronously.
 
 ```c
 zlink_routing_id_t source_rid;
@@ -79,30 +76,16 @@ if (rc == 0) {
 > `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
 > see [Performance Guide](10-performance.md).
 
-## 3. Message Format
-
-The DEALER socket does not automatically add a routing_id frame. The frames sent by the application are delivered as-is.
-
-```
-DEALER sends: [data]
-ROUTER receives: [routing_id][data]   ← ROUTER adds routing_id
-
-ROUTER sends: [routing_id][data]
-DEALER receives: [data]              ← routing_id frame is stripped
-```
-
-### Multipart Messages
+## 3. Usage Example
 
 ```c
-/* DEALER → ROUTER: multipart send */
+/* DEALER → ROUTER send */
 zlink_msg_t parts[2];
 zlink_msg_init_size(&parts[0], 6);
 memcpy(zlink_msg_data(&parts[0]), "header", 6);
 zlink_msg_init_size(&parts[1], 4);
 memcpy(zlink_msg_data(&parts[1]), "body", 4);
 zlink_send(dealer, parts, 2, 0);
-
-/* ROUTER receives: [routing_id] + [header] + [body] */
 ```
 
 ## 4. Socket Options

@@ -6,6 +6,7 @@
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
+#include "sockets/socket_base.hpp"
 
 #include <stdio.h>
 #include <string.h>
@@ -89,6 +90,179 @@ std::string spot_sub_t::ready_ack_source_id () const
     return routing_id_to_hex (_routing_id);
 }
 
+int spot_sub_t::subscribe (const char *topic_)
+{
+    socket_base_t *socket = this->socket ();
+    if (!_node || !socket) {
+        errno = EFAULT;
+        return -1;
+    }
+    std::string topic;
+    if (!is_valid_topic (topic_, &topic)) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (_node->ensure_healthy () != 0)
+        return -1;
+
+    bool had_filters = false;
+    bool has_filters = false;
+    {
+        scoped_lock_t lock (_sync);
+        had_filters = !_topics.empty () || !_patterns.empty ();
+        lock_routing_id ();
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, topic.data (),
+                                topic.size ())
+            != 0)
+            return -1;
+        _topics.insert (topic);
+        _delivery_ready_raw_filters.erase (topic);
+        has_filters = !_topics.empty () || !_patterns.empty ();
+    }
+    {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_subject_last_changed_ms[make_subject_key (
+          topic, ZLINK_SERVICE_EVENT_SUBJECT_TOPIC)] = zlink::clock_t ().now_ms ();
+        _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    }
+
+    _node->note_local_sub_filters_changed (had_filters, has_filters);
+    emit_filter_applied_event (topic.c_str (),
+                               ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
+    if (_node->send_subscription_update (topic, true) != 0)
+        return -1;
+    if (_node->has_active_peers ())
+        _node->notify_subscription_forwarded (topic);
+    _node->schedule_subscription_replay ();
+    if (_node->replay_subscriptions_if_active_peers () != 0)
+        return -1;
+    _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
+    return 0;
+}
+
+int spot_sub_t::subscribe_pattern (const char *pattern_)
+{
+    socket_base_t *socket = this->socket ();
+    if (!_node || !socket) {
+        errno = EFAULT;
+        return -1;
+    }
+    std::string prefix;
+    if (!is_valid_pattern (pattern_, &prefix)) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (_node->ensure_healthy () != 0)
+        return -1;
+
+    bool had_filters = false;
+    bool has_filters = false;
+    {
+        scoped_lock_t lock (_sync);
+        had_filters = !_topics.empty () || !_patterns.empty ();
+        lock_routing_id ();
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, prefix.data (),
+                                prefix.size ())
+            != 0)
+            return -1;
+        _patterns.insert (prefix);
+        _delivery_ready_raw_filters.erase (prefix);
+        has_filters = !_topics.empty () || !_patterns.empty ();
+    }
+    {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_subject_last_changed_ms[make_subject_key (
+          prefix + "*", ZLINK_SERVICE_EVENT_SUBJECT_PATTERN)] =
+          zlink::clock_t ().now_ms ();
+        _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    }
+
+    _node->note_local_sub_filters_changed (had_filters, has_filters);
+    const std::string subject = prefix + "*";
+    emit_filter_applied_event (subject.c_str (),
+                               ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
+    if (_node->send_subscription_update (prefix, true) != 0)
+        return -1;
+    if (_node->has_active_peers ())
+        _node->notify_subscription_forwarded (prefix);
+    _node->schedule_subscription_replay ();
+    if (_node->replay_subscriptions_if_active_peers () != 0)
+        return -1;
+    _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
+    return 0;
+}
+
+int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
+{
+    socket_base_t *socket = this->socket ();
+    if (!_node || !socket) {
+        errno = EFAULT;
+        return -1;
+    }
+    std::string topic;
+    std::string prefix;
+    const bool is_pattern = is_valid_pattern (topic_or_pattern_, &prefix);
+    const bool is_topic =
+      !is_pattern && is_valid_topic (topic_or_pattern_, &topic);
+    if (!is_pattern && !is_topic) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (_node->ensure_healthy () != 0)
+        return -1;
+
+    bool had_filters = false;
+    bool has_filters_after = false;
+    int first_error = 0;
+    std::vector<std::string> ready_ack_endpoints;
+    subject_descriptor_t subject;
+    subject.subject_kind = is_pattern ? ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
+                                      : ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+    subject.subject = is_pattern ? prefix + "*" : topic;
+    const std::string filter = is_pattern ? prefix : topic;
+    {
+        scoped_lock_t lock (_sync);
+        had_filters = !_topics.empty () || !_patterns.empty ();
+        lock_routing_id ();
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, filter.data (),
+                                filter.size ())
+            != 0)
+            return -1;
+        if (is_pattern)
+            _patterns.erase (prefix);
+        else
+            _topics.erase (topic);
+        _delivery_ready_raw_filters.erase (filter);
+        has_filters_after = !_topics.empty () || !_patterns.empty ();
+    }
+    {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_subject_last_changed_ms[make_subject_key (
+          subject.subject, subject.subject_kind)] = zlink::clock_t ().now_ms ();
+        _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    }
+
+    _node->note_local_sub_filters_changed (had_filters, has_filters_after);
+    if (_node->send_subscription_update (filter, false) != 0)
+        first_error = errno != 0 ? errno : EIO;
+    release_ready_ack_endpoints (filter, &ready_ack_endpoints);
+    const std::string ack_source_id = ready_ack_source_id ();
+    for (size_t i = 0; i < ready_ack_endpoints.size (); ++i) {
+        (void) _node->send_ready_ack_update (ready_ack_endpoints[i], filter,
+                                             ack_source_id, false);
+    }
+    _node->submit_sub_summary (this, has_filters_after
+                                       ? ZLINK_TOPOLOGY_STATE_READY
+                                       : ZLINK_TOPOLOGY_STATE_CONNECTING,
+                               0);
+    mark_subject_lost (subject, NULL);
+    if (first_error != 0) {
+        errno = first_error;
+        return -1;
+    }
+    return 0;
+}
+
 void spot_sub_t::append_raw_filters (std::set<std::string> *out_) const
 {
     if (!out_)
@@ -115,6 +289,12 @@ void spot_sub_t::append_replay_raw_filters (std::set<std::string> *out_) const
         if (_delivery_ready_raw_filters.count (*it) == 0)
             out_->insert (*it);
     }
+}
+
+bool spot_sub_t::has_filters () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return !_topics.empty () || !_patterns.empty ();
 }
 
 void spot_sub_t::append_all_subjects (

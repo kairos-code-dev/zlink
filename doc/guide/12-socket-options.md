@@ -1,0 +1,365 @@
+[English](12-socket-options.md) | [한국어](12-socket-options.ko.md)
+
+# Socket Options Detailed Guide
+
+This document describes the **behavior**, **scope of effect**, **defaults**,
+and **per-socket-type differences** of each socket option set via
+`zlink_set_option()` / `zlink_get_option()`. Unlike the
+[socket API reference](../api/socket.md) which covers API signatures,
+this guide focuses on **what each option changes at runtime**.
+
+## Option Ownership Categories
+
+Internally, options are classified into three categories:
+
+| Category | Description | Representative Options |
+|----------|-------------|----------------------|
+| **Core Socket** | Core socket behavior | SNDHWM, RCVHWM, LINGER, SNDTIMEO, RCVTIMEO |
+| **Transport/Network** | Network/transport policies | SNDBUF, RCVBUF, TCP_*, TOS, CONNECT_TIMEOUT |
+| **Protocol/Metadata** | Protocol-level metadata | ZMP_METADATA, HEARTBEAT_* |
+
+---
+
+## 1. Message Queue — SNDHWM / RCVHWM
+
+| | |
+|---|---|
+| **What it does** | Limits the maximum number of messages in the pipe's outbound/inbound direction |
+| **Applied at** | `pipe_t::check_write()` — checks HWM when writing to pipe |
+| **Default** | `1000` (message count) |
+| **0** | Unlimited |
+| **Effect** | When HWM is reached, `zlink_send()` blocks or returns `EAGAIN`. When the receiver consumes messages and the queue drops below LWM, writable state is restored |
+
+**LWM (Low Water Mark) formula:** `(HWM + 1) / 2`
+
+With HWM=100, LWM=50. Queue blocks at 100 and resumes only when drained to 50 or below.
+This gap is the hysteresis that prevents writable/non-writable oscillation.
+
+**Per-socket-type:** Applies identically to all sockets. Services (Gateway, SPOT) fan-out to their internal sockets.
+
+---
+
+## 2. Shutdown Delay — LINGER
+
+| | |
+|---|---|
+| **What it does** | Determines how long to wait for pending messages when closing a socket/service |
+| **Applied at** | `session_base_t::process_term()` — sets linger timer on pipe termination |
+| **Default** | Inherited from context (`BLOCKY=1` → `-1`, otherwise `0`) |
+| **-1** | Infinite wait — blocks until all messages are sent |
+| **0** | Immediate close — discards pending messages |
+| **>0** | Wait up to specified time (ms), then force close |
+
+**Actual behavior:** If linger > 0, a timer is set; when it expires, the pipe is force-terminated. `pipe->terminate(linger != 0)` passes the delay flag.
+
+**Per-socket-type:**
+- `XSUB`, `SUB`: Linger is forced to `0` at creation (subscription sockets have nothing to drain on close)
+
+---
+
+## 3. Timeouts — SNDTIMEO / RCVTIMEO
+
+| | |
+|---|---|
+| **What it does** | Sets maximum wait time for send/recv operations |
+| **Applied at** | `zlink_send()` / `zlink_recv()` blocking paths, logical multipart send module |
+| **Default** | `-1` (infinite wait) |
+| **0** | Equivalent to non-blocking (immediate return) |
+| **>0** | Wait up to specified time (ms), then return `EAGAIN` |
+
+**Service application:** Propagated to SPOT pub/sub internal sockets. Applied to Gateway internal ROUTER as well.
+
+---
+
+## 4. Connection Timeout — CONNECT_TIMEOUT
+
+| | |
+|---|---|
+| **What it does** | Sets a user-level timeout for async `connect()` attempts |
+| **Applied at** | `asio_tcp_connecter`, `asio_tls_connecter`, `asio_ws_connecter` — `add_connect_timer()` |
+| **Default** | `0` (disabled — relies on TCP stack default timeout) |
+| **>0** | If connection not established within specified time (ms), close socket and trigger reconnect |
+
+**Relation to OS timeout:** The TCP stack's own SYN retransmission timeout (typically ~2 min) is usually much longer. Setting CONNECT_TIMEOUT shorter enables faster failover.
+
+---
+
+## 5. Reconnection — RECONNECT_IVL / RECONNECT_IVL_MAX
+
+| | |
+|---|---|
+| **What it does** | Controls reconnection attempt intervals after connection failure/disconnection |
+| **Applied at** | All connecters (`asio_tcp_connecter`, `asio_ipc_connecter`, etc.) — `get_new_reconnect_ivl()` |
+| **RECONNECT_IVL default** | `100` ms |
+| **RECONNECT_IVL_MAX default** | `0` (disabled — fixed interval) |
+
+**Reconnection algorithm:**
+- `RECONNECT_IVL_MAX == 0`: Fixed interval + random jitter (0 to `RECONNECT_IVL`)
+- `RECONNECT_IVL_MAX > 0`: **Exponential backoff** — doubles interval each failure, capped at `RECONNECT_IVL_MAX`. (e.g., 100→200→400→...→max)
+
+**Negative:** `RECONNECT_IVL < 0` disables automatic reconnection entirely.
+
+---
+
+## 6. TCP Keepalive — TCP_KEEPALIVE / TCP_KEEPALIVE_CNT / TCP_KEEPALIVE_IDLE / TCP_KEEPALIVE_INTVL
+
+| Option | What it does | Default |
+|--------|-------------|---------|
+| `TCP_KEEPALIVE` | Enable/disable SO_KEEPALIVE | `-1` (OS default) |
+| `TCP_KEEPALIVE_CNT` | Max probe failures before disconnect | `-1` (OS default) |
+| `TCP_KEEPALIVE_IDLE` | Idle time before first probe (seconds) | `-1` (OS default) |
+| `TCP_KEEPALIVE_INTVL` | Interval between probes (seconds) | `-1` (OS default) |
+
+**Applied at:** `tcp.cpp`'s `tune_tcp_keepalives()` — passed as OS socket options during socket setup.
+
+**`-1` meaning:** "Do not change this value" — preserves OS default keepalive settings.
+
+**TCP only.** Does not apply to IPC, inproc, or WebSocket.
+
+**Recommended example:**
+```c
+// Probe after 60s idle, every 10s, 3 probes max, then disconnect
+zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE, &(int){1}, sizeof(int));
+zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_IDLE, &(int){60}, sizeof(int));
+zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_INTVL, &(int){10}, sizeof(int));
+zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_CNT, &(int){3}, sizeof(int));
+```
+
+---
+
+## 7. TCP Retransmission — TCP_MAXRT
+
+| | |
+|---|---|
+| **What it does** | Sets maximum TCP segment retransmission timeout |
+| **Applied at** | `tcp.cpp` — `setsockopt(TCP_USER_TIMEOUT)` |
+| **Default** | `0` (disabled — uses OS TCP stack default) |
+| **>0** | Give up retransmission after specified time (ms) |
+
+Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Useful for faster dead peer detection than keepalive.
+
+---
+
+## 8. Nagle's Algorithm — TCP_NODELAY
+
+| | |
+|---|---|
+| **What it does** | Disables TCP Nagle's algorithm to send small data immediately |
+| **Applied at** | `tcp.cpp` — `setsockopt(TCP_NODELAY)` |
+| **Default** | `1` (TCP_NODELAY enabled = Nagle disabled) |
+
+**`1` (default, recommended):** Small messages sent without delay. Optimal for messaging systems.
+**`0`:** Nagle enabled — small packets are coalesced. Better bandwidth efficiency but higher latency.
+
+---
+
+## 9. ZMP Heartbeat — HEARTBEAT_IVL / HEARTBEAT_TTL / HEARTBEAT_TIMEOUT
+
+| Option | What it does | Default |
+|--------|-------------|---------|
+| `HEARTBEAT_IVL` | PING message send interval (ms) | `0` (disabled) |
+| `HEARTBEAT_TTL` | TTL transmitted to remote peer (0.1s units) | `0` |
+| `HEARTBEAT_TIMEOUT` | PONG response wait time (ms) | `-1` (uses IVL value) |
+
+**Applied at:** `asio_zmp_engine` — ZMP protocol-level PING/PONG exchange.
+
+**Flow:**
+1. Send PING every `IVL` milliseconds (includes TTL value)
+2. Remote peer closes connection if no message/PONG received within TTL
+3. Locally, disconnection detected if no PONG within TIMEOUT
+
+**vs. TCP Keepalive:** TCP keepalive is OS-level probing; ZMP heartbeat is application-protocol-level. If both are configured, the faster one detects failure first.
+
+---
+
+## 10. Immediate Connect — IMMEDIATE
+
+| | |
+|---|---|
+| **What it does** | Controls whether pipes are attached immediately or after connection completion |
+| **Applied at** | `socket_base_endpoint.cpp` — at pipe creation time |
+| **Default** | `0` (immediate attach) |
+
+**`0` (default):** Pipe attached immediately on `connect()`. `send()` is possible before connection completes; messages queue up.
+
+**`1`:** Pipe attached only after connection actually completes. `send()` before connection blocks or returns `EAGAIN`. Also, on hiccup (temporary disconnection), pipe is immediately removed.
+
+---
+
+## 11. Keep Latest Only — CONFLATE
+
+| | |
+|---|---|
+| **What it does** | Keeps only the most recent message per pipe, discarding older ones |
+| **Applied at** | `pipe.cpp` — uses `ypipe_conflate_t` |
+| **Default** | `0` (disabled) |
+| **Valid sockets** | `DEALER`, `PUB`, `SUB` only |
+
+When enabled, HWM settings are ignored. Multipart messages cannot be received in conflate mode. Suitable for "only latest value matters" scenarios like sensor data.
+
+---
+
+## 12. OS Socket Buffers — SNDBUF / RCVBUF
+
+| | |
+|---|---|
+| **What it does** | Sets kernel-level socket send/receive buffer sizes |
+| **Applied at** | `tcp.cpp` — `setsockopt(SO_SNDBUF/SO_RCVBUF)` |
+| **Default** | `-1` (keep OS default) |
+| **0** | Use OS default |
+| **>0** | Set to specified size (bytes) |
+
+Independent of HWM. HWM limits message count in the zlink pipe; SNDBUF/RCVBUF limits byte size in the OS kernel socket buffer.
+
+**Per-socket-type:**
+- `STREAM`: Auto-overridden to `262144` (256KB) if unset (`< 0`)
+
+---
+
+## 13. IP Quality of Service — TOS
+
+| | |
+|---|---|
+| **What it does** | Sets the IP Type-of-Service (DSCP/ECN) field |
+| **Applied at** | TCP socket setup via `setsockopt(IP_TOS)` |
+| **Default** | `0` (best-effort) |
+
+Used to set traffic priority in networks with QoS policies.
+
+---
+
+## 14. Connection Queue — BACKLOG
+
+| | |
+|---|---|
+| **What it does** | Sets the maximum length of the `listen()` accept queue |
+| **Applied at** | `asio_tcp_listener.cpp` — `acceptor.listen(backlog)` |
+| **Default** | `100` |
+
+**Per-socket-type:**
+- `STREAM`: Auto-overridden to `65536` (for many external clients)
+
+---
+
+## 15. I/O Thread Affinity — AFFINITY
+
+| | |
+|---|---|
+| **What it does** | Assigns socket I/O operations to specific I/O threads |
+| **Applied at** | `socket_base` — `choose_io_thread(affinity)` |
+| **Default** | `0` (all I/O threads available) |
+| **Type** | `uint64_t` bitmask |
+
+Bit N set to 1 means I/O thread N is available. `0` allows all threads. Useful for CPU affinity when using multiple I/O threads (`ZLINK_IO_THREADS > 1`).
+
+---
+
+## 16. Maximum Message Size — MAXMSGSIZE
+
+| | |
+|---|---|
+| **What it does** | Limits the maximum size of incoming messages |
+| **Applied at** | Session/engine level message size validation |
+| **Default** | `-1` (unlimited) |
+| **>0** | Reject messages exceeding specified size (bytes) |
+
+Useful for preventing OOM attacks from untrusted peers.
+
+---
+
+## 17. IPv6 — IPV6
+
+| | |
+|---|---|
+| **What it does** | Enables IPv6 on the socket (dual-stack with IPv4) |
+| **Applied at** | `asio_tcp_connecter`, `asio_tcp_listener` — address resolution and socket creation |
+| **Default** | `0` (IPv4 only, inherited from context) |
+
+Setting to `1` creates a dual-stack socket with `IPV6_V6ONLY=0`.
+
+---
+
+## 18. Multicast — MULTICAST_HOPS / MULTICAST_MAXTPDU
+
+| Option | What it does | Default |
+|--------|-------------|---------|
+| `MULTICAST_HOPS` | Multicast packet TTL | `1` |
+| `MULTICAST_MAXTPDU` | Maximum transport data unit size (bytes) | `1500` |
+
+Only applies to PGM transport. PGM is currently disabled.
+
+---
+
+## 19. Invert Subscription Matching — INVERT_MATCHING
+
+| | |
+|---|---|
+| **What it does** | Inverts the subscription filter matching result |
+| **Applied at** | `xsub.cpp` — `matching ^ options.invert_matching` |
+| **Default** | `0` (normal matching) |
+
+When set to `1`, messages for non-subscribed topics are delivered, and subscribed topics are filtered out.
+
+---
+
+## 20. Network Interface Binding — BINDTODEVICE
+
+| | |
+|---|---|
+| **What it does** | Binds the socket to a specific network interface (or VRF) |
+| **Applied at** | `tcp.cpp` — `setsockopt(SO_BINDTODEVICE)` |
+| **Default** | Empty string (no binding) |
+
+Only works on Linux systems with `SO_BINDTODEVICE` support. Used to restrict traffic to a specific NIC on multi-homed servers.
+
+---
+
+## 21. Handshake Timeout — HANDSHAKE_IVL
+
+| | |
+|---|---|
+| **What it does** | Sets the maximum time for ZMP protocol handshake |
+| **Applied at** | ZMP engine — timer set at handshake start |
+| **Default** | `30000` ms (30 seconds) |
+| **0** | Handshake timeout disabled |
+
+If the handshake is not completed within this time, the connection is closed.
+
+---
+
+## 22. ZMP Metadata — ZMP_METADATA
+
+| | |
+|---|---|
+| **What it does** | Attaches ZMP protocol metadata properties to outgoing connections |
+| **Applied at** | `asio_zmp_engine` — metadata included in READY frame |
+| **Default** | `0` (disabled) |
+| **Type** | binary |
+
+---
+
+## Per-Socket-Type Default Overrides
+
+Some socket types override common defaults at creation time:
+
+| Socket Type | Overridden Option | Value | Reason |
+|-------------|-------------------|-------|--------|
+| `SUB` / `XSUB` | `LINGER` | `0` | Subscription sockets have nothing to drain on close |
+| `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
+| `STREAM` | `SNDBUF` | `262144` (if unset) | Large RAW transfer support |
+| `STREAM` | `RCVBUF` | `262144` (if unset) | Large RAW receive support |
+
+## Per-Socket-Type Dedicated Options
+
+Beyond common options, socket-type-specific options use dedicated APIs:
+
+| Socket | API | Representative Options |
+|--------|-----|----------------------|
+| ROUTER | `zlink_set_router_option()` | `MANDATORY`, `HANDOVER`, `PROBE`, `CONNECT_ROUTING_ID` |
+| DEALER | `zlink_set_dealer_option()` | `PROBE` |
+| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP`, `MANUAL`, `WELCOME_MSG` |
+| SUB/XSUB | `zlink_set_sub_option()` | Subscription-related |
+| STREAM | `zlink_set_stream_option()` | `NOTIFY` |
+
+---
+[← Thread Safety](11-thread-safety.md)

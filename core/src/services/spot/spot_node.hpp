@@ -25,6 +25,7 @@ class spot_pub_t;
 class spot_sub_t;
 class spot_data_plane_t;
 class spot_internal_receiver_t;
+struct spot_data_plane_protocol_t;
 struct spot_runtime_t;
 struct spot_node_access_t;
 
@@ -192,6 +193,8 @@ class spot_node_t : public discovery_observer_t
     void emit_pending_pub_delivery_ready_events ();
     std::string first_connected_peer_endpoint () const;
     void notify_subscription_forwarded (const std::string &raw_filter_);
+    uint32_t max_pub_delivery_ready_count_locked () const;
+    void publish_mesh_pub_budget_hint_locked ();
     void notify_pub_first_delivery_ready_settled (const std::string &subject_,
                                                   uint32_t ready_count_);
     int send_subscription_update (const std::string &raw_filter_,
@@ -294,6 +297,7 @@ class spot_node_t : public discovery_observer_t
 
     friend struct spot_runtime_t;
     friend class spot_data_plane_t;
+    friend struct spot_data_plane_protocol_t;
     friend class spot_pub_t;
     friend class spot_sub_t;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)

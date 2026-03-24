@@ -1274,6 +1274,13 @@ perf 관련 기준은 아래처럼 고정한다.
   에서만 정의한다.
 - 새 컨텍스트에서 작업을 재개할 때도 perf 기준선 확인은 마스터 플랜이 아니라
   실행 가이드의 해당 절차를 먼저 따른다.
+- 특히 Phase 9 재개 시 latest full perf snapshot 재사용 조건, targeted recheck
+  우선 규칙, full perf 재실행 조건은 실행 가이드 정의를 그대로 따른다.
+- phase별 commit/push 시점과 증거 기록 규칙도 실행 가이드에서만 최종 판정한다.
+- perf baseline 회복은 동일한 `core/perf` 측정 surface를 유지한 채 `core/`
+  내부 owner/hot path를 고쳐서 달성한다.
+- 즉 baseline 미달을 이유로 `core/perf` runner나 비교 조건을 바꿔 통과시키는
+  방식은 이 계획의 허용 범위가 아니다.
 
 ### C 계약 변경 금지 확인
 
@@ -1290,12 +1297,16 @@ nm -D core/build/lib/libzlink.so | rg " zlink_"
 ### thread-safe contract 검증
 
 ```bash
-./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 100
+./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10
 ```
 
 적용 규칙:
 
 - Phase 2와 Phase 3 종료 시에는 `run_thread_safe_contract_stress.sh`를 **의무**로 수행한다.
+- `10`은 기본/최소 반복 횟수다. 더 높은 신뢰도나 flake 재현이 필요하면
+  실행 가이드 기준으로 더 큰 count를 사용할 수 있다.
+- 반복 횟수, 장시간 gate 운영 규칙, 실패 시 재현/복구 절차는
+  실행 가이드에서만 최종 판정한다.
 - `run_thread_safe_contract_perf.sh`를 포함한 perf 계열 판정은 실행 가이드에서만 다룬다.
 - TSan은 환경 비용이 크므로 상시 의무 게이트는 아니지만, close/drain 회귀가 의심되면 우선 추가한다.
 

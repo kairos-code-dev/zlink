@@ -4,13 +4,14 @@
 
 ## 1. 개요
 
-DEALER 소켓은 비동기 요청 소켓이다. 여러 피어에 **Round-robin** 분배로 송신하고, **Fair-queue**로 수신한다. REQ 소켓과 달리 send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하다.
+DEALER 소켓은 비동기 요청 소켓이다.
+여러 피어에 **Round-robin** 분배로 송신하고, **Fair-queue**로 수신한다.
+send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하다.
 
 **핵심 특성:**
 - 송신: Round-robin (`lb_t`) — 연결된 피어에 순환 분배
 - 수신: Fair-queue (`fq_t`) — 모든 피어에서 공정하게 수신
 - send/recv 순서 강제 없음 (비동기)
-- routing_id 프레임 자동 처리 없음
 
 **유효한 소켓 조합:** DEALER ↔ ROUTER, DEALER ↔ DEALER
 
@@ -59,8 +60,7 @@ zlink_send(dealer, &msg3, 1, 0);
 
 ### 수신 모드
 
-DEALER의 public API는 recv/poller-only다. `zlink_recv()`로 동기 수신하며,
-`source_rid`는 DEALER가 routing-id 프레임을 제거하므로 항상 비어 있다.
+DEALER는 `zlink_recv()`로 동기 수신한다.
 
 ```c
 zlink_routing_id_t source_rid;
@@ -78,30 +78,16 @@ if (rc == 0) {
 > `EAGAIN`을 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
-## 3. 메시지 형식
-
-DEALER 소켓은 routing_id 프레임을 자동으로 추가하지 않는다. 애플리케이션이 전송하는 프레임이 그대로 전달된다.
-
-```
-DEALER 송신: [데이터]
-ROUTER 수신: [routing_id][데이터]   ← ROUTER가 routing_id 추가
-
-ROUTER 송신: [routing_id][데이터]
-DEALER 수신: [데이터]              ← routing_id 프레임 제거됨
-```
-
-### 멀티파트 메시지
+## 3. 사용 예제
 
 ```c
-/* DEALER → ROUTER: 멀티파트 전송 */
+/* DEALER → ROUTER 전송 */
 zlink_msg_t parts[2];
 zlink_msg_init_size(&parts[0], 6);
 memcpy(zlink_msg_data(&parts[0]), "header", 6);
 zlink_msg_init_size(&parts[1], 4);
 memcpy(zlink_msg_data(&parts[1]), "body", 4);
 zlink_send(dealer, parts, 2, 0);
-
-/* ROUTER 수신: [routing_id] + [header] + [body] */
 ```
 
 ## 4. 소켓 옵션

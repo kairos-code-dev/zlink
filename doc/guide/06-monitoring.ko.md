@@ -4,20 +4,15 @@
 
 ## 1. 개요
 
-zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다. 콜백 기반으로 동작하며, 이벤트 발생 시 등록된 핸들러 함수가 자동으로 호출된다.
-
-패밀리별 control contract와 회귀 테스트 기준은
-[socket-family-monitor-contract-spec.ko.md](../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md)에
-별도로 정리한다. 이 가이드는 실제 사용 시 어떤 event를 gate로 써야 하는지에
-집중한다.
-
-성능 테스트 정책 문서는 이 가이드의 ready gate 규칙을 그대로 참조한다.
-특히 perf/bench의 start gate는 **monitor delivery-ready event만** 사용해야 하며,
-`sleep`, 고정 지연, monitor snapshot polling으로 ready를 판정하면 안 된다.
+zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다.
+다른 소켓과 동일하게 recv 모드(pull)와 callback 모드를 지원한다.
 
 ## 2. 모니터 활성화
 
-### 2.1 콜백 기반 (권장)
+### 2.1 콜백 모드
+
+I/O 스레드에서 이벤트 발생 즉시 핸들러가 호출된다.
+이벤트 유실 없이 실시간으로 처리하려면 콜백 모드가 적합하다.
 
 ```c
 /* 이벤트 핸들러 정의 */
@@ -65,25 +60,29 @@ raw 소켓의 transport/session 상태를 알려준다.
 
 ### 이벤트 전체 표
 
-| 상수 | 값 | 설명 | `value` | `routing_id` | 발생 측 | 이후 가능한 동작 |
-|---|---|---|---|---|---|---|
-| `CONNECTION_READY_CHANGED` | `0x1000` | 핸드셰이크 완료, 메시징 가능 | `current_ready_count` | ROUTER/STREAM: peer id | 양쪽 | **send/recv 시작** |
-| `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | — | 클라이언트 | `CONNECTION_READY_CHANGED` 대기 |
-| `ACCEPTED` | `0x0020` | 수신 연결 accept (핸드셰이크 전) | fd | — | 서버 | `CONNECTION_READY_CHANGED` 대기 |
-| `DISCONNECTED` | `0x0200` | 세션 종료 | reason 코드 | 가능 | 양쪽 | 재연결 로직 실행 |
-| `LISTENING` | `0x0008` | bind 성공, 수신 대기 중 | fd | — | 서버 | — |
-| `CLOSED` | `0x0080` | 의도적 close 완료 | — | — | 양쪽 | — |
-| `CONNECT_DELAYED` | `0x0002` | 비동기 연결 재시도 예약 | errno | — | 클라이언트 | 자동 재시도 |
-| `CONNECT_RETRIED` | `0x0004` | 비동기 재연결 진행 중 | — | — | 클라이언트 | 자동 재시도 |
-| `BIND_FAILED` | `0x0010` | bind 실패 | errno | — | 서버 | 주소/권한 확인 |
-| `ACCEPT_FAILED` | `0x0040` | accept 실패 | errno | — | 서버 | fd 한도 확인 |
-| `CLOSE_FAILED` | `0x0100` | close 실패 | errno | — | 양쪽 | — |
-| `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 핸드셰이크 실패 (일반) | errno | — | 양쪽 | 네트워크 확인 |
-| `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | — | 양쪽 | 버전/설정 확인 |
-| `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | — | 양쪽 | TLS/인증 설정 확인 |
-| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription 전파 완료 | `0`/`1` (boolean) | — | SUB 측 | **`zlink_subscribe()` 수신 시작** |
-| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 완료 | `current_ready_count` | — | PUB 측 | **`zlink_publish()` delivery 시작** |
-| `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | — | 양쪽 | `zlink_monitor_close()` |
+| 상수 | 값 | 설명 | `value` | 발생 측 |
+|---|---|---|---|---|
+| `CONNECTION_READY_CHANGED` | `0x1000` | 핸드셰이크 완료, 메시징 가능 | ready 수 | 양쪽 |
+| `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | 클라이언트 |
+| `ACCEPTED` | `0x0020` | 수신 연결 accept | fd | 서버 |
+| `DISCONNECTED` | `0x0200` | 세션 종료 | reason 코드 | 양쪽 |
+| `LISTENING` | `0x0008` | bind 성공, 수신 대기 중 | fd | 서버 |
+| `CLOSED` | `0x0080` | 의도적 close 완료 | — | 양쪽 |
+| `CONNECT_DELAYED` | `0x0002` | 비동기 연결 재시도 예약 | errno | 클라이언트 |
+| `CONNECT_RETRIED` | `0x0004` | 비동기 재연결 진행 중 | — | 클라이언트 |
+| `BIND_FAILED` | `0x0010` | bind 실패 | errno | 서버 |
+| `ACCEPT_FAILED` | `0x0040` | accept 실패 | errno | 서버 |
+| `CLOSE_FAILED` | `0x0100` | close 실패 | errno | 양쪽 |
+| `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 핸드셰이크 실패 (일반) | errno | 양쪽 |
+| `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | 양쪽 |
+| `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | 양쪽 |
+| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB 전파 완료 | `0`/`1` | SUB 측 |
+| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 | ready 수 | PUB 측 |
+| `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | 양쪽 |
+
+- `CONNECTION_READY_CHANGED`: 모든 소켓에서 `routing_id`에 peer id 포함
+- `SUB_DELIVERY_READY_CHANGED` 이후 `zlink_subscribe()` 수신 시작 가능
+- `PUB_DELIVERY_READY_CHANGED` 이후 `zlink_publish()` delivery 시작 가능
 
 ### 연결 흐름
 
@@ -241,6 +240,32 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 
+| 필드 | 설명 |
+|------|------|
+| `ready_count` | 현재 ready 상태인 피어 수 |
+| `snd_pending_msgs` | 송신 큐에 대기 중인 메시지 수 (SNDHWM에 의해 상한 제한) |
+| `rcv_pending_msgs` | 수신 큐에 대기 중인 메시지 수 (RCVHWM에 의해 상한 제한, approximate) |
+
+`snd_pending_msgs`와 `rcv_pending_msgs`는 HWM 설정과 직접 관련된다.
+이 값이 HWM에 근접하면 백프레셔가 발생하고 있다는 의미이다.
+
+**주의 — pending 값이 HWM 설정보다 클 수 있는 경우:**
+
+1. **inproc transport**: inproc은 중간에 세션/엔진이 없으므로 양쪽 HWM을 합산한다.
+   예를 들어 양쪽 모두 SNDHWM=1000, RCVHWM=1000이면 실제 pipe HWM은
+   `1000 + 1000 = 2000`이 된다. pending 값이 설정값의 2배로 보일 수 있다.
+
+2. **HWM을 약간 초과하는 경우**: write 측이 보는 read 카운트(`_peers_msgs_read`)는
+   실시간 값이 아니라 read 측이 LWM 도달 시에만 비동기로 알려주는 스냅샷이다.
+   매 메시지마다 동기화하면 lock-free pipe의 성능 이점이 사라지므로,
+   배치 알림 방식을 사용한다. 그 결과 HWM은 정확한 hard limit이 아닌
+   **approximate limit**이며, 알림 사이에 소폭 초과할 수 있다.
+
+| transport | 실제 pipe HWM | 이유 |
+|-----------|--------------|------|
+| tcp/ipc/tls/ws/wss | `SNDHWM` (설정값 그대로) | 세션이 양쪽을 독립 관리 |
+| inproc | `SNDHWM + peer.RCVHWM` | 세션 없이 직접 연결, 양쪽 버퍼를 합산 |
+
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
@@ -388,8 +413,10 @@ zlink_monitor_close(&mon_b);
 ### 모니터 스레드 안전성
 
 `zlink_socket_monitor_open()`과 monitor handle close는 raw/service handle의
-저빈도 control-path 계약에 속한다. 즉 애플리케이션 스레드에서 호출할 수 있고,
-같은 handle과 섞여도 correctness가 유지된다. 다만 monitor callback은 I/O 경로
+저빈도 control path(설정/관리 경로) 계약에 속한다.
+즉 애플리케이션 스레드에서 호출할 수 있고,
+같은 handle과 섞여도 correctness(동시 사용 시 데이터 무결성)가 유지된다.
+다만 monitor callback은 I/O 경로
 에서 실행되므로 callback 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
 
 ```c
@@ -420,26 +447,24 @@ zlink_monitor_snapshot(mon, &snapshot);
 zlink_monitor_close(&mon);
 ```
 
-## 11. 메시징 시작 전 준비 확인
+## 11. 메시징 시작 전 준비 확인 (Ready Gate)
 
 소켓 또는 서비스가 실제로 메시지를 보내고 받을 수 있는 시점을 알아야 할 때,
-어떤 이벤트를 기다리면 되는지 정리한다.
+어떤 이벤트를 기다리면 되는지 정리한다. 예를 들어 서버가 bind 후 클라이언트에
+데이터를 보내기 전에, 또는 PUB이 SUB에 구독이 전파된 것을 확인한 뒤에
+메시징을 시작하는 경우다.
 
-### 11.0 perf/bench start gate 규칙
+**ready 판정 규칙:**
 
-perf/bench 구현은 아래 규칙을 따른다.
-
-- start gate는 이 절에 명시된 monitor event만 사용한다.
+- 아래 명시된 monitor event를 기다린다.
 - `sleep`/고정 지연으로 ready를 추정하지 않는다.
-- `zlink_monitor_snapshot()`으로 ready를 polling하지 않는다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 이벤트일 뿐,
-  perf 시작 gate로 쓰지 않는다.
-- delivery-ready event를 받기 전에는 측정 구간에 진입하지 않는다.
+  메시징 시작 기준으로 쓰지 않는다.
+- delivery-ready event를 받은 뒤에 메시징을 시작한다.
 
 ### 11.1 Raw 소켓 — PAIR, DEALER, ROUTER
 
 `CONNECTION_READY_CHANGED` 이벤트를 받으면 즉시 send/recv가 가능하다.
-PAIR/DEALER/ROUTER 계열의 perf start gate는 이 이벤트 하나만 사용한다.
 
 ```c
 /* DEALER/ROUTER 예시 */
@@ -495,14 +520,14 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 |---|---|---|
 | STREAM | `CONNECTION_READY_CHANGED` | `ev->routing_id`로 send/recv |
 
-perf start gate에서는 STREAM도 다른 raw 소켓과 동일하게
+STREAM도 다른 raw 소켓과 동일하게
 `CONNECTION_READY_CHANGED` 이벤트만으로 ready를 판정한다.
 
 ### 11.3 Raw 소켓 — PUB/SUB
 
-raw PUB/SUB 소켓은 socket monitor에서 delivery-ready 이벤트를 제공한다.
-PUB/SUB perf start gate는 `CONNECTION_READY_CHANGED`가 아니라 아래 delivery-ready
-이벤트를 사용한다. PUB과 SUB 각각에 별도 모니터를 열어서 양쪽 모두 ready를
+raw PUB/SUB 소켓은 `CONNECTION_READY_CHANGED`가 아니라 **delivery-ready**
+이벤트를 기다려야 한다. 연결만으로는 구독 전파가 완료되지 않기 때문이다.
+PUB과 SUB 각각에 별도 모니터를 열어서 양쪽 모두 ready를
 확인한 뒤 메시징한다.
 
 - `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription이 전파되어 수신 가능 (0/1 boolean)
@@ -525,8 +550,8 @@ void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
 /* 양쪽 delivery-ready 확인 후 메시징 */
 /* SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value>=expected_subs) */
-zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id는 NULL */
-zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
+zlink_publish(pub, "topic", &part, 1, 0);
+zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
 
 zlink_monitor_close(&pub_mon);
 zlink_monitor_close(&sub_mon);
@@ -540,7 +565,6 @@ zlink_monitor_close(&sub_mon);
 ### 11.4 서비스 — Gateway
 
 `GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED(value>0)` 이벤트를 받으면 바로 send가 가능하다.
-Gateway perf start gate는 이 이벤트 하나만 사용한다.
 
 ```c
 /* client gateway에 service monitor 열기 */
@@ -589,8 +613,8 @@ void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 | SPOT sub | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 시작 |
 | SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | `zlink_publish()` delivery 시작 |
 
-perf policy에서 service start gate는 위 이벤트만 사용한다. snapshot/status 조회는
-운영 관찰용으로는 가능하지만, perf 시작 판정에는 쓰지 않는다.
+snapshot/status 조회는 운영 관찰/디버깅용이며, 메시징 시작 판정에는
+위 이벤트를 사용한다.
 
 ### 11.6 Snapshot
 

@@ -48,7 +48,7 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 
 | 상수 | 값 | 의미 |
 |------|-----|------|
-| `EFSM` | ZLINK_HAUSNUMERO + 51 | 현재 상태에서 작업을 수행할 수 없음 (유한 상태 머신 에러) |
+| `EFSM` | ZLINK_HAUSNUMERO + 51 | 현재 상태에서 작업 불가 (FSM 에러) |
 | `ENOCOMPATPROTO` | ZLINK_HAUSNUMERO + 52 | 호환되는 프로토콜 없음 |
 | `ETERM` | ZLINK_HAUSNUMERO + 53 | Context가 종료되었습니다 |
 | `EMTHREAD` | ZLINK_HAUSNUMERO + 54 | 사용 가능한 스레드 없음 |

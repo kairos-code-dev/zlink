@@ -4,7 +4,9 @@
 
 ## 1. 개요
 
-ROUTER 소켓은 **routing_id 기반 라우팅** 소켓이다. 수신 메시지에 routing_id 프레임을 자동으로 추가하고, 송신 시 첫 번째 프레임의 routing_id로 대상 피어를 지정한다.
+ROUTER 소켓은 **routing_id 기반 라우팅** 소켓이다.
+수신 메시지에 routing_id 프레임을 자동으로 추가하고,
+송신 시 첫 번째 프레임의 routing_id로 대상 피어를 지정한다.
 
 **핵심 특성:**
 - 수신 시 routing_id 프레임 자동 추가 (메시지 출처 식별)
@@ -35,7 +37,7 @@ zlink_bind(router, "tcp://*:5558");
 
 ### 메시지 수신
 
-ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신한다. `source_rid` 파라미터에 송신자의 routing_id가 포함된다.
+ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신한다.
 
 ```c
 /* DEALER가 "Hello" 전송 → 핸들러가 source_rid + parts를 수신 */
@@ -69,12 +71,7 @@ zlink_send_rid(router, source_rid, &reply, 1, 0);
 
 ### 수신 모드
 
-ROUTER의 public API는 recv/poller-only다. `zlink_recv()`는 송신 피어를
-식별하는 `source_rid`와 애플리케이션 데이터 프레임 `parts[]`를 반환한다.
-
 **Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
-`source_rid_out` 파라미터에 송신자의 routing_id가, `parts_out`에
-애플리케이션 데이터가 수신된다.
 
 ```c
 zlink_routing_id_t source_rid;
@@ -93,29 +90,12 @@ if (rc == 0) {
 > `EHOSTUNREACH`를 반환하고, 그렇지 않으면 메시지를 조용히 드롭한다.
 > 고급 backpressure 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
-## 3. 메시지 형식
+## 3. 사용 예제
 
-### 수신 형식
+ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
+`zlink_recv()`의 `source_rid`로 송신자를 식별한다.
 
-DEALER가 `[A][B]` 멀티파트를 전송하면, ROUTER는 `[routing_id][A][B]`를 수신한다.
-
-```
-DEALER 송신:  [프레임1][프레임2]
-                     ↓
-ROUTER 수신:  [routing_id][프레임1][프레임2]
-```
-
-### 송신 형식
-
-ROUTER가 전송할 때 첫 프레임은 반드시 대상 routing_id여야 한다. routing_id 프레임은 전송되지 않고 라우팅에만 사용된다.
-
-```
-ROUTER 송신:  [routing_id][프레임1][프레임2]
-                      ↓
-DEALER 수신:  [프레임1][프레임2]   ← routing_id 제거됨
-```
-
-### 핸들러 콜백을 사용한 수신/응답
+### 콜백을 사용한 수신/응답
 
 ```c
 /* 수신: 핸들러 콜백이 routing_id와 데이터를 제공 */
@@ -138,7 +118,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | 미도달 메시지 시 EHOSTUNREACH 에러 반환 (`zlink_set_router_option()`으로 설정) |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | 미도달 시 `EHOSTUNREACH` 반환 |
 | `ZLINK_ROUTER_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM |
@@ -324,26 +304,6 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 ### routing_id 충돌
 
 같은 routing_id를 가진 두 DEALER가 동시에 연결되면, 기본적으로 두 번째 연결이 거부된다. `ROUTER_HANDOVER`를 활성화하면 기존 연결을 대체한다.
-
-### 멀티파트 메시지 완전성
-
-ROUTER에서 송신할 때는 `zlink_send_rid`를 사용하여 routing_id와 데이터 파트를 원자적으로 처리한다. 항상 최소 하나의 데이터 파트를 제공해야 한다.
-
-```c
-/* 올바른 전송 */
-zlink_msg_t data_part;
-zlink_msg_init_size(&data_part, data_size);
-memcpy(zlink_msg_data(&data_part), data, data_size);
-zlink_send_rid(router, &target_rid, &data_part, 1, 0);
-
-/* 멀티파트 전송 */
-zlink_msg_t parts[2];
-zlink_msg_init_size(&parts[0], header_size);
-memcpy(zlink_msg_data(&parts[0]), header, header_size);
-zlink_msg_init_size(&parts[1], body_size);
-memcpy(zlink_msg_data(&parts[1]), body, body_size);
-zlink_send_rid(router, &target_rid, parts, 2, 0);
-```
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
 

@@ -249,24 +249,7 @@ For detailed TLS configuration, see the [TLS Security Guide](05-tls-security.md)
 | Same context | inproc is usable only within the same context |
 | IPC path length | Unix domain socket path maximum of 108 characters |
 
-## 9. Transport Selection Decision Flow
-
-```
-Is the communication peer an external client?
-├── Yes → Encryption needed?
-│         ├── Yes → WebSocket? → wss://
-│         │         └── No → tls://
-│         └── No → WebSocket? → ws://
-│                   └── No → tcp:// (STREAM)
-└── No → Same process?
-         ├── Yes → inproc://
-         └── No → Same machine?
-                  ├── Yes → Unix? → ipc://
-                  │         └── Windows → tcp://
-                  └── No → Encryption needed?
-                           ├── Yes → tls://
-                           └── No → tcp://
-```
+## 9. Transport Selection Guide
 
 | Use Case | Recommended Transport | Notes |
 |----------|----------------------|-------|

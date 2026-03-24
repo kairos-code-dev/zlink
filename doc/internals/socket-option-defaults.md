@@ -6,8 +6,14 @@ This page summarizes effective socket option defaults from implementation code,
 not from examples:
 
 - `core/src/core/options.cpp` (`options_t` constructor)
-- `core/src/sockets/socket_base.cpp` (context-inherited defaults)
+- `core/src/core/options_core_socket.cpp` (core socket option dispatch)
+- `core/src/core/options_transport_network.cpp` (transport/network option dispatch)
+- `core/src/core/options_protocol_metadata.cpp` (protocol/metadata option dispatch)
+- `core/src/sockets/socket_base_lifecycle.cpp` (context-inherited defaults)
 - socket-specific constructors in `core/src/sockets/*.cpp`
+
+For detailed behavior and scope of each option, see the
+[Socket Options Detailed Guide](../guide/12-socket-options.md).
 
 ## 1. Common Defaults (All Sockets Unless Overridden)
 
@@ -47,6 +53,13 @@ not from examples:
 | `ZLINK_OPT_TCP_KEEPALIVE_INTVL` | `-1` | OS default |
 | `ZLINK_OPT_TCP_NODELAY` | `1` | Enabled by default |
 | `ZLINK_OPT_BINDTODEVICE` | empty string | No device binding |
+| `ZLINK_OPT_HANDSHAKE_IVL` | `30000` | ZMP handshake timeout (ms, 0 = disabled) |
+| `ZLINK_OPT_PRIORITY` | `0` | Socket priority |
+| `ZLINK_OPT_BUSY_POLL` | `0` | Busy-poll disabled |
+| `ZLINK_OPT_MONITOR_EVENT_VERSION` | `1` | Monitor event version |
+| `ZLINK_OPT_IN_BATCH_SIZE` | `8192` | Inbound batch size (bytes) |
+| `ZLINK_OPT_OUT_BATCH_SIZE` | `8192` | Outbound batch size (bytes) |
+| `ZLINK_OPT_ZERO_COPY` | `1` | Zero-copy enabled |
 | `ZLINK_OPT_ZMP_METADATA` | `0` | Disabled |
 
 ## 2. Socket-Type Specific Defaults and Overrides

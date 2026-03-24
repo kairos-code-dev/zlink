@@ -746,7 +746,21 @@ bool zlink::pipe_t::check_hwm () const
 
 void zlink::pipe_t::send_hwms_to_peer (int inhwm_, int outhwm_)
 {
-    send_pipe_hwm (_peer, inhwm_, outhwm_);
+    pipe_t *peer = NULL;
+    {
+        scoped_fast_lock_t lock (_out_sync);
+
+        //  HWM propagation is meaningful only while both ends are still in the
+        //  steady-state data path. During async termination the peer can be in
+        //  the final ack/delete phase, so skip late updates instead of sending
+        //  pipe_hwm to a dying peer object.
+        if (_state != active || !_peer)
+            return;
+
+        peer = _peer;
+    }
+
+    send_pipe_hwm (peer, inhwm_, outhwm_);
 }
 
 void zlink::pipe_t::set_endpoint_pair (zlink::endpoint_uri_pair_t endpoint_pair_)

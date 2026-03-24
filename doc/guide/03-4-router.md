@@ -36,7 +36,6 @@ zlink_bind(router, "tcp://*:5558");
 ### Receiving Messages
 
 ROUTER receives messages via a handler callback attached after socket creation.
-The callback's `source_rid` parameter contains the sender's routing_id.
 
 ```c
 /* DEALER sends "Hello" → handler receives source_rid + parts */
@@ -70,13 +69,8 @@ zlink_send_rid(router, source_rid, &reply, 1, 0);
 
 ### Receive Modes
 
-ROUTER is recv/poller-only in the public API. `zlink_recv()` returns
-`source_rid` identifying the sending peer and `parts[]` containing the
-application data frames.
-
 **Pull mode**: without attaching a handler, call `zlink_recv()` to
-receive synchronously. The `source_rid_out` parameter receives the
-sender's routing_id, and `parts_out` receives the application data.
+receive synchronously.
 
 ```c
 zlink_routing_id_t source_rid;
@@ -96,27 +90,10 @@ if (rc == 0) {
 > the message otherwise. For advanced backpressure patterns, see
 > [Performance Guide](10-performance.md).
 
-## 3. Message Format
+## 3. Usage Examples
 
-### Receive Format
-
-When a DEALER sends a multipart `[A][B]`, the ROUTER receives `[routing_id][A][B]`.
-
-```
-DEALER sends:   [frame1][frame2]
-                     ↓
-ROUTER receives: [routing_id][frame1][frame2]
-```
-
-### Send Format
-
-When ROUTER sends, the first frame must be the target routing_id. The routing_id frame is not transmitted; it is used only for routing.
-
-```
-ROUTER sends:   [routing_id][frame1][frame2]
-                      ↓
-DEALER receives: [frame1][frame2]   ← routing_id stripped
-```
+ROUTER uses `zlink_send_rid()` to send to a specific peer, and
+identifies the sender via `source_rid` in `zlink_recv()`.
 
 ### Receive/Reply Using Handler Callback
 
@@ -327,26 +304,6 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 ### routing_id Conflicts
 
 If two DEALERs with the same routing_id connect simultaneously, the second connection is rejected by default. Enable `ROUTER_HANDOVER` to replace the existing connection instead.
-
-### Multipart Message Integrity
-
-When sending from ROUTER, use `zlink_send_rid` which handles routing_id and data parts atomically. Always provide at least one data part.
-
-```c
-/* Correct send */
-zlink_msg_t data_part;
-zlink_msg_init_size(&data_part, data_size);
-memcpy(zlink_msg_data(&data_part), data, data_size);
-zlink_send_rid(router, &target_rid, &data_part, 1, 0);
-
-/* Multipart send */
-zlink_msg_t parts[2];
-zlink_msg_init_size(&parts[0], header_size);
-memcpy(zlink_msg_data(&parts[0]), header, header_size);
-zlink_msg_init_size(&parts[1], body_size);
-memcpy(zlink_msg_data(&parts[1]), body, body_size);
-zlink_send_rid(router, &target_rid, parts, 2, 0);
-```
 
 > For a detailed explanation of routing_id concepts, see [08-routing-id.md](08-routing-id.md).
 

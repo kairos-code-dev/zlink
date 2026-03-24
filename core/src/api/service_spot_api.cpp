@@ -4,10 +4,6 @@
 
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
-#include "api/monitor_api_internal.hpp"
-#include "services/spot/spot_node_access.hpp"
-#include "services/spot/spot_pub.hpp"
-#include "services/spot/spot_sub.hpp"
 
 int spot_publish_internal (void *spot_,
                            const char *topic_id_,
@@ -15,21 +11,7 @@ int spot_publish_internal (void *spot_,
                            size_t part_count_,
                            zlink_send_flags_t flags_)
 {
-    if (zlink::spot_pub_t *pub = as_spot_pub_side_handle (spot_))
-        return pub->publish (topic_id_, parts_, part_count_, flags_);
-
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot)
-        return -1;
-    zlink::service_public_api_scope_t admission (spot->public_api);
-    if (!admission.acquired ())
-        return -1;
-    zlink::spot_pub_t *pub = ensure_spot_pub (spot);
-    if (!pub) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return pub->publish (topic_id_, parts_, part_count_, flags_);
+    return spot_subject_publish (spot_, topic_id_, parts_, part_count_, flags_);
 }
 
 int spot_pub_publish_internal (void *spot_pub_,
@@ -38,12 +20,8 @@ int spot_pub_publish_internal (void *spot_pub_,
                                size_t part_count_,
                                zlink_send_flags_t flags_)
 {
-    zlink::spot_pub_t *pub = as_spot_pub_side_handle (spot_pub_);
-    if (!pub) {
-        errno = EFAULT;
-        return -1;
-    }
-    return pub->publish (topic_id_, parts_, part_count_, flags_);
+    return spot_subject_publish (spot_pub_, topic_id_, parts_, part_count_,
+                                 flags_);
 }
 
 int spot_node_publish_internal (void *node_,
@@ -52,73 +30,31 @@ int spot_node_publish_internal (void *node_,
                                 size_t part_count_,
                                 zlink_send_flags_t flags_)
 {
-    if (!node_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
-    if (!admission.acquired ())
-        return -1;
-    zlink::spot_pub_t *pub = node->ensure_default_pub ();
-    if (!pub)
-        return -1;
-    return pub->publish (topic_id_, parts_, part_count_, flags_);
+    return spot_subject_publish (node_, topic_id_, parts_, part_count_, flags_);
 }
 
 int spot_pub_send_ready_handler_internal (void *spot_pub_,
                                           zlink_send_ready_handler_fn handler_,
                                           void *userdata_)
 {
-    zlink::spot_pub_t *pub = as_spot_pub_side_handle (spot_pub_);
-    if (!pub) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (pub->node ()) {
-        zlink::service_public_api_scope_t admission (
-          pub->node ()->public_api_guard ());
-        if (!admission.acquired ())
-            return -1;
-    }
-    void *subject = spot_pub_;
-    if (pub->is_node_owned_default () && pub->node ())
-        subject = pub->node ();
-    return pub->set_send_ready_handler (handler_, subject, userdata_);
+    return spot_pub_install_send_ready_handler (spot_pub_, handler_, userdata_);
 }
 
 int spot_sub_subscribe_internal (void *spot_sub_, const char *topic_id_)
 {
-    zlink::spot_sub_t *sub = as_spot_sub_side_handle (spot_sub_);
-    if (!sub) {
-        errno = EFAULT;
-        return -1;
-    }
-    return sub->subscribe (topic_id_);
+    return spot_subject_set_subscription (spot_sub_, topic_id_);
 }
 
 int spot_sub_subscribe_pattern_internal (void *spot_sub_,
                                          const char *pattern_)
 {
-    zlink::spot_sub_t *sub = as_spot_sub_side_handle (spot_sub_);
-    if (!sub) {
-        errno = EFAULT;
-        return -1;
-    }
-    return sub->subscribe_pattern (pattern_);
+    return spot_subject_set_subscription (spot_sub_, pattern_);
 }
 
 int spot_sub_unsubscribe_internal (void *spot_sub_,
                                    const char *topic_id_or_pattern_)
 {
-    zlink::spot_sub_t *sub = as_spot_sub_side_handle (spot_sub_);
-    if (!sub) {
-        errno = EFAULT;
-        return -1;
-    }
-    return sub->unsubscribe (topic_id_or_pattern_);
+    return spot_subject_unset_subscription (spot_sub_, topic_id_or_pattern_);
 }
 
 int spot_sub_recv_internal (void *sub_,
@@ -129,30 +65,8 @@ int spot_sub_recv_internal (void *sub_,
                             size_t *topic_id_len_,
                             zlink_send_flags_t flags_)
 {
-    if (zlink::spot_sub_t *sub = as_spot_sub_side_handle (sub_)) {
-        if (validate_recv_flags (flags_) != 0)
-            return -1;
-        return sub->recv (source_rid_out_, parts_, part_count_, flags_,
-                          topic_id_out_, topic_id_len_);
-    }
-
-    spot_handle_t *spot = as_spot_handle (sub_);
-    if (!spot)
-        return -1;
-    if (validate_recv_flags (flags_) != 0)
-        return -1;
-    zlink::service_public_api_scope_t admission (spot->public_api);
-    if (!admission.acquired ())
-        return -1;
-    if (spot_require_recv_model (spot) != 0)
-        return -1;
-    zlink::spot_sub_t *sub = ensure_spot_sub (spot);
-    if (!sub) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return sub->recv (source_rid_out_, parts_, part_count_, flags_, topic_id_out_,
-                      topic_id_len_);
+    return spot_subject_recv (sub_, source_rid_out_, parts_, part_count_,
+                              topic_id_out_, topic_id_len_, flags_);
 }
 
 int spot_node_recv_internal (void *node_,
@@ -163,30 +77,8 @@ int spot_node_recv_internal (void *node_,
                              size_t *topic_id_len_,
                              zlink_send_flags_t flags_)
 {
-    if (!node_) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (validate_recv_flags (flags_) != 0)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
-    if (!admission.acquired ())
-        return -1;
-    if (spot_node_require_recv_model (node) != 0)
-        return -1;
-    zlink::spot_internal_receiver_t *receiver =
-      zlink::spot_node_access_t::ensure_internal_receiver (node);
-    if (!receiver || !receiver->impl ()) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return receiver->impl ()->recv (source_rid_out_, parts_, part_count_, flags_,
-                                    topic_id_out_, topic_id_len_);
+    return spot_subject_recv (node_, source_rid_out_, parts_, part_count_,
+                              topic_id_out_, topic_id_len_, flags_);
 }
 
 int zlink_service_recv_handler_internal (void *handle_,

@@ -1,0 +1,5 @@
+status=success
+started_at=2026-03-24 09:22:45 +0900
+completed_at=2026-03-24 09:31:51 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log
+stress_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log.exitcode

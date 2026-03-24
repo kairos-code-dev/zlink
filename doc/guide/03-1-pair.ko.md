@@ -92,8 +92,8 @@ zlink_send(server, parts, 2, 0);
 
 ### 수신 모드
 
-PAIR의 public API는 recv/poller-only다. 완전한 멀티파트 메시지는
-`zlink_recv()`로 동기 수신한다. `source_rid`는 단일 피어이므로 항상 비어 있다.
+PAIR의 public API는 recv/poller-only다.
+`zlink_recv()`로 동기 수신한다.
 
 ```c
 void *pair = zlink_socket(ctx, ZLINK_PAIR);
@@ -116,12 +116,15 @@ if (rc == 0) {
 
 ## 3. 메시지 형식
 
-PAIR 소켓은 routing_id 프레임이나 envelope 없이 **애플리케이션 데이터만** 교환한다.
+PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포함된다.
 
 ```
 단일 프레임:     [데이터]
 멀티파트 프레임:  [프레임1][프레임2]...[프레임N]
 ```
+
+> `source_rid` 등 공통 수신 인터페이스는
+> [소켓 패턴 개요](03-0-socket-patterns.ko.md#7-공통-수신-인터페이스)를 참고.
 
 멀티파트 전송:
 

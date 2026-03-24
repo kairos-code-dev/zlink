@@ -1,0 +1,156 @@
+Reusing build directory: /home/hep7/project/kairos/zlink/core/build
+Using CMake source directory: /home/hep7/project/kairos/zlink
+
+## Effective Options (runner)
+- patterns: SPOT
+- build_dir: /home/hep7/project/kairos/zlink/core/build
+- build_mode: reuse
+- reuse_build: 1
+- clean_build: 0
+- runs: 1
+- recv_mode: callback
+- duration_seconds: 5
+- warmup_seconds: 2
+- hwm: default(binary)
+- send_hwm: default(binary)
+- recv_hwm: default(binary)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- pin_cpu: 0
+- io_threads: default(binary=1)
+- msg_sizes: 256,1024,131072,262144
+- transports: tcp,tls
+- results_dir: /home/hep7/project/kairos/zlink/core/perf/results
+- results_tag: triage-single-tcp-tls-fixed-hwm768
+- result_file: /home/hep7/project/kairos/zlink/core/perf/results/single/report/perf_linux_callback_20260324_174522_triage-single-tcp-tls-fixed-hwm768.txt
+- output_file: none
+- comparison_script: /home/hep7/project/kairos/zlink/core/perf/single/run_comparison.py
+- python: python3
+
+## Effective Env (runner)
+- PYTHONUNBUFFERED: 1
+- PERF_RECV_MODE: callback
+- PERF_MSG_SIZES: 256,1024,131072,262144
+- PERF_TRANSPORTS: tcp,tls
+- PERF_SINGLE_DURATION_SECONDS: 5
+- PERF_SINGLE_WARMUP_SECONDS: 2
+- PERF_SINGLE_SNDTIMEO_MS: 200
+- PERF_SINGLE_RCVTIMEO_MS: 200
+- PERF_NO_AUTOBUILD: 1
+
+
+## Effective Options (start)
+- runs: 1
+- recv_mode: callback
+- duration_seconds: 5
+- timeout_seconds: 45
+- io_threads: 1
+- hwm: 1000
+- sndhwm: 1000
+- rcvhwm: 1000
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- patterns: SPOT
+- transports: tcp,tls
+- msg_sizes: 256,1024,131072,262144
+## PATTERN: SPOT (one-way)
+  > Benchmarking current for SPOT...
+    Testing tcp:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | CPU% | Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|------------------|--------------|--------------|--------------|--------------|------|--------|-----------|-----------|-----------|
+      | 256B     |    528.03 Kmsg/s |   135.18 MB/s |      1.13 ms |      2.61 ms |      4.63 ms |  6.8 |   13.7 |       N/A |       N/A |       N/A |
+      | 1024B    |    470.41 Kmsg/s |   481.70 MB/s |      1.06 ms |      1.90 ms |      4.10 ms |  7.0 |   15.1 |       N/A |       N/A |       N/A |
+      | 131072B  |     37.17 Kmsg/s |  4872.08 MB/s |     14.03 ms |     17.61 ms |     18.98 ms |  7.6 |   12.9 |       N/A |       N/A |       N/A |
+      | 262144B  |     13.15 Kmsg/s |  3447.14 MB/s |     41.15 ms |     58.77 ms |     64.54 ms |  6.4 |   29.1 |       N/A |       N/A |       N/A |
+    Testing tcp: Done
+    Testing tls:
+      | Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) | CPU% | Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|------------------|--------------|--------------|--------------|--------------|------|--------|-----------|-----------|-----------|
+      | 256B     |    481.54 Kmsg/s |   123.28 MB/s |      1.37 ms |      3.85 ms |      5.86 ms |  6.3 |   17.3 |       N/A |       N/A |       N/A |
+      | 1024B    |    333.12 Kmsg/s |   341.11 MB/s |      1.73 ms |      4.54 ms |      8.78 ms |  5.8 |   17.5 |       N/A |       N/A |       N/A |
+      | 131072B  |     11.44 Kmsg/s |  1499.88 MB/s |     49.09 ms |     62.85 ms |     65.33 ms |  6.7 |   40.1 |       N/A |       N/A |       N/A |
+      | 262144B  |      6.17 Kmsg/s |  1618.74 MB/s |     90.50 ms |    117.07 ms |    120.83 ms |  5.8 |   21.5 |       N/A |       N/A |       N/A |
+    Testing tls: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: callback
+- duration_seconds: 5
+- timeout_seconds: 45
+- io_threads: 1
+- hwm: 1000
+- sndhwm: 1000
+- rcvhwm: 1000
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- patterns: SPOT
+- transports: tcp,tls
+- msg_sizes: 256,1024,131072,262144
+
+## Result Data
+RESULT,current,SPOT,tcp,256,throughput,528033.400
+RESULT,current,SPOT,tcp,256,bandwidth,135.180
+RESULT,current,SPOT,tcp,256,latency,1131.260
+RESULT,current,SPOT,tcp,256,latency_p95,2613.000
+RESULT,current,SPOT,tcp,256,latency_p99,4632.000
+RESULT,current,SPOT,tcp,256,cpu_pct,6.825
+RESULT,current,SPOT,tcp,256,mem_mb,13.734
+RESULT,current,SPOT,tcp,1024,throughput,470407.400
+RESULT,current,SPOT,tcp,1024,bandwidth,481.700
+RESULT,current,SPOT,tcp,1024,latency,1057.890
+RESULT,current,SPOT,tcp,1024,latency_p95,1902.000
+RESULT,current,SPOT,tcp,1024,latency_p99,4099.010
+RESULT,current,SPOT,tcp,1024,cpu_pct,7.031
+RESULT,current,SPOT,tcp,1024,mem_mb,15.129
+RESULT,current,SPOT,tcp,131072,throughput,37171.000
+RESULT,current,SPOT,tcp,131072,bandwidth,4872.080
+RESULT,current,SPOT,tcp,131072,latency,14025.950
+RESULT,current,SPOT,tcp,131072,latency_p95,17615.000
+RESULT,current,SPOT,tcp,131072,latency_p99,18983.000
+RESULT,current,SPOT,tcp,131072,cpu_pct,7.555
+RESULT,current,SPOT,tcp,131072,mem_mb,12.922
+RESULT,current,SPOT,tcp,262144,throughput,13149.800
+RESULT,current,SPOT,tcp,262144,bandwidth,3447.140
+RESULT,current,SPOT,tcp,262144,latency,41149.180
+RESULT,current,SPOT,tcp,262144,latency_p95,58775.000
+RESULT,current,SPOT,tcp,262144,latency_p99,64540.560
+RESULT,current,SPOT,tcp,262144,cpu_pct,6.381
+RESULT,current,SPOT,tcp,262144,mem_mb,29.121
+RESULT,current,SPOT,tls,256,throughput,481543.600
+RESULT,current,SPOT,tls,256,bandwidth,123.280
+RESULT,current,SPOT,tls,256,latency,1367.490
+RESULT,current,SPOT,tls,256,latency_p95,3846.000
+RESULT,current,SPOT,tls,256,latency_p99,5863.000
+RESULT,current,SPOT,tls,256,cpu_pct,6.270
+RESULT,current,SPOT,tls,256,mem_mb,17.266
+RESULT,current,SPOT,tls,1024,throughput,333116.400
+RESULT,current,SPOT,tls,1024,bandwidth,341.110
+RESULT,current,SPOT,tls,1024,latency,1728.360
+RESULT,current,SPOT,tls,1024,latency_p95,4538.000
+RESULT,current,SPOT,tls,1024,latency_p99,8783.010
+RESULT,current,SPOT,tls,1024,cpu_pct,5.809
+RESULT,current,SPOT,tls,1024,mem_mb,17.508
+RESULT,current,SPOT,tls,131072,throughput,11443.200
+RESULT,current,SPOT,tls,131072,bandwidth,1499.880
+RESULT,current,SPOT,tls,131072,latency,49093.370
+RESULT,current,SPOT,tls,131072,latency_p95,62849.250
+RESULT,current,SPOT,tls,131072,latency_p99,65330.100
+RESULT,current,SPOT,tls,131072,cpu_pct,6.654
+RESULT,current,SPOT,tls,131072,mem_mb,40.117
+RESULT,current,SPOT,tls,262144,throughput,6175.000
+RESULT,current,SPOT,tls,262144,bandwidth,1618.740
+RESULT,current,SPOT,tls,262144,latency,90502.210
+RESULT,current,SPOT,tls,262144,latency_p95,117065.300
+RESULT,current,SPOT,tls,262144,latency_p99,120828.600
+RESULT,current,SPOT,tls,262144,cpu_pct,5.791
+RESULT,current,SPOT,tls,262144,mem_mb,21.484
+
+## Completion
+- status: complete
+- expected_result_lines: 40
+- actual_result_lines: 40
+
+Saved result file: /home/hep7/project/kairos/zlink/core/perf/results/single/report/perf_linux_callback_20260324_174522_triage-single-tcp-tls-fixed-hwm768.txt (status=complete)
+Total benchmark time: 1m 42s (102s, exit=0)

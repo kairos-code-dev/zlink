@@ -5,8 +5,8 @@
 ## 1. 개요
 
 zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이다.
-작은 data는 struct 내부에 inline 저장(VSM)하고, 큰 data는 heap buffer를
-reference counting으로 관리(LMSG)한다.
+작은 data는 struct 내부에 inline 저장(VSM)하고,
+큰 data는 heap buffer를 reference counting으로 관리(LMSG)한다.
 
 ## 2. Message Type
 
@@ -64,11 +64,11 @@ reference counting으로 관리(LMSG)한다.
 | Function | 동작 | Ownership 변화 |
 |----------|------|----------------|
 | `zlink_msg_init` | 빈 message 생성 | caller가 소유 |
-| `zlink_msg_init_size` | size만큼 buffer 할당 후 빈 상태로 제공 | caller가 소유, `memcpy`로 data 채움 |
-| `zlink_msg_init_data` | 외부 buffer를 message에 연결 (zero-copy) | buffer ownership이 message로 이전 |
-| `zlink_msg_close` | message 해제. refcount가 0이면 buffer도 해제 | 소유 포기 |
-| `zlink_msg_move` | src → dest로 내용 이동. src는 빈 message가 됨 | dest로 이전, src는 빈 상태 |
-| `zlink_msg_copy` | src → dest로 복사. VSM은 value copy, LMSG는 refcount 증가 | dest도 공동 소유 |
+| `zlink_msg_init_size` | size만큼 buffer 할당 | caller 소유, `memcpy`로 채움 |
+| `zlink_msg_init_data` | 외부 buffer 연결 (zero-copy) | ownership이 message로 이전 |
+| `zlink_msg_close` | message 해제 (refcount=0이면 free) | 소유 포기 |
+| `zlink_msg_move` | src -> dest 이동, src는 빈 상태 | dest로 이전 |
+| `zlink_msg_copy` | src -> dest 복사, LMSG는 refcount 증가 | dest도 공동 소유 |
 | `zlink_msg_data` | data buffer pointer 반환 | 변화 없음 (읽기 전용) |
 | `zlink_msg_size` | data size(byte) 반환 | 변화 없음 |
 | `zlink_msg_refcnt` | storage reference count 반환 | 변화 없음 |

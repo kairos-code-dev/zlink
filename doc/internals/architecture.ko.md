@@ -392,8 +392,8 @@ socket_base_t (기반 클래스)
 ├── router_t            # ROUTER 소켓: ID 기반 라우팅 (routing_socket_base_t 상속)
 ├── xpub_t              # XPUB 소켓: 구독 메시지 수신 가능
 │   └── pub_t           # PUB 소켓: XPUB 단순화 (구독 노출 없음)
-├── xsub_t              # XSUB 소켓: 구독 메시지 송신 가능
-│   └── sub_t           # SUB 소켓: XSUB 단순화 (setsockopt로 구독)
+├── xsub_t              # XSUB 소켓: 로컬 필터 없이 전체 수신 (프록시용)
+│   └── sub_t           # SUB 소켓: 로컬 토픽 필터링 활성 (filter=true)
 └── stream_t            # STREAM 소켓: RAW TCP, 외부 클라이언트 연동
 ```
 
@@ -455,7 +455,7 @@ socket_base_t (기반 클래스)
 | PUB     | `dist_t` (Fan-out)    | -                    | 수신 불가                    |
 | SUB     | -                     | `fq_t` (Fair Queue)  | 토픽 필터링 적용             |
 | XPUB    | `dist_t` (Fan-out)    | 구독 메시지 수신      | mtrie_t로 구독 관리          |
-| XSUB    | 구독 메시지 송신       | `fq_t` (Fair Queue)  | 필터링 + 구독 전송           |
+| XSUB    | -                     | `fq_t` (Fair Queue)  | 로컬 필터 없이 전체 수신     |
 | STREAM  | ID 기반 직접 라우팅    | `fq_t` (Fair Queue)  | RAW 프로토콜 사용            |
 
 ### 5.4 구독 자료구조
@@ -1238,19 +1238,40 @@ core/
 │   │   │   └── socket_monitor_bridge.hpp # PAIR 기반 소켓 모니터 브릿지
 │   │   ├── discovery/               # 서비스 디스커버리
 │   │   │   ├── discovery.cpp/hpp
+│   │   │   ├── discovery_access.cpp/hpp  # API seam
+│   │   │   ├── discovery_bootstrap.cpp   # Registry bootstrap
+│   │   │   ├── discovery_state.cpp       # 로컬 서비스 디렉터리 상태
+│   │   │   ├── discovery_update.cpp      # 서비스 목록 업데이트
+│   │   │   ├── discovery_uplink.cpp      # Registry uplink/heartbeat
+│   │   │   ├── discovery_registry_client.cpp # Registry 프로토콜 클라이언트
 │   │   │   ├── discovery_protocol.hpp
-│   │   │   └── registry.cpp/hpp
-│   │   ├── gateway/                 # 게이트웨이
-│   │   │   ├── gateway.cpp/hpp      # 게이트웨이 + 리시버 (통합)
-│   │   │   ├── gateway_runtime.hpp  # 게이트웨이 런타임 상태 및 라이프사이클
+│   │   │   ├── registry_access.cpp/hpp   # Registry API seam
+│   │   │   └── registry_query_access.cpp/hpp # 원격 query API seam
+│   │   ├── gateway/                 # 게이트웨이 (POSD 모듈 분리)
+│   │   │   ├── gateway.hpp          # 메인 헤더
+│   │   │   ├── gateway_access.cpp/hpp  # API seam
+│   │   │   ├── gateway_facade.cpp   # 외부 API 위임
+│   │   │   ├── gateway_lifecycle.cpp # 생성/종료/attach 시퀀스
+│   │   │   ├── gateway_pool.cpp     # 피어 풀 관리, 로드밸런싱
+│   │   │   ├── gateway_socket.cpp   # 내부 ROUTER 소켓 wiring
+│   │   │   ├── gateway_monitor.cpp  # 서비스 모니터 이벤트 발행
+│   │   │   ├── gateway_refresh.cpp  # Discovery 기반 피어 갱신
+│   │   │   ├── gateway_runtime.hpp  # 게이트웨이 런타임 상태
 │   │   │   └── routing_id_utils.hpp
-│   │   └── spot/                    # SPOT 서비스
+│   │   └── spot/                    # SPOT 서비스 (POSD 모듈 분리)
 │   │       ├── spot_node.cpp/hpp    # 네트워크 제어 (PUB/SUB mesh)
+│   │       ├── spot_node_access.cpp/hpp  # SpotNode API seam
+│   │       ├── spot_handle.hpp      # 공개 handle 구조체
 │   │       ├── spot_pub.cpp/hpp     # 발행 핸들 (thread-safe)
 │   │       ├── spot_sub.cpp/hpp     # 구독/수신 핸들
-│   │       ├── spot_data_plane.cpp/hpp  # 데이터 플레인 루프 (SUB 수신, 로컬 분배)
-│   │       ├── spot_dispatch_internal.hpp # 내부 분배 헬퍼
-│   │       └── spot_runtime.hpp     # SPOT 런타임 상태 및 라이프사이클
+│   │       ├── spot_sub_option.cpp  # sub 측 option 처리
+│   │       ├── spot_sub_recv.cpp    # sub 측 recv 처리
+│   │       ├── spot_subject_access.cpp/hpp # subject API seam
+│   │       ├── spot_data_plane.cpp/hpp  # 데이터 플레인 코어
+│   │       ├── spot_data_plane_forwarding.cpp # ingress/egress 포워딩
+│   │       ├── spot_data_plane_protocol.cpp   # 제어 메시지, 구독 업데이트
+│   │       ├── spot_data_plane_internal.hpp   # data plane 내부 state
+│   │       └── spot_runtime.cpp/hpp # SPOT 런타임 라이프사이클
 │   │
 │   └── utils/                       # 유틸리티
 │       ├── ypipe.hpp                # Lock-free 파이프

@@ -4,7 +4,8 @@
 
 ## 1. 개요
 
-zlink 서비스 계층은 Discovery, Gateway, SPOT 세 가지 고수준 서비스를 제공한다. 이 문서는 내부 구현 상세를 다룬다.
+zlink 서비스 계층은 Discovery, Gateway, SPOT 세 가지 고수준 서비스를 제공한다.
+이 문서는 내부 구현 상세를 다룬다.
 
 ## 2. Registry 내부 구현
 
@@ -34,6 +35,7 @@ struct registry_state_t {
 ```
 
 ### 2.3 SERVICE_LIST 브로드캐스트 트리거
+
 | 트리거 | 설명 |
 |--------|------|
 | 등록 | Receiver REGISTER 성공 후 |
@@ -82,8 +84,11 @@ struct registry_state_t {
 
 ## 5. Receiver 내부 구현
 
-> **참고**: receiver 역할은 `gateway_t`로 통합되었다
-> (`core/src/services/gateway/gateway.cpp/hpp`). 별도 `receiver_t` 클래스는 없다.
+> **참고**: receiver 역할은 `gateway_t`로 통합되었다.
+> 별도 `receiver_t` 클래스는 없다. 현재 gateway 내부는
+> `gateway_facade`, `gateway_lifecycle`, `gateway_pool`, `gateway_socket`,
+> `gateway_monitor`, `gateway_refresh` 모듈로 분리되어 있다.
+> 상세는 [POSD 모듈 구조](posd-module-structure.ko.md)를 참고.
 
 ### 5.1 상태 머신
 ```
@@ -110,6 +115,7 @@ Frame 1~N: Payload (가변)
 ```
 
 ### 6.2 메시지 타입
+
 | msgId | 이름 | 방향 |
 |-------|------|------|
 | 0x0001 | REGISTER | Receiver → Registry |
@@ -143,13 +149,18 @@ Frame 3~N: Payload
 ## 7. SPOT 내부 구현
 
 ### 7.1 구조
-- `spot_node_t` — 네트워크 제어 (PUB/SUB 소켓 소유, mesh 관리, worker 스레드)
-- `spot_pub_t` — 발행 핸들 (spot_node_t의 publish 위임, tag 기반 유효성 검증)
-- `spot_sub_t` — 구독/수신 핸들 (내부 큐, 패턴 매칭, 조건변수 기반 blocking recv)
+- `spot_node_t` -- 네트워크 제어
+  - PUB/SUB 소켓 소유, mesh 관리, worker 스레드
+- `spot_pub_t` -- 발행 핸들
+  - spot_node_t의 publish 위임, tag 기반 유효성 검증
+- `spot_sub_t` -- 구독/수신 핸들
+  - 내부 큐, 패턴 매칭, 조건변수 기반 blocking recv
 
 ### 7.2 동시성 모델
-- 발행: 호출자 스레드에서 직접 수행, `_pub_sync` mutex로 직렬화 (thread-safe)
-- 수신: worker 스레드가 SUB 소켓에서 수신 → spot_sub_t 내부 큐로 분배
+- 발행: 호출자 스레드에서 직접 수행,
+  `_pub_sync` mutex로 직렬화 (thread-safe)
+- 수신: worker 스레드가 SUB 소켓에서 수신,
+  spot_sub_t 내부 큐로 분배
 - 잠금 순서: `_sync` → `_pub_sync` (데드락 방지)
 - 비동기 큐 없이 직접 발행 (publish path에 메시지 버퍼링 없음)
 
@@ -159,12 +170,16 @@ Frame 3~N: Payload
 - spot_sub_t별 구독 셋 관리 (정확한 토픽 + 패턴 별도)
 
 ### 7.4 전달 정책
-- 로컬 publish (spot_pub) → 로컬 spot_sub 분배 + PUB 송출 (원격 전파)
-- 원격 수신 (SUB) → 로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
+- 로컬 publish (spot_pub):
+  로컬 spot_sub 분배 + PUB 송출 (원격 전파)
+- 원격 수신 (SUB):
+  로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
 
 ### 7.5 Raw 소켓 정책
-- `spot_pub_t`: raw PUB socket 노출하지 않음 (thread-safety 우회 방지)
-- `spot_sub_t`: raw SUB socket 노출하지 않음; callback/recv API로만 소비
+- `spot_pub_t`: raw PUB socket 노출하지 않음
+  (thread-safety 우회 방지)
+- `spot_sub_t`: raw SUB socket 노출하지 않음;
+  callback/recv API로만 소비
 
 ### 7.4 Discovery 타입 분리
 - service_type 필드로 gateway_receiver/spot_node 분리

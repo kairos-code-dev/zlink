@@ -9,11 +9,30 @@
 
 namespace zlink
 {
+class ctx_t;
 class discovery_t;
 class discovery_observer_t;
 
 struct discovery_access_t
 {
+    static void *create (ctx_t *ctx_, zlink_service_type_t service_type_);
+    static discovery_t *from_handle (void *discovery_);
+    static int connect_registry (discovery_t *discovery_,
+                                 const char *registry_endpoint_);
+    static int set_tls_client (discovery_t *discovery_,
+                               const char *ca_cert_,
+                               const char *hostname_,
+                               int trust_system_);
+    static int set_option (discovery_t *discovery_,
+                           int option_,
+                           const void *optval_,
+                           size_t optvallen_);
+    static int set_routing_id (discovery_t *discovery_,
+                               const void *data_,
+                               size_t size_);
+    static int routing_id (discovery_t *discovery_, zlink_routing_id_t *out_);
+    static int destroy (discovery_t *discovery_);
+    static void *monitor_open (discovery_t *discovery_, int events_);
     static void set_summary_enabled (discovery_t *discovery_, bool enabled_);
     static void add_observer (discovery_t *discovery_,
                               discovery_observer_t *observer_);

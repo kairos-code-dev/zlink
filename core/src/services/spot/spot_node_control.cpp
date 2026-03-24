@@ -484,6 +484,7 @@ void spot_node_t::refresh_connected_peer_endpoints ()
                   std::make_pair (it->first, static_cast<uint32_t> (0)));
             }
             _pub_delivery_ready_sources.clear ();
+            publish_mesh_pub_budget_hint_locked ();
             became_empty = true;
         } else {
             subs.assign (_subs.begin (), _subs.end ());
@@ -548,6 +549,37 @@ std::string spot_node_t::first_connected_peer_endpoint () const
     if (_connected_peer_endpoints.empty ())
         return std::string ();
     return *_connected_peer_endpoints.begin ();
+}
+
+uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
+{
+    uint32_t max_ready_count = 0;
+    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+           _pub_delivery_ready_sources.begin ();
+         it != _pub_delivery_ready_sources.end (); ++it) {
+        const uint32_t ready_count =
+          static_cast<uint32_t> (it->second.size ());
+        if (ready_count > max_ready_count)
+            max_ready_count = ready_count;
+    }
+    return max_ready_count;
+}
+
+void spot_node_t::publish_mesh_pub_budget_hint_locked ()
+{
+    if (!_runtime)
+        return;
+
+    const uint32_t ready_count = max_pub_delivery_ready_count_locked ();
+    const uint32_t previous =
+      _runtime->mesh_pub_ready_peer_count.load (std::memory_order_acquire);
+    if (previous == ready_count)
+        return;
+
+    _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                               std::memory_order_release);
+    _runtime->mesh_pub_budget_version.fetch_add (1,
+                                                 std::memory_order_acq_rel);
 }
 
 void spot_node_t::schedule_subscription_ready_refresh ()
@@ -779,6 +811,7 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         }
 
         pubs.assign (_pubs.begin (), _pubs.end ());
+        publish_mesh_pub_budget_hint_locked ();
         if (!subscribe_) {
             _pending_pub_delivery_ready_counts.erase (subject_);
             _pub_delivery_ready_refresh_pending = false;

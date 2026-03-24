@@ -257,6 +257,25 @@ Discovery events.
 - Server added: auto-connect to new server
 - Server removed: disconnect removed server
 
+## Internal Module Structure
+
+The Gateway internal implementation is split into responsibility-based
+modules rather than a single file. The public C API remains unchanged;
+internal changes stay within narrow boundaries.
+
+| Module | Role |
+|--------|------|
+| `gateway_access` | API layer seam (service-local access) |
+| `gateway_facade` | External API delegation |
+| `gateway_lifecycle` | Create/destroy/attach sequencing |
+| `gateway_pool` | Peer pool management, load balancing |
+| `gateway_socket` | Internal ROUTER socket wiring |
+| `gateway_monitor` | Service monitor event emission |
+| `gateway_refresh` | Discovery-based peer refresh |
+
+Multipart sends use the shared `multipart_send_txn` module to provide
+whole-message guarantees (all-or-nothing).
+
 ## 9. End-to-End Example
 
 ### Recv model

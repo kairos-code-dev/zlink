@@ -4,15 +4,14 @@
 
 ## 1. Overview
 
-The zlink monitoring API allows real-time observation of socket events such as connection, disconnection, and handshake. It operates on a callback basis, automatically invoking the registered handler function when events occur.
-
-The family-level control contract and regression matrix are documented in
-[socket-family-monitor-contract-spec.ko.md](../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md).
-This guide focuses on which events may be used as gates in real code.
+The zlink monitoring API allows real-time observation of socket events such as connection, disconnection, and handshake. Like other sockets, monitors support both recv mode (pull) and callback mode.
 
 ## 2. Enabling the Monitor
 
-### 2.1 Callback-Based (Recommended)
+### 2.1 Callback Mode
+
+The handler is invoked on the I/O thread immediately when an event occurs.
+Callback mode is suitable for real-time processing without event loss.
 
 ```c
 /* Define event handler */
@@ -62,7 +61,7 @@ These report transport/session state for raw sockets.
 
 | Constant | Value | Description | `value` | `routing_id` | Side | After this event |
 |---|---|---|---|---|---|---|
-| `CONNECTION_READY_CHANGED` | `0x1000` | Handshake complete, messaging ready | `current_ready_count` | ROUTER/STREAM: peer id | Both | **start send/recv** |
+| `CONNECTION_READY_CHANGED` | `0x1000` | Handshake complete, messaging ready | `current_ready_count` | peer id (all sockets) | Both | **start send/recv** |
 | `CONNECTED` | `0x0001` | TCP connection established (pre-handshake) | fd | — | Client | wait for `CONNECTION_READY_CHANGED` |
 | `ACCEPTED` | `0x0020` | Incoming connection accepted (pre-handshake) | fd | — | Server | wait for `CONNECTION_READY_CHANGED` |
 | `DISCONNECTED` | `0x0200` | Session terminated | reason code | Possible | Both | trigger reconnection |
@@ -93,8 +92,7 @@ Close:  CONNECTION_READY_CHANGED → DISCONNECTED → CONNECT_DELAYED → reconn
 Fired after a successful handshake. Once received, messaging can start immediately.
 The `value` field contains `current_ready_count` -- the absolute number of ready peers.
 
-- On ROUTER/STREAM: `ev->routing_id` contains the peer identity.
-- On PAIR/DEALER: `routing_id` is empty.
+- `ev->routing_id` contains the peer identity on all socket types.
 
 ### DISCONNECTED reason codes
 
@@ -235,6 +233,35 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ## 8. Socket Monitor Snapshot
 
 Query the current aggregate state from a monitor handle at any time.
+
+| Field | Description |
+|-------|-------------|
+| `ready_count` | Number of currently ready peers |
+| `snd_pending_msgs` | Messages pending in send queue (capped by SNDHWM) |
+| `rcv_pending_msgs` | Messages pending in receive queue (capped by RCVHWM, approximate) |
+
+`snd_pending_msgs` and `rcv_pending_msgs` are directly related to HWM settings.
+When these values approach the HWM, backpressure is occurring.
+
+**Note — pending values can exceed the HWM setting:**
+
+1. **inproc transport**: inproc has no session/engine in between, so both
+   sides' HWMs are summed. For example, if both sides have SNDHWM=1000
+   and RCVHWM=1000, the actual pipe HWM is `1000 + 1000 = 2000`.
+   Pending values can appear as twice the configured value.
+
+2. **Slight HWM overshoot**: The write side's view of the read counter
+   (`_peers_msgs_read`) is not real-time — it is a snapshot reported by
+   the read side only when LWM is reached. Synchronizing on every message
+   would eliminate the lock-free pipe's performance advantage, so batch
+   notification is used instead. As a result, HWM is an **approximate
+   limit**, not a hard limit, and can be slightly exceeded between
+   notifications.
+
+| transport | actual pipe HWM | reason |
+|-----------|----------------|--------|
+| tcp/ipc/tls/ws/wss | `SNDHWM` (as configured) | session manages each side independently |
+| inproc | `SNDHWM + peer.RCVHWM` | direct connection without session; buffers summed |
 
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };

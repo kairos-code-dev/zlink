@@ -16,12 +16,12 @@ SPOT public API는 두 계층으로 정리됩니다.
 `zlink_subscribe_handler()`로 receive surface를 callback 모드로 **일방 전환**
 합니다. send-ready는 별도 축입니다.
 
-| | Recv 모드 (기본) | Receive Callback Active |
-|---|---|---|
-| **SpotNode 수신** | `zlink_subscribe()` | `zlink_subscribe_handler()` 콜백 |
-| **Spot 수신** | `zlink_subscribe()` | `zlink_subscribe_handler()` 콜백 |
+| 동작 | Recv 모드 (기본) | Callback 모드 |
+|------|-----------------|--------------|
+| **SpotNode 수신** | `zlink_subscribe()` | `subscribe_handler()` 콜백 |
+| **Spot 수신** | `zlink_subscribe()` | `subscribe_handler()` 콜백 |
 | **읽기 poller** | `ZLINK_POLLIN` | `EBUSY` |
-| **Send-ready** | `ZLINK_POLLOUT` poller 또는 `zlink_send_ready_handler()` | `ZLINK_POLLOUT` poller 또는 `zlink_send_ready_handler()` |
+| **Send-ready** | poller 또는 `send_ready_handler()` | poller 또는 `send_ready_handler()` |
 
 - `zlink_send_ready_handler()`는 receive callback 선행 조건이 없습니다.
 - send-ready attach 이후 data-plane `ZLINK_POLLOUT` poller는 `EBUSY`로 실패합니다.
@@ -210,16 +210,14 @@ typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
 
 ## 옵션 요약
 
-| 대상 | 설정/조회 API | 지원 방향 |
-|---|---|---|
-| unified `spot` publish 쪽 | `zlink_set_pub_option()` / `zlink_get_pub_option()` | `ZLINK_PUB_OPT_*` |
-| unified `spot` subscribe 쪽 | `zlink_set_sub_option()` / `zlink_get_sub_option()` | `ZLINK_SUB_OPT_*` |
-| `spot_node` default publish 쪽 | `zlink_set_pub_option()` / `zlink_get_pub_option()` | `ZLINK_PUB_OPT_*` |
-| `spot_node` default subscribe 쪽 | `zlink_set_sub_option()` / `zlink_get_sub_option()` | `ZLINK_SUB_OPT_*` |
-| common 옵션 (pub 쪽) | `zlink_set_option()` / `zlink_get_option()` | `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_SNDTIMEO`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF` |
-| common 옵션 (sub 쪽) | `zlink_set_option()` / `zlink_get_option()` | `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_RCVTIMEO`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF` |
-| routing_id (pub 쪽) | `zlink_set_routing_id()` / `zlink_get_routing_id()` | — |
-| subscription 관리 | `zlink_set_subscription()` / `zlink_unset_subscription()` / `zlink_subscription_at()` | — |
+| 대상 | 설정/조회 API | 옵션 |
+|------|-------------|------|
+| spot / node publish 쪽 | `set_pub_option` / `get_pub_option` | `ZLINK_PUB_OPT_*` |
+| spot / node subscribe 쪽 | `set_sub_option` / `get_sub_option` | `ZLINK_SUB_OPT_*` |
+| common (pub 쪽) | `set_option` / `get_option` | `SNDHWM`, `SNDTIMEO`, `LINGER`, `SNDBUF`, `RCVBUF` |
+| common (sub 쪽) | `set_option` / `get_option` | `RCVHWM`, `RCVTIMEO`, `LINGER`, `SNDBUF`, `RCVBUF` |
+| routing_id (pub 쪽) | `set_routing_id` / `get_routing_id` | -- |
+| subscription 관리 | `set_subscription` / `unset_subscription` / `subscription_at` | -- |
 
 ## 모니터링
 

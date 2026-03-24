@@ -83,7 +83,7 @@ At this point:
 - Blocking `zlink_send()` calls resume.
 - The send-ready handler fires (if installed).
 
-This hysteresis prevents rapid oscillation between writable and non-writable states.
+This hysteresis (using different upper and lower thresholds to create a gap between state transitions) prevents rapid oscillation between writable and non-writable states.
 
 ```
 Example: HWM = 100
@@ -185,13 +185,17 @@ when the socket transitions from non-writable to writable. Combined with
 2. On `EAGAIN`, pause sending.
 3. When the send-ready callback fires, resume sending.
 
-The same API is available on raw `STREAM` in callback mode, and on
-`SPOT` / `SPOT Node` in callback mode. Gateway uses poller `ZLINK_POLLOUT`
-instead.
+This API works identically on all send-capable handles (raw sockets,
+Gateway, SPOT, SPOT Node). By default, send backpressure is detected via
+poller `ZLINK_POLLOUT`. Once `zlink_send_ready_handler()` is registered,
+readiness transitions are delivered through the callback instead, and
+data-plane `ZLINK_POLLOUT` returns `EBUSY`.
 
-**Constraints:**
-- Replace-only: passing `NULL` is invalid.
-- Cannot be replaced from within its own callback (`EDEADLK`).
+**Behavior rules:**
+- Can be called multiple times to replace the callback (previous handler is atomically overwritten).
+- Passing `NULL` returns `EINVAL` — once registered, the handler cannot be removed, only replaced with another function.
+- Cannot be replaced from within its own callback (`EDEADLK`). Outside the callback, replacement is free.
+- After registration, data-plane poller `ZLINK_POLLOUT` returns `EBUSY`.
 
 ```c
 typedef struct {

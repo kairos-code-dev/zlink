@@ -28,9 +28,9 @@
 
 | 카테고리 | 포함 API | Thread-safe? | 참고 |
 |---|---|---|---|
-| **전송** | `send`, `publish`, `send_rid` | 예 — 완전히 동시 호출 가능 | 여러 스레드가 같은 핸들에 동시에 호출 가능. 처리량에 최적화된 빠른 경로. |
-| **설정·운영** | `bind`, `connect`, `disconnect`, `set_option`, `subscribe`, `unsubscribe`, `monitor_open`, `attach_discovery`, 조회 | 예 — 한 번에 하나씩 처리 | 어느 스레드에서든 안전하게 호출 가능. 라이브러리가 한 번에 하나씩 처리하므로 메시지마다 호출하는 건 피하세요. |
-| **정리** | `close`, `destroy` | 예 — 명확한 에러 코드 | 다른 스레드가 아직 핸들을 사용 중이면 크래시 대신 `EBUSY`를 반환. 자세한 내용은 [4절](#4-핸들-안전하게-닫기). |
+| **전송** | `send`, `publish`, `send_rid` | 예 -- 동시 호출 가능 | 처리량 최적화 빠른 경로 |
+| **설정·운영** | `bind`, `connect`, `set_option` 등 | 예 -- 순차 처리 | 메시지마다 호출은 비권장 |
+| **정리** | `close`, `destroy` | 예 -- 명확한 에러 코드 | 사용 중이면 `EBUSY` 반환 |
 
 **요약하면:** `send`는 어느 스레드에서든 마음껏 호출하세요. 연결 추가,
 구독 변경, 옵션 변경도 전송 중에 자유롭게 할 수 있습니다. 다 끝나면
@@ -144,14 +144,14 @@ void *setup_thread(void *arg)
 
 모든 핸들 타입이 동일한 세 가지 카테고리 모델을 따릅니다:
 
-| 핸들 | 전송 (동시 호출) | 설정·운영 (순차 처리) | 정리 |
+| 핸들 | 전송 | 설정·운영 | 정리 |
 |---|---|---|---|
-| Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
-| Gateway | `zlink_gateway_send`, `send_rid` | bind, connect, attach_discovery, set_option, set_lb_strategy, monitor_open | `zlink_gateway_destroy` |
-| SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
-| SPOT Node | `zlink_publish` | bind, connect_peer_pub, disconnect_peer_pub, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
-| Discovery | *(전송 없음 — 설정 전용)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
-| Registry | *(전송 없음 — 설정 전용)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology_query | `zlink_registry_destroy` |
+| Socket | `send` | bind, connect, set_option 등 | `close` |
+| Gateway | `send`, `send_rid` | bind, attach_discovery 등 | `destroy` |
+| SPOT | `publish` | subscribe, unsubscribe 등 | `destroy` |
+| SPOT Node | `publish` | bind, connect_peer_pub 등 | `destroy` |
+| Discovery | *(없음)* | connect_registry 등 | `destroy` |
+| Registry | *(없음)* | bind, add_peer 등 | `destroy` |
 
 ## 4. 핸들 안전하게 닫기
 
@@ -160,9 +160,9 @@ zlink가 명확한 에러 코드를 반환합니다:
 
 | 상황 | 동작 | 에러 코드 |
 |---|---|---|
-| 다른 스레드가 같은 핸들에서 API를 실행 중인데 `close`/`destroy` 호출 | 닫기 **거부** — 핸들은 살아 있음 | `EBUSY` |
-| `close`가 수락된 후 어떤 API든 호출 | 호출 **거부** — 핸들이 종료 중 | `ESHUTDOWN` |
-| `close`/`destroy`를 두 번 호출 | 두 번째 호출이 즉시 반환 | `EALREADY` |
+| 다른 스레드가 핸들 사용 중 `close` 호출 | 닫기 **거부** | `EBUSY` |
+| `close` 수락 후 API 호출 | 호출 **거부** | `ESHUTDOWN` |
+| `close`/`destroy` 두 번 호출 | 즉시 반환 | `EALREADY` |
 
 `EBUSY` 이후에는 핸들이 정상 상태로 돌아갑니다 — 아무것도 손상되지
 않았으며, 계속 사용하거나 나중에 다시 닫을 수 있습니다.
@@ -335,23 +335,22 @@ void *control(void *arg)
 
 | 실수 | 이유 | 해결 |
 |---|---|---|
-| 두 스레드가 같은 `zlink_msg_t`에 쓰기 | 메시지 객체는 thread-safe가 아님 | 각 스레드에서 별도 `zlink_msg_t` 생성 |
-| 콜백에서 무거운 작업 → 처리량 저하 | 콜백은 I/O 스레드에서 실행 — 블로킹하면 모든 I/O가 멈춤 | 큐에 넣고 워커 스레드에서 처리 |
-| `close`/`destroy` 후 API 호출 | `ESHUTDOWN` 반환 또는 정의되지 않은 동작 | 종료를 조율하고 반환 코드 확인 |
-| 메시지마다 `connect`/`set_option` 호출 | 설정 API는 순차 처리 — 불필요한 오버헤드 추가 | 설정이 실제로 변경될 때만 호출 |
+| 같은 `zlink_msg_t` 공유 | msg는 thread-safe 아님 | 스레드별 별도 msg 생성 |
+| 콜백에서 무거운 작업 | I/O 스레드 블로킹 | 큐로 오프로드 |
+| `close` 후 API 호출 | `ESHUTDOWN` 반환 | 반환 코드 확인 |
+| 메시지마다 `set_option` | 순차 처리 오버헤드 | 변경 시에만 호출 |
 
 ## 9. 에러 코드 요약표
 
 | 에러 | 발생 시점 | 의미 |
 |---|---|---|
-| `EBUSY` | 다른 스레드가 핸들을 사용 중인데 `close`/`destroy` 호출 | 다른 스레드가 끝날 때까지 기다린 후 재시도 |
-| `ESHUTDOWN` | `close`가 수락된 후 API 호출 | 핸들이 종료 중 — 사용 중단 |
-| `EDEADLK` | send-ready 콜백 안에서 자기 핸들러 교체 | 다른 컨텍스트에서 핸들러를 교체하세요 |
-| `EALREADY` | `close`/`destroy`를 두 번 호출 | 이미 종료 진행 중 — 추가 작업 불필요 |
-
----
+| `EBUSY` | 사용 중 `close` 호출 | 대기 후 재시도 |
+| `ESHUTDOWN` | `close` 후 API 호출 | 핸들 종료 중 |
+| `EDEADLK` | 콜백 내 핸들러 교체 | 외부에서 교체 필요 |
+| `EALREADY` | `close` 두 번 호출 | 이미 종료 진행 중 |
 
 > 구현 세부 사항(admission gate, 순서 의미론, 비용 모델)은
 > [Thread-Safety Internals](../internals/thread-safety.ko.md)를 참고.
 
-[← 성능](10-performance.ko.md)
+---
+[← 성능](10-performance.ko.md) | [소켓 옵션 →](12-socket-options.ko.md)

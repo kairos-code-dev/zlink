@@ -166,6 +166,7 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     void set_handshake_timer ();
     void cancel_handshake_timer ();
     void on_timer (int id_, const boost::system::error_code &ec);
+    void schedule_terminate_completion ();
 
     //  WebSocket transport layer
     std::unique_ptr<i_asio_transport> _transport;
@@ -183,6 +184,7 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
 
     //  IO context pointer (set during plug)
     boost::asio::io_context *_io_context;
+    std::shared_ptr<void> _callback_guard;
 
     //  Options
     const options_t _options;

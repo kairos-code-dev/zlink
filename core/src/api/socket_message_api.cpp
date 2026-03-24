@@ -562,6 +562,10 @@ int recv_socket_parts (socket_handle_t handle_,
         errno = ENOTSUP;
         return -1;
     }
+    if (type == ZLINK_CORE_SOCKET_SUB || type == ZLINK_CORE_SOCKET_XSUB) {
+        errno = ENOTSUP;
+        return -1;
+    }
 
     const bool routed_router_payload =
       (type == ZLINK_CORE_SOCKET_ROUTER && source_rid_out_ != NULL);

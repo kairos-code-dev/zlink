@@ -131,6 +131,17 @@ dedicated functions rather than option enums.
 
 Used with `zlink_set_option()` / `zlink_get_option()`.
 
+Internally, options are classified into three ownership categories, each
+with its own domain owner responsible for validation/apply. The public
+API surface remains the same, but new options are assigned to an owner
+based on the following classification:
+
+| Category | Representative Options | Internal Owner |
+|----------|----------------------|----------------|
+| Core Socket | `SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
+| Transport/Network | `RATE`, `RECOVERY_IVL`, `SNDBUF`, `RCVBUF`, `TOS`, `PRIORITY` | `options_transport_network` |
+| Protocol/Metadata | ZMP metadata | `options_protocol_metadata` |
+
 ##### Transport/Buffer
 
 | Constant | Description |

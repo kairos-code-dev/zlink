@@ -14,7 +14,7 @@ zlink provides 8 socket types. Each socket implements a unique messaging pattern
 | **PUB** | Publish | Unidirectional (send) | `dist_t` (Fan-out) | Event broadcast |
 | **SUB** | Subscribe | Unidirectional (recv) | `fq_t` (Fair-queue) | Topic-filtered reception |
 | **XPUB** | Advanced Publish | Bidirectional | `dist_t` + subscription recv | Proxy/broker, subscription monitoring |
-| **XSUB** | Advanced Subscribe | Bidirectional | `fq_t` + subscription send | Proxy/broker |
+| **XSUB** | Advanced Subscribe | Unidirectional (recv) | `fq_t` (no local filter) | Proxy/broker |
 | **DEALER** | Async Request | Bidirectional | Send: `lb_t` (Round-robin), Recv: `fq_t` | Load balancing, async requests |
 | **ROUTER** | ID Routing | Bidirectional | Directed send by routing_id | Server, broker, multi-client |
 | **STREAM** | RAW Communication | Bidirectional | routing_id based (4B uint32) | External client integration |
@@ -95,7 +95,49 @@ See the individual documents for detailed usage of each socket type.
 | [03-4-router.md](03-4-router.md) | ROUTER | ID-based routing |
 | [03-5-stream.md](03-5-stream.md) | STREAM | External client RAW communication |
 
-## 7. Basic Usage Flow
+## 7. Common Receive Interface
+
+All socket types use the same interface for `zlink_recv()` and recv callbacks:
+
+```c
+int zlink_recv (void *socket,
+                zlink_routing_id_t *source_rid,  /* sender routing_id */
+                zlink_msg_t **parts,              /* multipart data */
+                size_t *part_count,               /* frame count */
+                zlink_send_flags_t flags);
+```
+
+- **`source_rid`**: Populated with the sender peer's routing_id on all
+  socket types. This is not a message frame — zlink automatically
+  resolves the connected peer's identity as a separate parameter.
+- **`parts` / `part_count`**: Multipart is the default on all sockets.
+  `part_count=1` for single frame, `part_count=2+` for multipart.
+
+> **Difference from libzmq:** libzmq ROUTER returned routing_id as the
+> first frame of `zmq_recv()`. In zlink, routing_id is a separate
+> parameter on all socket types.
+
+PUB/SUB sockets use dedicated APIs instead of `zlink_recv()`:
+- Receive: `zlink_subscribe()` / `zlink_subscribe_handler()`
+- Publish: `zlink_publish()`
+- `zlink_send()` / `zlink_recv()` return `ENOTSUP` on all 4 PUB/SUB sockets
+
+## 8. Terminology
+
+Terms used throughout the documentation:
+
+| Term | Meaning |
+|------|---------|
+| **hot path** | High-frequency call path. Data transfer APIs like `send`, `publish`. Optimized for concurrent calls |
+| **control path** | Low-frequency call path. Configuration/management APIs like `bind`, `connect`, `set_option`, `monitor`. Correctness guaranteed via internal serialization |
+| **correctness** | Property that multiple threads can use the same handle concurrently without data corruption or crashes |
+| **fail-fast lifecycle gate** | On `close`/`destroy`: returns `EBUSY` immediately if other threads are using the handle; after close is accepted, new API calls return `ESHUTDOWN` |
+| **admission guard** | Internal gate that checks handle validity and whether shutdown is in progress on API entry |
+| **approximate limit** | Not an exact hard limit. HWM allows slight overshoot for lock-free performance |
+
+> For the full thread-safety contract, see the [Thread-Safety Guide](11-thread-safety.md).
+
+## 9. Basic Usage Flow
 
 The basic pattern common to all socket types:
 

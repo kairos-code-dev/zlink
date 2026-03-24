@@ -10,12 +10,50 @@ The Publish-Subscribe pattern distributes messages based on topics. zlink provid
 |------|------|------|
 | **PUB** | Publisher | Broadcasts to all subscribers. Cannot receive. |
 | **SUB** | Subscriber | Topic prefix match filtering. Cannot send. |
-| **XPUB** | Advanced Publisher | PUB + can receive subscription frames |
-| **XSUB** | Advanced Subscriber | SUB + can send subscription frames directly |
+| **XPUB** | Advanced Publisher | PUB + can receive subscription events |
+| **XSUB** | Advanced Subscriber | Receives all messages without local filtering |
 
 **Valid socket combinations:**
 - PUB → SUB, PUB → XSUB
 - XPUB → SUB, XPUB → XSUB
+
+### SUB vs XSUB — Key Difference
+
+Both SUB and XSUB send subscription info to the upstream PUB via
+`zlink_set_subscription()`. The public API usage is identical.
+The difference is **whether the local filter engine is on or off**.
+
+| | SUB (`filter=true`) | XSUB (`filter=false`) |
+|---|---|---|
+| With subscriptions | Receives only matching messages | **Receives all messages** (no filter check) |
+| No subscriptions | **Receives nothing** | **Receives all messages** |
+| `""` empty subscription | Receives all (matches every topic) | Already receives all without subscribing |
+| Use case | Normal subscriber | Proxy/relay (pass-through) |
+
+Internally, `xsub_t::xrecv()` checks `!options.filter || match(msg)`.
+SUB (`filter=true`) evaluates `match()` on every message;
+XSUB (`filter=false`) evaluates `!false = true` and skips `match()` entirely.
+
+> **Common confusion:** "If I subscribe SUB with `""`, isn't it the same as XSUB?"
+> → Both receive all messages in practice, but
+> SUB incurs trie match cost on every message while XSUB skips the check.
+> Also, SUB with **no subscriptions** receives nothing,
+> while XSUB with no subscriptions still receives everything.
+
+**Why XSUB/XPUB in the proxy pattern:**
+
+```
+PUB ──── XSUB ═══ XPUB ──── SUB
+          │         │
+          │  proxy   │
+          └─────────┘
+```
+
+- XSUB passes all messages from PUB without subscription state.
+- XPUB exposes SUB subscription events via `zlink_subscription_event()`,
+  allowing the proxy to inject subscription management logic
+  (filtering, logging, authorization, etc.).
+- Plain SUB/PUB cannot build this relay structure.
 
 ```
               ┌─────┐
@@ -68,28 +106,31 @@ zlink_connect(sub, "tcp://127.0.0.1:5556");
 /* Subscribe to topic -- set after connect */
 zlink_set_subscription(sub, "weather");
 
-/* Stay in recv mode and pull messages with zlink_subscribe() or zlink_recv() */
+/* Use zlink_subscribe() or zlink_subscribe_handler() to receive */
 ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
 
 ### Sending and Receiving Summary
 
-| Socket | Direction | Registration Call | Notes |
-|--------|-----------|-------------------|-------|
-| PUB | Send only | N/A | Cannot receive; does not accept a handler |
-| SUB | Receive only | `zlink_subscribe()` / `zlink_recv()` pull, or `zlink_subscribe_handler()` callback | recv or callback model |
-| XPUB | Bidirectional | pull with `zlink_subscription_event()` | Receives subscription events, not data |
-| XSUB | Bidirectional | `zlink_subscribe()` / `zlink_recv()` pull, or `zlink_subscribe_handler()` callback | Sends subscription frames; receives data via fair-queue |
+| Socket | Direction | Receive API | Notes |
+|--------|-----------|-------------|-------|
+| PUB | Send only | N/A | Cannot receive (`ENOTSUP`) |
+| SUB | Receive only | `zlink_subscribe()` / `zlink_subscribe_handler()` | Topic + data separated |
+| XPUB | Bidirectional | `zlink_subscription_event()` | Receives subscription events |
+| XSUB | Receive only | `zlink_subscribe()` / `zlink_subscribe_handler()` | No local filter; receives all |
 
-Raw PUB/SUB sockets start in recv model. Topic-aware pull is available
-through `zlink_subscribe()`. Callback topic dispatch via
-`zlink_subscribe_handler()` is supported on raw `SUB`, `XSUB`, `spot`, and
-`spot_node`. After callback attach, `zlink_subscribe()` and data-plane
-`ZLINK_POLLIN` fail with `EBUSY`.
+> **Note:** `zlink_send()` / `zlink_recv()` return `ENOTSUP` on all 4
+> PUB/SUB sockets. Use `zlink_publish()` for publishing and
+> `zlink_subscribe()` / `zlink_subscribe_handler()` for receiving.
 
-**Pull mode** is also available for SUB: call `zlink_recv()` without
-attaching a handler. The multipart message is received without topic separation.
+PUB/SUB sockets support two receive modes:
+
+- **Pull mode** (default): `zlink_subscribe()` returns topic and data separately
+- **Callback mode**: `zlink_subscribe_handler()` registers a callback for automatic dispatch
+
+After callback attach, `zlink_subscribe()` and data-plane `ZLINK_POLLIN`
+return `EBUSY`.
 
 > When PUB's send queue is full (HWM), messages are **dropped** rather
 > than blocking. For details, see
@@ -128,41 +169,40 @@ zlink_set_subscription(sub, "");
 
 ## 4. Message Format
 
-PUB/SUB messages can use two formats.
-
-### Single Frame (Topic Included)
-
-The topic is embedded in the data. Simple but requires parsing.
+`zlink_publish()` takes a **topic** and a **multipart message** as
+separate parameters. Like `zlink_send()` on other sockets, multipart
+is the default.
 
 ```c
-/* Publish */
-zlink_msg_t part;
-zlink_msg_init_size(&part, 14);
-memcpy(zlink_msg_data(&part), "weather: sunny", 14);
-zlink_publish(pub, NULL, &part, 1, 0);
-
-/* SUB handler callback receives:
-   topic = "weather: sunny" (full match prefix)
-   parts[0] = "weather: sunny" (full data) */
+int zlink_publish (void *subject,
+                   const char *topic_id,      /* topic string */
+                   zlink_msg_t *parts,         /* data frame array */
+                   size_t part_count,           /* number of frames */
+                   zlink_send_flags_t flags);
 ```
 
-### Multipart Frame (Topic + Data Separated)
-
-The topic and data are sent as separate frames. No parsing needed.
-
 ```c
-/* Publish: [topic][payload] */
+/* Publish: topic = "sensor:cpu", payload = 2 frames */
 zlink_msg_t parts[2];
-zlink_msg_init_size(&parts[0], 7);
-memcpy(zlink_msg_data(&parts[0]), "weather", 7);
-zlink_msg_init_size(&parts[1], 5);
-memcpy(zlink_msg_data(&parts[1]), "sunny", 5);
-zlink_publish(pub, NULL, parts, 2, 0);
+zlink_msg_init_size(&parts[0], 4);
+memcpy(zlink_msg_data(&parts[0]), "host", 4);
+zlink_msg_init_size(&parts[1], 2);
+memcpy(zlink_msg_data(&parts[1]), "73", 2);
+zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 
-/* SUB handler callback receives:
-   topic = "weather"
-   parts[0] = "sunny" (payload frames only) */
+/* SUB receives (zlink_subscribe or subscribe_handler callback):
+   topic     = "sensor:cpu"
+   parts[0]  = "host"
+   parts[1]  = "73" */
 ```
+
+The topic is sent on the wire as the first frame. `zlink_subscribe()` /
+`zlink_subscribe_handler()` separate the topic from data on the receive
+side. Callers never need to assemble topic frames manually.
+
+> **Note:** Passing `NULL` as topic (`zlink_publish(pub, NULL, parts, ...)`)
+> activates a legacy path where parts[0] is used as the topic frame.
+> This is not recommended. Always pass the `topic_id` parameter explicitly.
 
 ## 5. PUB/SUB Socket Options
 
@@ -308,7 +348,7 @@ zlink_publish(pub, "weather", &part, 1, 0);  /* OK */
 /* Using zlink_send() on PUB → ENOTSUP */
 zlink_send(pub, &part, 1, 0);  /* errno = ENOTSUP */
 
-/* SUB: receive via zlink_subscribe() / zlink_recv(). Cannot send/publish */
+/* SUB: receive via zlink_subscribe(). Cannot send/publish */
 zlink_publish(sub, "weather", &part, 1, 0);  /* errno = ENOTSUP */
 zlink_send(sub, &part, 1, 0);               /* errno = ENOTSUP */
 ```
@@ -325,108 +365,90 @@ XPUB/XSUB are advanced publish-subscribe sockets that allow applications to hand
 
 | | SUB | XSUB |
 |---|-----|------|
-| **Subscribe** | `zlink_set_subscription()` (automatic) | `zlink_set_subscription()` or direct send |
-| **Send** | Not allowed (`ENOTSUP`) | Allowed — forwards subscription frames upstream |
-| **Recv** | Topic + payload separated | Same |
-| **Implementation** | `xsub_t` subclass, `xsend()` blocked | Base class |
+| **Topic registration** | `zlink_set_subscription()` | `zlink_set_subscription()` (same) |
+| **Message receive** | `zlink_subscribe()` — filtered | `zlink_subscribe()` — no filter, receives all |
+| **Local filter** | **On** — drops non-matching | **Off** — passes all messages |
+| **No subscriptions** | Receives nothing | Receives all messages |
+| **Implementation** | `xsub_t` subclass (`filter=true`) | Base class (`filter=false`) |
 
-SUB cannot send, so it **cannot forward** subscription requests from downstream SUBs to upstream PUBs. This is why XSUB is needed.
+XSUB is needed in proxies because it passes all messages through
+without subscription state. Topic registration is sent to upstream
+identically via `zlink_set_subscription()` on both.
 
 ### PUB vs XPUB — Key Difference
 
 | | PUB | XPUB |
 |---|-----|------|
-| **Recv** | Not allowed | Receives subscription events via `zlink_subscription_event()` |
-| **Send** | Same (topic broadcast) | Same |
-| **Handler** | N/A | N/A |
+| **Message publish** | `zlink_publish()` | `zlink_publish()` (same) |
+| **Subscription events** | Not exposed | `zlink_subscription_event()` |
 
 XPUB can observe which clients subscribe to or unsubscribe from which topics.
 
 ### XSUB/XPUB Roles in a Proxy
 
-```
-          data flow ───────────────────────►
-          subscription flow ◄──────────────
-
-┌─────┐              Proxy               ┌─────┐
-│ PUB │──connect──►┌──────┐◄──connect──  │ SUB │
-│     │            │ XSUB │   ┌──────┐   │     │
-└─────┘            │  │   │   │ XPUB │   └─────┘
-┌─────┐            │  │   │   │      │   ┌─────┐
-│ PUB │──connect──►│  ▼   │   │      │◄──│ SUB │
-│     │            │ data ├──►│ data │   │     │
-└─────┘            │      │   │      │   └─────┘
-                   └──────┘   └──┬───┘
-                      ▲          │
-                      │          ▼
-                   subscribe  event
-                   forward    received
-```
-
-**Subscription propagation flow:**
-
-1. SUB subscribes to `"weather"` topic
-2. The application pulls the XPUB event with `zlink_subscription_event()`
-   and receives `(subscribed=1, topic="weather")`
-3. Proxy calls `zlink_set_subscription(xsub, "weather")` —
-   sends subscription frame `[0x01 "weather"]` upstream to PUBs
-4. PUB publishes `"weather"` data
-5. XSUB receives data → XPUB delivers to matching SUBs
-
-**This is impossible with a regular SUB** — SUB blocks all sends, so it
-cannot forward subscriptions upstream. This is why proxy frontends must
-use XSUB.
-
-### Why Use a Proxy?
-
-Direct PUB/SUB connections have structural limitations:
+A proxy has **two separate flows**:
 
 ```
-Direct (no proxy)                    With proxy
-─────────────────                    ──────────
+Data flow (publish):
+  PUB ──► XSUB ══ proxy forward ══► XPUB ──► SUB
 
-┌─────┐     ┌─────┐                 ┌─────┐     ┌───────────┐     ┌─────┐
-│PUB 1│────►│SUB 1│                 │PUB 1│──►  │           │  ──►│SUB 1│
-└─────┘     └─────┘                 └─────┘     │   XSUB    │     └─────┘
-┌─────┐     ┌─────┐                 ┌─────┐     │     │     │     ┌─────┐
-│PUB 2│────►│SUB 2│                 │PUB 2│──►  │     ▼     │  ──►│SUB 2│
-└─────┘     └─────┘                 └─────┘     │   XPUB    │     └─────┘
-                                                │  (Proxy)  │
- N PUB × M SUB = N×M connections                └───────────┘
- PUB/SUB must know each other's addresses
-                                                 N + M connections
-                                                 PUB/SUB only need to know the proxy address
+Subscription flow (propagation, reverse direction):
+  PUB ◄── XSUB ◄── proxy app ◄── XPUB ◄── SUB
 ```
 
-**Key use cases for a proxy:**
+#### Data Flow
 
-| Use Case | Description |
-|----------|-------------|
-| **Reduce connections** | N×M direct connections → N+M (PUB→proxy, proxy→SUB) |
-| **Address decoupling** | PUB and SUB don't need each other's endpoints — only the proxy address |
-| **Dynamic scaling** | PUBs/SUBs can be added or removed independently without affecting each other |
-| **Subscription transformation** | XPUB MANUAL mode enables topic remapping and filtering |
-| **Network bridging** | Connect PUB/SUB across different network segments (e.g., inproc ↔ tcp) |
-| **Monitoring** | Capture socket records all messages passing through |
+| Step | Actor | Action | Note |
+|------|-------|--------|------|
+| 1 | PUB | `zlink_publish(pub, topic, ...)` | Publish data |
+| 2 | proxy internal | XSUB internal recv → XPUB internal send | Handled by `zlink_proxy()` |
+| 3 | SUB | `zlink_subscribe()` or callback | Final consumption |
 
-`zlink_proxy()` is a built-in proxy that automatically forwards messages
-and subscriptions bidirectionally between XSUB and XPUB:
+> **Key point:** The proxy data relay uses `socket_base_t` internal methods
+> inside `zlink_proxy(xsub, xpub, NULL)`, not the public
+> `zlink_send()`/`zlink_recv()` API.
+> Users never need to call XSUB recv → XPUB send directly.
 
-```c
-/* frontend: PUBs connect here */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
-zlink_bind(xsub, "tcp://*:5556");
+#### Subscription Propagation Flow
 
-/* backend: SUBs connect here */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_bind(xpub, "tcp://*:5557");
+| Step | Actor | Action | API |
+|------|-------|--------|-----|
+| 1 | SUB | Subscribe → arrives at XPUB via wire | `zlink_set_subscription(sub, "weather")` |
+| 2 | proxy app | Receive subscription event from XPUB | `zlink_subscription_event(xpub, ...)` |
+| 3 | proxy app | Register on XSUB → propagates to PUB via wire | `zlink_set_subscription(xsub, "weather")` |
+| 4 | PUB | Publish matching data | `zlink_publish(pub, "weather", ...)` |
+| 5 | data flow | XSUB → XPUB → SUB | Handled by `zlink_proxy()` |
 
-/* capture (optional): records all messages passing through */
-void *capture = zlink_socket(ctx, ZLINK_PUB);
-zlink_bind(capture, "tcp://*:5558");
+> `zlink_set_subscription()` sends subscription info upstream on the wire
+> identically for both SUB and XSUB. Calling it on XSUB in a proxy is
+> **not because "XSUB can send"** — the proxy app registers subscription
+> events received from XPUB onto XSUB to propagate them upstream.
 
-zlink_proxy(xsub, xpub, capture);  /* blocking — run in a separate thread */
-```
+#### Why XSUB/XPUB?
+
+| Question | With SUB/PUB | With XSUB/XPUB |
+|----------|-------------|-----------------|
+| Data pass-through | SUB local filter on — must register subscriptions | XSUB local filter off — **passes all** |
+| Subscription events | PUB does not expose them | XPUB provides `subscription_event()` |
+| Proxy suitability | Proxy must manage topics itself | **Relay-only — ideal for proxy** |
+
+### PUB/SUB Socket Public API Summary
+
+| Public API | PUB | SUB | XPUB | XSUB |
+|------------|-----|-----|------|------|
+| `zlink_publish()` | OK | — | OK | — |
+| `zlink_subscribe()` | — | OK | — | OK |
+| `zlink_subscribe_handler()` | — | OK | — | OK |
+| `zlink_set_subscription()` | — | OK | — | OK |
+| `zlink_subscription_event()` | — | — | OK | — |
+| Local filter | N/A | **On** | N/A | **Off** |
+
+> `zlink_send()` / `zlink_recv()` return `ENOTSUP` on all 4 PUB/SUB sockets.
+> Use `zlink_publish()` for publishing and `zlink_subscribe()` for receiving.
+
+> Proxy patterns (built-in `zlink_proxy()`, manual proxy construction,
+> ROUTER/DEALER broker) are covered in the
+> [Proxy Guide](03-6-proxy.md).
 
 ## 9. Subscription Frame Format
 

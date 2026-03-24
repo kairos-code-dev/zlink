@@ -40,29 +40,14 @@ Supported server transports:
 
 ---
 
-## 3. Message Model
+## 3. STREAM-Specific Behavior
 
-### 3.1 Wire format
+STREAM uses the same recv/callback model as other sockets.
+STREAM-specific behavior:
 
-```
-+----------------------+-------------------+
-| body_len (4B, BE)    | body (N bytes)    |
-+----------------------+-------------------+
-```
-
-### 3.2 zlink STREAM API frames
-
-Application-visible shape on STREAM:
-
-```
-Frame 0: routing_id (4 bytes)
-Frame 1: payload (N bytes)
-```
-
-- `routing_id` is auto-assigned per connection by the server.
-- It is always fixed 4 bytes (`uint32`, big-endian).
-
-### 3.3 Event payloads
+- `source_rid` is auto-assigned per connection by the server,
+  always fixed 4 bytes (`uint32`, big-endian).
+- Connect/disconnect events are delivered as messages:
 
 | payload | meaning |
 |---|---|
@@ -72,16 +57,9 @@ Frame 1: payload (N bytes)
 
 ---
 
-## 4. Callback Dispatch (Receive/Reply)
+## 4. Callback Example
 
-STREAM starts in recv mode and also supports callback receive.
-- In recv mode, pull multipart frames with `zlink_recv()`.
-- Call `zlink_recv_handler()` when you want callback receive; after attach,
-  direct recv and data-plane `ZLINK_POLLIN` fail with `EBUSY`.
-- `zlink_send_ready_handler()` is independent from receive callback mode.
-  After attach, data-plane `ZLINK_POLLOUT` fails with `EBUSY`.
-
-### Callback Dispatch
+In STREAM callbacks, connect/disconnect events must be distinguished from data.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -172,26 +150,8 @@ Defaults currently used by STREAM internals:
 - STREAM accept concurrency default: `4` (clamped to max `128`)
 - STREAM session scheduling default: `rr`
 
-### 6.2 STREAM runtime environment knobs (still supported)
-
-- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY` (default `4`, STREAM listener only)
-- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`, default `rr`)
-- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ` (default off)
-- `ZLINK_ASIO_STREAM_DISABLE_GATHER` (default off; gather enabled)
-- `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE` (default on)
-- `ZLINK_ASIO_STREAM_BATCH_SIZE` (default `12288`)
-
-### 6.3 STREAM tuning envs removed (fixed constants)
-
-The following STREAM env-based toggles were removed and are now fixed in code:
-- `ZLINK_ASIO_STREAM_ENABLE_HANDLER_ALLOC` -> always enabled
-- `ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN` -> always enabled
-- `ZLINK_ASIO_STREAM_ENABLE_SPECULATIVE_WRITE` -> fixed on for STREAM/TCP path
-- `ZLINK_ASIO_STREAM_ENABLE_RX_SLAB` -> always enabled
-- `ZLINK_ASIO_STREAM_GATHER_THRESHOLD` -> fixed to `8192`
-- `ZLINK_ASIO_STREAM_SPEC_WRITE_BUDGET_BYTES` -> fixed to `2097152`
-- `ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS` -> fixed to `16`
-- `ZLINK_ASIO_STREAM_READ_DRAIN_MAX_BYTES` -> fixed to `1048576`
+> STREAM runtime environment variables and internal tuning constants
+> are documented in [STREAM internals](../internals/stream-socket.md).
 
 ---
 
@@ -213,4 +173,4 @@ The following STREAM env-based toggles were removed and are now fixed in code:
 These tests use STREAM server + raw client paths.
 
 ---
-[← ROUTER](03-4-router.md) | [Transport →](04-transports.md)
+[← ROUTER](03-4-router.md) | [Proxy →](03-6-proxy.md) | [Transport →](04-transports.md)

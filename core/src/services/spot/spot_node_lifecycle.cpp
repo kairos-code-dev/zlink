@@ -215,6 +215,7 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
                       std::make_pair (it->first, static_cast<uint32_t> (0)));
                 }
                 _pub_delivery_ready_sources.clear ();
+                publish_mesh_pub_budget_hint_locked ();
             }
             refresh_sub_peer_summaries (false, true);
             for (size_t i = 0; i < subs.size (); ++i)

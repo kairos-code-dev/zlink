@@ -82,8 +82,11 @@ struct registry_state_t {
 
 ## 5. Receiver Internal Implementation
 
-> **Note**: The receiver role is now unified into `gateway_t`
-> (`core/src/services/gateway/gateway.cpp/hpp`). There is no separate `receiver_t` class.
+> **Note**: The receiver role is now unified into `gateway_t`.
+> There is no separate `receiver_t` class. The gateway internals are now
+> modularized into `gateway_facade`, `gateway_lifecycle`, `gateway_pool`,
+> `gateway_socket`, `gateway_monitor`, and `gateway_refresh`.
+> See [POSD Module Structure](posd-module-structure.md) for details.
 
 ### 5.1 State Machine
 ```

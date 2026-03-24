@@ -4,7 +4,8 @@
 
 ## 1. 개요
 
-zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시징 패턴을 구현하며, 유효한 소켓 조합 내에서만 통신이 가능하다.
+zlink는 8종의 소켓 타입을 제공한다.
+각 소켓은 고유한 메시징 패턴을 구현하며, 유효한 소켓 조합 내에서만 통신이 가능하다.
 
 ## 2. 소켓 요약
 
@@ -14,7 +15,7 @@ zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시�
 | **PUB** | 발행 | 단방향 (송신) | `dist_t` (Fan-out) | 이벤트 브로드캐스트 |
 | **SUB** | 구독 | 단방향 (수신) | `fq_t` (Fair-queue) | 토픽 필터링 수신 |
 | **XPUB** | 고급 발행 | 양방향 | `dist_t` + 구독 수신 | 프록시/브로커, 구독 모니터링 |
-| **XSUB** | 고급 구독 | 양방향 | `fq_t` + 구독 송신 | 프록시/브로커 |
+| **XSUB** | 고급 구독 | 단방향 (수신) | `fq_t` (필터 없이 전체 수신) | 프록시/브로커 |
 | **DEALER** | 비동기 요청 | 양방향 | 송신: `lb_t` (Round-robin), 수신: `fq_t` | 로드밸런싱, 비동기 요청 |
 | **ROUTER** | ID 라우팅 | 양방향 | routing_id 기반 지정 전송 | 서버, 브로커, 멀티 클라이언트 |
 | **STREAM** | RAW 통신 | 양방향 | routing_id 기반 (4B uint32) | 외부 클라이언트 연동 |
@@ -23,8 +24,8 @@ zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시�
 
 유효한 소켓 조합만 연결이 가능하다. 비호환 소켓을 연결하면 핸드셰이크가 실패한다.
 
-| | PAIR | PUB | SUB | XPUB | XSUB | DEALER | ROUTER | STREAM |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 소켓 | PAIR | PUB | SUB | XPUB | XSUB | DEALER | ROUTER | STREAM |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **PAIR** | **O** | | | | | | | |
 | **PUB** | | | **O** | | **O** | | | |
 | **SUB** | | **O** | | **O** | | | | |
@@ -95,7 +96,49 @@ zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시�
 | [03-4-router.ko.md](03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
 | [03-5-stream.ko.md](03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
 
-## 7. 기본 사용 흐름
+## 7. 공통 수신 인터페이스
+
+모든 소켓 타입에서 `zlink_recv()`와 recv callback은 동일한 인터페이스를 사용한다:
+
+```c
+int zlink_recv (void *socket,
+                zlink_routing_id_t *source_rid,  /* 송신자 routing_id */
+                zlink_msg_t **parts,              /* 멀티파트 데이터 */
+                size_t *part_count,               /* 프레임 수 */
+                zlink_send_flags_t flags);
+```
+
+- **`source_rid`**: 모든 소켓에서 송신자 피어의 routing_id가 채워진다.
+  이것은 메시지 프레임이 아니라 zlink가 연결된 피어의 identity를
+  자동으로 resolve하는 별도 파라미터다.
+- **`parts` / `part_count`**: 모든 소켓에서 멀티파트가 기본이다.
+  `part_count=1`이면 단일 프레임, `part_count=2+`이면 멀티파트.
+
+> **libzmq와의 차이:** libzmq ROUTER는 `zmq_recv()`의 첫 프레임이
+> routing_id였지만, zlink에서는 모든 소켓 타입에서 routing_id가
+> 별도 파라미터로 분리되어 있다.
+
+PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
+- 수신: `zlink_subscribe()` / `zlink_subscribe_handler()`
+- 발행: `zlink_publish()`
+- `zlink_send()` / `zlink_recv()`는 PUB/SUB 4소켓 모두 `ENOTSUP`
+
+## 8. 용어 정리
+
+문서 전반에서 사용되는 전문 용어:
+
+| 용어 | 의미 |
+|------|------|
+| **hot path** | 고빈도로 호출되는 경로. `send`, `publish` 등 데이터 전송 API. 동시 호출에 최적화되어 있다 |
+| **control path** | 저빈도로 호출되는 경로. `bind`, `connect`, `set_option`, `monitor` 등 설정/관리 API. 내부 직렬화로 correctness를 보장한다 |
+| **correctness** | 여러 스레드가 같은 handle을 동시에 사용해도 데이터 손상이나 크래시 없이 올바르게 동작하는 성질 |
+| **fail-fast lifecycle gate** | `close`/`destroy` 호출 시 다른 스레드가 사용 중이면 즉시 `EBUSY`를 반환하고, close가 수락된 뒤 새 API 진입은 `ESHUTDOWN`을 반환하는 종료 계약 |
+| **admission guard** | API 진입 시 handle이 유효한지, 이미 종료 중인지를 검사하는 내부 게이트 |
+| **approximate limit** | 정확한 hard limit이 아닌 근사치 제한. HWM은 lock-free 성능을 위해 소폭 초과를 허용한다 |
+
+> 스레드 안전성 계약의 전체 설명은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
+
+## 9. 기본 사용 흐름
 
 모든 소켓 타입에 공통되는 기본 패턴:
 
@@ -133,9 +176,16 @@ zlink_close(socket);
 zlink_ctx_term(ctx);
 ```
 
-> 다음 옵션은 핸드셰이크/연결 과정에서 사용되므로 `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다:
-> `zlink_set_routing_id()`, `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()` 사용), `ZLINK_ROUTER_OPT_PROBE` (`zlink_set_router_option()` 사용), `zlink_set_tls_server()` / `zlink_set_tls_client()`.
-> 그 외 옵션(`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDTIMEO` 등)은 bind/connect 이후에도 변경 가능하다.
+> 다음 옵션은 핸드셰이크/연결 과정에서 사용되므로
+> `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다:
+>
+> - `zlink_set_routing_id()`
+> - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()` 사용)
+> - `ZLINK_ROUTER_OPT_PROBE` (`zlink_set_router_option()` 사용)
+> - `zlink_set_tls_server()` / `zlink_set_tls_client()`
+>
+> 그 외 옵션(`SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO` 등)은
+> bind/connect 이후에도 변경 가능하다.
 
 > 위 예제는 raw `STREAM` callback 형태다. 다른 raw socket 계열은 recv/poller가
 > canonical 모델이다. 두 모드의 비교는

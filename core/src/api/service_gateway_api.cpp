@@ -7,11 +7,8 @@
 #include "api/service_api_internal.hpp"
 
 #include "core/msg.hpp"
-#include "services/common/service_public_api.hpp"
-#include "services/gateway/gateway.hpp"
 #include "services/gateway/gateway_access.hpp"
 
-#include <new>
 #include <string.h>
 #include <vector>
 
@@ -210,115 +207,72 @@ void *zlink_gateway_new (void *ctx_, const char *service_name_)
         errno = EINVAL;
         return NULL;
     }
-    zlink::gateway_t *gateway =
-      new (std::nothrow) zlink::gateway_t (static_cast<zlink::ctx_t *> (ctx_),
-                                           service_name_, NULL);
-    if (!gateway) {
-        errno = ENOMEM;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (
+      zlink::gateway_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
+                                       service_name_));
+    if (!gateway)
         return NULL;
-    }
     register_gateway_mode_state (gateway);
     return static_cast<void *> (gateway);
 }
 
 int zlink_gateway_attach_discovery (void *gateway_, void *discovery_)
 {
-    if (!gateway_ || !discovery_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
-    if (!disc->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->attach_discovery (disc);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::attach_discovery (
+                       gateway, discovery_)
+                   : -1;
 }
 
 int zlink_gateway_bind (void *gateway_, const char *bind_endpoint_)
 {
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->bind (bind_endpoint_);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::bind (gateway, bind_endpoint_)
+                   : -1;
 }
 
 int zlink_gateway_connect (void *gateway_,
                            const char *endpoint_,
                            const zlink_routing_id_t *routing_id_)
 {
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->connect (endpoint_, routing_id_);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway
+             ? zlink::gateway_access_t::connect (gateway, endpoint_, routing_id_)
+             : -1;
 }
 
 int zlink_gateway_disconnect (void *gateway_, const char *endpoint_)
 {
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->disconnect (endpoint_);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::disconnect (gateway, endpoint_)
+                   : -1;
 }
 
 int zlink_gateway_status_snapshot (void *gateway_,
                                    zlink_gateway_status_t *out_)
 {
-    if (!gateway_) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::service_public_api_scope_t admission (gateway->public_api_guard ());
-    if (!admission.acquired ())
-        return -1;
-    return gateway->snapshot_status (out_);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::snapshot_status (gateway, out_)
+                   : -1;
 }
 
 int zlink_gateway_set_lb_strategy (void *gateway_,
                                    zlink_gateway_lb_strategy_t strategy_)
 {
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->set_lb_strategy (strategy_);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::set_lb_strategy (gateway,
+                                                               strategy_)
+                   : -1;
 }
 
 int zlink_gateway_update_peer_weight (void *gateway_,
                                       const zlink_routing_id_t *routing_id_,
                                       uint32_t weight_)
 {
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->update_peer_weight (routing_id_, weight_);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::update_peer_weight (
+                       gateway, routing_id_, weight_)
+                   : -1;
 }
 
 int zlink_gateway_destroy (void **gateway_p_)
@@ -327,24 +281,23 @@ int zlink_gateway_destroy (void **gateway_p_)
         errno = EFAULT;
         return -1;
     }
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (*gateway_p_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
+    zlink::gateway_t *gateway =
+      zlink::gateway_access_t::from_handle (*gateway_p_);
+    if (!gateway)
         return -1;
-    }
-    if (!gateway->public_api_guard ().begin_close_or_fail_busy ())
+    if (zlink::gateway_access_t::begin_close_or_fail_busy (gateway) != 0)
         return -1;
     if (has_open_service_monitor_for_subject (gateway)) {
-        gateway->public_api_guard ().cancel_close ();
+        zlink::gateway_access_t::cancel_close (gateway);
         errno = EBUSY;
         return -1;
     }
-    if (gateway->destroy () != 0) {
-        gateway->public_api_guard ().cancel_close ();
+    if (zlink::gateway_access_t::destroy (gateway) != 0) {
+        zlink::gateway_access_t::cancel_close (gateway);
         return -1;
     }
     erase_gateway_mode_state (gateway);
-    delete gateway;
+    zlink::gateway_access_t::delete_handle (gateway);
     *gateway_p_ = NULL;
     return 0;
 }
@@ -354,14 +307,10 @@ int gateway_send_parts (void *gateway_,
                         size_t part_count_,
                         zlink_send_flags_t flags_)
 {
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->send (parts_, part_count_, flags_);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::send (gateway, parts_,
+                                                    part_count_, flags_)
+                   : -1;
 }
 
 int gateway_send_parts_rid (void *gateway_,
@@ -370,14 +319,10 @@ int gateway_send_parts_rid (void *gateway_,
                             size_t part_count_,
                             zlink_send_flags_t flags_)
 {
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->send_rid (routing_id_, parts_, part_count_, flags_);
+    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
+    return gateway ? zlink::gateway_access_t::send_rid (
+                       gateway, routing_id_, parts_, part_count_, flags_)
+                   : -1;
 }
 
 int zlink_service_msg_recv_handler_internal (
@@ -391,8 +336,25 @@ int zlink_service_msg_recv_handler_internal (
     }
 
     if (is_registered_gateway_handle (handle_)) {
-        return gateway_install_recv_handler (
-          static_cast<zlink::gateway_t *> (handle_), handler_, userdata_);
+        zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_);
+        if (!gateway)
+            return -1;
+        zlink::service_public_api_guard_t *guard =
+          zlink::gateway_access_t::public_api_guard (gateway);
+        if (!guard) {
+            errno = EFAULT;
+            return -1;
+        }
+        zlink::service_public_api_scope_t admission (*guard);
+        if (!admission.acquired ())
+            return -1;
+        if (gateway_transition_to_callback_mode (gateway) != 0)
+            return -1;
+        const int rc = zlink::gateway_access_t::set_recv_handler (
+          gateway, handler_, userdata_);
+        if (rc != 0)
+            gateway_revert_callback_transition (gateway);
+        return rc;
     }
 
     errno = EFAULT;
@@ -432,15 +394,18 @@ int zlink_service_recv_internal (void *handle_,
                                  zlink_send_flags_t flags_)
 {
     if (is_registered_gateway_handle (handle_)) {
-        zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (handle_);
-        if (!gateway || !gateway->check_tag ()) {
+        zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_);
+        if (!gateway)
+            return -1;
+        if (validate_recv_flags (flags_) != 0)
+            return -1;
+        zlink::service_public_api_guard_t *guard =
+          zlink::gateway_access_t::public_api_guard (gateway);
+        if (!guard) {
             errno = EFAULT;
             return -1;
         }
-        if (validate_recv_flags (flags_) != 0)
-            return -1;
-        zlink::service_public_api_scope_t admission (
-          gateway->public_api_guard ());
+        zlink::service_public_api_scope_t admission (*guard);
         if (!admission.acquired ())
             return -1;
         if (gateway_require_recv_model (gateway) != 0)

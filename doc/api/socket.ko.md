@@ -107,7 +107,7 @@ typedef uint32_t zlink_send_flags_t;
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_DONTWAIT` | 논블로킹 작업; 작업이 블로킹될 경우 즉시 `EAGAIN`과 함께 반환 |
+| `ZLINK_DONTWAIT` | 논블로킹 모드; 블로킹 시 `EAGAIN` 반환 |
 
 ### 보안 메커니즘
 
@@ -133,49 +133,59 @@ ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
 `zlink_set_option()` / `zlink_get_option()`과 함께 사용합니다.
 모든 소켓 타입, gateway, discovery(fan-out)에 적용됩니다.
 
+내부적으로 옵션은 세 소유권 카테고리로 분류되어 각 도메인 소유자가
+validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 옵션
+추가 시 아래 분류에 따라 소유권이 결정됩니다.
+
+| 카테고리 | 대표 옵션 | 내부 소유자 |
+|----------|-----------|-------------|
+| Core Socket | `SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
+| Transport/Network | `RATE`, `RECOVERY_IVL`, `SNDBUF`, `RCVBUF`, `TOS`, `PRIORITY` | `options_transport_network` |
+| Protocol/Metadata | ZMP 메타데이터 | `options_protocol_metadata` |
+
 ##### Transport/Buffer
 
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_OPT_AFFINITY` | I/O 스레드 어피니티 비트마스크 (`uint64_t`) |
-| `ZLINK_OPT_RATE` | 멀티캐스트 데이터 전송률 (kbps, `int`) |
-| `ZLINK_OPT_RECOVERY_IVL` | 멀티캐스트 복구 간격 (밀리초, `int`) |
-| `ZLINK_OPT_SNDBUF` | 커널 송신 버퍼 크기 (바이트, `int`; 0 = OS 기본값) |
-| `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (바이트, `int`; 0 = OS 기본값) |
-| `ZLINK_OPT_SNDHWM` | 송신 하이 워터 마크 (`int`; 0 = 무제한) |
-| `ZLINK_OPT_RCVHWM` | 수신 하이 워터 마크 (`int`; 0 = 무제한) |
-| `ZLINK_OPT_MAXMSGSIZE` | 최대 인바운드 메시지 크기 (바이트, `int64_t`; -1 = 무제한) |
+| `ZLINK_OPT_RATE` | 멀티캐스트 전송률 (kbps, `int`) |
+| `ZLINK_OPT_RECOVERY_IVL` | 멀티캐스트 복구 간격 (ms, `int`) |
+| `ZLINK_OPT_SNDBUF` | 커널 송신 버퍼 크기 (`int`; 0=OS 기본값) |
+| `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (`int`; 0=OS 기본값) |
+| `ZLINK_OPT_SNDHWM` | 송신 하이 워터 마크 (`int`; 0=무제한) |
+| `ZLINK_OPT_RCVHWM` | 수신 하이 워터 마크 (`int`; 0=무제한) |
+| `ZLINK_OPT_MAXMSGSIZE` | 최대 인바운드 메시지 크기 (`int64_t`; -1=무제한) |
 
 ##### Timing
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_OPT_LINGER` | 소켓 종료 시 대기 기간 (밀리초, `int`; -1 = 무한, 0 = 즉시 폐기) |
-| `ZLINK_OPT_RCVTIMEO` | 수신 타임아웃 (밀리초, `int`; -1 = 무한) |
-| `ZLINK_OPT_SNDTIMEO` | 송신 타임아웃 (밀리초, `int`; -1 = 무한) |
-| `ZLINK_OPT_CONNECT_TIMEOUT` | 연결 타임아웃 (밀리초, `int`) |
-| `ZLINK_OPT_RECONNECT_IVL` | 초기 재연결 간격 (밀리초, `int`) |
-| `ZLINK_OPT_RECONNECT_IVL_MAX` | 최대 재연결 간격 (밀리초, `int`; 0 = RECONNECT_IVL만 사용) |
-| `ZLINK_OPT_HANDSHAKE_IVL` | ZMTP 핸드셰이크 타임아웃 (밀리초, `int`) |
+| `ZLINK_OPT_LINGER` | 종료 시 대기 (ms, `int`; -1=무한, 0=즉시) |
+| `ZLINK_OPT_RCVTIMEO` | 수신 타임아웃 (ms, `int`; -1=무한) |
+| `ZLINK_OPT_SNDTIMEO` | 송신 타임아웃 (ms, `int`; -1=무한) |
+| `ZLINK_OPT_CONNECT_TIMEOUT` | 연결 타임아웃 (ms, `int`) |
+| `ZLINK_OPT_RECONNECT_IVL` | 초기 재연결 간격 (ms, `int`) |
+| `ZLINK_OPT_RECONNECT_IVL_MAX` | 최대 재연결 간격 (ms, `int`; 0=IVL만 사용) |
+| `ZLINK_OPT_HANDSHAKE_IVL` | ZMTP 핸드셰이크 타임아웃 (ms, `int`) |
 
 ##### TCP
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_OPT_TCP_KEEPALIVE` | SO_KEEPALIVE 재정의 (`int`; -1 = OS 기본값, 0 = 끄기, 1 = 켜기) |
-| `ZLINK_OPT_TCP_KEEPALIVE_CNT` | TCP_KEEPCNT 재정의 (`int`; -1 = OS 기본값) |
-| `ZLINK_OPT_TCP_KEEPALIVE_IDLE` | TCP_KEEPIDLE 재정의 (초, `int`; -1 = OS 기본값) |
-| `ZLINK_OPT_TCP_KEEPALIVE_INTVL` | TCP_KEEPINTVL 재정의 (초, `int`; -1 = OS 기본값) |
-| `ZLINK_OPT_TCP_MAXRT` | 최대 TCP 재전송 타임아웃 (밀리초, `int`) |
+| `ZLINK_OPT_TCP_KEEPALIVE` | SO_KEEPALIVE (`int`; -1=OS, 0=off, 1=on) |
+| `ZLINK_OPT_TCP_KEEPALIVE_CNT` | TCP_KEEPCNT (`int`; -1=OS 기본값) |
+| `ZLINK_OPT_TCP_KEEPALIVE_IDLE` | TCP_KEEPIDLE (초, `int`; -1=OS 기본값) |
+| `ZLINK_OPT_TCP_KEEPALIVE_INTVL` | TCP_KEEPINTVL (초, `int`; -1=OS 기본값) |
+| `ZLINK_OPT_TCP_MAXRT` | 최대 TCP 재전송 타임아웃 (ms, `int`) |
 | `ZLINK_OPT_TCP_NODELAY` | TCP_NODELAY 활성화 (`int`; 0 또는 1) |
 
 ##### Heartbeat
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_OPT_HEARTBEAT_IVL` | ZMTP 하트비트 간격 (밀리초, `int`; 0 = 비활성화) |
-| `ZLINK_OPT_HEARTBEAT_TTL` | ZMTP 하트비트 TTL (밀리초, `int`) |
-| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | ZMTP 하트비트 타임아웃 (밀리초, `int`) |
+| `ZLINK_OPT_HEARTBEAT_IVL` | ZMTP 하트비트 간격 (ms, `int`; 0=비활성) |
+| `ZLINK_OPT_HEARTBEAT_TTL` | ZMTP 하트비트 TTL (ms, `int`) |
+| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | ZMTP 하트비트 타임아웃 (ms, `int`) |
 
 ##### Network
 
@@ -183,29 +193,29 @@ ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
 |---|---|
 | `ZLINK_OPT_IPV6` | 소켓에서 IPv6 활성화 (`int`; 0 또는 1) |
 | `ZLINK_OPT_TOS` | IP Type-of-Service 값 (`int`) |
-| `ZLINK_OPT_MULTICAST_HOPS` | 최대 멀티캐스트 홉 수 (TTL) (`int`) |
-| `ZLINK_OPT_MULTICAST_MAXTPDU` | 최대 멀티캐스트 전송 데이터 유닛 크기 (바이트, `int`) |
-| `ZLINK_OPT_BINDTODEVICE` | 소켓을 특정 네트워크 인터페이스에 바인딩 (`string`) |
-| `ZLINK_OPT_BACKLOG` | 대기 중인 연결 큐의 최대 길이 (`int`) |
+| `ZLINK_OPT_MULTICAST_HOPS` | 멀티캐스트 TTL (`int`) |
+| `ZLINK_OPT_MULTICAST_MAXTPDU` | 최대 멀티캐스트 TPDU 크기 (`int`) |
+| `ZLINK_OPT_BINDTODEVICE` | 네트워크 인터페이스 바인딩 (`string`) |
+| `ZLINK_OPT_BACKLOG` | listener backlog (`int`) |
 
 ##### Behavior
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_OPT_IMMEDIATE` | 완료된 연결에만 메시지 대기열 사용 (`int`; 0 또는 1) |
-| `ZLINK_OPT_CONFLATE` | 토픽당 가장 최근 메시지만 유지 (`int`; 0 또는 1) |
-| `ZLINK_OPT_BLOCKY` | 레거시 옵션: context 종료 시 블로킹 (`int`; 0 또는 1) |
-| `ZLINK_OPT_INVERT_MATCHING` | 토픽 매칭 반전 (`int`; 0 또는 1) |
-| `ZLINK_OPT_ZMP_METADATA` | 발신 연결에 ZMP 메타데이터 속성 첨부 (`binary`) |
+| `ZLINK_OPT_IMMEDIATE` | 완료된 연결에만 메시지 큐 사용 (`int`) |
+| `ZLINK_OPT_CONFLATE` | 토픽당 최신 메시지만 유지 (`int`) |
+| `ZLINK_OPT_BLOCKY` | context 종료 시 블로킹 (`int`, 레거시) |
+| `ZLINK_OPT_INVERT_MATCHING` | 토픽 매칭 반전 (`int`) |
+| `ZLINK_OPT_ZMP_METADATA` | ZMP 메타데이터 첨부 (`binary`) |
 
 ##### Read-only
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_OPT_FD` | 파일 디스크립터 (읽기 전용, `zlink_fd_t`) |
-| `ZLINK_OPT_EVENTS` | 이벤트 상태 비트마스크 (읽기 전용, `int`) |
-| `ZLINK_OPT_TYPE` | 소켓 타입 (읽기 전용, `int`) |
-| `ZLINK_OPT_LAST_ENDPOINT` | 마지막으로 바인딩된 엔드포인트 (읽기 전용, `string`) |
+| `ZLINK_OPT_FD` | 파일 디스크립터 (`zlink_fd_t`, 읽기 전용) |
+| `ZLINK_OPT_EVENTS` | 이벤트 상태 비트마스크 (`int`, 읽기 전용) |
+| `ZLINK_OPT_TYPE` | 소켓 타입 (`int`, 읽기 전용) |
+| `ZLINK_OPT_LAST_ENDPOINT` | 바인딩된 엔드포인트 (`string`, 읽기 전용) |
 
 #### Router 옵션 (`zlink_router_option_t`)
 
@@ -213,10 +223,10 @@ ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_ROUTER_OPT_MANDATORY` | 연결되지 않은 피어로 라우팅 시 `EHOSTUNREACH` 반환 (`int`; 0 또는 1) |
-| `ZLINK_ROUTER_OPT_HANDOVER` | 새 연결이 기존 라우팅 아이덴티티를 인수하도록 허용 (`int`; 0 또는 1) |
-| `ZLINK_ROUTER_OPT_PROBE` | 연결 시 빈 메시지를 보내 ROUTER 피어에서 아이덴티티 설정 (`int`; 0 또는 1) |
-| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 다음 발신 연결의 라우팅 아이덴티티 설정 (`binary`) |
+| `ZLINK_ROUTER_OPT_MANDATORY` | 라우팅 불가 시 `EHOSTUNREACH` 반환 (`int`) |
+| `ZLINK_ROUTER_OPT_HANDOVER` | 기존 routing id를 새 연결이 인수 허용 (`int`) |
+| `ZLINK_ROUTER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`) |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 발신 연결의 routing id 설정 (`binary`) |
 
 #### Dealer 옵션 (`zlink_dealer_option_t`)
 
@@ -224,7 +234,7 @@ ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_DEALER_OPT_PROBE` | 연결 시 빈 메시지를 보내 ROUTER 피어에서 아이덴티티 설정 (`int`; 0 또는 1) |
+| `ZLINK_DEALER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`) |
 
 #### Pub 옵션 (`zlink_pub_option_t`)
 
@@ -232,15 +242,15 @@ ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_PUB_OPT_VERBOSE` | 모든 구독 메시지를 업스트림으로 전달 (`int`; 0 또는 1) |
-| `ZLINK_PUB_OPT_VERBOSER` | 모든 구독 및 구독 해제 메시지를 업스트림으로 전달 (`int`; 0 또는 1) |
-| `ZLINK_PUB_OPT_MANUAL` | XPUB에서 수동 구독 관리 활성화 (`int`; 0 또는 1) |
-| `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | 수동 XPUB 모드에서 최신 값 캐싱 활성화 (`int`; 0 또는 1) |
-| `ZLINK_PUB_OPT_NODROP` | HWM에서 메시지를 자동 삭제하지 않고 `EAGAIN` 반환 (`int`; 0 또는 1) |
-| `ZLINK_PUB_OPT_WELCOME_MSG` | 새 서브스크라이버 연결 시 전송되는 메시지 (`binary`) |
-| `ZLINK_PUB_OPT_TOPICS_COUNT` | 구독된 토픽 수 (읽기 전용, `int`) |
-| `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | XPUB manual 모드에서 구독 승인 (`binary`) |
-| `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | XPUB manual 모드에서 구독 거부 (`binary`) |
+| `ZLINK_PUB_OPT_VERBOSE` | 모든 구독 메시지를 업스트림 전달 (`int`) |
+| `ZLINK_PUB_OPT_VERBOSER` | 구독/해제 메시지를 업스트림 전달 (`int`) |
+| `ZLINK_PUB_OPT_MANUAL` | XPUB 수동 구독 관리 (`int`) |
+| `ZLINK_PUB_OPT_MANUAL_LAST_VALUE` | 수동 모드 최신 값 캐싱 (`int`) |
+| `ZLINK_PUB_OPT_NODROP` | HWM 시 drop 대신 `EAGAIN` 반환 (`int`) |
+| `ZLINK_PUB_OPT_WELCOME_MSG` | 새 subscriber 연결 시 전송 메시지 (`binary`) |
+| `ZLINK_PUB_OPT_TOPICS_COUNT` | 구독된 토픽 수 (`int`, 읽기 전용) |
+| `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | manual 모드 구독 승인 (`binary`) |
+| `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | manual 모드 구독 거부 (`binary`) |
 
 #### Sub 옵션 (`zlink_sub_option_t`)
 
@@ -256,7 +266,7 @@ ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_STREAM_OPT_NOTIFY` | STREAM 연결/해제 알림 활성화 (`int`; 0 또는 1) |
+| `ZLINK_STREAM_OPT_NOTIFY` | STREAM 연결/해제 알림 (`int`) |
 
 ## 함수
 

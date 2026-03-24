@@ -241,6 +241,27 @@ Examples:
 - Case-sensitive
 - Example: `chat:*` matches both `chat:room1:message` and `chat:room2:join`
 
+## Internal Module Structure
+
+The SPOT internal implementation has a modular structure with separated
+data plane and control plane. The public C API remains unchanged;
+internal changes stay within narrow boundaries.
+
+| Module | Role |
+|--------|------|
+| `spot_node_access` · `spot_subject_access` | API layer seam (service-local access) |
+| `spot_handle` | Public handle struct (tag validation, pub/sub refs, pending defaults) |
+| `spot_node` | SpotNode orchestration, discovery integration |
+| `spot_pub` | Publish path |
+| `spot_sub` | Subscribe path (option · recv separated) |
+| `spot_data_plane` | Data plane core |
+| `spot_data_plane_forwarding` | Ingress/egress message forwarding |
+| `spot_data_plane_protocol` | Control messages, subscription updates, bootstrap |
+| `spot_runtime` | Runtime lifecycle |
+
+Multipart publish uses the shared `multipart_send_txn` module to provide
+whole-message guarantees (all-or-nothing).
+
 ## 6. Delivery Policy
 
 - Local publish (`spot`) distributes to local SPOT Subs + sends out via PUB (remote propagation)

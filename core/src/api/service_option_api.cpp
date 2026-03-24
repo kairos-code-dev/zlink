@@ -5,36 +5,9 @@
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 
-#include "services/discovery/discovery.hpp"
-#include "services/discovery/registry.hpp"
-#include "services/gateway/gateway.hpp"
-
-namespace
-{
-static zlink::gateway_t *as_gateway (void *handle_)
-{
-    if (!handle_)
-        return NULL;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (handle_);
-    return gateway->check_tag () ? gateway : NULL;
-}
-
-static zlink::discovery_t *as_discovery (void *handle_)
-{
-    if (!handle_)
-        return NULL;
-    zlink::discovery_t *discovery = static_cast<zlink::discovery_t *> (handle_);
-    return discovery->check_tag () ? discovery : NULL;
-}
-
-static zlink::registry_t *as_registry (void *handle_)
-{
-    if (!handle_)
-        return NULL;
-    zlink::registry_t *registry = static_cast<zlink::registry_t *> (handle_);
-    return registry->check_tag () ? registry : NULL;
-}
-}
+#include "services/discovery/discovery_access.hpp"
+#include "services/discovery/registry_access.hpp"
+#include "services/gateway/gateway_access.hpp"
 
 int zlink_service_set_common_option (void *handle_,
                                      zlink_option_t option_,
@@ -42,10 +15,13 @@ int zlink_service_set_common_option (void *handle_,
                                      const void *optval_,
                                      size_t optvallen_)
 {
-    if (zlink::gateway_t *gateway = as_gateway (handle_))
-        return gateway->set_socket_option (socket_option_, optval_, optvallen_);
-    if (zlink::discovery_t *discovery = as_discovery (handle_))
-        return discovery->set_option (socket_option_, optval_, optvallen_);
+    if (zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_))
+        return zlink::gateway_access_t::set_socket_option (
+          gateway, socket_option_, optval_, optvallen_);
+    if (zlink::discovery_t *discovery =
+          zlink::discovery_access_t::from_handle (handle_))
+        return zlink::discovery_access_t::set_option (
+          discovery, socket_option_, optval_, optvallen_);
     if (zlink_service_spot_set_common_option_internal (
           handle_, option_, socket_option_, optval_, optvallen_)
         == 0)
@@ -63,13 +39,14 @@ int zlink_service_get_common_option (void *handle_,
                                      void *optval_,
                                      size_t *optvallen_)
 {
-    if (zlink::gateway_t *gateway = as_gateway (handle_)) {
+    if (zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_)) {
         if (option_ == ZLINK_OPT_LAST_ENDPOINT)
-            return gateway->last_endpoint (static_cast<char *> (optval_),
-                                           optvallen_);
-        return gateway->get_socket_option (socket_option_, optval_, optvallen_);
+            return zlink::gateway_access_t::last_endpoint (
+              gateway, static_cast<char *> (optval_), optvallen_);
+        return zlink::gateway_access_t::get_socket_option (
+          gateway, socket_option_, optval_, optvallen_);
     }
-    if (as_discovery (handle_)) {
+    if (zlink::discovery_access_t::from_handle (handle_)) {
         errno = ENOTSUP;
         return -1;
     }
@@ -88,10 +65,12 @@ int zlink_service_set_routing_id (void *handle_,
                                   const void *data_,
                                   size_t size_)
 {
-    if (zlink::gateway_t *gateway = as_gateway (handle_))
-        return gateway->set_routing_id (data_, size_);
-    if (zlink::discovery_t *discovery = as_discovery (handle_))
-        return discovery->set_routing_id (data_, size_);
+    if (zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_))
+        return zlink::gateway_access_t::set_routing_id (gateway, data_, size_);
+    if (zlink::discovery_t *discovery =
+          zlink::discovery_access_t::from_handle (handle_))
+        return zlink::discovery_access_t::set_routing_id (
+          discovery, data_, size_);
     if (zlink_service_spot_set_routing_id_internal (handle_, data_, size_) == 0)
         return 0;
     if (errno != EFAULT)
@@ -103,10 +82,11 @@ int zlink_service_set_routing_id (void *handle_,
 
 int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_)
 {
-    if (zlink::gateway_t *gateway = as_gateway (handle_))
-        return gateway->routing_id (out_);
-    if (zlink::discovery_t *discovery = as_discovery (handle_))
-        return discovery->routing_id (out_);
+    if (zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_))
+        return zlink::gateway_access_t::routing_id (gateway, out_);
+    if (zlink::discovery_t *discovery =
+          zlink::discovery_access_t::from_handle (handle_))
+        return zlink::discovery_access_t::routing_id (discovery, out_);
     if (zlink_service_spot_get_routing_id_internal (handle_, out_) == 0)
         return 0;
     if (errno != EFAULT)
@@ -121,16 +101,17 @@ int zlink_service_set_tls_server (void *handle_,
                                   const char *key_,
                                   int require_client_cert_)
 {
-    if (zlink::gateway_t *gateway = as_gateway (handle_))
-        return gateway->set_tls_server (cert_, key_);
+    if (zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_))
+        return zlink::gateway_access_t::set_tls_server (gateway, cert_, key_);
     if (zlink_service_spot_set_tls_server_internal (
           handle_, cert_, key_, require_client_cert_)
         == 0)
         return 0;
     if (errno != EFAULT)
         return -1;
-    if (zlink::registry_t *registry = as_registry (handle_))
-        return registry->set_tls_server (cert_, key_, require_client_cert_);
+    if (zlink::registry_t *registry = zlink::registry_access_t::from_handle (handle_))
+        return zlink::registry_access_t::set_tls_server (
+          registry, cert_, key_, require_client_cert_);
 
     errno = EFAULT;
     return -1;
@@ -141,18 +122,22 @@ int zlink_service_set_tls_client (void *handle_,
                                   const char *hostname_,
                                   int trust_system_)
 {
-    if (zlink::gateway_t *gateway = as_gateway (handle_))
-        return gateway->set_tls_client (ca_cert_, hostname_, trust_system_);
-    if (zlink::discovery_t *discovery = as_discovery (handle_))
-        return discovery->set_tls_client (ca_cert_, hostname_, trust_system_);
+    if (zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_))
+        return zlink::gateway_access_t::set_tls_client (
+          gateway, ca_cert_, hostname_, trust_system_);
+    if (zlink::discovery_t *discovery =
+          zlink::discovery_access_t::from_handle (handle_))
+        return zlink::discovery_access_t::set_tls_client (
+          discovery, ca_cert_, hostname_, trust_system_);
     if (zlink_service_spot_set_tls_client_internal (
           handle_, ca_cert_, hostname_, trust_system_)
         == 0)
         return 0;
     if (errno != EFAULT)
         return -1;
-    if (zlink::registry_t *registry = as_registry (handle_))
-        return registry->set_tls_client (ca_cert_, hostname_, trust_system_);
+    if (zlink::registry_t *registry = zlink::registry_access_t::from_handle (handle_))
+        return zlink::registry_access_t::set_tls_client (
+          registry, ca_cert_, hostname_, trust_system_);
 
     errno = EFAULT;
     return -1;
@@ -164,12 +149,13 @@ int zlink_service_set_router_option (void *handle_,
                                      const void *optval_,
                                      size_t optvallen_)
 {
-    if (zlink::gateway_t *gateway = as_gateway (handle_)) {
+    if (zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_)) {
         if (option_ == ZLINK_ROUTER_OPT_PROBE) {
             errno = EINVAL;
             return -1;
         }
-        return gateway->set_socket_option (socket_option_, optval_, optvallen_);
+        return zlink::gateway_access_t::set_socket_option (
+          gateway, socket_option_, optval_, optvallen_);
     }
 
     errno = EFAULT;
@@ -182,13 +168,14 @@ int zlink_service_get_router_option (void *handle_,
                                      void *optval_,
                                      size_t *optvallen_)
 {
-    if (zlink::gateway_t *gateway = as_gateway (handle_)) {
+    if (zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_)) {
         if (option_ != ZLINK_ROUTER_OPT_MANDATORY
             && option_ != ZLINK_ROUTER_OPT_HANDOVER) {
             errno = EINVAL;
             return -1;
         }
-        return gateway->get_socket_option (socket_option_, optval_, optvallen_);
+        return zlink::gateway_access_t::get_socket_option (
+          gateway, socket_option_, optval_, optvallen_);
     }
 
     errno = EFAULT;

@@ -5,7 +5,6 @@
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 
-#include <new>
 #include "services/spot/spot_dispatch_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
@@ -72,43 +71,4 @@ void destroy_spot_handle_for_testing (void *spot_)
     delete spot;
 }
 
-}
-
-zlink::spot_pub_t *as_spot_pub_side_handle (void *handle_)
-{
-    if (!handle_)
-        return NULL;
-    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (handle_);
-    return pub->check_tag () ? pub : NULL;
-}
-
-zlink::spot_sub_t *as_spot_sub_side_handle (void *handle_)
-{
-    if (!handle_)
-        return NULL;
-    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (handle_);
-    return sub->check_tag () ? sub : NULL;
-}
-
-zlink::spot_node_t *as_spot_node_handle (void *handle_)
-{
-    if (!handle_)
-        return NULL;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (handle_);
-    return node->check_tag () ? node : NULL;
-}
-
-spot_handle_t *as_spot_handle (void *spot_)
-{
-    if (!spot_) {
-        errno = EFAULT;
-        return NULL;
-    }
-
-    spot_handle_t *spot = static_cast<spot_handle_t *> (spot_);
-    if (!spot->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return spot;
 }

@@ -1,0 +1,2271 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: medium
+reasoning summaries: none
+session id: 019d1f42-ed33-7823-8e79-c2dd63268f12
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+  이 문서의 남은 작업을 중단 없이 끝까지 진행한다.
+- /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md
+  이 문서의 실제 구현 내용이 코드에 반영되도록 작업한다.
+
+작업 규칙:
+- 실행 가이드와 마스터 플랜을 둘 다 authority로 사용한다.
+- 실행 순서와 완료 판정은 실행 가이드를 따르되, 실제 구현 내용과 설계 intent는 마스터 플랜을 기준으로 확인한다.
+- 각 작업 묶음을 끝낼 때마다 마스터 플랜의 Phase 1~6, 8.1, 8.2, 9장을 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 마스터 플랜의 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 마스터 플랜에 있는데 실행 가이드 5장 체크리스트에 없는 구현 항목을 발견하면 실행 가이드를 먼저 갱신한 뒤 작업을 계속한다.
+- 마스터 플랜과 실행 가이드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --label phase2_thread_safe_stress --count 10 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 10보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+- stress/lane/perf는 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- 테스트 통과만으로 마스터 플랜 구현 내용이 반영됐다고 추정하지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+codex
+팀장님, 실행 가이드와 마스터 플랜을 함께 읽어서 첫 미완료 항목을 특정하고, 문서-코드 불일치가 있으면 먼저 문서를 바로잡은 뒤 `core/`와 `core/tests/` 범위에서 순서대로 구현하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# POSD 2차 리팩토링 잔여 작업 실행 가이드
+
+> 상태: active
+> 기준 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
+> 기준 커밋: `85ea0995`
+> 대상 범위: `core/`, `core/tests/`
+> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
+> 최종 성능 검증 도구: `core/perf/run_benchmarks.sh`, `core/perf/run_benchmarks_multi.sh`
+> 목적: 남은 POSD 2차 리팩토링 항목을 중간 중단 없이 끝까지 밀기 위한 실행 규칙 고정
+
+## 1. 문서 목적
+
+이 문서는 마스터 플랜의 "남은 작업"만을 대상으로,
+실제 구현자가 어떤 순서와 어떤 정지 규칙으로 끝까지 진행해야 하는지를 고정한다.
+
+이 문서는 새 설계를 제안하는 문서가 아니다.
+이미 반영된 2차 리팩토링 결과 위에서,
+남은 허브와 남은 ownership 정리를 끝까지 닫는 실행 문서다.
+
+핵심 원칙은 아래 두 줄이다.
+exec
+/bin/bash -lc "sed -n '1,320p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# POSD 기반 `core` 2차 리팩토링 마스터 플랜
+
+> 상태: draft
+> 대상: `core/`
+> 기준 원칙: POSD + 공개 API 호환 유지 + 성능 비퇴행
+> 관련 문서:
+> - `doc/plan/refactor/1st/README.ko.md`
+> - `doc/plan/refactor/1st/00-core-system-posd-refactor-plan.ko.md`
+> - `doc/plan/refactor/1st/04-core-system-phase2-socket-runtime-split.ko.md`
+> - `doc/plan/refactor/1st/05-core-system-phase3-engine-transport-service-plan.ko.md`
+> - `doc/plan/thread-safe/thread-safe-socket-plan.ko.md`
+> - `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`
+
+## 1. 문서 목적
+
+이 문서는 `core` 1차 POSD 리팩토링 문서 세트를 바탕으로,
+**이미 1차 핵심 경계가 코드에 반영된 현재 코드베이스**를 기준으로 작성한
+2차 상세 실행 계획 마스터 플랜이다.
+
+1차 문서 세트가 ownership, runtime, 최종 source layout 관점에서
+exec
+/bin/bash -lc 'git status --short' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+ M core/CMakeLists.txt
+ M core/src/api/monitor_service_open_api.cpp
+ M core/src/api/service_api.cpp
+ M core/src/api/service_api_internal.hpp
+ M core/src/api/service_discovery_api.cpp
+ M core/src/api/service_gateway_api.cpp
+ M core/src/api/service_handler_api.cpp
+ M core/src/api/service_option_api.cpp
+ M core/src/api/service_option_spot_api.cpp
+ M core/src/api/service_poller_api.cpp
+ M core/src/api/service_registry_api.cpp
+ M core/src/api/service_spot_api.cpp
+ M core/src/api/service_spot_node_api.cpp
+ M core/src/api/service_spot_subject_api.cpp
+ M core/src/api/service_spot_subject_option_api.cpp
+ M core/src/api/service_spot_subject_subscription_api.cpp
+ M core/src/api/socket_message_api.cpp
+ M core/src/core/options_dispatch.cpp
+ M core/src/core/pipe.cpp
+ M core/src/services/common/service_runtime_base.cpp
+codex
+문서 상태표와 체크리스트에서 실제 남은 첫 항목을 잡고 있습니다. 동시에 워크트리에 사용자 변경이 많아서, 제가 건드릴 범위는 현재 작업 항목에 직접 필요한 파일로만 좁히겠습니다.
+exec
+/bin/bash -lc "rg -n \"\\[ \\]|미완료|완료|Phase 1|Phase 2|Phase 3|Phase 4|Phase 5|Phase 6|8\\.1|8\\.2|9장|## 5|### 5|## 6|## 8|## 9\" doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+7:> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
+36:- 문서 본체 완료 뒤에는 `core/perf` 기반 perf smoke, full perf, baseline 비교, 성능 회복 루프까지 포함한다.
+54:3. 중간 상태 설명, 부분 요약, 임시 완료 보고는 하지 않는다.
+57:6. 한 항목을 `완료`로 바꾼 직후에는 다음 미완료 항목으로 즉시 이동한다.
+80:- 미완료 표의 다음 행이 남아 있는 상태
+87:1. 미완료 항목 목록에서 가장 위의 항목 하나를 고른다.
+91:5. 문서의 미완료 목록에서 해당 항목을 줄이거나 제거한다.
+97:2. 5.0 표에서 `완료`가 아닌 첫 행을 다시 찾는다.
+99:4. 5.0 표가 전부 `완료`일 때만 6.3 최종 게이트로 간다.
+132:- 이 문서의 phase 종료, 최종 완료, 중단 판정은 `core/`와 `core/tests/` 증거로만 닫는다.
+382:## 5. 남은 작업 체크리스트
+387:## 5.0 마스터 플랜 커버리지 추적 표
+397:- `완료`
+403:- `검증중 -> 완료`: 검증 증거 파일/명령/로그 위치까지 표에 기록한 시점
+404:- `완료 -> 진행중`: 이후 변경으로 해당 항목 owner 또는 검증 결과가 다시 흔들린 시점
+409:2. `완료`가 아닌 첫 행을 이번 세션의 우선 작업으로 잡는다.
+411:4. 증거가 비어 있으면 `완료`로 간주하지 않는다.
+414:완료로 바꾸려면 아래 세 칸이 모두 채워져야 한다.
+420:### 5.0.1 장시간 게이트 대기 규칙
+435:- 문서 전체 실행을 Codex supervisor로 감싸는 것은 허용한다. 다만 supervisor는 각 iteration에서 이 문서를 그대로 authority로 사용해야 하고, 완료 판정은 반드시 이 문서 기준으로만 내려야 한다.
+exec
+/bin/bash -lc "rg -n \"Phase 1|Phase 2|Phase 3|Phase 4|Phase 5|Phase 6|8\\.1|8\\.2|## 9|logical multipart|options_dispatch|monitor|spot_sub|spot_data_plane|socket_base|service_runtime_base|api/zlink_option|monitor_api|monitor_service_api\" doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+119:- message / callback / poller / monitor 연계
+131:### 2.3.2 `socket_base_t`가 semantic과 mechanism을 함께 가진다
+133:`socket_base_t`는 socket abstraction의 중심이지만,
+140:- monitor emission
+164:### 2.3.4 `service_runtime_base_t` 경계는 더 선명해질 필요가 있다
+193:새 기능이 추가될수록 `api` 허브, `socket_base_t`, `options_t`,
+196:### 2.3.6 logical multipart send semantics가 상위 surface에 흩어져 있다
+215:**logical multipart send라는 하나의 use-case 모듈이
+220:`logical multipart send` deep module 추출 작업을 함께 포함한다.
+227:  logical multipart message를 whole-message 단위로 해석한다.
+271:- monitor / poller / routing-id / subscription 관련 공개 동작
+273:- `monitor_event_version`, `hello_msg`, `disconnect_msg`, `hiccup_msg`,
+345:| socket semantic/runtime | socket family 의미와 공통 기계 작업 | callback/monitor/endpoint bookkeeping 세부 |
+358:- socket semantic/runtime: family 의미와 무관한 dispatch/monitor/endpoint bookkeeping을 숨긴다.
+423:이 구조 위에서 `api/zlink.cpp`, `socket_base_t`, `options_t`,
+424:`service_runtime_base_t` 쪽으로 지식이 다시 재집중된다는 점이다.
+455:      socket_base.*
+457:      monitor_bridge.*
+475:      service_runtime_base.*
+513:  logical multipart send runtime/use-case primitive이므로 `core/`에 둔다.
+exec
+/bin/bash -lc "sed -n '260,520p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+import re, sys
+
+baseline_path, current_path = sys.argv[1], sys.argv[2]
+
+def parse(path):
+    rows = {}
+    pattern = None
+    transport = None
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r"## PATTERN:\s+([A-Z0-9_]+)", line)
+            if m:
+                pattern = m.group(1)
+                transport = None
+                continue
+            m = re.match(r"\s*Testing\s+([a-z0-9]+)\b", line)
+            if m and "Done" not in line:
+                transport = m.group(1)
+                continue
+            if "|" not in line or pattern is None or transport is None:
+codex
+첫 미완료 행은 `5.7` perf 회복 루프입니다. 이제 최신 full/targeted 결과를 baseline과 다시 대조해서 현재 worst tuple owner를 확정하고, 그 owner 범위의 `core/` 구현부터 밀어붙이겠습니다.
+exec
+/bin/bash -lc 'ls -t core/perf/results/single/report/perf_*_final-single.txt | head -n 3' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '640,760p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/perf/results/single/report/perf_linux_callback_20260324_120711_final-single.txt
+core/perf/results/single/report/perf_linux_callback_20260324_114242_final-single.txt
+ succeeded in 0ms:
+### 5.7 `core/perf` smoke / full baseline 비교 / 성능 회복 루프
+
+마스터 플랜 참조:
+[perf 검증 위임](./core-system-posd-refactor-master-plan.ko.md) (약 1266행)
+
+- [x] 모든 코드/테스트 체크리스트를 닫은 뒤 `core/perf` single smoke를 실행한다.
+- [x] single smoke가 정상이면 multi perf smoke를 실행한다.
+- [x] smoke 둘 다 정상이면 single full perf를 실행한다.
+- [x] single full 결과를 `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`와 비교한다.
+- [x] multi full perf를 실행하고 `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 비교한다.
+- [ ] baseline 미만 tuple이 있으면 가장 regression이 큰 `pattern + transport + size`부터 개선한다.
+- [ ] 개선 후에는 해당 tuple이 속한 pattern을 먼저 재측정하고, 필요 시 full single 또는 full multi를 다시 실행한다.
+- [ ] 모든 tuple이 baseline 이상이 될 때까지 반복한다.
+- [ ] 최종 단계에서 `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과를 확보한다.
+
+진행 메모:
+
+- `single smoke`는 `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`에서 성공했고 결과 파일 `core/perf/results/single/report/perf_linux_callback_20260324_111453_smoke-single.txt`를 남겼다.
+- `multi smoke`는 `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_111740.log`에서 `MULTI_SPOT`의 `CLIENT_READY` 경로가 partial/exit 1로 실패했다.
+- 같은 failure surface를 더 작은 `core/tests` 회귀로 옮기기 위해 `test_multi_spot_benchmark_process`에 `recv_many_clients_tcp_large` 케이스를 추가했고, 현재 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`에서 같은 exit 1을 재현한다.
+exec
+/bin/bash -lc 'ls -t core/perf/results/single/report/perf_*spot-single*.txt | head -n 5 && ls -t core/perf/results/multi/report/perf_*spot-multi*.txt | head -n 5' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc 'ls -t core/perf/results/multi/report/perf_*_final-multi.txt | head -n 3' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt
+core/perf/results/single/report/perf_linux_callback_20260324_181439_spot-single-20260324e.txt
+core/perf/results/single/report/perf_linux_callback_20260324_180028_spot-single-20260324d.txt
+core/perf/results/single/report/perf_linux_callback_20260324_173841_codex-spot-single-20260324b.txt
+core/perf/results/single/report/perf_linux_callback_20260324_172601_codex-spot-single-20260324a.txt
+core/perf/results/multi/report/perf_linux_recv_20260324_184116_spot-multi-20260324e.txt
+core/perf/results/multi/report/perf_linux_recv_20260324_182038_spot-multi-20260324d.txt
+core/perf/results/multi/report/perf_linux_recv_20260324_175042_codex-spot-multi-20260324c.txt
+core/perf/results/multi/report/perf_linux_recv_20260324_173841_codex-spot-multi-20260324b.txt
+core/perf/results/multi/report/perf_linux_recv_20260324_172602_codex-spot-multi-20260324a.txt
+ succeeded in 0ms:
+core/perf/results/multi/report/perf_linux_recv_20260324_123623_final-multi.txt
+codex
+현재 증거상 single은 소폭 미달이고, 큰 잔량은 `MULTI_SPOT`의 secure websocket steady-state입니다. 관련 owner를 `spot_data_plane*`, `spot_runtime*`, perf benchmark 회귀로 좁혀서 코드와 테스트를 같이 확인합니다.
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/spot/spot_data_plane_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SPOT_DATA_PLANE_INTERNAL_HPP_INCLUDED__
+#define __ZLINK_SPOT_DATA_PLANE_INTERNAL_HPP_INCLUDED__
+
+#include <zlink.h>
+
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace zlink
+{
+class socket_base_t;
+class spot_node_t;
+struct spot_runtime_t;
+
+struct spot_data_plane_protocol_state_t
+{
+exec
+/bin/bash -lc "sed -n '1,340p' core/src/services/spot/spot_data_plane.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "services/common/socket_monitor_bridge.hpp"
+#include "core/socket_poller.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+
+#include <errno.h>
+#include <string.h>
+
+namespace zlink
+exec
+/bin/bash -lc "sed -n '1,260p' core/tests/unittest/unittest_spot_data_plane_budget.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,260p' core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "testutil.hpp"
+#include "testutil_unity.hpp"
+
+#ifndef _WIN32
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <csignal>
+#include <climits>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <thread>
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../testutil_unity.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+
+namespace
+{
+void test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 0));
+    TEST_ASSERT_EQUAL_INT (
+      768, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 1));
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 2));
+
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("ws://127.0.0.1:9000", 0));
+    TEST_ASSERT_EQUAL_INT (
+exec
+/bin/bash -lc "sed -n '1,320p' core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+#include "utils/err.hpp"
+
+#include <errno.h>
+#include <map>
+#include <set>
+#include <stdarg.h>
+exec
+/bin/bash -lc 'rg -n "wss|tls|fanout|SNDHWM|ready peer|ready_ack|mesh_pub" core/src/services/spot/spot_data_plane.cpp core/src/services/spot/spot_data_plane_protocol.cpp core/src/services/spot/spot_runtime.* core/src/services/spot/spot_node_control.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/services/spot/spot_node_control.cpp:22:static void spot_ready_ack_debugf (const char *fmt_, ...)
+core/src/services/spot/spot_node_control.cpp:33:    FILE *fp = std::fopen ("/tmp/zlink_spot_ready_ack.log", "a");
+core/src/services/spot/spot_node_control.cpp:63:        if (it->compare (0, 6, "wss://") == 0)
+core/src/services/spot/spot_node_control.cpp:65:        if (it->compare (0, 6, "tls://") == 0)
+core/src/services/spot/spot_node_control.cpp:78:        if (it->compare (0, 6, "wss://") == 0)
+core/src/services/spot/spot_node_control.cpp:80:        if (it->compare (0, 6, "tls://") == 0)
+core/src/services/spot/spot_node_control.cpp:95:        if (it->compare (0, 6, "wss://") == 0)
+core/src/services/spot/spot_node_control.cpp:97:        if (it->compare (0, 6, "tls://") == 0)
+core/src/services/spot/spot_node_control.cpp:104:static std::string make_ready_ack_arg (const std::string &target_endpoint_,
+core/src/services/spot/spot_node_control.cpp:487:            publish_mesh_pub_budget_hint_locked ();
+core/src/services/spot/spot_node_control.cpp:568:void spot_node_t::publish_mesh_pub_budget_hint_locked ()
+core/src/services/spot/spot_node_control.cpp:575:      _runtime->mesh_pub_ready_peer_count.load (std::memory_order_acquire);
+core/src/services/spot/spot_node_control.cpp:579:    _runtime->mesh_pub_ready_peer_count.store (ready_count,
+core/src/services/spot/spot_node_control.cpp:581:    _runtime->mesh_pub_budget_version.fetch_add (1,
+core/src/services/spot/spot_node_control.cpp:768:void spot_node_t::notify_pub_delivery_ready_ack (
+core/src/services/spot/spot_node_control.cpp:789:    spot_ready_ack_debugf ("apply self=%s target=%s subject=%s source=%s subscribe=%d",
+core/src/services/spot/spot_node_control.cpp:814:        publish_mesh_pub_budget_hint_locked ();
+core/src/services/spot/spot_node_control.cpp:867:int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
+core/src/services/spot/spot_node_control.cpp:881:    spot_ready_ack_debugf ("queue target=%s filter=%s source=%s subscribe=%d",
+core/src/services/spot/spot_node_control.cpp:886:      make_ready_ack_arg (target_endpoint_, raw_filter_, ack_source_id_);
+exec
+/bin/bash -lc "python - <<'PY'
+import re
+from pathlib import Path
+
+def parse(path):
+    rows={}
+    pattern=None; transport=None
+    for line in Path(path).read_text().splitlines():
+        m=re.match(r'## PATTERN:\\s+([A-Z0-9_]+)', line)
+        if m:
+            pattern=m.group(1); transport=None; continue
+        m=re.match(r'\\s*Testing\\s+([a-z0-9]+)\\b', line)
+        if m and 'Done' not in line:
+            transport=m.group(1); continue
+        if '|' not in line or pattern is None or transport is None:
+            continue
+        cols=[c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cols)<2 or cols[0] in ('Size','----------'):
+            continue
+        thr=re.search(r'([0-9]+(?:\\.[0-9]+)?)', cols[1])
+        if thr:
+            rows[(pattern, transport, cols[0])]=float(thr.group(1))
+    return rows
+
+baseline=parse('doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt')
+current=parse('core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt')
+reg=[]
+for k,b in baseline.items():
+    if k[0] "'!= '"'SPOT':
+        continue
+    c=current.get(k)
+    if c is not None and c < b:
+        reg.append(((c-b)/b,k,b,c))
+for rel,k,b,c in sorted(reg)[:20]:
+    print(k, 'baseline', b, 'current', c, 'rel', round(rel,4))
+PY" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+('SPOT', 'ws', '64B') baseline 1331.64 current 1249.85 rel -0.0614
+('SPOT', 'tls', '256B') baseline 713.4 current 703.33 rel -0.0141
+('SPOT', 'wss', '64B') baseline 1332.09 current 1315.15 rel -0.0127
+('SPOT', 'tls', '262144B') baseline 6.3 current 6.22 rel -0.0127
+('SPOT', 'tcp', '64B') baseline 1611.44 current 1596.16 rel -0.0095
+('SPOT', 'tls', '64B') baseline 1503.69 current 1489.67 rel -0.0093
+('SPOT', 'tls', '131072B') baseline 11.7 current 11.6 rel -0.0085
+('SPOT', 'ws', '256B') baseline 749.54 current 745.69 rel -0.0051
+('SPOT', 'tcp', '256B') baseline 788.76 current 786.78 rel -0.0025
+('SPOT', 'tls', '65536B') baseline 20.9 current 20.89 rel -0.0005
+exec
+/bin/bash -lc "python - <<'PY'
+import re
+from pathlib import Path
+
+def parse(path):
+    rows={}
+    pattern=None; transport=None
+    for line in Path(path).read_text().splitlines():
+        m=re.match(r'## PATTERN:\\s+([A-Z0-9_]+)', line)
+        if m:
+            pattern=m.group(1); transport=None; continue
+        m=re.match(r'\\s*Testing\\s+([a-z0-9]+)\\b', line)
+        if m and 'Done' not in line:
+            transport=m.group(1); continue
+        if '|' not in line or pattern is None or transport is None:
+            continue
+        cols=[c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cols)<2 or cols[0] in ('Size','----------'):
+            continue
+        thr=re.search(r'([0-9]+(?:\\.[0-9]+)?)', cols[1])
+        if thr:
+            rows[(pattern, transport, cols[0])]=float(thr.group(1))
+    return rows
+
+baseline=parse('doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt')
+current=parse('core/perf/results/multi/report/perf_linux_recv_20260324_184116_spot-multi-20260324e.txt')
+reg=[]
+for k,b in baseline.items():
+    if k[0] "'!= '"'MULTI_SPOT':
+        continue
+    c=current.get(k)
+    if c is None:
+        reg.append((None,k,b,None))
+    elif c < b:
+        reg.append(((c-b)/b,k,b,c))
+reg.sort(key=lambda x: (1 if x[0] is None else x[0]))
+for rel,k,b,c in sorted(reg, key=lambda x: (999 if x[0] is None else x[0]))[:20]:
+    if rel is None:
+        print('MISSING', k)
+    else:
+        print(k, 'baseline', b, 'current', c, 'rel', round(rel,4))
+PY" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+('MULTI_SPOT', 'wss', '262144B') baseline 13.127 current 3.907 rel -0.7024
+('MULTI_SPOT', 'wss', '256B') baseline 1744.141 current 634.751 rel -0.6361
+('MULTI_SPOT', 'wss', '64B') baseline 1949.744 current 784.626 rel -0.5976
+('MULTI_SPOT', 'wss', '1024B') baseline 520.738 current 331.028 rel -0.3643
+('MULTI_SPOT', 'wss', '131072B') baseline 7.356 current 6.604 rel -0.1022
+('MULTI_SPOT', 'tls', '1024B') baseline 1375.476 current 1257.301 rel -0.0859
+('MULTI_SPOT', 'tcp', '256B') baseline 2482.205 current 2348.157 rel -0.054
+('MULTI_SPOT', 'wss', '65536B') baseline 35.562 current 34.781 rel -0.022
+exec
+/bin/bash -lc "sed -n '540,860p' core/src/services/spot/spot_node_control.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+            return;
+        }
+        queue_all_subscription_ready_filters ();
+    }
+}
+
+std::string spot_node_t::first_connected_peer_endpoint () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_connected_peer_endpoints.empty ())
+        return std::string ();
+    return *_connected_peer_endpoints.begin ();
+}
+
+uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
+{
+    uint32_t max_ready_count = 0;
+    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+           _pub_delivery_ready_sources.begin ();
+         it != _pub_delivery_ready_sources.end (); ++it) {
+exec
+/bin/bash -lc "sed -n '720,930p' core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    if (verb == "terminate") {
+        if (send_ok_reply (ctrl_) != 0)
+            return -1;
+        *running_out_ = false;
+        return 0;
+    }
+
+    if (verb == "bind_pub") {
+        std::string cert;
+        std::string key;
+        {
+            scoped_lock_t lock (node_->_sync);
+            cert = node_->_tls_cert;
+            key = node_->_tls_key;
+        }
+
+        std::string ctrl_bind_endpoint;
+        if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+              arg, runtime_->node_id, &ctrl_bind_endpoint)) {
+            if (send_errno_reply (ctrl_, EINVAL) != 0)
+exec
+/bin/bash -lc "sed -n '580,700p' core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        if (previous_filters.empty ())
+            state_->peer_ready_filters.erase (source_key);
+    }
+
+    return 0;
+}
+
+int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
+  socket_base_t *mesh_xsub_,
+  socket_base_t *fanout_,
+  socket_base_t *peer_ctrl_pub_,
+  spot_node_t *node_,
+  spot_data_plane_protocol_state_t *state_)
+{
+    if (!mesh_xsub_ || !fanout_ || !peer_ctrl_pub_ || !node_ || !state_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    unsigned int processed = 0;
+codex
+남은 병목은 `mesh_pub`만으로 설명되지 않습니다. `mesh_xsub -> fanout` 내부 fanout이 secure websocket 다중 클라이언트에서 steady-state를 잡지 못하는지 확인하려고 벤치 회귀 케이스와 현재 budget 정책의 연결점을 더 보겠습니다.
+exec
+/bin/bash -lc 'rg -n "fanout|mesh_pub|wss|tls|callback smoke|recv_many_clients|100 clients|CLIENT_READY" core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+388:    const std::string ready_prefix = std::string ("CLIENT_READY,") + msg_size_;
+512:          std::string ("CLIENT_READY,") + msg_sizes[i];
+585:void test_multi_spot_process_recv_many_clients_tcp_large_smoke ()
+590:void test_multi_spot_process_recv_many_clients_ws_very_large_smoke ()
+595:void test_multi_spot_process_recv_many_clients_wss_large_sequence ()
+598:      "recv", "wss", "64,256,1024,65536,131072,262144", 100, 10000, 2, 2);
+613:    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_large_smoke);
+614:    RUN_TEST (test_multi_spot_process_recv_many_clients_ws_very_large_smoke);
+615:    RUN_TEST (test_multi_spot_process_recv_many_clients_wss_large_sequence);
+exec
+/bin/bash -lc "rg -n \"SPOT|MULTI_SPOT|spot-multi|pattern\" core/perf/run_benchmarks_multi.sh core/perf/run_benchmarks.sh core/perf -g '"'!core/perf/results/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/perf/run_benchmarks.sh:66:STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,GATEWAY,SPOT"
+core/perf/run_benchmarks.sh:67:MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM"
+core/perf/run_benchmarks.sh:102:Measure current zlink single-pattern performance.
+core/perf/run_benchmarks.sh:106:  --pattern NAME              Pattern list (comma-separated) or ALL.
+core/perf/run_benchmarks.sh:113:  --runs N                    Iterations per pattern/transport/size (default: 1).
+core/perf/run_benchmarks.sh:136:  - single mode rejects multi patterns; run_benchmarks_multi.sh enables multi mode.
+core/perf/run_benchmarks.sh:154:normalize_multi_pattern_token() {
+core/perf/run_benchmarks.sh:172:display_pattern_token() {
+core/perf/run_benchmarks.sh:175:    raw="$(normalize_multi_pattern_token "${raw}")"
+core/perf/run_benchmarks.sh:184:display_pattern_csv() {
+core/perf/run_benchmarks.sh:188:    items+=( "$(display_pattern_token "${item}")" )
+core/perf/run_benchmarks.sh:196:    --pattern)
+core/perf/run_benchmarks.sh:321:  echo "Error: no valid pattern specified." >&2
+core/perf/run_benchmarks.sh:328:    echo "Error: empty pattern entry in list." >&2
+core/perf/run_benchmarks.sh:332:    PATTERN_LIST[i]="$(normalize_multi_pattern_token "${PATTERN_LIST[i]}")"
+core/perf/run_benchmarks.sh:345:        echo "Error: unsupported multi pattern: ${p}" >&2
+core/perf/run_benchmarks.sh:346:        echo "Supported multi patterns: ${MULTI_PATTERNS}" >&2
+core/perf/run_benchmarks.sh:356:        echo "Error: unsupported single pattern: ${p}" >&2
+core/perf/run_benchmarks.sh:357:        echo "Supported single patterns: ${STANDARD_PATTERNS}" >&2
+core/perf/run_benchmarks.sh:691:  DISPLAY_PATTERN_CSV="$(display_pattern_csv "${PATTERN_LIST[@]}")"
+exec
+/bin/bash -lc "sed -n '260,520p' core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    }
+
+    return false;
+}
+
+std::string capture_debug_text (process_capture_t *proc_)
+{
+    if (!proc_)
+        return std::string ();
+
+    std::lock_guard<std::mutex> lock (proc_->sync);
+    std::string text;
+    text.reserve (proc_->stderr_text.size () + 256);
+    if (!proc_->stderr_text.empty ()) {
+        text += "stderr:\n";
+        text += proc_->stderr_text;
+    }
+    if (!proc_->stdout_lines.empty ()) {
+        if (!text.empty ())
+            text += '\n';
+exec
+/bin/bash -lc "sed -n '1,260p' core/perf/multi/src/perf_multi_spot_server.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/perf_common.hpp"
+#include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_metric_header.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <condition_variable>
+#include <mutex>
+#include <new>
+#include <set>
+#include <string>
+#include <thread>
+#include <vector>
+exec
+/bin/bash -lc "sed -n '520,660p' core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+    int client_rc = INT_MIN;
+    const int exit_timeout_ms =
+      std::max (60000, (duration_seconds_ + warmup_seconds_ + 15)
+                           * static_cast<int> (msg_sizes.size ()) * 1000);
+    TEST_ASSERT_TRUE_MESSAGE (
+      wait_for_exit_code (&client, exit_timeout_ms, &client_rc),
+      capture_case_debug_text (&server, &client).c_str ());
+    close_process_capture (&client);
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, client_rc,
+                                   capture_case_debug_text (&server, &client).c_str ());
+
+    size_t throughput_count = 0;
+    {
+        std::lock_guard<std::mutex> lock (client.sync);
+        for (size_t i = 0; i < client.stdout_lines.size (); ++i) {
+            if (client.stdout_lines[i].find ("throughput")
+                != std::string::npos) {
+                ++throughput_count;
+            }
+exec
+/bin/bash -lc "sed -n '1,280p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/perf_common.hpp"
+#include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_metric_header.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <new>
+#include <string>
+#include <thread>
+#include <vector>
+
+exec
+/bin/bash -lc "sed -n '280,760p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        return false;
+    }
+
+    if (sndbuf > 0
+        && zlink_set_option(sub, ZLINK_OPT_SNDBUF, &sndbuf,
+                                sizeof(sndbuf))
+             != 0) {
+        return false;
+    }
+
+    if (rcvbuf > 0
+        && zlink_set_option(sub, ZLINK_OPT_RCVBUF, &rcvbuf,
+                                sizeof(rcvbuf))
+             != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+exec
+/bin/bash -lc 'rg -n "slots|create.*sub|service_spot|sub_fanout|pub_ingress|delivery_ready|connect_peer_pub|bind_pub|fanout" core/perf/multi/src/perf_multi_spot_client.cpp core/perf/multi/src/perf_multi_spot_server.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/perf/multi/src/perf_multi_spot_client.cpp:67:    std::vector<spot_client_slot_t *> slots;
+core/perf/multi/src/perf_multi_spot_client.cpp:94:    std::vector<spot_client_slot_t *> slots;
+core/perf/multi/src/perf_multi_spot_client.cpp:322:void destroy_spot_slots(spot_client_state_t *state,
+core/perf/multi/src/perf_multi_spot_client.cpp:323:                        std::vector<spot_client_slot_t *> *slots)
+core/perf/multi/src/perf_multi_spot_client.cpp:325:    if (!slots)
+core/perf/multi/src/perf_multi_spot_client.cpp:331:                  << " slots=" << slots->size() << std::endl;
+core/perf/multi/src/perf_multi_spot_client.cpp:334:    for (size_t i = 0; i < slots->size(); ++i) {
+core/perf/multi/src/perf_multi_spot_client.cpp:335:        spot_client_slot_t *slot = (*slots)[i];
+core/perf/multi/src/perf_multi_spot_client.cpp:358:    for (size_t i = 0; i < slots->size(); ++i) {
+core/perf/multi/src/perf_multi_spot_client.cpp:359:        spot_client_slot_t *slot = (*slots)[i];
+core/perf/multi/src/perf_multi_spot_client.cpp:379:    slots->clear();
+core/perf/multi/src/perf_multi_spot_client.cpp:558:    if (!state || state->slots.empty())
+core/perf/multi/src/perf_multi_spot_client.cpp:562:      resolve_spot_recv_worker_count(state->slots.size());
+core/perf/multi/src/perf_multi_spot_client.cpp:581:    for (size_t i = 0; i < state->slots.size(); ++i) {
+core/perf/multi/src/perf_multi_spot_client.cpp:582:        spot_client_slot_t *slot = state->slots[i];
+core/perf/multi/src/perf_multi_spot_client.cpp:589:        worker->slots.push_back(slot);
+core/perf/multi/src/perf_multi_spot_client.cpp:594:        if (!worker || worker->slots.empty())
+core/perf/multi/src/perf_multi_spot_client.cpp:596:        worker->events.resize(worker->slots.size());
+core/perf/multi/src/perf_multi_spot_client.cpp:603:bool create_spot_slots(ctx_guard_t &ctx,
+core/perf/multi/src/perf_multi_spot_client.cpp:609:                       std::vector<spot_client_slot_t *> *slots_out)
+codex
+이제 가설 검증을 바로 돌립니다. 새 프로그램을 만들지 않고 기존 perf runner로 `MULTI_SPOT wss` targeted recheck를 실행해, 현재 코드와 `fanout` budget override가 실제로 steady-state throughput을 바꾸는지 보겠습니다.
+exec
+/bin/bash -lc 'set -o pipefail
+mkdir -p doc/plan/refactor/2nd/logs
+log1=doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_current_20260324.log
+( core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports wss --msg-sizes 64,256,1024,262144 --runs 1 --duration 1 --warmup 1 --results-tag triage-wss-current-20260324 ) 2>&1 | tee "$log1"
+echo ${PIPESTATUS[0]} > "$log1.exitcode"
+exit ${PIPESTATUS[0]}' in /home/hep7/project/kairos/zlinkcodex
+타깃 perf는 같은 셸 세션에 붙여 추적 중입니다. 완료되면 즉시 결과 tuple을 뽑아 현재 owner 가설과 맞는지 확인하고, 곧바로 코드 수정으로 넘어가겠습니다.
+ succeeded in 30.52s:
+      | 64B      |   893.124 Kmsg/s |     57.160 MB/s |  1354.858 ms |  1570.998 ms |  1610.346 ms |  4.296 |   45.156 |         0 |         0 |         0 |
+      | 256B     |   324.281 Kmsg/s |     83.016 MB/s |    24.276 ms |    23.406 ms |   795.282 ms |  4.913 |   48.352 |         0 |         0 |         0 |
+      | 1024B    |   319.836 Kmsg/s |    327.512 MB/s |    19.940 ms |     9.568 ms |   689.503 ms |  4.640 |   56.670 |         0 |         0 |         0 |
+      | 262144B  |     7.228 Kmsg/s |   1894.777 MB/s |   113.554 ms |   149.835 ms |   159.819 ms |  5.472 |  144.422 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: wss
+- msg_sizes: 64,256,1024,262144
+- warmup_seconds: 1
+- active_warmup: 0
+- duration_seconds: 1
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+codex
+현재 targeted 결과는 최신 full과 같은 형태로 `wss`만 크게 낮습니다. 서버 queue pending이 0이라서 publish 쪽보다 client-side internal fanout/backpressure 가능성이 더 커 보여, 같은 runner로 `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM` override만 바꿔 바로 확인합니다.
+exec
+/bin/bash -lc 'set -o pipefail
+log2=doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_fanout768_20260324.log
+( ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM=768 core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports wss --msg-sizes 64,256,1024,262144 --runs 1 --duration 1 --warmup 1 --results-tag triage-wss-fanout768-20260324 ) 2>&1 | tee "$log2"
+echo ${PIPESTATUS[0]} > "$log2.exitcode"
+exit ${PIPESTATUS[0]}' in /home/hep7/project/kairos/zlink succeeded in 29.55s:
+      | 64B      |   401.058 Kmsg/s |     25.668 MB/s |    15.908 ms |    20.628 ms |    26.549 ms |  4.870 |   45.620 |         0 |         0 |         0 |
+      | 256B     |   889.393 Kmsg/s |    227.685 MB/s |    11.914 ms |    19.539 ms |    20.956 ms |  5.130 |   48.281 |         0 |         0 |         0 |
+      | 1024B    |   830.988 Kmsg/s |    850.932 MB/s |    28.307 ms |    92.570 ms |   140.014 ms |  5.565 |   56.930 |         0 |         0 |         0 |
+      | 262144B  |     5.863 Kmsg/s |   1536.950 MB/s |    54.185 ms |    69.489 ms |   225.121 ms |  4.751 |  144.586 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: wss
+- msg_sizes: 64,256,1024,262144
+- warmup_seconds: 1
+- active_warmup: 0
+- duration_seconds: 1
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+codex
+`fanout=768`은 `wss 256/1024`를 크게 올리지만 `64/262144`를 더 망칩니다. 즉 단순 상향은 해법이 아니고, local fanout budget에 sweet spot이 있는지 바로 좁혀 보겠습니다.
+exec
+/bin/bash -lc "python - <<'PY'
+import os, re, subprocess, time, pathlib
+root=pathlib.Path('/home/hep7/project/kairos/zlink')
+vals=[96,128,192,256,384]
+for v in vals:
+    tag=f'triage-wss-fanout{v}-20260324'
+    log=root/'doc/plan/refactor/2nd/logs'/f'perf_spot_multi_triage_wss_fanout{v}_20260324.log'
+    env=os.environ.copy(); env['ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM']=str(v)
+    cmd=['core/perf/run_benchmarks_multi.sh','--build-dir','core/build','--reuse-build','--pattern','SPOT','--transports','wss','--msg-sizes','64,256,1024,262144','--runs','1','--duration','1','--warmup','1','--results-tag',tag]
+    print(f'=== FANOUT {v} ===', flush=True)
+    with log.open('w') as f:
+        proc=subprocess.run(cmd,cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        f.write(proc.stdout)
+    (pathlib.Path(str(log)+'.exitcode')).write_text(str(proc.returncode))
+    print('exit', proc.returncode)
+    m=re.search(r'result file: (.+\\.txt)', proc.stdout, re.I)
+    result_path=m.group(1).strip() if m else None
+    print('result', result_path)
+    if result_path and pathlib.Path(result_path).exists():
+        txt=pathlib.Path(result_path).read_text()
+        for size in ['64','256','1024','262144']:
+            mm=re.search(rf'RESULT,current,MULTI_SPOT,wss,{size},throughput,([0-9.]+)', txt)
+            if mm:
+                print(size, mm.group(1))
+    print()
+PY" in /home/hep7/project/kairos/zlinkcodex
+좁은 범위의 HWM sweep를 돌려서 `wss` tuple tradeoff 곡선을 확보하고 있습니다. 이 결과로 고정값 조정인지, transport/size carryover를 줄이는 코드 수정인지 결정하겠습니다.
+ succeeded in 2m 29s:
+exit 0
+result /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260324_185648_triage-wss-fanout96-20260324.txt
+64 126400.000
+256 376495.000
+1024 15699.000
+262144 5650.000
+
+=== FANOUT 128 ===
+exit 0
+result /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260324_185716_triage-wss-fanout128-20260324.txt
+64 60851.000
+256 85056.000
+1024 343964.000
+262144 7831.000
+
+=== FANOUT 192 ===
+exit 0
+result /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260324_185743_triage-wss-fanout192-20260324.txt
+64 589559.000
+256 99984.000
+codex
+`mesh_pub` 정책 가설을 더 직접 확인합니다. 현재 구현은 `wss` 다중 peer에서 항상 낮은 budget으로 묶여 있으니, 이번에는 `mesh_pub`만 고정 override해서 `wss` targeted recheck를 비교합니다.
+exec
+/bin/bash -lc "python - <<'PY'
+import os, re, subprocess, pathlib
+root=pathlib.Path('/home/hep7/project/kairos/zlink')
+vals=[128,256,384,512]
+for v in vals:
+    tag=f'triage-wss-meshpub{v}-20260324'
+    log=root/'doc/plan/refactor/2nd/logs'/f'perf_spot_multi_triage_wss_meshpub{v}_20260324.log'
+    env=os.environ.copy(); env['ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM']=str(v)
+    cmd=['core/perf/run_benchmarks_multi.sh','--build-dir','core/build','--reuse-build','--pattern','SPOT','--transports','wss','--msg-sizes','64,256,1024,262144','--runs','1','--duration','1','--warmup','1','--results-tag',tag]
+    print(f'=== MESHPUB {v} ===', flush=True)
+    proc=subprocess.run(cmd,cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+    log.write_text(proc.stdout)
+    pathlib.Path(str(log)+'.exitcode').write_text(str(proc.returncode))
+    print('exit', proc.returncode)
+    m=re.search(r'result file: (.+\\.txt)', proc.stdout, re.I)
+    result_path=m.group(1).strip() if m else None
+    print('result', result_path)
+    if result_path and pathlib.Path(result_path).exists():
+        txt=pathlib.Path(result_path).read_text()
+        for size in ['64','256','1024','262144']:
+            mm=re.search(rf'RESULT,current,MULTI_SPOT,wss,{size},throughput,([0-9.]+)', txt)
+            if mm:
+                print(size, mm.group(1))
+    print()
+PY" in /home/hep7/project/kairos/zlink succeeded in 2m 27s:
+exit 0
+result /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260324_185952_triage-wss-meshpub128-20260324.txt
+64 151049.000
+256 539291.000
+1024 559525.000
+262144 3816.000
+
+=== MESHPUB 256 ===
+exit 0
+result /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260324_190019_triage-wss-meshpub256-20260324.txt
+64 431638.000
+256 151370.000
+1024 269544.000
+262144 6380.000
+
+=== MESHPUB 384 ===
+exit 1
+result /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260324_190047_triage-wss-meshpub384-20260324.txt
+64 1261562.000
+256 584717.000
+codex
+가설은 `wss` 다중 peer `mesh_pub` budget이 너무 낮게 고정되어 steady-state throughput을 깎는 쪽으로 좁혀졌습니다. `mesh_pub=512` targeted recheck가 현재 코드보다 전체적으로 가장 나은 쪽이라서, 이 정책을 코드와 단위 회귀에 반영한 뒤 다시 검증하겠습니다.
+exec
+/bin/bash -lc 'git diff -- core/src/services/spot/spot_data_plane_internal.hpp core/tests/unittest/unittest_spot_data_plane_budget.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc "python - <<'PY'
+import re, pathlib
+base=pathlib.Path('doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt').read_text()
+for size in ['64','256','1024','262144']:
+    m=re.search(rf'RESULT,current,MULTI_SPOT,wss,{size},throughput,([0-9.]+)', pathlib.Path('core/perf/results/multi/report/perf_linux_recv_20260324_190139_triage-wss-meshpub512-20260324.txt').read_text())
+    b=re.search(rf'## PATTERN: MULTI_SPOT.*?Testing wss.*?\\|\\s*{size}B\\s*\\|\\s*([0-9.]+)', base, re.S)
+    print(size, 'current', m.group(1) if m else None, 'baseline_table_parse', b.group(1) if b else None)
+PY" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+64 current 771679.000 baseline_table_parse 1949.744
+256 current 606979.000 baseline_table_parse 1744.141
+1024 current 410509.000 baseline_table_parse 520.738
+262144 current 10490.000 baseline_table_parse 13.127
+codex
+`core/src/services/spot/spot_data_plane_internal.hpp`의 budget 정책과 그 계약을 고정하는 단위 테스트를 수정합니다. 변경 범위는 `wss` 다중 peer만 좁혀서 `512` budget으로 올리는 최소 수정입니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -54,3 +54,3 @@
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+M /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -36,3 +36,4 @@
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+apply_patch(auto_approved=true) exited 0 in 14ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp
+M /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+exec
+/bin/bash -lc 'git diff -- core/include/zlink.h core/src/libzlink.vers' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+ succeeded in 4.12s:
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_forwarding.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_protocol.cpp.o
+[ 50%] Built target objects
+gmake[2]: Warning: File 'core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane.cpp.o' has modification time 0.035 s in the future
+gmake[2]: Warning: File 'core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane.cpp.o' has modification time 0.035 s in the future
+[ 51%] Linking CXX shared library ../lib/libzlink.so
+[ 51%] Linking CXX static library ../lib/libzlink.a
+gmake[2]: warning:  Clock skew detected.  Your build may be incomplete.
+[ 51%] Built target libzlink-static
+[ 52%] Built target testutil-static
+[ 52%] Linking CXX executable ../../../bin/unittest_radix_tree
+[ 52%] Linking CXX executable ../../../bin/unittest_ypipe
+[ 52%] Linking CXX executable ../../../bin/unittest_zmp_decoder
+[ 53%] Linking CXX executable ../../../bin/unittest_mtrie
+[ 54%] Linking CXX executable ../../../bin/unittest_raw_decoder
+[ 54%] Linking CXX executable ../../../bin/unittest_msg_view
+[ 54%] Linking CXX executable ../../../bin/unittest_service_mode_policy
+[ 54%] Linking CXX executable ../../../bin/unittest_poller
+[ 55%] Linking CXX executable ../../../bin/unittest_ip_resolver
+codex
+정책 변경은 좁게 넣었고 ABI surface diff는 없습니다. 빌드가 끝나는 즉시 `spot` 관련 단위/회귀를 먼저 통과시키고, 그다음 perf recheck를 다시 붙이겠습니다.
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+exec
+/bin/bash -lc 'git diff -- core/src/services/spot/spot_data_plane_internal.hpp core/tests/unittest/unittest_spot_data_plane_budget.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+codex
+`spot` 회귀 묶음을 돌리는 동안 변경 파일 상태도 다시 점검 중입니다. 방금 `git diff`가 비어 보여서, 테스트가 끝나면 실제 파일 내용과 index 상태를 같이 확인해 혹시 기존 변경과 겹쳤는지 바로 정리하겠습니다.
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+exec
+/bin/bash -lc "sed -n '20,70p' core/src/services/spot/spot_data_plane_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+{
+    std::map<std::string, std::string> peer_ctrl_endpoints;
+    std::map<std::string, std::set<std::string> > peer_ready_filters;
+    std::map<std::string, std::map<std::string, std::set<std::string> > >
+      outbound_ready_filters;
+};
+
+inline bool is_websocket_transport (const std::string &endpoint_)
+{
+    return endpoint_.compare (0, 5, "ws://") == 0
+           || endpoint_.compare (0, 6, "wss://") == 0;
+}
+
+inline bool is_secure_transport (const std::string &endpoint_)
+{
+    return endpoint_.compare (0, 6, "tls://") == 0
+           || endpoint_.compare (0, 6, "wss://") == 0;
+}
+
+inline bool is_wss_transport (const std::string &endpoint_)
+exec
+/bin/bash -lc "sed -n '1,80p' core/tests/unittest/unittest_spot_data_plane_budget.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../testutil_unity.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+
+namespace
+{
+void test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 0));
+    TEST_ASSERT_EQUAL_INT (
+      768, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 1));
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 2));
+
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("ws://127.0.0.1:9000", 0));
+    TEST_ASSERT_EQUAL_INT (
+exec
+/bin/bash -lc 'git status --short core/src/services/spot/spot_data_plane_internal.hpp core/tests/unittest/unittest_spot_data_plane_budget.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+?? core/src/services/spot/spot_data_plane_internal.hpp
+?? core/tests/unittest/unittest_spot_data_plane_budget.cpp
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+ succeeded in 1m 31s:
+1/3 Test   #7: test_multi_spot_benchmark_process ....   Passed   45.17 sec
+    Start  11: test_single_spot_benchmark_process
+2/3 Test  #11: test_single_spot_benchmark_process ...   Passed   46.69 sec
+    Start 129: unittest_spot_data_plane_budget
+3/3 Test #129: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+integration      =  91.86 sec*proc (2 tests)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           =  91.86 sec*proc (2 tests)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  91.87 sec
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+codex
+기능 회귀는 유지됐습니다. 이제 실제 정책 값이 perf에 반영됐는지 확인하려고 override 없이 `MULTI_SPOT wss` targeted recheck를 다시 실행합니다.
+exec
+/bin/bash -lc 'set -o pipefail
+log=doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log
+( core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports wss --msg-sizes 64,256,1024,262144 --runs 1 --duration 1 --warmup 1 --results-tag spot-multi-wss-policy-20260324 ) 2>&1 | tee "$log"
+echo ${PIPESTATUS[0]} > "$log.exitcode"
+exit ${PIPESTATUS[0]}' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+ succeeded in 29.68s:
+      | 64B      |  1674.864 Kmsg/s |    107.191 MB/s |    99.428 ms |   400.070 ms |   708.960 ms |  5.599 |   58.281 |         0 |         0 |         0 |
+      | 256B     |  1585.162 Kmsg/s |    405.801 MB/s |   122.158 ms |   325.802 ms |   520.553 ms |  5.380 |   63.440 |         0 |         0 |         0 |
+      | 1024B    |   615.780 Kmsg/s |    630.559 MB/s |   128.570 ms |   174.013 ms |   180.049 ms |  5.667 |   87.258 |         0 |         0 |         0 |
+      | 262144B  |     6.218 Kmsg/s |   1630.011 MB/s |   204.286 ms |   306.706 ms |   324.486 ms |  4.942 |  590.445 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: wss
+- msg_sizes: 64,256,1024,262144
+- warmup_seconds: 1
+- active_warmup: 0
+- duration_seconds: 1
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+codex
+`wss` targeted recheck는 실제로 회복됐습니다. 다음 단계는 실행 가이드 규칙대로 해당 tuple이 속한 pattern 전체인 `MULTI_SPOT` full 재측정입니다.
+exec
+/bin/bash -lc 'set -o pipefail
+log=doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log
+( core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --runs 1 --recv recv --results-tag spot-multi-20260324f ) 2>&1 | tee "$log"
+echo ${PIPESTATUS[0]} > "$log.exitcode"
+exit ${PIPESTATUS[0]}' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+codex
+패턴 전체 재측정은 장시간 gate로 같은 셸에 붙여 추적 중입니다. 완료되면 baseline 미만 tuple 목록을 바로 다시 계산해서 문서와 다음 owner를 갱신하겠습니다.
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+ succeeded in 3m 58s:
+      | 64B      |  4082.318 Kmsg/s |    261.268 MB/s |  1215.154 ms |  1755.520 ms |  1803.124 ms | 14.008 |   20.625 |         0 |         0 |         0 |
+      | 256B     |  2384.457 Kmsg/s |    610.421 MB/s |   897.281 ms |  1965.399 ms |  2278.072 ms | 10.914 |   23.125 |         0 |         0 |         0 |
+      | 1024B    |  1056.999 Kmsg/s |   1082.367 MB/s |   254.849 ms |   409.089 ms |   448.947 ms |  9.000 |   32.840 |         0 |         0 |         0 |
+      | 65536B   |    54.440 Kmsg/s |   3567.793 MB/s |   313.749 ms |   446.476 ms |   531.174 ms | 10.284 |  274.316 |         0 |         0 |         0 |
+      | 131072B  |    33.075 Kmsg/s |   4335.180 MB/s |   391.328 ms |   562.984 ms |   614.566 ms | 11.392 |  337.539 |         0 |         0 |         0 |
+      | 262144B  |    16.631 Kmsg/s |   4359.822 MB/s |   601.070 ms |   760.626 ms |   792.041 ms | 11.896 |  262.254 |         0 |         0 |         0 |
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls | 64B,256B,1024B,65536B,131072B,262144B:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|
+      | 64B      |   506.559 Kmsg/s |     32.420 MB/s |  3452.348 ms |  5581.562 ms |  6319.670 ms |  7.924 |   61.941 |         0 |         0 |         0 |
+      | 256B     |  2652.877 Kmsg/s |    679.137 MB/s |   448.589 ms |  2615.076 ms |  3718.063 ms | 13.341 |   73.906 |         0 |         0 |         0 |
+      | 1024B    |  1495.429 Kmsg/s |   1531.319 MB/s |   448.939 ms |  3103.419 ms |  3626.551 ms | 15.648 |  116.410 |         0 |         0 |         0 |
+      | 65536B   |    31.507 Kmsg/s |   2064.869 MB/s |   871.789 ms |  3813.859 ms |  4169.932 ms | 12.036 |  535.125 |         0 |         0 |         0 |
+      | 131072B  |    18.330 Kmsg/s |   2402.576 MB/s |   458.393 ms |  4092.840 ms |  4460.428 ms | 13.351 |  645.023 |         0 |         0 |         0 |
+      | 262144B  |     7.390 Kmsg/s |   1937.192 MB/s |   472.429 ms |   603.372 ms |   627.338 ms | 12.475 |  646.574 |         0 |         0 |         0 |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing ws | 64B,256B,1024B,65536B,131072B,262144B:
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+exec
+/bin/bash -lc "python - <<'PY'
+import re, pathlib
+base=pathlib.Path('doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt')
+cur=pathlib.Path('core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt')
+
+def parse(path):
+    rows={}
+    pattern=None; transport=None
+    for line in path.read_text().splitlines():
+        m=re.match(r'## PATTERN:\\s+([A-Z0-9_]+)', line)
+        if m:
+            pattern=m.group(1); transport=None; continue
+        m=re.match(r'\\s*Testing\\s+([a-z0-9]+)\\b', line)
+        if m and 'Done' not in line:
+            transport=m.group(1); continue
+        if 'RESULT,current,' in line:
+            parts=line.split(',')
+            if len(parts)>=7:
+                _,_,pat,tr,size,metric,val=parts[:7]
+                if metric=='throughput':
+                    rows[(pat,tr,size+'B' if not size.endswith('B') else size)] = float(val)
+            continue
+        if '|' not in line or pattern is None or transport is None:
+            continue
+        cols=[c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cols) < 2 or cols[0] in ('Size','----------'):
+            continue
+        thr=re.search(r'([0-9]+(?:\\.[0-9]+)?)', cols[1])
+        if thr:
+            rows[(pattern,transport,cols[0])] = float(thr.group(1))*1000
+    return rows
+b=parse(base); c=parse(cur)
+reg=[]
+for k,v in b.items():
+    if k[0]"'!='"'MULTI_SPOT':
+        continue
+    curv=c.get(k)
+    if curv is None:
+        reg.append((None,k,v,None))
+    elif curv < v:
+        reg.append(((curv-v)/v,k,v,curv))
+reg.sort(key=lambda x: (999 if x[0] is None else x[0]))
+print('regressions', len(reg))
+for rel,k,bv,cv in reg[:20]:
+    if rel is None:
+        print('MISSING',k)
+    else:
+        print(k, 'baseline', round(bv,1), 'current', round(cv,1), 'rel', round(rel,4))
+PY" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+regressions 5
+('MULTI_SPOT', 'wss', '262144B') baseline 13126.8 current 3988.0 rel -0.6962
+('MULTI_SPOT', 'tls', '64B') baseline 1340655.8 current 506558.8 rel -0.6222
+('MULTI_SPOT', 'wss', '256B') baseline 1744141.4 current 973017.2 rel -0.4421
+('MULTI_SPOT', 'wss', '65536B') baseline 35561.6 current 33939.4 rel -0.0456
+('MULTI_SPOT', 'tcp', '256B') baseline 2482205.0 current 2384456.8 rel -0.0394
+exec
+/bin/bash -lc "python - <<'PY'
+import re, pathlib
+base=pathlib.Path('doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt')
+cur=pathlib.Path('core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt')
+
+def parse(path):
+    rows={}
+    for line in path.read_text().splitlines():
+        if line.startswith('RESULT,current,'):
+            parts=line.split(',')
+            if len(parts)>=7 and parts[5]=='throughput':
+                rows[(parts[2],parts[3],parts[4]+'B' if not parts[4].endswith('B') else parts[4])] = float(parts[6])
+                continue
+        m=re.match(r'## PATTERN:\\s+([A-Z0-9_]+)', line)
+        if m:
+            pattern=m.group(1); transport=None; continue
+        m=re.match(r'\\s*Testing\\s+([a-z0-9]+)\\b', line)
+        if m and 'Done' not in line:
+            transport=m.group(1); continue
+        if '|' not in line or 'pattern' in locals() is False or transport is None:
+            continue
+        cols=[c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cols) < 2 or cols[0] in ('Size','----------'):
+            continue
+        thr=re.search(r'([0-9]+(?:\\.[0-9]+)?)', cols[1])
+        if thr:
+            rows[(pattern,transport,cols[0])] = float(thr.group(1))*1000
+    return rows
+b=parse(base); c=parse(cur)
+reg=[]
+for k,v in b.items():
+    if k[0]"'!='"'SPOT':
+        continue
+    curv=c.get(k)
+    if curv is not None and curv < v:
+        reg.append(((curv-v)/v,k,v,curv))
+print('single regressions', len(reg))
+for rel,k,bv,cv in sorted(reg)[:12]:
+    print(k, 'baseline', round(bv,1), 'current', round(cv,1), 'rel', round(rel,4))
+PY" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+single regressions 10
+('SPOT', 'ws', '64B') baseline 1331635.6 current 1249847.6 rel -0.0614
+('SPOT', 'tls', '256B') baseline 713400.0 current 703334.2 rel -0.0141
+('SPOT', 'wss', '64B') baseline 1332092.6 current 1315149.0 rel -0.0127
+('SPOT', 'tls', '262144B') baseline 6300.0 current 6220.8 rel -0.0126
+('SPOT', 'tcp', '64B') baseline 1611443.8 current 1596157.2 rel -0.0095
+('SPOT', 'tls', '64B') baseline 1503686.6 current 1489666.4 rel -0.0093
+('SPOT', 'tls', '131072B') baseline 11700.0 current 11596.8 rel -0.0088
+('SPOT', 'ws', '256B') baseline 749536.4 current 745692.6 rel -0.0051
+('SPOT', 'tcp', '256B') baseline 788758.4 current 786779.0 rel -0.0025
+('SPOT', 'tls', '65536B') baseline 20900.0 current 20889.6 rel -0.0005
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+codex
+`MULTI_SPOT` full에서는 잔량이 5개로 줄었고, 새 worst는 `tls 64B`입니다. 이게 secure transport steady-state인지, `tcp -> tls` 전환 carryover인지 분리하려고 `tls`만 targeted recheck를 바로 돌립니다.
+exec
+/bin/bash -lc 'set -o pipefail
+log=doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log
+( core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls --runs 1 --recv recv --results-tag spot-multi-tls-only-20260324 ) 2>&1 | tee "$log"
+echo ${PIPESTATUS[0]} > "$log.exitcode"
+exit ${PIPESTATUS[0]}' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+ succeeded in 53.31s:
+      | 64B      |  1494.859 Kmsg/s |     95.671 MB/s |    64.394 ms |   156.355 ms |  1242.571 ms | 12.950 |   61.100 |         0 |         0 |         0 |
+      | 256B     |  3043.844 Kmsg/s |    779.224 MB/s |   561.012 ms |  2577.517 ms |  3423.282 ms | 12.721 |   73.797 |         0 |         0 |         0 |
+      | 1024B    |  1216.206 Kmsg/s |   1245.395 MB/s |   574.331 ms |  2306.578 ms |  2688.256 ms | 12.917 |  120.047 |         0 |         0 |         0 |
+      | 65536B   |    22.966 Kmsg/s |   1505.113 MB/s |  1212.164 ms |  3808.524 ms |  4094.884 ms | 11.011 |  560.570 |         0 |         0 |         0 |
+      | 131072B  |     8.102 Kmsg/s |   1061.893 MB/s |   782.192 ms |  4303.367 ms |  4551.171 ms | 10.943 |  645.113 |         0 |         0 |         0 |
+      | 262144B  |     8.261 Kmsg/s |   2165.467 MB/s |   211.934 ms |   321.524 ms |   359.103 ms | 13.219 |  808.227 |         0 |         0 |         0 |
+    Testing tls: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls
+- msg_sizes: 64,256,1024,65536,131072,262144
+- warmup_seconds: 2
+- active_warmup: 0
+- duration_seconds: 5
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+codex
+남은 `wss` 잔량이 `256B/65536B/262144B`로 좁아졌습니다. 현재 코드의 `512`가 충분한지 확인하려고 `wss` 전체 size에 대해 `mesh_pub=768` triage를 한 번 더 돌려 tradeoff를 비교합니다.
+exec
+/bin/bash -lc 'set -o pipefail
+log=doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_meshpub768_full_20260324.log
+( ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM=768 core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports wss --runs 1 --recv recv --results-tag spot-multi-wss-meshpub768-full-20260324 ) 2>&1 | tee "$log"
+echo ${PIPESTATUS[0]} > "$log.exitcode"
+exit ${PIPESTATUS[0]}' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+ succeeded in 1m 14s:
+      | 64B      |  2012.234 Kmsg/s |    128.783 MB/s |   446.868 ms |  2159.595 ms |  4382.262 ms |  9.128 |   65.453 |         0 |         0 |         0 |
+      | 256B     |  1863.220 Kmsg/s |    476.984 MB/s |   713.436 ms |  3956.911 ms |  4285.835 ms |  9.759 |   75.492 |         0 |         0 |         0 |
+      | 1024B    |   815.619 Kmsg/s |    835.194 MB/s |   643.083 ms |  3262.514 ms |  3683.670 ms |  9.263 |  121.230 |         0 |         0 |         0 |
+      | 65536B   |    16.061 Kmsg/s |   1052.600 MB/s |    44.486 ms |    61.760 ms |    68.656 ms |  8.106 |  576.219 |         0 |         0 |         0 |
+      | 131072B  |    16.622 Kmsg/s |   2178.679 MB/s |    76.790 ms |   114.643 ms |   128.964 ms |  9.828 |  582.812 |         0 |         0 |         0 |
+      | 262144B  |     3.853 Kmsg/s |   1009.988 MB/s |   155.711 ms |   227.475 ms |   251.550 ms |  7.686 |  924.340 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: wss
+- msg_sizes: 64,256,1024,65536,131072,262144
+- warmup_seconds: 2
+- active_warmup: 0
+- duration_seconds: 5
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+
+codex
+문서도 실제 상태로 맞춥니다. `5.7` 진행 메모와 perf row 증거 칸에 이번 정책 변경, 최신 full 결과, 남은 tuple을 반영하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -516,3 +516,3 @@
+ | Phase 5~6 service core smoke | 완료 | 5.5, 5.6 | `core/src/api/service_*.cpp`, `core/src/services/*` | `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode` |
+-| 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest recheck: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_184116_spot-multi-20260324e.txt`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; prior targeted/triage evidence와 core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
++| 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest full multi: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`; latest targeted: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`; latest single recheck: `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
+ | 최종 `thread-safe contract perf` 게이트 | 미착수 | 5.7 | `core/tests/run_thread_safe_contract_perf.sh` | `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과 |
+@@ -727,2 +727,8 @@
+ - 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 실행 가이드 `5.7`의 perf baseline 회복 루프뿐이다.
++- 후속으로 `core/src/services/spot/spot_data_plane_internal.hpp`의 `wss + ready_peers >= 2` `mesh_pub` budget 정책을 `64 -> 512`로 올리고, `unittest_spot_data_plane_budget`에 그 계약을 고정했다. 회귀 검증으로 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`를 다시 통과했다.
++- 변경 후 `wss` targeted recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`)에서는 `MULTI_SPOT wss 64B`가 `1949744.0 -> 1674864.0`(`-14.10%`), `wss 256B`가 `1744141.4 -> 1585162.0`(`-9.12%`), `wss 1024B`가 `520737.8 -> 615780.0`(`+18.25%`), `wss 262144B`가 `13126.8 -> 6218.0`(`-52.63%`)로 회복됐다. 즉 기존 `wss 64/256/1024` collapse는 크게 줄었지만 large payload는 아직 남았다.
++- 같은 변경 후 full `MULTI_SPOT` 재측정(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`)에서는 baseline 미만 tuple이 5개로 줄었다. 최신 잔량은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3988.0`, `-69.62%`), `tls 64B`(`1340655.8 -> 506558.8`, `-62.22%`), `wss 256B`(`1744141.4 -> 973017.2`, `-44.21%`), `wss 65536B`(`35561.6 -> 33939.4`, `-4.56%`), `tcp 256B`(`2482205.0 -> 2384456.8`, `-3.94%`)다.
++- `tls` worst가 secure transport steady-state인지 확인하려고 `tls`만 분리한 recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`)를 수행했다. 이 run에서는 `tls 64B`가 `1340655.8 -> 1494858.8`로 baseline을 넘겼고, 대신 `tls 65536B`(`30937.4 -> 22966.2`, `-25.77%`)와 `tls 131072B`(`7426.6 -> 8101.6`, baseline 상회) 결과가 갈리며, 현재 `tls 64B`는 `tcp -> tls` transport transition carryover 성격이 강함을 확인했다.
++- 반대로 `wss`만 분리한 `mesh_pub=768` triage(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_meshpub768_full_20260324.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_191040_spot-multi-wss-meshpub768-full-20260324.txt`)에서는 `wss 64B/256B`가 baseline을 넘겼지만 `wss 65536B`(`35561.6 -> 16061.4`)와 `wss 262144B`(`13126.8 -> 3852.8`)가 더 악화됐다. 따라서 `wss` multi-peer budget을 단순히 `768`로 더 올리는 방향은 현재 owner 해법에서 제외한다.
++- 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 여전히 실행 가이드 `5.7`의 perf baseline 회복 루프이며, 다음 우선순위 owner는 `MULTI_SPOT wss 262144B`, `MULTI_SPOT wss 256B`, `MULTI_SPOT tls 64B` transport transition carryover다.
+ 
+apply_patch(auto_approved=true) exited 0 in 7ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 7408c40eb893d591aebcaacae0e14e0cc349d672..df62d914e272895130a41408eda81ef455f1b417
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -514,7 +514,7 @@
+ | Phase 6 spot 세부 분해 | 완료 | 5.6 | `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_forwarding.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_sub*.cpp`, `core/src/services/spot/spot_subject_access.*` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract|unittest_service_mode_policy|unittest_spot_subject_access|unittest_typed_option)$'`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
+ | Phase 2~3 thread-safe stress 의무 게이트 | 완료 | 5.2, 5.3 | `core/tests/run_thread_safe_contract_stress.sh` | `Phase 2`: `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log.exitcode`; `Phase 3`: `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log.exitcode` |
+ | Phase 5~6 service core smoke | 완료 | 5.5, 5.6 | `core/src/api/service_*.cpp`, `core/src/services/*` | `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode` |
+-| 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest recheck: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_184116_spot-multi-20260324e.txt`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; prior targeted/triage evidence와 core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
++| 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest full multi: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`; latest targeted: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`; latest single recheck: `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
+ | 최종 `thread-safe contract perf` 게이트 | 미착수 | 5.7 | `core/tests/run_thread_safe_contract_perf.sh` | `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과 |
+ | Phase 0 baseline/perf 기준선 확인 | 완료 | 5.7 | `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`, `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt` | baseline 파일 확인; initial full 결과: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode` |
+ 
+@@ -725,6 +725,12 @@
+ - 다만 latest full multi 기준 baseline 미만 tuple은 여전히 8개다. worst regression은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3907.2`, `-70.23%`), `wss 256B`(`1744141.4 -> 634750.8`, `-63.61%`), `wss 64B`(`1949744.0 -> 784626.2`, `-59.76%`), `wss 1024B`(`520737.8 -> 331028.0`, `-36.43%`)다. 즉 owner는 더 이상 partial-exit 재현이 아니라 `wss` steady-state throughput path다.
+ - latest single 재측정(`doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, 결과 `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`)은 baseline 미만 tuple이 10개이며 worst regression은 `SPOT ws 64B`(`1331635.6 -> 1249847.6`, `-6.14%`), `SPOT tls 256B`(`713400.0 -> 703334.2`, `-1.41%`), `SPOT wss 64B`(`1332092.6 -> 1315149.0`, `-1.27%`)다. single은 소폭 미달 위주로 좁혀졌고, 현재 perf owner의 대부분은 multi secure websocket 쪽이다.
+ - 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 실행 가이드 `5.7`의 perf baseline 회복 루프뿐이다.
++- 후속으로 `core/src/services/spot/spot_data_plane_internal.hpp`의 `wss + ready_peers >= 2` `mesh_pub` budget 정책을 `64 -> 512`로 올리고, `unittest_spot_data_plane_budget`에 그 계약을 고정했다. 회귀 검증으로 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`를 다시 통과했다.
++- 변경 후 `wss` targeted recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`)에서는 `MULTI_SPOT wss 64B`가 `1949744.0 -> 1674864.0`(`-14.10%`), `wss 256B`가 `1744141.4 -> 1585162.0`(`-9.12%`), `wss 1024B`가 `520737.8 -> 615780.0`(`+18.25%`), `wss 262144B`가 `13126.8 -> 6218.0`(`-52.63%`)로 회복됐다. 즉 기존 `wss 64/256/1024` collapse는 크게 줄었지만 large payload는 아직 남았다.
++- 같은 변경 후 full `MULTI_SPOT` 재측정(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`)에서는 baseline 미만 tuple이 5개로 줄었다. 최신 잔량은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3988.0`, `-69.62%`), `tls 64B`(`1340655.8 -> 506558.8`, `-62.22%`), `wss 256B`(`1744141.4 -> 973017.2`, `-44.21%`), `wss 65536B`(`35561.6 -> 33939.4`, `-4.56%`), `tcp 256B`(`2482205.0 -> 2384456.8`, `-3.94%`)다.
++- `tls` worst가 secure transport steady-state인지 확인하려고 `tls`만 분리한 recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`)를 수행했다. 이 run에서는 `tls 64B`가 `1340655.8 -> 1494858.8`로 baseline을 넘겼고, 대신 `tls 65536B`(`30937.4 -> 22966.2`, `-25.77%`)와 `tls 131072B`(`7426.6 -> 8101.6`, baseline 상회) 결과가 갈리며, 현재 `tls 64B`는 `tcp -> tls` transport transition carryover 성격이 강함을 확인했다.
++- 반대로 `wss`만 분리한 `mesh_pub=768` triage(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_meshpub768_full_20260324.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_191040_spot-multi-wss-meshpub768-full-20260324.txt`)에서는 `wss 64B/256B`가 baseline을 넘겼지만 `wss 65536B`(`35561.6 -> 16061.4`)와 `wss 262144B`(`13126.8 -> 3852.8`)가 더 악화됐다. 따라서 `wss` multi-peer budget을 단순히 `768`로 더 올리는 방향은 현재 owner 해법에서 제외한다.
++- 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 여전히 실행 가이드 `5.7`의 perf baseline 회복 루프이며, 다음 우선순위 owner는 `MULTI_SPOT wss 262144B`, `MULTI_SPOT wss 256B`, `MULTI_SPOT tls 64B` transport transition carryover다.
+ 
+ 닫힘 기준:
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 7408c40eb893d591aebcaacae0e14e0cc349d672..df62d914e272895130a41408eda81ef455f1b417
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -514,7 +514,7 @@
+ | Phase 6 spot 세부 분해 | 완료 | 5.6 | `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_forwarding.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_sub*.cpp`, `core/src/services/spot/spot_subject_access.*` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract|unittest_service_mode_policy|unittest_spot_subject_access|unittest_typed_option)$'`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
+ | Phase 2~3 thread-safe stress 의무 게이트 | 완료 | 5.2, 5.3 | `core/tests/run_thread_safe_contract_stress.sh` | `Phase 2`: `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log.exitcode`; `Phase 3`: `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log.exitcode` |
+ | Phase 5~6 service core smoke | 완료 | 5.5, 5.6 | `core/src/api/service_*.cpp`, `core/src/services/*` | `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode` |
+-| 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest recheck: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_184116_spot-multi-20260324e.txt`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; prior targeted/triage evidence와 core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
++| 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest full multi: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`; latest targeted: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`; latest single recheck: `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
+ | 최종 `thread-safe contract perf` 게이트 | 미착수 | 5.7 | `core/tests/run_thread_safe_contract_perf.sh` | `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과 |
+ | Phase 0 baseline/perf 기준선 확인 | 완료 | 5.7 | `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`, `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt` | baseline 파일 확인; initial full 결과: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode` |
+ 
+@@ -725,6 +725,12 @@
+ - 다만 latest full multi 기준 baseline 미만 tuple은 여전히 8개다. worst regression은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3907.2`, `-70.23%`), `wss 256B`(`1744141.4 -> 634750.8`, `-63.61%`), `wss 64B`(`1949744.0 -> 784626.2`, `-59.76%`), `wss 1024B`(`520737.8 -> 331028.0`, `-36.43%`)다. 즉 owner는 더 이상 partial-exit 재현이 아니라 `wss` steady-state throughput path다.
+ - latest single 재측정(`doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, 결과 `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`)은 baseline 미만 tuple이 10개이며 worst regression은 `SPOT ws 64B`(`1331635.6 -> 1249847.6`, `-6.14%`), `SPOT tls 256B`(`713400.0 -> 703334.2`, `-1.41%`), `SPOT wss 64B`(`1332092.6 -> 1315149.0`, `-1.27%`)다. single은 소폭 미달 위주로 좁혀졌고, 현재 perf owner의 대부분은 multi secure websocket 쪽이다.
+ - 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 실행 가이드 `5.7`의 perf baseline 회복 루프뿐이다.
++- 후속으로 `core/src/services/spot/spot_data_plane_internal.hpp`의 `wss + ready_peers >= 2` `mesh_pub` budget 정책을 `64 -> 512`로 올리고, `unittest_spot_data_plane_budget`에 그 계약을 고정했다. 회귀 검증으로 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`를 다시 통과했다.
++- 변경 후 `wss` targeted recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`)에서는 `MULTI_SPOT wss 64B`가 `1949744.0 -> 1674864.0`(`-14.10%`), `wss 256B`가 `1744141.4 -> 1585162.0`(`-9.12%`), `wss 1024B`가 `520737.8 -> 615780.0`(`+18.25%`), `wss 262144B`가 `13126.8 -> 6218.0`(`-52.63%`)로 회복됐다. 즉 기존 `wss 64/256/1024` collapse는 크게 줄었지만 large payload는 아직 남았다.
++- 같은 변경 후 full `MULTI_SPOT` 재측정(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`)에서는 baseline 미만 tuple이 5개로 줄었다. 최신 잔량은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3988.0`, `-69.62%`), `tls 64B`(`1340655.8 -> 506558.8`, `-62.22%`), `wss 256B`(`1744141.4 -> 973017.2`, `-44.21%`), `wss 65536B`(`35561.6 -> 33939.4`, `-4.56%`), `tcp 256B`(`2482205.0 -> 2384456.8`, `-3.94%`)다.
++- `tls` worst가 secure transport steady-state인지 확인하려고 `tls`만 분리한 recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`)를 수행했다. 이 run에서는 `tls 64B`가 `1340655.8 -> 1494858.8`로 baseline을 넘겼고, 대신 `tls 65536B`(`30937.4 -> 22966.2`, `-25.77%`)와 `tls 131072B`(`7426.6 -> 8101.6`, baseline 상회) 결과가 갈리며, 현재 `tls 64B`는 `tcp -> tls` transport transition carryover 성격이 강함을 확인했다.
++- 반대로 `wss`만 분리한 `mesh_pub=768` triage(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_meshpub768_full_20260324.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_191040_spot-multi-wss-meshpub768-full-20260324.txt`)에서는 `wss 64B/256B`가 baseline을 넘겼지만 `wss 65536B`(`35561.6 -> 16061.4`)와 `wss 262144B`(`13126.8 -> 3852.8`)가 더 악화됐다. 따라서 `wss` multi-peer budget을 단순히 `768`로 더 올리는 방향은 현재 owner 해법에서 제외한다.
++- 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 여전히 실행 가이드 `5.7`의 perf baseline 회복 루프이며, 다음 우선순위 owner는 `MULTI_SPOT wss 262144B`, `MULTI_SPOT wss 256B`, `MULTI_SPOT tls 64B` transport transition carryover다.
+ 
+ 닫힘 기준:
+ 
+
+codex
+계속 진행 필요
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 50907942e13ff98a98693c8e0f69c3d314665977..361aaf1e8a8b5092a40d81915d0e554a97b418c2
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -52,7 +52,7 @@
+     if (ready_peers_ == 1)
+         return 768;
+     if (wss)
+-        return 64;
++        return 512;
+     if (!secure)
+         return 64;
+     return 768;
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 64bf3f343b6b11b2685e75db6b38c9e1d31fd584..eb224d143eb9389407bd1f6be9c3b31dc73c18aa
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -34,7 +34,8 @@
+     TEST_ASSERT_EQUAL_INT (
+       768, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 1));
+     TEST_ASSERT_EQUAL_INT (
+-      64, zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
++      512,
++      zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
+ }
+ 
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 7408c40eb893d591aebcaacae0e14e0cc349d672..df62d914e272895130a41408eda81ef455f1b417
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -514,7 +514,7 @@
+ | Phase 6 spot 세부 분해 | 완료 | 5.6 | `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_forwarding.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_sub*.cpp`, `core/src/services/spot/spot_subject_access.*` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract|unittest_service_mode_policy|unittest_spot_subject_access|unittest_typed_option)$'`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
+ | Phase 2~3 thread-safe stress 의무 게이트 | 완료 | 5.2, 5.3 | `core/tests/run_thread_safe_contract_stress.sh` | `Phase 2`: `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log.exitcode`; `Phase 3`: `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log.exitcode` |
+ | Phase 5~6 service core smoke | 완료 | 5.5, 5.6 | `core/src/api/service_*.cpp`, `core/src/services/*` | `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode` |
+-| 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest recheck: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_184116_spot-multi-20260324e.txt`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; prior targeted/triage evidence와 core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
++| 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest full multi: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`; latest targeted: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`; latest single recheck: `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
+ | 최종 `thread-safe contract perf` 게이트 | 미착수 | 5.7 | `core/tests/run_thread_safe_contract_perf.sh` | `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과 |
+ | Phase 0 baseline/perf 기준선 확인 | 완료 | 5.7 | `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`, `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt` | baseline 파일 확인; initial full 결과: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode` |
+ 
+@@ -725,6 +725,12 @@
+ - 다만 latest full multi 기준 baseline 미만 tuple은 여전히 8개다. worst regression은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3907.2`, `-70.23%`), `wss 256B`(`1744141.4 -> 634750.8`, `-63.61%`), `wss 64B`(`1949744.0 -> 784626.2`, `-59.76%`), `wss 1024B`(`520737.8 -> 331028.0`, `-36.43%`)다. 즉 owner는 더 이상 partial-exit 재현이 아니라 `wss` steady-state throughput path다.
+ - latest single 재측정(`doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, 결과 `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`)은 baseline 미만 tuple이 10개이며 worst regression은 `SPOT ws 64B`(`1331635.6 -> 1249847.6`, `-6.14%`), `SPOT tls 256B`(`713400.0 -> 703334.2`, `-1.41%`), `SPOT wss 64B`(`1332092.6 -> 1315149.0`, `-1.27%`)다. single은 소폭 미달 위주로 좁혀졌고, 현재 perf owner의 대부분은 multi secure websocket 쪽이다.
+ - 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 실행 가이드 `5.7`의 perf baseline 회복 루프뿐이다.
++- 후속으로 `core/src/services/spot/spot_data_plane_internal.hpp`의 `wss + ready_peers >= 2` `mesh_pub` budget 정책을 `64 -> 512`로 올리고, `unittest_spot_data_plane_budget`에 그 계약을 고정했다. 회귀 검증으로 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`를 다시 통과했다.
++- 변경 후 `wss` targeted recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`)에서는 `MULTI_SPOT wss 64B`가 `1949744.0 -> 1674864.0`(`-14.10%`), `wss 256B`가 `1744141.4 -> 1585162.0`(`-9.12%`), `wss 1024B`가 `520737.8 -> 615780.0`(`+18.25%`), `wss 262144B`가 `13126.8 -> 6218.0`(`-52.63%`)로 회복됐다. 즉 기존 `wss 64/256/1024` collapse는 크게 줄었지만 large payload는 아직 남았다.
++- 같은 변경 후 full `MULTI_SPOT` 재측정(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`)에서는 baseline 미만 tuple이 5개로 줄었다. 최신 잔량은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3988.0`, `-69.62%`), `tls 64B`(`1340655.8 -> 506558.8`, `-62.22%`), `wss 256B`(`1744141.4 -> 973017.2`, `-44.21%`), `wss 65536B`(`35561.6 -> 33939.4`, `-4.56%`), `tcp 256B`(`2482205.0 -> 2384456.8`, `-3.94%`)다.
++- `tls` worst가 secure transport steady-state인지 확인하려고 `tls`만 분리한 recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`)를 수행했다. 이 run에서는 `tls 64B`가 `1340655.8 -> 1494858.8`로 baseline을 넘겼고, 대신 `tls 65536B`(`30937.4 -> 22966.2`, `-25.77%`)와 `tls 131072B`(`7426.6 -> 8101.6`, baseline 상회) 결과가 갈리며, 현재 `tls 64B`는 `tcp -> tls` transport transition carryover 성격이 강함을 확인했다.
++- 반대로 `wss`만 분리한 `mesh_pub=768` triage(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_meshpub768_full_20260324.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_191040_spot-multi-wss-meshpub768-full-20260324.txt`)에서는 `wss 64B/256B`가 baseline을 넘겼지만 `wss 65536B`(`35561.6 -> 16061.4`)와 `wss 262144B`(`13126.8 -> 3852.8`)가 더 악화됐다. 따라서 `wss` multi-peer budget을 단순히 `768`로 더 올리는 방향은 현재 owner 해법에서 제외한다.
++- 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 여전히 실행 가이드 `5.7`의 perf baseline 회복 루프이며, 다음 우선순위 owner는 `MULTI_SPOT wss 262144B`, `MULTI_SPOT wss 256B`, `MULTI_SPOT tls 64B` transport transition carryover다.
+ 
+ 닫힘 기준:
+ 
+
+tokens used
+287,722
+계속 진행 필요

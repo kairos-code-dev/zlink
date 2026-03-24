@@ -1,0 +1,187 @@
+=== Running multi benchmark: MULTI_SPOT ===
+    warmup=1s duration=1s
+    recv_mode=recv
+Reusing build directory: /home/hep7/project/kairos/zlink/core/build
+Using CMake source directory: /home/hep7/project/kairos/zlink
+
+## Effective Options (runner)
+- patterns: MULTI_SPOT
+- build_dir: /home/hep7/project/kairos/zlink/core/build
+- build_mode: reuse
+- reuse_build: 1
+- clean_build: 0
+- runs: 1
+- recv_mode: recv
+- duration_seconds: 1
+- warmup_seconds: 1
+- hwm: default(binary)
+- send_hwm: default(binary)
+- recv_hwm: default(binary)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- pin_cpu: 0
+- io_threads: default(policy)
+- msg_sizes: 64,256,1024,262144
+- transports: wss
+- results_dir: /home/hep7/project/kairos/zlink/core/perf/results
+- results_tag: triage-wss-current-20260324
+- result_file: /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260324_185503_triage-wss-current-20260324.txt
+- output_file: none
+- comparison_script: /home/hep7/project/kairos/zlink/core/perf/run_comparison.py
+- python: python3
+
+## Effective Env (runner)
+- PYTHONUNBUFFERED: 1
+- PERF_RECV_MODE: recv
+- PERF_MSG_SIZES: 64,256,1024,262144
+- PERF_TRANSPORTS: wss
+- PERF_NO_AUTOBUILD: 1
+- PERF_DISABLE_RESOURCE_METRICS: 0
+
+META,os,Linux 6.6.87.2-microsoft-standard-WSL2
+META,cpu,Intel(R) Core(TM) Ultra 7 265K
+META,cores,20
+META,build,Release
+META,commit,45bdf7dc
+META,timestamp,2026-03-24T18:55:03+09:00
+META,load_avg,0.13 1.00 2.72
+META,runs,1
+META,clients,100
+
+## Effective Options (start)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: wss
+- msg_sizes: 64,256,1024,262144
+- warmup_seconds: 1
+- active_warmup: 0
+- duration_seconds: 1
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: 100 (default)
+- sndhwm: 100 (default)
+- rcvhwm: 100 (default)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- connect_concurrency: 128 (default)
+- settle_ms: 500
+- connect_ready_timeout_ms: 5000
+- monitor_hwm: 1000
+- server_ready_timeout_ms: 10000
+- server_shutdown_timeout_ms: 5000
+- server_bind_port: 0
+- transport_transition_ms: 3000
+- pattern_transition_ms: 3000
+- lat_timeout_ms: 5000
+- stream_non_tcp_clients_max: 10000
+- disable_resource_metrics: 0
+- timeout_seconds: auto
+## PATTERN: MULTI_SPOT (one-way)
+  > Benchmarking current for MULTI_SPOT...
+    Testing wss | 64B,256B,1024B,262144B:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|
+      | 64B      |   893.124 Kmsg/s |     57.160 MB/s |  1354.858 ms |  1570.998 ms |  1610.346 ms |  4.296 |   45.156 |         0 |         0 |         0 |
+      | 256B     |   324.281 Kmsg/s |     83.016 MB/s |    24.276 ms |    23.406 ms |   795.282 ms |  4.913 |   48.352 |         0 |         0 |         0 |
+      | 1024B    |   319.836 Kmsg/s |    327.512 MB/s |    19.940 ms |     9.568 ms |   689.503 ms |  4.640 |   56.670 |         0 |         0 |         0 |
+      | 262144B  |     7.228 Kmsg/s |   1894.777 MB/s |   113.554 ms |   149.835 ms |   159.819 ms |  5.472 |  144.422 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: wss
+- msg_sizes: 64,256,1024,262144
+- warmup_seconds: 1
+- active_warmup: 0
+- duration_seconds: 1
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: 100 (default)
+- sndhwm: 100 (default)
+- rcvhwm: 100 (default)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- connect_concurrency: 128 (default)
+- settle_ms: 500
+- connect_ready_timeout_ms: 5000
+- monitor_hwm: 1000
+- server_ready_timeout_ms: 10000
+- server_shutdown_timeout_ms: 5000
+- server_bind_port: 0
+- transport_transition_ms: 3000
+- pattern_transition_ms: 3000
+- lat_timeout_ms: 5000
+- stream_non_tcp_clients_max: 10000
+- disable_resource_metrics: 0
+- timeout_seconds: auto
+
+## Result Data
+RESULT,current,MULTI_SPOT,wss,64,bandwidth,57.160
+RESULT,current,MULTI_SPOT,wss,64,latency,1354857.538
+RESULT,current,MULTI_SPOT,wss,64,latency_p95,1570997.850
+RESULT,current,MULTI_SPOT,wss,64,latency_p99,1610346.440
+RESULT,current,MULTI_SPOT,wss,64,server_cpu_pct,4.840
+RESULT,current,MULTI_SPOT,wss,64,server_mem_mb,45.160
+RESULT,current,MULTI_SPOT,wss,64,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,wss,64,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,64,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,64,throughput,893124.000
+RESULT,current,MULTI_SPOT,wss,256,bandwidth,83.016
+RESULT,current,MULTI_SPOT,wss,256,latency,24275.626
+RESULT,current,MULTI_SPOT,wss,256,latency_p95,23406.000
+RESULT,current,MULTI_SPOT,wss,256,latency_p99,795282.040
+RESULT,current,MULTI_SPOT,wss,256,server_cpu_pct,4.920
+RESULT,current,MULTI_SPOT,wss,256,server_mem_mb,48.350
+RESULT,current,MULTI_SPOT,wss,256,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,wss,256,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,256,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,256,throughput,324281.000
+RESULT,current,MULTI_SPOT,wss,1024,bandwidth,327.512
+RESULT,current,MULTI_SPOT,wss,1024,latency,19940.324
+RESULT,current,MULTI_SPOT,wss,1024,latency_p95,9568.200
+RESULT,current,MULTI_SPOT,wss,1024,latency_p99,689503.480
+RESULT,current,MULTI_SPOT,wss,1024,server_cpu_pct,4.640
+RESULT,current,MULTI_SPOT,wss,1024,server_mem_mb,56.670
+RESULT,current,MULTI_SPOT,wss,1024,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,wss,1024,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,1024,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,1024,throughput,319836.000
+RESULT,current,MULTI_SPOT,wss,262144,bandwidth,1894.777
+RESULT,current,MULTI_SPOT,wss,262144,latency,113554.118
+RESULT,current,MULTI_SPOT,wss,262144,latency_p95,149834.650
+RESULT,current,MULTI_SPOT,wss,262144,latency_p99,159818.850
+RESULT,current,MULTI_SPOT,wss,262144,server_cpu_pct,5.530
+RESULT,current,MULTI_SPOT,wss,262144,server_mem_mb,144.420
+RESULT,current,MULTI_SPOT,wss,262144,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,wss,262144,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,262144,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,262144,throughput,7228.000
+
+Saved result file: /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260324_185503_triage-wss-current-20260324.txt (status=complete)
+
+## Status Summary
+- success: 4
+- unsupported: 0
+- skip: 0
+- fail: 0
+- expected result lines: 20
+- actual result lines: 20
+- status: complete
+Total benchmark time: 28s (28s, exit=0)

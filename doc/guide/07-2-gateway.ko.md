@@ -16,8 +16,9 @@ callback과 send-ready callback을 독립적으로 선택할 수 있다.
 
 **Gateway는 thread-safe하다.** 하나의 Gateway handle을 여러 스레드에서
 동시에 사용할 수 있다. `send` / `send_rid`는 여러 스레드에서 동시 호출을
-허용하는 hot path이고, attach/option/monitor/query 계열은
-runtime에 호출 가능한 control path이며, `destroy`는 fail-fast lifecycle gate를
+허용하는 hot path(고빈도 데이터 경로)이고, attach/option/monitor/query 계열은
+runtime에 호출 가능한 control path(저빈도 설정/관리 경로)이며,
+`destroy`는 fail-fast lifecycle gate(사용 중이면 `EBUSY`, 종료 후 `ESHUTDOWN`)를
 가진다.
 
 ## 2. Gateway 생성
@@ -150,12 +151,12 @@ zlink_gateway_update_peer_weight(server, &peer_rid, 5);
 
 ### 일반 소켓 vs Gateway
 
-| | 일반 공개 socket handle | Gateway |
-|---|---|---|
-| **스레드 안전성** | 기본적으로 thread-safe | **Thread-safe** — 하나의 handle을 여러 스레드에서 동시 사용 가능 |
+| 항목 | 일반 공개 socket handle | Gateway |
+|------|---|---|
+| **스레드 안전성** | 기본적으로 thread-safe | thread-safe |
 | **고빈도 경로** | `send`가 hot path | `send` / `send_rid`가 hot path |
-| **저빈도 경로** | bind/connect/monitor/query는 correctness 우선 직렬화 | attach/option/monitor/query는 correctness 우선 직렬화 |
-| **종료** | `close`는 fail-fast lifecycle gate | `destroy`는 fail-fast lifecycle gate |
+| **저빈도 경로** | bind/connect 등 직렬화 | attach/option 등 직렬화 |
+| **종료** | `close` fail-fast gate | `destroy` fail-fast gate |
 
 ### Thread-safe API
 
@@ -251,6 +252,24 @@ Gateway는 Discovery 이벤트를 받아 자동으로 피어를 연결/해제한
 
 - 서버 추가: 신규 서버에 자동 connect
 - 서버 제거: 제거된 서버 disconnect
+
+## 내부 모듈 구조
+
+Gateway의 내부 구현은 단일 파일이 아닌 책임별 모듈로 분리되어 있다.
+공개 C API는 변경 없이 유지되며, 내부 변경이 좁은 범위에서 이루어진다.
+
+| 모듈 | 역할 |
+|------|------|
+| `gateway_access` | API 계층과의 seam (service-local access) |
+| `gateway_facade` | 외부 API 위임 처리 |
+| `gateway_lifecycle` | 생성/종료/attach 시퀀스 |
+| `gateway_pool` | 피어 풀 관리, 로드밸런싱 |
+| `gateway_socket` | 내부 ROUTER 소켓 wiring |
+| `gateway_monitor` | 서비스 모니터 이벤트 발행 |
+| `gateway_refresh` | Discovery 기반 피어 갱신 |
+
+멀티파트 송신은 공통 `multipart_send_txn` 모듈을 사용하여
+whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
 
 ## 9. End-to-End 예제
 
@@ -355,22 +374,22 @@ zlink_ctx_term(ctx);
 |------|------|
 | `zlink_gateway_new(ctx, service_name)` | recv 모드 Gateway 생성 |
 | `zlink_set_routing_id(gateway, data, size)` | 첫 bind/connect 전 routing id 설정 |
-| `zlink_recv_handler(gateway, fn, userdata)` | 멀티파트 수신 callback attach; recv + `ZLINK_POLLIN`은 `EBUSY` |
-| `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | recv 모드에서 메시지 수신 |
+| `zlink_recv_handler(gateway, fn, userdata)` | 수신 callback attach |
+| `zlink_gateway_recv(gateway, ...)` | recv 모드에서 메시지 수신 |
 | `zlink_gateway_attach_discovery(gateway, discovery)` | Discovery 연결 |
 | `zlink_gateway_bind(gateway, endpoint)` | 수신 endpoint bind (서버 역할) |
-| `zlink_gateway_send(gateway, parts, count, flags)` | 멀티파트 메시지 전송 (LB 적용) |
-| `zlink_gateway_send_rid(gateway, rid, parts, count, flags)` | 특정 피어로 전송 |
+| `zlink_gateway_send(gateway, ...)` | 멀티파트 메시지 전송 (LB 적용) |
+| `zlink_gateway_send_rid(gateway, ...)` | 특정 피어로 전송 |
 | `zlink_gateway_set_lb_strategy(gateway, strategy)` | LB 전략 설정 |
 | `zlink_set_option(gateway, option, val, len)` | 서비스 옵션 설정 |
 | `zlink_set_routing_id(gateway, data, size)` | 라우팅 ID 설정 |
 | `zlink_get_routing_id(gateway, &out)` | 라우팅 ID 조회 |
-| `zlink_set_tls_client(gateway, ca, host, trust)` | TLS 클라이언트 설정 |
-| `zlink_set_tls_server(gateway, cert, key, require_client_cert)` | TLS 서버 설정 |
-| `zlink_get_option(gateway, ZLINK_OPT_LAST_ENDPOINT, buf, &size)` | bind된 endpoint 조회 |
-| `zlink_monitor_snapshot(monitor, &snapshot)` | 로컬 bind/send readiness 및 queue depth 조회 |
-| `zlink_gateway_update_peer_weight(gateway, rid, weight)` | 피어 가중치 갱신 |
-| `zlink_registry_gateway_peers_query(registry, &filter, entries, &count)` | 운영용 gateway-peer 상태 조회 |
+| `zlink_set_tls_client(gateway, ...)` | TLS 클라이언트 설정 |
+| `zlink_set_tls_server(gateway, ...)` | TLS 서버 설정 |
+| `zlink_get_option(gateway, ...)` | bind된 endpoint 조회 |
+| `zlink_monitor_snapshot(monitor, ...)` | readiness 및 queue depth 조회 |
+| `zlink_gateway_update_peer_weight(...)` | 피어 가중치 갱신 |
+| `zlink_registry_gateway_peers_query(...)` | gateway-peer 상태 조회 |
 | `zlink_gateway_destroy(&gateway)` | 종료 |
 
 ---

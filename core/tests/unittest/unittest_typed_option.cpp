@@ -4,6 +4,7 @@
 #include "../testutil_unity.hpp"
 
 #include "core/internal_defs.hpp"
+#include "core/options_owner.hpp"
 
 #include <string.h>
 #include <unity.h>
@@ -236,6 +237,56 @@ void test_typed_spot_node_unified_options ()
     close_ctx (ctx);
 }
 
+void test_option_owner_map_matches_domains ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_core_socket,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_SNDHWM));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_core_socket,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT));
+
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_transport_network,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_TCP_NODELAY));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_transport_network,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_BINDTODEVICE));
+
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_protocol_metadata,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TTL));
+#ifdef ZLINK_HAVE_TLS
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_protocol_metadata,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_TLS_CERT));
+#endif
+
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_service_specific,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_TOPICS_COUNT));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_service_specific,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_LAST_ENDPOINT));
+
+    TEST_ASSERT_EQUAL_STRING (
+      "core-socket",
+      zlink::option_owner_name (
+        zlink::option_owner_of (ZLINK_INTERNAL_OPT_SNDHWM)));
+    TEST_ASSERT_EQUAL_STRING (
+      "transport-network",
+      zlink::option_owner_name (
+        zlink::option_owner_of (ZLINK_INTERNAL_OPT_TCP_NODELAY)));
+    TEST_ASSERT_EQUAL_STRING (
+      "protocol-metadata",
+      zlink::option_owner_name (
+        zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TTL)));
+    TEST_ASSERT_EQUAL_STRING (
+      "service-specific",
+      zlink::option_owner_name (
+        zlink::option_owner_of (ZLINK_INTERNAL_OPT_TOPICS_COUNT)));
+}
+
 int main (void)
 {
     setup_test_environment ();
@@ -244,5 +295,6 @@ int main (void)
     RUN_TEST (test_typed_raw_socket_options);
     RUN_TEST (test_typed_gateway_discovery_tls_and_last_endpoint);
     RUN_TEST (test_typed_spot_node_unified_options);
+    RUN_TEST (test_option_owner_map_matches_domains);
     return UNITY_END ();
 }

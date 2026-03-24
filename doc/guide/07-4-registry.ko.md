@@ -5,9 +5,9 @@
 ## 1. 개요
 
 Registry는 zlink 서비스 계층의 중앙 서비스 디렉토리이자 토폴로지 요약 소스다.
-Gateway와 SPOT 노드의 서비스 등록(Discovery를 통해)을 수락하고, 하트비트
-기반 생존 확인을 관리하며, 집계된 서비스 목록을 모든 연결된 Discovery
-인스턴스에 주기적으로 브로드캐스트한다.
+Gateway와 SPOT 노드의 서비스 등록(Discovery를 통해)을 수락하고,
+하트비트 기반 생존 확인을 관리하며,
+집계된 서비스 목록을 연결된 Discovery에 주기적으로 브로드캐스트한다.
 
 ### 두 가지 사용 모드
 
@@ -16,12 +16,11 @@ Gateway와 SPOT 노드의 서비스 등록(Discovery를 통해)을 수락하고,
 | **독립 프로세스** | Registry를 전용 서비스로 실행. 여러 애플리케이션이 Discovery를 통해 연결. |
 | **임베디드** | 애플리케이션 프로세스 내에 Registry를 Discovery, Gateway/SPOT과 함께 직접 생성. |
 
-**Registry는 thread-safe하다.** 하나의 Registry handle을 여러 스레드에서
-동시에 사용할 수 있다. 구성 API(`set_id`, `add_peer`,
-`set_heartbeat`, `set_broadcast_interval`, `setsockopt`)는 `bind` 전에
-호출해야 한다. 토폴로지 조회 API(`topology_snapshot`, `topology_query`,
-`gateway_peers_snapshot`, `gateway_peers_query`)는 bind 이후 어떤
-스레드에서든 호출할 수 있다.
+**Registry는 thread-safe하다.**
+하나의 Registry handle을 여러 스레드에서 동시에 사용할 수 있다.
+
+- **구성 API** (`set_id`, `add_peer`, `set_heartbeat` 등): `bind` 전에 호출
+- **조회 API** (`topology_snapshot`, `topology_query` 등): bind 이후 어떤 스레드에서든 호출 가능
 
 ## 2. Quick Start
 
@@ -356,12 +355,12 @@ for (size_t i = 0; i < count; i++) {
 | `service_kind` | `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`, 또는 `DISCOVERY` |
 | `service_name` | 논리적 서비스 이름 |
 | `endpoint` | 광고된 엔드포인트 |
-| `source` | 엔트리 추가 방식 (`MANUAL`, `DISCOVERY`, `REGISTRY`) |
-| `state` | `DISCOVERED`, `CONNECTING`, `READY`, `LOST`, `ERROR`, `STOPPED` |
+| `source` | 추가 방식 (`MANUAL`/`DISCOVERY`/`REGISTRY`) |
+| `state` | `DISCOVERED`/`CONNECTING`/`READY`/`LOST`/`ERROR`/`STOPPED` |
 | `desired_count` | 기대 피어 인스턴스 수 |
 | `ready_count` | 현재 ready 상태 인스턴스 수 |
 | `error_code` | `ERROR` 상태일 때 오류 코드 |
-| `last_reported_ms` | 마지막 하트비트/업데이트 타임스탬프 (epoch ms) |
+| `last_reported_ms` | 마지막 업데이트 타임스탬프 (epoch ms) |
 
 #### 필터 필드
 
@@ -473,7 +472,7 @@ zlink_registry_gateway_peers_query(registry, &peer_filter,
 | `state` | 현재 상태 (`ZLINK_TOPOLOGY_STATE_*`) |
 | `weight` | 가중 로드밸런싱을 위한 피어 가중치 |
 | `connected_since_ms` | 피어 연결 시점 타임스탬프 (epoch ms) |
-| `last_reported_ms` | 마지막 하트비트/업데이트 타임스탬프 (epoch ms) |
+| `last_reported_ms` | 마지막 업데이트 타임스탬프 (epoch ms) |
 
 #### 원격 Gateway Peer 조회
 
@@ -555,10 +554,10 @@ Registry와 로컬 서비스 모니터는 다른 목적을 가진다:
 
 | 측면 | Registry 토폴로지 | 로컬 서비스 모니터 |
 |------|-------------------|-------------------|
-| **범위** | 전체 서비스에 대한 글로벌 요약 | 하나의 서비스 handle에 대한 상세 로컬 상태 |
-| **세분도** | 대략적: `READY` / `LOST` / `ERROR` | 세밀: 개별 연결 이벤트, 필터 적용 |
-| **최신성** | Eventually consistent (하트비트 + 브로드캐스트 주기) | 실시간 (즉시 콜백) |
-| **접근** | 로컬 또는 쿼리 클라이언트를 통한 원격 | 로컬만 (같은 프로세스) |
+| **범위** | 글로벌 서비스 요약 | 단일 handle 상세 상태 |
+| **세분도** | `READY`/`LOST`/`ERROR` | 개별 연결 이벤트 |
+| **최신성** | Eventually consistent | 실시간 (즉시 콜백) |
+| **접근** | 로컬 또는 원격 쿼리 | 로컬만 (같은 프로세스) |
 
 ### 언제 어느 것을 사용할 것인가
 

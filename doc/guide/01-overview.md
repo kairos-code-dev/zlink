@@ -22,18 +22,33 @@ Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  Application Layer                                    │
-│  zlink_ctx_new() · zlink_socket() · zlink_send() · callback dispatch │
+│  Application / Bindings                               │
+│  C callers · cpp · dotnet · java · node · python      │
 ├──────────────────────────────────────────────────────┤
-│  Socket Logic Layer                                   │
+│  Public API Facade  (core/src/api/)                   │
+│  context_api · socket_api · message_api               │
+│  service_api · poller_api · monitor_api               │
+│  validate + delegate, per-handle admission guard      │
+├──────────────────────────────────────────────────────┤
+│  Service Layer                                        │
+│  Gateway · Discovery · SPOT · Registry                │
+│  service access seam (*_access) · lifecycle · runtime │
+├──────────────────────────────────────────────────────┤
+│  Socket Semantic / Runtime                            │
 │  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM│
-│  Routing: lb_t(Round-robin) · fq_t · dist_t           │
+│  semantic entrypoint + runtime components             │
+│  (dispatch · monitor · endpoint · lifecycle)          │
+├──────────────────────────────────────────────────────┤
+│  Runtime Core  (core/src/core/)                       │
+│  ctx · own · reaper · multipart_send_txn              │
+│  options dispatch (core_socket · transport · protocol)│
+│  close/drain/finalization contract                    │
 ├──────────────────────────────────────────────────────┤
 │  Engine Layer (Boost.Asio)                            │
 │  asio_zmp_engine — ZMP v1.0 Protocol (8B fixed hdr)  │
 │  Proactor pattern · Speculative I/O · Backpressure    │
 ├──────────────────────────────────────────────────────┤
-│  Transport Layer                                      │
+│  Transport / Protocol                                 │
 │  tcp · ipc · inproc · ws — plaintext                  │
 │  tls · wss             — OpenSSL encrypted            │
 ├──────────────────────────────────────────────────────┤
@@ -42,6 +57,17 @@ Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
 │  ctx_t(I/O Thread Pool) · session_base_t(Bridge)      │
 └──────────────────────────────────────────────────────┘
 ```
+
+Key roles per layer:
+
+| Layer | Role |
+|-------|------|
+| Public API Facade | C API entry point. Validate + delegate only; does not know concrete service/socket details |
+| Service Layer | Gateway/Discovery/SPOT/Registry semantics and lifecycle. Connected to the API layer via service-local access seams |
+| Socket Semantic/Runtime | Socket family semantics (semantic) and common mechanism (runtime components) are separated |
+| Runtime Core | Context, shutdown, close/drain orchestration, option dispatch, logical multipart send |
+| Engine Layer | Boost.Asio-based poller, io_context, mailbox execution backbone |
+| Transport/Protocol | Wire format, TLS handshake, address scheme details |
 
 ## 3. Core Design
 

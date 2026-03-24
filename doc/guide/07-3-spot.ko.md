@@ -8,7 +8,9 @@
 
 ## 1. 개요
 
-SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여, 클러스터 전체에서 토픽 메시지를 발행/구독할 수 있다.
+SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다.
+Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여,
+클러스터 전체에서 토픽 메시지를 발행/구독할 수 있다.
 
 > **명칭에 대하여**: SPOT은 "위치(spot)"에서 유래한 이름이다. 각 객체(노드)가 자신의 위치에서 토픽을 발행하고, 다른 위치의 토픽을 구독하는 객체 단위의 위치투명한(location-transparent) pub/sub 메시 시스템이다.
 
@@ -201,8 +203,8 @@ zlink_subscribe_handler(spot, on_message, NULL);
 ```
 
 **중요:** 하나의 `spot` / `spot_node` handle을 여러 스레드에서 동시에
-사용할 수 있다 (thread-safe). `publish`는 hot path로서 여러 스레드에서 동시 호출을 허용하고,
-subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
+사용할 수 있다 (thread-safe). `publish`는 hot path(고빈도 데이터 경로)로서 여러 스레드에서 동시 호출을 허용하고,
+subscribe/unsubscribe/attach/peer connect/monitor는 control path(저빈도 설정/관리 경로)로
 호출할 수 있다. 다만 callback은 I/O 경로에서 직접 호출되므로, 느린 처리는
 사용자 queue로 넘겨 별도 thread에서 처리하는 편이 안전하다.
 
@@ -217,7 +219,7 @@ subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
 - 콜백은 소켓 dispatch / I/O 경로에서 직접 호출된다
 - 콜백에서 블로킹 작업을 수행하면 다른 I/O 진행에 영향을 줄 수 있다
 - 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다
-- `destroy`는 fail-fast lifecycle gate를 가지므로, 외부 사용을 중단한 뒤
+- `destroy`는 fail-fast lifecycle gate(사용 중이면 `EBUSY`, 종료 후 `ESHUTDOWN`)를 가지므로, 외부 사용을 중단한 뒤
   정리하는 것이 가장 단순하다
 
 > 전체 three-tier 계약과 추가 패턴은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
@@ -238,6 +240,26 @@ subscribe/unsubscribe/attach/peer connect/monitor는 runtime control path로
 - `*`는 한 개만 허용, 문자열 끝에만
 - 대소문자 구분
 - 예: `chat:*` → `chat:room1:message`, `chat:room2:join` 모두 매칭
+
+## 내부 모듈 구조
+
+SPOT의 내부 구현은 data plane과 control plane이 분리된 모듈 구조를 가진다.
+공개 C API는 변경 없이 유지되며, 내부 변경이 좁은 범위에서 이루어진다.
+
+| 모듈 | 역할 |
+|------|------|
+| `spot_node_access` · `spot_subject_access` | API 계층과의 seam |
+| `spot_handle` | 공개 handle 구조체 |
+| `spot_node` | SpotNode orchestration, discovery integration |
+| `spot_pub` | publish 경로 |
+| `spot_sub` | subscribe 경로 (option · recv 분리) |
+| `spot_data_plane` | data plane 코어 |
+| `spot_data_plane_forwarding` | ingress/egress 메시지 포워딩 |
+| `spot_data_plane_protocol` | 제어 메시지, 구독 업데이트, bootstrap |
+| `spot_runtime` | runtime lifecycle |
+
+멀티파트 publish는 공통 `multipart_send_txn` 모듈을 사용하여
+whole-message 보장(전체 성공 또는 전체 실패)을 제공한다.
 
 ## 6. 전달 정책
 

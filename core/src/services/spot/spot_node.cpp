@@ -27,7 +27,7 @@
 namespace zlink
 {
 static const uint32_t spot_node_tag_value = 0x1e6700d9;
-static const size_t spot_sub_queue_hwm_default = 1000;
+static const size_t spot_sub_queue_hwm_default = 64;
 static const int ctrl_timeout_ms = 2000;
 static const char spot_ready_probe_prefix[] = "__zlink.ready__/";
 

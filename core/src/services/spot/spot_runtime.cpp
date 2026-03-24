@@ -67,6 +67,8 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     fault_errno (0),
     abortive_shutdown (false),
     connected_peer_version (0),
+    mesh_pub_budget_version (0),
+    mesh_pub_ready_peer_count (0),
     next_attachment_id (0)
 {
     if (node_id == 0)
@@ -293,6 +295,10 @@ void spot_runtime_t::stop_sockets ()
         mesh_pub_local->stop ();
     if (mesh_xsub_local)
         mesh_xsub_local->stop ();
+    if (peer_ctrl_pub_local)
+        peer_ctrl_pub_local->stop ();
+    if (peer_ctrl_sub_local)
+        peer_ctrl_sub_local->stop ();
     if (ingress)
         ingress->stop ();
     if (fanout)
@@ -354,6 +360,22 @@ int spot_runtime_t::close_control_sockets ()
             (void) ingress->term_endpoint (pub_ingress_endpoint.c_str ());
         if (fanout && !sub_fanout_endpoint.empty ())
             (void) fanout->term_endpoint (sub_fanout_endpoint.c_str ());
+        if (ctrl_front)
+            ctrl_front->set_all_pipes_nodelay ();
+        if (ctrl_back)
+            ctrl_back->set_all_pipes_nodelay ();
+        if (mesh_pub_local)
+            mesh_pub_local->set_all_pipes_nodelay ();
+        if (mesh_xsub_local)
+            mesh_xsub_local->set_all_pipes_nodelay ();
+        if (peer_ctrl_pub_local)
+            peer_ctrl_pub_local->set_all_pipes_nodelay ();
+        if (peer_ctrl_sub_local)
+            peer_ctrl_sub_local->set_all_pipes_nodelay ();
+        if (ingress)
+            ingress->set_all_pipes_nodelay ();
+        if (fanout)
+            fanout->set_all_pipes_nodelay ();
         preserve_first_error_local (close_runtime_socket (ctrl_front, 2000),
                                     &first_error);
         preserve_first_error_local (close_runtime_socket (ctrl_back, 2000),
@@ -508,6 +530,22 @@ int spot_runtime_t::abortive_stop ()
             (void) ctrl_front->term_endpoint (data_ctrl_endpoint.c_str ());
         if (ctrl_back && !data_ctrl_endpoint.empty ())
             (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
+        if (ctrl_front)
+            ctrl_front->set_all_pipes_nodelay ();
+        if (ctrl_back)
+            ctrl_back->set_all_pipes_nodelay ();
+        if (mesh_pub_local)
+            mesh_pub_local->set_all_pipes_nodelay ();
+        if (mesh_xsub_local)
+            mesh_xsub_local->set_all_pipes_nodelay ();
+        if (peer_ctrl_pub_local)
+            peer_ctrl_pub_local->set_all_pipes_nodelay ();
+        if (peer_ctrl_sub_local)
+            peer_ctrl_sub_local->set_all_pipes_nodelay ();
+        if (ingress)
+            ingress->set_all_pipes_nodelay ();
+        if (fanout)
+            fanout->set_all_pipes_nodelay ();
         (void) close_runtime_socket (ctrl_front, 1000);
         (void) close_runtime_socket (ctrl_back, 1000);
         (void) close_runtime_socket (mesh_pub_local, 1000);

@@ -4,18 +4,57 @@
 
 ## 1. 개요
 
-발행-구독(Publish-Subscribe) 패턴은 메시지를 토픽 기반으로 분배한다. zlink는 기본 PUB/SUB과 고급 XPUB/XSUB 두 가지 레벨을 제공한다.
+발행-구독(Publish-Subscribe) 패턴은 메시지를 토픽 기반으로 분배한다.
+zlink는 기본 PUB/SUB과 고급 XPUB/XSUB 두 가지 레벨을 제공한다.
 
 | 소켓 | 역할 | 특성 |
 |------|------|------|
 | **PUB** | 발행자 | 모든 구독자에게 브로드캐스트. 수신 불가. |
-| **SUB** | 구독자 | 토픽 prefix match 필터링. 송신(send) 불가. |
-| **XPUB** | 고급 발행자 | PUB + 구독 프레임 수신 가능 |
-| **XSUB** | 고급 구독자 | SUB + 구독 프레임 직접 송신 |
+| **SUB** | 구독자 | 토픽 prefix match 필터링. 송신 불가. |
+| **XPUB** | 고급 발행자 | PUB + 구독 이벤트 수신 가능 |
+| **XSUB** | 고급 구독자 | 로컬 필터링 없이 모든 메시지 수신. 프록시/중계용 |
 
 **유효한 소켓 조합:**
 - PUB → SUB, PUB → XSUB
 - XPUB → SUB, XPUB → XSUB
+
+### SUB vs XSUB — 핵심 차이
+
+SUB과 XSUB은 모두 `zlink_set_subscription()`으로 구독 정보를
+upstream PUB에 전송한다. 공개 API 사용법은 동일하다.
+차이는 **로컬 필터 엔진의 on/off**다.
+
+| | SUB (`filter=true`) | XSUB (`filter=false`) |
+|---|---|---|
+| 구독 있을 때 | 매칭되는 메시지만 수신 | **모든 메시지 수신** (필터 체크 안 함) |
+| 구독 없을 때 | **아무것도 수신하지 않음** | **모든 메시지 수신** |
+| `""` 빈 구독 | 모든 메시지 수신 (모든 토픽 매칭) | 구독 없이도 이미 전부 수신 |
+| 용도 | 일반 구독자 | 프록시/중계 (전체 스트림 통과) |
+
+내부적으로 `xsub_t::xrecv()`의 필터 조건은 `!options.filter || match(msg)`다.
+SUB(`filter=true`)은 매 메시지마다 `match()`를 평가하고,
+XSUB(`filter=false`)은 `!false = true`이므로 `match()`를 건너뛴다.
+
+> **흔한 혼동:** "SUB에 `""` 빈 구독을 넣으면 XSUB과 같지 않나?"
+> → 결과적으로 모든 메시지를 수신하는 것은 같지만,
+> SUB은 매 메시지마다 trie match 비용이 발생하고,
+> XSUB은 필터 체크 자체를 건너뛴다.
+> 또한 SUB은 구독이 **없으면** 아무것도 받지 못하지만,
+> XSUB은 구독 없이도 전부 받는다.
+
+**프록시 패턴에서 XSUB/XPUB을 쓰는 이유:**
+
+```
+PUB ──── XSUB ═══ XPUB ──── SUB
+          │         │
+          │  프록시  │
+          └─────────┘
+```
+
+- XSUB은 구독 상태 없이 PUB의 모든 메시지를 통과시킨다.
+- XPUB은 SUB의 구독 이벤트를 `zlink_subscription_event()`로 노출하여
+  프록시가 구독 관리 로직(필터링, 로깅, 인가 등)을 삽입할 수 있다.
+- 일반 SUB/PUB으로는 이 중계 구조를 만들 수 없다.
 
 ```
               ┌─────┐
@@ -68,28 +107,31 @@ zlink_connect(sub, "tcp://127.0.0.1:5556");
 /* 토픽 구독 — connect 후 설정 */
 zlink_set_subscription(sub, "weather");
 
-/* recv 모드를 유지하고 zlink_subscribe() 또는 zlink_recv()로 수신 */
+/* zlink_subscribe() 또는 zlink_subscribe_handler()로 수신 */
 ```
 
 > 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
 
 ### 송수신 요약
 
-| 소켓 | 방향 | 등록 호출 | 비고 |
+| 소켓 | 방향 | 수신 API | 비고 |
 |------|------|----------|------|
-| PUB | 송신 전용 | N/A | 수신 불가; 핸들러를 받지 않음 |
-| SUB | 수신 전용 | `zlink_subscribe()` / `zlink_recv()` pull 또는 `zlink_subscribe_handler()` callback | recv 또는 callback 모드 |
-| XPUB | 양방향 | `zlink_subscription_event()` pull | 데이터가 아닌 구독 이벤트 수신 |
-| XSUB | 양방향 | `zlink_subscribe()` / `zlink_recv()` pull 또는 `zlink_subscribe_handler()` callback | 구독 프레임 송신; fair-queue로 데이터 수신 |
+| PUB | 송신 전용 | N/A | 수신 불가 (`ENOTSUP`) |
+| SUB | 수신 전용 | `zlink_subscribe()` / `zlink_subscribe_handler()` | 토픽 + 데이터 분리 반환 |
+| XPUB | 양방향 | `zlink_subscription_event()` | 구독 이벤트 수신 |
+| XSUB | 수신 전용 | `zlink_subscribe()` / `zlink_subscribe_handler()` | 필터 없이 전체 수신 |
 
-raw PUB/SUB 소켓은 recv 모드로 시작한다. topic-aware pull은
-`zlink_subscribe()`로 제공된다. `zlink_subscribe_handler()`를 통한
-callback topic dispatch는 raw `SUB`, `XSUB`, `spot`, `spot_node`에서
-지원된다. callback attach 이후 `zlink_subscribe()`와 data-plane
-`ZLINK_POLLIN`은 `EBUSY`로 실패한다.
+> **참고:** PUB/SUB 계열 4소켓에서 `zlink_send()`/`zlink_recv()`는
+> 모두 `ENOTSUP`이다. 발행은 `zlink_publish()`, 수신은
+> `zlink_subscribe()` / `zlink_subscribe_handler()`를 사용한다.
 
-**Pull 모드**도 SUB에서 사용 가능하다: 핸들러를 부착하지 않고
-`zlink_recv()`를 호출하면 토픽 분리 없이 멀티파트 메시지를 수신한다.
+PUB/SUB 계열 소켓의 수신은 두 가지 모드를 지원한다:
+
+- **Pull 모드** (기본): `zlink_subscribe()`로 토픽과 데이터를 분리하여 직접 수신
+- **Callback 모드**: `zlink_subscribe_handler()`로 콜백을 등록하면 메시지 도착 시 자동 dispatch
+
+callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
+`EBUSY`로 실패한다.
 
 > PUB의 송신 큐가 가득 차면(HWM) 블로킹 대신 메시지를 **드롭**한다.
 > 상세는 [성능 가이드](10-performance.ko.md)를 참고.
@@ -127,41 +169,39 @@ zlink_set_subscription(sub, "");
 
 ## 4. 메시지 형식
 
-PUB/SUB 메시지는 두 가지 형식을 사용할 수 있다.
-
-### 단일 프레임 (토픽 포함)
-
-토픽이 데이터에 포함된 형태. 간단하지만 파싱이 필요하다.
+`zlink_publish()`는 **토픽**과 **멀티파트 메시지**를 별도 파라미터로 받는다.
+다른 소켓의 `zlink_send()`와 마찬가지로 기본이 멀티파트이다.
 
 ```c
-/* 발행 */
-zlink_msg_t part;
-zlink_msg_init_size(&part, 14);
-memcpy(zlink_msg_data(&part), "weather: sunny", 14);
-zlink_publish(pub, NULL, &part, 1, 0);
-
-/* SUB 핸들러 콜백 수신:
-   topic = "weather: sunny" (전체 매치 prefix)
-   parts[0] = "weather: sunny" (전체 데이터) */
+int zlink_publish (void *subject,
+                   const char *topic_id,      /* 토픽 문자열 */
+                   zlink_msg_t *parts,         /* 데이터 프레임 배열 */
+                   size_t part_count,           /* 프레임 수 */
+                   zlink_send_flags_t flags);
 ```
 
-### 멀티파트 프레임 (토픽 + 데이터 분리)
-
-토픽과 데이터를 별도 프레임으로 전송. 파싱 불필요.
-
 ```c
-/* 발행: [topic][payload] */
+/* 발행: topic = "sensor:cpu", payload = 2개 프레임 */
 zlink_msg_t parts[2];
-zlink_msg_init_size(&parts[0], 7);
-memcpy(zlink_msg_data(&parts[0]), "weather", 7);
-zlink_msg_init_size(&parts[1], 5);
-memcpy(zlink_msg_data(&parts[1]), "sunny", 5);
-zlink_publish(pub, NULL, parts, 2, 0);
+zlink_msg_init_size(&parts[0], 4);
+memcpy(zlink_msg_data(&parts[0]), "host", 4);
+zlink_msg_init_size(&parts[1], 2);
+memcpy(zlink_msg_data(&parts[1]), "73", 2);
+zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 
-/* SUB 핸들러 콜백 수신:
-   topic = "weather"
-   parts[0] = "sunny" (페이로드 프레임만) */
+/* SUB 수신 (zlink_subscribe 또는 subscribe_handler 콜백):
+   topic     = "sensor:cpu"
+   parts[0]  = "host"
+   parts[1]  = "73" */
 ```
+
+토픽은 wire에서 첫 프레임으로 전송되고, `zlink_subscribe()` /
+`zlink_subscribe_handler()`가 토픽과 데이터를 분리하여 반환한다.
+호출자가 토픽 프레임을 직접 조립할 필요 없다.
+
+> **참고:** `zlink_publish(pub, NULL, parts, ...)`처럼 topic을 NULL로 전달하면
+> parts[0]이 토픽 프레임으로 사용되는 레거시 호환 경로가 동작하지만,
+> 이 방식은 권장하지 않는다. 항상 `topic_id` 파라미터를 명시적으로 전달한다.
 
 ## 5. PUB/SUB 소켓 옵션
 
@@ -307,7 +347,7 @@ zlink_publish(pub, "weather", &part, 1, 0);  /* OK */
 /* PUB에 zlink_send() 사용 → ENOTSUP */
 zlink_send(pub, &part, 1, 0);  /* errno = ENOTSUP */
 
-/* SUB: zlink_subscribe() / zlink_recv()로 수신. send/publish 불가 */
+/* SUB: zlink_subscribe()로 수신. publish 불가 */
 zlink_publish(sub, "weather", &part, 1, 0);  /* errno = ENOTSUP */
 zlink_send(sub, &part, 1, 0);               /* errno = ENOTSUP */
 ```
@@ -324,112 +364,43 @@ monitoring, Last-Value Caching에 사용된다.
 
 ### SUB vs XSUB — 핵심 차이
 
-| | SUB | XSUB |
-|---|-----|------|
-| **Subscribe** | `zlink_set_subscription()` (내부 자동 전송) | `zlink_set_subscription()` 또는 직접 send |
-| **Send** | 불가 (`ENOTSUP`) | 가능 — subscription frame을 upstream으로 전달 |
-| **Recv** | topic + payload 분리 수신 | 동일 |
-| **구현** | `xsub_t` subclass, `xsend()` 차단 | base class |
+| 항목 | SUB | XSUB |
+|------|-----|------|
+| **토픽 등록** | `zlink_set_subscription()` | `zlink_set_subscription()` (동일) |
+| **메시지 수신** | `zlink_subscribe()` — 토픽 필터링 후 수신 | `zlink_subscribe()` — 필터 없이 전체 수신 |
+| **로컬 필터** | **켜짐** — 매칭 안 되면 드롭 | **꺼짐** — 모든 메시지 통과 |
+| **구독 없는 상태** | 아무것도 수신 안 함 | 모든 메시지 수신 |
+| **구현** | `xsub_t` subclass (`filter=true`) | base class (`filter=false`) |
 
-SUB는 send가 불가능하므로, downstream SUB에서 올라온 subscription
-request를 upstream PUB로 **forward할 수 없다**. 이것이 XSUB가 필요한
-이유이다.
+XSUB이 프록시에서 필요한 이유는 구독 상태 없이도 모든 메시지를
+통과시키기 때문이다. 토픽 등록은 `zlink_set_subscription()`으로
+양쪽 모두 동일하게 upstream에 전송된다.
 
 ### PUB vs XPUB — 핵심 차이
 
-| | PUB | XPUB |
-|---|-----|------|
-| **Recv** | 불가 | `zlink_subscription_event()`로 subscription event 수신 |
-| **Send** | 동일 (topic broadcast) | 동일 |
-| **Handler** | N/A | N/A |
+| 항목 | PUB | XPUB |
+|------|-----|------|
+| **메시지 발행** | `zlink_publish()` | `zlink_publish()` (동일) |
+| **구독 이벤트** | 노출 안 함 | `zlink_subscription_event()`로 수신 |
 
 XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
 
-### Proxy에서의 XSUB/XPUB 역할
+### PUB/SUB 소켓 공개 API 요약
 
-```
-          data flow ───────────────────────►
-          subscription flow ◄──────────────
+| 공개 API | PUB | SUB | XPUB | XSUB |
+|----------|-----|-----|------|------|
+| `zlink_publish()` | 가능 | — | 가능 | — |
+| `zlink_subscribe()` | — | 가능 | — | 가능 |
+| `zlink_subscribe_handler()` | — | 가능 | — | 가능 |
+| `zlink_set_subscription()` | — | 가능 | — | 가능 |
+| `zlink_subscription_event()` | — | — | 가능 | — |
+| 로컬 필터 | N/A | **켜짐** | N/A | **꺼짐** |
 
-┌─────┐              Proxy               ┌─────┐
-│ PUB │──connect──►┌──────┐◄──connect──  │ SUB │
-│     │            │ XSUB │   ┌──────┐   │     │
-└─────┘            │  │   │   │ XPUB │   └─────┘
-┌─────┐            │  │   │   │      │   ┌─────┐
-│ PUB │──connect──►│  ▼   │   │      │◄──│ SUB │
-│     │            │ data ├──►│ data │   │     │
-└─────┘            │      │   │      │   └─────┘
-                   └──────┘   └──┬───┘
-                      ▲          │
-                      │          ▼
-                   subscribe  이벤트
-                   forward    수신
-```
+> `zlink_send()` / `zlink_recv()`는 PUB/SUB 계열 4소켓 모두 `ENOTSUP`이다.
+> 발행은 `zlink_publish()`, 수신은 `zlink_subscribe()` 전용 API를 사용한다.
 
-**Subscription 전파 흐름:**
-
-1. SUB가 `"weather"` topic 구독
-2. 애플리케이션이 `zlink_subscription_event()`로 XPUB 이벤트를 pull하여
-   `(subscribed=1, topic="weather")`를 수신
-3. Proxy가 XSUB에 `zlink_set_subscription(xsub, "weather")` 호출 →
-   upstream PUB에 subscription frame `[0x01 "weather"]` 전달
-4. PUB가 `"weather"` data를 publish
-5. XSUB가 data recv → XPUB가 matching SUB에게 전달
-
-**일반 SUB로는 3번이 불가능하다** — SUB는 send가 차단되어 있어
-subscription을 upstream으로 forward할 수 없다. 이것이 proxy의
-frontend에 반드시 XSUB를 사용하는 이유이다.
-
-### Proxy가 필요한 이유
-
-PUB/SUB를 직접 연결하면 구조적 한계가 있다:
-
-```
-직접 연결 (proxy 없음)               proxy 사용
-─────────────────────               ──────────────
-
-┌─────┐     ┌─────┐                 ┌─────┐     ┌───────────┐     ┌─────┐
-│PUB 1│────►│SUB 1│                 │PUB 1│──►  │           │  ──►│SUB 1│
-└─────┘     └─────┘                 └─────┘     │   XSUB    │     └─────┘
-┌─────┐     ┌─────┐                 ┌─────┐     │     │     │     ┌─────┐
-│PUB 2│────►│SUB 2│                 │PUB 2│──►  │     ▼     │  ──►│SUB 2│
-└─────┘     └─────┘                 └─────┘     │   XPUB    │     └─────┘
-                                                │  (Proxy)  │
- N PUB × M SUB = N×M 연결                       └───────────┘
- PUB/SUB가 서로의 주소를 알아야 함
-                                                 N + M 연결
-                                                 PUB/SUB는 proxy 주소만 알면 됨
-```
-
-**Proxy의 주요 용도:**
-
-| 용도 | 설명 |
-|------|------|
-| **연결 수 감소** | N×M 직접 연결 → N+M (PUB→proxy, proxy→SUB) |
-| **주소 decoupling** | PUB와 SUB가 서로의 endpoint를 알 필요 없음. Proxy 주소만 알면 됨 |
-| **동적 확장** | PUB/SUB가 독립적으로 추가·제거 가능. 상대방에 영향 없음 |
-| **Subscription 변환** | XPUB MANUAL mode로 topic remapping, filtering 가능 |
-| **Network bridging** | 서로 다른 network segment 간 PUB/SUB 연결 (예: inproc ↔ tcp) |
-| **Monitoring** | Capture socket으로 통과하는 message를 기록 |
-
-`zlink_proxy()`는 XSUB↔XPUB 간 message와 subscription을
-양방향으로 자동 전달하는 built-in proxy이다:
-
-```c
-/* frontend: PUB들이 connect */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
-zlink_bind(xsub, "tcp://*:5556");
-
-/* backend: SUB들이 connect */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_bind(xpub, "tcp://*:5557");
-
-/* capture (optional): 통과하는 모든 message를 기록 */
-void *capture = zlink_socket(ctx, ZLINK_PUB);
-zlink_bind(capture, "tcp://*:5558");
-
-zlink_proxy(xsub, xpub, capture);  /* blocking — 별도 thread에서 실행 */
-```
+> Proxy 패턴에서 XSUB/XPUB을 사용하는 방법은
+> [Proxy 가이드](03-6-proxy.ko.md)를 참고.
 
 ## 9. 구독 프레임 형식
 
@@ -476,7 +447,9 @@ zlink_subscription_event(
 
 ### XPUB_MANUAL 모드
 
-기본적으로 XPUB는 SUB의 구독을 자동 처리한다. MANUAL 모드에서는 구독 프레임을 수신한 후, 애플리케이션이 직접 `zlink_set_subscription()` / `zlink_unset_subscription()`로 실제 구독을 결정한다.
+기본적으로 XPUB는 SUB의 구독을 자동 처리한다.
+MANUAL 모드에서는 구독 프레임을 수신한 후, 애플리케이션이 직접
+`zlink_set_subscription()` / `zlink_unset_subscription()`로 실제 구독을 결정한다.
 
 ```c
 /* MANUAL 모드 활성화 */

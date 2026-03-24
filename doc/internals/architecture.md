@@ -396,7 +396,7 @@ socket_base_t (base class)
 ├── router_t            # ROUTER socket: ID-based routing (inherits routing_socket_base_t)
 ├── xpub_t              # XPUB socket: can receive subscription messages
 │   └── pub_t           # PUB socket: simplified XPUB (no subscription exposure)
-├── xsub_t              # XSUB socket: can send subscription messages
+├── xsub_t              # XSUB socket: receives all without local filter (proxy use)
 │   └── sub_t           # SUB socket: simplified XSUB (subscribe via setsockopt)
 └── stream_t            # STREAM socket: RAW TCP, external client integration
 ```
@@ -459,7 +459,7 @@ Strategy classes for message distribution and collection are separated by socket
 | PUB     | `dist_t` (Fan-out)    | -                    | Cannot receive                   |
 | SUB     | -                     | `fq_t` (Fair Queue)  | Topic filtering applied          |
 | XPUB    | `dist_t` (Fan-out)    | Receives sub messages| Subscription managed by mtrie_t  |
-| XSUB    | Sends sub messages    | `fq_t` (Fair Queue)  | Filtering + subscription sending |
+| XSUB    | -                     | `fq_t` (Fair Queue)  | No local filter; receives all    |
 | STREAM  | ID-based direct route | `fq_t` (Fair Queue)  | Uses RAW protocol                |
 
 ### 5.4 Subscription Data Structures
@@ -1244,19 +1244,40 @@ core/
 │   │   │   └── socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
 │   │   ├── discovery/               # Service discovery
 │   │   │   ├── discovery.cpp/hpp
+│   │   │   ├── discovery_access.cpp/hpp  # API seam
+│   │   │   ├── discovery_bootstrap.cpp   # Registry bootstrap
+│   │   │   ├── discovery_state.cpp       # Local service directory state
+│   │   │   ├── discovery_update.cpp      # Service list update
+│   │   │   ├── discovery_uplink.cpp      # Registry uplink/heartbeat
+│   │   │   ├── discovery_registry_client.cpp # Registry protocol client
 │   │   │   ├── discovery_protocol.hpp
-│   │   │   └── registry.cpp/hpp
-│   │   ├── gateway/                 # Gateway
-│   │   │   ├── gateway.cpp/hpp      # Gateway + receiver (unified)
-│   │   │   ├── gateway_runtime.hpp  # Gateway runtime state and lifecycle
+│   │   │   ├── registry_access.cpp/hpp   # Registry API seam
+│   │   │   └── registry_query_access.cpp/hpp # Remote query API seam
+│   │   ├── gateway/                 # Gateway (POSD modular split)
+│   │   │   ├── gateway.hpp          # Main header
+│   │   │   ├── gateway_access.cpp/hpp  # API seam
+│   │   │   ├── gateway_facade.cpp   # External API delegation
+│   │   │   ├── gateway_lifecycle.cpp # Create/destroy/attach sequencing
+│   │   │   ├── gateway_pool.cpp     # Peer pool management, load balancing
+│   │   │   ├── gateway_socket.cpp   # Internal ROUTER socket wiring
+│   │   │   ├── gateway_monitor.cpp  # Service monitor event emission
+│   │   │   ├── gateway_refresh.cpp  # Discovery-based peer refresh
+│   │   │   ├── gateway_runtime.hpp  # Gateway runtime state
 │   │   │   └── routing_id_utils.hpp
-│   │   └── spot/                    # SPOT service
+│   │   └── spot/                    # SPOT service (POSD modular split)
 │   │       ├── spot_node.cpp/hpp    # Network control (PUB/SUB mesh)
+│   │       ├── spot_node_access.cpp/hpp  # SpotNode API seam
+│   │       ├── spot_handle.hpp      # Public handle struct
 │   │       ├── spot_pub.cpp/hpp     # Publish handle (thread-safe)
 │   │       ├── spot_sub.cpp/hpp     # Subscribe/receive handle
-│   │       ├── spot_data_plane.cpp/hpp  # Data plane loop (SUB recv, local dispatch)
-│   │       ├── spot_dispatch_internal.hpp # Internal dispatch helpers
-│   │       └── spot_runtime.hpp     # SPOT runtime state and lifecycle
+│   │       ├── spot_sub_option.cpp  # Sub-side option handling
+│   │       ├── spot_sub_recv.cpp    # Sub-side recv handling
+│   │       ├── spot_subject_access.cpp/hpp # Subject API seam
+│   │       ├── spot_data_plane.cpp/hpp  # Data plane core
+│   │       ├── spot_data_plane_forwarding.cpp # Ingress/egress forwarding
+│   │       ├── spot_data_plane_protocol.cpp   # Control messages, subscription updates
+│   │       ├── spot_data_plane_internal.hpp   # Data plane internal state
+│   │       └── spot_runtime.cpp/hpp # SPOT runtime lifecycle
 │   │
 │   └── utils/                       # Utilities
 │       ├── ypipe.hpp                # Lock-free pipe

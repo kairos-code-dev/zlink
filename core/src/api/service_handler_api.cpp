@@ -5,60 +5,7 @@
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 
-#include "services/gateway/gateway.hpp"
-
-namespace
-{
-} // namespace
-
-int gateway_install_recv_handler (zlink::gateway_t *gateway_,
-                                  zlink_socket_msg_handler_fn handler_,
-                                  void *userdata_)
-{
-    if (!gateway_ || !handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (!gateway_->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::service_public_api_scope_t admission (gateway_->public_api_guard ());
-    if (!admission.acquired ())
-        return -1;
-    if (gateway_transition_to_callback_mode (gateway_) != 0)
-        return -1;
-    const int rc = gateway_->set_handler (handler_, userdata_);
-    if (rc != 0)
-        gateway_revert_callback_transition (gateway_);
-    return rc;
-}
-
-int gateway_install_send_ready_handler (zlink::gateway_t *gateway_,
-                                        zlink_send_ready_handler_fn handler_,
-                                        void *userdata_)
-{
-    if (!gateway_ || !handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (!gateway_->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::service_public_api_scope_t admission (gateway_->public_api_guard ());
-    if (!admission.acquired ())
-        return -1;
-    bool already_active = false;
-    if (gateway_activate_send_ready_mode (gateway_, &already_active) != 0)
-        return -1;
-    const int rc = gateway_->set_send_ready_handler (handler_, userdata_);
-    if (rc != 0 && !already_active)
-        gateway_revert_send_ready_mode (gateway_);
-    return rc;
-}
+#include "services/gateway/gateway_access.hpp"
 
 int validate_recv_flags (int flags_)
 {
@@ -80,8 +27,26 @@ int zlink_service_send_ready_handler_internal (
     }
 
     if (is_registered_gateway_handle (handle_)) {
-        return gateway_install_send_ready_handler (
-          static_cast<zlink::gateway_t *> (handle_), handler_, userdata_);
+        zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_);
+        if (!gateway)
+            return -1;
+        zlink::service_public_api_guard_t *guard =
+          zlink::gateway_access_t::public_api_guard (gateway);
+        if (!guard) {
+            errno = EFAULT;
+            return -1;
+        }
+        zlink::service_public_api_scope_t admission (*guard);
+        if (!admission.acquired ())
+            return -1;
+        bool already_active = false;
+        if (gateway_activate_send_ready_mode (gateway, &already_active) != 0)
+            return -1;
+        const int rc = zlink::gateway_access_t::set_send_ready_handler (
+          gateway, handler_, userdata_);
+        if (rc != 0 && !already_active)
+            gateway_revert_send_ready_mode (gateway);
+        return rc;
     }
 
     if (is_registered_spot_handle (handle_)) {

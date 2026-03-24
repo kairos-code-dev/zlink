@@ -211,7 +211,64 @@ bool wait_for_exit_code (process_capture_t *proc_, int timeout_ms, int *rc_out_)
     return false;
 }
 
-void run_single_spot_process_case (const char *self_path_, const char *recv_mode_)
+std::string capture_debug_text (process_capture_t *proc_)
+{
+    if (!proc_)
+        return std::string ();
+
+    std::lock_guard<std::mutex> lock (proc_->sync);
+    std::string text;
+    text.reserve (proc_->stderr_text.size () + 256);
+    if (!proc_->stderr_text.empty ()) {
+        text += "stderr:\n";
+        text += proc_->stderr_text;
+    }
+    if (!proc_->stdout_lines.empty ()) {
+        if (!text.empty ())
+            text += '\n';
+        text += "stdout:\n";
+        for (size_t i = 0; i < proc_->stdout_lines.size (); ++i)
+            text += proc_->stdout_lines[i];
+    }
+    return text;
+}
+
+bool parse_spot_throughput (const std::vector<std::string> &lines_,
+                            const char *transport_,
+                            const char *msg_size_,
+                            double *throughput_out_)
+{
+    if (throughput_out_)
+        *throughput_out_ = 0.0;
+    if (!transport_ || !msg_size_ || !throughput_out_)
+        return false;
+
+    const std::string prefix = std::string ("RESULT,current,SPOT,")
+                               + transport_ + "," + msg_size_
+                               + ",throughput,";
+    for (size_t i = 0; i < lines_.size (); ++i) {
+        const std::string &line = lines_[i];
+        if (line.compare (0, prefix.size (), prefix) != 0)
+            continue;
+
+        char *end = NULL;
+        const double parsed = std::strtod (line.c_str () + prefix.size (), &end);
+        if (end != line.c_str () + prefix.size ()) {
+            *throughput_out_ = parsed;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+double run_single_spot_process_case (const char *self_path_,
+                                     const char *recv_mode_,
+                                     const char *transport_,
+                                     const char *msg_size_,
+                                     int duration_seconds_ = 1,
+                                     int warmup_seconds_ = 1,
+                                     std::string *debug_text_out_ = NULL)
 {
     process_capture_t proc;
     const char *binary_name =
@@ -221,29 +278,45 @@ void run_single_spot_process_case (const char *self_path_, const char *recv_mode
 
     std::vector<std::string> args;
     args.push_back ("current");
-    args.push_back ("tcp");
-    args.push_back ("64");
+    args.push_back (transport_);
+    args.push_back (msg_size_);
 
     std::vector<std::string> env;
     env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
-    env.push_back ("PERF_SINGLE_DURATION_SECONDS=1");
-    env.push_back ("PERF_SINGLE_WARMUP_SECONDS=1");
+    {
+        char buf[32];
+        snprintf (buf, sizeof (buf), "PERF_SINGLE_DURATION_SECONDS=%d",
+                  duration_seconds_);
+        env.push_back (buf);
+    }
+    {
+        char buf[32];
+        snprintf (buf, sizeof (buf), "PERF_SINGLE_WARMUP_SECONDS=%d",
+                  warmup_seconds_);
+        env.push_back (buf);
+    }
 
-    TEST_ASSERT_TRUE (start_process (path, args, env, &proc));
+    TEST_ASSERT_TRUE_MESSAGE (start_process (path, args, env, &proc),
+                              path.c_str ());
 
     int rc = INT_MIN;
-    TEST_ASSERT_TRUE (wait_for_exit_code (&proc, 20000, &rc));
+    const int timeout_ms =
+      std::max (60000, (duration_seconds_ + warmup_seconds_ + 10) * 1000);
+    TEST_ASSERT_TRUE_MESSAGE (wait_for_exit_code (&proc, timeout_ms, &rc),
+                              capture_debug_text (&proc).c_str ());
     close_process_capture (&proc);
-    TEST_ASSERT_EQUAL_INT_MESSAGE (0, rc, proc.stderr_text.c_str ());
+    const std::string debug_text = capture_debug_text (&proc);
+    if (debug_text_out_)
+        *debug_text_out_ = debug_text;
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, rc, debug_text.c_str ());
 
-    bool saw_throughput = false;
-    for (size_t i = 0; i < proc.stdout_lines.size (); ++i) {
-        if (proc.stdout_lines[i].find ("throughput") != std::string::npos) {
-            saw_throughput = true;
-            break;
-        }
-    }
-    TEST_ASSERT_TRUE (saw_throughput);
+    double throughput = 0.0;
+    TEST_ASSERT_TRUE_MESSAGE (
+      parse_spot_throughput (proc.stdout_lines, transport_, msg_size_,
+                             &throughput),
+      debug_text.c_str ());
+    TEST_ASSERT_TRUE_MESSAGE (throughput > 0.0, debug_text.c_str ());
+    return throughput;
 }
 
 void run_single_spot_reject_case (const char *self_path_, const char *recv_mode_)
@@ -277,7 +350,32 @@ void test_single_spot_process_recv_is_rejected ()
 
 void test_single_spot_process_callback_smoke ()
 {
-    run_single_spot_process_case (g_self_path, "callback");
+    (void) run_single_spot_process_case (g_self_path, "callback", "tcp", "64");
+}
+
+void test_single_spot_process_callback_tcp_256_keeps_up_with_64 ()
+{
+    const double throughput_64 =
+      run_single_spot_process_case (g_self_path, "callback", "tcp", "64");
+    const double throughput_256 =
+      run_single_spot_process_case (g_self_path, "callback", "tcp", "256");
+
+    TEST_ASSERT_TRUE (throughput_256 >= throughput_64 * 0.4);
+}
+
+void test_single_spot_process_callback_ws_256_smoke ()
+{
+    (void) run_single_spot_process_case (g_self_path, "callback", "ws", "256",
+                                         5, 2);
+}
+
+void test_single_spot_process_callback_ws_64_exit_cleanly ()
+{
+    std::string debug_text;
+    const double throughput =
+      run_single_spot_process_case (g_self_path, "callback", "ws", "64", 5, 2,
+                                    &debug_text);
+    TEST_ASSERT_TRUE_MESSAGE (throughput > 0.0, debug_text.c_str ());
 }
 
 int main (int argc, char **argv)
@@ -286,6 +384,9 @@ int main (int argc, char **argv)
     UNITY_BEGIN ();
     RUN_TEST (test_single_spot_process_recv_is_rejected);
     RUN_TEST (test_single_spot_process_callback_smoke);
+    RUN_TEST (test_single_spot_process_callback_tcp_256_keeps_up_with_64);
+    RUN_TEST (test_single_spot_process_callback_ws_256_smoke);
+    RUN_TEST (test_single_spot_process_callback_ws_64_exit_cleanly);
     return UNITY_END ();
 }
 

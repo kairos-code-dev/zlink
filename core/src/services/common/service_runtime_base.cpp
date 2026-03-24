@@ -166,10 +166,12 @@ int zlink::service_runtime_base_t::close_socket_and_wait (
     if (rc != 0 || !_ctx)
         return rc;
 
+    const int closed_socket_id =
+      closed_socket ? closed_socket->socket_id () : -1;
     const int wait_rc =
       socket_close_ops_t::wait_until_closed (_ctx, closed_socket, timeout_ms_);
-    if (wait_rc == 0 && closed_socket)
-        _sockets.erase_closing_socket (closed_socket->socket_id ());
+    if (wait_rc == 0 && closed_socket_id >= 0)
+        _sockets.erase_closing_socket (closed_socket_id);
     return wait_rc;
 }
 

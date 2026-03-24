@@ -1,0 +1,182 @@
+[English](03-6-proxy.md) | [한국어](03-6-proxy.ko.md)
+
+# Proxy Pattern
+
+## 1. Overview
+
+A proxy relays messages between two sockets.
+`zlink_proxy()` is a general-purpose utility that works with any socket
+combination. Users can also build custom proxies using public APIs.
+
+## 2. zlink_proxy() — Built-in Proxy
+
+```c
+int zlink_proxy (void *frontend, void *backend, void *capture);
+```
+
+- Forwards messages from `frontend` to `backend` and vice versa
+- If `capture` is non-NULL, copies all passing messages to the capture socket
+- **Blocking function** — run in a dedicated thread
+- **No socket type restriction** — internally calls `socket_base_t` internal
+  recv/send methods, independent of public API `ENOTSUP` restrictions
+
+### Supported Socket Combinations
+
+| frontend | backend | Use case |
+|----------|---------|----------|
+| XSUB | XPUB | PUB/SUB relay (most common) |
+| ROUTER | DEALER | Request/reply broker |
+| DEALER | DEALER | Load balancing relay |
+| PAIR | PAIR | Inter-thread bridge |
+
+## 3. PUB/SUB Proxy — XSUB/XPUB
+
+The most common proxy pattern.
+
+```
+Data flow:              PUB ──► XSUB ══ proxy ══► XPUB ──► SUB
+Subscription (reverse): PUB ◄── XSUB ◄── proxy ◄── XPUB ◄── SUB
+```
+
+### 3.1 Built-in Proxy
+
+```c
+void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+zlink_bind(xsub, "tcp://*:5556");      /* PUBs connect here */
+
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+zlink_bind(xpub, "tcp://*:5557");      /* SUBs connect here */
+
+void *capture = zlink_socket(ctx, ZLINK_PUB);
+zlink_bind(capture, "tcp://*:5558");   /* optional: message recording */
+
+zlink_proxy(xsub, xpub, capture);      /* blocking */
+```
+
+`zlink_proxy()` handles two things internally:
+- **Data relay**: Pulls messages from XSUB and pushes to XPUB
+- **Subscription propagation**: Pulls subscription events from XPUB and pushes to XSUB
+
+### 3.2 Manual Proxy
+
+When custom logic (logging, filtering, topic transformation) is needed,
+build a manual proxy using public APIs only.
+
+#### Data Flow
+
+| Step | Socket | API | Description |
+|------|--------|-----|-------------|
+| 1 | XSUB | `zlink_subscribe(xsub, ...)` | Receive data (topic + parts separated) |
+| 2 | App | Custom logic | Filtering, transformation, logging |
+| 3 | XPUB | `zlink_publish(xpub, topic, parts, ...)` | Publish data |
+
+#### Subscription Propagation
+
+| Step | Socket | API | Description |
+|------|--------|-----|-------------|
+| 1 | XPUB | `zlink_subscription_event(xpub, ...)` | Receive SUB subscribe/unsubscribe events |
+| 2 | App | Custom logic | Authorization, topic remapping |
+| 3 | XSUB | `zlink_set_subscription(xsub, topic)` | Propagate to upstream PUB |
+
+#### Full Code
+
+```c
+void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+zlink_bind(xsub, "tcp://*:5556");
+zlink_bind(xpub, "tcp://*:5557");
+
+while (running) {
+    /* Data relay: XSUB → app → XPUB */
+    zlink_routing_id_t rid;
+    zlink_msg_t *parts = NULL;
+    size_t count = 0;
+    char topic[256];
+    size_t topic_len = sizeof(topic);
+    int rc = zlink_subscribe(xsub, &rid, &parts, &count,
+                             topic, &topic_len, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        /* Insert custom logic here (filtering, logging, etc.) */
+        zlink_publish(xpub, topic, parts, count, 0);
+    }
+
+    /* Subscription propagation: XPUB → app → XSUB */
+    int subscribed;
+    char sub_topic[256];
+    size_t sub_len = sizeof(sub_topic);
+    rc = zlink_subscription_event(xpub, &rid, &subscribed,
+                                  sub_topic, &sub_len, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        /* Insert custom logic here (authorization, remapping, etc.) */
+        if (subscribed)
+            zlink_set_subscription(xsub, sub_topic);
+        else
+            zlink_unset_subscription(xsub, sub_topic);
+    }
+}
+```
+
+### 3.3 Why XSUB/XPUB?
+
+| Question | With SUB/PUB | With XSUB/XPUB |
+|----------|-------------|-----------------|
+| Data pass-through | SUB local filter on — must subscribe | XSUB local filter off — **passes all** |
+| Subscription events | PUB doesn't expose | XPUB provides `subscription_event()` |
+| Proxy suitability | Proxy must manage topics itself | **Relay only — ideal for proxy** |
+
+> **Key point:** `zlink_proxy()` internally calls `socket_base_t` internal
+> methods, not public APIs. Calling `zlink_send()` on XSUB or
+> `zlink_recv()` on XPUB returns `ENOTSUP`. Proxy operation is only
+> possible via `zlink_proxy()` or the manual approach above
+> (using dedicated APIs like `subscribe()`, `publish()`, etc.).
+
+## 4. Request/Reply Proxy — ROUTER/DEALER
+
+```
+Client (DEALER) ──► ROUTER ══ proxy ══► DEALER ──► Server (ROUTER)
+```
+
+```c
+void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(frontend, "tcp://*:5559");
+
+void *backend = zlink_socket(ctx, ZLINK_DEALER);
+zlink_bind(backend, "tcp://*:5560");
+
+zlink_proxy(frontend, backend, NULL);  /* blocking */
+```
+
+ROUTER/DEALER proxy has no subscription propagation, so `zlink_proxy()`
+alone is sufficient. For manual construction, use `zlink_recv()` →
+`zlink_send_rid()` combination.
+
+## 5. Why Use a Proxy?
+
+```
+Direct (no proxy)                    With proxy
+─────────────────                    ──────────
+
+┌─────┐     ┌─────┐                 ┌─────┐     ┌───────────┐     ┌─────┐
+│PUB 1│────►│SUB 1│                 │PUB 1│──►  │           │  ──►│SUB 1│
+└─────┘     └─────┘                 └─────┘     │   XSUB    │     └─────┘
+┌─────┐     ┌─────┐                 ┌─────┐     │     │     │     ┌─────┐
+│PUB 2│────►│SUB 2│                 │PUB 2│──►  │     ▼     │  ──►│SUB 2│
+└─────┘     └─────┘                 └─────┘     │   XPUB    │     └─────┘
+                                                │  (Proxy)  │
+ N × M connections                              └───────────┘
+ PUB/SUB must know each other
+                                                 N + M connections
+                                                 Only need proxy address
+```
+
+| Use Case | Description |
+|----------|-------------|
+| **Reduce connections** | N×M → N+M |
+| **Address decoupling** | PUB/SUB don't need each other's endpoints |
+| **Dynamic scaling** | PUB/SUB add/remove independently |
+| **Subscription transformation** | XPUB MANUAL mode for topic remapping/filtering |
+| **Network bridging** | Connect different network segments (e.g., inproc ↔ tcp) |
+| **Monitoring** | Capture socket records all passing messages |
+
+---
+[← STREAM](03-5-stream.md) | [Transport →](04-transports.md)

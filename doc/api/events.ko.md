@@ -115,22 +115,27 @@ disconnect reason:
 
 | 상수 | 의미 |
 |---|---|
-| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | 로컬 service readiness 변화, `value`는 current_ready_count |
-| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send readiness 변화, `value`는 current_ready_count |
-| `ZLINK_GATEWAY_ROUTE_UP` | route 활성화, `value`는 current_ready_count |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | route 비활성화, `value`는 current_ready_count |
+| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | 로컬 service readiness 변화 |
+| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send readiness 변화 |
+| `ZLINK_GATEWAY_ROUTE_UP` | route 활성화 |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | route 비활성화 |
+
+모든 Gateway 이벤트에서 `value`는 `current_ready_count`입니다.
 
 ### SPOT
 
 | 상수 | 발생 주체 | 의미 |
 |---|---|---|
-| `ZLINK_SPOT_SUB_FILTER_APPLIED` | Spot sub / node-sub monitor | local filter 설치 완료 |
-| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY_CHANGED` | Spot sub / node-sub monitor | subscription readiness 변화, `value`는 current_ready_count |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | Spot pub / node-pub monitor | PUB 큐가 가득 참 |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | Spot pub / node-pub monitor | PUB 큐가 비워짐 |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | subject별 delivery-ready 상태 변화, `value`는 current_ready_count |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | subject별 remote delivery-ready 카운트 변화, `value`는 current_ready_count |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | first-delivery-safe ready 카운트 변화, `value`는 current_ready_count; publisher 제어 gate로 사용 |
+| `ZLINK_SPOT_SUB_FILTER_APPLIED` | sub monitor | local filter 설치 완료 |
+| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY_CHANGED` | sub monitor | subscription readiness 변화 |
+| `ZLINK_SPOT_PUB_QUEUE_FULL` | pub monitor | PUB 큐가 가득 참 |
+| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | pub monitor | PUB 큐가 비워짐 |
+| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | sub monitor | subject별 delivery-ready 변화 |
+| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | pub monitor | subject별 remote delivery-ready 변화 |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | pub monitor | first-delivery-safe ready 변화 |
+
+모든 `*_READY_CHANGED` 이벤트에서 `value`는 `current_ready_count`입니다.
+`FIRST_DELIVERY_READY_CHANGED`는 publisher 제어 gate로 사용합니다.
 
 SPOT subject 규칙:
 - sub 쪽은 exact topic / pattern에 대해 `subject_kind`가 채워집니다.

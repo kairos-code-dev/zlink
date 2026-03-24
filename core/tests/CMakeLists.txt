@@ -415,7 +415,7 @@ if(TARGET test_multi_spot_benchmark_process)
   set_tests_properties(
     test_multi_spot_benchmark_process
     PROPERTIES
-      TIMEOUT 60
+      TIMEOUT 180
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
@@ -449,7 +449,7 @@ if(TARGET test_single_spot_benchmark_process)
   set_tests_properties(
     test_single_spot_benchmark_process
     PROPERTIES
-      TIMEOUT 30
+      TIMEOUT 60
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()

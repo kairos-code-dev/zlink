@@ -10,7 +10,7 @@
 #include <new>
 #include <vector>
 
-#include "services/discovery/discovery.hpp"
+#include "services/spot/spot_node_access.hpp"
 
 namespace
 {
@@ -54,22 +54,15 @@ void *zlink_spot_new (void *ctx_, const char *service_name_)
         return NULL;
     }
 
-    zlink::spot_node_t *node =
-      new (std::nothrow)
-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
-    if (!node) {
-        errno = ENOMEM;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
+      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
+                                         service_name_));
+    if (!node)
         return NULL;
-    }
-    if (!node->check_tag ()) {
-        delete node;
-        errno = EINVAL;
-        return NULL;
-    }
 
     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
     if (!spot) {
-        delete node;
+        zlink::spot_node_access_t::delete_handle (node);
         errno = ENOMEM;
         return NULL;
     }
@@ -91,11 +84,9 @@ int zlink_spot_destroy (void **spot_p_)
     if (!spot)
         return -1;
 
-    zlink::spot_node_t *node = spot->node;
-    if (!node || !node->check_tag ()) {
-        errno = EFAULT;
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot->node);
+    if (!node)
         return -1;
-    }
 
     if (in_spot_node_send_ready_callback (node)
         || in_spot_node_monitor_callback (node)) {
@@ -121,18 +112,11 @@ void *zlink_spot_node_new (void *ctx_, const char *service_name_)
         errno = EINVAL;
         return NULL;
     }
-    zlink::spot_node_t *node =
-      new (std::nothrow)
-        zlink::spot_node_t (static_cast<zlink::ctx_t *> (ctx_), service_name_);
-    if (!node) {
-        errno = ENOMEM;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
+      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
+                                         service_name_));
+    if (!node)
         return NULL;
-    }
-    if (!node->check_tag ()) {
-        delete node;
-        errno = EINVAL;
-        return NULL;
-    }
     register_spot_node_mode_state (node);
     return static_cast<void *> (node);
 }
@@ -143,101 +127,64 @@ int zlink_spot_node_destroy (void **node_p_)
         errno = EFAULT;
         return -1;
     }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (*node_p_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (*node_p_);
+    if (!node)
         return -1;
-    }
     if (in_spot_node_send_ready_callback (node)
         || in_spot_node_monitor_callback (node)) {
         errno = EBUSY;
         return -1;
     }
-    if (!node->public_api_guard ().begin_close_or_fail_busy ())
+    if (zlink::spot_node_access_t::begin_close_or_fail_busy (node) != 0)
         return -1;
     clear_spot_node_handler_registration (node);
-    if (node->destroy () != 0) {
-        node->public_api_guard ().cancel_close ();
+    if (zlink::spot_node_access_t::destroy (node) != 0) {
+        zlink::spot_node_access_t::cancel_close (node);
         return -1;
     }
     erase_spot_node_mode_state (node);
-    delete node;
+    zlink::spot_node_access_t::delete_handle (node);
     *node_p_ = NULL;
     return 0;
 }
 
 int zlink_spot_node_bind (void *node_, const char *endpoint_)
 {
-    if (!node_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return node->bind (endpoint_);
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    return node ? zlink::spot_node_access_t::bind (node, endpoint_) : -1;
 }
 
 int zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
 {
-    if (!node_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return node->connect_peer_pub (peer_endpoint_);
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    return node ? zlink::spot_node_access_t::connect_peer (node, peer_endpoint_)
+                : -1;
 }
 
 int zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
 {
-    if (!node_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return node->disconnect_peer_pub (peer_endpoint_);
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    return node
+             ? zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_)
+             : -1;
 }
 
 int zlink_spot_node_status_snapshot (void *node_,
                                      zlink_spot_node_status_t *out_)
 {
-    if (!node_) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
-    if (!admission.acquired ())
-        return -1;
-    return node->snapshot_status (out_);
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    return node ? zlink::spot_node_access_t::status_snapshot (node, out_) : -1;
 }
 
 int zlink_spot_node_peers_snapshot (void *node_,
                                     zlink_spot_node_peer_entry_t *entries_,
                                     size_t *count_)
 {
-    if (!node_) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
-    if (!admission.acquired ())
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
         return -1;
     std::vector<zlink_spot_node_peer_entry_t> rows;
-    if (node->snapshot_peers (NULL, &rows) != 0)
+    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
         return -1;
     return copy_snapshot_rows (rows, entries_, count_);
 }
@@ -247,20 +194,11 @@ int zlink_spot_node_peers_query (void *node_,
                                  zlink_spot_node_peer_entry_t *entries_,
                                  size_t *count_)
 {
-    if (!node_) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
-    if (!admission.acquired ())
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
         return -1;
     std::vector<zlink_spot_node_peer_entry_t> rows;
-    if (node->snapshot_peers (filter_, &rows) != 0)
+    if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
         return -1;
     return copy_snapshot_rows (rows, entries_, count_);
 }
@@ -271,37 +209,20 @@ int zlink_spot_node_subjects_snapshot (
   zlink_spot_node_subject_entry_t *entries_,
   size_t *count_)
 {
-    if (!node_) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::service_public_api_scope_t admission (node->public_api_guard ());
-    if (!admission.acquired ())
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
         return -1;
     std::vector<zlink_spot_node_subject_entry_t> rows;
-    if (node->snapshot_subjects (filter_, &rows) != 0)
+    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
+        != 0)
         return -1;
     return copy_snapshot_rows (rows, entries_, count_);
 }
 
 int zlink_spot_node_attach_discovery (void *node_, void *discovery_)
 {
-    if (!node_ || !discovery_)
-        return -1;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    zlink::discovery_t *disc = static_cast<zlink::discovery_t *> (discovery_);
-    if (!disc->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return node->attach_discovery (disc);
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    return node ? zlink::spot_node_access_t::attach_discovery (
+                    node, discovery_)
+                : -1;
 }

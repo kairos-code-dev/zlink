@@ -101,7 +101,13 @@ zlink_connect(socket, "tcp://server2:5556");
 
 ## 6. Using routing_id with ROUTER Sockets
 
-ROUTER sockets automatically prepend a routing_id frame to received messages. When replying, the same routing_id is used to send the message to the correct peer.
+In ROUTER sockets, `zlink_recv()` and recv callbacks return the sender's
+routing_id as a **separate parameter** (`source_rid`), not as a message frame.
+When replying, pass the same routing_id to `zlink_send_rid()`.
+
+> **Difference from libzmq:** libzmq ROUTER returned routing_id as the
+> first frame of `zmq_recv()`. In zlink, routing_id is a separate parameter
+> on all socket types.
 
 ### Basic Request-Reply
 

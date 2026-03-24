@@ -1,0 +1,181 @@
+[English](03-6-proxy.md) | [한국어](03-6-proxy.ko.md)
+
+# Proxy 패턴
+
+## 1. 개요
+
+Proxy는 두 소켓 사이에서 메시지를 중계하는 패턴이다.
+`zlink_proxy()`는 어떤 소켓 조합이든 동작하는 범용 유틸리티 함수이고,
+공개 API를 조합하면 사용자가 직접 커스텀 proxy를 구성할 수도 있다.
+
+## 2. zlink_proxy() — 내장 프록시
+
+```c
+int zlink_proxy (void *frontend, void *backend, void *capture);
+```
+
+- `frontend` → `backend` 방향으로 메시지를 전달하고, 동시에 반대 방향도 처리
+- `capture`가 NULL이 아니면 통과하는 모든 메시지를 capture 소켓에 복사
+- **blocking 함수** — 별도 스레드에서 실행
+- **소켓 타입 제한 없음** — 내부적으로 `socket_base_t`의 internal recv/send를
+  직접 호출하므로 공개 API의 `ENOTSUP` 제한과 무관하게 동작
+
+### 지원 소켓 조합 예시
+
+| frontend | backend | 용도 |
+|----------|---------|------|
+| XSUB | XPUB | PUB/SUB 중계 (가장 일반적) |
+| ROUTER | DEALER | 요청/응답 브로커 |
+| DEALER | DEALER | 로드밸런싱 중계 |
+| PAIR | PAIR | 스레드 간 브릿지 |
+
+## 3. PUB/SUB 프록시 — XSUB/XPUB
+
+가장 일반적인 proxy 패턴이다.
+
+```
+데이터 흐름:       PUB ──► XSUB ══ proxy ══► XPUB ──► SUB
+구독 전파 (반대):  PUB ◄── XSUB ◄── proxy ◄── XPUB ◄── SUB
+```
+
+### 3.1 내장 proxy 사용
+
+```c
+void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+zlink_bind(xsub, "tcp://*:5556");      /* PUB들이 connect */
+
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+zlink_bind(xpub, "tcp://*:5557");      /* SUB들이 connect */
+
+void *capture = zlink_socket(ctx, ZLINK_PUB);
+zlink_bind(capture, "tcp://*:5558");   /* optional: 메시지 기록 */
+
+zlink_proxy(xsub, xpub, capture);      /* blocking */
+```
+
+`zlink_proxy()`는 다음 두 가지를 내부에서 자동 처리한다:
+- **데이터 전달**: XSUB에서 메시지를 꺼내 XPUB으로 전달
+- **구독 전파**: XPUB에서 구독 이벤트를 꺼내 XSUB으로 전파
+
+### 3.2 수동 proxy 구성
+
+중간에 로깅, 필터링, 토픽 변환 등 커스텀 로직이 필요하면
+공개 API만으로 수동 proxy를 구성할 수 있다.
+
+#### 데이터 흐름
+
+| 단계 | 소켓 | API | 설명 |
+|------|------|-----|------|
+| 1 | XSUB | `zlink_subscribe(xsub, ...)` | 데이터 수신 (토픽 + parts 분리) |
+| 2 | 앱 | 커스텀 로직 | 필터링, 변환, 로깅 등 |
+| 3 | XPUB | `zlink_publish(xpub, topic, parts, ...)` | 데이터 발행 |
+
+#### 구독 전파 흐름
+
+| 단계 | 소켓 | API | 설명 |
+|------|------|-----|------|
+| 1 | XPUB | `zlink_subscription_event(xpub, ...)` | SUB의 구독/해제 이벤트 수신 |
+| 2 | 앱 | 커스텀 로직 | 구독 인가, 토픽 리맵핑 등 |
+| 3 | XSUB | `zlink_set_subscription(xsub, topic)` | upstream PUB에 구독 전파 |
+
+#### 전체 코드
+
+```c
+void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+zlink_bind(xsub, "tcp://*:5556");
+zlink_bind(xpub, "tcp://*:5557");
+
+while (running) {
+    /* 데이터 전달: XSUB → 앱 → XPUB */
+    zlink_routing_id_t rid;
+    zlink_msg_t *parts = NULL;
+    size_t count = 0;
+    char topic[256];
+    size_t topic_len = sizeof(topic);
+    int rc = zlink_subscribe(xsub, &rid, &parts, &count,
+                             topic, &topic_len, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        /* 커스텀 로직 삽입 가능 (필터링, 로깅 등) */
+        zlink_publish(xpub, topic, parts, count, 0);
+    }
+
+    /* 구독 전파: XPUB → 앱 → XSUB */
+    int subscribed;
+    char sub_topic[256];
+    size_t sub_len = sizeof(sub_topic);
+    rc = zlink_subscription_event(xpub, &rid, &subscribed,
+                                  sub_topic, &sub_len, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        /* 커스텀 로직 삽입 가능 (인가, 리맵핑 등) */
+        if (subscribed)
+            zlink_set_subscription(xsub, sub_topic);
+        else
+            zlink_unset_subscription(xsub, sub_topic);
+    }
+}
+```
+
+### 3.3 왜 XSUB/XPUB인가?
+
+| 질문 | SUB/PUB 사용 시 | XSUB/XPUB 사용 시 |
+|------|----------------|-------------------|
+| 데이터 통과 | SUB 로컬 필터 켜짐 — 구독해야 통과 | XSUB 로컬 필터 꺼짐 — **무조건 통과** |
+| 구독 이벤트 관찰 | PUB이 노출 안 함 | XPUB이 `subscription_event()` 제공 |
+| 프록시 적합성 | 프록시가 토픽을 직접 관리해야 함 | **중계만 하면 되므로 적합** |
+
+> **핵심:** `zlink_proxy()` 내부는 공개 API가 아닌 `socket_base_t`의
+> internal method를 직접 호출하여 데이터를 전달한다.
+> 공개 API에서 XSUB에 `zlink_send()`나 XPUB에 `zlink_recv()`를
+> 호출하면 `ENOTSUP`이다. proxy 동작은 `zlink_proxy()` 함수 또는
+> 위의 수동 구성(전용 API 조합)으로만 가능하다.
+
+## 4. 요청/응답 프록시 — ROUTER/DEALER
+
+```
+Client (DEALER) ──► ROUTER ══ proxy ══► DEALER ──► Server (ROUTER)
+```
+
+```c
+void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(frontend, "tcp://*:5559");
+
+void *backend = zlink_socket(ctx, ZLINK_DEALER);
+zlink_bind(backend, "tcp://*:5560");
+
+zlink_proxy(frontend, backend, NULL);  /* blocking */
+```
+
+ROUTER/DEALER proxy는 구독 전파가 없으므로 `zlink_proxy()`만으로 충분하다.
+수동으로 구성하려면 `zlink_recv()` → `zlink_send_rid()` 조합을 사용한다.
+
+## 5. Proxy가 필요한 이유
+
+```
+직접 연결 (proxy 없음)               proxy 사용
+─────────────────────               ──────────────
+
+┌─────┐     ┌─────┐                 ┌─────┐     ┌───────────┐     ┌─────┐
+│PUB 1│────►│SUB 1│                 │PUB 1│──►  │           │  ──►│SUB 1│
+└─────┘     └─────┘                 └─────┘     │   XSUB    │     └─────┘
+┌─────┐     ┌─────┐                 ┌─────┐     │     │     │     ┌─────┐
+│PUB 2│────►│SUB 2│                 │PUB 2│──►  │     ▼     │  ──►│SUB 2│
+└─────┘     └─────┘                 └─────┘     │   XPUB    │     └─────┘
+                                                │  (Proxy)  │
+ N PUB × M SUB = N×M 연결                       └───────────┘
+ PUB/SUB가 서로의 주소를 알아야 함
+                                                 N + M 연결
+                                                 PUB/SUB는 proxy 주소만 알면 됨
+```
+
+| 용도 | 설명 |
+|------|------|
+| **연결 수 감소** | N×M → N+M |
+| **주소 decoupling** | PUB/SUB가 서로의 endpoint를 몰라도 됨 |
+| **동적 확장** | PUB/SUB 독립 추가·제거 |
+| **구독 변환** | XPUB MANUAL mode로 topic remapping/filtering |
+| **Network bridging** | inproc ↔ tcp 같은 세그먼트 연결 |
+| **모니터링** | capture 소켓으로 통과 메시지 기록 |
+
+---
+[← STREAM](03-5-stream.ko.md) | [Transport →](04-transports.ko.md)

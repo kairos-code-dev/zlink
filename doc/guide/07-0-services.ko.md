@@ -4,7 +4,10 @@
 
 ## 1. 서비스 계층이란
 
-zlink의 서비스 계층은 7종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM) 위에 구축된 **고수준 분산 서비스 기능**이다. 소켓 수준의 연결/라우팅을 직접 다루지 않고도 서비스 등록, 발견, 위치투명 통신을 수행할 수 있다.
+zlink의 서비스 계층은 7종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM)
+위에 구축된 **고수준 분산 서비스 기능**이다.
+소켓 수준의 연결/라우팅을 직접 다루지 않고도
+서비스 등록, 발견, 위치투명 통신을 수행할 수 있다.
 
 ## 2. 아키텍처
 
@@ -13,16 +16,29 @@ zlink의 서비스 계층은 7종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
 │                    Application                           │
 │         Gateway (요청/응답)  ·  SPOT (발행/구독)          │
 ├─────────────────────────────────────────────────────────┤
-│                  Discovery (서비스 발견)                   │
-│            subscribe · get · service_available            │
+│  Public API Facade  (service_api · service_*_api)        │
+│  validate + delegate → service-local access seam         │
 ├─────────────────────────────────────────────────────────┤
-│                  Registry (서비스 등록소)                  │
-│        register · heartbeat · broadcast SERVICE_LIST      │
+│  Service Access Layer                                    │
+│  gateway_access · discovery_access · registry_access     │
+│  spot_node_access · spot_subject_access                  │
+│  service_public_api_guard (admission/close guard)        │
 ├─────────────────────────────────────────────────────────┤
-│              zlink Core (7종 소켓 + 6종 Transport)        │
+│  Service Runtime                                         │
+│  Gateway: facade·lifecycle·pool·socket·monitor·refresh   │
+│  Discovery: bootstrap·state·update·uplink·registry_client│
+│  SPOT: node·data_plane(forwarding·protocol)·pub·sub      │
+├─────────────────────────────────────────────────────────┤
+│  Discovery (서비스 발견) · Registry (서비스 등록소)        │
+│  subscribe · heartbeat · broadcast SERVICE_LIST           │
+├─────────────────────────────────────────────────────────┤
+│              zlink Core (8종 소켓 + 6종 Transport)        │
 └─────────────────────────────────────────────────────────┘
 ```
 
+- **Public API Facade**는 C API 진입점으로, handle validation 후 service-local access seam으로 위임한다. concrete service 세부를 직접 알지 않는다.
+- **Service Access Layer**는 각 서비스가 제공하는 service-local seam이다. `*_access.hpp`가 API 계층과 service runtime 사이의 계약을 정의한다.
+- **Service Runtime**은 각 서비스의 내부 구현이다. Gateway는 facade/lifecycle/pool/socket/monitor/refresh로, SPOT은 node/data_plane(forwarding/protocol)/pub/sub으로 모듈화되어 있다.
 - **Registry**는 서비스 엔트리를 관리하고, 주기적으로 SERVICE_LIST를 브로드캐스트한다.
 - **Discovery**는 Registry를 구독하여 서비스 목록을 로컬 캐시로 유지한다.
 - **Gateway**와 **SPOT**은 Discovery를 통해 대상을 자동 발견하고 연결한다.
@@ -33,9 +49,9 @@ zlink의 서비스 계층은 7종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
 |--------|-----------|-----------|
 | **Registry** | 서비스 등록소 | 서비스 엔트리를 등록·관리하는 중앙 저장소 |
 | **Discovery** | 서비스 발견 | Registry를 구독하여 서비스 목록을 로컬 캐시로 유지 |
-| **Gateway** | 서비스 게이트웨이 | 서비스에 대한 접근점 + 클라이언트 사이드 로드밸런서. API Gateway(인증, rate limiting 등)와는 다른 개념 |
-| **Gateway (Server)** | 서비스 게이트웨이 | bind 시 원격 Gateway로부터 요청을 받아 처리하는 백엔드 역할 수행 |
-| **SPOT** | 위치(spot) 투명 pub/sub | 객체 단위의 위치투명한 토픽 기반 발행/구독 메시 |
+| **Gateway** | 서비스 게이트웨이 | 접근점 + 클라이언트 사이드 로드밸런서 |
+| **Gateway (Server)** | 서비스 게이트웨이 | bind 시 원격 Gateway의 요청을 처리 |
+| **SPOT** | 위치 투명 pub/sub | 위치투명 토픽 기반 발행/구독 메시 |
 
 ## 3. 서비스 구성 요소
 
@@ -46,8 +62,14 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. Gateway가 Re
 - Registry 클러스터 HA (flooding 동기화)
 - Heartbeat 기반 생존 확인
 - Client-side 서비스 목록 캐싱
+- 내부 모듈:
+  - `discovery_access` (API seam)
+  - `discovery_bootstrap` · `discovery_state`
+  - `discovery_update` · `discovery_uplink`
+  - `discovery_registry_client`
 
-자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md) 및 [Registry 가이드](07-4-registry.ko.md)를 참고.
+자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md) 및
+[Registry 가이드](07-4-registry.ko.md)를 참고.
 
 ### 3.2 Gateway — 위치투명 요청/응답
 
@@ -56,6 +78,11 @@ Discovery 기반으로 서비스 피어를 자동 발견하고, 로드밸런싱�
 - **Thread-safe** — 하나의 Gateway handle에서 `send`를 여러 스레드가 동시 호출 가능
 - Round Robin / Weighted 로드밸런싱
 - 자동 연결/해제 (Discovery 이벤트 기반)
+- 내부 모듈:
+  - `gateway_access` (API seam)
+  - `gateway_facade` · `gateway_lifecycle`
+  - `gateway_pool` · `gateway_socket`
+  - `gateway_monitor` · `gateway_refresh`
 
 자세한 내용은 [Gateway 가이드](07-2-gateway.ko.md)를 참고.
 
@@ -67,10 +94,50 @@ Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여 클러스터 전체�
 - 패턴(와일드카드) 구독
 - Discovery 기반 자동 Mesh 구성
 - **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 operational API를 여러 스레드가 동시 호출 가능
+- 내부 모듈:
+  - `spot_node_access` · `spot_subject_access` (API seam)
+  - `spot_handle` · `spot_node`
+  - `spot_data_plane` (forwarding · protocol)
+  - `spot_pub` · `spot_sub` (option · recv)
 
 자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)를 참고.
 
-## 4. 서비스 간 관계
+### 3.4 Registry — 중앙 서비스 등록소
+
+서비스 엔트리를 등록·관리하는 중앙 저장소. Gateway/SPOT 노드의 등록, 하트비트, 토폴로지 브로드캐스트를 담당한다.
+
+- 내부 모듈: `registry_access` (API seam) · `registry_query_access` (원격 조회 seam)
+
+자세한 내용은 [Registry 가이드](07-4-registry.ko.md)를 참고.
+
+## 4. Service Access Layer 패턴
+
+모든 서비스는 공통된 access layer 패턴을 따른다.
+
+```
+C API (zlink_gateway_send 등)
+    → service_api.cpp (validate + delegate)
+    → *_access.hpp (service-local seam)
+    → service runtime (concrete 구현)
+```
+
+| 서비스 | Access Seam | 역할 |
+|--------|-------------|------|
+| Gateway | `gateway_access_t` | lifecycle, bind/connect, send, option, monitor, TLS |
+| Discovery | `discovery_access_t` | lifecycle, connect_registry, option, monitor |
+| Registry | `registry_access_t` | lifecycle, bind, config, snapshot/query |
+| Registry Query | `registry_query_access_t` | 원격 topology query |
+| SPOT Node | `spot_node_access_t` | lifecycle, bind, peer connect, discovery attach |
+| SPOT Subject | `spot_subject_access_t` | publish, subscribe, option, handler, monitor |
+
+각 access seam은 `service_public_api_guard_t`와 통합되어 callback 모드 추적과
+lifecycle gate(destroy 시 `EBUSY`/`ESHUTDOWN` 계약)를 제공한다.
+
+이 구조 덕분에 API 계층은 concrete service 구현을 직접 알지 않고,
+service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
+해당 service 구현 파일만 수정하면 된다.
+
+## 5. 서비스 간 관계
 
 ```
                     ┌──────────┐

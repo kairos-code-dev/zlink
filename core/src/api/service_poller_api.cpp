@@ -6,10 +6,6 @@
 #include "api/service_api_internal.hpp"
 
 #include "services/gateway/gateway_access.hpp"
-#include "services/spot/spot_internal_receiver.hpp"
-#include "services/spot/spot_node_access.hpp"
-#include "services/spot/spot_pub.hpp"
-#include "services/spot/spot_sub.hpp"
 
 int validate_spot_generic_poller_events (short events_, bool *is_pub_out_)
 {
@@ -53,50 +49,6 @@ void release_poller_registration (const poller_registration_t &registration_)
         default:
             break;
     }
-}
-
-zlink::spot_pub_t *resolve_spot_pub_subject (void *spot_or_node_)
-{
-    if (is_registered_spot_handle (spot_or_node_)) {
-        spot_handle_t *spot = static_cast<spot_handle_t *> (spot_or_node_);
-        zlink::service_public_api_scope_t admission (spot->public_api);
-        if (!admission.acquired ())
-            return NULL;
-        return ensure_spot_pub (spot);
-    }
-    if (is_registered_spot_node_handle (spot_or_node_)) {
-        zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (spot_or_node_);
-        zlink::service_public_api_scope_t admission (node->public_api_guard ());
-        if (!admission.acquired ())
-            return NULL;
-        return node->ensure_default_pub ();
-    }
-    errno = EFAULT;
-    return NULL;
-}
-
-zlink::spot_sub_t *resolve_spot_sub_subject (void *spot_or_node_)
-{
-    if (is_registered_spot_handle (spot_or_node_)) {
-        spot_handle_t *spot = static_cast<spot_handle_t *> (spot_or_node_);
-        zlink::service_public_api_scope_t admission (spot->public_api);
-        if (!admission.acquired ())
-            return NULL;
-        return ensure_spot_sub (spot);
-    }
-    if (is_registered_spot_node_handle (spot_or_node_)) {
-        zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (spot_or_node_);
-        zlink::service_public_api_scope_t admission (node->public_api_guard ());
-        if (!admission.acquired ())
-            return NULL;
-        zlink::spot_internal_receiver_t *receiver =
-          zlink::spot_node_access_t::ensure_internal_receiver (node);
-        if (receiver && receiver->impl ())
-            return receiver->impl ();
-        return node->ensure_default_sub ();
-    }
-    errno = EFAULT;
-    return NULL;
 }
 
 int increment_spot_subject_poller_ref (void *spot_or_node_, short events_)
@@ -205,7 +157,7 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
     if (is_registered_gateway_handle (socket_))
         return poller_add_gateway_registration (poller_, socket_, user_data_,
                                                 events_);
-    if (zlink::spot_pub_t *pub = as_spot_pub_side_handle (socket_)) {
+    if (as_spot_pub_side_handle (socket_)) {
         bool is_pub = false;
         if (validate_spot_generic_poller_events (events_, &is_pub) != 0)
             return -1;
@@ -213,11 +165,14 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
             errno = EINVAL;
             return -1;
         }
-        return poller_add_registration (poller_, pub->poller_socket (),
-                                        user_data_, events_, socket_,
-                                        poller_subject_none);
+        zlink::socket_base_t *socket = spot_pub_poller_socket (socket_);
+        return socket
+                 ? poller_add_registration (poller_, socket, user_data_,
+                                            events_, socket_,
+                                            poller_subject_none)
+                 : -1;
     }
-    if (zlink::spot_sub_t *sub = as_spot_sub_side_handle (socket_)) {
+    if (as_spot_sub_side_handle (socket_)) {
         bool is_pub = false;
         if (validate_spot_generic_poller_events (events_, &is_pub) != 0)
             return -1;
@@ -225,9 +180,12 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
             errno = EINVAL;
             return -1;
         }
-        return poller_add_registration (poller_, sub->poller_socket (),
-                                        user_data_, events_, socket_,
-                                        poller_subject_none);
+        zlink::socket_base_t *socket = spot_sub_poller_socket (socket_);
+        return socket
+                 ? poller_add_registration (poller_, socket, user_data_,
+                                            events_, socket_,
+                                            poller_subject_none)
+                 : -1;
     }
     if (is_registered_spot_handle (socket_)
         || is_registered_spot_node_handle (socket_)) {
@@ -237,34 +195,19 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
         if (increment_spot_subject_poller_ref (socket_, events_) != 0)
             return -1;
 
-        if (is_pub) {
-            zlink::spot_pub_t *pub = resolve_spot_pub_subject (socket_);
-            if (!pub
-                || poller_add_registration (
-                     poller_, pub->poller_socket (), user_data_, events_,
-                     socket_, poller_spot_pub_kind_for_subject (socket_))
-                     != 0) {
-                poller_registration_t registration;
-                registration.subject = socket_;
-                registration.subject_kind =
-                  poller_spot_pub_kind_for_subject (socket_);
-                registration.events = events_;
-                release_poller_registration (registration);
-                return -1;
-            }
-            return 0;
-        }
-
-        zlink::spot_sub_t *sub = resolve_spot_sub_subject (socket_);
-        if (!sub
-            || poller_add_registration (
-                 poller_, sub->poller_socket (), user_data_, events_, socket_,
-                 poller_spot_sub_kind_for_subject (socket_))
+        zlink::socket_base_t *poll_socket =
+          is_pub ? resolve_spot_pub_subject_poller_socket (socket_)
+                 : resolve_spot_sub_subject_poller_socket (socket_);
+        poller_subject_kind_t subject_kind =
+          is_pub ? poller_spot_pub_kind_for_subject (socket_)
+                 : poller_spot_sub_kind_for_subject (socket_);
+        if (!poll_socket
+            || poller_add_registration (poller_, poll_socket, user_data_,
+                                        events_, socket_, subject_kind)
                  != 0) {
             poller_registration_t registration;
             registration.subject = socket_;
-            registration.subject_kind =
-              poller_spot_sub_kind_for_subject (socket_);
+            registration.subject_kind = subject_kind;
             registration.events = events_;
             release_poller_registration (registration);
             return -1;

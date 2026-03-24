@@ -92,9 +92,8 @@ zlink_send(server, parts, 2, 0);
 
 ### Receive Modes
 
-PAIR is recv/poller-only in the public API. Use `zlink_recv()` to receive
-a complete multipart message synchronously. `source_rid` is always empty
-because there is only one peer.
+PAIR is recv/poller-only in the public API.
+Use `zlink_recv()` to receive synchronously.
 
 ```c
 void *pair = zlink_socket(ctx, ZLINK_PAIR);
@@ -117,12 +116,15 @@ if (rc == 0) {
 
 ## 3. Message Format
 
-The PAIR socket exchanges **application data only** without routing_id frames or envelopes.
+PAIR socket message frames contain **application data only**.
 
 ```
 Single frame:     [data]
 Multipart frame:  [frame1][frame2]...[frameN]
 ```
+
+> For `source_rid` and the common receive interface, see
+> [Socket Patterns Overview](03-0-socket-patterns.md#7-common-receive-interface).
 
 Multipart send:
 

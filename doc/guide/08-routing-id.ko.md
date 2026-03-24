@@ -4,7 +4,9 @@
 
 ## 1. 개요
 
-Routing ID는 zlink에서 소켓과 연결을 식별하는 바이너리 데이터이다. ROUTER 소켓에서 메시지 라우팅에 사용되며, STREAM 소켓에서 외부 클라이언트 식별에, 모니터링에서 피어 식별에 활용된다.
+Routing ID는 zlink에서 소켓과 연결을 식별하는 바이너리 데이터이다.
+ROUTER 소켓에서 메시지 라우팅에 사용되며,
+STREAM 소켓에서 외부 클라이언트 식별에, 모니터링에서 피어 식별에 활용된다.
 
 ## 2. zlink_routing_id_t
 
@@ -27,8 +29,8 @@ typedef struct {
 
 ### own vs peer — 사용자가 알아야 할 차이
 
-| | own routing_id | peer routing_id |
-|---|---|---|
+| 항목 | own routing_id | peer routing_id |
+|------|---|---|
 | **생성 시점** | 소켓 생성 시 | 피어 연결 시 |
 | **크기** | 16B (UUID) | 가변 (ROUTER), 4B (STREAM) |
 | **사용** | 핸드셰이크에서 전송 | 수신 메시지에 자동 추가 |
@@ -79,7 +81,10 @@ printf("\n");
 
 ## 5. Connection Alias 설정
 
-`ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 다음 `zlink_connect()` 호출에 적용되는 연결별 별칭이다. `zlink_set_router_option()`으로 설정하며, ROUTER에서 특정 연결을 의미 있는 이름으로 참조할 때 사용한다.
+`ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 다음 `zlink_connect()` 호출에
+적용되는 연결별 별칭이다.
+`zlink_set_router_option()`으로 설정하며,
+ROUTER에서 특정 연결을 의미 있는 이름으로 참조할 때 사용한다.
 
 ```c
 /* 다음 connect에 alias 적용 */
@@ -101,7 +106,13 @@ zlink_connect(socket, "tcp://server2:5556");
 
 ## 6. ROUTER 소켓에서 routing_id 사용법
 
-ROUTER 소켓은 수신 메시지에 routing_id 프레임을 자동으로 앞에 추가한다. 응답 시 동일 routing_id를 사용하여 올바른 피어에게 전송한다.
+ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id를
+**별도 파라미터**(`source_rid`)로 반환한다. 메시지 프레임에는 데이터만 포함된다.
+응답 시 `zlink_send_rid()`에 동일 routing_id를 전달하여 올바른 피어에게 전송한다.
+
+> **libzmq와의 차이:** libzmq ROUTER는 `zmq_recv()`의 첫 프레임으로
+> routing_id를 반환했지만, zlink에서는 모든 소켓 타입에서 routing_id가
+> 별도 파라미터로 분리되어 있다.
 
 ### 기본 요청-응답
 
@@ -254,8 +265,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ### ROUTER vs STREAM routing_id 비교
 
-| | ROUTER | STREAM |
-|---|---|---|
+| 항목 | ROUTER | STREAM |
+|------|---|---|
 | **크기** | 가변 (사용자 설정 또는 16B UUID) | 고정 4B (uint32) |
 | **생성** | 피어의 own routing_id | 서버가 자동 할당 |
 | **설정 가능** | `zlink_set_routing_id()`로 피어가 설정 | 자동 할당만 (설정 불가) |

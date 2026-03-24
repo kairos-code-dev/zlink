@@ -356,4 +356,4 @@ void *control(void *arg)
 > For implementation details (admission gates, ordering semantics, cost
 > model), see [Thread-Safety Internals](../internals/thread-safety.md).
 
-[← Performance](10-performance.md)
+[← Performance](10-performance.md) | [Socket Options →](12-socket-options.md)

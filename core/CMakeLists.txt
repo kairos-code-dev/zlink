@@ -949,10 +949,9 @@ set(api-sources
     src/api/monitor_socket_api.cpp
     src/api/poller_api.cpp
   src/api/service_api.cpp
-  src/api/service_discovery_api.cpp
-  src/api/service_gateway_api.cpp
+    src/api/service_discovery_api.cpp
+    src/api/service_gateway_api.cpp
     src/api/service_handler_api.cpp
-    src/api/service_handler_spot_api.cpp
     src/api/service_mode_api.cpp
   src/api/service_poller_api.cpp
   src/api/service_registry_api.cpp
@@ -989,6 +988,9 @@ set(core-sources
     src/core/timers.cpp
     src/core/options.cpp
     src/core/options_dispatch.cpp
+    src/core/options_core_socket.cpp
+    src/core/options_transport_network.cpp
+    src/core/options_protocol_metadata.cpp
     src/core/options_owner.cpp
     src/core/poller_base.cpp
     src/core/socket_poller.cpp
@@ -1010,6 +1012,8 @@ set(discovery-sources
     src/services/common/service_monitor.cpp
     src/services/common/service_runtime_base.cpp
     src/services/discovery/discovery_access.cpp
+    src/services/discovery/registry_access.cpp
+    src/services/discovery/registry_query_access.cpp
     src/services/discovery/registry.cpp
     src/services/discovery/discovery.cpp
     src/services/discovery/discovery_bootstrap.cpp
@@ -1018,7 +1022,6 @@ set(discovery-sources
     src/services/discovery/discovery_uplink.cpp
     src/services/discovery/discovery_update.cpp
     src/services/gateway/gateway_access.cpp
-    src/services/gateway/gateway.cpp
     src/services/gateway/gateway_facade.cpp
     src/services/gateway/gateway_lifecycle.cpp
     src/services/gateway/gateway_monitor.cpp
@@ -1028,6 +1031,9 @@ set(discovery-sources
 
 set(spot-sources
     src/services/spot/spot_data_plane.cpp
+    src/services/spot/spot_data_plane_forwarding.cpp
+    src/services/spot/spot_data_plane_protocol.cpp
+    src/services/spot/spot_subject_access.cpp
     src/services/spot/spot_node_access.cpp
     src/services/spot/spot_node.cpp
     src/services/spot/spot_node_control.cpp
@@ -1037,6 +1043,8 @@ set(spot-sources
     src/services/spot/spot_pub.cpp
     src/services/spot/spot_runtime.cpp
     src/services/spot/spot_sub_lifecycle.cpp
+    src/services/spot/spot_sub_option.cpp
+    src/services/spot/spot_sub_recv.cpp
     src/services/spot/spot_sub_subject_state.cpp
     src/services/spot/spot_sub.cpp)
 

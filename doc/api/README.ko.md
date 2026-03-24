@@ -16,7 +16,7 @@ pull하는 모드입니다. 소켓은 recv 모드로 시작하며, 핸들러를 
 | 에러 처리 & 버전 | [errors.ko.md](errors.ko.md) | 에러 코드, 에러 문자열, 버전 조회 | 3 |
 | Context | [context.ko.md](context.ko.md) | Context 생성, 종료, 옵션 설정 | 5 |
 | Message | [message.ko.md](message.ko.md) | 메시지 생명주기, 데이터 접근, 속성 | 16 |
-| Socket | [socket.ko.md](socket.ko.md) | 소켓 생성, 핸들러, 옵션, bind/connect, 송수신, pub/sub 데이터 플레인, STREAM API | 19 |
+| Socket | [socket.ko.md](socket.ko.md) | 소켓 생성, 핸들러, 옵션, bind/connect, 송수신 | 19 |
 | Monitoring | [monitoring.ko.md](monitoring.ko.md) | 소켓 모니터, 이벤트, 피어 검사 | 7 |
 | Events | [events.ko.md](events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 | - |
 | Registry | [registry.ko.md](registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 | 9 |
@@ -30,12 +30,12 @@ pull하는 모드입니다. 소켓은 recv 모드로 시작하며, 핸들러를 
 
 | 타입 | 정의 위치 | 설명 |
 |------|-----------|------|
-| [`zlink_msg_t`](message.ko.md) | message.ko.md | 불투명 메시지 컨테이너 (64바이트, 스택 할당 가능) |
-| [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 (1바이트 크기 + 255바이트 데이터) |
+| [`zlink_msg_t`](message.ko.md) | message.ko.md | 불투명 메시지 컨테이너 (64B, 스택 할당 가능) |
+| [`zlink_routing_id_t`](message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 |
 | `zlink_socket_msg_handler_fn` | socket.ko.md | 소켓 메시지 수신 콜백 (아래 [콜백 타입](#콜백-타입) 참조) |
 | [`zlink_monitor_event_t`](monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
-| [`zlink_monitor_snapshot_t`](monitoring.ko.md) | monitoring.ko.md | aggregate monitor snapshot (상태, ready-peer 수, queue depth) |
-| [`zlink_service_event_t`](events.ko.md) | events.ko.md | 서비스 모니터 이벤트 구조체와 subject-aware payload |
+| [`zlink_monitor_snapshot_t`](monitoring.ko.md) | monitoring.ko.md | aggregate monitor snapshot |
+| [`zlink_service_event_t`](events.ko.md) | events.ko.md | 서비스 모니터 이벤트 구조체 |
 | [`zlink_fd_t`](polling.ko.md) | polling.ko.md | 플랫폼 의존적 파일 디스크립터 타입 |
 
 ## 콜백 타입
@@ -50,6 +50,35 @@ pull하는 모드입니다. 소켓은 recv 모드로 시작하며, 핸들러를 
 | [`zlink_free_fn`](message.ko.md) | message.ko.md | 제로카피 메시지를 위한 해제 콜백 |
 | [`zlink_timer_fn`](utilities.ko.md) | utilities.ko.md | 타이머 만료 콜백 |
 | [`zlink_thread_fn`](utilities.ko.md) | utilities.ko.md | 스레드 진입점 함수 |
+
+## 내부 아키텍처
+
+공개 C API는 `core/include/zlink.h`에 정의되며, bindings를 포함한 외부 계약이다.
+내부 구현은 POSD(Philosophy of Software Design) 원칙에 따라 다음 계층으로
+구성되어 있다.
+
+```
+Public API Facade  →  Service Access Layer  →  Service/Socket Runtime
+     (api/)            (*_access.hpp)            (services/, sockets/)
+                                                      ↓
+                                              Runtime Core (core/)
+                                              Engine (engine/asio/)
+                                              Transport/Protocol
+```
+
+| 계층 | 소스 위치 | 역할 |
+|------|-----------|------|
+| API Facade | `core/src/api/` | C API entrypoint; validate + delegate |
+| Service Access | `core/src/services/*/` | service-local access seam (`*_access.hpp`) |
+| Socket Runtime | `core/src/sockets/` | socket semantic + runtime component 분리 |
+| Runtime Core | `core/src/core/` | ctx, options dispatch, multipart send, close/drain |
+| Engine | `core/src/engine/` | Boost.Asio 기반 poller, io_context |
+
+Option dispatch는 세 카테고리로 분리되어 각 도메인 소유자가 validation/apply를
+담당한다: core_socket, transport_network, protocol_metadata.
+
+내부 아키텍처 상세는 [POSD 모듈 구조 문서](../internals/posd-module-structure.ko.md)를
+참조하세요.
 
 ---
 

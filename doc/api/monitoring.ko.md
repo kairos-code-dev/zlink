@@ -50,10 +50,16 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 | 필드 | 설명 |
 |------|------|
 | `event` | 이벤트 타입을 나타내는 비트마스크 (`ZLINK_EVENT_*` 상수 중 하나). |
-| `value` | 이벤트별 값. 연결 이벤트의 경우 파일 디스크립터; 에러 이벤트의 경우 errno 또는 프로토콜 에러 코드; 연결 해제 이벤트의 경우 `ZLINK_DISCONNECT_*` 사유; `*_READY_CHANGED` 이벤트의 경우 현재 ready count. |
-| `routing_id` | 해당되는 경우 이벤트에 관련된 피어의 라우팅 아이덴티티. |
+| `value` | 이벤트별 값 (아래 참조). |
+| `routing_id` | 이벤트 관련 피어의 라우팅 아이덴티티. |
 | `local_addr` | null 종료 로컬 엔드포인트 주소 문자열. |
 | `remote_addr` | null 종료 원격 엔드포인트 주소 문자열. |
+
+`value` 필드 해석:
+- 연결 이벤트: 파일 디스크립터
+- 에러 이벤트: errno 또는 프로토콜 에러 코드
+- 연결 해제 이벤트: `ZLINK_DISCONNECT_*` 사유
+- `*_READY_CHANGED` 이벤트: 현재 ready count
 
 ### zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn
 
@@ -141,7 +147,7 @@ typedef enum zlink_monitor_source_kind_t
 | 상수 | 값 | 설명 |
 |------|-----|------|
 | `ZLINK_EVENT_CONNECTED` | `0x0001` | 원격 피어에 대한 연결이 수립됨. |
-| `ZLINK_EVENT_CONNECT_DELAYED` | `0x0002` | 동기 연결 시도 실패; 비동기 재시도 예약됨. |
+| `ZLINK_EVENT_CONNECT_DELAYED` | `0x0002` | 동기 연결 실패; 비동기 재시도 예약됨. |
 | `ZLINK_EVENT_CONNECT_RETRIED` | `0x0004` | 비동기 연결 재시도 진행 중. |
 | `ZLINK_EVENT_LISTENING` | `0x0008` | 소켓이 성공적으로 바인딩되어 수신 대기 중. |
 | `ZLINK_EVENT_BIND_FAILED` | `0x0010` | 바인딩 시도 실패. |
@@ -149,34 +155,34 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_EVENT_ACCEPT_FAILED` | `0x0040` | 수신 연결 수락 실패. |
 | `ZLINK_EVENT_CLOSED` | `0x0080` | 연결이 정상적으로 닫힘. |
 | `ZLINK_EVENT_CLOSE_FAILED` | `0x0100` | 연결 닫기 실패. |
-| `ZLINK_EVENT_DISCONNECTED` | `0x0200` | 세션 연결 해제됨. 이벤트 값에 `ZLINK_DISCONNECT_*` 사유가 포함됨. |
-| `ZLINK_EVENT_MONITOR_STOPPED` | `0x0400` | 모니터가 중지되어 더 이상 이벤트를 생성하지 않음. |
-| `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 추가 세부 정보 없이 핸드셰이크 실패. |
-| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | 연결 readiness 변화. `value`는 현재 ready count. |
-| `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러로 인한 핸드셰이크 실패. 이벤트 값에 `ZLINK_PROTOCOL_ERROR_*` 코드가 포함됨. |
-| `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패로 인한 핸드셰이크 실패. |
-| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness 변화. `value`는 현재 ready count. |
-| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness 변화. `value`는 현재 ready count. |
+| `ZLINK_EVENT_DISCONNECTED` | `0x0200` | 세션 연결 해제됨. |
+| `ZLINK_EVENT_MONITOR_STOPPED` | `0x0400` | 모니터 중지됨. |
+| `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 핸드셰이크 실패 (상세 없음). |
+| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | 연결 readiness 변화. |
+| `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러로 핸드셰이크 실패. |
+| `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패로 핸드셰이크 실패. |
+| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness 변화. |
+| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness 변화. |
 | `ZLINK_EVENT_ALL` | `0xFFFF` | 모든 이벤트 구독. |
 
 ### 연결 해제 사유
 
-이벤트가 `ZLINK_EVENT_DISCONNECTED`일 때 `zlink_monitor_event_t.value`에 포함되는 값입니다.
+`ZLINK_EVENT_DISCONNECTED` 이벤트의 `value` 필드 값입니다.
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
 | `ZLINK_DISCONNECT_UNKNOWN` | `0` | 사유를 확인할 수 없음. |
-| `ZLINK_DISCONNECT_HANDSHAKE_FAILED` | `3` | 핸드셰이크 실패로 인한 연결 해제. |
-| `ZLINK_DISCONNECT_TRANSPORT_ERROR` | `4` | 트랜스포트 계층 에러로 인한 연결 해제. |
+| `ZLINK_DISCONNECT_HANDSHAKE_FAILED` | `3` | 핸드셰이크 실패. |
+| `ZLINK_DISCONNECT_TRANSPORT_ERROR` | `4` | 트랜스포트 계층 에러. |
 | `ZLINK_DISCONNECT_CTX_TERM` | `5` | Context 종료로 인한 연결 해제. |
 
 ### 프로토콜 에러
 
-이벤트가 `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL`일 때 `zlink_monitor_event_t.value`에 포함되는 값입니다.
+`ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` 이벤트의 `value` 필드 값입니다.
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | 잘못된 형식의 ZMP HELLO 명령. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | 잘못된 ZMP HELLO 명령. |
 
 ## 소켓 모니터 함수
 
@@ -334,12 +340,12 @@ typedef zlink_service_event_t zlink_service_monitor_event_t;
 | `status` | 이벤트별 상태 코드. |
 | `error_code` | `event_type`이 실패를 나타낼 때의 에러 코드. |
 | `value` | 이벤트별 숫자 값. |
-| `detail_flags` | 선택적 필드가 채워졌는지를 나타내는 `ZLINK_EVENT_DETAIL_*` 플래그 비트마스크. |
-| `service_name` | null 종료 서비스 이름. `ZLINK_EVENT_DETAIL_SERVICE_NAME`이 설정될 때 유효. |
-| `endpoint` | null 종료 엔드포인트. `ZLINK_EVENT_DETAIL_ENDPOINT`가 설정될 때 유효. |
-| `routing_id` | 주체 또는 피어의 라우팅 아이덴티티. 해당 detail 플래그가 설정될 때 유효. |
-| `subject` | null 종료 subject 문자열. `ZLINK_EVENT_DETAIL_SUBJECT`가 설정될 때 유효. |
-| `subject_kind` | subject 종류. `ZLINK_EVENT_DETAIL_SUBJECT_KIND`가 설정될 때 유효. |
+| `detail_flags` | `ZLINK_EVENT_DETAIL_*` 플래그 비트마스크. |
+| `service_name` | null 종료 서비스 이름 (`DETAIL_SERVICE_NAME` 시 유효). |
+| `endpoint` | null 종료 엔드포인트 (`DETAIL_ENDPOINT` 시 유효). |
+| `routing_id` | 주체/피어 라우팅 아이덴티티 (해당 detail 플래그 시 유효). |
+| `subject` | null 종료 subject (`DETAIL_SUBJECT` 시 유효). |
+| `subject_kind` | subject 종류 (`DETAIL_SUBJECT_KIND` 시 유효). |
 
 ### zlink_service_monitor_handler_fn
 
@@ -361,7 +367,7 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 필드 | 설명 |
 |------|------|
-| `events` | 관찰할 이벤트를 선택하는 서비스 모니터 이벤트 플래그 비트마스크. 모든 서비스 모니터의 통합 마스크 타입인 `zlink_service_monitor_event_mask_t`를 사용합니다. |
+| `events` | 관찰할 이벤트 플래그 비트마스크 (`zlink_service_monitor_event_mask_t`). |
 
 ### 서비스 종류 상수
 
@@ -387,7 +393,7 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | Discovery readiness 변화; `value`는 현재 ready count |
+| `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | Discovery readiness 변화 |
 | `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | 검색된 서비스가 활성화됨 |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | 검색된 서비스가 비활성화됨 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | 서비스 provider 집합이 변경됨 |
@@ -396,49 +402,54 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | `1 << 8` | Gateway readiness 변화; `value`는 현재 ready count |
-| `ZLINK_GATEWAY_SEND_READY_CHANGED` | `1 << 10` | aggregate send readiness 변화, `value`는 `0` 또는 `1` |
-| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | 피어로의 경로 활성화됨, `value`는 현재 ready route 수 |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | 피어로의 경로 비활성화됨, `value`는 현재 ready route 수 |
+| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | `1 << 8` | Gateway readiness 변화 |
+| `ZLINK_GATEWAY_SEND_READY_CHANGED` | `1 << 10` | aggregate send readiness 변화 |
+| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | 피어 경로 활성화 |
+| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | 피어 경로 비활성화 |
 
 #### SPOT 이벤트
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | SPOT readiness 변화; `value`는 현재 ready count |
+| `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | SPOT readiness 변화 |
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | 구독 필터 적용됨 |
-| `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` | `1 << 14` | 구독 readiness 변화; `value`는 현재 ready count |
+| `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` | `1 << 14` | 구독 readiness 변화 |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB 큐가 가득 참 |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB 큐가 비워짐 |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | subject별 remote delivery-ready 카운트 변화 |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | subject별 delivery-ready 상태 변화 |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | publisher 기준 first-delivery-safe ready 카운트 변화 |
+| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | subject별 remote delivery-ready 변화 |
+| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | subject별 delivery-ready 변화 |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | first-delivery-safe ready 변화 |
 
 #### 서비스 모니터 이벤트 마스크 상수
 
-다음 `ZLINK_SERVICE_MONITOR_EVENT_*` 상수는
-`zlink_service_monitor_open_options_t.events` 비트마스크를 구성할 때 사용하는
-canonical 이름입니다. 위 per-service 상수와 동일한 비트에 매핑됩니다.
+`ZLINK_SERVICE_MONITOR_EVENT_*` 상수는
+`zlink_service_monitor_open_options_t.events` 비트마스크 구성에 사용합니다.
+위 per-service 상수와 동일한 비트에 매핑됩니다.
 
-| 상수 | 매핑 대상 |
-|------|----------|
-| `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | `ZLINK_MONITOR_EVENT_ERROR` |
-| `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | `ZLINK_MONITOR_EVENT_CLOSED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED` | `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_READY_CHANGED` | `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED` | `ZLINK_GATEWAY_SEND_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP` | `ZLINK_GATEWAY_ROUTE_UP` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN` | `ZLINK_GATEWAY_ROUTE_DOWN` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED` | `ZLINK_SPOT_SUB_FILTER_APPLIED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_ALL` | 모든 서비스 이벤트 |
+**공통:**
+- `..._EVENT_ERROR` -> `ZLINK_MONITOR_EVENT_ERROR`
+- `..._EVENT_CLOSED` -> `ZLINK_MONITOR_EVENT_CLOSED`
+
+**Discovery:**
+- `..._DISCOVERY_READY_CHANGED` -> `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED`
+- `..._DISCOVERY_SERVICE_UP` -> `ZLINK_DISCOVERY_SERVICE_UP`
+- `..._DISCOVERY_SERVICE_DOWN` -> `ZLINK_DISCOVERY_SERVICE_DOWN`
+- `..._DISCOVERY_PROVIDERS_CHANGED` -> `ZLINK_DISCOVERY_PROVIDERS_CHANGED`
+
+**Gateway:**
+- `..._GATEWAY_READY_CHANGED` -> `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED`
+- `..._GATEWAY_SEND_READY_CHANGED` -> `ZLINK_GATEWAY_SEND_READY_CHANGED`
+- `..._GATEWAY_ROUTE_UP` -> `ZLINK_GATEWAY_ROUTE_UP`
+- `..._GATEWAY_ROUTE_DOWN` -> `ZLINK_GATEWAY_ROUTE_DOWN`
+
+**SPOT:**
+- `..._SPOT_READY_CHANGED` -> `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED`
+- `..._SPOT_FILTER_APPLIED` -> `ZLINK_SPOT_SUB_FILTER_APPLIED`
+- `..._SPOT_SUBSCRIPTION_READY_CHANGED` -> `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED`
+- `..._SPOT_PUB_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED`
+- `..._SPOT_SUB_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`
+- `..._SPOT_FIRST_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`
+- `ZLINK_SERVICE_MONITOR_EVENT_ALL` -> 모든 서비스 이벤트
 
 ### Detail 플래그 상수
 

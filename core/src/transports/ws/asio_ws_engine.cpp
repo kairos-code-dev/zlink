@@ -196,6 +196,7 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _socket (NULL),
     _fd (fd_),
     _io_context (NULL),
+    _callback_guard (std::shared_ptr<void> (new int (0))),
     _options (options_),
     _endpoint_uri_pair (endpoint_uri_pair_),
     _peer_address (get_peer_address (fd_)),
@@ -295,6 +296,7 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _socket (NULL),
     _fd (fd_),
     _io_context (NULL),
+    _callback_guard (std::shared_ptr<void> (new int (0))),
     _options (options_),
     _endpoint_uri_pair (endpoint_uri_pair_),
     _peer_address (get_peer_address (fd_)),
@@ -475,10 +477,14 @@ void zlink::asio_ws_engine_t::start_ws_handshake ()
 
     //  Start WebSocket handshake (client or server)
     const int handshake_type = _is_client ? 0 : 1;
+    const std::weak_ptr<void> callback_guard = _callback_guard;
 
     _transport->async_handshake (
       handshake_type,
-      [this] (const boost::system::error_code &ec, std::size_t) {
+      [this, callback_guard] (const boost::system::error_code &ec,
+                              std::size_t) {
+          if (callback_guard.expired ())
+              return;
           on_ws_handshake_complete (ec);
       });
 }
@@ -623,10 +629,13 @@ void zlink::asio_ws_engine_t::start_async_read ()
         buffer_size = _read_buffer.size ();
     }
 
+    const std::weak_ptr<void> callback_guard = _callback_guard;
     _transport->async_read_some (
       buffer, buffer_size,
-      [this] (const boost::system::error_code &ec,
-              std::size_t bytes_transferred) {
+      [this, callback_guard] (const boost::system::error_code &ec,
+                              std::size_t bytes_transferred) {
+          if (callback_guard.expired ())
+              return;
           on_read_complete (ec, bytes_transferred);
       });
 }
@@ -778,10 +787,13 @@ void zlink::asio_ws_engine_t::start_async_write ()
 
     _write_pending = true;
 
+    const std::weak_ptr<void> callback_guard = _callback_guard;
     _transport->async_write_some (
       _outpos, _outsize,
-      [this] (const boost::system::error_code &ec,
-              std::size_t bytes_transferred) {
+      [this, callback_guard] (const boost::system::error_code &ec,
+                              std::size_t bytes_transferred) {
+          if (callback_guard.expired ())
+              return;
           on_write_complete (ec, bytes_transferred);
       });
 }
@@ -1377,9 +1389,13 @@ bool zlink::asio_ws_engine_t::prepare_gather_output ()
     _write_pending = true;
     _output_stopped = false;
 
+    const std::weak_ptr<void> callback_guard = _callback_guard;
     _transport->async_writev (
       _gather_header, _gather_header_size, _gather_body, _gather_body_size,
-      [this] (const boost::system::error_code &ec, std::size_t bytes) {
+      [this, callback_guard] (const boost::system::error_code &ec,
+                              std::size_t bytes) {
+          if (callback_guard.expired ())
+              return;
           on_write_complete (ec, bytes);
       });
     return true;
@@ -1700,7 +1716,11 @@ void zlink::asio_ws_engine_t::terminate ()
     WS_ENGINE_DBG ("terminate: read_pending=%d, write_pending=%d",
                    _read_pending, _write_pending);
 
+    if (_terminating)
+        return;
+
     _terminating = true;
+    _callback_guard.reset ();
 
     //  Cancel all timers
     if (_has_handshake_timer) {
@@ -1730,28 +1750,32 @@ void zlink::asio_ws_engine_t::terminate ()
 
     _plugged = false;
     _session = NULL;
-
-    //  Run pending async handlers until they complete.
-    //  close() above forces pending reads/writes to finish quickly
-    //  (operation_aborted/eof), and handlers are guarded by _terminating.
-    //  We bound poll iterations to avoid spinning forever on unexpected sources.
     if (_io_context) {
-        //  Run until no more pending handlers
-        int max_iterations = 100;
-        while ((_read_pending || _write_pending) && max_iterations-- > 0) {
-            WS_ENGINE_DBG ("terminate: polling, read_pending=%d, write_pending=%d",
-                           _read_pending, _write_pending);
-            size_t handled = _io_context->poll_one ();
-            if (handled == 0) {
-                WS_ENGINE_DBG ("terminate: poll_one returned 0");
-                break;
-            }
-        }
+        schedule_terminate_completion ();
+        return;
     }
 
-    //  Ownership of the engine is internal; terminate() is the last release point.
-    WS_ENGINE_DBG ("terminate: done, deleting this");
+    _callback_guard.reset ();
     delete this;
+}
+
+void zlink::asio_ws_engine_t::schedule_terminate_completion ()
+{
+    if (!_io_context) {
+        _callback_guard.reset ();
+        delete this;
+        return;
+    }
+
+    boost::asio::post (*_io_context, [this] () {
+        if (_read_pending || _write_pending) {
+            schedule_terminate_completion ();
+            return;
+        }
+
+        _callback_guard.reset ();
+        delete this;
+    });
 }
 
 bool zlink::asio_ws_engine_t::restart_input ()
@@ -1807,7 +1831,11 @@ void zlink::asio_ws_engine_t::add_timer (int timeout_, int id_)
     _current_timer_id = id_;
 
     _timer->expires_after (std::chrono::milliseconds (timeout_));
-    _timer->async_wait ([this, id_] (const boost::system::error_code &ec) {
+    const std::weak_ptr<void> callback_guard = _callback_guard;
+    _timer->async_wait ([this, id_, callback_guard] (
+                          const boost::system::error_code &ec) {
+        if (callback_guard.expired ())
+            return;
         on_timer (id_, ec);
     });
 }

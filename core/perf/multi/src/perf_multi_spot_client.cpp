@@ -39,11 +39,13 @@ struct spot_client_slot_t
 {
     spot_client_slot_t() :
         node(NULL),
+        index(0),
         stop(false)
     {
     }
 
     void *node;
+    size_t index;
     ready_monitor_t monitor;
     std::atomic<bool> stop;
 };
@@ -60,7 +62,9 @@ struct spot_client_state_t
         seen_msg_size(0),
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
         recv_workers_stop(false),
-        metrics_epoch(1)
+        metrics_epoch(1),
+        use_slot_barrier(false),
+        required_slot_count(0)
     {
     }
 
@@ -70,6 +74,8 @@ struct spot_client_state_t
     std::condition_variable cv;
     std::mutex metrics_mutex;
     std::vector<spot_thread_metrics_t *> thread_metrics;
+    std::vector<size_t> slot_seen_msg_sizes;
+    std::vector<int> slot_seen_phases;
     std::atomic<size_t> expected_msg_size;
     std::atomic<bool> collect_active;
     std::atomic<bool> fatal;
@@ -77,6 +83,8 @@ struct spot_client_state_t
     std::atomic<int> seen_phase;
     std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
+    bool use_slot_barrier;
+    size_t required_slot_count;
 };
 
 spot_client_state_t *g_client_state = NULL;
@@ -241,6 +249,34 @@ size_t resolve_spot_recv_worker_count(size_t slot_count)
     return std::min(slot_count, size_t(4));
 }
 
+int resolve_spot_phase_quorum_percent(const std::string &transport)
+{
+    int default_percent = 90;
+    if (transport == "wss")
+        default_percent = 75;
+    else if (transport == "ws")
+        default_percent = 85;
+
+    return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_QUORUM_PERCENT",
+                                 default_percent,
+                                 1);
+}
+
+size_t resolve_required_slot_count(size_t slot_count,
+                                   const std::string &transport)
+{
+    if (slot_count == 0)
+        return 0;
+
+    const int quorum_percent =
+      std::min(100, resolve_spot_phase_quorum_percent(transport));
+    const size_t required =
+      static_cast<size_t>(
+        (static_cast<unsigned long long>(slot_count) * quorum_percent + 99ULL)
+        / 100ULL);
+    return std::max<size_t>(1, required);
+}
+
 spot_recv_mode_t resolve_spot_run_recv_mode()
 {
     return multi_perf_callback_mode()
@@ -386,7 +422,8 @@ void destroy_spot_slots(spot_client_state_t *state,
 void handle_spot_client_parts(const char *topic,
                               size_t topic_len,
                               zlink_msg_t *parts,
-                              size_t part_count)
+                              size_t part_count,
+                              spot_client_slot_t *slot)
 {
     spot_client_state_t *state = g_client_state;
     if (!state || !topic || topic_len != k_topic_len
@@ -410,6 +447,21 @@ void handle_spot_client_parts(const char *topic,
       state->seen_phase.load(std::memory_order_acquire);
     const bool phase_changed =
       previous_msg_size != header.msg_size || previous_phase != header.phase;
+    bool slot_changed = false;
+    size_t previous_slot_msg_size = 0;
+    int previous_slot_phase = static_cast<int>(perf_multi_metric::phase_unknown);
+    {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (slot && slot->index < state->slot_seen_msg_sizes.size()) {
+            previous_slot_msg_size = state->slot_seen_msg_sizes[slot->index];
+            previous_slot_phase = state->slot_seen_phases[slot->index];
+            slot_changed = previous_slot_msg_size != header.msg_size
+                           || previous_slot_phase != static_cast<int>(header.phase);
+            state->slot_seen_msg_sizes[slot->index] = header.msg_size;
+            state->slot_seen_phases[slot->index] =
+              static_cast<int>(header.phase);
+        }
+    }
     if (phase_changed) {
         state->seen_msg_size.store(header.msg_size, std::memory_order_release);
         state->seen_phase.store(header.phase, std::memory_order_release);
@@ -452,7 +504,7 @@ void handle_spot_client_parts(const char *topic,
         }
     }
 
-    if (phase_changed)
+    if (phase_changed || slot_changed)
         state->cv.notify_all();
 }
 
@@ -461,9 +513,10 @@ void spot_client_sub_handler(const zlink_routing_id_t *,
                              size_t topic_len,
                              zlink_msg_t *parts,
                              size_t part_count,
-                             void *)
+                             void *user_data)
 {
-    handle_spot_client_parts(topic, topic_len, parts, part_count);
+    handle_spot_client_parts(topic, topic_len, parts, part_count,
+                             static_cast<spot_client_slot_t *>(user_data));
 }
 
 bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
@@ -496,8 +549,43 @@ bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
         *received = true;
     if (topic_len < sizeof(topic))
         topic[topic_len] = '\0';
-    handle_spot_client_parts(topic, topic_len, parts, part_count);
+    handle_spot_client_parts(topic, topic_len, parts, part_count, slot);
     return true;
+}
+
+size_t count_slots_observed_size(const spot_client_state_t *state,
+                                 size_t msg_size)
+{
+    if (!state || state->slot_seen_msg_sizes.empty())
+        return 0;
+
+    size_t count = 0;
+    for (size_t i = 0; i < state->slot_seen_msg_sizes.size(); ++i) {
+        if (state->slot_seen_msg_sizes[i] == msg_size
+            && state->slot_seen_phases[i]
+                 != static_cast<int>(perf_multi_metric::phase_unknown)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+size_t count_slots_observed_phase(const spot_client_state_t *state,
+                                  size_t msg_size,
+                                  perf_multi_metric::phase_t phase)
+{
+    if (!state || state->slot_seen_msg_sizes.empty())
+        return 0;
+
+    const int expected_phase = static_cast<int>(phase);
+    size_t count = 0;
+    for (size_t i = 0; i < state->slot_seen_msg_sizes.size(); ++i) {
+        if (state->slot_seen_msg_sizes[i] == msg_size
+            && state->slot_seen_phases[i] == expected_phase) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 bool drain_spot_client_slot(spot_client_slot_t *slot, bool *progressed)
@@ -623,6 +711,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
         spot_client_slot_t *slot = new (std::nothrow) spot_client_slot_t();
         if (!slot)
             return false;
+        slot->index = i;
 
         char service_name[64];
         std::snprintf(service_name, sizeof(service_name), "perf-spot-c%zu", i);
@@ -669,6 +758,15 @@ bool create_spot_slots(ctx_guard_t &ctx,
 
     if (slots_out->empty())
         return false;
+    state->slot_seen_msg_sizes.assign(slots_out->size(), 0);
+    state->slot_seen_phases.assign(
+      slots_out->size(),
+      static_cast<int>(perf_multi_metric::phase_unknown));
+    state->use_slot_barrier = recv_mode == spot_recv_recv;
+    state->required_slot_count =
+      state->use_slot_barrier
+        ? resolve_required_slot_count(slots_out->size(), transport)
+        : 0;
 
     const auto deadline =
       std::chrono::steady_clock::now()
@@ -728,12 +826,17 @@ bool wait_msg_size_start(spot_client_state_t *state,
       lock,
       std::chrono::milliseconds(std::max(1, timeout_ms)),
       [state, msg_size]() {
+          if (!state->use_slot_barrier) {
+              return state->fatal.load(std::memory_order_acquire)
+                     || (state->seen_msg_size.load(std::memory_order_acquire)
+                           == msg_size
+                         && state->seen_phase.load(std::memory_order_acquire)
+                              != static_cast<int>(
+                                perf_multi_metric::phase_unknown));
+          }
           return state->fatal.load(std::memory_order_acquire)
-                 || (state->seen_msg_size.load(std::memory_order_acquire)
-                       == msg_size
-                     && state->seen_phase.load(std::memory_order_acquire)
-                          != static_cast<int>(
-                            perf_multi_metric::phase_unknown));
+                 || count_slots_observed_size(state, msg_size)
+                      >= state->required_slot_count;
       });
 }
 

@@ -5,8 +5,14 @@
 이 문서는 예제/가이드가 아니라 실제 구현 코드 기준의 기본값을 정리한다.
 
 - `core/src/core/options.cpp` (`options_t` 생성자)
-- `core/src/sockets/socket_base.cpp` (컨텍스트 상속 기본값)
+- `core/src/core/options_core_socket.cpp` (core socket 옵션 dispatch)
+- `core/src/core/options_transport_network.cpp` (transport/network 옵션 dispatch)
+- `core/src/core/options_protocol_metadata.cpp` (protocol/metadata 옵션 dispatch)
+- `core/src/sockets/socket_base_lifecycle.cpp` (컨텍스트 상속 기본값)
 - `core/src/sockets/*.cpp` (소켓 타입별 override)
+
+각 옵션의 상세 동작과 영향 범위는
+[소켓 옵션 상세 가이드](../guide/12-socket-options.ko.md)를 참고한다.
 
 ## 1. 공통 기본값 (별도 override가 없을 때)
 
@@ -39,13 +45,20 @@
 | `ZLINK_STREAM_OPT_NOTIFY` | `0` | 비활성 |
 | `ZLINK_OPT_HEARTBEAT_IVL` | `0` | 비활성 |
 | `ZLINK_OPT_HEARTBEAT_TTL` | `0` | 비활성 |
-| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | `-1` | heartbeat 활성 시 interval 기반 fallback |
+| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | `-1` | heartbeat 활성 시 interval fallback |
 | `ZLINK_OPT_TCP_KEEPALIVE` | `-1` | OS 기본값 |
 | `ZLINK_OPT_TCP_KEEPALIVE_CNT` | `-1` | OS 기본값 |
 | `ZLINK_OPT_TCP_KEEPALIVE_IDLE` | `-1` | OS 기본값 |
 | `ZLINK_OPT_TCP_KEEPALIVE_INTVL` | `-1` | OS 기본값 |
 | `ZLINK_OPT_TCP_NODELAY` | `1` | 기본 활성 |
 | `ZLINK_OPT_BINDTODEVICE` | 빈 문자열 | 디바이스 바인딩 없음 |
+| `ZLINK_OPT_HANDSHAKE_IVL` | `30000` | ZMP 핸드셰이크 타임아웃 (ms, 0 = 비활성) |
+| `ZLINK_OPT_PRIORITY` | `0` | 소켓 우선순위 |
+| `ZLINK_OPT_BUSY_POLL` | `0` | busy-poll 비활성 |
+| `ZLINK_OPT_MONITOR_EVENT_VERSION` | `1` | 모니터 이벤트 버전 |
+| `ZLINK_OPT_IN_BATCH_SIZE` | `8192` | 수신 배치 크기 (바이트) |
+| `ZLINK_OPT_OUT_BATCH_SIZE` | `8192` | 송신 배치 크기 (바이트) |
+| `ZLINK_OPT_ZERO_COPY` | `1` | 제로카피 활성 |
 | `ZLINK_OPT_ZMP_METADATA` | `0` | 비활성 |
 
 ## 2. 소켓 타입별 기본값 / Override
@@ -53,10 +66,10 @@
 | 소켓 타입 | 옵션/동작 | 기본값 |
 |---|---|---|
 | `ZLINK_DEALER` | `ZLINK_DEALER_OPT_PROBE` | `0` |
-| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_MANDATORY` | `0` (`zlink_set_router_option()`으로 설정) |
+| `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_MANDATORY` | `0` (router_option API로 설정) |
 | `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_PROBE` | `0` |
 | `ZLINK_ROUTER` | `ZLINK_ROUTER_OPT_HANDOVER` | `0` |
-| `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSE` | `0` (`zlink_set_pub_option()`으로 설정) |
+| `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSE` | `0` (pub_option API로 설정) |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_VERBOSER` | `0` |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_NODROP` | `0` (`_lossy=true`) |
 | `ZLINK_XPUB` | `ZLINK_PUB_OPT_MANUAL` | `0` |
@@ -68,7 +81,7 @@
 | `ZLINK_STREAM` | `ZLINK_OPT_BACKLOG` override | `65536` |
 | `ZLINK_STREAM` | `ZLINK_OPT_SNDBUF` override | 미설정(` <0`)이면 `262144` |
 | `ZLINK_STREAM` | `ZLINK_OPT_RCVBUF` override | 미설정(` <0`)이면 `262144` |
-| `ZLINK_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 미지원 (`EOPNOTSUPP`) |
+| `ZLINK_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 미지원 (`ENOTSUP`) |
 
 ## 3. 읽기 전용 옵션의 초기 상태값
 

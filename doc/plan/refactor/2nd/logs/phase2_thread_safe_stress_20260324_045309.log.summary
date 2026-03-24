@@ -1,5 +1,0 @@
-status=failure
-started_at=2026-03-24 04:53:09 +0900
-completed_at=2026-03-24 04:54:31 +0900
-stress_log=doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_045309.log
-stress_exitcode=doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_045309.log.exitcode

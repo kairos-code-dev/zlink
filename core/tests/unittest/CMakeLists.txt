@@ -12,6 +12,8 @@ set(unittests
     unittest_raw_decoder
     unittest_msg_view
     unittest_service_runtime_base
+    unittest_spot_data_plane_budget
+    unittest_spot_subject_access
     unittest_typed_option)
 
 # add location of platform.hpp for Windows builds

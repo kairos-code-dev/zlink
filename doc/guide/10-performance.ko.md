@@ -50,7 +50,9 @@ zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);
 
 ## 3. HWM (High Water Mark) 설정 가이드
 
-HWM은 **연결별(per-connection) 큐 크기** 제한이다. zlink에서 각 연결(pipe)은 독립적인 송수신 큐를 가지며, HWM은 각 큐가 보관할 수 있는 최대 메시지 수를 설정한다.
+HWM은 **연결별(per-connection) 큐 크기** 제한이다.
+zlink에서 각 연결(pipe)은 독립적인 송수신 큐를 가지며,
+HWM은 각 큐가 보관할 수 있는 최대 메시지 수를 설정한다.
 
 ```c
 int hwm = 100;
@@ -75,7 +77,9 @@ HWM에 도달하면 소켓 타입과 송신 플래그에 따라 동작이 달라
 
 ### 복구 메커니즘 (LWM)
 
-전송 큐가 HWM에 도달하면 해당 연결의 pipe가 non-writable이 된다. 수신 측이 메시지를 소비하여 큐가 **Low Water Mark (LWM)** 이하로 drain되면 `activate_write` 시그널이 발생하여 다시 writable로 전환된다.
+전송 큐가 HWM에 도달하면 해당 연결의 pipe가 non-writable이 된다.
+수신 측이 메시지를 소비하여 큐가 **Low Water Mark (LWM)** 이하로 drain되면
+`activate_write` 시그널이 발생하여 다시 writable로 전환된다.
 
 LWM 공식: **`(HWM + 1) / 2`**
 
@@ -83,7 +87,8 @@ LWM 공식: **`(HWM + 1) / 2`**
 - 블로킹 `zlink_send()` 호출이 재개된다.
 - send-ready 핸들러가 호출된다 (설치된 경우).
 
-이 히스테리시스(hysteresis)는 writable/non-writable 상태 간의 빠른 진동을 방지한다.
+이 히스테리시스(hysteresis -- 상한과 하한을 다르게 두어 상태 전환에
+간격을 만드는 기법)는 writable/non-writable 상태 간의 빠른 진동을 방지한다.
 
 ```
 예: HWM = 100
@@ -136,8 +141,8 @@ Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입�
 `flags=0`이면 `zlink_send()`는 전송 큐에 공간이 생길 때까지 블로킹한다.
 `ZLINK_OPT_SNDTIMEO`로 블로킹 시간을 제한할 수 있다.
 
-| SNDTIMEO | 동작 |
-|---|---|
+| SNDTIMEO 값 | 동작 |
+|-------------|------|
 | -1 (기본) | 무한 블로킹 |
 | 0 | 즉시 `EAGAIN` 반환 (`ZLINK_DONTWAIT`와 동일) |
 | N (ms) | 최대 N밀리초 블로킹 후 `EAGAIN` |
@@ -183,12 +188,16 @@ writable로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`�
 2. `EAGAIN` 시 전송 중단.
 3. send-ready 콜백이 호출되면 전송 재개.
 
-동일한 API는 callback mode의 raw `STREAM`, `SPOT`, `SPOT Node`에만
-존재한다. Gateway는 대신 poller `ZLINK_POLLOUT`를 사용한다.
+이 API는 모든 send-capable handle(raw 소켓, Gateway, SPOT, SPOT Node)에서
+동일하게 동작한다. 기본적으로 송신 백프레셔는 poller `ZLINK_POLLOUT`으로
+감지하며, `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
+콜백 등록 이후 data-plane `ZLINK_POLLOUT`은 `EBUSY`로 실패한다.
 
-**제약:**
-- 교체 전용: `NULL` 전달은 유효하지 않다.
-- 자기 콜백 내에서 교체 불가 (`EDEADLK`).
+**동작 규칙:**
+- 여러 번 호출하여 콜백을 교체할 수 있다 (이전 핸들러를 atomic으로 덮어씀).
+- `NULL` 전달은 `EINVAL` — 한번 등록하면 해제는 불가하고 다른 함수로 교체만 가능하다.
+- 자기 콜백 내에서 교체 불가 (`EDEADLK`). 콜백 밖에서는 자유롭게 교체 가능.
+- 등록 이후 data-plane poller `ZLINK_POLLOUT`은 `EBUSY`로 실패한다.
 
 ```c
 typedef struct {
@@ -274,8 +283,8 @@ void on_message(const zlink_routing_id_t *rid,
 zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스레딩과
 흐름 제어 동작이 달라진다.
 
-| | Callback 모드 | Pull 모드 |
-|---|---|---|
+| 항목 | Callback 모드 | Pull 모드 |
+|------|---|---|
 | 트리거 | 메시지 도착 시 자동 | `zlink_recv()` 호출 |
 | 실행 스레드 | I/O 스레드 | 애플리케이션 스레드 |
 | 전환 | 한방향 (영구) | 기본; handler attach 후 불가 |

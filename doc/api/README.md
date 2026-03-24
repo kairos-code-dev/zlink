@@ -51,6 +51,37 @@ constant exported by `<zlink.h>`.
 | [`zlink_timer_fn`](utilities.md) | utilities.md | Timer expiry callback |
 | [`zlink_thread_fn`](utilities.md) | utilities.md | Thread entry-point function |
 
+## Internal Architecture
+
+The public C API is defined in `core/include/zlink.h` and serves as the
+external contract including bindings. The internal implementation follows
+POSD (Philosophy of Software Design) principles and is organized into
+the following layers:
+
+```
+Public API Facade  →  Service Access Layer  →  Service/Socket Runtime
+     (api/)            (*_access.hpp)            (services/ · sockets/)
+                                                      ↓
+                                              Runtime Core (core/)
+                                              Engine (engine/asio/)
+                                              Transport/Protocol
+```
+
+| Layer | Source Location | Role |
+|-------|-----------------|------|
+| API Facade | `core/src/api/` | C API entry point. Validate + delegate. 37 files split by concern |
+| Service Access | `core/src/services/*/` | Service-local access seam (`*_access.hpp`). Contract between API and concrete implementation |
+| Socket Runtime | `core/src/sockets/` | Socket semantic (per-family) + runtime components (dispatch/monitor/endpoint/lifecycle) separation |
+| Runtime Core | `core/src/core/` | ctx, options dispatch (core_socket/transport/protocol), multipart_send_txn, close/drain |
+| Engine | `core/src/engine/` | Boost.Asio-based poller, io_context, mailbox execution backbone |
+
+Option dispatch is split into three categories, each handled by its own
+domain owner for validation/apply: core_socket, transport_network,
+protocol_metadata.
+
+For internal architecture details, see the
+[POSD Module Structure](../internals/posd-module-structure.md) document.
+
 ---
 
 For conceptual guides and tutorials, see the [User Guide](../guide/01-overview.md).

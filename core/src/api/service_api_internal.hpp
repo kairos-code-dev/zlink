@@ -7,51 +7,17 @@
 
 #include "api/poller_api_internal.hpp"
 #include "services/common/service_public_api.hpp"
-#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 namespace zlink
 {
 class gateway_t;
-class spot_pub_t;
-class spot_sub_t;
 }
-
-struct spot_handle_t
-{
-    spot_handle_t () :
-        tag (0x1e6700dc),
-        node (NULL),
-        pub (NULL),
-        sub (NULL),
-        handler (NULL),
-        handler_userdata (NULL)
-    {
-    }
-
-    bool check_tag () const { return tag == 0x1e6700dc; }
-
-    uint32_t tag;
-    zlink::service_public_api_guard_t public_api;
-    zlink::spot_node_t *node;
-    zlink::spot_pub_t *pub;
-    zlink::spot_sub_t *sub;
-    zlink_subscribe_handler_fn handler;
-    void *handler_userdata;
-    zlink::spot_node_t::pub_defaults_t pending_pub_defaults;
-    zlink::spot_node_t::sub_defaults_t pending_sub_defaults;
-};
 
 bool is_registered_gateway_handle (void *gateway_);
 bool is_registered_spot_node_handle (void *node_);
 bool is_registered_spot_handle (void *spot_);
-
-zlink::spot_pub_t *as_spot_pub_side_handle (void *handle_);
-zlink::spot_sub_t *as_spot_sub_side_handle (void *handle_);
-zlink::spot_node_t *as_spot_node_handle (void *handle_);
-spot_handle_t *as_spot_handle (void *spot_);
-
-zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_);
-zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_);
 
 void register_gateway_mode_state (zlink::gateway_t *gateway_);
 void register_spot_node_mode_state (zlink::spot_node_t *node_);
@@ -77,33 +43,6 @@ void spot_revert_send_ready_mode (spot_handle_t *spot_);
 int spot_node_activate_send_ready_mode (zlink::spot_node_t *node_,
                                         bool *already_active_out_);
 void spot_node_revert_send_ready_mode (zlink::spot_node_t *node_);
-bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_);
-void clear_spot_node_handler_registration (zlink::spot_node_t *node_);
-int spot_install_handler (spot_handle_t *spot_,
-                          zlink_subscribe_handler_fn handler_,
-                          void *userdata_);
-int spot_node_install_handler (zlink::spot_node_t *node_,
-                               zlink_subscribe_handler_fn handler_,
-                               void *userdata_);
-int gateway_install_recv_handler (zlink::gateway_t *gateway_,
-                                  zlink_socket_msg_handler_fn handler_,
-                                  void *userdata_);
-int spot_install_recv_handler (spot_handle_t *spot_,
-                               zlink_subscribe_handler_fn handler_,
-                               void *userdata_);
-int spot_node_install_recv_handler (zlink::spot_node_t *node_,
-                                    zlink_subscribe_handler_fn handler_,
-                                    void *userdata_);
-int gateway_install_send_ready_handler (zlink::gateway_t *gateway_,
-                                        zlink_send_ready_handler_fn handler_,
-                                        void *userdata_);
-int spot_install_send_ready_handler (spot_handle_t *spot_,
-                                     zlink_send_ready_handler_fn handler_,
-                                     void *userdata_);
-int spot_node_install_send_ready_handler (
-  zlink::spot_node_t *node_,
-  zlink_send_ready_handler_fn handler_,
-  void *userdata_);
 int increment_gateway_poller_ref (zlink::gateway_t *gateway_);
 int increment_gateway_poller_ref (zlink::gateway_t *gateway_, short events_);
 void decrement_gateway_poller_ref (zlink::gateway_t *gateway_);
@@ -126,8 +65,6 @@ int poller_add_gateway_registration (poller_handle_t *poller_,
 int poller_modify_gateway_registration (poller_handle_t *poller_,
                                         void *gateway_,
                                         short events_);
-zlink::spot_pub_t *resolve_spot_pub_subject (void *spot_or_node_);
-zlink::spot_sub_t *resolve_spot_sub_subject (void *spot_or_node_);
 int increment_spot_subject_poller_ref (void *spot_or_node_, short events_);
 poller_subject_kind_t poller_spot_pub_kind_for_subject (void *spot_or_node_);
 poller_subject_kind_t poller_spot_sub_kind_for_subject (void *spot_or_node_);

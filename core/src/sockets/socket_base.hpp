@@ -321,11 +321,44 @@ class socket_base_t : public own_t,
     typedef zlink::socket_endpoint_pipe_t endpoint_pipe_t;
     typedef zlink::socket_endpoints_t endpoints_t;
     typedef zlink::socket_inprocs_t inprocs_t;
-    typedef zlink::socket_endpoint_registry_t endpoint_registry_t;
-    typedef zlink::socket_monitor_bridge_t monitor_bridge_t;
+    typedef zlink::socket_endpoint_runtime_t endpoint_runtime_t;
+    typedef zlink::socket_monitor_runtime_t monitor_runtime_t;
     typedef zlink::socket_dispatch_bridge_t dispatch_bridge_t;
-    typedef zlink::socket_lifecycle_hooks_t lifecycle_hooks_t;
+    typedef zlink::socket_lifecycle_coordinator_t lifecycle_coordinator_t;
     typedef zlink::socket_runtime_t socket_runtime_t;
+
+    endpoint_runtime_t &endpoint_runtime ()
+    {
+        return _runtime.endpoint_runtime;
+    }
+    const endpoint_runtime_t &endpoint_runtime () const
+    {
+        return _runtime.endpoint_runtime;
+    }
+    monitor_runtime_t &monitor_runtime ()
+    {
+        return _runtime.monitor_runtime;
+    }
+    const monitor_runtime_t &monitor_runtime () const
+    {
+        return _runtime.monitor_runtime;
+    }
+    dispatch_bridge_t &dispatch_runtime ()
+    {
+        return _runtime.dispatch_bridge;
+    }
+    const dispatch_bridge_t &dispatch_runtime () const
+    {
+        return _runtime.dispatch_bridge;
+    }
+    lifecycle_coordinator_t &lifecycle_coordinator ()
+    {
+        return _runtime.lifecycle_coordinator;
+    }
+    const lifecycle_coordinator_t &lifecycle_coordinator () const
+    {
+        return _runtime.lifecycle_coordinator;
+    }
 
     // test if event should be sent and then dispatch it
     void event (const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -459,45 +492,6 @@ class socket_base_t : public own_t,
     // Last socket endpoint resolved URI
     std::string _last_endpoint;
     socket_runtime_t _runtime;
-    endpoints_t &_endpoints;
-    inprocs_t &_inprocs;
-    void *&_monitor_socket;
-    int64_t &_monitor_events;
-    std::atomic<int64_t> &_monitor_events_atomic;
-    bool &_monitor_lossy;
-    atomic_counter_t &_mailbox_refcnt;
-    bool &_destroy_pending;
-    bool &_monitor_async_mailbox_owned;
-    std::atomic<bool> &_async_mailbox_active;
-    std::atomic<bool> &_async_quiesce_pending;
-    std::atomic<bool> &_async_processing_done;
-    mutex_t &_async_done_mu;
-    condition_variable_t &_async_done_cv;
-    std::atomic<zlink_socket_msg_handler_fn> &_socket_msg_handler;
-    std::atomic<void *> &_socket_msg_handler_subject;
-    std::atomic<void *> &_socket_msg_handler_userdata;
-    std::atomic<zlink_subscribe_handler_fn> &_spot_handler;
-    std::atomic<void *> &_spot_handler_userdata;
-    std::atomic<uint32_t> &_public_api_state;
-    std::atomic<bool> &_public_api_sync;
-    std::atomic<uint32_t> &_callback_api_depth;
-    std::atomic<bool> &_close_deferred;
-    std::atomic<zlink_send_ready_handler_fn> &_send_ready_handler;
-    std::atomic<void *> &_send_ready_handler_subject;
-    std::atomic<void *> &_send_ready_handler_userdata;
-    std::atomic<uint32_t> &_send_ready_seq;
-    mutex_t &_send_ready_writer_sync;
-    std::atomic<bool> &_send_ready_armed;
-    std::recursive_mutex &_socket_msg_dispatch_sync;
-    mutex_t &_monitor_sync;
-    mutex_t &_monitor_queue_sync;
-    condition_variable_t &_monitor_queue_cv;
-    std::deque<monitor_event_record_t> &_monitor_queue;
-    bool &_monitor_queue_stop;
-    thread_t &_monitor_thread;
-    bool &_monitor_thread_started;
-    zlink_routing_id_t &_last_recv_source_rid;
-    bool &_last_recv_source_rid_valid;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 

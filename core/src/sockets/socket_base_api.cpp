@@ -26,97 +26,48 @@ std::string make_monitor_ready_key (
     return key;
 }
 
-const uint32_t public_api_closing_bit = 0x80000000u;
-const uint32_t public_api_inflight_mask = ~public_api_closing_bit;
 }
 
 bool zlink::socket_base_t::enter_public_api ()
 {
-    const uint32_t old =
-      _public_api_state.fetch_add (1, std::memory_order_acq_rel);
-    if ((old & public_api_closing_bit) == 0)
-        return true;
-
-    const uint32_t reverted =
-      _public_api_state.fetch_sub (1, std::memory_order_acq_rel);
-    zlink_assert ((reverted & public_api_inflight_mask) > 0);
-    errno = ESHUTDOWN;
-    return false;
+    return lifecycle_coordinator ().enter_public_api ();
 }
 
 void zlink::socket_base_t::leave_public_api ()
 {
-    const uint32_t old =
-      _public_api_state.fetch_sub (1, std::memory_order_acq_rel);
-    zlink_assert ((old & public_api_inflight_mask) > 0);
+    lifecycle_coordinator ().leave_public_api ();
 }
 
 bool zlink::socket_base_t::enter_callback_api ()
 {
-    if (!enter_public_api ())
-        return false;
-
-    _callback_api_depth.fetch_add (1, std::memory_order_acq_rel);
-    return true;
+    return lifecycle_coordinator ().enter_callback_api ();
 }
 
 void zlink::socket_base_t::leave_callback_api ()
 {
-    const uint32_t depth =
-      _callback_api_depth.fetch_sub (1, std::memory_order_acq_rel) - 1;
-    leave_public_api ();
-
-    if (depth == 0
-        && _close_deferred.load (std::memory_order_acquire)
-        && public_close_requested ()) {
+    if (lifecycle_coordinator ().leave_callback_api ())
         finish_close_handoff ();
-    }
 }
 
 bool zlink::socket_base_t::begin_close_or_fail_busy (bool from_self_callback_)
 {
-    uint32_t old = _public_api_state.load (std::memory_order_acquire);
-    while (true) {
-        if ((old & public_api_closing_bit) != 0) {
-            errno = EALREADY;
-            return false;
-        }
-
-        if (!from_self_callback_ && (old & public_api_inflight_mask) != 0) {
-            errno = EBUSY;
-            return false;
-        }
-
-        const uint32_t desired = old | public_api_closing_bit;
-        if (_public_api_state.compare_exchange_weak (
-              old, desired, std::memory_order_acq_rel,
-              std::memory_order_acquire)) {
-            if (from_self_callback_)
-                _close_deferred.store (true, std::memory_order_release);
-            return true;
-        }
-    }
+    return lifecycle_coordinator ().begin_close_or_fail_busy (
+      from_self_callback_);
 }
 
 bool zlink::socket_base_t::public_close_requested () const
 {
-    return (_public_api_state.load (std::memory_order_acquire)
-            & public_api_closing_bit)
-           != 0;
+    return lifecycle_coordinator ().public_close_requested ();
 }
 
 void zlink::socket_base_t::lock_public_api_sync ()
 {
-    bool expected = false;
-    while (!_public_api_sync.compare_exchange_weak (
-      expected, true, std::memory_order_acquire, std::memory_order_relaxed)) {
-        expected = false;
-    }
+    lifecycle_coordinator ().lock_public_api_sync ();
 }
 
 void zlink::socket_base_t::unlock_public_api_sync ()
 {
-    _public_api_sync.store (false, std::memory_order_release);
+    lifecycle_coordinator ().unlock_public_api_sync ();
 }
 
 bool zlink::socket_base_t::send_ready_slot (
@@ -125,16 +76,19 @@ bool zlink::socket_base_t::send_ready_slot (
     if (!handler_out_ || !subject_out_)
         return false;
 
+    const dispatch_bridge_t &dispatch = dispatch_runtime ();
     while (true) {
-        const uint32_t s1 = _send_ready_seq.load (std::memory_order_acquire);
+        const uint32_t s1 = dispatch.send_ready_seq.load (
+          std::memory_order_acquire);
         if ((s1 & 1u) != 0)
             continue;
 
         zlink_send_ready_handler_fn handler =
-          _send_ready_handler.load (std::memory_order_acquire);
+          dispatch.send_ready_handler.load (std::memory_order_acquire);
         void *subject =
-          _send_ready_handler_subject.load (std::memory_order_acquire);
-        const uint32_t s2 = _send_ready_seq.load (std::memory_order_acquire);
+          dispatch.send_ready_handler_subject.load (std::memory_order_acquire);
+        const uint32_t s2 = dispatch.send_ready_seq.load (
+          std::memory_order_acquire);
         if (s1 != s2 || (s2 & 1u) != 0)
             continue;
 
@@ -146,12 +100,12 @@ bool zlink::socket_base_t::send_ready_slot (
 
 void zlink::socket_base_t::finish_close_handoff ()
 {
-    _close_deferred.store (false, std::memory_order_release);
+    lifecycle_coordinator ().clear_deferred_close ();
 
-    if (_async_mailbox_active.load (std::memory_order_acquire)) {
+    if (lifecycle_coordinator ().is_async_mailbox_active ()) {
         stop_async_mailbox_processing ();
         wait_async_quiesced (2000);
-    } else if (_async_quiesce_pending.load (std::memory_order_acquire)) {
+    } else if (lifecycle_coordinator ().is_async_quiesce_pending ()) {
         wait_async_quiesced (2000);
     }
 
@@ -178,7 +132,7 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
 {
     pipe_->set_event_sink (this);
     {
-        scoped_lock_t lock (_monitor_sync);
+        scoped_lock_t lock (monitor_runtime ().sync);
         _pipes.push_back (pipe_);
     }
 
@@ -408,17 +362,17 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
     }
 
     xpipe_terminated (pipe_);
-    _inprocs.erase_pipe (pipe_);
+    endpoint_runtime ().inprocs.erase_pipe (pipe_);
 
     {
-        scoped_lock_t lock (_monitor_sync);
+        scoped_lock_t lock (monitor_runtime ().sync);
         _pipes.erase (pipe_);
     }
 
     uint32_t ready_count = 0;
     bool ready_changed = false;
     {
-        scoped_lock_t lock (_monitor_sync);
+        scoped_lock_t lock (monitor_runtime ().sync);
         ready_changed =
           _ready_connection_keys.erase (make_monitor_ready_key (
                                           endpoint_pair, routing_id_data,
@@ -436,7 +390,7 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
     const std::string &identifier = pipe_->get_endpoint_pair ().identifier ();
     if (!identifier.empty ()) {
         std::pair<endpoints_t::iterator, endpoints_t::iterator> range;
-        range = _endpoints.equal_range (identifier);
+        range = endpoint_runtime ().endpoints.equal_range (identifier);
 
         for (endpoints_t::iterator it = range.first; it != range.second; ++it) {
             if (it->second.second == pipe_) {

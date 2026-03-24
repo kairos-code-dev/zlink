@@ -39,7 +39,7 @@ void zlink::socket_base_t::start_reaping (poller_t *poller_)
     //  Safety net: if the async mailbox handler is still running
     //  (e.g. close() was bypassed or quiesce timed out), wait here
     //  before the reaper touches socket internal state.
-    if (_async_quiesce_pending.load (std::memory_order_acquire))
+    if (lifecycle_coordinator ().is_async_quiesce_pending ())
         wait_async_quiesced (1000);
 
     //  Plug the socket to the reaper thread.
@@ -109,41 +109,21 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
 int zlink::socket_base_t::start_async_mailbox_processing (
   io_thread_t *io_thread_)
 {
-    if (!io_thread_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
-    _async_mailbox_active.store (true, std::memory_order_release);
-    mailbox->set_io_context (&io_thread_->get_io_context (),
-                             &socket_base_t::async_mailbox_handler, this,
-                             &socket_base_t::async_mailbox_pre_post);
-    mailbox->schedule_if_needed ();
-    return 0;
+    return lifecycle_coordinator ().start_async_mailbox_processing (
+      static_cast<mailbox_t *> (_mailbox), io_thread_,
+      &socket_base_t::async_mailbox_handler, this,
+      &socket_base_t::async_mailbox_pre_post);
 }
 
 void zlink::socket_base_t::stop_async_mailbox_processing ()
 {
-    _async_mailbox_active.store (false, std::memory_order_release);
-    _async_processing_done.store (false, std::memory_order_release);
-    _async_quiesce_pending.store (true, std::memory_order_release);
-    mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
-    mailbox->schedule_if_needed ();
+    lifecycle_coordinator ().stop_async_mailbox_processing (
+      static_cast<mailbox_t *> (_mailbox));
 }
 
 void zlink::socket_base_t::wait_async_quiesced (int timeout_ms_)
 {
-    if (_async_processing_done.load (std::memory_order_acquire))
-        return;
-    scoped_lock_t lock (_async_done_mu);
-    while (!_async_processing_done.load (std::memory_order_acquire)) {
-        const int rc =
-          _async_done_cv.wait (&_async_done_mu,
-                               timeout_ms_ > 0 ? timeout_ms_ : 2000);
-        if (rc != 0)
-            break;
-    }
+    lifecycle_coordinator ().wait_async_quiesced (timeout_ms_);
 }
 
 void zlink::socket_base_t::process_stop ()
@@ -152,7 +132,7 @@ void zlink::socket_base_t::process_stop ()
     //  We'll remember the fact so that any blocking call is interrupted and any
     //  further attempt to use the socket will return ETERM. The user is still
     //  responsible for calling zlink_close on the socket though!
-    scoped_lock_t lock (_monitor_sync);
+    scoped_lock_t lock (monitor_runtime ().sync);
     stop_monitor ();
 
     _ctx_terminated = true;
@@ -237,21 +217,13 @@ void zlink::socket_base_t::process_async_mailbox ()
             check_destroy ();
             return;
         }
-        if (_async_mailbox_active.load (std::memory_order_acquire))
+        if (lifecycle_coordinator ().is_async_mailbox_active ())
             xdispatch_io ();
-        if (!_async_mailbox_active.load (std::memory_order_acquire)) {
+        if (!lifecycle_coordinator ().is_async_mailbox_active ()) {
             mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
             mailbox->reschedule_if_needed ();
-            mailbox->set_io_context (NULL, NULL, NULL, NULL);
             //  Signal quiesce completion to waiting close()/start_reaping().
-            if (_async_quiesce_pending.load (std::memory_order_acquire)) {
-                _async_quiesce_pending.store (false,
-                                              std::memory_order_release);
-                _async_processing_done.store (true,
-                                              std::memory_order_release);
-                scoped_lock_t lock (_async_done_mu);
-                _async_done_cv.broadcast ();
-            }
+            lifecycle_coordinator ().mark_async_processing_stopped (mailbox);
             return;
         }
     } while (static_cast<mailbox_t *> (_mailbox)->reschedule_if_needed ());
@@ -271,8 +243,8 @@ void zlink::socket_base_t::check_destroy ()
 {
     //  If the object was already marked as destroyed, finish the deallocation.
     if (_destroyed) {
-        _destroy_pending = true;
-        if (_mailbox_refcnt.add (0) != 0)
+        lifecycle_coordinator ().mark_destroy_pending ();
+        if (lifecycle_coordinator ().mailbox_refcount () != 0)
             return;
 
         inc_mailbox_ref ();
@@ -288,12 +260,13 @@ void zlink::socket_base_t::check_destroy ()
 
 void zlink::socket_base_t::inc_mailbox_ref ()
 {
-    _mailbox_refcnt.add (1);
+    lifecycle_coordinator ().inc_mailbox_ref ();
 }
 
 void zlink::socket_base_t::dec_mailbox_ref ()
 {
-    if (_mailbox_refcnt.sub (1) || !_destroy_pending)
+    if (lifecycle_coordinator ().dec_mailbox_ref ()
+        || !lifecycle_coordinator ().is_destroy_pending ())
         return;
 
     finalize_destroy ();
@@ -301,7 +274,7 @@ void zlink::socket_base_t::dec_mailbox_ref ()
 
 void zlink::socket_base_t::finalize_destroy ()
 {
-    _destroy_pending = false;
+    lifecycle_coordinator ().clear_destroy_pending ();
 
     //  Remove the socket from the context.
     destroy_socket (this);

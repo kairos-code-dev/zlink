@@ -339,11 +339,11 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
             emit_inproc_connection_ready (new_pipes[0]);
 
         _last_endpoint.assign (endpoint_uri_);
-        _inprocs.emplace (endpoint_uri_, new_pipes[0]);
+        endpoint_runtime ().inprocs.emplace (endpoint_uri_, new_pipes[0]);
         options.connected = true;
         return 0;
     }
-    if (unlikely (0 != _endpoints.count (endpoint_uri_)))
+    if (unlikely (0 != endpoint_runtime ().endpoints.count (endpoint_uri_)))
         return 0;
 
     io_thread_t *io_thread = choose_io_thread (options.affinity);
@@ -478,14 +478,16 @@ std::string zlink::socket_base_t::resolve_tcp_addr (
   std::string endpoint_uri_pair_,
   const char *tcp_address_)
 {
-    if (_endpoints.find (endpoint_uri_pair_) == _endpoints.end ()) {
+    if (endpoint_runtime ().endpoints.find (endpoint_uri_pair_)
+        == endpoint_runtime ().endpoints.end ()) {
         tcp_address_t *tcp_addr = new (std::nothrow) tcp_address_t ();
         alloc_assert (tcp_addr);
         int rc = tcp_addr->resolve (tcp_address_, false, options.ipv6);
 
         if (rc == 0) {
             tcp_addr->to_string (endpoint_uri_pair_);
-            if (_endpoints.find (endpoint_uri_pair_) == _endpoints.end ()) {
+            if (endpoint_runtime ().endpoints.find (endpoint_uri_pair_)
+                == endpoint_runtime ().endpoints.end ()) {
                 rc = tcp_addr->resolve (tcp_address_, true, options.ipv6);
                 if (rc == 0)
                     tcp_addr->to_string (endpoint_uri_pair_);
@@ -501,8 +503,8 @@ void zlink::socket_base_t::add_endpoint (const endpoint_uri_pair_t &endpoint_pai
                                          pipe_t *pipe_)
 {
     launch_child (endpoint_);
-    _endpoints.ZLINK_MAP_INSERT_OR_EMPLACE (endpoint_pair_.identifier (),
-                                            endpoint_pipe_t (endpoint_, pipe_));
+    endpoint_runtime ().endpoints.ZLINK_MAP_INSERT_OR_EMPLACE (
+      endpoint_pair_.identifier (), endpoint_pipe_t (endpoint_, pipe_));
 
     if (pipe_ != NULL)
         pipe_->set_endpoint_pair (endpoint_pair_);
@@ -543,7 +545,8 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
     if (uri_protocol == protocol_name::inproc) {
         const int inproc_rc = unregister_endpoint (endpoint_uri_str, this) == 0
                                 ? 0
-                                : _inprocs.erase_pipes (endpoint_uri_str);
+                                : endpoint_runtime ().inprocs.erase_pipes (
+                                    endpoint_uri_str);
         leave_public_api ();
         return inproc_rc;
     }
@@ -558,7 +561,7 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
         : endpoint_uri_str;
 
     const std::pair<endpoints_t::iterator, endpoints_t::iterator> range =
-      _endpoints.equal_range (resolved_endpoint_uri);
+      endpoint_runtime ().endpoints.equal_range (resolved_endpoint_uri);
     if (range.first == range.second) {
         errno = ENOENT;
         leave_public_api ();
@@ -578,7 +581,7 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
         if (pipe->get_endpoint_pair ().identifier () == resolved_endpoint_uri)
             pipe->terminate (false);
     }
-    _endpoints.erase (range.first, range.second);
+    endpoint_runtime ().endpoints.erase (range.first, range.second);
     leave_public_api ();
     return 0;
 }

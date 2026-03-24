@@ -106,52 +106,6 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _ticks (0),
     _rcvmore (false),
     _runtime (),
-    _endpoints (_runtime.endpoint_registry.endpoints),
-    _inprocs (_runtime.endpoint_registry.inprocs),
-    _monitor_socket (_runtime.monitor_bridge.socket),
-    _monitor_events (_runtime.monitor_bridge.events),
-    _monitor_events_atomic (_runtime.monitor_bridge.events_atomic),
-    _monitor_lossy (_runtime.monitor_bridge.lossy),
-    _mailbox_refcnt (_runtime.lifecycle_hooks.mailbox_refcnt),
-    _destroy_pending (_runtime.lifecycle_hooks.destroy_pending),
-    _monitor_async_mailbox_owned (
-      _runtime.lifecycle_hooks.monitor_async_mailbox_owned),
-    _async_mailbox_active (_runtime.lifecycle_hooks.async_mailbox_active),
-    _async_quiesce_pending (_runtime.lifecycle_hooks.async_quiesce_pending),
-    _async_processing_done (_runtime.lifecycle_hooks.async_processing_done),
-    _async_done_mu (_runtime.lifecycle_hooks.async_done_mu),
-    _async_done_cv (_runtime.lifecycle_hooks.async_done_cv),
-    _socket_msg_handler (_runtime.dispatch_bridge.socket_msg_handler),
-    _socket_msg_handler_subject (
-      _runtime.dispatch_bridge.socket_msg_handler_subject),
-    _socket_msg_handler_userdata (
-      _runtime.dispatch_bridge.socket_msg_handler_userdata),
-    _spot_handler (_runtime.dispatch_bridge.spot_handler),
-    _spot_handler_userdata (_runtime.dispatch_bridge.spot_handler_userdata),
-    _public_api_state (_runtime.dispatch_bridge.public_api_state),
-    _public_api_sync (_runtime.dispatch_bridge.public_api_sync),
-    _callback_api_depth (_runtime.dispatch_bridge.callback_api_depth),
-    _close_deferred (_runtime.dispatch_bridge.close_deferred),
-    _send_ready_handler (_runtime.dispatch_bridge.send_ready_handler),
-    _send_ready_handler_subject (
-      _runtime.dispatch_bridge.send_ready_handler_subject),
-    _send_ready_handler_userdata (
-      _runtime.dispatch_bridge.send_ready_handler_userdata),
-    _send_ready_seq (_runtime.dispatch_bridge.send_ready_seq),
-    _send_ready_writer_sync (_runtime.dispatch_bridge.send_ready_writer_sync),
-    _send_ready_armed (_runtime.dispatch_bridge.send_ready_armed),
-    _socket_msg_dispatch_sync (
-      _runtime.dispatch_bridge.socket_msg_dispatch_sync),
-    _last_recv_source_rid (_runtime.dispatch_bridge.last_recv_source_rid),
-    _last_recv_source_rid_valid (
-      _runtime.dispatch_bridge.last_recv_source_rid_valid),
-    _monitor_sync (_runtime.monitor_bridge.sync),
-    _monitor_queue_sync (_runtime.monitor_bridge.queue_sync),
-    _monitor_queue_cv (_runtime.monitor_bridge.queue_cv),
-    _monitor_queue (_runtime.monitor_bridge.queue),
-    _monitor_queue_stop (_runtime.monitor_bridge.queue_stop),
-    _monitor_thread (_runtime.monitor_bridge.thread),
-    _monitor_thread_started (_runtime.monitor_bridge.thread_started),
     _disconnected (false)
 {
     _term_pipe_acks_registered = 0;
@@ -189,7 +143,7 @@ zlink::socket_base_t::~socket_base_t ()
     if (_mailbox)
         LIBZLINK_DELETE (_mailbox);
 
-    scoped_lock_t lock (_monitor_sync);
+    scoped_lock_t lock (monitor_runtime ().sync);
     stop_monitor ();
 
     zlink_assert (_destroyed);

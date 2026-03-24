@@ -221,6 +221,16 @@ class registry_t
     std::vector<socket_opt_t> _pub_opts;
     std::vector<socket_opt_t> _router_opts;
     std::vector<socket_opt_t> _peer_sub_opts;
+    void apply_socket_opts (socket_base_t *socket_,
+                            const std::vector<socket_opt_t> &opts_);
+    void promote_runtime_sockets (socket_base_t *pub_,
+                                  socket_base_t *router_,
+                                  uint64_t now_ms_,
+                                  socket_base_t **old_pub_out_,
+                                  socket_base_t **old_router_out_);
+    int ensure_peer_sub_socket ();
+    void connect_peer_sub_endpoints (void *peer_sub_,
+                                     const std::vector<std::string> &peer_pubs_);
 
     atomic_counter_t _stop;
     uint64_t _task_id;

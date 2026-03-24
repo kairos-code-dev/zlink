@@ -58,6 +58,23 @@ inline int resolve_mesh_pub_sndhwm_default (const std::string &endpoint_,
     return 768;
 }
 
+struct spot_data_plane_runtime_state_t
+{
+    spot_data_plane_runtime_state_t ();
+
+    socket_base_t *ctrl;
+    socket_base_t *mesh_pub;
+    socket_base_t *mesh_xsub;
+    socket_base_t *mesh_xsub_monitor;
+    socket_base_t *peer_ctrl_pub;
+    socket_base_t *peer_ctrl_sub;
+    socket_base_t *ingress;
+    socket_base_t *fanout;
+    int current_mesh_pub_sndhwm;
+    uint64_t last_mesh_pub_budget_version;
+    std::string last_mesh_pub_bound_endpoint;
+};
+
 struct spot_data_plane_protocol_t
 {
     static int recv_ascii_command (socket_base_t *socket_,

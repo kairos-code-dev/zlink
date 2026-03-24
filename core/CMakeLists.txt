@@ -1017,6 +1017,9 @@ set(discovery-sources
     src/services/discovery/registry_access.cpp
     src/services/discovery/registry_query_access.cpp
     src/services/discovery/registry.cpp
+    src/services/discovery/registry_query.cpp
+    src/services/discovery/registry_runtime.cpp
+    src/services/discovery/registry_state.cpp
     src/services/discovery/discovery.cpp
     src/services/discovery/discovery_bootstrap.cpp
     src/services/discovery/discovery_registry_client.cpp
@@ -1034,8 +1037,12 @@ set(discovery-sources
 set(spot-sources
     src/services/spot/spot_data_plane.cpp
     src/services/spot/spot_data_plane_forwarding.cpp
+    src/services/spot/spot_data_plane_runtime.cpp
     src/services/spot/spot_data_plane_protocol.cpp
     src/services/spot/spot_subject_access.cpp
+    src/services/spot/spot_subject_poller.cpp
+    src/services/spot/spot_subject_publish.cpp
+    src/services/spot/spot_subject_query.cpp
     src/services/spot/spot_node_access.cpp
     src/services/spot/spot_node.cpp
     src/services/spot/spot_node_control.cpp

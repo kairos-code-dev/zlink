@@ -2,6 +2,8 @@
 
 > 상태: active
 > 기준 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
+> 재평가 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
+> residual 실행 스펙: `doc/plan/refactor/2nd/core-system-posd-refactor-residual-execution-spec.ko.md`
 > 기준 커밋: `85ea0995`
 > 대상 범위: `core/`, `core/tests/`
 > 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
@@ -16,6 +18,15 @@
 이 문서는 새 설계를 제안하는 문서가 아니다.
 이미 반영된 2차 리팩토링 결과 위에서,
 남은 허브와 남은 ownership 정리를 끝까지 닫는 실행 문서다.
+
+2026-03-24 현재 워크트리 재리뷰 기준으로
+`core-system-posd-refactor-gap-review.ko.md`를 추가 authority로 사용한다.
+이 실행 문서는 해당 갭 리뷰를 반영해, 남은 구조 갭을 닫은 뒤 perf 최종 마감을
+수행하는 순서를 고정한다.
+
+`5.2A`, `5.3A`, `5.6A`의 세부 구현 결정은
+`core-system-posd-refactor-residual-execution-spec.ko.md`를 단일 authority로 사용한다.
+실행 중 해당 세 항목의 owner/file/type 경계를 새로 판단하지 않는다.
 
 핵심 원칙은 아래 두 줄이다.
 
@@ -32,18 +43,20 @@
 - `gateway`, `discovery`는 본체가 크게 줄었고 여러 deep module로 분리됐다.
 - `spot subject` API는 publish/recv, option/routing/tls, subscription/query로 분리됐다.
 - `options_t` owner map은 시작됐지만 완결은 아니다.
-- `socket_base_t`, `service_runtime_base_t`, `spot` 내부 deep module은 아직 더 정리해야 한다.
+- `service_runtime_base_t` / `socket_close_ops_t` / `ctx_t` close-wait 분업은 실제로 들어갔다.
+- 다만 갭 리뷰 기준으로 `socket_base_t`, `ctx_t`, 일부 `spot`/`discovery` deep module은 아직 더 정리해야 한다.
 - 문서 본체 완료 뒤에는 `core/perf` 기반 perf smoke, full perf, baseline 비교, 성능 회복 루프까지 포함한다.
 
 현재 남은 큰 허브는 대략 아래다.
 
-- `core/src/api/zlink_option.cpp`
-- `core/src/api/monitor_api.cpp`
-- `core/src/api/monitor_service_api.cpp`
-- `core/src/core/options_dispatch.cpp`
+- `core/src/api/zlink.cpp`
+- `core/src/sockets/socket_base.hpp`
 - `core/src/sockets/socket_base.cpp`
-- `core/src/services/spot/spot_sub.cpp`
+- `core/src/core/ctx.cpp`
+- `core/src/services/discovery/registry.cpp`
+- `core/src/services/spot/spot_subject_access.cpp`
 - `core/src/services/spot/spot_data_plane.cpp`
+- `core/perf` final baseline recovery owner path
 
 ## 3. 중단 금지 규칙
 
@@ -217,6 +230,9 @@ core/perf/run_benchmarks_multi.sh \
 
 - single 결과는 `perf_linux_callback_20260323_082648.txt`와 비교한다.
 - multi 결과는 `perf_linux_recv_20260323_094627.txt`와 비교한다.
+- 최종 성공선의 최소 기준은 baseline 이상이다.
+- baseline 미만 수치가 남아 있는 상태는 "거의 회복"이나 "허용 가능한 잔량"으로 해석하지 않는다.
+- 최종 완료 판정에서는 baseline 이상을 하한선이 아니라 필수선으로 사용한다.
 - 비교 key는 `pattern + transport + size`의 exact match로 고정한다.
 - 주 비교 지표는 `Throughput`이다.
 - baseline에 있는 tuple이 current 결과에 없으면 즉시 fail이다.
@@ -239,12 +255,12 @@ core/perf/run_benchmarks_multi.sh \
 
 `core/perf` 재개 규칙은 아래처럼 고정한다.
 
-- 새 세션/새 iteration에서 Phase 9를 다시 잡았을 때, 이미 기록된 latest full
+- 새 세션/새 iteration에서 최종 perf phase를 다시 잡았을 때, 이미 기록된 latest full
   single/multi 결과 파일과 baseline 비교 결과가 있으면 그것을 우선 authority로
   사용한다.
 - latest full 결과 이후에 perf 기준선을 무효화하는 변경이 없으면, 새 세션 시작
   직후 full perf를 처음부터 다시 돌리지 않는다.
-- Phase 9 재개 첫 행동은 latest full 결과에서 baseline 미만 tuple 목록과 worst
+- 최종 perf phase 재개 첫 행동은 latest full 결과에서 baseline 미만 tuple 목록과 worst
   tuple을 다시 읽어 현재 owner를 확정하는 것이다.
 - 새 세션에서 바로 다시 수행하는 기본 검증은 full perf가 아니라 smoke와 해당
   worst tuple의 targeted recheck다.
@@ -257,7 +273,7 @@ core/perf/run_benchmarks_multi.sh \
   - 모든 남은 worst tuple이 baseline 이상으로 회복됐는지 최종 확정해야 할 때
 - targeted recheck가 실패해도 즉시 full perf 전체를 다시 돌리지 않는다. 같은
   tuple owner 범위 안에서 원인 수정과 targeted recheck를 먼저 반복한다.
-- 최종 full perf는 Phase 9 종료 확정용 증거다. 중간 triage 단계에서는 기존 latest
+- 최종 full perf는 최종 perf phase 종료 확정용 증거다. 중간 triage 단계에서는 기존 latest
   full snapshot을 재사용하고, targeted recheck 로그를 추가 증거로 누적한다.
 
 결과 파일 선택과 worst regression 산출은 아래 명령으로 고정한다.
@@ -416,10 +432,11 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 세션 시작 시 첫 행동은 아래처럼 고정한다.
 
 1. 5.0 표를 먼저 읽는다.
-2. `완료`가 아닌 첫 행을 이번 세션의 우선 작업으로 잡는다.
-3. 해당 행의 `실행 문서 체크 항목`과 `검증 증거`를 먼저 확인한다.
-4. 증거가 비어 있으면 `완료`로 간주하지 않는다.
-5. 첫 행이 `검증중`이면 검증 증거를 먼저 채우고 그 다음 줄로 넘어간다.
+2. 갭 리뷰 문서의 최신 평결이 5.0 표에 반영됐는지 확인한다.
+3. `완료`가 아닌 첫 행을 이번 세션의 우선 작업으로 잡는다.
+4. 해당 행의 `실행 문서 체크 항목`과 `검증 증거`를 먼저 확인한다.
+5. 증거가 비어 있으면 `완료`로 간주하지 않는다.
+6. 첫 행이 `검증중`이면 검증 증거를 먼저 채우고 그 다음 줄로 넘어간다.
 
 완료로 바꾸려면 아래 세 칸이 모두 채워져야 한다.
 
@@ -511,6 +528,8 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 
 | 마스터 플랜 항목 | 상태 | 실행 문서 체크 항목 | 관련 코드/파일 | 검증 증거 |
 |---|---|---|---|---|
+| 갭 리뷰 문서 추가 및 실행 authority 반영 | 완료 | 5.0 재판정 | `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`, `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md` | 갭 리뷰 문서 추가, 실행 문서 기준선/순서/추적표 갱신 |
+| Residual 실행 스펙 추가 및 authority 반영 | 완료 | 5.0 재판정 | `doc/plan/refactor/2nd/core-system-posd-refactor-residual-execution-spec.ko.md`, `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md` | residual 실행 스펙 추가, `5.2A`/`5.3A`/`5.6A` 구현 경계/검증 명령 고정 |
 | Phase 1a context/message/errno/version 분리 유지 | 완료 | 5.1 | `core/src/api/context_api.cpp`, `core/src/api/message_api.cpp` | `cmake --build core/build -j"$(nproc)"`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
 | Phase 1b socket/poller/monitor 분리 유지 | 완료 | 5.1 | `core/src/api/socket_*.cpp`, `core/src/api/poller_*.cpp`, `core/src/api/monitor*.cpp` | `ctest --test-dir core/build --output-on-failure -R '^(unittest_typed_option|unittest_poller)$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_monitor_service_contract|test_monitor_with_handler)$'` |
 | Phase 1b.5 logical multipart send deep module 유지 | 완료 | 5.1, 5.6 | `core/src/core/multipart_send_txn.*`, gateway/spot publish/send caller | `ctest --test-dir core/build --output-on-failure -R '^test_gateway_handover$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'` |
@@ -524,6 +543,9 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 | Phase 6 spot 세부 분해 | 완료 | 5.6 | `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_forwarding.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_sub*.cpp`, `core/src/services/spot/spot_subject_access.*` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract|unittest_service_mode_policy|unittest_spot_subject_access|unittest_typed_option)$'`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
 | Phase 2~3 thread-safe stress 의무 게이트 | 완료 | 5.2, 5.3 | `core/tests/run_thread_safe_contract_stress.sh` | `Phase 2`: `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log.exitcode`; `Phase 3`: `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log.exitcode` |
 | Phase 5~6 service core smoke | 완료 | 5.5, 5.6 | `core/src/api/service_*.cpp`, `core/src/services/*` | `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log`, `doc/plan/refactor/2nd/logs/phase5_6_service_core_smoke_20260324_111055.log.exitcode` |
+| Gap review 기준 `socket_base_t` residual split 재개 | 미착수 | 5.2A | `core/src/sockets/socket_base.hpp`, `core/src/sockets/socket_base.cpp`, `core/src/sockets/socket_runtime.hpp`, `core/src/sockets/socket_base_api.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_gateway_monitor_snapshot_churn)$'`, `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
+| Gap review 기준 `ctx_t` runtime orchestration residual split | 미착수 | 5.3A | `core/src/core/ctx.hpp`, `core/src/core/ctx.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_runtime_base|test_service_introspection_discovery_self_close|test_gateway_send_ready_self_close|test_spot_service_introspection_handler_monitor_close)$'`, `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
+| Gap review 기준 service residual deep-module 마감 | 미착수 | 5.6A | `core/src/services/discovery/registry.cpp`, `core/src/services/spot/spot_subject_access.cpp`, `core/src/services/spot/spot_data_plane.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract)$'`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_spot_subject_access|unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
 | 최종 `core/perf` smoke/full/baseline 회복 루프 | 진행중 | 5.7 | `core/perf/*`, `core/tests/integration/monitoring/test_single_spot_benchmark_process.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/src/core/pipe.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.*` | smoke: `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`, `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log`, `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_113846.log.exitcode`; initial full: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode`; latest full multi: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`; latest targeted: `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`; latest single recheck: `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, `doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log.exitcode`, `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`; core/tests 회귀: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
 | 최종 `thread-safe contract perf` 게이트 | 미착수 | 5.7 | `core/tests/run_thread_safe_contract_perf.sh` | `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과 |
 | Phase 0 baseline/perf 기준선 확인 | 완료 | 5.7 | `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`, `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt` | baseline 파일 확인; initial full 결과: `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log`, `doc/plan/refactor/2nd/logs/perf_full_single_20260324_120711.log.exitcode`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log`, `doc/plan/refactor/2nd/logs/perf_full_multi_20260324_123623.log.exitcode` |
@@ -561,6 +583,36 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 - bind/connect/send/recv/event emission/lifecycle glue owner를 각 collaborator로 설명할 수 있다.
 - 대표 socket 회귀와 thread-safe stress 통과
 
+### 5.2A gap review 기준 `socket_base_t` residual split
+
+- [ ] `socket_runtime_t` aggregation이 다시 `socket_base_t` 참조 멤버 허브로 풀리지 않게 owner를 더 숨긴다.
+- [ ] public API admission / callback depth / deferred close를 한 lifecycle coordinator로 더 좁힌다.
+- [ ] monitor queue/thread, endpoint bookkeeping, async mailbox quiesce가 semantic entrypoint에서 직접 읽히지 않게 줄인다.
+- [ ] residual split 후에도 family 파일군(`dealer/router/xpub/xsub/stream`) 수정 없이 대표 회귀를 통과하는 경로를 확인한다.
+- [ ] `test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_gateway_monitor_snapshot_churn`과 stress를 다시 통과시킨다.
+
+필수 검증 명령:
+
+```bash
+cmake --build core/build -j"$(nproc)"
+
+ctest --test-dir core/build --output-on-failure -R \
+'^(test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_gateway_monitor_snapshot_churn)$'
+
+./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10
+
+git diff -- core/include/zlink.h core/src/libzlink.vers
+```
+
+구현 경계와 새 private 파일 허용 범위는
+`core-system-posd-refactor-residual-execution-spec.ko.md`의 `3.1`~`3.7`을 따른다.
+
+닫힘 기준:
+
+- [`socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)와 [`socket_base.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp)가 더 이상 lifecycle/dispatch/monitor/endpoint 모든 세부를 한 눈에 직접 소유하는 허브로 읽히지 않는다.
+- `socket_runtime_t`는 상태 묶음이 아니라 owner-hidden collaborator 집합으로 설명 가능하다.
+- residual split 이후 대표 socket 회귀와 stress 로그가 새 증거로 남아 있다.
+
 ### 5.3 close/drain contract 정리
 
 - [x] `service_runtime_base_t`, `service_socket_registry_t`, `ctx_t`, `socket_close_ops_t`의 의미 경계를 더 선명하게 만든다.
@@ -573,6 +625,35 @@ smoke 실패 처리 규칙은 아래처럼 고정한다.
 - `service_runtime_base_t`는 lifecycle coordinator로, registry/close/wait는 collaborator contract로 설명된다.
 - close/wait/drain 의미 owner를 `ctx_t`, registry, runtime으로 분리해 설명 가능하다.
 - thread-safe stress 통과
+
+### 5.3A gap review 기준 `ctx_t` runtime orchestration residual split
+
+- [ ] `ctx_t`에서 lazy start / thread runtime 부팅 / termination sequencing / pending inproc 정리 중 분리 가능한 owner를 다시 추출한다.
+- [ ] `service_control_runtime()`의 시작 보조와 `start()`/`terminate()` sequencing이 `ctx_t` 단일 허브 지식으로 남지 않게 줄인다.
+- [ ] global socket removal owner라는 핵심 책임은 유지하되, startup/shutdown/resource orchestration 지식을 더 숨긴다.
+- [ ] residual split 후 self-close / service lifecycle / drain 회귀를 다시 통과시킨다.
+
+필수 검증 명령:
+
+```bash
+cmake --build core/build -j"$(nproc)"
+
+ctest --test-dir core/build --output-on-failure -R \
+'^(unittest_service_runtime_base|test_service_introspection_discovery_self_close|test_gateway_send_ready_self_close|test_spot_service_introspection_handler_monitor_close)$'
+
+./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10
+
+git diff -- core/include/zlink.h core/src/libzlink.vers
+```
+
+구현 경계와 새 private 파일 허용 범위는
+`core-system-posd-refactor-residual-execution-spec.ko.md`의 `4.1`~`4.7`을 따른다.
+
+닫힘 기준:
+
+- [`ctx.cpp`](/home/hep7/project/kairos/zlink/core/src/core/ctx.cpp)가 startup/shutdown/resource finalization 세부를 모두 직접 조정하는 단일 허브로 읽히지 않는다.
+- `ctx_t`의 핵심 책임을 "global runtime registry + termination contract owner" 수준으로 더 좁혀 설명할 수 있다.
+- 대표 self-close / service lifecycle 회귀와 필요한 gate 로그가 새 증거로 남아 있다.
 
 ### 5.4 option ownership 마무리
 
@@ -647,6 +728,36 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 - `test_gateway_with_handler`, `test_gateway_handover`, `test_service_discovery`, `test_service_introspection`, `test_spot_pubsub_scenario`, `test_spot_service_introspection`, `test_monitor_service_contract` 유지
 - `spot_data_plane.cpp`가 단일 허브처럼 읽히지 않는다
 
+### 5.6A gap review 기준 service residual deep-module 마감
+
+- [ ] `registry.cpp`에서 registry state/rules, socket ensure/replace, topology query/reply owner를 더 좁은 경계로 다시 나눈다.
+- [ ] `spot_subject_access.cpp`에서 publish/query/poller/subject access seam이 다시 허브로 커지지 않게 owner를 더 분리한다.
+- [ ] `spot_data_plane.cpp`에서 runtime assembly, forwarding, budget/control carryover owner를 더 선명하게 고정한다.
+- [ ] residual service 정리 뒤 full service core smoke와 대표 회귀를 다시 통과시킨다.
+
+필수 검증 명령:
+
+```bash
+cmake --build core/build -j"$(nproc)"
+
+ctest --test-dir core/build --output-on-failure -R \
+'^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract)$'
+
+ctest --test-dir core/build --output-on-failure -R \
+'^(unittest_service_mode_policy|unittest_spot_subject_access|unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'
+
+git diff -- core/include/zlink.h core/src/libzlink.vers
+```
+
+구현 경계와 새 private 파일 허용 범위는
+`core-system-posd-refactor-residual-execution-spec.ko.md`의 `5.1`~`5.6`을 따른다.
+
+닫힘 기준:
+
+- [`registry.cpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/registry.cpp), [`spot_subject_access.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_access.cpp), [`spot_data_plane.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane.cpp)가 각각 단일 허브보다 owner-separated module 집합으로 읽힌다.
+- `gateway`, `discovery`, `spot` 각각의 잔여 large file owner를 문장 하나로 설명할 수 있다.
+- residual service 정리 이후 full service core smoke와 대표 회귀 로그가 새 증거로 남아 있다.
+
 ### 5.7 `core/perf` smoke / full baseline 비교 / 성능 회복 루프
 
 마스터 플랜 참조:
@@ -657,8 +768,9 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 - [x] smoke 둘 다 정상이면 single full perf를 실행한다.
 - [x] single full 결과를 `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`와 비교한다.
 - [x] multi full perf를 실행하고 `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 비교한다.
+- [ ] gap review 기준 residual 구조 작업(`5.2A`, `5.3A`, `5.6A`)이 닫힌 latest 코드에서 smoke와 targeted recheck를 다시 수행한다.
 - [ ] baseline 미만 tuple이 있으면 가장 regression이 큰 `pattern + transport + size`부터 개선한다.
-- [ ] 개선 후에는 해당 tuple이 속한 pattern을 먼저 재측정하고, 필요 시 full single 또는 full multi를 다시 실행한다.
+- [ ] 개선 후에는 해당 tuple이 속한 pattern targeted recheck를 먼저 수행하고, 모든 baseline 미만 tuple이 해소된 시점에만 full single/full multi를 1회 다시 실행한다.
 - [ ] 모든 tuple이 baseline 이상이 될 때까지 반복한다.
 - [ ] 최종 단계에서 `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과를 확보한다.
 
@@ -734,17 +846,17 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 - 수정 후 회귀 검증으로 `ctest --test-dir core/build --output-on-failure -R '^(test_multi_spot_benchmark_process|test_single_spot_benchmark_process|unittest_spot_data_plane_budget)$'`가 다시 통과했고, 새 `MULTI_SPOT` full 재측정(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_184116.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_184116_spot-multi-20260324e.txt`)은 `status=complete`로 회복돼 이전 blocker였던 `wss 131072B/262144B` partial exit가 사라졌다.
 - 다만 latest full multi 기준 baseline 미만 tuple은 여전히 8개다. worst regression은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3907.2`, `-70.23%`), `wss 256B`(`1744141.4 -> 634750.8`, `-63.61%`), `wss 64B`(`1949744.0 -> 784626.2`, `-59.76%`), `wss 1024B`(`520737.8 -> 331028.0`, `-36.43%`)다. 즉 owner는 더 이상 partial-exit 재현이 아니라 `wss` steady-state throughput path다.
 - latest single 재측정(`doc/plan/refactor/2nd/logs/perf_spot_single_recheck_20260324_184508.log`, 결과 `core/perf/results/single/report/perf_linux_callback_20260324_184508_spot-single-20260324f.txt`)은 baseline 미만 tuple이 10개이며 worst regression은 `SPOT ws 64B`(`1331635.6 -> 1249847.6`, `-6.14%`), `SPOT tls 256B`(`713400.0 -> 703334.2`, `-1.41%`), `SPOT wss 64B`(`1332092.6 -> 1315149.0`, `-1.27%`)다. single은 소폭 미달 위주로 좁혀졌고, 현재 perf owner의 대부분은 multi secure websocket 쪽이다.
-- 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 실행 가이드 `5.7`의 perf baseline 회복 루프뿐이다.
+- 당시 작업 묶음 종료 시점 기록으로는 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고 `core/`와 `core/tests/` 범위에서 perf 외 새 구현 항목을 더 찾지 못했다고 판단했다. 다만 이 판단은 갭 리뷰 추가 이전 기록이며, 현재 authority에서는 `5.2A`, `5.3A`, `5.6A` residual 항목을 먼저 닫아야 한다.
 - 후속으로 `core/src/services/spot/spot_data_plane_internal.hpp`의 `wss + ready_peers >= 2` `mesh_pub` budget 정책을 `64 -> 512`로 올리고, `unittest_spot_data_plane_budget`에 그 계약을 고정했다. 회귀 검증으로 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`를 다시 통과했다.
 - 변경 후 `wss` targeted recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1905xx_wss_policy.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190435_spot-multi-wss-policy-20260324.txt`)에서는 `MULTI_SPOT wss 64B`가 `1949744.0 -> 1674864.0`(`-14.10%`), `wss 256B`가 `1744141.4 -> 1585162.0`(`-9.12%`), `wss 1024B`가 `520737.8 -> 615780.0`(`+18.25%`), `wss 262144B`가 `13126.8 -> 6218.0`(`-52.63%`)로 회복됐다. 즉 기존 `wss 64/256/1024` collapse는 크게 줄었지만 large payload는 아직 남았다.
 - 같은 변경 후 full `MULTI_SPOT` 재측정(`doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260324_1908_full.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190508_spot-multi-20260324f.txt`)에서는 baseline 미만 tuple이 5개로 줄었다. 최신 잔량은 `MULTI_SPOT wss 262144B`(`13126.8 -> 3988.0`, `-69.62%`), `tls 64B`(`1340655.8 -> 506558.8`, `-62.22%`), `wss 256B`(`1744141.4 -> 973017.2`, `-44.21%`), `wss 65536B`(`35561.6 -> 33939.4`, `-4.56%`), `tcp 256B`(`2482205.0 -> 2384456.8`, `-3.94%`)다.
 - `tls` worst가 secure transport steady-state인지 확인하려고 `tls`만 분리한 recheck(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tls_only_20260324_1910.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_190930_spot-multi-tls-only-20260324.txt`)를 수행했다. 이 run에서는 `tls 64B`가 `1340655.8 -> 1494858.8`로 baseline을 넘겼고, 대신 `tls 65536B`(`30937.4 -> 22966.2`, `-25.77%`)와 `tls 131072B`(`7426.6 -> 8101.6`, baseline 상회) 결과가 갈리며, 현재 `tls 64B`는 `tcp -> tls` transport transition carryover 성격이 강함을 확인했다.
 - 반대로 `wss`만 분리한 `mesh_pub=768` triage(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_meshpub768_full_20260324.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_191040_spot-multi-wss-meshpub768-full-20260324.txt`)에서는 `wss 64B/256B`가 baseline을 넘겼지만 `wss 65536B`(`35561.6 -> 16061.4`)와 `wss 262144B`(`13126.8 -> 3852.8`)가 더 악화됐다. 따라서 `wss` multi-peer budget을 단순히 `768`로 더 올리는 방향은 현재 owner 해법에서 제외한다.
-- 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 여전히 실행 가이드 `5.7`의 perf baseline 회복 루프이며, 다음 우선순위 owner는 `MULTI_SPOT wss 262144B`, `MULTI_SPOT wss 256B`, `MULTI_SPOT tls 64B` transport transition carryover다.
+- 당시 작업 묶음 종료 시점 기록으로는 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고 perf loop를 다음 우선순위로 봤다. 다만 현재 authority에서는 이 판단을 historical note로만 보며, perf 재개 전 `5.2A`, `5.3A`, `5.6A`를 먼저 닫는다.
 - 최신 `MULTI_SPOT tcp,tls,wss` 재측정(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_tcp_tls_wss_20260324_191636.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_191636_spot-multi-current-20260324_191636.txt`)에서는 baseline 미만 tuple이 `wss 262144B`(`13126.8 -> 6962.8`, `-46.96%`), `wss 256B`(`1744141.4 -> 1347400.8`, `-22.75%`), `wss 65536B`(`35561.6 -> 29664.6`, `-16.58%`), `tls 262144B`(`4171.6 -> 3484.6`, `-16.47%`), `wss 64B`(`1949744.0 -> 1666712.6`, `-14.52%`), `tls 1024B`(`1375476.4 -> 1214707.0`, `-11.69%`), `tcp 256B`(`2482205.0 -> 2229568.2`, `-10.18%`), `tls 256B`(`2041648.6 -> 1986874.2`, `-2.68%`)로 정리됐다. 즉 latest owner는 더 이상 `tls 64B` carryover가 아니라 `wss` large/mid payload steady-state와 `tls 262144B`다.
 - 같은 상태에서 `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM=128` `wss` triage(`doc/plan/refactor/2nd/logs/perf_spot_multi_triage_wss_fanout128_20260324_191943.log`, 결과 `core/perf/results/multi/report/perf_linux_recv_20260324_191943_spot-multi-wss-fanout128-20260324_191943.txt`)를 수행했지만 `wss 64B`(`-60.08%`), `wss 256B`(`-32.00%`), `wss 65536B`(`-28.99%`), `wss 131072B`(`-98.73%`), `wss 262144B`(`-69.17%`)로 더 악화됐다. 따라서 local fanout `SNDHWM`을 단순 상향하는 가설도 현재 owner 해법에서 제외한다.
 - 최신 `SPOT` single 재측정(`doc/plan/refactor/2nd/logs/perf_spot_single_recheck_current_20260324_192118.log`, 결과 `core/perf/results/single/report/perf_linux_callback_20260324_192118_spot-single-current-20260324_192118.txt`)에서는 baseline 미만 tuple이 `wss 64B`(`1332092.6 -> 1234098.4`, `-7.36%`), `ws 64B`(`1331635.6 -> 1245494.6`, `-6.47%`), `tls 64B`(`1503686.6 -> 1456160.0`, `-3.16%`), `tcp 64B`(`1611443.8 -> 1587370.0`, `-1.49%`), `ws 1024B`(`511522.2 -> 504353.4`, `-1.40%`), `tls 262144B`(`6300.0 -> 6220.8`, `-1.26%`), `tcp 256B`(`788758.4 -> 786585.4`, `-0.28%`), `tls 256B`(`713400.0 -> 712860.8`, `-0.08%`), `wss 262144B`(`5299.6 -> 5299.0`, `-0.01%`)뿐이었다. single은 계속 소폭 미달 위주로 유지되고, 현재 perf owner의 대부분은 multi secure transport 쪽에 남아 있다.
-- 이번 작업 묶음 종료 시점에 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 새로 추가해야 할 미반영 구현 항목은 발견하지 못했다. 남은 미완료는 여전히 실행 가이드 `5.7`의 perf baseline 회복 루프이며, 다음 우선순위 owner는 `MULTI_SPOT wss 262144B`, `MULTI_SPOT wss 256B`, `MULTI_SPOT wss 65536B`, `MULTI_SPOT tls 262144B`다.
+- 당시 작업 묶음 종료 시점 기록으로는 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고 perf loop의 다음 tuple owner를 정리했다. 다만 현재 authority에서는 그 tuple 우선순위보다 residual 구조 항목(`5.2A`, `5.3A`, `5.6A`) 완료가 먼저다.
 - 후속 재검증에서 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`가 `test_multi_spot_benchmark_process`에서 다시 flake를 보였다. 먼저 `wss 64 -> 256` 시퀀스가 `CLIENT_READY,256` 뒤에서 멈췄고, `wss` multi-peer `mesh_pub` budget을 `512 -> 384`로 낮춘 뒤에는 같은 carryover가 `256 -> 1024`로 이동했다. 즉 남은 owner는 단순 `mesh_pub` budget 절대값 하나라기보다, secure multi-client sequence에서 서로 다른 slot이 이전 size/phase backlog를 각기 다른 속도로 비우는 동안 benchmark client가 전역 `seen_msg_size/seen_phase` 하나로 시작 시점을 잡는 surface까지 포함한다.
 - debug 실행(`env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`)에서는 client stderr에 `size=64`와 `size=256` 또는 `size=1024` transition이 같은 시각대에 교차 기록됐고, 실패 시점에는 `metrics invalid fatal=0 received=0 latency_mean=0` 또는 `active wait failed size=1024`가 남았다. 이는 100개 client slot이 완전히 동기화되지 않은 상태에서 일부 slot은 새 size/phase로 넘어가고 다른 slot은 이전 size backlog를 계속 소비하는 것이며, current multi benchmark/client surface가 이를 전역 단일 상태로 읽어 `active` 집계를 너무 일찍 시작하는지 함께 재검토해야 함을 뜻한다.
 
@@ -755,6 +867,7 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 - baseline과 exact tuple 비교 완료
 - baseline 미만 tuple이 0개
 - 최종 full run에서 모든 pattern, 모든 size가 baseline 이상
+- "거의 baseline"이나 일부 tuple 소폭 미달은 완료로 간주하지 않는다
 
 ## 6. 검증 게이트
 
@@ -773,6 +886,7 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 - `Phase 2`: `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10` 이상
 - `Phase 3`: `./core/tests/run_thread_safe_contract_stress.sh --build-dir core/build --count 10` 이상
 - `Phase 5~6`: full service core smoke
+- `Gap review residual`: `5.2A`, `5.3A`, `5.6A` 각 항목의 필수 게이트를 residual execution spec 그대로 수행
 - 최종 perf phase: `core/perf` smoke + full perf + baseline 비교
 - 최종 완료 직전: `./core/tests/run_test_lanes.sh --include-e2e`
 
@@ -786,9 +900,11 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 - `Phase 1c` 대표 core API smoke 완료
 - `Phase 5~6` full service core smoke 완료
 - `Phase 2`, `Phase 3` 의무 stress 완료
+- gap review 기준 residual 구조 항목(`5.2A`, `5.3A`, `5.6A`) 완료
 - 최종 단계에서 `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과 확보
 - 최종 perf phase `core/perf` single/multi smoke 정상 종료
 - 최종 perf phase `core/perf` single/multi full perf 결과가 baseline 이상
+- 최종 perf 결과에서 단 하나의 tuple도 baseline 미만으로 남지 않음
 - ABI surface 무변경 확인
 - 남은 허브가 문서의 original concern 묶음을 다시 재집중시키지 않음
 
@@ -803,9 +919,12 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 5. service seam 정제
 6. `gateway` / `discovery` 남은 deep module 마감
 7. `spot_node` / `spot_sub` / `spot_data_plane` deep module 정리
-8. stress / lane 최종 게이트
-9. `core/perf` smoke / full baseline 비교 / 성능 회복 루프
-10. 최종 검증과 문서 완료 판정
+8. gap review 기준 `socket_base_t` residual split
+9. gap review 기준 `ctx_t` residual split
+10. gap review 기준 `registry` / `spot` residual deep module 마감
+11. stress / lane 최종 게이트
+12. `core/perf` smoke / full baseline 비교 / 성능 회복 루프
+13. 최종 검증과 문서 완료 판정
 
 이 순서를 어기려면 아래 둘 중 하나를 만족해야 한다.
 
@@ -819,7 +938,7 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 3. 이 단계 변경이 unrelated module 수정으로 넓게 번지지 않는가?
 4. 다음 단계가 이전 단계의 의미를 다시 뒤흔들지 않는가?
 
-Phase 9의 반복 규칙은 아래처럼 고정한다.
+최종 perf phase의 반복 규칙은 아래처럼 고정한다.
 
 1. latest full single / full multi 결과에서 baseline 미만 tuple을 모두 수집한다.
 2. relative regression이 가장 큰 tuple 하나를 고른다.
@@ -829,7 +948,7 @@ Phase 9의 반복 규칙은 아래처럼 고정한다.
 6. 모든 tuple이 baseline 이상이 되면 full single / full multi를 다시 1회 실행해 최종 확정한다.
 7. 최종 확정 run에서도 regression이 남아 있으면 그 run을 latest full snapshot으로 다시 기록하고 1로 돌아간다.
 
-Phase 9에서의 금지 규칙은 아래와 같다.
+최종 perf phase에서의 금지 규칙은 아래와 같다.
 
 - 비교 기준을 baseline보다 느슨하게 바꾸는 것
 - pattern 또는 size 일부만 제외하는 것
@@ -845,7 +964,7 @@ Phase 9에서의 금지 규칙은 아래와 같다.
 
 각 작업 묶음이 끝날 때마다 아래 절차를 반드시 수행한다.
 
-1. `core-system-posd-refactor-master-plan.ko.md`의 Phase 1~6, 8.1, 8.2, 9장을 다시 훑는다.
+1. `core-system-posd-refactor-master-plan.ko.md`의 Phase 1~6, 8.1, 8.2, 9장과 `core-system-posd-refactor-gap-review.ko.md`를 다시 훑는다.
 2. 이번 작업으로 닫힌 항목이 있으면 5.0 표의 상태를 올린다.
 3. 5.0 표에 아직 `미착수`, `진행중`, `검증중`이 남아 있으면 그중 최상단 항목을 다음 작업으로 고른다.
 4. master plan에 있는데 5장 체크리스트에 없는 항목을 발견하면 즉시 5장에 새 체크 항목으로 추가한다.

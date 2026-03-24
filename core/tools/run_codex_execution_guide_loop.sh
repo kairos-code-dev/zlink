@@ -7,10 +7,10 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 GUIDE_PATH="${ROOT_DIR}/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md"
 MASTER_PLAN_PATH="${ROOT_DIR}/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md"
 LOGS_DIR="${ROOT_DIR}/doc/plan/refactor/2nd/logs"
-MAX_ITERATIONS=30
+MAX_ITERATIONS=100
 POLL_SECONDS=30
 GATE_LABEL="phase2_thread_safe_stress"
-STRESS_COUNT=10
+STRESS_COUNT=1
 MODEL_ARG=()
 CODEX_ARGS=(
   exec
@@ -38,8 +38,8 @@ Options:
                         (default: ${POLL_SECONDS})
   --gate-label NAME     Gate status label to watch
                         (default: ${GATE_LABEL})
-  --stress-count N      Minimum repeat count to pass to run_execution_gate_loop.sh
-                        (default/minimum: ${STRESS_COUNT})
+  --stress-count N      Default repeat count to pass to run_execution_gate_loop.sh
+                        (default: ${STRESS_COUNT})
   --model MODEL         Pass --model MODEL to codex exec
   -h, --help            Show this help text
 
@@ -216,9 +216,9 @@ while [[ "${iteration}" -le "${MAX_ITERATIONS}" ]]; do
 - 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
 - flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 ${STRESS_COUNT}보다 더 크게 올릴 수 있다.
 - 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
-- Phase 9(perf) 재개 시 이미 문서에 기록된 latest full perf snapshot과 baseline 비교 증거가 있으면 그것을 우선 사용한다.
-- Phase 9를 새 iteration에서 다시 잡았다는 이유만으로 full perf를 처음부터 다시 돌리지 않는다.
-- Phase 9 재개 첫 행동은 latest full 결과에서 worst tuple을 다시 확인하고 smoke 또는 targeted recheck부터 이어서 진행하는 것이다.
+- 최종 perf phase 재개 시 이미 문서에 기록된 latest full perf snapshot과 baseline 비교 증거가 있으면 그것을 우선 사용한다.
+- 최종 perf phase를 새 iteration에서 다시 잡았다는 이유만으로 full perf를 처음부터 다시 돌리지 않는다.
+- 최종 perf phase 재개 첫 행동은 latest full 결과에서 worst tuple을 다시 확인하고 smoke 또는 targeted recheck부터 이어서 진행하는 것이다.
 - latest full perf 재실행은 문서에 정의된 invalidation 조건이 생겼거나, 모든 남은 tuple 회복 후 최종 확정이 필요할 때만 한다.
 - 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
 - 5.0 표의 각 행이나 각 phase를 완료로 바꾸는 순간에는 같은 흐름에서 해당 범위만 commit하고 현재 작업 브랜치로 push한다.

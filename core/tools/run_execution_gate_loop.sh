@@ -273,7 +273,7 @@ fi
 write_status "running" "repro"
 mapfile -t failed_tests < <(
   sed -n 's/^[[:space:]]*[0-9]\+[[:space:]]*-[[:space:]]\([^[:space:]]\+\)[[:space:]]*(.*)$/\1/p' \
-    "${stress_log}"
+    "${stress_log}" | awk '!seen[$0]++'
 )
 
 if [[ "${#failed_tests[@]}" -eq 0 ]]; then

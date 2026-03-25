@@ -18,7 +18,7 @@ SPOT public API는 두 계층으로 정리됩니다.
 
 | 동작 | Recv 모드 (기본) | Callback 모드 |
 |------|-----------------|--------------|
-| **SpotNode 수신** | `zlink_subscribe()` | `subscribe_handler()` 콜백 |
+| **SpotNode 수신** | *(미노출 — unified Spot 사용)* | *(미노출 — unified Spot 사용)* |
 | **Spot 수신** | `zlink_subscribe()` | `subscribe_handler()` 콜백 |
 | **읽기 poller** | `ZLINK_POLLIN` | `EBUSY` |
 | **Send-ready** | poller 또는 `send_ready_handler()` | poller 또는 `send_ready_handler()` |
@@ -33,13 +33,12 @@ SPOT public API는 두 계층으로 정리됩니다.
 ### SpotNode
 
 ```c
-void *zlink_spot_node_new(void *ctx,
-                          const char *service_name);
+void *zlink_spot_node_new(void *ctx);
 int zlink_spot_node_destroy(void **node_p);
 
 int zlink_spot_node_bind(void *node, const char *endpoint);
-int zlink_spot_node_connect_peer_pub(void *node, const char *endpoint);
-int zlink_spot_node_disconnect_peer_pub(void *node,
+int zlink_spot_node_connect_peer(void *node, const char *endpoint);
+int zlink_spot_node_disconnect_peer(void *node,
                                         const char *endpoint);
 int zlink_spot_node_attach_discovery(void *node, void *discovery);
 
@@ -51,38 +50,6 @@ int zlink_set_tls_client(void *node,
                          const char *ca_cert,
                          const char *hostname,
                          int trust_system);
-
-int zlink_publish(void *node,
-                  const char *topic_id,
-                  zlink_msg_t *parts,
-                  size_t part_count,
-                  zlink_send_flags_t flags);
-int zlink_set_subscription (void *node, const char *filter);
-int zlink_unset_subscription (void *node, const char *filter);
-int zlink_subscription_at(void *node, size_t index,
-                          char *buf, size_t *len,
-                          int *is_pattern);
-
-int zlink_send_ready_handler(
-  void *node,
-  zlink_send_ready_handler_fn handler,
-  void *userdata);
-int zlink_set_pub_option(void *node,
-                         zlink_pub_option_t option,
-                         const void *optval,
-                         size_t optvallen);
-int zlink_get_pub_option(void *node,
-                         zlink_pub_option_t option,
-                         void *optval,
-                         size_t *optvallen);
-int zlink_set_sub_option(void *node,
-                         zlink_sub_option_t option,
-                         const void *optval,
-                         size_t optvallen);
-int zlink_get_sub_option(void *node,
-                         zlink_sub_option_t option,
-                         void *optval,
-                         size_t *optvallen);
 
 int zlink_set_option(void *node,
                      zlink_option_t option,
@@ -98,29 +65,17 @@ int zlink_set_routing_id(void *node,
                          size_t size);
 int zlink_get_routing_id(void *node,
                          zlink_routing_id_t *out);
-
-int zlink_subscribe(void *subject_,
-                    zlink_routing_id_t *source_rid_out_,
-                    zlink_msg_t **parts_out_,
-                    size_t *part_count_out_,
-                    char *topic_id_out_,
-                    size_t *topic_id_len_out_,
-                    zlink_send_flags_t flags_);
 ```
 
-`SpotNode`는 service-bound owner입니다. `service_name`은 생성 시점에
-고정됩니다. recv 모드에서는 `zlink_subscribe()`, callback 모드에서는
-`zlink_subscribe_handler()`를 사용합니다.
-
-`zlink_subscribe()`는 recv 모드에서 다음 메시지, source routing ID, topic을
-반환합니다. 성공 시 `source_rid_out_`, `parts_out_`, `topic_id_out_`이
-채워집니다. non-blocking 동작은 `flags_`에 `ZLINK_DONTWAIT`를 전달합니다.
-callback 모드에서는 `EBUSY`로 실패합니다.
+`SpotNode`는 topology 및 lifecycle owner입니다. `service_name`은 연결된
+Discovery 인스턴스에서 결정됩니다. SpotNode는 generic data-plane facade를
+직접 노출하지 않습니다 — publish/subscribe/recv callback API는
+`zlink_spot_new()`를 사용하세요.
 
 ### Unified Spot
 
 ```c
-void *zlink_spot_new(void *spot_node);
+void *zlink_spot_new(void *ctx);
 int zlink_spot_destroy(void **spot_p);
 
 int zlink_publish(void *spot,
@@ -179,8 +134,9 @@ int zlink_get_routing_id(void *spot,
                          zlink_routing_id_t *out);
 ```
 
-`zlink_spot_new()`는 항상 pub/sub가 합쳐진 facade를 생성합니다.
-publish-only 혹은 subscribe-only public child handle은 더 이상 제공하지 않습니다.
+`zlink_spot_new()`는 내부 spot node를 소유하는 unified handle을 생성합니다.
+publish와 subscribe 동작을 모두 제공합니다. publish-only 혹은 subscribe-only
+public child handle은 더 이상 제공하지 않습니다.
 
 `zlink_subscribe()`는 recv 모드에서 동기식 pull 방식의 수신을 제공합니다.
 다음 메시지와 source routing ID, topic을 반환합니다. 성공 시 `source_rid_out_`,
@@ -212,8 +168,8 @@ typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
 
 | 대상 | 설정/조회 API | 옵션 |
 |------|-------------|------|
-| spot / node publish 쪽 | `set_pub_option` / `get_pub_option` | `ZLINK_PUB_OPT_*` |
-| spot / node subscribe 쪽 | `set_sub_option` / `get_sub_option` | `ZLINK_SUB_OPT_*` |
+| unified `spot` publish 쪽 | `set_pub_option` / `get_pub_option` | `ZLINK_PUB_OPT_*` |
+| unified `spot` subscribe 쪽 | `set_sub_option` / `get_sub_option` | `ZLINK_SUB_OPT_*` |
 | common (pub 쪽) | `set_option` / `get_option` | `SNDHWM`, `SNDTIMEO`, `LINGER`, `SNDBUF`, `RCVBUF` |
 | common (sub 쪽) | `set_option` / `get_option` | `RCVHWM`, `RCVTIMEO`, `LINGER`, `SNDBUF`, `RCVBUF` |
 | routing_id (pub 쪽) | `set_routing_id` / `get_routing_id` | -- |
@@ -273,7 +229,7 @@ typedef struct zlink_spot_node_status_t
 
 | 필드 | 설명 |
 |------|------|
-| `service_name` | 생성 시 고정된 null 종료 서비스 이름. |
+| `service_name` | 연결된 Discovery의 null 종료 서비스 이름. |
 | `local_endpoint` | null 종료 로컬 바인드 엔드포인트. |
 | `node_routing_id` | 이 SpotNode의 라우팅 아이덴티티. |
 | `state` | `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, 또는 `ERROR`. |
@@ -450,11 +406,11 @@ void on_spot_message(const zlink_routing_id_t *source_rid,
                      size_t part_count,
                      void *userdata);
 
-void *node = zlink_spot_node_new(ctx, "svc-chat");
-zlink_subscribe_handler(node, on_spot_message, NULL);
+void *ctx = zlink_ctx_new();
+void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
-void *spot = zlink_spot_new(node);
+void *spot = zlink_spot_new(ctx);
 zlink_subscribe_handler(spot, on_spot_message, NULL);
 zlink_set_subscription (spot, "room:lobby");
 
@@ -463,6 +419,7 @@ zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_publish(spot, "room:lobby", &part, 1, 0);
 
+/* zlink_spot_destroy는 spot과 내부 소유 node를 함께 파괴합니다 */
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
 ```
@@ -470,10 +427,11 @@ zlink_spot_node_destroy(&node);
 ### Recv 모드
 
 ```c
-void *node = zlink_spot_node_new(ctx, "svc-chat");
+void *ctx = zlink_ctx_new();
+void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
-void *spot = zlink_spot_new(node);
+void *spot = zlink_spot_new(ctx);
 zlink_set_subscription (spot, "room:lobby");
 
 /* 발행 */
@@ -496,6 +454,7 @@ if (rc == 0) {
         zlink_msg_close(&recv_parts[i]);
 }
 
+/* zlink_spot_destroy는 spot과 내부 소유 node를 함께 파괴합니다 */
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
 ```

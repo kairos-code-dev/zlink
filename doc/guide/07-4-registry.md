@@ -5,8 +5,8 @@
 ## 1. Overview
 
 Registry is the central service directory and topology summary source for
-the zlink service layer. It accepts service registrations from Gateway and
-SPOT nodes (via Discovery), manages heartbeat-based liveness, and
+the zlink service layer. It accepts service registrations from Gateway,
+SPOT nodes, and socket family services (via Discovery), manages heartbeat-based liveness, and
 periodically broadcasts the aggregated service list to all connected
 Discovery instances.
 
@@ -39,11 +39,12 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Discovery === */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* === Gateway (server, recv model) === */
-void *server = zlink_gateway_new(ctx, "my-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "server-1", 8);
 /* recv model -- pull with zlink_gateway_recv() */
 zlink_gateway_attach_discovery(server, discovery);
@@ -163,21 +164,23 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery (same process) */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* Server Gateway (recv model) */
-void *server = zlink_gateway_new(ctx, "echo-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "echo-server-1", 13);
 /* recv model -- pull with zlink_gateway_recv() */
 zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
 /* Client Gateway (same process, recv model) */
-void *client_disc = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *client_disc = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service");
+void *client = zlink_gateway_new(ctx);
 zlink_set_routing_id(client, "client-1", 8);
 /* recv model -- no zlink_recv_handler() call */
 zlink_gateway_attach_discovery(client, client_disc);
@@ -284,7 +287,8 @@ zlink_registry_set_heartbeat(reg3, 5000, 15000);
 zlink_registry_bind(reg3, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery connects to multiple Registries (HA — a single one suffices for service visibility) */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry3:5551");
@@ -355,7 +359,7 @@ for (size_t i = 0; i < count; i++) {
 | Field | Description |
 |-------|-------------|
 | `routing_id` | Routing identity of the service instance |
-| `service_kind` | `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`, or `DISCOVERY` |
+| `service_kind` | `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, or `DISCOVERY` |
 | `service_name` | Logical service name |
 | `endpoint` | Advertised endpoint |
 | `source` | How the entry was added (`MANUAL`, `DISCOVERY`, `REGISTRY`) |
@@ -400,9 +404,16 @@ zlink_registry_query_snapshot(client, NULL, entries, &count);
 
 /* Print topology dump */
 for (size_t i = 0; i < count; i++) {
+    const char *kind_str = "?";
+    if (entries[i].service_kind == ZLINK_SERVICE_KIND_GATEWAY)
+        kind_str = "GW";
+    else if (entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
+             || entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_SUB)
+        kind_str = "SPOT";
+    else if (entries[i].service_kind == ZLINK_SERVICE_KIND_SOCKET)
+        kind_str = "SOCK";
     printf("[%s] %s @ %s  state=%d  ready=%u/%u\n",
-           entries[i].service_kind == ZLINK_SERVICE_KIND_GATEWAY
-               ? "GW" : "SPOT",
+           kind_str,
            entries[i].service_name,
            entries[i].endpoint,
            entries[i].state,

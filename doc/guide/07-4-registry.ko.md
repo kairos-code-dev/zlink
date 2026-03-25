@@ -5,7 +5,7 @@
 ## 1. 개요
 
 Registry는 zlink 서비스 계층의 중앙 서비스 디렉토리이자 토폴로지 요약 소스다.
-Gateway와 SPOT 노드의 서비스 등록(Discovery를 통해)을 수락하고,
+Gateway, SPOT 노드, 소켓 패밀리 서비스의 등록(Discovery를 통해)을 수락하고,
 하트비트 기반 생존 확인을 관리하며,
 집계된 서비스 목록을 연결된 Discovery에 주기적으로 브로드캐스트한다.
 
@@ -37,11 +37,12 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Discovery === */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* === Gateway (서버, recv 모드) === */
-void *server = zlink_gateway_new(ctx, "my-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "server-1", 8);
 /* recv 모드 -- zlink_gateway_recv()로 수신 */
 zlink_gateway_attach_discovery(server, discovery);
@@ -161,21 +162,23 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery (같은 프로세스) */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* 서버 Gateway (recv 모드) */
-void *server = zlink_gateway_new(ctx, "echo-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "echo-server-1", 13);
 /* recv 모드 -- zlink_gateway_recv()로 수신 */
 zlink_gateway_attach_discovery(server, discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
 /* 클라이언트 Gateway (같은 프로세스, recv 모드) */
-void *client_disc = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *client_disc = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service");
+void *client = zlink_gateway_new(ctx);
 zlink_set_routing_id(client, "client-1", 8);
 /* recv 모드 -- zlink_recv_handler() 호출 없음 */
 zlink_gateway_attach_discovery(client, client_disc);
@@ -281,7 +284,8 @@ zlink_registry_set_heartbeat(reg3, 5000, 15000);
 zlink_registry_bind(reg3, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery가 여러 Registry에 연결 (HA — 서비스 가시성은 하나만으로도 충분) */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry3:5551");
@@ -352,7 +356,7 @@ for (size_t i = 0; i < count; i++) {
 | 필드 | 설명 |
 |------|------|
 | `routing_id` | 서비스 인스턴스의 라우팅 ID |
-| `service_kind` | `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`, 또는 `DISCOVERY` |
+| `service_kind` | `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, 또는 `DISCOVERY` |
 | `service_name` | 논리적 서비스 이름 |
 | `endpoint` | 광고된 엔드포인트 |
 | `source` | 추가 방식 (`MANUAL`/`DISCOVERY`/`REGISTRY`) |
@@ -397,9 +401,16 @@ zlink_registry_query_snapshot(client, NULL, entries, &count);
 
 /* 토폴로지 덤프 출력 */
 for (size_t i = 0; i < count; i++) {
+    const char *kind_str = "?";
+    if (entries[i].service_kind == ZLINK_SERVICE_KIND_GATEWAY)
+        kind_str = "GW";
+    else if (entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
+             || entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_SUB)
+        kind_str = "SPOT";
+    else if (entries[i].service_kind == ZLINK_SERVICE_KIND_SOCKET)
+        kind_str = "SOCK";
     printf("[%s] %s @ %s  state=%d  ready=%u/%u\n",
-           entries[i].service_kind == ZLINK_SERVICE_KIND_GATEWAY
-               ? "GW" : "SPOT",
+           kind_str,
            entries[i].service_name,
            entries[i].endpoint,
            entries[i].state,

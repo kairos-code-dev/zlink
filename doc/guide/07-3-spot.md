@@ -88,16 +88,21 @@ it **never re-publishes to the mesh** (loop prevention).
 void *ctx = zlink_ctx_new();
 
 /* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SPOT, "spot-node");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* SPOT Node setup */
-void *node = zlink_spot_node_new(ctx, "spot-node");
+void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Attach Discovery */
 zlink_spot_node_attach_discovery(node, discovery);
 ```
+
+> `SpotNode` is the topology and lifecycle owner for mesh participation.
+> It does not expose the generic data-plane facade (publish/subscribe).
+> For publish/subscribe, use `zlink_spot_new(ctx)`.
 
 **Note:** It is recommended to call `attach_discovery()` after bind.
 Once Discovery is attached, peers are automatically discovered and
@@ -106,12 +111,12 @@ connected through the Registry.
 ### 3.2 Manual Mesh
 
 ```c
-void *node = zlink_spot_node_new(ctx, "spot-node");
+void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* Directly connect to other nodes' PUB */
-zlink_spot_node_connect_peer_pub(node, "tcp://node2:9000");
-zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
+zlink_spot_node_connect_peer(node, "tcp://node2:9000");
+zlink_spot_node_connect_peer(node, "tcp://node3:9000");
 ```
 
 **Note:** In a manual mesh there is no Discovery, so there is no registry
@@ -122,11 +127,12 @@ topology visibility. This is an intended limitation.
 ### 4.1 Create a unified handle
 
 ```c
-void *spot = zlink_spot_new(node);
+void *spot = zlink_spot_new(ctx);
 ```
 
-`zlink_spot_new()` returns a unified facade with both publish and subscribe
-behavior. There are no public standalone `spot_pub` / `spot_sub` constructors.
+`zlink_spot_new()` creates a unified handle that owns an internal spot node.
+It provides both publish and subscribe behavior. There are no public standalone
+`spot_pub` / `spot_sub` constructors.
 
 ### 4.2 Publishing
 
@@ -158,7 +164,7 @@ Send-ready remains a separate axis.
 In recv model, pull messages with `zlink_subscribe()`.
 
 ```c
-void *spot = zlink_spot_new(node);
+void *spot = zlink_spot_new(ctx);
 zlink_set_subscription(spot, "chat:room1:message");
 
 /* Pull next message */
@@ -193,12 +199,8 @@ void on_message(const zlink_routing_id_t *source_rid,
     printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
 }
 
-/* Register handler at spot_node creation */
-void *node = zlink_spot_node_new(ctx, "spot-node");
-zlink_subscribe_handler(node, on_message, NULL);
-
-/* Or register handler at unified spot creation */
-void *spot = zlink_spot_new(node);
+/* Register handler at unified spot creation */
+void *spot = zlink_spot_new(ctx);
 zlink_subscribe_handler(spot, on_message, NULL);
 ```
 
@@ -288,6 +290,10 @@ zlink_discovery_destroy(&discovery);
 **Destroy order:** Destroy `spot` first, then `SpotNode`, and finally
 `Discovery`. All external use of `spot` must stop before calling
 `SpotNode` destroy.
+
+> `zlink_spot_new(ctx)` creates its own internal node, so `spot` destroy
+> tears that down automatically. For discovery-attached spot nodes,
+> `zlink_discovery_destroy()` cascades shutdown to attached participants.
 
 ---
 [← Gateway](07-2-gateway.md) | [Registry →](07-4-registry.md) | [Routing ID →](08-routing-id.md)

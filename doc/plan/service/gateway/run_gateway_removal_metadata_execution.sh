@@ -13,11 +13,60 @@ STRESS_COUNT=1
 GATE_LABEL="gateway_removal_metadata_gate"
 MODEL_ARG=()
 MASTER_PLAN_EXPLICIT=0
-LOCK_ACQUIRED=0
-CAMPAIGN_LOCK_DIR=""
-CAMPAIGN_LOCK_OWNER=""
 SUPERVISOR_PID=""
 GATE_STATUS_FILE=""
+
+pid_state() {
+  local pid="$1"
+  ps -o stat= -p "${pid}" 2>/dev/null | awk 'NR==1 {print $1}'
+}
+
+pid_is_stopped() {
+  local pid="$1"
+  local state=""
+  state="$(pid_state "${pid}")"
+  [[ -n "${state}" ]] && [[ "${state}" == *T* ]]
+}
+
+terminate_pid_group() {
+  local pid="$1"
+  local pgid=""
+  local waited=0
+
+  if [[ -z "${pid}" ]] || ! kill -0 "${pid}" 2>/dev/null; then
+    return 0
+  fi
+
+  pgid="$(ps -o pgid= -p "${pid}" 2>/dev/null | tr -d '[:space:]')"
+
+  if pid_is_stopped "${pid}"; then
+    if [[ -n "${pgid}" ]]; then
+      kill -CONT -- "-${pgid}" 2>/dev/null || true
+    else
+      kill -CONT "${pid}" 2>/dev/null || true
+    fi
+    sleep 1
+  fi
+
+  if [[ -n "${pgid}" ]]; then
+    kill -TERM -- "-${pgid}" 2>/dev/null || true
+  fi
+  kill -TERM "${pid}" 2>/dev/null || true
+
+  while kill -0 "${pid}" 2>/dev/null && [[ "${waited}" -lt 5 ]]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  if kill -0 "${pid}" 2>/dev/null; then
+    if [[ -n "${pgid}" ]]; then
+      kill -KILL -- "-${pgid}" 2>/dev/null || true
+    fi
+    kill -KILL "${pid}" 2>/dev/null || true
+  fi
+
+  wait "${pid}" 2>/dev/null || true
+}
 
 usage() {
   cat <<EOF
@@ -56,43 +105,17 @@ EOF
 cleanup() {
   local exit_rc=$?
   local gate_owner_pid=""
-  local waited=0
 
-  if [[ -n "${SUPERVISOR_PID}" ]] && kill -0 "${SUPERVISOR_PID}" 2>/dev/null; then
-    kill "${SUPERVISOR_PID}" 2>/dev/null || true
-    while kill -0 "${SUPERVISOR_PID}" 2>/dev/null && [[ "${waited}" -lt 5 ]]; do
-      sleep 1
-      waited=$((waited + 1))
-    done
-    if kill -0 "${SUPERVISOR_PID}" 2>/dev/null; then
-      kill -9 "${SUPERVISOR_PID}" 2>/dev/null || true
-    fi
-    wait "${SUPERVISOR_PID}" 2>/dev/null || true
-  fi
+  terminate_pid_group "${SUPERVISOR_PID}"
 
   if [[ -n "${GATE_STATUS_FILE}" ]] && [[ -f "${GATE_STATUS_FILE}" ]]; then
     gate_owner_pid="$(sed -n 's/^owner_pid=//p' "${GATE_STATUS_FILE}" | head -n 1)"
-    if [[ -n "${gate_owner_pid}" ]] && kill -0 "${gate_owner_pid}" 2>/dev/null; then
-      kill "${gate_owner_pid}" 2>/dev/null || true
-      waited=0
-      while kill -0 "${gate_owner_pid}" 2>/dev/null && [[ "${waited}" -lt 5 ]]; do
-        sleep 1
-        waited=$((waited + 1))
-      done
-      if kill -0 "${gate_owner_pid}" 2>/dev/null; then
-        kill -9 "${gate_owner_pid}" 2>/dev/null || true
-      fi
-    fi
-  fi
-
-  if [[ "${LOCK_ACQUIRED}" -eq 1 ]] && [[ -n "${CAMPAIGN_LOCK_DIR}" ]] \
-    && [[ -d "${CAMPAIGN_LOCK_DIR}" ]]; then
-    rm -rf "${CAMPAIGN_LOCK_DIR}"
+    terminate_pid_group "${gate_owner_pid}"
   fi
   exit "${exit_rc}"
 }
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM TSTP
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -156,35 +179,6 @@ fi
 
 mkdir -p "${LOGS_DIR}"
 GATE_STATUS_FILE="${LOGS_DIR}/${GATE_LABEL}.status"
-
-CAMPAIGN_LOCK_DIR="${LOGS_DIR}/gateway_removal_metadata_execution.lock"
-CAMPAIGN_LOCK_OWNER="${CAMPAIGN_LOCK_DIR}/owner"
-
-if mkdir "${CAMPAIGN_LOCK_DIR}" 2>/dev/null; then
-  LOCK_ACQUIRED=1
-  {
-    printf 'owner_pid=%s\n' "$$"
-    printf 'started_at=%s\n' "$(date '+%Y-%m-%d %H:%M:%S %z')"
-    printf 'guide=%s\n' "${GUIDE_PATH}"
-  } > "${CAMPAIGN_LOCK_OWNER}"
-else
-  existing_pid=""
-  if [[ -f "${CAMPAIGN_LOCK_OWNER}" ]]; then
-    existing_pid="$(sed -n 's/^owner_pid=//p' "${CAMPAIGN_LOCK_OWNER}" | head -n 1)"
-  fi
-  if [[ -n "${existing_pid}" ]] && kill -0 "${existing_pid}" 2>/dev/null; then
-    echo "Another gateway removal/metadata execution campaign is already running (pid=${existing_pid})." >&2
-    exit 16
-  fi
-  rm -rf "${CAMPAIGN_LOCK_DIR}"
-  mkdir "${CAMPAIGN_LOCK_DIR}"
-  LOCK_ACQUIRED=1
-  {
-    printf 'owner_pid=%s\n' "$$"
-    printf 'started_at=%s\n' "$(date '+%Y-%m-%d %H:%M:%S %z')"
-    printf 'guide=%s\n' "${GUIDE_PATH}"
-  } > "${CAMPAIGN_LOCK_OWNER}"
-fi
 
 echo "=== Gateway removal / metadata execution start ==="
 echo "Root: ${ROOT_DIR}"

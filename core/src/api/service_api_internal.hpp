@@ -17,6 +17,10 @@ namespace zlink
 bool is_registered_spot_node_handle (void *node_);
 bool is_registered_spot_handle (void *spot_);
 
+void register_spot_node_mode_state (zlink::spot_node_t *node_);
+void register_spot_mode_state (spot_handle_t *spot_);
+void erase_spot_node_mode_state (zlink::spot_node_t *node_);
+void erase_spot_mode_state (spot_handle_t *spot_);
 int spot_node_transition_to_callback_mode (zlink::spot_node_t *node_);
 void spot_node_revert_callback_transition (zlink::spot_node_t *node_);
 int spot_transition_to_callback_mode (spot_handle_t *spot_);

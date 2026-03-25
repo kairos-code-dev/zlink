@@ -119,6 +119,26 @@ bool is_registered_spot_handle (void *spot_)
     return as_spot_handle (spot_) != NULL;
 }
 
+void register_spot_node_mode_state (zlink::spot_node_t *node_)
+{
+    LIBZLINK_UNUSED (node_);
+}
+
+void register_spot_mode_state (spot_handle_t *spot_)
+{
+    LIBZLINK_UNUSED (spot_);
+}
+
+void erase_spot_node_mode_state (zlink::spot_node_t *node_)
+{
+    LIBZLINK_UNUSED (node_);
+}
+
+void erase_spot_mode_state (spot_handle_t *spot_)
+{
+    LIBZLINK_UNUSED (spot_);
+}
+
 int spot_node_transition_to_callback_mode (zlink::spot_node_t *node_)
 {
     zlink::service_mode_state_t *state = spot_node_mode_state (node_);

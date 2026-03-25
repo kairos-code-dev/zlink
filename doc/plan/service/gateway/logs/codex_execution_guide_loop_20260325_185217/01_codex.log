@@ -1,0 +1,2394 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: medium
+reasoning summaries: none
+session id: 019d2468-c1a6-7ea2-bd41-5ac5792177b5
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+  이 문서의 남은 작업을 중단 없이 끝까지 진행한다.
+- /home/hep7/project/kairos/zlink/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+  이 문서의 실제 구현 내용이 코드에 반영되도록 작업한다.
+
+작업 규칙:
+- 실행 가이드와 마스터 플랜을 둘 다 authority로 사용한다.
+- 실행 순서와 완료 판정은 실행 가이드를 따르되, 실제 구현 내용과 설계 intent는 마스터 플랜을 기준으로 확인한다.
+- 각 작업 묶음을 끝낼 때마다 마스터 플랜 전체와 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 마스터 플랜의 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 마스터 플랜에 있는데 실행 가이드 체크리스트에 없는 구현 항목을 발견하면 실행 가이드를 먼저 갱신한 뒤 작업을 계속한다.
+- 마스터 플랜과 실행 가이드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --label gateway_removal_metadata_gate --count 1 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 1보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- 가이드나 마스터 플랜에 단계별 commit / push 규칙이 있으면 그대로 따른다.
+- unrelated 변경은 commit/push에 섞지 않는다. 현재 단계 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
+- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남길 수 있으면 남긴다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+- stress/lane/perf/functional regression은 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- 테스트 통과만으로 마스터 플랜 구현 내용이 반영됐다고 추정하지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+codex
+팀장님, 실행 가이드와 마스터 플랜을 먼저 대조해서 첫 미완료 항목을 특정하겠습니다. 그 다음 해당 항목이 코드에 반영됐는지 확인하고, 필요하면 문서 정합성부터 바로 수정한 뒤 구현과 검증까지 이어가겠습니다.
+exec
+/bin/bash -lc 'rg --files doc/plan/service/gateway | sort' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+doc/plan/service/gateway/README.ko.md
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+doc/plan/service/gateway/gateway-removal-plan.ko.md
+doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_180753/01_codex.log
+doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_180753/01_prompt.txt
+doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_182234/01_codex.log
+doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_182234/01_prompt.txt
+doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_182455/01_codex.log
+doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_182455/01_prompt.txt
+doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_185217/01_codex.log
+doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_185217/01_prompt.txt
+doc/plan/service/gateway/logs/gateway_removal_metadata_execution.lock/owner
+doc/plan/service/gateway/run_gateway_removal_metadata_execution.sh
+doc/plan/service/gateway/socket-metadata-sharing-plan.ko.md
+exec
+/bin/bash -lc 'pwd && git status --short && rg -n "''^#|''^- '"\\[.|"'^##|체크|완료|미완료|TODO|남은 작업|gateway" doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md doc/plan/service/gateway -g '"'*.md'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink
+ M core/tests/CMakeLists.txt
+ D core/tests/e2e/discovery/test_gateway.cpp
+ D core/tests/integration/discovery/test_gateway_handover.cpp
+ D core/tests/integration/discovery/test_gateway_with_handler.cpp
+ D core/tests/integration/monitoring/test_gateway_monitor_process.cpp
+ M core/tests/testutil_unity.hpp
+ M core/tests/unittest/unittest_service_mode_policy.cpp
+ M core/tests/unittest/unittest_typed_option.cpp
+ M doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+?? doc/plan/service/gateway/logs/codex_execution_guide_loop_20260325_185217/
+doc/plan/service/gateway/README.ko.md:1:# Gateway 후속 계획 문서
+doc/plan/service/gateway/README.ko.md:3:기존 `gateway 제거 및 socket metadata 공유` 논의를
+doc/plan/service/gateway/README.ko.md:5:현재 작업 순서는 `gateway` 삭제 선행으로 고정한다.
+doc/plan/service/gateway/README.ko.md:7:## 권장 작업 순서
+doc/plan/service/gateway/README.ko.md:9:1. [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+doc/plan/service/gateway/README.ko.md:10:   - `gateway` family를 먼저 source tree에서 제거하기 위한 실행 계획 문서
+doc/plan/service/gateway/README.ko.md:11:   - public/internal/protocol/test/doc/core-perf/bindings 정리 범위와 완료 판정 포함
+doc/plan/service/gateway/README.ko.md:13:   - `gateway` 제거 이후에도 필요한 공통 `value` / `metadata` 공유 모델을 재도입하기 위한 후속 설계 문서
+doc/plan/service/gateway/README.ko.md:15:3. [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+codex
+팀장님, 현재 워크트리는 이미 gateway 제거 관련 변경이 들어가 있습니다. 먼저 실행 가이드의 체크 상태와 마스터 플랜의 실제 요구를 맞춰서, 지금 순서상 어디까지 끝났고 어디가 비어 있는지 정확히 잡겠습니다.
+exec
+/bin/bash -lc "sed -n '120,340p' doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+git add <관련 파일들>
+git commit -m "<단계 목적을 드러내는 메시지>"
+git push
+```
+
+## 5. 남은 작업 체크리스트
+
+상태 값은 아래 네 개만 쓴다.
+
+- `미착수`
+- `진행중`
+- `검증중`
+- `완료`
+
+### 5.1 authority / preflight 정리
+
+상태: `진행중`
+
+진행 메모:
+
+exec
+/bin/bash -lc "sed -n '140,540p' doc/plan/service/gateway/gateway-removal-plan.ko.md" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '250,340p' doc/plan/service/gateway/socket-metadata-sharing-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+## 8. runtime / lifecycle 원칙
+
+- `value`는 connection graph와 독립된 service peer attribute다
+- `metadata` blob은 registry/discovery가 의미를 해석하지 않는다
+- metadata update는 local owner overwrite 기준으로 적용한다
+- 길이 `0` metadata는 empty blob으로 본다
+- discovery는 최신 snapshot으로 local runtime을 refresh한다
+- 연결 대상 계산과 metadata 기반 정책 적용은 서로 다른 단계여야 한다
+
+## 9. 구현 단계 제안
+
+### Phase 1. 삭제 후 요구 재수집
+
+- `gateway` 제거 후 실제로 남은 사용자 시나리오 재정리
+- migration guide만으로 충분한 항목과 새 API가 필요한 항목 분리
+- `value = int64_t`, `metadata = opaque blob` 가정 유지 여부 확인
+
+### Phase 2. 모델 확정
+
+- member peer row 최소 field 집합 확정
+ succeeded in 0ms:
+
+## 9. 단계 제안
+
+### Phase 1. 삭제 범위 고정
+
+- 현재 `gateway`가 제공하던 public/internal/protocol/test/doc/bindings surface를 확정
+- topology convenience와 metadata-aware routing 요구를 분리해서 기록
+- 삭제 후 반드시 남겨야 할 최소 사용자 시나리오를 식별
+
+### Phase 2. `gateway` source tree 제거
+
+- `gateway` 전용 public/internal symbol 삭제
+- registry/discovery/service 계층에 남은 `gateway` 분기 제거
+- protocol/store/query path의 `gateway` 특수 처리를 제거
+- 테스트/`core/perf`/문서/bindings에서 `gateway` family를 삭제하거나 대체 경로로 갱신
+
+### Phase 3. 삭제 후 공백 판정
+
+- 삭제로 비게 된 사용자 시나리오를 raw socket/service contract 기준으로 다시 분류
+- 추가 구현 없이도 끝낼 수 있는지 먼저 판정한다
+codex
+팀장님, 실행 가이드상 첫 미완료 묶음은 아직 `5.1`과 `5.2`입니다. 지금부터는 마스터 플랜의 삭제 범위와 실제 코드 잔여물을 대조해서, 가이드에 빠진 항목이 있으면 먼저 문서부터 맞추고 바로 코드 정리로 들어가겠습니다.
+exec
+/bin/bash -lc "rg --files core/src | rg 'gateway|discovery|monitor|poller|service_mode|service_option|service_gateway|registry|discovery_protocol'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/api/monitor_service_snapshot_api.cpp
+core/src/api/poller_api_internal.hpp
+core/src/api/service_option_api.cpp
+core/src/api/poller_api.cpp
+core/src/api/monitor_socket_api.cpp
+core/src/api/monitor_service_open_api.cpp
+core/src/api/monitor_service_api.cpp
+core/src/api/service_mode_api.cpp
+core/src/api/service_poller_api.cpp
+core/src/api/monitor_api_internal.hpp
+core/src/api/service_option_spot_api.cpp
+core/src/api/monitor_query_api.cpp
+core/src/api/service_registry_api.cpp
+core/src/api/service_gateway_api.cpp
+core/src/api/monitor_api.cpp
+core/src/api/service_discovery_api.cpp
+core/src/engine/asio/asio_poller.hpp
+core/src/engine/asio/asio_poller.cpp
+core/src/services/gateway/gateway_monitor.cpp
+core/src/services/gateway/gateway_refresh.cpp
+exec
+/bin/bash -lc "rg -n \"gateway\" core/include/zlink.h core/tests/README.md bindings core/perf -g '"'!doc/plan/service/gateway/logs/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/tests/README.md:129:- `test_gateway` remains available as a manual umbrella/debug executable, but it
+core/tests/README.md:132:  `test_gateway_single_service` serving as the e2e smoke case.
+core/tests/README.md:135:  `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+core/tests/README.md:154:- The stress lane currently covers discovery control-path teardown, gateway
+core/tests/README.md:155:  runtime read and attach/query ordering, gateway send-ready self-close,
+core/tests/README.md:158:- `run_thread_safe_contract_perf.sh` executes the raw/gateway/spot 1/4/16/64
+core/tests/README.md:162:  discovery control-path, gateway attach/query, gateway self-close, and spot
+core/include/zlink.h:586: * - `gateway`
+core/include/zlink.h:629: * - `gateway`
+core/include/zlink.h:1038: * Gateway handles start in recv model. Use `zlink_gateway_recv()` or
+core/include/zlink.h:1052:ZLINK_EXPORT void *zlink_gateway_new (void *ctx);
+core/include/zlink.h:1060:ZLINK_EXPORT int zlink_gateway_attach_discovery (void *gateway,
+core/include/zlink.h:1063:ZLINK_EXPORT int zlink_gateway_bind (void *gateway,
+core/include/zlink.h:1072:ZLINK_EXPORT int zlink_gateway_connect (void *gateway,
+core/include/zlink.h:1081:ZLINK_EXPORT int zlink_gateway_disconnect (void *gateway,
+core/include/zlink.h:1084:typedef enum zlink_gateway_lb_strategy_t
+core/include/zlink.h:1088:} zlink_gateway_lb_strategy_t;
+core/include/zlink.h:1094:ZLINK_EXPORT int zlink_gateway_set_lb_strategy (
+core/include/zlink.h:1095:  void *gateway, zlink_gateway_lb_strategy_t strategy);
+core/include/zlink.h:1098:ZLINK_EXPORT int zlink_gateway_update_peer_weight (
+exec
+/bin/bash -lc "rg -n \"zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway|Gateway\" core core/tests core/perf bindings doc/plan/service/gateway -g '"'!doc/plan/service/gateway/logs/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:1:# Gateway 삭제 / Metadata 후속 작업 Execution Guide
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:111:rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" \
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:157:- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:192:- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:231:- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:314:- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
+doc/plan/service/gateway/README.ko.md:1:# Gateway 후속 계획 문서
+doc/plan/service/gateway/gateway-removal-plan.ko.md:1:# Gateway 제거 상세 계획
+doc/plan/service/gateway/gateway-removal-plan.ko.md:189:- `zlink_gateway_new(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:190:- `zlink_gateway_destroy(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:191:- `zlink_gateway_attach_discovery(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:195:- `zlink_gateway_bind(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:196:- `zlink_gateway_connect(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:197:- `zlink_gateway_disconnect(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:201:- `zlink_gateway_set_lb_strategy(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:202:- `zlink_gateway_update_peer_weight(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:206:- `zlink_gateway_status_snapshot(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:210:- `zlink_registry_gateway_peers_snapshot(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:211:- `zlink_registry_gateway_peers_query(...)`
+doc/plan/service/gateway/gateway-removal-plan.ko.md:212:- `zlink_registry_query_gateway_peers_snapshot(...)`
+codex
+팀장님, 바로 보이는 문서 불일치가 하나 있습니다. 실행 가이드가 자신을 단독 authority로 적고 있어서, 방금 주신 규칙과 어긋나므로 이 정합성부터 먼저 고치고 계속 가는 게 맞습니다.
+exec
+/bin/bash -lc 'git diff -- doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 13552a85..839fb4c8 100644
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -1,7 +1,7 @@
+ # Gateway 삭제 / Metadata 후속 작업 Execution Guide
+ 
+ > 상태: active
+-> 대상 범위: `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`
++> 대상 범위: `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`
+ > 목적: `gateway` 삭제와 metadata 후속 작업을 랄프 루프에서 중단 없이 순서대로 끝내기 위한 실행 기준 고정
+ 
+ ## 1. 문서 목적
+@@ -54,7 +54,7 @@ metadata infra를 먼저 만들고 `gateway` 삭제를 나중에 결정하는 
+ 
+ 아래를 모두 만족해야 이번 묶음 작업이 끝난다.
+ 
+-- `gateway` family symbol과 전용 구현이 `core/`, `core/tests/`, `core/perf/`에서 제거된다.
++- `gateway` family symbol과 전용 구현이 `core/`, `core/tests/`, `core/perf/`, `bindings/`에서 제거된다.
+ - 삭제 직후 관련 discovery/registry/service/perf 코드에 대해 POSD 리팩토링이 반영된다.
+exec
+/bin/bash -lc 'git diff -- core/tests/CMakeLists.txt core/tests/testutil_unity.hpp core/tests/unittest/unittest_service_mode_policy.cpp core/tests/unittest/unittest_typed_option.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/tests/CMakeLists.txt b/core/tests/CMakeLists.txt
+index f32ad664..14175471 100644
+--- a/core/tests/CMakeLists.txt
++++ b/core/tests/CMakeLists.txt
+@@ -27,16 +27,12 @@ set(tests
+   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
+   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
+   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
+-  ${INTEGRATION_TEST_ROOT}/monitoring/test_gateway_monitor_process
+   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
+   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
+   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_service_contract
+   ${INTEGRATION_TEST_ROOT}/test_monitor_with_handler
+   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
+   ${INTEGRATION_TEST_ROOT}/test_connect_resolve
+-  ${E2E_TEST_ROOT}/discovery/test_gateway
+-  ${INTEGRATION_TEST_ROOT}/discovery/test_gateway_with_handler
+-  ${INTEGRATION_TEST_ROOT}/discovery/test_gateway_handover
+   ${INTEGRATION_TEST_ROOT}/test_capabilities
+   ${INTEGRATION_TEST_ROOT}/test_socket_null
+exec
+/bin/bash -lc 'git diff --stat' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+ core/tests/CMakeLists.txt                          |   75 +-
+ core/tests/e2e/discovery/test_gateway.cpp          | 2528 --------------------
+ .../discovery/test_gateway_handover.cpp            |  298 ---
+ .../discovery/test_gateway_with_handler.cpp        |  273 ---
+ .../monitoring/test_gateway_monitor_process.cpp    |  475 ----
+ core/tests/testutil_unity.hpp                      |   26 -
+ .../unittest/unittest_service_mode_policy.cpp      |   40 -
+ core/tests/unittest/unittest_typed_option.cpp      |   60 -
+ .../gateway-removal-metadata-execution-guide.ko.md |   47 +-
+ 9 files changed, 37 insertions(+), 3785 deletions(-)
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/CMakeLists.txt" in /home/hep7/project/kairos/zlink exited 2 in 0ms:
+sed: can't read core/src/CMakeLists.txt: No such file or directory
+exec
+/bin/bash -lc "sed -n '1,220p' core/CMakeLists.txt" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,120p' doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# CMake build script for Zlink (zlink distribution)
+
+# Set minimum CMake version before project()
+cmake_minimum_required(VERSION 3.10)
+
+# Enable VERSION in project() command
+if(POLICY CMP0048)
+  cmake_policy(SET CMP0048 NEW)
+endif()
+
+project(zlink VERSION 1.6.1 LANGUAGES C CXX)
+
+# Internal repo targets still include the public header from core/include.
+# Define a build-only macro so in-tree code can access private build-only
+# declarations without changing the installed ABI.
+add_compile_definitions(ZLINK_INTERNAL_BUILD=1)
+
+include(CheckIncludeFiles)
+include(CheckCCompilerFlag)
+include(CheckCXXCompilerFlag)
+ succeeded in 0ms:
+# Gateway 삭제 / Metadata 후속 작업 Execution Guide
+
+> 상태: active
+> 대상 범위: `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`
+> 목적: `gateway` 삭제와 metadata 후속 작업을 랄프 루프에서 중단 없이 순서대로 끝내기 위한 실행 기준 고정
+
+## 1. 문서 목적
+
+이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
+새 설계를 제안하지 않는다.
+
+설계 authority는 아래 문서들로 고정한다.
+
+- [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+- [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+- [`README.ko.md`](./README.ko.md)
+
+설계 판단이 흔들리면 먼저 authority 문서를 고치고 그 다음 코드를 수정한다.
+
+codex
+팀장님, 문서 불일치는 곧바로 수정하겠습니다. 동시에 빌드 스크립트에서 gateway 소스가 어떻게 연결돼 있는지도 잡아서, 다음 편집이 선언 삭제에 그치지 않고 실제 링크 경로까지 정리되게 만들겠습니다.
+exec
+/bin/bash -lc "rg -n \"service_gateway_api|services/gateway|perf_gateway|comp_src_gateway|routing_id_utils|gateway_\" core/CMakeLists.txt core/builds -g 'CMakeLists.txt' -g '*.cmake'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/CMakeLists.txt:953:    src/api/service_gateway_api.cpp
+core/CMakeLists.txt:1032:    src/services/gateway/gateway_access.cpp
+core/CMakeLists.txt:1033:    src/services/gateway/gateway_facade.cpp
+core/CMakeLists.txt:1034:    src/services/gateway/gateway_lifecycle.cpp
+core/CMakeLists.txt:1035:    src/services/gateway/gateway_monitor.cpp
+core/CMakeLists.txt:1036:    src/services/gateway/gateway_pool.cpp
+core/CMakeLists.txt:1037:    src/services/gateway/gateway_socket.cpp
+core/CMakeLists.txt:1038:    src/services/gateway/gateway_refresh.cpp)
+core/CMakeLists.txt:1155:    src/services/gateway
+exec
+/bin/bash -lc "rg -n \"zlink_gateway_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|msg_gateway_peer|poller_subject_gateway|Gateway\" core/src core/include core/perf bindings/node bindings/java bindings/python bindings/dotnet -g '"'!**/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+bindings/dotnet/tests/Zlink.Tests/test_service_discovery.cs:26:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/test_service_discovery.cs:78:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/test_service_discovery.cs:121:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/test_service_discovery.cs:157:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/test_service_discovery.cs:183:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/CoreTestSupport.cs:134:    internal static void SendGatewayWithRetry(Gateway gateway, string serviceName,
+bindings/dotnet/tests/Zlink.Tests/CoreTestSupport.cs:319:    internal static GatewayMessage ReceiveGatewayWithTimeout(Gateway gateway,
+bindings/python/tests/integration/run_discovery_gateway_spot.py:46:        discovery = zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY)
+bindings/python/tests/integration/run_discovery_gateway_spot.py:69:        gateway = zlink.Gateway(ctx, discovery)
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:48:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:50:        using var gateway = new Gateway(ctx, discovery);
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:67:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:68:        using var gateway = new Gateway(ctx, discovery);
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:87:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:88:        using var gateway = new Gateway(ctx, discovery);
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:95:            gateway.SetLoadBalancing("", GatewayLoadBalancing.RoundRobin));
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:102:            _ = new Gateway(ctx, discovery, ""));
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:104:            _ = new Gateway(ctx, discovery, new string('r', 256)));
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:120:        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+bindings/dotnet/tests/Zlink.Tests/test_gateway.cs:136:        using var gateway = new Gateway(ctx, discovery);
+codex
+팀장님, 문서는 두 군데를 먼저 바로잡겠습니다. 실행 authority를 `execution guide + master plans` 조합으로 고치고, blocker 범위에도 `bindings/`를 넣어서 이후 판단 기준이 문서와 실제 작업 범위에서 어긋나지 않게 맞추겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -8,4 +8,5 @@
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+@@ -22,3 +23,3 @@
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+@@ -26,3 +27,3 @@
+ 
+-상세 authority:
++master plan authority:
+ 
+@@ -81,3 +82,3 @@
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+apply_patch(auto_approved=true) exited 0 in 12ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+exec
+/bin/bash -lc "sed -n '900,1065p' core/CMakeLists.txt" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1065,1175p' core/CMakeLists.txt" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    src/sockets/socket_base.cpp
+    src/sockets/socket_base_api.cpp
+    src/sockets/socket_base_dispatch.cpp
+    src/sockets/socket_base_endpoint.cpp
+    src/sockets/socket_base_lifecycle.cpp
+    src/sockets/socket_base_msg.cpp
+    src/sockets/socket_base_monitor.cpp
+    src/sockets/socket_base_routing.cpp
+    src/sockets/socket_runtime.cpp
+    src/sockets/dealer.cpp
+    src/sockets/router.cpp
+    src/sockets/stream.cpp
+    src/sockets/pub.cpp
+    src/sockets/sub.cpp
+    src/sockets/xpub.cpp
+    src/sockets/xsub.cpp
+    src/sockets/pair.cpp
+    src/sockets/lb.cpp
+    src/sockets/fq.cpp
+    src/sockets/dist.cpp
+ succeeded in 0ms:
+endif()
+
+if(MSVC)
+  # Allow C++ standard override via ZLINK_CXX_STANDARD option
+  set(ZLINK_CXX_STANDARD "17" CACHE STRING "C++ standard to use (11, 14, 17, 20, etc.).")
+
+  if(ZLINK_CXX_STANDARD)
+    if(ZLINK_CXX_STANDARD STREQUAL "11")
+      # MSVC 2015+ defaults to C++14, explicit C++11 not needed
+      message(STATUS "Using C++11 standard (MSVC default)")
+    elseif(ZLINK_CXX_STANDARD STREQUAL "14")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++14")
+      message(STATUS "Using C++14 standard")
+    elseif(ZLINK_CXX_STANDARD STREQUAL "17")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
+      message(STATUS "Using C++17 standard")
+    elseif(ZLINK_CXX_STANDARD STREQUAL "20")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20")
+      message(STATUS "Using C++20 standard")
+    elseif(ZLINK_CXX_STANDARD STREQUAL "latest")
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_registry_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "utils/err.hpp"
+#include "api/service_api_internal.hpp"
+#include "api/zlink_testing.hpp"
+
+#include <vector>
+
+#include "services/discovery/registry_access.hpp"
+#include "services/discovery/registry_query_access.hpp"
+
+namespace zlink
+{
+service_public_api_guard_t *
+registry_query_public_api_guard_for_testing (void *client_)
+{
+    return registry_query_access_t::public_api_guard_for_testing (client_);
+}
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_poller_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "utils/err.hpp"
+#include "api/service_api_internal.hpp"
+
+#include "services/gateway/gateway_access.hpp"
+
+int validate_spot_generic_poller_events (short events_, bool *is_pub_out_)
+{
+    if (!is_pub_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (events_ == ZLINK_POLLOUT) {
+        *is_pub_out_ = true;
+        return 0;
+    }
+    if (events_ == ZLINK_POLLIN) {
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_discovery_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "utils/err.hpp"
+#include "api/monitor_api_internal.hpp"
+#include "api/service_api_internal.hpp"
+
+#include "services/discovery/discovery_access.hpp"
+
+void *zlink_discovery_new (void *ctx_,
+                           zlink_service_type_t service_type_,
+                           const char *service_name_)
+{
+    if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    if (!service_name_ || service_name_[0] == '\0') {
+        errno = EINVAL;
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/poller_api_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_API_POLLER_API_INTERNAL_HPP_INCLUDED__
+#define __ZLINK_API_POLLER_API_INTERNAL_HPP_INCLUDED__
+
+#include "utils/precompiled.hpp"
+
+#include <vector>
+
+#include "api/socket_api_internal.hpp"
+#include "core/socket_poller.hpp"
+
+enum poller_subject_kind_t
+{
+    poller_subject_none = 0,
+    poller_subject_gateway,
+    poller_subject_spot_pub,
+    poller_subject_spot_sub,
+    poller_subject_spot_node_pub,
+    poller_subject_spot_node_sub
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/monitor_service_open_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "utils/err.hpp"
+#include "api/monitor_api_internal.hpp"
+#include "api/service_api_internal.hpp"
+
+#include "api/socket_api_internal.hpp"
+#include "services/discovery/discovery_access.hpp"
+#include "services/gateway/gateway_access.hpp"
+#include "services/spot/spot_node_access.hpp"
+
+namespace
+{
+int attach_service_monitor_handler_state (void *monitor_,
+                                          zlink_service_monitor_handler_fn handler_,
+                                          void *userdata_)
+{
+    if (!monitor_) {
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+Plan update
+문서 authority 정합성을 먼저 맞췄고, 이제 5.1을 닫을 수 있는 baseline과 5.2의 실제 삭제 범위를 코드 기준으로 정리합니다.
+  → execution guide와 master plan의 authority/범위 불일치를 수정하고 preflight baseline을 문서에 반영
+  • gateway public/internal/protocol 잔여물을 core 기준으로 정리할 첫 삭제 묶음 구현
+  • core/build 기준으로 해당 묶음 빌드/테스트 검증 후 문서 상태 갱신
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/service_api_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_API_SERVICE_API_INTERNAL_HPP_INCLUDED__
+#define __ZLINK_API_SERVICE_API_INTERNAL_HPP_INCLUDED__
+
+#include "zlink.h"
+
+#include "api/poller_api_internal.hpp"
+#include "services/common/service_public_api.hpp"
+#include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_subject_access.hpp"
+
+namespace zlink
+{
+class gateway_t;
+}
+
+bool is_registered_gateway_handle (void *gateway_);
+bool is_registered_spot_node_handle (void *node_);
+bool is_registered_spot_handle (void *spot_);
+exec
+/bin/bash -lc 'rg -n "gateway" core/src/api/service_api_internal.hpp core/src/api/monitor_api_internal.hpp core/src/services/discovery/discovery_access.hpp core/src/services/discovery/registry_access.hpp core/src/services/discovery/registry_query_access.hpp core/src/services/discovery/discovery.hpp core/src/services/discovery/registry.hpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/services/discovery/registry.hpp:52:    int gateway_peers_snapshot (zlink_registry_gateway_peer_entry_t *entries_,
+core/src/services/discovery/registry.hpp:54:    int gateway_peers_query (
+core/src/services/discovery/registry.hpp:55:      const zlink_registry_gateway_peer_filter_t *filter_,
+core/src/services/discovery/registry.hpp:56:      zlink_registry_gateway_peer_entry_t *entries_,
+core/src/services/discovery/registry.hpp:136:    struct gateway_peer_key_t
+core/src/services/discovery/registry.hpp:138:        std::string gateway_routing_id_key;
+core/src/services/discovery/registry.hpp:142:        bool operator< (const gateway_peer_key_t &other_) const
+core/src/services/discovery/registry.hpp:144:            if (gateway_routing_id_key != other_.gateway_routing_id_key)
+core/src/services/discovery/registry.hpp:145:                return gateway_routing_id_key < other_.gateway_routing_id_key;
+core/src/services/discovery/registry.hpp:152:    struct gateway_peer_entry_t
+core/src/services/discovery/registry.hpp:154:        zlink_registry_gateway_peer_entry_t entry;
+core/src/services/discovery/registry.hpp:178:    void handle_gateway_peer_report (const zlink_msg_t *frames_,
+core/src/services/discovery/registry.hpp:180:    void handle_gateway_peer_query (void *router_,
+core/src/services/discovery/registry.hpp:200:    void send_gateway_peer_reply (
+core/src/services/discovery/registry.hpp:203:      const std::vector<zlink_registry_gateway_peer_entry_t> &entries_);
+core/src/services/discovery/registry.hpp:208:    void upsert_gateway_peer_entry (
+core/src/services/discovery/registry.hpp:209:      const zlink_registry_gateway_peer_entry_t &entry_,
+core/src/services/discovery/registry.hpp:267:    std::map<gateway_peer_key_t, gateway_peer_entry_t> _gateway_peers;
+core/src/api/monitor_api_internal.hpp:16:class gateway_t;
+core/src/api/monitor_api_internal.hpp:81:int gateway_monitor_snapshot_provider (void *subject_,
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/monitor_api_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_API_MONITOR_API_INTERNAL_HPP_INCLUDED__
+#define __ZLINK_API_MONITOR_API_INTERNAL_HPP_INCLUDED__
+
+#include "zlink.h"
+
+#include <atomic>
+#include <thread>
+
+#include "sockets/socket_base.hpp"
+#include "utils/mutex.hpp"
+
+namespace zlink
+{
+class gateway_t;
+class spot_node_t;
+class spot_pub_t;
+class spot_sub_t;
+class spot_internal_receiver_t;
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+codex
+팀장님, 이제는 문서 정합성 단계는 거의 닫을 수 있습니다. 다음 묶음은 `gateway` core 구현을 실제로 걷어내는 첫 덩어리인데, 결합도가 큰 축이 `public header + discovery/registry gateway peer path + poller/monitor gateway branch`라서 이 세 축을 같이 자르겠습니다.
+exec
+/bin/bash -lc "sed -n '1,340p' core/src/services/discovery/discovery.hpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,340p' core/src/services/discovery/registry.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_DISCOVERY_REGISTRY_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_REGISTRY_HPP_INCLUDED__
+
+#include "core/ctx.hpp"
+#include "services/common/service_public_api.hpp"
+#include "services/common/service_runtime_base.hpp"
+#include "utils/atomic_counter.hpp"
+#include "utils/clock.hpp"
+#include "utils/mutex.hpp"
+
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace zlink
+{
+class registry_t
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
+
+#include "core/ctx.hpp"
+#include "services/common/service_public_api.hpp"
+#include "services/common/service_runtime_base.hpp"
+#include "services/common/service_monitor.hpp"
+#include "utils/atomic_counter.hpp"
+#include "utils/condition_variable.hpp"
+#include "utils/mutex.hpp"
+
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace zlink
+{
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/discovery/discovery_access.hpp && sed -n '1,220p' core/src/services/discovery/registry_access.hpp && sed -n '1,180p' core/src/services/discovery/registry_query_access.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_DISCOVERY_ACCESS_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_ACCESS_HPP_INCLUDED__
+
+#include <zlink.h>
+
+#include <string>
+
+namespace zlink
+{
+class ctx_t;
+class discovery_t;
+class discovery_observer_t;
+
+struct discovery_access_t
+{
+    static void *create (ctx_t *ctx_,
+                         zlink_service_type_t service_type_,
+                         const char *service_name_);
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+exec
+/bin/bash -lc "sed -n '1,240p' core/src/services/discovery/discovery_access.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/discovery/discovery_access.hpp"
+
+#include <new>
+
+#include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+
+namespace zlink
+{
+void *discovery_access_t::create (ctx_t *ctx_,
+                                  zlink_service_type_t service_type_,
+                                  const char *service_name_)
+{
+    uint16_t internal_service_type = 0;
+    if (service_type_ == ZLINK_SERVICE_TYPE_GATEWAY)
+        internal_service_type =
+exec
+/bin/bash -lc "sed -n '1,380p' core/src/services/discovery/registry_query_access.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/discovery/registry_query_access.hpp"
+
+#include <new>
+#include <string.h>
+
+#include "core/ctx.hpp"
+#include "core/recv_internal.hpp"
+#include "services/common/service_public_api.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/err.hpp"
+#include "utils/random.hpp"
+
+namespace
+{
+struct registry_query_client_t
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/discovery/registry_access.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include <new>
+
+#include "services/discovery/registry_access.hpp"
+
+#include "services/discovery/registry.hpp"
+
+namespace zlink
+{
+void *registry_access_t::create (ctx_t *ctx_)
+{
+    registry_t *registry = new (std::nothrow) registry_t (ctx_);
+    if (!registry) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return registry;
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/services/discovery/discovery_state.cpp && sed -n '1,220p' core/src/services/discovery/registry_state.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
+
+#include "services/control/service_control_runtime.hpp"
+
+#include <cstring>
+
+namespace zlink
+{
+namespace
+{
+static std::string topology_routing_key_local (const zlink_routing_id_t &rid_)
+{
+    if (rid_.size == 0)
+        return std::string ();
+    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/discovery/discovery_uplink.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "core/recv_internal.hpp"
+#include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
+#include "services/gateway/routing_id_utils.hpp"
+
+#include <cstdarg>
+#include <cstdio>
+
+namespace zlink
+{
+namespace
+{
+static void discovery_debugf_local (const char *fmt_, ...)
+{
+    if (!std::getenv ("ZLINK_DISCOVERY_DEBUG"))
+exec
+/bin/bash -lc "sed -n '220,420p' core/src/services/discovery/registry_state.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+    if (changed) {
+        _list_seq++;
+        _summary_last_changed_ms = now_ms_;
+    }
+}
+
+void registry_t::handle_peer (void *sub_)
+{
+    std::vector<zlink_msg_t> frames;
+    while (true) {
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
+        if (recv_msg_internal (sub_, &frame, ZLINK_DONTWAIT) == -1) {
+            zlink_msg_close (&frame);
+            break;
+        }
+        frames.push_back (frame);
+        if (!registry_frame_has_more (frame))
+            break;
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/services/discovery/discovery_update.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "core/recv_internal.hpp"
+#include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
+
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+
+namespace zlink
+{
+namespace
+{
+static void discovery_debugf_local (const char *fmt_, ...)
+{
+    if (!std::getenv ("ZLINK_DISCOVERY_DEBUG"))
+exec
+/bin/bash -lc "sed -n '260,580p' core/src/services/discovery/discovery_uplink.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+              "topology report send failed kind=%u service=%s errno=%d",
+              static_cast<unsigned int> (entries[i].service_kind),
+              entries[i].service_name, errno);
+        }
+    }
+
+    {
+        scoped_lock_t lock (owner_->_sync);
+        for (size_t i = 0; i < keys.size (); ++i) {
+            std::map<discovery_t::topology_key_t,
+                     discovery_t::topology_summary_t>::iterator it =
+              owner_->_summary_store.find (keys[i]);
+            if (it == owner_->_summary_store.end () || !sent[i])
+                continue;
+            it->second.dirty = false;
+        }
+    }
+}
+
+void discovery_uplink_runtime_t::flush_gateway_peer_reports (
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+codex
+팀장님, 이번 iteration에서 안전하게 밀 수 있는 구현 묶음을 좁혔습니다. `gateway` 삭제 전체를 한 번에 끝내려면 core, perf, bindings가 동시에 다 깨지기 쉬워서, 먼저 `execution guide` 정합성 + `core/tests` gateway 회귀 제거 범위를 확실히 닫고, 다음으로 `core` 내부 제거의 첫 축인 discovery/registry gateway peer path를 잘라내는 쪽으로 전진하겠습니다.
+codex
+팀장님, 문서만 고치고 멈추지는 않겠습니다. 현재까지 들어간 `core/tests` 변경이 실제로 살아 있는지 `core/build`로 다시 확인해서 `5.1`을 닫고, 그 결과를 기준으로 `5.2` 잔여 범위를 더 정확히 자르겠습니다.
+exec
+/bin/bash -lc 'cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option' in /home/hep7/project/kairos/zlink succeeded in 573ms:
+[ 96%] Built target objects
+[ 96%] Built target libzlink-static
+[ 98%] Built target testutil-static
+[100%] Built target unittest_service_mode_policy
+[  1%] Built target unity
+[ 96%] Built target objects
+[ 96%] Built target libzlink-static
+[ 98%] Built target testutil-static
+[100%] Built target unittest_typed_option
+ succeeded in 760ms:
+-- Using C++17 standard
+-- ASIO headers found: /home/hep7/project/kairos/zlink/core/external/boost
+-- Using ASIO as mandatory I/O backend
+-- OpenSSL found: 3.0.13
+-- Beast headers found - WebSocket support enabled
+-- WSS (Secure WebSocket) enabled with TLS
+-- TLS transport enabled
+-- WebSocket transport enabled
+-- Secure WebSocket transport enabled
+-- Using libbsd
+-- Using polling method in I/O threads: asio
+-- Using polling method in zlink_poll(er)_* API: poll
+-- Using 64 bytes alignment for lock-free data structures
+-- Using condition_variable_t implementation: stl11
+-- Checking whether EFD_CLOEXEC is supported
+-- Checking whether noexcept is supported
+-- Checking pthread_setname signature
+-- Checking pthread_setaffinity signature
+-- Checking whether SOCK_CLOEXEC is supported
+-- Checking whether O_CLOEXEC is supported
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_service_mode_policy|unittest_typed_option)$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+ succeeded in 5.97s:
+1/2 Test  #98: unittest_service_mode_policy .....   Passed    4.04 sec
+    Start 109: unittest_typed_option
+2/2 Test #109: unittest_typed_option ............   Passed    2.03 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+parallel-safe    =   6.08 sec*proc (2 tests)
+unittest         =   6.08 sec*proc (2 tests)
+
+Total Test time (real) =   6.08 sec
+codex
+팀장님, 현재 `core/build` 기준 targeted unit 회귀를 다시 돌리고 있습니다. configure와 두 개 executable 재빌드는 통과했고, 지금은 `ctest`에서 실제 회귀가 깨지지 않는지만 확인 중입니다.
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+exec
+/bin/bash -lc 'for path in core/include core/src core/tests core/perf bindings; do count=$(rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" "$path" | wc -l); printf "%s %s'"\\n\" \""'$path" "$count"; done' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/include 62
+core/src 219
+core/tests 145
+core/perf 36
+bindings 278
+exec
+/bin/bash -lc "rg -n \"zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway\" core core/tests core/perf bindings doc/plan/service/gateway -g '"'!doc/plan/service/gateway/logs/**'"' | sed -n '1,220p'" in /home/hep7/project/kairos/zlink succeeded in 194ms:
+RVICE_TYPE_GATEWAY, "svcmon");
+core/tests/e2e/discovery/test_service_introspection.cpp:651:      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svcmon-ready");
+core/tests/e2e/discovery/test_service_introspection.cpp:711:      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-int-opt");
+core/tests/e2e/discovery/test_service_introspection.cpp:761:    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&client));
+core/tests/e2e/discovery/test_service_introspection.cpp:780:      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-int");
+core/tests/e2e/discovery/test_service_introspection.cpp:793:      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-int");
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+codex
+팀장님, 현재 baseline 수치가 나왔습니다. source 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278` 건이라서 `5.1`은 닫을 수 있고, `5.2`의 다음 우선순위는 분명히 `core/src + bindings + core/tests/README`입니다.
+exec
+/bin/bash -lc "sed -n '110,180p' core/tests/README.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+```
+
+## Writing Tests
+
+- Add new internal logic tests under `core/tests/unittest/`.
+- Add new focused behavior tests under `core/tests/integration/`.
+- Add new representative executable-level smoke tests under `core/tests/e2e/`.
+- Add long-running or historical flake coverage under the `regression` lane
+  unless it must remain in the default integration path.
+- Start new tests in the safest lane first. Only promote to `parallel-safe`
+  after confirming the test does not depend on live socket timing, discovery
+  state, global env mutation, or teardown ordering.
+- Do not add retry logic or sleep-based retry loops. Use deterministic events
+  and hard timeouts.
+
+## Notes
+
+- Some scenario-style e2e tests still live outside `core/tests/` because they
+  are tied to benchmark/source-stack fixtures under `core/bench/`.
+- `test_gateway` remains available as a manual umbrella/debug executable, but it
+exec
+/bin/bash -lc "sed -n '180,340p' core/tests/README.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..af4b0bb3502e9f46162cc30c48bdbad8e52bae52
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+
+codex
+팀장님, 문서 상태표도 실제 진행에 맞게 맞추겠습니다. `5.1`은 authority 정합성, baseline 검색, targeted 검증이 끝났으니 완료로 올리고, `core/tests/README.md`의 이미 사라진 gateway umbrella 설명도 현재 코드와 맞게 정리하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -136,3 +136,3 @@
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+@@ -142,3 +142,7 @@
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+@@ -173,2 +177,3 @@
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리 중이다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+@@ -176,2 +181,3 @@
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+apply_patch(auto_approved=true) exited 0 in 11ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..74520fcfc0d225a4c2fa9192d62c1cd204fea912
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리 중이다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+file update:
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..74520fcfc0d225a4c2fa9192d62c1cd204fea912
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리 중이다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+file update
+M /home/hep7/project/kairos/zlink/core/tests/README.md
+@@ -128,6 +128,2 @@
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+apply_patch(auto_approved=true) exited 0 in 5ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/tests/README.md
+file update:
+diff --git a/core/tests/README.md b/core/tests/README.md
+index 52bc094687ed90e6d9588d3dac36d670ae9806d4..853036b43699219a50d134020d3120d4be64de57
+--- a/core/tests/README.md
++++ b/core/tests/README.md
+@@ -126,10 +126,6 @@
+ 
+ - Some scenario-style e2e tests still live outside `core/tests/` because they
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+   Its top-level CTest entry is intentionally not registered; use the
+   `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..74520fcfc0d225a4c2fa9192d62c1cd204fea912
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리 중이다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+file update:
+diff --git a/core/tests/README.md b/core/tests/README.md
+index 52bc094687ed90e6d9588d3dac36d670ae9806d4..853036b43699219a50d134020d3120d4be64de57
+--- a/core/tests/README.md
++++ b/core/tests/README.md
+@@ -126,10 +126,6 @@
+ 
+ - Some scenario-style e2e tests still live outside `core/tests/` because they
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+   Its top-level CTest entry is intentionally not registered; use the
+   `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..74520fcfc0d225a4c2fa9192d62c1cd204fea912
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리 중이다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+exec
+/bin/bash -lc 'git diff -- core/tests/README.md doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/tests/README.md b/core/tests/README.md
+index 52bc0946..853036b4 100644
+--- a/core/tests/README.md
++++ b/core/tests/README.md
+@@ -126,10 +126,6 @@ ctest --test-dir core/build \
+ 
+ - Some scenario-style e2e tests still live outside `core/tests/` because they
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+   Its top-level CTest entry is intentionally not registered; use the
+   `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 13552a85..74520fcf 100644
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -1,13 +1,14 @@
+exec
+/bin/bash -lc 'rg -n "test_gateway|gateway lane coverage|gateway umbrella|SERVICE_TYPE_GATEWAY|zlink_gateway_" core/tests/README.md doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:112:rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" \
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:162:- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:173:- `core/tests/e2e/discovery/test_gateway.cpp`를 삭제했다.
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:174:- `core/tests/integration/discovery/test_gateway_handover.cpp`를 삭제했다.
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:175:- `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:176:- `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:178:- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리 중이다.
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:199:- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:238:- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
+doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md:321:- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
+file update:
+diff --git a/core/tests/README.md b/core/tests/README.md
+index 52bc094687ed90e6d9588d3dac36d670ae9806d4..853036b43699219a50d134020d3120d4be64de57
+--- a/core/tests/README.md
++++ b/core/tests/README.md
+@@ -126,10 +126,6 @@
+ 
+ - Some scenario-style e2e tests still live outside `core/tests/` because they
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+   Its top-level CTest entry is intentionally not registered; use the
+   `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..74520fcfc0d225a4c2fa9192d62c1cd204fea912
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리 중이다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+file update
+M /home/hep7/project/kairos/zlink/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -177,3 +177,3 @@
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
+-- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리 중이다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리했다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+apply_patch(auto_approved=true) exited 0 in 4ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+file update:
+diff --git a/core/tests/README.md b/core/tests/README.md
+index 52bc094687ed90e6d9588d3dac36d670ae9806d4..853036b43699219a50d134020d3120d4be64de57
+--- a/core/tests/README.md
++++ b/core/tests/README.md
+@@ -126,10 +126,6 @@
+ 
+ - Some scenario-style e2e tests still live outside `core/tests/` because they
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+   Its top-level CTest entry is intentionally not registered; use the
+   `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..c7086f6591c5bbb4d1dce3d83bc2cdb82ae59b8e
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리했다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+file update:
+diff --git a/core/tests/README.md b/core/tests/README.md
+index 52bc094687ed90e6d9588d3dac36d670ae9806d4..853036b43699219a50d134020d3120d4be64de57
+--- a/core/tests/README.md
++++ b/core/tests/README.md
+@@ -126,10 +126,6 @@
+ 
+ - Some scenario-style e2e tests still live outside `core/tests/` because they
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+   Its top-level CTest entry is intentionally not registered; use the
+   `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..c7086f6591c5bbb4d1dce3d83bc2cdb82ae59b8e
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리했다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+Plan update
+authority/preflight 단계는 문서 정합성 수정, baseline 수집, targeted 회귀 검증까지 끝냈습니다. 다음 iteration은 core/src gateway 제거의 첫 코드 묶음을 실제로 자르는 단계로 넘어갑니다.
+  ✓ execution guide와 master plan의 authority/범위 불일치를 수정하고 preflight baseline을 문서에 반영
+  → gateway public/internal/protocol 잔여물을 core 기준으로 정리할 첫 삭제 묶음 구현
+  • core/build 기준으로 해당 묶음 빌드/테스트 검증 후 문서 상태 갱신
+file update:
+diff --git a/core/tests/README.md b/core/tests/README.md
+index 52bc094687ed90e6d9588d3dac36d670ae9806d4..853036b43699219a50d134020d3120d4be64de57
+--- a/core/tests/README.md
++++ b/core/tests/README.md
+@@ -126,10 +126,6 @@
+ 
+ - Some scenario-style e2e tests still live outside `core/tests/` because they
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+   Its top-level CTest entry is intentionally not registered; use the
+   `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..c7086f6591c5bbb4d1dce3d83bc2cdb82ae59b8e
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리했다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+codex
+계속 진행 필요
+file update:
+diff --git a/core/tests/README.md b/core/tests/README.md
+index 52bc094687ed90e6d9588d3dac36d670ae9806d4..853036b43699219a50d134020d3120d4be64de57
+--- a/core/tests/README.md
++++ b/core/tests/README.md
+@@ -126,10 +126,6 @@
+ 
+ - Some scenario-style e2e tests still live outside `core/tests/` because they
+   are tied to benchmark/source-stack fixtures under `core/bench/`.
+-- `test_gateway` remains available as a manual umbrella/debug executable, but it
+-  is intentionally excluded from the default `integration`, `e2e`, and
+-  `regression` lanes. Gateway lane coverage comes from split case tests, with
+-  `test_gateway_single_service` serving as the e2e smoke case.
+ - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
+   Its top-level CTest entry is intentionally not registered; use the
+   `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
+diff --git a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+index 839fb4c80817ef04f06e79d9a4c94827c5cf13bc..c7086f6591c5bbb4d1dce3d83bc2cdb82ae59b8e
+--- a/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
++++ b/doc/plan/service/gateway/gateway-removal-metadata-execution-guide.ko.md
+@@ -6,8 +6,9 @@
+ 
+ ## 1. 문서 목적
+ 
+-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
+-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
++이 문서는 `gateway` 관련 작업의 실행 authority다.
++작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
++실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
+ 새 설계를 제안하지 않는다.
+ 
+ 설계 authority는 아래 문서들로 고정한다.
+@@ -20,11 +21,11 @@
+ 
+ ## 2. 실행 authority
+ 
+-단일 상위 실행 authority:
++실행 authority:
+ 
+ - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+ 
+-상세 authority:
++master plan authority:
+ 
+ - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+ - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+@@ -79,7 +80,7 @@
+ 
+ - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
+ - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
+-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
++- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+ 
+ 위 경우가 아니면:
+ 
+@@ -133,13 +134,17 @@
+ 
+ ### 5.1 authority / preflight 정리
+ 
+-상태: `진행중`
++상태: `완료`
+ 
+ 진행 메모:
+ 
+ - execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+ - removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+-- 현재 baseline 기준 `gateway` 구현 잔여물은 `core/`, `core/tests/`, `core/perf/`에 여전히 넓게 남아 있다.
++- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
++- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
++- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
++- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
++- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+ 
+ 작업:
+ 
+@@ -170,9 +175,11 @@
+ - `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+ - `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+ - `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
++- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리했다.
+ - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+ - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+ - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
++- 현재 잔여 hotspot은 `core/src`의 gateway public/internal/protocol path와 `bindings/` wrapper 전반이다.
+ 
+ 작업:
+ 
+
+tokens used
+348,167
+계속 진행 필요

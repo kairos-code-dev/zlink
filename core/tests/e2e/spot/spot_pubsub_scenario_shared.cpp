@@ -152,7 +152,6 @@ void *create_spot_pub_handle (void *node_)
             return NULL;
         }
         spot->node = node;
-        register_spot_mode_state (spot);
         std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
         g_spot_handles[node_] = spot;
     }
@@ -262,7 +261,6 @@ static void clear_spot_handle_map ()
 {
     for (std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.begin ();
          it != g_spot_handles.end (); ++it) {
-        erase_spot_mode_state (it->second);
         zlink::destroy_spot_handle_for_testing (it->second);
     }
     g_spot_handles.clear ();
@@ -280,7 +278,6 @@ int destroy_spot_node_with_handles (void **node_p_)
         std::map<void *, spot_handle_t *>::iterator it =
           g_spot_handles.find (*node_p_);
         if (it != g_spot_handles.end ()) {
-            erase_spot_mode_state (it->second);
             zlink::destroy_spot_handle_for_testing (it->second);
             g_spot_handles.erase (it);
         }

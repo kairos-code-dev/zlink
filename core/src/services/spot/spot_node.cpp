@@ -214,7 +214,7 @@ static void close_socket_ptr (socket_base_t **socket_p_)
     }
 }
 
-spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
+spot_node_t::spot_node_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _tag (spot_node_tag_value),
     _lifecycle (ctx_),
@@ -242,12 +242,6 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _active_peer_count (0)
 {
     _lifecycle.transition_to (service_state_starting);
-    _service_name = service_name_ ? service_name_ : "";
-    if (!validate_service_name (_service_name)) {
-        _lifecycle.mark_faulted (EINVAL);
-        _tag = 0xdeadbeef;
-        return;
-    }
 
     _runtime = new (std::nothrow) spot_runtime_t (this);
     if (!_runtime) {
@@ -326,19 +320,6 @@ int spot_node_t::apply_tls_client (socket_base_t *socket_,
         != 0)
         return -1;
     return 0;
-}
-
-bool spot_node_t::validate_service_name (const std::string &name_)
-{
-    if (name_.empty () || name_.size () > 64)
-        return false;
-    for (size_t i = 0; i < name_.size (); ++i) {
-        const char c = name_[i];
-        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.'
-              || c == '-'))
-            return false;
-    }
-    return true;
 }
 
 bool spot_node_t::validate_public_endpoint (const std::string &endpoint_)

@@ -15,7 +15,7 @@ class service_public_api_guard_t;
 
 struct gateway_access_t
 {
-    static void *create (ctx_t *ctx_, const char *service_name_);
+    static void *create (ctx_t *ctx_);
     static gateway_t *from_handle (void *gateway_);
     static int begin_close_or_fail_busy (gateway_t *gateway_);
     static void cancel_close (gateway_t *gateway_);

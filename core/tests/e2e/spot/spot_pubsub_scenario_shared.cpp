@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "spot_pubsub_scenario_shared.hpp"
+#include "../../../src/api/service_api_internal.hpp"
+#include "../../../src/api/zlink_testing.hpp"
+#include "../../../src/services/spot/spot_handle.hpp"
+#include "../../../src/services/spot/spot_node.hpp"
+#include "../../../src/services/spot/spot_node_access.hpp"
 
 #include <chrono>
 #include <limits.h>
@@ -20,6 +25,7 @@
 static std::mutex g_spot_probe_mutex;
 static std::map<void *, queued_spot_probe_t *> g_sub_probes;
 static std::map<void *, queued_spot_probe_t *> g_node_probes;
+static std::map<void *, spot_handle_t *> g_spot_handles;
 
 bool test_debug_enabled ()
 {
@@ -83,23 +89,10 @@ void ignore_spot_handler (const zlink_routing_id_t *,
 
 void *create_spot_node (void *ctx_, const char *service_name_)
 {
-    void *node = zlink_spot_node_new (ctx_, service_name_);
+    LIBZLINK_UNUSED (service_name_);
+    void *node = zlink_spot_node_new (ctx_);
     if (!node)
         return NULL;
-
-    queued_spot_probe_t *probe = ensure_queued_spot_probe (node, true);
-    if (!probe) {
-        zlink_spot_node_destroy (&node);
-        errno = ENOMEM;
-        return NULL;
-    }
-    if (zlink_subscribe_handler (node, &queued_spot_handler, probe) != 0) {
-        const int err = errno;
-        remove_queued_spot_probe (node, true);
-        zlink_spot_node_destroy (&node);
-        errno = err;
-        return NULL;
-    }
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -141,19 +134,38 @@ static void cleanup_ipc_endpoint (const char *endpoint_)
 
 void *create_spot_pub_handle (void *node_)
 {
-    void *spot_pub = node_;
-    if (!spot_pub)
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
         return NULL;
+
+    spot_handle_t *spot = NULL;
+    {
+        std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
+        std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.find (node_);
+        if (it != g_spot_handles.end ())
+            spot = it->second;
+    }
+    if (!spot) {
+        spot = new (std::nothrow) spot_handle_t ();
+        if (!spot) {
+            errno = ENOMEM;
+            return NULL;
+        }
+        spot->node = node;
+        register_spot_mode_state (spot);
+        std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
+        g_spot_handles[node_] = spot;
+    }
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      spot_pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-    return spot_pub;
+      spot, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    return spot;
 }
 
 void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_)
 {
-    void *spot_sub = node_;
+    void *spot_sub = create_spot_pub_handle (node_);
     if (!spot_sub)
         return NULL;
 
@@ -246,11 +258,45 @@ static void clear_spot_probe_map (std::map<void *, queued_spot_probe_t *> *map_)
     map_->clear ();
 }
 
+static void clear_spot_handle_map ()
+{
+    for (std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.begin ();
+         it != g_spot_handles.end (); ++it) {
+        erase_spot_mode_state (it->second);
+        zlink::destroy_spot_handle_for_testing (it->second);
+    }
+    g_spot_handles.clear ();
+}
+
+int destroy_spot_node_with_handles (void **node_p_)
+{
+    if (!node_p_ || !*node_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
+        std::map<void *, spot_handle_t *>::iterator it =
+          g_spot_handles.find (*node_p_);
+        if (it != g_spot_handles.end ()) {
+            erase_spot_mode_state (it->second);
+            zlink::destroy_spot_handle_for_testing (it->second);
+            g_spot_handles.erase (it);
+        }
+        g_sub_probes.erase (*node_p_);
+        g_node_probes.erase (*node_p_);
+    }
+
+    return zlink_spot_node_destroy (node_p_);
+}
+
 void tearDown ()
 {
     std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
     clear_spot_probe_map (&g_sub_probes);
     clear_spot_probe_map (&g_node_probes);
+    clear_spot_handle_map ();
 }
 
 void close_spot_parts (zlink_msg_t *parts_, size_t part_count_)
@@ -613,11 +659,16 @@ void *open_spot_node_monitor_with_probe (
         probe_->event_count = 0;
     }
 
-    (void) role_;
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
     opts.events = events_;
-    void *monitor = zlink_service_monitor_open (node_, &opts);
+    void *subject = node_;
+    if (role_ == ZLINK_SPOT_ROLE_PUB)
+        subject = create_spot_pub_handle (node_);
+    else if (role_ == ZLINK_SPOT_ROLE_SUB)
+        subject = create_spot_sub_handle (node_, NULL);
+
+    void *monitor = zlink_service_monitor_open (subject, &opts);
     if (!monitor)
         return NULL;
     if (zlink_service_monitor_handler (
@@ -850,6 +901,10 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
     TEST_ASSERT_NOT_NULL (node_a);
     void *node_b = create_spot_node (ctx, "spot-test");
     TEST_ASSERT_NOT_NULL (node_b);
+    void *pub = create_spot_pub_handle (node_a);
+    void *sub = create_spot_sub_handle (node_b, &queued_spot_handler);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
     service_monitor_probe_t node_b_monitor_probe;
     void *node_b_monitor = open_spot_node_monitor_with_probe (
       node_b, ZLINK_SPOT_ROLE_SUB,
@@ -890,15 +945,14 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
     step_log ("spot peer transport: warm node_a default pub");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (node_a, "__warmup__", NULL, 0, 0));
+      zlink_publish (pub, "__warmup__", NULL, 0, 0));
 
     step_log ("spot peer transport: connect node_b -> node_a");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (node_b, endpoint_a));
 
     step_log ("spot peer transport: subscribe node_b");
-    TEST_ASSERT_NOT_NULL (ensure_queued_spot_probe (node_b, true));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (node_b, topic));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, topic));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &node_b_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
@@ -912,31 +966,31 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
     step_log ("spot peer transport: publish");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (node_a, topic, parts, 1, 0));
+      zlink_publish (pub, topic, parts, 1, 0));
 
     step_log ("spot peer transport: wait delivery");
     TEST_ASSERT_TRUE (
-      wait_for_node_message (node_b, topic, payload, payload_size, 2000));
+      wait_for_spot_message (sub, topic, payload, payload_size, 2000));
 
     step_log ("spot peer transport: disconnect peer");
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_disconnect_peer (node_b, endpoint_a));
 
     step_log ("spot peer transport: detach subscriber");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (node_b, topic));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (sub, topic));
 
     if (use_tls)
         msleep (200);
 
     step_log ("spot peer transport: destroy nodes");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&node_b));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &node_b_monitor_probe, ZLINK_MONITOR_EVENT_CLOSED, NULL,
       use_tls ? 10000 : 3000));
     TEST_ASSERT_SUCCESS_ERRNO (
       close_service_monitor_with_probe (&node_b_monitor));
     msleep (use_tls ? 50 : 10);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&node_a));
     msleep (use_tls ? 100 : 50);
 
     if (use_tls)

@@ -20,6 +20,10 @@ bool topology_filter_match (
         return true;
     if (filter_->service_kind != 0 && filter_->service_kind != entry_.service_kind)
         return false;
+    if (filter_->service_role != 0
+        && filter_->service_role != entry_.service_role) {
+        return false;
+    }
     if (filter_->state != 0 && filter_->state != entry_.state)
         return false;
     if (filter_->source != 0 && filter_->source != entry_.source)
@@ -73,6 +77,28 @@ bool gateway_peer_filter_match (
     return true;
 }
 
+bool topology_entry_less (const zlink_registry_topology_entry_t &lhs_,
+                          const zlink_registry_topology_entry_t &rhs_)
+{
+    if (lhs_.service_kind != rhs_.service_kind)
+        return lhs_.service_kind < rhs_.service_kind;
+    const int name_cmp = strcmp (lhs_.service_name, rhs_.service_name);
+    if (name_cmp != 0)
+        return name_cmp < 0;
+    if (lhs_.service_role != rhs_.service_role)
+        return lhs_.service_role < rhs_.service_role;
+    const int endpoint_cmp = strcmp (lhs_.endpoint, rhs_.endpoint);
+    if (endpoint_cmp != 0)
+        return endpoint_cmp < 0;
+    if (lhs_.routing_id.size != rhs_.routing_id.size)
+        return lhs_.routing_id.size < rhs_.routing_id.size;
+    if (lhs_.routing_id.size == 0)
+        return false;
+    return memcmp (lhs_.routing_id.data, rhs_.routing_id.data,
+                   lhs_.routing_id.size)
+           < 0;
+}
+
 bool registry_service_summary_filter_match (
   const zlink_registry_service_summary_entry_t &entry_,
   const zlink_registry_service_summary_filter_t *filter_)
@@ -81,6 +107,10 @@ bool registry_service_summary_filter_match (
         return true;
     if (filter_->service_kind != 0 && filter_->service_kind != entry_.service_kind)
         return false;
+    if (filter_->service_role != 0
+        && filter_->service_role != entry_.service_role) {
+        return false;
+    }
     if (filter_->service_name[0] != '\0'
         && strcmp (filter_->service_name, entry_.service_name) != 0) {
         return false;
@@ -94,7 +124,10 @@ bool registry_service_summary_less (
 {
     if (lhs_.service_kind != rhs_.service_kind)
         return lhs_.service_kind < rhs_.service_kind;
-    return strcmp (lhs_.service_name, rhs_.service_name) < 0;
+    const int name_cmp = strcmp (lhs_.service_name, rhs_.service_name);
+    if (name_cmp != 0)
+        return name_cmp < 0;
+    return lhs_.service_role < rhs_.service_role;
 }
 }
 
@@ -130,6 +163,7 @@ int zlink::registry_t::topology_query (
                 matched.push_back (it->second.entry);
         }
     }
+    std::sort (matched.begin (), matched.end (), topology_entry_less);
 
     if (!entries_) {
         *count_ = matched.size ();
@@ -160,20 +194,24 @@ int zlink::registry_t::service_summary_snapshot (
 
     out_->clear ();
 
-    std::map<std::pair<uint16_t, std::string>, zlink_registry_service_summary_entry_t>
-      grouped;
+    typedef std::pair<std::pair<uint16_t, uint16_t>, std::string> summary_key_t;
+    std::map<summary_key_t, zlink_registry_service_summary_entry_t> grouped;
     {
         scoped_lock_t lock (_sync);
         for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
                _topology.begin ();
              it != _topology.end (); ++it) {
             const zlink_registry_topology_entry_t &row = it->second.entry;
-            const std::pair<uint16_t, std::string> key (
-              row.service_kind, std::string (row.service_name));
+            const summary_key_t key (
+              std::make_pair (
+                std::make_pair (static_cast<uint16_t> (row.service_kind),
+                                static_cast<uint16_t> (row.service_role)),
+                std::string (row.service_name)));
             zlink_registry_service_summary_entry_t &entry = grouped[key];
             if (entry.service_kind == 0) {
                 memset (&entry, 0, sizeof (entry));
                 entry.service_kind = row.service_kind;
+                entry.service_role = row.service_role;
                 strncpy (entry.service_name, row.service_name,
                          sizeof (entry.service_name) - 1);
             }
@@ -201,7 +239,7 @@ int zlink::registry_t::service_summary_snapshot (
         }
     }
 
-    for (std::map<std::pair<uint16_t, std::string>,
+    for (std::map<summary_key_t,
                   zlink_registry_service_summary_entry_t>::const_iterator it =
            grouped.begin ();
          it != grouped.end (); ++it) {
@@ -288,6 +326,7 @@ void zlink::registry_t::handle_topology_query (
                 entries.push_back (it->second.entry);
         }
     }
+    std::sort (entries.begin (), entries.end (), topology_entry_less);
     send_topology_reply (router_, sender_id_, entries);
 }
 

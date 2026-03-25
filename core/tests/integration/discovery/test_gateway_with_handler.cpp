@@ -109,7 +109,7 @@ void test_gateway_recv_handler_blocks_recv_and_pollin ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
-    void *gateway = zlink_gateway_new (ctx, "gw-handler-contract");
+    void *gateway = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (gateway);
 
     void *poller = zlink_poller_new ();
@@ -144,7 +144,7 @@ void test_gateway_send_ready_handler_blocks_pollout_only ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
-    void *gateway = zlink_gateway_new (ctx, "gw-ready-contract");
+    void *gateway = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (gateway);
 
     void *poller = zlink_poller_new ();
@@ -200,9 +200,11 @@ void test_gateway_recv_mode_request_reply_with_discovery ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *server_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY,
+                           "gw-discovery-contract");
     void *client_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY,
+                           "gw-discovery-contract");
     TEST_ASSERT_NOT_NULL (server_discovery);
     TEST_ASSERT_NOT_NULL (client_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -210,8 +212,8 @@ void test_gateway_recv_mode_request_reply_with_discovery ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (client_discovery, registry_router));
 
-    void *server = zlink_gateway_new (ctx, "gw-discovery-contract");
-    void *client = zlink_gateway_new (ctx, "gw-discovery-contract");
+    void *server = zlink_gateway_new (ctx);
+    void *client = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     TEST_ASSERT_SUCCESS_ERRNO (

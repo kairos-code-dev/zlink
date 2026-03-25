@@ -15,7 +15,9 @@ class discovery_observer_t;
 
 struct discovery_access_t
 {
-    static void *create (ctx_t *ctx_, zlink_service_type_t service_type_);
+    static void *create (ctx_t *ctx_,
+                         zlink_service_type_t service_type_,
+                         const char *service_name_);
     static discovery_t *from_handle (void *discovery_);
     static int connect_registry (discovery_t *discovery_,
                                  const char *registry_endpoint_);
@@ -34,12 +36,13 @@ struct discovery_access_t
     static int destroy (discovery_t *discovery_);
     static void *monitor_open (discovery_t *discovery_, int events_);
     static void set_summary_enabled (discovery_t *discovery_, bool enabled_);
-    static void add_observer (discovery_t *discovery_,
-                              discovery_observer_t *observer_);
+    static int add_observer (discovery_t *discovery_,
+                             discovery_observer_t *observer_);
     static int remove_observer (discovery_t *discovery_,
                                 discovery_observer_t *observer_);
     static void upsert_service_summary (
       discovery_t *discovery_, const zlink_registry_topology_entry_t &entry_);
+    static void flush_topology_reports (discovery_t *discovery_);
     static void upsert_gateway_peer_summary (
       discovery_t *discovery_,
       const zlink_registry_gateway_peer_entry_t &entry_);

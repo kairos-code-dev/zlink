@@ -58,6 +58,8 @@ int main (int, char **)
     RUN_SPOT_TEST (test_spot_recv_callback_isolated_by_service_with_discovery);
     RUN_SPOT_TEST (test_spot_facade_handler_receives_source_rid);
     RUN_SPOT_TEST (test_spot_node_discovery_direct_and_child_interop);
+    RUN_SPOT_TEST (test_spot_node_manual_peer_topology_ownership);
+    RUN_SPOT_TEST (test_discovery_destroy_invalidates_attached_spot_node_handle);
     RUN_SPOT_TEST (test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery);
 #undef RUN_SPOT_TEST
     return UNITY_END ();

@@ -709,6 +709,7 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_callback_model_receive_regression
     test_spot_recv_model_receive_regression
     test_spot_publish_rollback_preserves_next_topic_boundary
+    test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_unified_spot_basic
     test_spot_node_snapshot_status_peers_subjects)
 
@@ -721,6 +722,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_callback_recv_regression=test_spot_callback_model_receive_regression
     test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
     test_spot_service_introspection_publish_rollback=test_spot_publish_rollback_preserves_next_topic_boundary
+    test_spot_service_introspection_default_handle_owner=test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
     test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects)
 
@@ -742,6 +744,8 @@ set(SPOT_PUBSUB_CASES
     test_spot_recv_callback_isolated_by_service_with_discovery
     test_spot_facade_handler_receives_source_rid
     test_spot_node_discovery_direct_and_child_interop
+    test_spot_node_manual_peer_topology_ownership
+    test_discovery_destroy_invalidates_attached_spot_node_handle
     test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery)
 
 set(SPOT_PUBSUB_PEER_TEST_SPECS
@@ -785,6 +789,7 @@ set(GATEWAY_CASES
     test_gateway_send_ready_handler_self_close_is_safe
     test_gateway_runtime_reads_are_safe_during_concurrent_send
     test_gateway_snapshot_monitor_churn_does_not_stall_destroy
+    test_discovery_destroy_invalidates_attached_gateway_handle
     test_gateway_concurrent_send_and_send_rid_and_updates
     test_gateway_attach_and_monitor_queries_are_safe_same_handle)
 
@@ -818,6 +823,7 @@ set(SERVICE_INTROSPECTION_CASES
     test_gateway_receiver_routing_ids_and_options
     test_gateway_receiver_monitors_and_monitor_poller
     test_registry_topology_snapshot_and_remote_query
+    test_registry_raw_socket_topology_and_summary_query
     test_registry_gateway_peer_snapshot_and_remote_query
     test_gateway_and_registry_status_snapshots
     test_monitor_closed_event_on_service_destroy
@@ -838,6 +844,7 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_gateway_options=test_gateway_receiver_routing_ids_and_options
     test_service_introspection_gateway_monitors=test_gateway_receiver_monitors_and_monitor_poller
     test_service_introspection_topology_snapshot=test_registry_topology_snapshot_and_remote_query
+    test_service_introspection_raw_topology=test_registry_raw_socket_topology_and_summary_query
     test_service_introspection_gateway_peer_snapshot=test_registry_gateway_peer_snapshot_and_remote_query
     test_service_introspection_gateway_registry_status=test_gateway_and_registry_status_snapshots
     test_service_introspection_closed_event=test_monitor_closed_event_on_service_destroy
@@ -856,13 +863,17 @@ set(SERVICE_DISCOVERY_CASES
     test_discovery_provider_registration
     test_discovery_service_filtering
     test_discovery_heartbeat_timeout
-    test_registry_bind_rejects_rebind)
+    test_registry_bind_rejects_rebind
+    test_socket_discovery_attach_auto_connect_and_destroy
+    test_socket_discovery_shared_discovery_lifetime)
 
 set(SERVICE_DISCOVERY_TEST_SPECS
     test_service_discovery_provider_registration=test_discovery_provider_registration
     test_service_discovery_service_filtering=test_discovery_service_filtering
     test_service_discovery_heartbeat_timeout=test_discovery_heartbeat_timeout
-    test_service_discovery_registry_rebind=test_registry_bind_rejects_rebind)
+    test_service_discovery_registry_rebind=test_registry_bind_rejects_rebind
+    test_service_discovery_socket_attach=test_socket_discovery_attach_auto_connect_and_destroy
+    test_service_discovery_shared_lifetime=test_socket_discovery_shared_discovery_lifetime)
 
 assert_named_case_coverage(
   "test_service_introspection"

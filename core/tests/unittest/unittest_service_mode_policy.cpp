@@ -151,12 +151,24 @@ std::string bind_spot_test_endpoint (void *node_)
     return std::string ();
 }
 
+std::string bind_socket_test_endpoint (void *socket_)
+{
+    const int base_port = 36500 + (current_process_id () % 1000) * 8;
+    for (int i = 0; i < 64; ++i) {
+        std::ostringstream endpoint;
+        endpoint << "tcp://127.0.0.1:" << (base_port + i);
+        if (zlink_bind (socket_, endpoint.str ().c_str ()) == 0)
+            return endpoint.str ();
+    }
+    return std::string ();
+}
+
 void test_gateway_callback_contract ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *gateway = zlink_gateway_new (ctx, "unit-gateway");
+    void *gateway = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (gateway);
 
     void *poller = zlink_poller_new ();
@@ -190,26 +202,26 @@ void test_gateway_callback_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_callback_policy ()
+void test_spot_callback_policy ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *node = zlink_spot_node_new (ctx, "unit-spot");
-    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (ctx);
+    TEST_ASSERT_NOT_NULL (spot);
 
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
+      zlink_send_ready_handler (spot, &noop_send_ready_handler, NULL));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, node, node, ZLINK_POLLIN));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, node));
+      zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, node, node, ZLINK_POLLOUT));
+      -1, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     zlink_msg_t *parts = NULL;
@@ -217,28 +229,28 @@ void test_spot_node_callback_policy ()
     char topic[64];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
+      -1, zlink_subscribe (spot, NULL, &parts, &part_count, topic, &topic_len,
                            ZLINK_DONTWAIT));
     TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (node, &noop_spot_handler, NULL));
+      zlink_subscribe_handler (spot, &noop_spot_handler, NULL));
 
     topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
+      -1, zlink_subscribe (spot, NULL, &parts, &part_count, topic, &topic_len,
                            ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, node, node, ZLINK_POLLIN));
+      -1, zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, node, node, ZLINK_POLLOUT));
+      -1, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -309,90 +321,52 @@ void test_generic_monitor_poller_accepts_non_pollin_events ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_pollin_matches_subscribe_surface ()
+void test_spot_node_generic_data_plane_surface_removed ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_spot_node_new (ctx, "unit-spot-server");
-    void *client = zlink_spot_node_new (ctx, "unit-spot-client");
-    TEST_ASSERT_NOT_NULL (server);
-    TEST_ASSERT_NOT_NULL (client);
-
-    zlink_service_monitor_open_options_t sub_monitor_opts;
-    memset (&sub_monitor_opts, 0, sizeof (sub_monitor_opts));
-    sub_monitor_opts.events = ZLINK_SPOT_SUB_FILTER_APPLIED
-                              | ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
-                              | ZLINK_MONITOR_EVENT_ERROR;
-    zlink_service_monitor_open_options_t pub_monitor_opts;
-    memset (&pub_monitor_opts, 0, sizeof (pub_monitor_opts));
-    pub_monitor_opts.events = ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
-                              | ZLINK_MONITOR_EVENT_ERROR;
-
-    void *sub_monitor = zlink_service_monitor_open (client, &sub_monitor_opts);
-    void *pub_monitor = zlink_service_monitor_open (server, &pub_monitor_opts);
-    TEST_ASSERT_NOT_NULL (sub_monitor);
-    TEST_ASSERT_NOT_NULL (pub_monitor);
-
-    spot_ready_probe_t sub_probe;
-    spot_ready_probe_t pub_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_service_monitor_handler (
-        sub_monitor, &spot_sub_monitor_handler, &sub_probe));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_service_monitor_handler (
-        pub_monitor, &spot_pub_monitor_handler, &pub_probe));
-
-    const std::string endpoint = bind_spot_test_endpoint (server);
-    TEST_ASSERT_FALSE (endpoint.empty ());
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_connect_peer (client, endpoint.c_str ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (client, "bench"));
-
-    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&sub_probe,
-                                                &spot_ready_probe_t::sub_filter_applied,
-                                                3000));
-    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&sub_probe,
-                                                &spot_ready_probe_t::sub_delivery_ready,
-                                                5000));
-    TEST_ASSERT_TRUE (wait_for_spot_ready_flag (&pub_probe,
-                                                &spot_ready_probe_t::pub_first_ready,
-                                                5000));
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
 
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, client, client, ZLINK_POLLIN));
-
-    zlink_msg_t part;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
-    memcpy (zlink_msg_data (&part), "pong", 4);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (server, "bench", &part, 1, 0));
-
-    zlink_poller_event_t event;
-    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 3000));
-    TEST_ASSERT_EQUAL_PTR (client, event.user_data);
-    TEST_ASSERT_TRUE ((event.events & ZLINK_POLLIN) != 0);
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     char topic[32];
     size_t topic_len = sizeof (topic);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe (
-        client, NULL, &parts, &part_count, topic, &topic_len, 0));
-    TEST_ASSERT_EQUAL_UINT64 (1u, part_count);
-    TEST_ASSERT_EQUAL_STRING_LEN ("bench", topic, 5);
-    TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&parts[0]), 4);
+    zlink_msg_t part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
+    memcpy (zlink_msg_data (&part), "pong", 4);
 
-    zlink_multipart_close (parts, part_count);
-    free (parts);
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_subscribe_handler (node, &noop_spot_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_publish (node, "bench", &part, 1, 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    zlink_msg_close (&part);
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
+                           0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_set_subscription (node, "bench"));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_unset_subscription (node, "bench"));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, node, node, ZLINK_POLLIN));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_poller_add (poller, node, node, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&sub_monitor));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_monitor));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&client));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -484,9 +458,80 @@ void test_discovery_new_accepts_socket_family ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_socket_attach_discovery_rejects_unsupported_socket_type ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    void *pair = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_NOT_NULL (pair);
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_discovery (pair, discovery));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pair));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_socket_attach_discovery_gates_manual_peer_apis ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (dealer, discovery));
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_connect (dealer, "tcp://127.0.0.1:39001"));
+    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_disconnect (dealer, "tcp://127.0.0.1:39001"));
+    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_unbind (dealer, "tcp://127.0.0.1:39001"));
+    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_close (dealer));
+    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_socket_attach_discovery_fails_after_bind_without_registry ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router);
+
+    const std::string endpoint = bind_socket_test_endpoint (router);
+    TEST_ASSERT_FALSE (endpoint.empty ());
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_socket_attach_discovery (router, discovery));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -499,11 +544,14 @@ int main (void)
     setup_test_environment ();
 
     RUN_TEST (test_gateway_callback_contract);
-    RUN_TEST (test_spot_node_callback_policy);
-    RUN_TEST (test_spot_node_pollin_matches_subscribe_surface);
+    RUN_TEST (test_spot_callback_policy);
+    RUN_TEST (test_spot_node_generic_data_plane_surface_removed);
     RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);
     RUN_TEST (test_discovery_protocol_derives_socket_roles_and_matching);
     RUN_TEST (test_discovery_new_accepts_socket_family);
+    RUN_TEST (test_socket_attach_discovery_rejects_unsupported_socket_type);
+    RUN_TEST (test_socket_attach_discovery_gates_manual_peer_apis);
+    RUN_TEST (test_socket_attach_discovery_fails_after_bind_without_registry);
     RUN_TEST (test_stream_send_ready_is_independent_from_recv_callback);
     RUN_TEST (test_generic_monitor_poller_accepts_non_pollin_events);
 

@@ -21,15 +21,16 @@ static std::string topology_routing_key_local (const zlink_routing_id_t &rid_)
 }
 }
 
-void discovery_t::add_observer (discovery_observer_t *observer_)
+int discovery_t::add_observer (discovery_observer_t *observer_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
-        return;
+        return -1;
     if (!observer_)
-        return;
+        return 0;
     scoped_lock_t lock (_sync);
     _observers.insert (observer_);
+    return 0;
 }
 
 int discovery_t::remove_observer (discovery_observer_t *observer_)
@@ -56,6 +57,7 @@ void discovery_t::upsert_service_summary (
 
     topology_key_t key;
     key.service_kind = entry_.service_kind;
+    key.service_role = entry_.service_role;
     key.routing_id_key = topology_routing_key_local (entry_.routing_id);
     key.service_name = entry_.service_name;
 
@@ -108,6 +110,7 @@ void discovery_t::erase_service_summary (uint16_t service_kind_,
 
     topology_key_t key;
     key.service_kind = service_kind_;
+    key.service_role = ZLINK_SERVICE_ROLE_INVALID;
     key.routing_id_key = topology_routing_key_local (routing_id_);
     key.service_name = service_name_;
 
@@ -120,6 +123,7 @@ void discovery_t::erase_service_summary (uint16_t service_kind_,
             memset (&summary.entry, 0, sizeof (summary.entry));
             summary.entry.service_kind =
               static_cast<zlink_service_kind_t> (service_kind_);
+            summary.entry.service_role = ZLINK_SERVICE_ROLE_INVALID;
             summary.entry.routing_id = routing_id_;
             summary.entry.state = ZLINK_TOPOLOGY_STATE_STOPPED;
             summary.entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
@@ -178,6 +182,10 @@ int discovery_t::destroy ()
         _observer_callbacks_inflight = 0;
         _registered_services.clear ();
         _summary_store.clear ();
+    }
+    for (size_t i = 0; i < observers.size (); ++i) {
+        if (observers[i])
+            observers[i]->on_discovery_shutdown_requested (this);
     }
     _bootstrap_runtime->take_shutdown_state (this, &bootstrap_dealers);
     _uplink_runtime->take_shutdown_state (this, &report_dealers,

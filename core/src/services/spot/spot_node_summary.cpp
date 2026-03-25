@@ -75,8 +75,6 @@ static std::string spot_subject_snapshot_key_local (
 std::string spot_node_t::summary_service_name () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    if (!_service_name.empty ())
-        return _service_name;
     return _discovery_service;
 }
 
@@ -93,7 +91,7 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
     {
         scoped_lock_t lock (_sync);
         discovery = _discovery;
-        service_name = !_service_name.empty () ? _service_name : _discovery_service;
+        service_name = _discovery_service;
         endpoint = _advertise_endpoint.empty () ? _bound_endpoint : _advertise_endpoint;
     }
     if (!discovery || service_name.empty ())
@@ -107,6 +105,7 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
     memset (&entry, 0, sizeof (entry));
     entry.routing_id = rid;
     entry.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+    entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
     strncpy (entry.service_name, service_name.c_str (),
              sizeof (entry.service_name) - 1);
     strncpy (entry.endpoint, endpoint.c_str (), sizeof (entry.endpoint) - 1);
@@ -131,7 +130,7 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
     {
         scoped_lock_t lock (_sync);
         discovery = _discovery;
-        service_name = !_service_name.empty () ? _service_name : _discovery_service;
+        service_name = _discovery_service;
     }
     if (!discovery || service_name.empty ())
         return;
@@ -144,6 +143,7 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
     memset (&entry, 0, sizeof (entry));
     entry.routing_id = rid;
     entry.service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
+    entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
     strncpy (entry.service_name, service_name.c_str (),
              sizeof (entry.service_name) - 1);
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
@@ -261,7 +261,7 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
     std::string local_endpoint;
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        service_name = _service_name;
+        service_name = _discovery_service;
         local_endpoint =
           !_advertise_endpoint.empty () ? _advertise_endpoint : _bound_endpoint;
         out_->configured_peer_count =
@@ -342,7 +342,7 @@ int spot_node_t::snapshot_peers (
     std::map<std::string, peer_observation_t> observations;
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        service_name = _service_name;
+        service_name = _discovery_service;
         local_endpoint =
           !_advertise_endpoint.empty () ? _advertise_endpoint : _bound_endpoint;
         manual = _manual_peer_endpoints;

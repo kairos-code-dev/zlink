@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "sockets/socket_base.hpp"
+#include "services/discovery/socket_discovery_attachment.hpp"
 #include "core/mailbox.hpp"
 #include "core/msg.hpp"
 #include "core/options.hpp"
@@ -308,6 +309,9 @@ int zlink::socket_base_t::socket_type () const
 
 int zlink::socket_base_t::close ()
 {
+    if (_service_attachment && _service_attachment->on_public_close () != 0)
+        return -1;
+
     const bool from_self_callback = send_ready_dispatch_in_callback ();
     if (!begin_close_or_fail_busy (from_self_callback))
         return -1;
@@ -316,6 +320,19 @@ int zlink::socket_base_t::close ()
 
     finish_close_handoff ();
     return 0;
+}
+
+int zlink::socket_base_t::attach_discovery (discovery_t *discovery_)
+{
+    if (!_service_attachment) {
+        _service_attachment = new (std::nothrow)
+          socket_discovery_attachment_t (this);
+        if (!_service_attachment) {
+            errno = ENOMEM;
+            return -1;
+        }
+    }
+    return _service_attachment->attach (discovery_);
 }
 
 bool zlink::socket_base_t::has_in ()
@@ -393,8 +410,8 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
         range = endpoint_runtime ().endpoints.equal_range (identifier);
 
         for (endpoints_t::iterator it = range.first; it != range.second; ++it) {
-            if (it->second.second == pipe_) {
-                it->second.second = NULL;
+            if (it->second.pipe == pipe_) {
+                it->second.pipe = NULL;
                 break;
             }
         }

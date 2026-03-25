@@ -96,8 +96,8 @@ int zlink_service_recv_handler_internal (void *handle_,
     }
 
     if (is_registered_spot_node_handle (handle_)) {
-        return spot_node_install_recv_handler (
-          static_cast<zlink::spot_node_t *> (handle_), handler_, userdata_);
+        errno = ENOTSUP;
+        return -1;
     }
 
     errno = EFAULT;

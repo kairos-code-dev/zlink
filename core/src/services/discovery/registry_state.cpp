@@ -35,6 +35,7 @@ void registry_t::upsert_topology_entry (
 {
     topology_key_t key;
     key.service_kind = entry_.service_kind;
+    key.service_role = entry_.service_role;
     key.routing_id_key = routing_id_key_of (entry_.routing_id);
     key.service_name = entry_.service_name;
 
@@ -113,6 +114,8 @@ void registry_t::send_service_list (void *pub_)
               (provider_index + 1) == provider_count
               && (emitted + 1) == service_count;
 
+            discovery_protocol::send_u16 (pub_, entry.service_role,
+                                          ZLINK_SNDMORE);
             discovery_protocol::send_string (pub_, entry.endpoint,
                                              ZLINK_SNDMORE);
             discovery_protocol::send_routing_id (pub_, entry.routing_id,
@@ -318,9 +321,15 @@ void registry_t::handle_peer (void *sub_)
         service_key.service_type = service_type;
         service_key.service_name = service_name;
         service_entry_t &service = incoming[service_key];
-        for (uint32_t p = 0; p < provider_count && index + 2 < frames.size ();
+        for (uint32_t p = 0; p < provider_count && index + 3 < frames.size ();
              ++p) {
             provider_entry_t entry;
+            if (!discovery_protocol::read_u16 (frames[index++],
+                                               &entry.service_role))
+                break;
+            if (!discovery_protocol::is_valid_service_role_for_type (
+                  service_type, entry.service_role))
+                break;
             entry.endpoint = discovery_protocol::read_string (frames[index++]);
             discovery_protocol::read_routing_id (frames[index++],
                                                  &entry.routing_id);
@@ -330,8 +339,12 @@ void registry_t::handle_peer (void *sub_)
             entry.registered_at = now;
             entry.last_heartbeat = now;
             entry.source_registry = peer_registry_id;
-            if (!entry.endpoint.empty ())
-                service.providers[entry.endpoint] = entry;
+            if (!entry.endpoint.empty ()) {
+                provider_key_t provider_key;
+                provider_key.service_role = entry.service_role;
+                provider_key.endpoint = entry.endpoint;
+                service.providers[provider_key] = entry;
+            }
         }
     }
 
@@ -364,6 +377,8 @@ void registry_t::handle_peer (void *sub_)
                         const provider_entry_t &cur = ep->second;
                         const provider_entry_t &incoming_entry = pit->second;
                         match =
+                          cur.service_role == incoming_entry.service_role
+                          &&
                           cur.weight == incoming_entry.weight
                           && cur.routing_id.size
                                == incoming_entry.routing_id.size
@@ -464,7 +479,7 @@ void registry_t::handle_register (void *router_,
                                   size_t frame_count_,
                                   const zlink_routing_id_t &sender_id_)
 {
-    if (frame_count_ < 4) {
+    if (frame_count_ < 5) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid register");
         return;
@@ -477,10 +492,18 @@ void registry_t::handle_register (void *router_,
                            "invalid type");
         return;
     }
+    uint16_t service_role = 0;
+    if (!discovery_protocol::read_u16 (frames_[2], &service_role)
+        || !discovery_protocol::is_valid_service_role_for_type (service_type,
+                                                                service_role)) {
+        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+                           "invalid role");
+        return;
+    }
     const std::string service_name =
-      discovery_protocol::read_string (frames_[2]);
-    const std::string endpoint =
       discovery_protocol::read_string (frames_[3]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[4]);
 
     if (service_name.empty () || endpoint.empty ()) {
         send_register_ack (router_, sender_id_, 0x02, endpoint,
@@ -489,8 +512,8 @@ void registry_t::handle_register (void *router_,
     }
 
     uint32_t weight = 0;
-    if (frame_count_ >= 5)
-        discovery_protocol::read_u32 (frames_[4], &weight);
+    if (frame_count_ >= 6)
+        discovery_protocol::read_u32 (frames_[5], &weight);
 
     const uint64_t now = zlink::clock_t ().now_ms ();
 
@@ -498,7 +521,11 @@ void registry_t::handle_register (void *router_,
     service_key.service_type = service_type;
     service_key.service_name = service_name;
     service_entry_t &service = _services[service_key];
-    provider_entry_t &entry = service.providers[endpoint];
+    provider_key_t provider_key;
+    provider_key.service_role = service_role;
+    provider_key.endpoint = endpoint;
+    provider_entry_t &entry = service.providers[provider_key];
+    entry.service_role = service_role;
     entry.endpoint = endpoint;
     entry.routing_id = sender_id_;
     entry.weight = weight;
@@ -515,7 +542,7 @@ void registry_t::handle_unregister (void *router_,
                                     size_t frame_count_,
                                     const zlink_routing_id_t &sender_id_)
 {
-    if (frame_count_ < 4) {
+    if (frame_count_ < 5) {
         send_unregister_ack (router_, sender_id_, 0xFF, "invalid unregister");
         return;
     }
@@ -525,10 +552,17 @@ void registry_t::handle_unregister (void *router_,
         send_unregister_ack (router_, sender_id_, 0xFF, "invalid type");
         return;
     }
+    uint16_t service_role = 0;
+    if (!discovery_protocol::read_u16 (frames_[2], &service_role)
+        || !discovery_protocol::is_valid_service_role_for_type (service_type,
+                                                                service_role)) {
+        send_unregister_ack (router_, sender_id_, 0xFF, "invalid role");
+        return;
+    }
     const std::string service_name =
-      discovery_protocol::read_string (frames_[2]);
-    const std::string endpoint =
       discovery_protocol::read_string (frames_[3]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[4]);
 
     service_key_t service_key;
     service_key.service_type = service_type;
@@ -540,7 +574,10 @@ void registry_t::handle_unregister (void *router_,
         return;
     }
 
-    provider_map_t::iterator pit = sit->second.providers.find (endpoint);
+    provider_key_t provider_key;
+    provider_key.service_role = service_role;
+    provider_key.endpoint = endpoint;
+    provider_map_t::iterator pit = sit->second.providers.find (provider_key);
     if (pit == sit->second.providers.end ()) {
         send_unregister_ack (router_, sender_id_, 0x01, "endpoint not found");
         return;
@@ -561,16 +598,22 @@ void registry_t::handle_unregister (void *router_,
 void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
                                    size_t frame_count_)
 {
-    if (frame_count_ < 4)
+    if (frame_count_ < 5)
         return;
 
     uint16_t service_type = 0;
     if (!discovery_protocol::read_u16 (frames_[1], &service_type))
         return;
+    uint16_t service_role = 0;
+    if (!discovery_protocol::read_u16 (frames_[2], &service_role)
+        || !discovery_protocol::is_valid_service_role_for_type (service_type,
+                                                                service_role)) {
+        return;
+    }
     const std::string service_name =
-      discovery_protocol::read_string (frames_[2]);
-    const std::string endpoint =
       discovery_protocol::read_string (frames_[3]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[4]);
 
     service_key_t service_key;
     service_key.service_type = service_type;
@@ -580,7 +623,10 @@ void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
     if (sit == _services.end ())
         return;
 
-    provider_map_t::iterator pit = sit->second.providers.find (endpoint);
+    provider_key_t provider_key;
+    provider_key.service_role = service_role;
+    provider_key.endpoint = endpoint;
+    provider_map_t::iterator pit = sit->second.providers.find (provider_key);
     if (pit == sit->second.providers.end ())
         return;
 
@@ -592,7 +638,7 @@ void registry_t::handle_update_weight (void *router_,
                                        size_t frame_count_,
                                        const zlink_routing_id_t &sender_id_)
 {
-    if (frame_count_ < 5) {
+    if (frame_count_ < 6) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid update");
         return;
@@ -605,12 +651,20 @@ void registry_t::handle_update_weight (void *router_,
                            "invalid type");
         return;
     }
+    uint16_t service_role = 0;
+    if (!discovery_protocol::read_u16 (frames_[2], &service_role)
+        || !discovery_protocol::is_valid_service_role_for_type (service_type,
+                                                                service_role)) {
+        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+                           "invalid role");
+        return;
+    }
     const std::string service_name =
-      discovery_protocol::read_string (frames_[2]);
-    const std::string endpoint =
       discovery_protocol::read_string (frames_[3]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[4]);
     uint32_t weight = 0;
-    discovery_protocol::read_u32 (frames_[4], &weight);
+    discovery_protocol::read_u32 (frames_[5], &weight);
 
     service_key_t service_key;
     service_key.service_type = service_type;
@@ -622,7 +676,10 @@ void registry_t::handle_update_weight (void *router_,
         return;
     }
 
-    provider_map_t::iterator pit = sit->second.providers.find (endpoint);
+    provider_key_t provider_key;
+    provider_key.service_role = service_role;
+    provider_key.endpoint = endpoint;
+    provider_map_t::iterator pit = sit->second.providers.find (provider_key);
     if (pit == sit->second.providers.end ()) {
         send_register_ack (router_, sender_id_, 0x01, endpoint,
                            "provider not found");

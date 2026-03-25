@@ -213,6 +213,14 @@ static int prepare_transient_dealer_local (ctx_t *ctx_,
     *dealer_out_ = dealer;
     return 0;
 }
+
+static uint16_t resolve_registered_service_role_local (uint16_t service_type_,
+                                                       uint16_t service_role_)
+{
+    return service_role_ != discovery_protocol::service_role_invalid
+             ? service_role_
+             : discovery_protocol::fixed_service_role_for_type (service_type_);
+}
 }
 
 int discovery_t::register_service (uint16_t service_type_,
@@ -220,10 +228,18 @@ int discovery_t::register_service (uint16_t service_type_,
                                    const char *endpoint_,
                                    uint32_t weight_,
                                    std::string *resolved_endpoint_out_,
-                                   const zlink_routing_id_t *routing_id_)
+                                   const zlink_routing_id_t *routing_id_,
+                                   uint16_t service_role_)
 {
     if (!service_name_ || service_name_[0] == '\0' || !endpoint_
         || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+    const uint16_t service_role =
+      resolve_registered_service_role_local (service_type_, service_role_);
+    if (!discovery_protocol::is_valid_service_role_for_type (service_type_,
+                                                             service_role)) {
         errno = EINVAL;
         return -1;
     }
@@ -247,6 +263,8 @@ int discovery_t::register_service (uint16_t service_type_,
           dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
           < 0
         || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u16 (dealer, service_role, ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_string (dealer, service_name_,
                                             ZLINK_SNDMORE)
@@ -285,6 +303,7 @@ int discovery_t::register_service (uint16_t service_type_,
 
     registered_service_key_t key;
     key.service_type = service_type_;
+    key.service_role = service_role;
     key.service_name = service_name_;
     key.endpoint = resolved.empty () ? endpoint_ : resolved;
 
@@ -292,6 +311,7 @@ int discovery_t::register_service (uint16_t service_type_,
         scoped_lock_t lock (_sync);
         registered_service_t &service = _registered_services[key];
         service.service_type = service_type_;
+        service.service_role = service_role;
         service.service_name = service_name_;
         service.endpoint = key.endpoint;
         service.uplink_endpoint = uplink;
@@ -307,10 +327,18 @@ int discovery_t::register_service (uint16_t service_type_,
 int discovery_t::update_service_weight (uint16_t service_type_,
                                         const char *service_name_,
                                         const char *endpoint_,
-                                        uint32_t weight_)
+                                        uint32_t weight_,
+                                        uint16_t service_role_)
 {
     if (!service_name_ || service_name_[0] == '\0' || !endpoint_
         || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+    const uint16_t service_role =
+      resolve_registered_service_role_local (service_type_, service_role_);
+    if (!discovery_protocol::is_valid_service_role_for_type (service_type_,
+                                                             service_role)) {
         errno = EINVAL;
         return -1;
     }
@@ -320,6 +348,7 @@ int discovery_t::update_service_weight (uint16_t service_type_,
         scoped_lock_t lock (_sync);
         registered_service_key_t key;
         key.service_type = service_type_;
+        key.service_role = service_role;
         key.service_name = service_name_;
         key.endpoint = endpoint_;
         std::map<registered_service_key_t, registered_service_t>::const_iterator
@@ -348,6 +377,8 @@ int discovery_t::update_service_weight (uint16_t service_type_,
           dealer, discovery_protocol::msg_update_weight, ZLINK_SNDMORE)
           < 0
         || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u16 (dealer, service_role, ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_string (dealer, service_name_,
                                             ZLINK_SNDMORE)
@@ -388,6 +419,7 @@ int discovery_t::update_service_weight (uint16_t service_type_,
     scoped_lock_t lock (_sync);
     registered_service_key_t key;
     key.service_type = service_type_;
+    key.service_role = service_role;
     key.service_name = service_name_;
     key.endpoint = endpoint_;
     std::map<registered_service_key_t, registered_service_t>::iterator it =
@@ -399,10 +431,18 @@ int discovery_t::update_service_weight (uint16_t service_type_,
 
 int discovery_t::unregister_service (uint16_t service_type_,
                                      const char *service_name_,
-                                     const char *endpoint_)
+                                     const char *endpoint_,
+                                     uint16_t service_role_)
 {
     if (!service_name_ || service_name_[0] == '\0' || !endpoint_
         || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+    const uint16_t service_role =
+      resolve_registered_service_role_local (service_type_, service_role_);
+    if (!discovery_protocol::is_valid_service_role_for_type (service_type_,
+                                                             service_role)) {
         errno = EINVAL;
         return -1;
     }
@@ -412,6 +452,7 @@ int discovery_t::unregister_service (uint16_t service_type_,
         scoped_lock_t lock (_sync);
         registered_service_key_t key;
         key.service_type = service_type_;
+        key.service_role = service_role;
         key.service_name = service_name_;
         key.endpoint = endpoint_;
         std::map<registered_service_key_t, registered_service_t>::const_iterator
@@ -439,6 +480,8 @@ int discovery_t::unregister_service (uint16_t service_type_,
           dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           < 0
         || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u16 (dealer, service_role, ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_string (dealer, service_name_,
                                             ZLINK_SNDMORE)
@@ -476,6 +519,7 @@ int discovery_t::unregister_service (uint16_t service_type_,
     scoped_lock_t lock (_sync);
     registered_service_key_t key;
     key.service_type = service_type_;
+    key.service_role = service_role;
     key.service_name = service_name_;
     key.endpoint = endpoint_;
     _registered_services.erase (key);

@@ -7,6 +7,7 @@
 #include "api/socket_api_internal.hpp"
 #include "core/address.hpp"
 #include "sockets/proxy.hpp"
+#include "services/discovery/discovery_access.hpp"
 
 int zlink_bind (void *s_, const char *addr_)
 {
@@ -38,6 +39,17 @@ int zlink_disconnect (void *s_, const char *addr_)
     if (!handle.socket)
         return -1;
     return handle.socket->term_endpoint (addr_);
+}
+
+int zlink_socket_attach_discovery (void *s_, void *discovery_)
+{
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
+        return -1;
+
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    return discovery ? handle.socket->attach_discovery (discovery) : -1;
 }
 
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)

@@ -19,6 +19,7 @@
 #include "sockets/stream.hpp"
 #include "sockets/xpub.hpp"
 #include "sockets/xsub.hpp"
+#include "services/discovery/socket_discovery_attachment.hpp"
 
 namespace
 {
@@ -106,6 +107,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _ticks (0),
     _rcvmore (false),
     _runtime (),
+    _service_attachment (NULL),
     _disconnected (false)
 {
     _term_pipe_acks_registered = 0;
@@ -140,6 +142,7 @@ static void copy_routing_id (zlink_routing_id_t *out_,
 
 zlink::socket_base_t::~socket_base_t ()
 {
+    LIBZLINK_DELETE (_service_attachment);
     if (_mailbox)
         LIBZLINK_DELETE (_mailbox);
 

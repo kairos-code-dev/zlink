@@ -11,10 +11,9 @@
 
 namespace zlink
 {
-void *gateway_access_t::create (ctx_t *ctx_, const char *service_name_)
+void *gateway_access_t::create (ctx_t *ctx_)
 {
-    gateway_t *gateway =
-      new (std::nothrow) gateway_t (ctx_, service_name_, NULL);
+    gateway_t *gateway = new (std::nothrow) gateway_t (ctx_, NULL);
     if (!gateway) {
         errno = ENOMEM;
         return NULL;

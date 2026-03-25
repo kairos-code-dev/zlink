@@ -12,7 +12,8 @@
 namespace zlink
 {
 void *discovery_access_t::create (ctx_t *ctx_,
-                                  zlink_service_type_t service_type_)
+                                  zlink_service_type_t service_type_,
+                                  const char *service_name_)
 {
     uint16_t internal_service_type = 0;
     if (service_type_ == ZLINK_SERVICE_TYPE_GATEWAY)
@@ -27,8 +28,8 @@ void *discovery_access_t::create (ctx_t *ctx_,
         return NULL;
     }
 
-    discovery_t *discovery =
-      new (std::nothrow) discovery_t (ctx_, internal_service_type);
+    discovery_t *discovery = new (std::nothrow)
+      discovery_t (ctx_, internal_service_type, service_name_);
     if (!discovery) {
         errno = ENOMEM;
         return NULL;
@@ -106,11 +107,10 @@ void discovery_access_t::set_summary_enabled (discovery_t *discovery_,
         discovery_->set_discovery_summary_enabled (enabled_);
 }
 
-void discovery_access_t::add_observer (discovery_t *discovery_,
-                                       discovery_observer_t *observer_)
+int discovery_access_t::add_observer (discovery_t *discovery_,
+                                      discovery_observer_t *observer_)
 {
-    if (discovery_)
-        discovery_->add_observer (observer_);
+    return discovery_ ? discovery_->add_observer (observer_) : -1;
 }
 
 int discovery_access_t::remove_observer (discovery_t *discovery_,
@@ -124,6 +124,12 @@ void discovery_access_t::upsert_service_summary (
 {
     if (discovery_)
         discovery_->upsert_service_summary (entry_);
+}
+
+void discovery_access_t::flush_topology_reports (discovery_t *discovery_)
+{
+    if (discovery_)
+        discovery_->flush_topology_reports ();
 }
 
 void discovery_access_t::upsert_gateway_peer_summary (

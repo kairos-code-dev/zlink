@@ -36,7 +36,7 @@ class spot_node_t : public discovery_observer_t
     typedef spot_node_pub_defaults_t pub_defaults_t;
     typedef spot_node_sub_defaults_t sub_defaults_t;
 
-    spot_node_t (ctx_t *ctx_, const char *service_name_);
+    spot_node_t (ctx_t *ctx_);
     ~spot_node_t ();
 
     bool check_tag () const;
@@ -72,6 +72,8 @@ class spot_node_t : public discovery_observer_t
 
     // discovery_observer_t
     void on_service_update (const std::string &service_name_) ZLINK_OVERRIDE;
+    void on_discovery_shutdown_requested (discovery_t *discovery_)
+      ZLINK_OVERRIDE;
     void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
 
     std::string public_endpoint () const;
@@ -171,7 +173,6 @@ class spot_node_t : public discovery_observer_t
     int ensure_registered ();
     int unregister_registered ();
 
-    static bool validate_service_name (const std::string &name_);
     static bool validate_public_endpoint (const std::string &endpoint_);
     static bool recv_ctrl_reply (socket_base_t *socket_, int *out_errno_);
     static int apply_tls_server (socket_base_t *socket_,
@@ -223,7 +224,6 @@ class spot_node_t : public discovery_observer_t
     std::set<std::string> _pending_service_updates;
 
     bool _registered;
-    std::string _service_name;
     std::string _advertise_endpoint;
     std::string _registration_uplink_endpoint;
 

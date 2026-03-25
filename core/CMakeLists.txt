@@ -1025,6 +1025,7 @@ set(discovery-sources
     src/services/discovery/discovery.cpp
     src/services/discovery/discovery_bootstrap.cpp
     src/services/discovery/discovery_registry_client.cpp
+    src/services/discovery/socket_discovery_attachment.cpp
     src/services/discovery/discovery_state.cpp
     src/services/discovery/discovery_uplink.cpp
     src/services/discovery/discovery_update.cpp

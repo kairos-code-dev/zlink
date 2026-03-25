@@ -3,11 +3,18 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
+#include "../../src/api/service_api_internal.hpp"
+#include "../../src/api/zlink_testing.hpp"
+#include "../../src/services/spot/spot_handle.hpp"
+#include "../../src/services/spot/spot_node.hpp"
+#include "../../src/services/spot/spot_node_access.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -31,11 +38,58 @@ struct count_probe_t
 count_probe_t *g_raw_probe = NULL;
 count_probe_t *g_gateway_probe = NULL;
 count_probe_t *g_spot_probe = NULL;
+std::mutex g_spot_handle_mutex;
+std::map<void *, spot_handle_t *> g_spot_handles;
 
 const int kPerfHandleCounts[] = {1, 4, 16, 64};
 const int kRawMessagesPerHandle = 128;
 const int kGatewayMessagesPerHandle = 64;
 const int kSpotMessagesPerHandle = 64;
+
+void *default_spot_handle (void *node_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
+        return node_;
+
+    std::lock_guard<std::mutex> lock (g_spot_handle_mutex);
+    std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.find (node_);
+    if (it != g_spot_handles.end ())
+        return it->second;
+
+    spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+    if (!spot) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    spot->node = node;
+    register_spot_mode_state (spot);
+    g_spot_handles[node_] = spot;
+    return spot;
+}
+
+void clear_default_spot_handles ()
+{
+    std::lock_guard<std::mutex> lock (g_spot_handle_mutex);
+    for (std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.begin ();
+         it != g_spot_handles.end (); ++it) {
+        erase_spot_mode_state (it->second);
+        zlink::destroy_spot_handle_for_testing (it->second);
+    }
+    g_spot_handles.clear ();
+}
+
+void destroy_default_spot_handle (void *node_)
+{
+    std::lock_guard<std::mutex> lock (g_spot_handle_mutex);
+    std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.find (node_);
+    if (it == g_spot_handles.end ())
+        return;
+
+    erase_spot_mode_state (it->second);
+    zlink::destroy_spot_handle_for_testing (it->second);
+    g_spot_handles.erase (it);
+}
 
 bool should_run_named_test (const char *name_)
 {
@@ -361,8 +415,8 @@ double measure_gateway_handle_scaling_once (int handle_count_,
         snprintf (server_rid_name, sizeof (server_rid_name), "gw-srv-%d", i);
         snprintf (client_rid_name, sizeof (client_rid_name), "gw-cli-%d", i);
 
-        servers[i] = zlink_gateway_new (ctx, service_name);
-        clients[i] = zlink_gateway_new (ctx, service_name);
+        servers[i] = zlink_gateway_new (ctx);
+        clients[i] = zlink_gateway_new (ctx);
         TEST_ASSERT_NOT_NULL (servers[i]);
         TEST_ASSERT_NOT_NULL (clients[i]);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
@@ -478,21 +532,14 @@ double measure_spot_handle_scaling_once (int handle_count_,
         snprintf (service_name, sizeof (service_name), "perf-spot-%d", i);
         snprintf (topic, sizeof (topic), "perf-topic-%d", i);
 
-        pub_nodes[i] = zlink_spot_node_new (ctx, service_name);
-        sub_nodes[i] = zlink_spot_node_new (ctx, service_name);
+        pub_nodes[i] = zlink_spot_node_new (ctx);
+        sub_nodes[i] = zlink_spot_node_new (ctx);
         TEST_ASSERT_NOT_NULL (pub_nodes[i]);
         TEST_ASSERT_NOT_NULL (sub_nodes[i]);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
-          pub_nodes[i], &ignore_spot_handler, NULL));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
-          sub_nodes[i], &ignore_spot_handler, NULL));
-
-        pubs[i] = pub_nodes[i];
-        subs[i] = sub_nodes[i];
+        pubs[i] = default_spot_handle (pub_nodes[i]);
+        subs[i] = default_spot_handle (sub_nodes[i]);
         TEST_ASSERT_NOT_NULL (pubs[i]);
         TEST_ASSERT_NOT_NULL (subs[i]);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
-          pubs[i], &ignore_spot_handler, NULL));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe_handler (
           subs[i], &scaling_spot_handler, NULL));
         configure_spot_linger_zero (pub_nodes[i], pubs[i]);
@@ -575,6 +622,8 @@ double measure_spot_handle_scaling_once (int handle_count_,
         TEST_ASSERT_EQUAL_INT (0, worker_errno[i]);
 
     for (int i = 0; i < handle_count_; ++i) {
+        destroy_default_spot_handle (sub_nodes[i]);
+        destroy_default_spot_handle (pub_nodes[i]);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_nodes[i]));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_nodes[i]));
     }

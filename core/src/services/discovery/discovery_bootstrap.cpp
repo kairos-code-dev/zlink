@@ -648,12 +648,10 @@ void discovery_t::snapshot_providers (const std::string &service_name_,
     if (!out_)
         return;
     out_->clear ();
-    scoped_lock_t lock (_sync);
-    std::map<std::string, service_state_t>::iterator it =
-      _services.find (service_name_);
-    if (it == _services.end ())
+    if (service_name_ != _service_name)
         return;
-    *out_ = it->second.providers;
+    scoped_lock_t lock (_sync);
+    *out_ = _service_state.providers;
 }
 
 bool discovery_t::latest_registry_uplink (std::string *out_)
@@ -669,12 +667,10 @@ uint64_t discovery_t::update_seq ()
 
 uint64_t discovery_t::service_update_seq (const std::string &service_name_)
 {
-    scoped_lock_t lock (_sync);
-    std::map<std::string, uint64_t>::iterator it =
-      _service_seq.find (service_name_);
-    if (it == _service_seq.end ())
+    if (service_name_ != _service_name)
         return 0;
-    return it->second;
+    scoped_lock_t lock (_sync);
+    return _service_seq;
 }
 
 } // namespace zlink

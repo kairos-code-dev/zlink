@@ -151,8 +151,7 @@ int zlink_close (void *s_)
         handle.socket->stop ();
         stream_api_lock_t api_lock (handle);
         (void) handle.socket->stream_dispatch_stop ();
-        handle.socket->close ();
-        return 0;
+        return handle.socket->close ();
     }
 
     if (handle.socket->socket_msg_dispatch_active ()) {
@@ -165,8 +164,7 @@ int zlink_close (void *s_)
     }
 
     (void) handle.socket->stream_dispatch_stop ();
-    handle.socket->close ();
-    return 0;
+    return handle.socket->close ();
 }
 
 int zlink_poller_add (void *poller_,

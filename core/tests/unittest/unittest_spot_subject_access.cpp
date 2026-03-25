@@ -22,7 +22,7 @@ void test_spot_subject_access_resolves_composite_and_node_poller_sockets ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *spot = zlink_spot_new (ctx, "unit-spot-subject-access");
+    void *spot = zlink_spot_new (ctx);
     TEST_ASSERT_NOT_NULL (spot);
 
     spot_handle_t *handle = as_spot_handle (spot);
@@ -63,7 +63,7 @@ void test_spot_subject_access_routes_subscription_and_routing_state ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *spot = zlink_spot_new (ctx, "unit-spot-subject-state");
+    void *spot = zlink_spot_new (ctx);
     TEST_ASSERT_NOT_NULL (spot);
 
     spot_handle_t *handle = as_spot_handle (spot);

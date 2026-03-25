@@ -46,7 +46,22 @@ struct socket_monitor_event_record_t
     endpoint_uri_pair_t endpoint_uri_pair;
 };
 
-typedef std::pair<own_t *, pipe_t *> socket_endpoint_pipe_t;
+struct socket_endpoint_pipe_t
+{
+    socket_endpoint_pipe_t () : endpoint (NULL), pipe (NULL), local_type (endpoint_type_none) {}
+    socket_endpoint_pipe_t (own_t *endpoint_,
+                            pipe_t *pipe_,
+                            endpoint_type_t local_type_) :
+        endpoint (endpoint_),
+        pipe (pipe_),
+        local_type (local_type_)
+    {
+    }
+
+    own_t *endpoint;
+    pipe_t *pipe;
+    endpoint_type_t local_type;
+};
 typedef std::multimap<std::string, socket_endpoint_pipe_t> socket_endpoints_t;
 
 class socket_inprocs_t

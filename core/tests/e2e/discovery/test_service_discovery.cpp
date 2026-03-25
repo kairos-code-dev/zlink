@@ -57,7 +57,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     LIBZLINK_UNUSED (handler_);
-    void *gateway = zlink_gateway_new (ctx_, service_name_);
+    void *gateway = zlink_gateway_new (ctx_);
     if (!gateway)
         return NULL;
     if (routing_id_
@@ -145,6 +145,36 @@ void *create_started_registry_with_port_seed (void *ctx_,
     }
     errno = EADDRINUSE;
     return NULL;
+}
+
+void bind_socket_with_port_seed (void *socket_,
+                                 int *port_seed_,
+                                 char *endpoint_out_,
+                                 size_t endpoint_size_)
+{
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%d",
+                  test_port (*port_seed_));
+        if (zlink_bind (socket_, endpoint_out_) == 0) {
+            *port_seed_ += 1;
+            return;
+        }
+        if (errno != EADDRINUSE)
+            break;
+        *port_seed_ += 1;
+    }
+    TEST_FAIL_MESSAGE ("raw socket bind with port seed failed");
+}
+
+void assert_single_part_equals (zlink_msg_t *parts_,
+                                size_t part_count_,
+                                const char *expected_)
+{
+    TEST_ASSERT_NOT_NULL (parts_);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count_);
+    TEST_ASSERT_EQUAL_UINT64 (strlen (expected_), zlink_msg_size (&parts_[0]));
+    TEST_ASSERT_EQUAL_MEMORY (expected_, zlink_msg_data (&parts_[0]),
+                              strlen (expected_));
 }
 
 void bind_gateway_with_port_seed (void *gateway_,
@@ -238,7 +268,7 @@ void init_gateway_server (gateway_server_t *server_,
 {
     step_log ("gateway_server: create discovery");
     server_->discovery =
-      zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY, service_name_);
     TEST_ASSERT_NOT_NULL (server_->discovery);
     step_log ("gateway_server: connect registry");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
@@ -283,7 +313,8 @@ static void test_discovery_provider_registration ()
     TEST_ASSERT_NOT_NULL (registry);
     msleep (50);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "test-svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -334,7 +365,8 @@ static void test_discovery_service_filtering ()
     msleep (50);
 
     step_log ("service_filtering: create discovery");
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-A");
     TEST_ASSERT_NOT_NULL (discovery);
     step_log ("service_filtering: connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -423,7 +455,8 @@ static void test_discovery_heartbeat_timeout ()
     TEST_ASSERT_NOT_NULL (registry);
     msleep (50);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "hb-svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -462,6 +495,179 @@ static void test_registry_bind_rejects_rebind ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
+static void test_socket_discovery_attach_auto_connect_and_destroy ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    const int seed_jitter = rand () % 1000;
+    int registry_seed = 25730 + seed_jitter;
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+    msleep (50);
+
+    void *router_discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "raw-svc");
+    void *dealer_discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "raw-svc");
+    TEST_ASSERT_NOT_NULL (router_discovery);
+    TEST_ASSERT_NOT_NULL (dealer_discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (router_discovery, registry_router));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (dealer_discovery, registry_router));
+
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    const int timeout_ms = 3000;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_RCVTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_SNDTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_RCVTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_SNDTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (router, router_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (dealer, dealer_discovery));
+
+    char bind_ep[64];
+    int bind_seed = 5730 + seed_jitter;
+    bind_socket_with_port_seed (router, &bind_seed, bind_ep, sizeof (bind_ep));
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_connect (dealer, bind_ep));
+    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_unbind (router, bind_ep));
+    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_close (router));
+    TEST_ASSERT_EQUAL_INT (EFSM, zlink_errno ());
+
+    TEST_ASSERT_EQUAL_INT (4, zlink_send (dealer, "ping", 4, 0));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      ::zlink_recv (router, &source_rid, &parts, &part_count, 0));
+    assert_single_part_equals (parts, part_count, "ping");
+    zlink_multipart_close (parts, part_count);
+
+    zlink_msg_t reply_msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&reply_msg, 4));
+    memcpy (zlink_msg_data (&reply_msg), "pong", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      ::zlink_send_rid (router, &source_rid, &reply_msg, 1, 0));
+    char reply[8] = {0};
+    TEST_ASSERT_EQUAL_INT (4, zlink_recv (dealer, reply, sizeof (reply), 0));
+    TEST_ASSERT_EQUAL_MEMORY ("pong", reply, 4);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&router_discovery));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_close (router));
+    TEST_ASSERT_EQUAL_INT (EFAULT, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&dealer_discovery));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_close (dealer));
+    TEST_ASSERT_EQUAL_INT (EFAULT, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
+static void test_socket_discovery_shared_discovery_lifetime ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    const int seed_jitter = rand () % 1000;
+    int registry_seed = 25760 + seed_jitter;
+    void *registry = create_started_registry_with_port_seed (
+      ctx, &registry_seed, registry_pub, sizeof (registry_pub),
+      registry_router, sizeof (registry_router));
+    TEST_ASSERT_NOT_NULL (registry);
+    msleep (50);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "raw-shared-svc");
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, registry_router));
+
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    const int timeout_ms = 3000;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_RCVTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_SNDTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_RCVTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_SNDTIMEO, &timeout_ms,
+                        sizeof (timeout_ms)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (router, discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (dealer, discovery));
+
+    char router_endpoint[64];
+    char dealer_endpoint[64];
+    int bind_seed = 5760 + seed_jitter;
+    bind_socket_with_port_seed (router, &bind_seed, router_endpoint,
+                                sizeof (router_endpoint));
+    bind_socket_with_port_seed (dealer, &bind_seed, dealer_endpoint,
+                                sizeof (dealer_endpoint));
+
+    TEST_ASSERT_EQUAL_INT (6, zlink_send (dealer, "shared", 6, 0));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    zlink_routing_id_t source_rid;
+    memset (&source_rid, 0, sizeof (source_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      ::zlink_recv (router, &source_rid, &parts, &part_count, 0));
+    assert_single_part_equals (parts, part_count, "shared");
+    zlink_multipart_close (parts, part_count);
+
+    zlink_msg_t reply_msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&reply_msg, 5));
+    memcpy (zlink_msg_data (&reply_msg), "alive", 5);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      ::zlink_send_rid (router, &source_rid, &reply_msg, 1, 0));
+    char reply[8] = {0};
+    TEST_ASSERT_EQUAL_INT (5, zlink_recv (dealer, reply, sizeof (reply), 0));
+    TEST_ASSERT_EQUAL_MEMORY ("alive", reply, 5);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+
+    TEST_ASSERT_EQUAL_INT (-1, zlink_close (router));
+    TEST_ASSERT_EQUAL_INT (EFAULT, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_close (dealer));
+    TEST_ASSERT_EQUAL_INT (EFAULT, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
 int main (void)
 {
     setup_test_environment (180);
@@ -476,6 +682,8 @@ int main (void)
     RUN_TEST_CASE (test_discovery_service_filtering);
     RUN_TEST_CASE (test_discovery_heartbeat_timeout);
     RUN_TEST_CASE (test_registry_bind_rejects_rebind);
+    RUN_TEST_CASE (test_socket_discovery_attach_auto_connect_and_destroy);
+    RUN_TEST_CASE (test_socket_discovery_shared_discovery_lifetime);
 #undef RUN_TEST_CASE
     return UNITY_END ();
 }

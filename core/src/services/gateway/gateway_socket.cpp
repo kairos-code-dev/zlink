@@ -44,19 +44,8 @@ static void gateway_send_ready_handler (void *subject_, void *)
 static void ensure_gateway_routing_id (socket_base_t *socket_,
                                        const std::string *override_id_)
 {
-    if (!socket_)
-        return;
-    if (override_id_ && !override_id_->empty ()) {
-        zlink::discovery::set_socket_routing_id (socket_, override_id_, NULL);
-        return;
-    }
-    unsigned char buf[256];
-    size_t size = sizeof (buf);
-    if (socket_->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, buf, &size) != 0)
-        return;
-    if (size > 0)
-        return;
-    zlink::discovery::set_socket_routing_id (socket_, override_id_, NULL);
+    (void) zlink::discovery::ensure_socket_routing_id_present (
+      socket_, override_id_, NULL);
 }
 
 static int allocate_router (ctx_t *ctx_, socket_base_t **socket_)

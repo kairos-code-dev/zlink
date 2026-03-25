@@ -166,7 +166,7 @@ void *create_gateway_attached (void *ctx_,
                                zlink_socket_msg_handler_fn handler_)
 {
     LIBZLINK_UNUSED (handler_);
-    void *gateway = zlink_gateway_new (ctx_, service_name_);
+    void *gateway = zlink_gateway_new (ctx_);
     if (!gateway)
         return NULL;
     if (routing_id_
@@ -669,7 +669,8 @@ void test_socket_monitor_handler_rejects_service_monitor_handle ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-monitor");
     TEST_ASSERT_NOT_NULL (discovery);
 
     zlink_service_monitor_open_options_t opts;
@@ -693,7 +694,8 @@ void test_discovery_monitor_open_requires_handler ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-monitor");
     TEST_ASSERT_NOT_NULL (discovery);
 
     zlink_service_monitor_open_options_t opts;
@@ -715,7 +717,8 @@ void test_discovery_monitor_open_accepts_ignore_handler ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-monitor");
     TEST_ASSERT_NOT_NULL (discovery);
 
     zlink_service_monitor_open_options_t opts;
@@ -733,7 +736,7 @@ void test_gateway_monitor_open_requires_handler ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *gateway = zlink_gateway_new (ctx, "gw-monitor-null");
+    void *gateway = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (gateway);
 
     zlink_service_monitor_open_options_t opts;
@@ -755,7 +758,7 @@ void test_gateway_monitor_open_accepts_ignore_handler ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *gateway = zlink_gateway_new (ctx, "gw-monitor-ignore");
+    void *gateway = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (gateway);
 
     zlink_service_monitor_open_options_t opts;
@@ -823,7 +826,8 @@ void test_service_monitor_open_dispatches_events ()
     service_monitor_probe_t probe;
     g_service_monitor_probe = &probe;
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-handler");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (discovery, "disc-handler", 12));
@@ -839,7 +843,7 @@ void test_service_monitor_open_dispatches_events ()
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     void *server_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-handler");
     TEST_ASSERT_NOT_NULL (server_discovery);
     connect_discovery_registry_with_retry (server_discovery, registry_router,
                                            3000);
@@ -999,7 +1003,8 @@ void test_service_monitor_self_close_defers_until_callback_return ()
     }
     TEST_ASSERT_NOT_NULL (registry);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-self-close");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (discovery, "disc-self-close", 15));
@@ -1017,7 +1022,7 @@ void test_service_monitor_self_close_defers_until_callback_return ()
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     void *server_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-self-close");
     TEST_ASSERT_NOT_NULL (server_discovery);
     connect_discovery_registry_with_retry (server_discovery, registry_router,
                                            3000);
@@ -1070,7 +1075,8 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
     }
     TEST_ASSERT_NOT_NULL (registry);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-close-ebusy");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (discovery, "disc-close-ebusy", 17));
@@ -1088,7 +1094,7 @@ void test_service_monitor_close_during_callback_returns_ebusy ()
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     void *server_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-close-ebusy");
     TEST_ASSERT_NOT_NULL (server_discovery);
     connect_discovery_registry_with_retry (server_discovery, registry_router,
                                            3000);
@@ -1154,14 +1160,16 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
     }
     TEST_ASSERT_NOT_NULL (registry);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    const char *service_name = "svc-query-monitor";
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, service_name);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_routing_id (discovery, "disc-query", 10));
 
     monitor_parent_query_probe_t probe;
     probe.discovery = discovery;
-    strncpy (probe.service_name, "svc-query-monitor",
+    strncpy (probe.service_name, service_name,
              sizeof (probe.service_name) - 1);
     probe.service_name[sizeof (probe.service_name) - 1] = '\0';
     g_service_monitor_query_probe = &probe;
@@ -1178,7 +1186,7 @@ void test_service_monitor_callback_can_query_parent_without_deadlock ()
 
     connect_discovery_registry_with_retry (discovery, registry_router, 3000);
     void *server_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, probe.service_name);
     TEST_ASSERT_NOT_NULL (server_discovery);
     connect_discovery_registry_with_retry (server_discovery, registry_router,
                                            3000);
@@ -1225,7 +1233,8 @@ void test_service_parent_destroy_rejects_open_monitor_children ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery = zlink_discovery_new (
+      ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-parent-destroy");
     TEST_ASSERT_NOT_NULL (discovery);
     zlink_service_monitor_open_options_t discovery_opts;
     memset (&discovery_opts, 0, sizeof (discovery_opts));
@@ -1241,7 +1250,7 @@ void test_service_parent_destroy_rejects_open_monitor_children ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&discovery_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
 
-    void *gateway = zlink_gateway_new (ctx, "svc-monitor-destroy");
+    void *gateway = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (gateway);
     zlink_service_monitor_open_options_t gateway_opts;
     memset (&gateway_opts, 0, sizeof (gateway_opts));

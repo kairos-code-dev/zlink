@@ -78,6 +78,7 @@ class registry_t
 
     struct provider_entry_t
     {
+        uint16_t service_role;
         std::string endpoint;
         zlink_routing_id_t routing_id;
         uint32_t weight;
@@ -86,7 +87,20 @@ class registry_t
         uint32_t source_registry;
     };
 
-    typedef std::map<std::string, provider_entry_t> provider_map_t;
+    struct provider_key_t
+    {
+        uint16_t service_role;
+        std::string endpoint;
+
+        bool operator< (const provider_key_t &other_) const
+        {
+            if (service_role != other_.service_role)
+                return service_role < other_.service_role;
+            return endpoint < other_.endpoint;
+        }
+    };
+
+    typedef std::map<provider_key_t, provider_entry_t> provider_map_t;
 
     struct service_entry_t
     {
@@ -98,6 +112,7 @@ class registry_t
     struct topology_key_t
     {
         uint16_t service_kind;
+        uint16_t service_role;
         std::string routing_id_key;
         std::string service_name;
 
@@ -105,6 +120,8 @@ class registry_t
         {
             if (service_kind != other_.service_kind)
                 return service_kind < other_.service_kind;
+            if (service_role != other_.service_role)
+                return service_role < other_.service_role;
             if (routing_id_key != other_.routing_id_key)
                 return routing_id_key < other_.routing_id_key;
             return service_name < other_.service_name;

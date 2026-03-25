@@ -3,11 +3,44 @@
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
 
+#include "../../src/api/service_api_internal.hpp"
+#include "../../src/api/zlink_testing.hpp"
 #include "core/internal_defs.hpp"
 #include "core/options_owner.hpp"
+#include "../../src/services/spot/spot_handle.hpp"
+#include "../../src/services/spot/spot_node.hpp"
+#include "../../src/services/spot/spot_node_access.hpp"
 
 #include <string.h>
 #include <unity.h>
+
+namespace
+{
+void *make_test_spot_handle (void *node_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
+        return NULL;
+
+    spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+    if (!spot)
+        return NULL;
+    spot->node = node;
+    register_spot_mode_state (spot);
+    return spot;
+}
+
+void destroy_test_spot_handle (void **spot_p_)
+{
+    if (!spot_p_ || !*spot_p_)
+        return;
+
+    spot_handle_t *spot = static_cast<spot_handle_t *> (*spot_p_);
+    erase_spot_mode_state (spot);
+    zlink::destroy_spot_handle_for_testing (spot);
+    *spot_p_ = NULL;
+}
+} // namespace
 
 void setUp ()
 {
@@ -132,8 +165,9 @@ void test_typed_raw_socket_options ()
 void test_typed_gateway_discovery_tls_and_last_endpoint ()
 {
     void *ctx = new_ctx ();
-    void *gateway = zlink_gateway_new (ctx, "svc");
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *gateway = zlink_gateway_new (ctx);
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc");
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (gateway);
     TEST_ASSERT_NOT_NULL (discovery);
@@ -190,8 +224,10 @@ void test_typed_gateway_discovery_tls_and_last_endpoint ()
 void test_typed_spot_node_unified_options ()
 {
     void *ctx = new_ctx ();
-    void *node = zlink_spot_node_new (ctx, "spot-svc");
+    void *node = zlink_spot_node_new (ctx);
     TEST_ASSERT_NOT_NULL (node);
+    void *spot = make_test_spot_handle (node);
+    TEST_ASSERT_NOT_NULL (spot);
 
     int pub_hwm = 77;
     int sub_hwm = 88;
@@ -206,7 +242,7 @@ void test_typed_spot_node_unified_options ()
     int nodrop = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_pub_option (node, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof (nodrop)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (node, "alpha"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (spot, "alpha"));
 
     int got = 0;
     size = sizeof (got);
@@ -221,18 +257,19 @@ void test_typed_spot_node_unified_options ()
 
     size = sizeof (got);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_sub_option (node, ZLINK_SUB_OPT_TOPICS_COUNT, &got, &size));
+      zlink_get_sub_option (spot, ZLINK_SUB_OPT_TOPICS_COUNT, &got, &size));
     TEST_ASSERT_EQUAL_INT (1, got);
 
     char filter[32];
     size_t filter_len = sizeof (filter);
     int is_pattern = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscription_at (node, 0, filter, &filter_len, &is_pattern));
+      zlink_subscription_at (spot, 0, filter, &filter_len, &is_pattern));
     TEST_ASSERT_EQUAL_UINT (5, (unsigned int) filter_len);
     TEST_ASSERT_EQUAL_MEMORY ("alpha", filter, 5);
     TEST_ASSERT_EQUAL_INT (0, is_pattern);
 
+    destroy_test_spot_handle (&spot);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     close_ctx (ctx);
 }

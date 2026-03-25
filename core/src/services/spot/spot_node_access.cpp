@@ -12,9 +12,9 @@
 
 namespace zlink
 {
-void *spot_node_access_t::create (ctx_t *ctx_, const char *service_name_)
+void *spot_node_access_t::create (ctx_t *ctx_)
 {
-    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, service_name_);
+    spot_node_t *node = new (std::nothrow) spot_node_t (ctx_);
     if (!node) {
         errno = ENOMEM;
         return NULL;

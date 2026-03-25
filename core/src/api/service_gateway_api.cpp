@@ -197,19 +197,14 @@ static int recv_gateway_parts (zlink::socket_base_t *socket_,
 }
 }
 
-void *zlink_gateway_new (void *ctx_, const char *service_name_)
+void *zlink_gateway_new (void *ctx_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
-    if (!service_name_ || service_name_[0] == '\0') {
-        errno = EINVAL;
-        return NULL;
-    }
     zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (
-      zlink::gateway_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
-                                       service_name_));
+      zlink::gateway_access_t::create (static_cast<zlink::ctx_t *> (ctx_)));
     if (!gateway)
         return NULL;
     register_gateway_mode_state (gateway);

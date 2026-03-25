@@ -166,7 +166,7 @@ void zlink::socket_base_t::process_term (int linger_)
 
 void zlink::socket_base_t::process_term_endpoint (std::string *endpoint_)
 {
-    term_endpoint (endpoint_->c_str ());
+    term_endpoint_internal (endpoint_->c_str ());
     delete endpoint_;
 }
 

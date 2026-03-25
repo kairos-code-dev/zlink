@@ -43,20 +43,15 @@ static int copy_snapshot_rows (const std::vector<Row> &rows_,
 }
 }
 
-void *zlink_spot_new (void *ctx_, const char *service_name_)
+void *zlink_spot_new (void *ctx_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
-    if (!service_name_ || service_name_[0] == '\0') {
-        errno = EINVAL;
-        return NULL;
-    }
 
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
-      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
-                                         service_name_));
+      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_)));
     if (!node)
         return NULL;
 
@@ -102,19 +97,14 @@ int zlink_spot_destroy (void **spot_p_)
     return zlink_spot_node_destroy (&node_handle);
 }
 
-void *zlink_spot_node_new (void *ctx_, const char *service_name_)
+void *zlink_spot_node_new (void *ctx_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
-    if (!service_name_ || service_name_[0] == '\0') {
-        errno = EINVAL;
-        return NULL;
-    }
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
-      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
-                                         service_name_));
+      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_)));
     if (!node)
         return NULL;
     register_spot_node_mode_state (node);

@@ -15,7 +15,9 @@ namespace zlink
 {
 static const uint32_t discovery_tag_value = 0x1e6700d6;
 
-discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
+discovery_t::discovery_t (ctx_t *ctx_,
+                          uint16_t service_type_,
+                          const std::string &service_name_) :
     _ctx (ctx_),
     _tag (discovery_tag_value),
     _lifecycle (ctx_),
@@ -28,14 +30,18 @@ discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _observer_callbacks_inflight (0),
     _destroying (false),
     _monitor_ready_count (0),
+    _service_seq (0),
     _service_type (service_type_),
     _discovery_summary_enabled (true),
+    _service_name (service_name_),
     _monitor (ctx_)
 {
     zlink_assert (_ctx);
     zlink_assert (discovery_protocol::is_valid_service_type (_service_type));
     zlink_assert (_bootstrap_runtime);
     zlink_assert (_uplink_runtime);
+    if (_service_name.empty ())
+        _tag = 0xdeadbeef;
 }
 
 discovery_t::~discovery_t ()

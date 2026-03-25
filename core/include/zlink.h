@@ -601,7 +601,6 @@ ZLINK_EXPORT int zlink_recv_handler (
  * - raw `SUB`
  * - raw `XSUB`
  * - unified `spot`
- * - unified `spot_node`
  *
  * The subject starts in recv model. After a successful attach,
  * `zlink_subscribe()` and data-plane poller `ZLINK_POLLIN` registration on the
@@ -629,7 +628,6 @@ ZLINK_EXPORT int zlink_subscribe_handler (
  * - raw `STREAM`
  * - `gateway`
  * - unified `spot`
- * - unified `spot_node`
  *
  * Send-ready is independent from receive callback mode. After a successful
  * attach, data-plane poller `ZLINK_POLLOUT` registration on the same subject
@@ -648,9 +646,11 @@ ZLINK_EXPORT int zlink_send_ready_handler (
  * correctness, and close/destroy uses a stricter lifecycle gate. If another
  * thread has an in-flight callback or admitted API on the same handle, close
  * fails with errno=EBUSY. Once close is accepted, new API entry fails with
- * errno=ESHUTDOWN. Self-close from a send-ready or monitor callback is
- * deferred until callback epilogue. For STREAM raw callbacks, close from
- * inside the raw callback is not supported and fails with errno=EBUSY.
+ * errno=ESHUTDOWN. Discovery-attached raw service participants also reject
+ * close until their owning discovery is destroyed. Self-close from a
+ * send-ready or monitor callback is deferred until callback epilogue. For
+ * STREAM raw callbacks, close from inside the raw callback is not supported
+ * and fails with errno=EBUSY.
  */
 ZLINK_EXPORT int zlink_close (void *s_);
 
@@ -738,6 +738,19 @@ ZLINK_EXPORT int zlink_unbind (void *s_, const char *addr_);
 
 /** @brief Disconnect a socket from a remote address. */
 ZLINK_EXPORT int zlink_disconnect (void *s_, const char *addr_);
+
+/**
+ * @brief Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery service view.
+ *
+ * Attached sockets delegate provider registration, peer refresh, and shutdown
+ * ownership to the discovery instance.
+ *
+ * While attached, manual `connect`, `disconnect`, `unbind`, and `close`
+ * operations fail. Destroy the discovery instance to terminate the attached
+ * socket lifecycle.
+ */
+ZLINK_EXPORT int zlink_socket_attach_discovery (void *socket_,
+                                                void *discovery_);
 
 /**
  * @brief Send a multipart message on a socket or handle.
@@ -973,18 +986,32 @@ typedef enum zlink_service_type_t
 } zlink_service_type_t;
 /** @} */
 
+typedef enum zlink_service_role_t
+{
+    ZLINK_SERVICE_ROLE_INVALID = 0,
+    ZLINK_SERVICE_ROLE_GATEWAY = 1,
+    ZLINK_SERVICE_ROLE_SPOT = 2,
+    ZLINK_SERVICE_ROLE_ROUTER = 3,
+    ZLINK_SERVICE_ROLE_DEALER = 4,
+    ZLINK_SERVICE_ROLE_PUB = 5,
+    ZLINK_SERVICE_ROLE_SUB = 6
+} zlink_service_role_t;
+
 /**
- * @brief Create a Discovery instance with a fixed service family.
+ * @brief Create a Discovery instance with a fixed service view.
  *
- * The service type is fixed at creation time and cannot be changed.
- * All subscribe/get/count queries operate within the given service_type scope.
+ * The service type and service name are fixed at creation time and cannot be
+ * changed. All subscribe/get/count queries operate within that one logical
+ * service view.
  *
  * @param ctx           Context handle.
  * @param service_type  Service family for this handle.
+ * @param service_name  Fixed logical service name for this handle.
  * @return Discovery handle, or NULL on failure.
  */
 ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
-                                        zlink_service_type_t service_type);
+                                        zlink_service_type_t service_type,
+                                        const char *service_name);
 
 /**
  * @brief Connect Discovery to a Registry bootstrap/control endpoint.
@@ -995,7 +1022,12 @@ ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
 ZLINK_EXPORT int zlink_discovery_connect_registry (
   void *discovery, const char *registry_endpoint);
 
-/** @brief Destroy the discovery instance and release all resources. */
+/**
+ * @brief Destroy the discovery instance and release all resources.
+ *
+ * Destroying a discovery also shuts down every attached service participant
+ * that delegated lifecycle ownership to this service view.
+ */
 ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
 
 /* Gateway ------------------------------------------------------------------ */
@@ -1017,9 +1049,14 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
  * `zlink_set_routing_id()` before the first bind/connect. If not set
  * explicitly, the internal ROUTER auto routing id is used.
  */
-ZLINK_EXPORT void *zlink_gateway_new (void *ctx,
-                                      const char *service_name);
+ZLINK_EXPORT void *zlink_gateway_new (void *ctx);
 
+/**
+ * @brief Attach the Gateway to a fixed discovery-owned service view.
+ *
+ * Service selection, provider registration, peer refresh, and shutdown
+ * ownership move to the discovery after a successful attach.
+ */
 ZLINK_EXPORT int zlink_gateway_attach_discovery (void *gateway,
                                                  void *discovery);
 
@@ -1063,7 +1100,11 @@ ZLINK_EXPORT int zlink_gateway_update_peer_weight (
   const zlink_routing_id_t *routing_id,
   uint32_t weight);
 
-/** @brief Destroy the Gateway and release all resources. */
+/**
+ * @brief Destroy the Gateway and release all resources.
+ *
+ * Attached gateways are normally shut down by `zlink_discovery_destroy()`.
+ */
 ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
 
 /******************************************************************************/
@@ -1078,7 +1119,7 @@ ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
  * The returned handle uses generic publish/subscribe APIs and lazily creates
  * side sockets as needed.
  */
-ZLINK_EXPORT void *zlink_spot_new (void *ctx, const char *service_name);
+ZLINK_EXPORT void *zlink_spot_new (void *ctx);
 
 /** @brief Destroy a unified SPOT handle and its owned spot node. */
 ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
@@ -1086,21 +1127,19 @@ ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
 /* SPOT Node --------------------------------------------------------------- */
 
 /**
- * @brief Create a service-bound SPOT node in recv model.
+ * @brief Create a SPOT node runtime for topology, discovery, and lifecycle.
  *
- * SpotNode handles start in recv model. Install `zlink_subscribe_handler()`
- * to transition the receive surface to callback mode. In callback receive
- * mode, direct recv and data-plane `ZLINK_POLLIN` poller registration fail
- * with errno=EBUSY.
- *
- * Writable readiness is modeled independently. Use poller `ZLINK_POLLOUT` or
- * `zlink_send_ready_handler()`. Once send-ready is attached, data-plane
- * `ZLINK_POLLOUT` poller registration fails with errno=EBUSY.
+ * SPOT node handles own the internal pub/sub runtime that backs `zlink_spot()`
+ * but do not expose the generic data-plane facade directly. Use
+ * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
  */
-ZLINK_EXPORT void *zlink_spot_node_new (void *ctx,
-                                        const char *service_name);
+ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
 
-/** @brief Destroy a SPOT node and release all resources. */
+/**
+ * @brief Destroy a SPOT node and release all resources.
+ *
+ * Attached spot nodes are normally shut down by `zlink_discovery_destroy()`.
+ */
 ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
 
 /** @brief Bind the SPOT node to an endpoint. */
@@ -1123,7 +1162,10 @@ ZLINK_EXPORT int zlink_spot_node_disconnect_peer (
   void *node, const char *peer_endpoint);
 
 /**
- * @brief Attach a Discovery instance for automatic peer connection.
+ * @brief Attach a Discovery instance for discovery-owned peer connection.
+ *
+ * After attach, the node takes its service identity from the discovery and
+ * discovery destroy owns participant shutdown.
  */
 ZLINK_EXPORT int zlink_spot_node_attach_discovery (void *node,
                                                    void *discovery);
@@ -1143,7 +1185,8 @@ typedef enum zlink_service_kind_t
     ZLINK_SERVICE_KIND_DISCOVERY = 1,
     ZLINK_SERVICE_KIND_GATEWAY = 2,
     ZLINK_SERVICE_KIND_SPOT_SUB = 3,
-    ZLINK_SERVICE_KIND_SPOT_PUB = 4
+    ZLINK_SERVICE_KIND_SPOT_PUB = 4,
+    ZLINK_SERVICE_KIND_SOCKET = 5
 } zlink_service_kind_t;
 
 typedef uint32_t zlink_discovery_monitor_event_mask_t;
@@ -1460,6 +1503,7 @@ typedef struct zlink_registry_status_t
 typedef struct zlink_registry_service_summary_entry_t
 {
     zlink_service_kind_t service_kind;
+    zlink_service_role_t service_role;
     char service_name[256];
     uint32_t total_count;
     uint32_t connecting_count;
@@ -1472,6 +1516,7 @@ typedef struct zlink_registry_service_summary_entry_t
 typedef struct zlink_registry_service_summary_filter_t
 {
     zlink_service_kind_t service_kind;
+    zlink_service_role_t service_role;
     char service_name[256];
 } zlink_registry_service_summary_filter_t;
 
@@ -1525,6 +1570,7 @@ typedef struct zlink_registry_topology_entry_t
 {
     zlink_routing_id_t routing_id;
     zlink_service_kind_t service_kind;
+    zlink_service_role_t service_role;
     char service_name[256];
     char endpoint[256];
     zlink_topology_source_t source;
@@ -1538,6 +1584,7 @@ typedef struct zlink_registry_topology_entry_t
 typedef struct zlink_registry_topology_filter_t
 {
     zlink_service_kind_t service_kind;
+    zlink_service_role_t service_role;
     char service_name[256];
     zlink_routing_id_t routing_id;
     zlink_topology_state_t state;

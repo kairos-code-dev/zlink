@@ -35,7 +35,7 @@ class service_public_api_guard_t
         uint32_t old = _state.load (std::memory_order_acquire);
         while (true) {
             if ((old & closing_bit) != 0) {
-                errno = EALREADY;
+                errno = ESHUTDOWN;
                 return false;
             }
 
@@ -51,6 +51,11 @@ class service_public_api_guard_t
                 return true;
             }
         }
+    }
+
+    void mark_closing ()
+    {
+        _state.fetch_or (closing_bit, std::memory_order_acq_rel);
     }
 
     void cancel_close ()

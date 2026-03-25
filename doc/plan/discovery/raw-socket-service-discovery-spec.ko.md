@@ -81,7 +81,7 @@ v1 범위 고정:
 - `pub` -> 같은 서비스의 `sub`만 연결
 - `sub` -> 같은 서비스의 `pub`만 연결
 - `router` -> 같은 서비스의 `router`, `dealer`를 모두 연결
-- `dealer` -> 같은 서비스의 `router`, `dealer`를 모두 연결
+- `dealer` -> 같은 서비스의 `dealer`, `router`를 모두 연결
 
 명시적으로 금지되는 조합:
 
@@ -96,7 +96,7 @@ v1 범위 고정:
 후보가 여러 개면 모두 연결한다.
 
 - `router`는 같은 서비스의 모든 `router`, `dealer` endpoint에 연결한다.
-- `dealer`도 같은 서비스의 모든 `router`, `dealer` endpoint에 연결한다.
+- `dealer`는 같은 서비스의 모든 `dealer`, `router` endpoint에 연결한다.
 - `pub`는 같은 서비스의 모든 `sub` endpoint에 연결한다.
 - `sub`는 같은 서비스의 모든 `pub` endpoint에 연결한다.
 
@@ -355,6 +355,8 @@ v1에서 고정할 public 방향:
 - `spot_node_new(ctx)`로 단순화
 - 서비스 선택 ownership은 attach된 `gateway` 또는 `spot_node` discovery가 담당
 - `spot`은 독립 attach 대상이 아니라 `spot_node` 내부 구성으로 유지
+- 사용자-facing callback / publish / subscribe facade는 `spot` 하나로 고정
+- `spot_node`는 구성 node로만 남고 data-plane public surface는 제거 대상이다
 
 고정 canonical surface:
 
@@ -374,6 +376,8 @@ int zlink_spot_node_attach_discovery(void *node, void *discovery);
 - attach 없는 bind는 허용하되 provider register는 하지 않는다.
 - attach 없는 `gateway` / `spot_node`는 service-bound automatic mode가 아니라 local-only mode로 본다.
 - `spot`은 local runtime / facade surface로 남고 service-bound automatic mode의 직접 소유자가 아니다.
+- `spot_node`는 local-only mode에서도 topology / lifecycle / introspection만 담당한다.
+- 위치투명 pub/sub가 필요하면 `spot` 또는 discovery-attached raw `PUB/SUB`를 사용한다.
 
 필수 적용 범위:
 
@@ -383,6 +387,7 @@ int zlink_spot_node_attach_discovery(void *node, void *discovery);
 - discovery attach 대상은 `gateway`, `spot_node`, raw socket이다.
 - `spot`은 `spot_node` 내부 구성으로 참여하고,
   service binding / register / peer refresh ownership은 `spot_node`가 가진다.
+- `spot_node`는 callback / publish / subscribe를 직접 노출하지 않는다.
 
 이 문서의 canonical 방향은 다음이다.
 
@@ -1069,14 +1074,40 @@ gateway / spot / spot_node 영향 분석:
 - constructor는 service ownership을 갖지 않는다.
 - attach 이후 register / refresh / teardown semantics가 raw socket과 같은 ownership 모델로 정렬된다.
 
-### 15.5 Phase 5: docs / tests 정리
+### 15.5 Phase 5: raw socket 연결 규칙 정리
+
+- raw socket auto-connect를 service 단위 허용 pair 연결로 고정
+- raw socket 허용 pair는 `pub <-> sub`, `dealer <-> dealer`,
+  `router <-> router`, `dealer <-> router`로 정리
+- `dealer/router`를 client/server 비대칭 규칙으로 해석하지 않고
+  symmetric peer mesh 해석을 우선한다
+- 서로 다른 topology 의미는 별도 service와 별도 socket으로 분리하는 원칙을 고정
+
+완료 기준:
+
+- `5.4` 구현 이후 raw socket 연결 규칙 해석이 더 이상 흔들리지 않는다.
+- 회귀 테스트 작성 전에 허용 pair와 fan-out 의미가 고정된다.
+
+### 15.6 Phase 6: spot_node data-plane surface 제거
+
+- `spot_node` public handle에서 callback / publish / subscribe 진입을 제거
+- `spot_node`는 discovery attach, bind, peer topology, lifecycle, introspection만 담당하게 정렬
+- 사용자-facing data-plane facade는 `spot` 하나로 고정
+- 위치투명 pub/sub는 `spot` 또는 discovery-attached raw `PUB/SUB`로 사용하도록 문서와 테스트를 정렬
+
+완료 기준:
+
+- `spot_node`는 구성 node로 설명 가능하고 data-plane public API를 직접 갖지 않는다.
+- `spot`은 사용자-facing callback / publish / subscribe의 단일 facade다.
+
+### 15.7 Phase 7: docs / tests 정리
 
 - API 문서 개편
 - regression / integration 정리
 - topology / monitor 문서와 의미 정합성 맞춤
 - Phase / Step / guide 체크리스트 매핑을 문서에서 바로 추적 가능하게 유지
 
-### 15.6 Phase 6: POSD 리팩토링 정리
+### 15.8 Phase 8: POSD 리팩토링 정리
 
 - discovery-owned service model 도입 후 중복된 service ownership 상태 제거
 - role matching / attach lifecycle / register ownership 관련 중복 helper 통합
@@ -1114,6 +1145,7 @@ gateway / spot / spot_node 영향 분석:
 - `zlink_spot_new()` 생성 surface에서 constructor service ownership 제거
 - `spot`이 독립 attach 대상이 아님을 public surface에 반영
 - `gateway` / `spot` / `spot_node` 생성 surface에서 constructor service ownership 제거
+- `spot_node` handle에 대한 generic `publish` / `subscribe` / recv callback 진입 제거
 - attach 상태 raw socket의 `connect` / `disconnect` / `unbind` / `close/destroy` gate 추가
 
 원칙:
@@ -1204,9 +1236,11 @@ v1 목표:
 - constructor의 service ownership 제거
 - discovery attach 이후 register / unregister / refresh 경로를 새 모델로 정렬
 - role-aware protocol에서도 기존 gateway / spot data-plane semantics 보존
+- `spot_node`는 topology / lifecycle / introspection surface로만 남김
 
 즉 v1에서 `gateway`와 `spot_node`는 public constructor / attach semantics 개편 대상이고,
 `spot`은 그 내부 ownership 모델에 종속되도록 정렬한다.
+사용자-facing pub/sub 계약은 `spot` 또는 raw `PUB/SUB`에서만 설명한다.
 
 ### 16.6 테스트
 
@@ -1230,6 +1264,7 @@ v1 목표:
 - raw socket auto connect / disconnect matrix
 - attach 상태 API gate
 - gateway / spot regression
+- `spot_node` data-plane 제거 회귀
 - registry query regression
 - 기존 manual mode regression
 
@@ -1245,10 +1280,12 @@ v1 목표:
 - 대응 관계는 다음과 같다.
   - `15.1 Phase 1` <-> `17.2 Step B` <-> guide `5.2`
   - `15.2 Phase 2` <-> `17.1 Step A`, `17.3 Step C` <-> guide `5.1`, `5.3`
-  - `15.3 Phase 3` <-> `17.4 Step D`, `17.5 Step E` <-> guide `5.4`
+  - `15.3 Phase 3` <-> `17.4 Step D`, `17.5 Step E`, `17.7 Step G` <-> guide `5.4`
   - `15.4 Phase 4` <-> `17.6 Step F` <-> guide `5.5`
-  - `15.5 Phase 5` <-> `17.8 Step H` 일부 <-> guide `5.6`, `5.8`
-  - `15.6 Phase 6` <-> `17.9 Step I` <-> guide `5.7`
+  - `15.5 Phase 5` <-> `17.8 Step H` <-> guide `5.6`, `5.10`
+  - `15.6 Phase 6` <-> `17.9 Step I` <-> guide `5.7`, `5.10`
+  - `15.7 Phase 7` <-> `17.10 Step J` 일부 <-> guide `5.8`, `5.10`
+  - `15.8 Phase 8` <-> `17.11 Step K` <-> guide `5.9`
 
 ### 17.1 Step A: protocol / enum 정리
 
@@ -1275,16 +1312,67 @@ v1 목표:
 - discovery snapshot / observer semantics를 single service view 기준으로 정리
 - discovery destroy를 attached service participant cascade shutdown 경로로 재정의
 
+진행 메모:
+
+- 2026-03-25: `core/include/zlink.h`,
+  `core/src/api/service_discovery_api.cpp`,
+  `core/src/services/discovery/`에서
+  discovery fixed `service_name` / single-service snapshot 방향 구현을 시작했다.
+  `gateway`, `spot_node` attach 경로도 discovery fixed service와 정렬 중이지만,
+  기존 helper / e2e / integration 테스트 호출부 이행과 cascade shutdown 검증은
+  아직 남아 있다.
+- 2026-03-25: `core/tests/`의 discovery / gateway / spot discovery 시나리오를
+  fixed `service_name` 기준으로 이행했고,
+  `test_gateway`, `test_service_introspection`, `test_service_discovery`,
+  `test_gateway_with_handler`, `test_gateway_handover`,
+  `test_monitor_with_handler`, `test_spot_pubsub_scenario`,
+  `unittest_service_mode_policy` 회귀를 통과했다.
+  그러나 `discovery destroy` 이후 attached participant handle invalidation /
+  final ownership semantics는 아직 코드로 완전히 닫히지 않았다.
+- 2026-03-25: discovery-owned participant shutdown 경로에서
+  `gateway`, `spot_node`가 먼저 owner-close 상태로 전환된 뒤 destroy되도록
+  정렬했고, 이후 public API가 `ESHUTDOWN`으로 막히는 회귀를 추가했다.
+  `test_discovery_destroy_invalidates_attached_gateway_handle`,
+  `test_discovery_destroy_invalidates_attached_spot_node_handle`,
+  `test_gateway`, `test_spot_pubsub_scenario`,
+  `unittest_service_mode_policy`가 통과해 Step B의
+  attached handle invalidation / cascade shutdown 계약을 닫았다.
+
 완료 기준:
 
 - discovery 하나가 정확히 하나의 서비스만 대표한다.
 
 ### 17.3 Step C: registry wire / state 확장
 
-- register / unregister / heartbeat / service-list / sync payload에 role 추가
+- register / unregister / heartbeat / update-weight / service-list / sync
+  payload에 role 추가
 - registry key / merge / expire 로직 role-aware 변경
 - discovery provider snapshot에 role 반영
 - registry topology / service summary query가 raw role을 노출하도록 확장
+
+진행 메모:
+
+- 2026-03-25: `core/src/services/discovery/registry_state.cpp`,
+  `registry_query.cpp`, `discovery_registry_client.cpp`,
+  `discovery_uplink.cpp`, `discovery_update.cpp`,
+  `core/include/zlink.h`에 role-aware registry 확장을 반영했다.
+  register / unregister / heartbeat / update-weight / service-list / peer sync
+  payload에 role을 추가했고, registry provider key를
+  `service_type + service_name + service_role + endpoint`로 전환했다.
+- 2026-03-25: `zlink_registry_topology_entry_t`,
+  `zlink_registry_topology_filter_t`,
+  `zlink_registry_service_summary_entry_t`,
+  `zlink_registry_service_summary_filter_t`에 `service_role`을 추가하고
+  `test_service_introspection`, `test_gateway_with_handler`,
+  `test_gateway_handover`, `unittest_service_mode_policy`
+  회귀를 통과했다.
+- 2026-03-25: raw socket attach가 topology report 시 representative
+  routing id를 비어 있지 않게 보장하도록 정렬하고,
+  `test_registry_raw_socket_topology_and_summary_query`를 추가했다.
+  이 회귀는 raw `ROUTER/DEALER` attach 이후 registry topology /
+  service summary / remote topology query가 실제로
+  `service_kind=SOCKET`, `service_role=ROUTER|DEALER` row를 반환하는지
+  검증한다.
 
 완료 기준:
 
@@ -1298,6 +1386,22 @@ v1 목표:
 - attached discovery pointer 저장
 - advertise endpoint 단일 계약 구현
 
+진행 메모:
+
+- 2026-03-25: `zlink_socket_attach_discovery()`와
+  `socket_discovery_attachment` 런타임을 추가해
+  raw `ROUTER/DEALER/PUB/SUB`가 `ZLINK_SERVICE_TYPE_SOCKET`
+  discovery에 attach될 수 있도록 정렬했다.
+  attach 시 local role을 socket type에서 도출하고,
+  discovery observer를 통해 single advertise endpoint 계약과
+  discovery-owned lifecycle 상태를 보관하도록 구현했다.
+- 2026-03-25: bind 후 register 직전 self refresh가 먼저 들어오면
+  raw `ROUTER`가 자기 advertise endpoint에 self-connect할 수 있는 race를
+  발견했다.
+  attachment state에 provisional advertise endpoint를 먼저 기록하고,
+  register 실패 시 rollback하도록 `socket_discovery_attachment.cpp`를
+  정렬해 `test_service_discovery` raw auto-connect 회귀를 다시 통과시켰다.
+
 완료 기준:
 
 - raw socket이 discovery service view participant가 된다.
@@ -1308,6 +1412,16 @@ v1 목표:
 - `bind -> attach` 경로 구현
 - register / unregister / heartbeat 연동
 - discovery update 기반 connect / disconnect diff 구현
+
+진행 메모:
+
+- 2026-03-25: raw socket bind 성공 시 role-aware register를 수행하고,
+  bind 이후 attach 시 즉시 register 실패를 attach 실패로 롤백하도록
+  정렬했다.
+  discovery provider snapshot의 role 매칭 결과로
+  connect / disconnect diff를 적용하고,
+  discovery destroy에서 unregister / peer disconnect / socket close까지
+  cascade cleanup 하도록 연결했다.
 
 완료 기준:
 
@@ -1321,6 +1435,27 @@ v1 목표:
 - `gateway_attach_discovery`, `spot_node_attach_discovery`가 service ownership source가 되도록 정렬
 - `spot`은 `spot_node` 내부 구성으로 두고 독립 attach surface를 추가하지 않음
 - bind / register / unregister / refresh 경로가 discovery fixed service_name을 사용하도록 변경
+
+진행 메모:
+
+- 2026-03-25: `zlink_gateway_new(ctx)`, `zlink_spot_new(ctx)`,
+  `zlink_spot_node_new(ctx)` surface로 constructor 인자를 제거하는 전환을
+  시작했다.
+  `gateway`와 `spot_node`는 생성 시 무서비스 local-only mode로 시작하고,
+  discovery attach가 service ownership source가 되도록
+  `core/src/services/gateway/`, `core/src/services/spot/`를 정렬 중이다.
+  `gateway` manual route 경로는 empty service key pool을 허용해 기존
+  local-only semantics를 유지하도록 수정했고,
+  `test_gateway_handover`, `test_gateway_with_handler`,
+  `unittest_service_mode_policy`, `unittest_typed_option`,
+  `test_service_discovery`를 통과했다.
+- 2026-03-25: `test_spot_service_introspection`의 manual `spot_node`
+  snapshot 기대값을 discovery attach 전 local-only contract에 맞게
+  정렬했고,
+  `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|test_service_discovery|test_service_introspection|test_gateway_with_handler|test_gateway_handover|test_spot_pubsub_scenario|test_spot_service_introspection)$'`
+  회귀를 통과했다.
+  이에 따라 Step F 범위의 constructor ownership 제거와
+  discovery-owned service selection 전환은 완료로 본다.
 
 완료 기준:
 
@@ -1339,11 +1474,75 @@ v1 목표:
 이 step은 [`13.5 attach 상태 API 금지 규칙`](#135-attach-상태-api-금지-규칙)을
 코드로 닫는 실행 단계다.
 
+진행 메모:
+
+- 2026-03-25: raw socket attach 상태에서 public `connect`,
+  `disconnect`, `unbind`, `close`를 각각 `EFSM`으로 막고,
+  discovery shutdown 요청 이후에는 `ESHUTDOWN`으로 전환되도록
+  정렬했다.
+  `zlink_close()`가 내부 `socket->close()` 실패를 무시하던 경로도
+  함께 수정해 attach 상태 gate가 public close surface에 반영되도록 했다.
+
 완료 기준:
 
 - service mode ownership 규칙을 위반하는 public API 호출이 모두 실패한다.
 
-### 17.8 Step H: regression / cleanup
+### 17.8 Step H: raw socket 연결 규칙 정리
+
+- raw socket 허용 role pair를 `pub <-> sub`, `dealer <-> dealer`,
+  `router <-> router`, `dealer <-> router`로 고정
+- raw socket auto-connect를 symmetric peer mesh 해석으로 정렬
+- `service_name`이 topology grouping boundary라는 점을 본문과 구현 계획에 반영
+- 서로 다른 topology 의미는 별도 service / 별도 socket으로 분리하는 원칙을 명시
+
+진행 메모:
+
+- 2026-03-25: `discovery_protocol::service_roles_match()`와
+  `20. 추가 변경사항`을 같은 symmetric peer-mesh 해석으로 맞췄다.
+  `unittest_service_mode_policy`는
+  `router <-> router`, `router <-> dealer`, `dealer <-> dealer`,
+  `pub <-> sub` 허용과 금지 조합을 함께 검증한다.
+
+완료 기준:
+
+- raw socket 자동 연결 규칙이 구현 중 해석 차이 없이 적용된다.
+- `5.4` 이후 작업자가 role pair 정책을 추가 질의 없이 이어서 구현할 수 있다.
+
+### 17.9 Step I: spot_node data-plane surface 제거
+
+- `spot_node` public handle에서 generic `publish` / `subscribe` / recv callback 진입 제거
+- `spot_node`를 topology / lifecycle / discovery ownership surface로만 남김
+- `spot_node` data-plane 회귀 테스트를 `spot` 또는 raw `PUB/SUB` 시나리오로 이관
+- header / guide / 테스트 이름에서 `spot_node`를 사용자-facing pub/sub subject처럼 설명하는 표현 제거
+
+진행 메모:
+
+- 2026-03-25: public service dispatch에서 `spot_node` generic
+  `publish` / `subscribe` / recv callback / send-ready / poller 진입을
+  `ENOTSUP`로 차단하기 시작했다.
+  이 변경으로 Step I의 public surface gate는 착수했지만,
+  spot e2e / monitoring 회귀가 아직 기존 `spot_node` data-plane 경로를
+  직접 사용하므로 `spot` facade 또는 raw `PUB/SUB` 이관이 계속 필요하다.
+- 2026-03-25: e2e/introspection helper가 `spot_node` 위에 테스트용
+  `spot` facade wrapper를 얹어 generic pub/sub 경로를 node 밖으로
+  밀어내기 시작했다. 다만 readiness/monitor 관찰면이 아직
+  `spot_node` 기준과 `spot` 기준으로 섞여 있어 회귀 테스트는
+  계속 red이며, Step I 완료로 판정할 수 없다.
+- 2026-03-25: `spot` e2e/introspection/monitoring/scaling 회귀를
+  `spot_node` 직접 data-plane 호출 대신 테스트용 `spot` facade handle
+  기준으로 다시 정렬했다. monitor readiness와 subscription/delivery
+  관찰면도 facade handle 쪽으로 옮기고, teardown은 facade handle 정리 후
+  node destroy 순서로 고정했다.
+  `unittest_service_mode_policy`, `unittest_typed_option`,
+  `test_spot_service_introspection`, `test_spot_pubsub_scenario`가 green으로
+  돌아와 Step I를 완료로 판정한다.
+
+완료 기준:
+
+- `spot_node`는 구성 node이고 `spot`만 사용자-facing data-plane facade로 남는다.
+- 위치투명 pub/sub 설명은 `spot`과 raw `PUB/SUB` 두 surface로만 정리된다.
+
+### 17.10 Step J: regression / cleanup
 
 - gateway / spot constructor / attach model 전환
 - gateway / spot regression 적응
@@ -1351,17 +1550,64 @@ v1 목표:
 - discovery destroy cascade shutdown 검증
 - 문서 / API 주석 정리
 
+진행 메모:
+
+- 2026-03-25: `test_registry_raw_socket_topology_and_summary_query`를 추가해
+  raw socket / registry 조회 회귀를 보강했고,
+  `test_service_introspection`의 gateway topology / summary assertion도
+  role-aware query contract 기준으로 함께 정렬했다.
+- 2026-03-25: `test_spot_node_manual_peer_topology_ownership`를 추가해
+  `spot_node` manual peer topology와 discovery attach가 혼용되지 않는다는
+  회귀를 고정했다.
+  manual peer가 남아 있을 때 attach는 `EBUSY`,
+  attach 이후 `connect_peer` / `disconnect_peer`도 `EBUSY`로 거부되는 것을
+  `test_spot_pubsub_scenario`와 `unittest_service_mode_policy` 조합으로
+  다시 확인했다.
+- 2026-03-25: `core/include/zlink.h`의 public API 주석을 실제 구현과
+  다시 맞췄다.
+  `spot_node`는 더 이상 generic subscribe/send-ready subject로 설명하지 않고,
+  discovery destroy가 attached participant shutdown ownership을 가진다는
+  계약을 discovery/gateway/spot_node 주석에 반영했다.
+  `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|test_service_discovery|test_service_introspection|test_gateway_with_handler|test_gateway_handover|test_spot_pubsub_scenario|test_spot_service_introspection)$'`
+  와 `./core/tools/run_execution_gate_loop.sh --label discovery_service_gate --count 1`
+  로 docs / cleanup 범위를 닫았다.
+
 완료 기준:
 
 - raw socket, gateway, spot_node가 모두 discovery-owned service model로 정렬된다.
 - data-plane semantics는 유지되고 service ownership semantics만 일관되게 바뀐다.
 
-### 17.9 Step I: POSD 리팩토링
+### 17.11 Step K: POSD 리팩토링
 
 - service ownership 관련 중복 필드 제거
 - attach / register / peer refresh 정책 공통화
 - gateway / spot / raw socket 사이의 반복 조건문과 얕은 래퍼 정리
 - 변경 증폭이 큰 경로를 재구성해 이후 service family 추가 비용을 낮춤
+
+진행 메모:
+
+- 2026-03-25: raw socket attach와 gateway socket이 따로 들고 있던
+  representative routing id 보장 로직을
+  `routing_id_utils.hpp` 공통 helper로 묶어
+  routing id override / 재사용 / 생성 정책을 한 곳에서 설명 가능하게 정리했다.
+- 2026-03-25: discovery-owned 전환 이후 실제 정책에 쓰이지 않던
+  `spot_node::_service_name` 잔여 필드를 제거해
+  `spot_node` service ownership 상태를 `_discovery_service` 하나로 줄였다.
+- 2026-03-25: `gateway`도 register 상태를 표현하기 위해 따로 들고 있던
+  `_server_service_name`을 제거하고,
+  fixed discovery service name + advertise endpoint만으로
+  unregister / update-weight / destroy cleanup을 수행하도록 정리했다.
+- 2026-03-25: discovery-owned service participant가 registry에
+  fixed `service_name`을 싣는 경로를
+  `core/src/services/discovery/discovery_owned_service.hpp` helper로
+  공통화했다.
+  raw socket attachment, `gateway`, `spot_node`는 같은 register /
+  unregister / update-weight helper를 사용해 discovery fixed service view를
+  전달하므로, service ownership policy 변경 시 수정 지점이
+  family별 lifecycle 코드와 helper 한 곳으로 줄었다.
+  `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|test_service_discovery|test_service_introspection|test_gateway_with_handler|test_gateway_handover|test_spot_pubsub_scenario|test_spot_service_introspection)$'`
+  와 `./core/tools/run_execution_gate_loop.sh --label discovery_service_gate --count 1`
+  을 통과해 Step K를 완료로 판정한다.
 
 완료 기준:
 
@@ -1377,6 +1623,8 @@ v1 목표:
 - `gateway`는 discovery attach만으로 서비스 선택과 자동 연결을 수행한다.
 - `spot_node`는 discovery attach만으로 서비스 선택과 자동 연결을 수행한다.
 - `spot`은 `spot_node` 내부 구성으로 참여하고 독립 attach 대상이 아니다.
+- `spot_node`는 callback / publish / subscribe를 직접 노출하지 않고 구성 node로만 남는다.
+- 사용자-facing 위치투명 pub/sub surface는 `spot` 또는 raw `PUB/SUB`다.
 - registry / discovery가 `service_name + socket_role + endpoint`를 기준으로 provider를 관리한다.
 - registry 조회 surface가 raw `router/dealer/pub/sub` role 정보를 노출한다.
 - 같은 서비스 안에서 role 매칭 규칙이 코드와 문서에서 동일하다.
@@ -1399,3 +1647,28 @@ v1 목표:
 - `XPUB`, `XSUB` 자동 연결 지원
 - raw socket service mode의 single advertise bind 제한이 기존 multi-bind 사용자에게 주는 제약과 대안 surface 검토
 - `spot_node`가 discovery-owned model로 전환될 때 mesh topology 구성 책임이 constructor/setup 코드에서 attach/runtime 쪽으로 이동하는지 검토
+
+## 20. 추가 변경사항
+
+현재 구현 진행 중 합의된 변경사항은 아래와 같다.
+이 절은 기존 본문을 즉시 전면 재구성하지 않고도
+구현 우선순위와 최종 연결 규칙을 고정하기 위한 addendum이다.
+
+- 소켓 하나에는 discovery 하나만 attach한다.
+- 서로 다른 topology 의미가 필요하면 소켓도 분리하고 service도 분리한다.
+- 사용자는 server/client 역할보다 `service_name` 기준의 통신 그룹을 먼저 설계한다.
+- discovery는 같은 서비스 안에서 허용된 role pair를 자동 연결한다.
+- raw socket 허용 pair는 `pub <-> sub`, `dealer <-> dealer`, `router <-> router`, `dealer <-> router`다.
+- `gateway <-> gateway`, `spot <-> spot` 규칙은 기존 service family 규칙을 유지한다.
+- `dealer/router`는 server/client를 소켓 타입에 고정하지 않는다.
+- 따라서 같은 서비스에 `dealer`와 `router`가 함께 있으면 둘 사이 연결도 자동 연결 대상에 포함한다.
+- same-role mesh와 mixed-role mesh가 동시에 필요해도 discovery policy를 더 세분화하지 않는다.
+- 그런 구조는 사용자가 별도 service로 그룹화해 해결하는 것을 기본 원칙으로 둔다.
+
+이 addendum이 우선하는 해석:
+
+- 기존 본문에서 `dealer/router`를 request/reply 전용 비대칭 topology처럼 읽히는 부분이 있으면,
+  현재 구현 기준 해석은 symmetric peer mesh 쪽을 우선한다.
+- raw socket 자동 연결의 목적은 topology policy를 세밀하게 추론하는 것이 아니라,
+  서비스 단위 그룹화 후 허용 pair를 기계적으로 연결하는 것이다.
+- 연결 수 증가는 허용 가능한 tradeoff로 보고, 규칙 단순성과 사용자 이해 용이성을 우선한다.

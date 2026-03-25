@@ -4,8 +4,15 @@
 #include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 
+#include "../../../src/api/service_api_internal.hpp"
+#include "../../../src/api/zlink_testing.hpp"
+#include "../../../src/services/spot/spot_handle.hpp"
+#include "../../../src/services/spot/spot_node.hpp"
+#include "../../../src/services/spot/spot_node_access.hpp"
+
 #include <chrono>
 #include <condition_variable>
+#include <map>
 #include <mutex>
 #include <string.h>
 
@@ -90,6 +97,53 @@ gateway_delivery_probe_t *g_gateway_server_probe = NULL;
 gateway_delivery_probe_t *g_gateway_client_probe = NULL;
 spot_monitor_probe_t *g_spot_monitor_probe = NULL;
 spot_delivery_probe_t *g_spot_delivery_probe = NULL;
+std::mutex g_spot_handle_mutex;
+std::map<void *, spot_handle_t *> g_spot_handles;
+
+void *default_spot_handle (void *node_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
+        return node_;
+
+    std::lock_guard<std::mutex> lock (g_spot_handle_mutex);
+    std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.find (node_);
+    if (it != g_spot_handles.end ())
+        return it->second;
+
+    spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+    if (!spot) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    spot->node = node;
+    register_spot_mode_state (spot);
+    g_spot_handles[node_] = spot;
+    return spot;
+}
+
+void clear_default_spot_handles ()
+{
+    std::lock_guard<std::mutex> lock (g_spot_handle_mutex);
+    for (std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.begin ();
+         it != g_spot_handles.end (); ++it) {
+        erase_spot_mode_state (it->second);
+        zlink::destroy_spot_handle_for_testing (it->second);
+    }
+    g_spot_handles.clear ();
+}
+
+void destroy_default_spot_handle (void *node_)
+{
+    std::lock_guard<std::mutex> lock (g_spot_handle_mutex);
+    std::map<void *, spot_handle_t *>::iterator it = g_spot_handles.find (node_);
+    if (it == g_spot_handles.end ())
+        return;
+
+    erase_spot_mode_state (it->second);
+    zlink::destroy_spot_handle_for_testing (it->second);
+    g_spot_handles.erase (it);
+}
 
 void close_message_parts (zlink_msg_t *parts_, size_t part_count_)
 {
@@ -441,8 +495,8 @@ void run_gateway_ready_matrix (monitor_mode_t monitor_mode_)
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_gateway_new (ctx, "gw-ready-contract");
-    void *client = zlink_gateway_new (ctx, "gw-ready-contract");
+    void *server = zlink_gateway_new (ctx);
+    void *client = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     configure_service_handle (server);
@@ -524,32 +578,38 @@ void run_spot_ready_matrix (monitor_mode_t monitor_mode_,
 
     const char *topic = "svc.contract";
 
-    void *pub = zlink_spot_node_new (ctx, "spot-ready-contract");
-    void *sub = zlink_spot_node_new (ctx, "spot-ready-contract");
+    void *pub = zlink_spot_node_new (ctx);
+    void *sub = zlink_spot_node_new (ctx);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
+    void *pub_handle = default_spot_handle (pub);
+    void *sub_handle = default_spot_handle (sub);
+    TEST_ASSERT_NOT_NULL (pub_handle);
+    TEST_ASSERT_NOT_NULL (sub_handle);
     configure_service_handle (pub);
     configure_service_handle (sub);
+    configure_service_handle (pub_handle);
+    configure_service_handle (sub_handle);
 
     spot_delivery_probe_t delivery_probe;
     g_spot_delivery_probe = &delivery_probe;
     if (service_mode_ == service_callback_mode) {
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_subscribe_handler (sub, &spot_delivery_handler, NULL));
+          zlink_subscribe_handler (sub_handle, &spot_delivery_handler, NULL));
     }
 
     zlink_service_monitor_open_options_t sub_monitor_opts;
     memset (&sub_monitor_opts, 0, sizeof (sub_monitor_opts));
     sub_monitor_opts.events =
       ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
-    void *sub_monitor = zlink_service_monitor_open (sub, &sub_monitor_opts);
+    void *sub_monitor = zlink_service_monitor_open (sub_handle, &sub_monitor_opts);
     TEST_ASSERT_NOT_NULL (sub_monitor);
 
     zlink_service_monitor_open_options_t pub_monitor_opts;
     memset (&pub_monitor_opts, 0, sizeof (pub_monitor_opts));
     pub_monitor_opts.events =
       ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
-    void *pub_monitor = zlink_service_monitor_open (pub, &pub_monitor_opts);
+    void *pub_monitor = zlink_service_monitor_open (pub_handle, &pub_monitor_opts);
     TEST_ASSERT_NOT_NULL (pub_monitor);
     configure_service_handle (sub_monitor);
     configure_service_handle (pub_monitor);
@@ -567,7 +627,7 @@ void run_spot_ready_matrix (monitor_mode_t monitor_mode_,
     int bind_seed = 23120;
     bind_spot_node_on_seed (pub, &bind_seed, endpoint, sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer (sub, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, topic));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_handle, topic));
 
     const bool ready =
       monitor_mode_ == monitor_recv_mode
@@ -575,7 +635,7 @@ void run_spot_ready_matrix (monitor_mode_t monitor_mode_,
         : wait_for_spot_ready_callback (&monitor_probe, 5000);
     TEST_ASSERT_TRUE (ready);
 
-    publish_text (pub, topic, "payload");
+    publish_text (pub_handle, topic, "payload");
 
     if (service_mode_ == service_recv_mode) {
         zlink_msg_t *parts = NULL;
@@ -583,7 +643,8 @@ void run_spot_ready_matrix (monitor_mode_t monitor_mode_,
         char topic_buf[64] = {0};
         size_t topic_len = sizeof (topic_buf);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_subscribe (sub, &parts, &part_count, 0, topic_buf, &topic_len));
+          zlink_subscribe (sub_handle, &parts, &part_count, 0, topic_buf,
+                           &topic_len));
         TEST_ASSERT_EQUAL_UINT64 (1, part_count);
         TEST_ASSERT_EQUAL_STRING (topic, topic_buf);
         TEST_ASSERT_EQUAL_MEMORY ("payload", zlink_msg_data (&parts[0]), 7);
@@ -599,6 +660,8 @@ void run_spot_ready_matrix (monitor_mode_t monitor_mode_,
     g_spot_delivery_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&sub_monitor));
+    destroy_default_spot_handle (sub);
+    destroy_default_spot_handle (pub);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub));
 }
@@ -614,7 +677,7 @@ void test_gateway_service_callback_attach_succeeds ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *gateway = zlink_gateway_new (ctx, "gw-ready-contract");
+    void *gateway = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (gateway);
 
     TEST_ASSERT_SUCCESS_ERRNO (

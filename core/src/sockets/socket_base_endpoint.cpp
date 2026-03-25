@@ -11,6 +11,7 @@
 #include "core/pipe.hpp"
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"
+#include "services/discovery/socket_discovery_attachment.hpp"
 #include "transports/ipc/ipc_address.hpp"
 #include "transports/tcp/tcp_address.hpp"
 
@@ -98,6 +99,11 @@ int zlink::socket_base_t::check_protocol (const std::string &protocol_) const
 
 int zlink::socket_base_t::bind (const char *endpoint_uri_)
 {
+    if (_service_attachment
+        && _service_attachment->on_public_bind_begin (endpoint_uri_) != 0) {
+        return -1;
+    }
+
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
         return -1;
@@ -121,6 +127,11 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
             connect_pending (endpoint_uri_, this);
             _last_endpoint.assign (endpoint_uri_);
             options.connected = true;
+            if (_service_attachment
+                && _service_attachment->on_bind_success (_last_endpoint) != 0) {
+                (void) term_endpoint_internal (_last_endpoint.c_str ());
+                return -1;
+            }
         }
         return rc;
     }
@@ -156,6 +167,11 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
         add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
+        if (_service_attachment
+            && _service_attachment->on_bind_success (_last_endpoint) != 0) {
+            (void) term_endpoint_internal (_last_endpoint.c_str ());
+            return -1;
+        }
         return 0;
     }
 
@@ -176,6 +192,11 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
         add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
+        if (_service_attachment
+            && _service_attachment->on_bind_success (_last_endpoint) != 0) {
+            (void) term_endpoint_internal (_last_endpoint.c_str ());
+            return -1;
+        }
         return 0;
     }
 #endif
@@ -197,6 +218,11 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
         add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
+        if (_service_attachment
+            && _service_attachment->on_bind_success (_last_endpoint) != 0) {
+            (void) term_endpoint_internal (_last_endpoint.c_str ());
+            return -1;
+        }
         return 0;
     }
 #endif
@@ -245,6 +271,11 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
         add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
+        if (_service_attachment
+            && _service_attachment->on_bind_success (_last_endpoint) != 0) {
+            (void) term_endpoint_internal (_last_endpoint.c_str ());
+            return -1;
+        }
         return 0;
     }
 #endif
@@ -255,6 +286,8 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
 
 int zlink::socket_base_t::connect (const char *endpoint_uri_)
 {
+    if (_service_attachment && _service_attachment->on_public_connect () != 0)
+        return -1;
     return connect_internal (endpoint_uri_);
 }
 
@@ -504,40 +537,33 @@ void zlink::socket_base_t::add_endpoint (const endpoint_uri_pair_t &endpoint_pai
 {
     launch_child (endpoint_);
     endpoint_runtime ().endpoints.ZLINK_MAP_INSERT_OR_EMPLACE (
-      endpoint_pair_.identifier (), endpoint_pipe_t (endpoint_, pipe_));
+      endpoint_pair_.identifier (),
+      endpoint_pipe_t (endpoint_, pipe_, endpoint_pair_.local_type));
 
     if (pipe_ != NULL)
         pipe_->set_endpoint_pair (endpoint_pair_);
 }
 
-int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
+int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
 {
-    if (!enter_public_api ())
-        return -1;
-
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
-        leave_public_api ();
         return -1;
     }
 
     if (unlikely (!endpoint_uri_)) {
         errno = EINVAL;
-        leave_public_api ();
         return -1;
     }
 
     const int rc = process_commands (0, false);
-    if (unlikely (rc != 0)) {
-        leave_public_api ();
+    if (unlikely (rc != 0))
         return -1;
-    }
 
     std::string uri_protocol;
     std::string uri_path;
     if (parse_uri (endpoint_uri_, uri_protocol, uri_path)
         || check_protocol (uri_protocol)) {
-        leave_public_api ();
         return -1;
     }
 
@@ -547,7 +573,6 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
                                 ? 0
                                 : endpoint_runtime ().inprocs.erase_pipes (
                                     endpoint_uri_str);
-        leave_public_api ();
         return inproc_rc;
     }
 
@@ -564,14 +589,13 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
       endpoint_runtime ().endpoints.equal_range (resolved_endpoint_uri);
     if (range.first == range.second) {
         errno = ENOENT;
-        leave_public_api ();
         return -1;
     }
 
     for (endpoints_t::iterator it = range.first; it != range.second; ++it) {
-        if (it->second.second != NULL)
-            it->second.second->terminate (false);
-        term_child (it->second.first);
+        if (it->second.pipe != NULL)
+            it->second.pipe->terminate (false);
+        term_child (it->second.endpoint);
     }
 
     for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
@@ -582,6 +606,19 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
             pipe->terminate (false);
     }
     endpoint_runtime ().endpoints.erase (range.first, range.second);
-    leave_public_api ();
     return 0;
+}
+
+int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
+{
+    if (_service_attachment
+        && _service_attachment->on_public_term_endpoint () != 0) {
+        return -1;
+    }
+
+    if (!enter_public_api ())
+        return -1;
+    const int rc = term_endpoint_internal (endpoint_uri_);
+    leave_public_api ();
+    return rc;
 }

@@ -90,8 +90,7 @@ struct gateway_manual_route_t
 class gateway_t : public discovery_observer_t
 {
   public:
-    gateway_t (ctx_t *ctx_, const char *service_name_,
-               const char *routing_id_ = NULL);
+    gateway_t (ctx_t *ctx_, const char *routing_id_ = NULL);
     ~gateway_t ();
 
     bool check_tag () const;
@@ -132,6 +131,8 @@ class gateway_t : public discovery_observer_t
                         const char *hostname_,
                         int trust_system_);
     void on_service_update (const std::string &service_name_);
+    void on_discovery_shutdown_requested (discovery_t *discovery_)
+      ZLINK_OVERRIDE;
     void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
 
     int destroy ();
@@ -219,7 +220,6 @@ class gateway_t : public discovery_observer_t
     zlink_routing_id_t _routing_id;
     std::string _routing_id_override;
     std::string _bind_endpoint;
-    std::string _server_service_name;
     std::string _advertise_endpoint;
     uint32_t _server_weight;
     std::string _last_register_error;

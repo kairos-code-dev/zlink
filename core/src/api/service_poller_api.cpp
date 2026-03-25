@@ -56,9 +56,10 @@ int increment_spot_subject_poller_ref (void *spot_or_node_, short events_)
     if (is_registered_spot_handle (spot_or_node_))
         return increment_spot_poller_ref (
           static_cast<spot_handle_t *> (spot_or_node_), events_);
-    if (is_registered_spot_node_handle (spot_or_node_))
-        return increment_spot_node_poller_ref (
-          static_cast<zlink::spot_node_t *> (spot_or_node_), events_);
+    if (is_registered_spot_node_handle (spot_or_node_)) {
+        errno = ENOTSUP;
+        return -1;
+    }
     errno = EFAULT;
     return -1;
 }
@@ -67,8 +68,6 @@ poller_subject_kind_t poller_spot_pub_kind_for_subject (void *spot_or_node_)
 {
     if (is_registered_spot_handle (spot_or_node_))
         return poller_subject_spot_pub;
-    if (is_registered_spot_node_handle (spot_or_node_))
-        return poller_subject_spot_node_pub;
     return poller_subject_none;
 }
 
@@ -76,8 +75,6 @@ poller_subject_kind_t poller_spot_sub_kind_for_subject (void *spot_or_node_)
 {
     if (is_registered_spot_handle (spot_or_node_))
         return poller_subject_spot_sub;
-    if (is_registered_spot_node_handle (spot_or_node_))
-        return poller_subject_spot_node_sub;
     return poller_subject_none;
 }
 
@@ -187,8 +184,11 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                                             poller_subject_none)
                  : -1;
     }
-    if (is_registered_spot_handle (socket_)
-        || is_registered_spot_node_handle (socket_)) {
+    if (is_registered_spot_node_handle (socket_)) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (is_registered_spot_handle (socket_)) {
         bool is_pub = false;
         if (validate_spot_generic_poller_events (events_, &is_pub) != 0)
             return -1;
@@ -244,8 +244,11 @@ int zlink_service_poller_modify_internal (poller_handle_t *poller_,
             poller_->registrations[index].socket),
           events_);
     }
-    if (is_registered_spot_handle (socket_)
-        || is_registered_spot_node_handle (socket_)) {
+    if (is_registered_spot_node_handle (socket_)) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (is_registered_spot_handle (socket_)) {
         bool is_pub = false;
         if (validate_spot_generic_poller_events (events_, &is_pub) != 0)
             return -1;
@@ -263,20 +266,12 @@ int zlink_service_poller_modify_internal (poller_handle_t *poller_,
         zlink::socket_base_t *socket = static_cast<zlink::socket_base_t *> (
           poller_->registrations[index].socket);
         if (poller_->poller.modify (socket, events_) != 0) {
-            if (is_registered_spot_handle (socket_))
-                decrement_spot_poller_ref (
-                  static_cast<spot_handle_t *> (socket_), events_);
-            else
-                decrement_spot_node_poller_ref (
-                  static_cast<zlink::spot_node_t *> (socket_), events_);
+            decrement_spot_poller_ref (
+              static_cast<spot_handle_t *> (socket_), events_);
             return -1;
         }
-        if (is_registered_spot_handle (socket_))
-            decrement_spot_poller_ref (
-              static_cast<spot_handle_t *> (socket_), old_events);
-        else
-            decrement_spot_node_poller_ref (
-              static_cast<zlink::spot_node_t *> (socket_), old_events);
+        decrement_spot_poller_ref (
+          static_cast<spot_handle_t *> (socket_), old_events);
         poller_->registrations[index].events = events_;
         return 0;
     }
@@ -295,9 +290,13 @@ int zlink_service_poller_remove_internal (poller_handle_t *poller_,
 
     if (as_spot_pub_side_handle (socket_) || as_spot_sub_side_handle (socket_)
         || is_registered_gateway_handle (socket_)
-        || is_registered_spot_handle (socket_)
-        || is_registered_spot_node_handle (socket_))
+        || is_registered_spot_handle (socket_))
         return poller_remove_all_registrations_for_subject (poller_, socket_);
+
+    if (is_registered_spot_node_handle (socket_)) {
+        errno = ENOTSUP;
+        return -1;
+    }
 
     errno = EFAULT;
     return -1;

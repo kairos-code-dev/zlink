@@ -36,6 +36,7 @@ struct provider_info_t
     std::string service_name;
     std::string endpoint;
     zlink_routing_id_t routing_id;
+    uint16_t service_role;
     uint32_t weight;
     uint64_t registered_at;
 };
@@ -45,6 +46,10 @@ class discovery_observer_t
   public:
     virtual ~discovery_observer_t () {}
     virtual void on_service_update (const std::string &service_name_) = 0;
+    virtual void on_discovery_shutdown_requested (discovery_t *discovery_)
+    {
+        (void) discovery_;
+    }
     virtual void on_discovery_destroyed (discovery_t *discovery_)
     {
         (void) discovery_;
@@ -54,7 +59,8 @@ class discovery_observer_t
 class discovery_t
 {
   public:
-    discovery_t (ctx_t *ctx_, uint16_t service_type_);
+    discovery_t (ctx_t *ctx_, uint16_t service_type_,
+                 const std::string &service_name_);
     ~discovery_t ();
 
     bool check_tag () const;
@@ -74,16 +80,20 @@ class discovery_t
                           const char *endpoint_,
                           uint32_t weight_,
                           std::string *resolved_endpoint_out_,
-                          const zlink_routing_id_t *routing_id_ = NULL);
+                          const zlink_routing_id_t *routing_id_ = NULL,
+                          uint16_t service_role_ = 0);
     int update_service_weight (uint16_t service_type_,
                                const char *service_name_,
                                const char *endpoint_,
-                               uint32_t weight_);
+                               uint32_t weight_,
+                               uint16_t service_role_ = 0);
     int unregister_service (uint16_t service_type_,
                             const char *service_name_,
-                            const char *endpoint_);
+                            const char *endpoint_,
+                            uint16_t service_role_ = 0);
 
     uint16_t service_type () const { return _service_type; }
+    const std::string &service_name () const { return _service_name; }
 
     void snapshot_providers (const std::string &service_name_,
                              std::vector<provider_info_t> *out_);
@@ -114,7 +124,7 @@ class discovery_t
     static void control_task (void *arg_);
     void tick ();
     void set_discovery_summary_enabled (bool enabled_);
-    void add_observer (discovery_observer_t *observer_);
+    int add_observer (discovery_observer_t *observer_);
     int remove_observer (discovery_observer_t *observer_);
     void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
     void upsert_gateway_peer_summary (
@@ -137,6 +147,7 @@ class discovery_t
     struct topology_key_t
     {
         uint16_t service_kind;
+        uint16_t service_role;
         std::string routing_id_key;
         std::string service_name;
 
@@ -144,6 +155,8 @@ class discovery_t
         {
             if (service_kind != other_.service_kind)
                 return service_kind < other_.service_kind;
+            if (service_role != other_.service_role)
+                return service_role < other_.service_role;
             if (routing_id_key != other_.routing_id_key)
                 return routing_id_key < other_.routing_id_key;
             return service_name < other_.service_name;
@@ -182,6 +195,7 @@ class discovery_t
     struct registered_service_key_t
     {
         uint16_t service_type;
+        uint16_t service_role;
         std::string service_name;
         std::string endpoint;
 
@@ -189,6 +203,8 @@ class discovery_t
         {
             if (service_type != other_.service_type)
                 return service_type < other_.service_type;
+            if (service_role != other_.service_role)
+                return service_role < other_.service_role;
             if (service_name != other_.service_name)
                 return service_name < other_.service_name;
             return endpoint < other_.endpoint;
@@ -198,6 +214,7 @@ class discovery_t
     struct registered_service_t
     {
         uint16_t service_type;
+        uint16_t service_role;
         std::string service_name;
         std::string endpoint;
         std::string uplink_endpoint;
@@ -206,6 +223,7 @@ class discovery_t
 
         registered_service_t () :
             service_type (0),
+            service_role (0),
             weight (1),
             last_heartbeat_ms (0)
         {
@@ -226,7 +244,7 @@ class discovery_t
     mutex_t _uplink_sync;
     discovery_bootstrap_runtime_t *_bootstrap_runtime;
     discovery_uplink_runtime_t *_uplink_runtime;
-    std::map<std::string, service_state_t> _services;
+    service_state_t _service_state;
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<discovery_observer_t *> _observers;
     condition_variable_t _observer_cv;
@@ -234,8 +252,9 @@ class discovery_t
     bool _destroying;
     uint64_t _update_seq;
     uint32_t _monitor_ready_count;
-    std::map<std::string, uint64_t> _service_seq;
+    uint64_t _service_seq;
     uint16_t _service_type;
+    std::string _service_name;
     bool _discovery_summary_enabled;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
     std::map<topology_key_t, topology_summary_t> _summary_store;

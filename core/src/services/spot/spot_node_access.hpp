@@ -24,7 +24,7 @@ enum spot_node_monitor_subject_t
 
 struct spot_node_access_t
 {
-    static void *create (ctx_t *ctx_, const char *service_name_);
+    static void *create (ctx_t *ctx_);
     static spot_node_t *from_handle (void *node_);
     static int bind (spot_node_t *node_, const char *endpoint_);
     static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);

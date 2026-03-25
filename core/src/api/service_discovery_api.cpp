@@ -8,10 +8,16 @@
 
 #include "services/discovery/discovery_access.hpp"
 
-void *zlink_discovery_new (void *ctx_, zlink_service_type_t service_type_)
+void *zlink_discovery_new (void *ctx_,
+                           zlink_service_type_t service_type_,
+                           const char *service_name_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
+        return NULL;
+    }
+    if (!service_name_ || service_name_[0] == '\0') {
+        errno = EINVAL;
         return NULL;
     }
     if (service_type_ != ZLINK_SERVICE_TYPE_GATEWAY
@@ -21,7 +27,7 @@ void *zlink_discovery_new (void *ctx_, zlink_service_type_t service_type_)
         return NULL;
     }
     return zlink::discovery_access_t::create (
-      static_cast<zlink::ctx_t *> (ctx_), service_type_);
+      static_cast<zlink::ctx_t *> (ctx_), service_type_, service_name_);
 }
 
 int zlink_discovery_connect_registry (void *discovery_,

@@ -215,6 +215,7 @@ void gateway_t::report_topology (const std::string &service_name_,
     memset (&entry, 0, sizeof (entry));
     entry.routing_id = _routing_id;
     entry.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+    entry.service_role = ZLINK_SERVICE_ROLE_GATEWAY;
     strncpy (entry.service_name, service_name_.c_str (),
              sizeof (entry.service_name) - 1);
     if (!endpoint_.empty ())
@@ -256,10 +257,17 @@ void gateway_t::on_discovery_destroyed (discovery_t *discovery_)
     _discovery = NULL;
     _runtime->pending_updates.clear ();
     _runtime->force_refresh_all = false;
-    _server_service_name.clear ();
     _advertise_endpoint.clear ();
     _last_register_error.clear ();
     _summary_last_changed_ms = _runtime ? _runtime->clock.now_ms () : 0;
+}
+
+void gateway_t::on_discovery_shutdown_requested (discovery_t *discovery_)
+{
+    if (_discovery != discovery_)
+        return;
+    _public_api.mark_closing ();
+    (void) destroy ();
 }
 
 int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
@@ -268,7 +276,7 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
     if (!admission.acquired ())
         return -1;
 
-    if (!out_ || _service_name.empty ()) {
+    if (!out_) {
         errno = EINVAL;
         return -1;
     }
@@ -287,7 +295,7 @@ int gateway_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_)
         lock_routing_id ();
         process_monitor_events ();
         is_bound_ready = !_bind_endpoint.empty ();
-        gateway_service_pool_t *pool = get_or_create_pool (_service_name);
+        gateway_service_pool_t *pool = get_or_create_pool_cached ();
         {
             scoped_lock_t send_lock (_send_sync);
             if (pool)

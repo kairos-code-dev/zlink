@@ -60,6 +60,7 @@ void queued_spot_handler (const zlink_routing_id_t *,
 void *create_spot_node (void *ctx_, const char *service_name_);
 void *create_spot_pub_handle (void *node_);
 void *create_spot_sub_handle (void *node_, zlink_subscribe_handler_fn handler_);
+int destroy_spot_node_with_handles (void **node_p_);
 typedef int (*spot_publish_fn_t) (void *,
                                   const char *,
                                   zlink_msg_t *,
@@ -176,6 +177,8 @@ void test_spot_node_direct_remote_peer_mesh ();
 void test_spot_node_direct_sub_option_inheritance_and_handler_conflict ();
 void test_spot_node_direct_first_publish_race ();
 void test_spot_node_discovery_direct_and_child_interop ();
+void test_spot_node_manual_peer_topology_ownership ();
+void test_discovery_destroy_invalidates_attached_spot_node_handle ();
 void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ();
 
 #endif

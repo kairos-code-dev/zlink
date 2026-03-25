@@ -6,6 +6,7 @@
 #include "sockets/socket_base.hpp"
 #include "utils/random.hpp"
 
+#include <cstring>
 #include <string>
 
 namespace zlink
@@ -40,6 +41,30 @@ inline bool set_socket_routing_id (socket_base_t *socket_,
         out_->size = static_cast<uint8_t> (size);
     }
     return true;
+}
+
+inline bool ensure_socket_routing_id_present (socket_base_t *socket_,
+                                              const std::string *override_id_,
+                                              zlink_routing_id_t *out_)
+{
+    if (!socket_)
+        return false;
+    if (override_id_ && !override_id_->empty ())
+        return set_socket_routing_id (socket_, override_id_, out_);
+
+    unsigned char buf[256];
+    size_t size = sizeof (buf);
+    if (socket_->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, buf, &size) != 0)
+        return false;
+    if (size > 0) {
+        if (out_) {
+            out_->size = static_cast<uint8_t> (size);
+            memcpy (out_->data, buf, size);
+        }
+        return true;
+    }
+
+    return set_socket_routing_id (socket_, override_id_, out_);
 }
 } // namespace discovery
 } // namespace zlink

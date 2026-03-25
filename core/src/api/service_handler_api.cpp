@@ -55,8 +55,8 @@ int zlink_service_send_ready_handler_internal (
     }
 
     if (is_registered_spot_node_handle (handle_)) {
-        return spot_node_install_send_ready_handler (
-          static_cast<zlink::spot_node_t *> (handle_), handler_, userdata_);
+        errno = ENOTSUP;
+        return -1;
     }
 
     errno = EFAULT;

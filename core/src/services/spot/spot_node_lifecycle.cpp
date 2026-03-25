@@ -8,6 +8,7 @@
 #include "services/spot/spot_sub.hpp"
 
 #include "services/control/service_control_runtime.hpp"
+#include "services/discovery/discovery_owned_service.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "utils/clock.hpp"
 
@@ -267,9 +268,9 @@ int spot_node_t::ensure_registered ()
     }
 
     std::string resolved;
-    if (discovery->register_service (discovery_protocol::service_type_spot_node,
-                                     _service_name.c_str (),
-                                     advertise.c_str (), 1, &resolved)
+    if (discovery_owned_service::register_endpoint (
+          discovery, discovery_protocol::service_type_spot_node,
+          advertise.c_str (), 1, &resolved)
         != 0) {
         return -1;
     }
@@ -313,9 +314,9 @@ int spot_node_t::unregister_registered ()
         errno = EFSM;
         return -1;
     }
-    if (discovery->unregister_service (discovery_protocol::service_type_spot_node,
-                                       _service_name.c_str (),
-                                       advertise.c_str ())
+    if (discovery_owned_service::unregister_endpoint (
+          discovery, discovery_protocol::service_type_spot_node,
+          advertise.c_str ())
         != 0)
         return -1;
 
@@ -348,14 +349,15 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
             return -1;
         }
         _discovery = discovery_;
-        _discovery_service = _service_name;
+        _discovery_service = discovery_->service_name ();
         _discovery_seq = 0;
-        _pending_service_updates.insert (_service_name);
+        _pending_service_updates.insert (_discovery_service);
         _discovery_peer_endpoints.clear ();
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         should_register = !_bound_endpoint.empty ();
     }
-    discovery_->add_observer (this);
+    if (discovery_->add_observer (this) != 0)
+        return -1;
     if (should_register && ensure_registered () != 0) {
         scoped_lock_t lock (_sync);
         if (_discovery == discovery_) {
@@ -400,6 +402,14 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     _advertise_endpoint.clear ();
     _registration_uplink_endpoint.clear ();
     _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+}
+
+void spot_node_t::on_discovery_shutdown_requested (discovery_t *discovery_)
+{
+    if (_discovery != discovery_)
+        return;
+    _public_api.mark_closing ();
+    (void) destroy ();
 }
 
 int spot_node_t::set_tls_server (const char *cert_, const char *key_)
@@ -506,7 +516,7 @@ int spot_node_t::destroy ()
     spot_shutdown_logf_local (false,
                               "step=begin node=%p service=%s state=%d tracked=%zu",
                               static_cast<void *> (this),
-                              _service_name.c_str (),
+                              _discovery_service.c_str (),
                               static_cast<int> (_lifecycle.state ()),
                               _lifecycle.owned_socket_count ());
     if (_discovery && _registered)

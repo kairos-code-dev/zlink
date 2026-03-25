@@ -71,17 +71,17 @@ void test_spot_sub_handler_basic ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *pub_node = create_spot_node (ctx, "spot-callback-basic");
-    void *sub_node = zlink_spot_node_new (ctx, "spot-callback-basic");
+    void *sub_node = create_spot_node (ctx, "spot-callback-basic");
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
-
-    const int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_node, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    void *pub = create_spot_pub_handle (pub_node);
+    void *sub = create_spot_sub_handle (sub_node, NULL);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
 
     callback_probe_t probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_node, &spot_sub_probe_handler, &probe));
+      zlink_subscribe_handler (sub, &spot_sub_probe_handler, &probe));
 
     char endpoint[MAX_SOCKET_STRING];
     int port_seed = 33140;
@@ -90,7 +90,7 @@ void test_spot_sub_handler_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_node, "zone:auto:test"));
+      zlink_set_subscription (sub, "zone:auto:test"));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
@@ -100,14 +100,14 @@ void test_spot_sub_handler_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
     memcpy (zlink_msg_data (&part), "ping", 4);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_node, "zone:auto:test", &part, 1, 0));
+      zlink_publish (pub, "zone:auto:test", &part, 1, 0));
 
     TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe.calls, 1, 3000));
     TEST_ASSERT_EQUAL_INT (1, probe.payload_ok.load ());
     TEST_ASSERT_EQUAL_INT (1, probe.topic_ok.load ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&pub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -122,24 +122,24 @@ void test_spot_recv_callback_isolated_by_handle ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *pub_node = create_spot_node (ctx, "spot-callback-isolation");
-    void *sub_a = zlink_spot_node_new (ctx, "spot-callback-isolation-a");
-    void *sub_b = zlink_spot_node_new (ctx, "spot-callback-isolation-b");
+    void *sub_a = create_spot_node (ctx, "spot-callback-isolation");
+    void *sub_b = create_spot_node (ctx, "spot-callback-isolation");
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_a);
     TEST_ASSERT_NOT_NULL (sub_b);
-
-    const int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_a, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_b, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    void *pub = create_spot_pub_handle (pub_node);
+    void *sub_a_handle = create_spot_sub_handle (sub_a, NULL);
+    void *sub_b_handle = create_spot_sub_handle (sub_b, NULL);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub_a_handle);
+    TEST_ASSERT_NOT_NULL (sub_b_handle);
 
     callback_probe_t probe_a;
     callback_probe_t probe_b;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_a, &spot_sub_probe_handler, &probe_a));
+      zlink_subscribe_handler (sub_a_handle, &spot_sub_probe_handler, &probe_a));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_b, &spot_sub_probe_handler, &probe_b));
+      zlink_subscribe_handler (sub_b_handle, &spot_sub_probe_handler, &probe_b));
 
     char endpoint[MAX_SOCKET_STRING];
     int port_seed = 33180;
@@ -149,20 +149,20 @@ void test_spot_recv_callback_isolated_by_handle ()
       zlink_spot_node_connect_peer (sub_a, endpoint));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_a, "zone:auto:test"));
+      zlink_set_subscription (sub_a_handle, "zone:auto:test"));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
       sub_a, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_publish, pub_node, "zone:auto:test", "ping", 0));
+      publish_text (&zlink_publish, pub, "zone:auto:test", "ping", 0));
     TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe_a.calls, 1, 3000));
     TEST_ASSERT_EQUAL_INT (0, probe_b.calls.load ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_b));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_a));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&pub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -172,13 +172,13 @@ void test_spot_facade_handler_receives_source_rid ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *pub_node = create_spot_node (ctx, "spot-callback-rid");
-    void *sub_node = zlink_spot_node_new (ctx, "spot-callback-rid");
+    void *sub_node = create_spot_node (ctx, "spot-callback-rid");
     TEST_ASSERT_NOT_NULL (pub_node);
     TEST_ASSERT_NOT_NULL (sub_node);
-
-    const int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_node, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    void *pub = create_spot_pub_handle (pub_node);
+    void *sub = create_spot_sub_handle (sub_node, NULL);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
 
     const char rid[] = "pub-rid";
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -186,7 +186,7 @@ void test_spot_facade_handler_receives_source_rid ()
 
     callback_probe_t probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_node, &spot_sub_probe_handler, &probe));
+      zlink_subscribe_handler (sub, &spot_sub_probe_handler, &probe));
 
     char endpoint[MAX_SOCKET_STRING];
     int port_seed = 33220;
@@ -195,16 +195,16 @@ void test_spot_facade_handler_receives_source_rid ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_node, "zone:auto:test"));
+      zlink_set_subscription (sub, "zone:auto:test"));
     msleep (100);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_publish, pub_node, "zone:auto:test", "ping", 0));
+      publish_text (&zlink_publish, pub, "zone:auto:test", "ping", 0));
     TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe.calls, 1, 3000));
     TEST_ASSERT_EQUAL_INT (1, probe.saw_source_rid.load ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&pub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -228,32 +228,40 @@ void test_spot_recv_callback_isolated_by_service_with_discovery ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT);
-    TEST_ASSERT_NOT_NULL (discovery);
+    void *discovery_a =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc-a");
+    void *discovery_b =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc-b");
+    TEST_ASSERT_NOT_NULL (discovery_a);
+    TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_SUCCESS_ERRNO (
-      connect_discovery_registry_with_retry (discovery, registry_router, 2000));
+      connect_discovery_registry_with_retry (discovery_a, registry_router, 2000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      connect_discovery_registry_with_retry (discovery_b, registry_router, 2000));
 
     void *pub_a = create_spot_node (ctx, "spot-svc-a");
-    void *sub_a = zlink_spot_node_new (ctx, "spot-svc-a");
+    void *sub_a = create_spot_node (ctx, "spot-svc-a");
     void *pub_b = create_spot_node (ctx, "spot-svc-b");
-    void *sub_b = zlink_spot_node_new (ctx, "spot-svc-b");
+    void *sub_b = create_spot_node (ctx, "spot-svc-b");
     TEST_ASSERT_NOT_NULL (pub_a);
     TEST_ASSERT_NOT_NULL (sub_a);
     TEST_ASSERT_NOT_NULL (pub_b);
     TEST_ASSERT_NOT_NULL (sub_b);
-
-    const int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_a, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_b, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    void *pub_a_handle = create_spot_pub_handle (pub_a);
+    void *sub_a_handle = create_spot_sub_handle (sub_a, NULL);
+    void *pub_b_handle = create_spot_pub_handle (pub_b);
+    void *sub_b_handle = create_spot_sub_handle (sub_b, NULL);
+    TEST_ASSERT_NOT_NULL (pub_a_handle);
+    TEST_ASSERT_NOT_NULL (sub_a_handle);
+    TEST_ASSERT_NOT_NULL (pub_b_handle);
+    TEST_ASSERT_NOT_NULL (sub_b_handle);
 
     callback_probe_t probe_a;
     callback_probe_t probe_b;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_a, &spot_sub_probe_handler, &probe_a));
+      zlink_subscribe_handler (sub_a_handle, &spot_sub_probe_handler, &probe_a));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscribe_handler (sub_b, &spot_sub_probe_handler, &probe_b));
+      zlink_subscribe_handler (sub_b_handle, &spot_sub_probe_handler, &probe_b));
 
     char pub_endpoint_a[MAX_SOCKET_STRING];
     char pub_endpoint_b[MAX_SOCKET_STRING];
@@ -264,30 +272,31 @@ void test_spot_recv_callback_isolated_by_service_with_discovery ()
       pub_b, "tcp://127.0.0.1:", &port_seed, pub_endpoint_b));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_discovery (pub_a, discovery));
+      zlink_spot_node_attach_discovery (pub_a, discovery_a));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_discovery (sub_a, discovery));
+      zlink_spot_node_attach_discovery (sub_a, discovery_a));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_discovery (pub_b, discovery));
+      zlink_spot_node_attach_discovery (pub_b, discovery_b));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_discovery (sub_b, discovery));
+      zlink_spot_node_attach_discovery (sub_b, discovery_b));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_a, "zone:auto:test"));
+      zlink_set_subscription (sub_a_handle, "zone:auto:test"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_b, "zone:auto:test"));
+      zlink_set_subscription (sub_b_handle, "zone:auto:test"));
     msleep (300);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_publish, pub_a, "zone:auto:test", "ping", 0));
+      publish_text (&zlink_publish, pub_a_handle, "zone:auto:test", "ping", 0));
     TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe_a.calls, 1, 3000));
     TEST_ASSERT_EQUAL_INT (0, probe_b.calls.load ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_b));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&pub_b));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_a));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&pub_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }

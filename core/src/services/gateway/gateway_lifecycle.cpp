@@ -6,6 +6,7 @@
 
 #include "services/common/socket_monitor_bridge.hpp"
 #include "services/control/service_control_runtime.hpp"
+#include "services/discovery/discovery_owned_service.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/gateway/gateway_runtime.hpp"
 #include "utils/sleep.hpp"
@@ -35,14 +36,12 @@ static void gateway_diag_log_local (const char *stage_)
     fclose (fp);
 }
 
-static int unregister_gateway_service_with_retry_local (
-  discovery_t *discovery_,
-  const std::string &service_name_,
-  const std::string &advertise_endpoint_,
-  zlink::clock_t *clock_,
-  uint64_t timeout_ms_)
+static int unregister_gateway_service_with_retry_local (discovery_t *discovery_,
+                                                        const char *endpoint_,
+                                                        zlink::clock_t *clock_,
+                                                        uint64_t timeout_ms_)
 {
-    if (!discovery_ || service_name_.empty () || advertise_endpoint_.empty ()) {
+    if (!discovery_ || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
     }
@@ -52,9 +51,9 @@ static int unregister_gateway_service_with_retry_local (
     const uint64_t deadline_ms = clock->now_ms () + timeout_ms_;
 
     while (true) {
-        if (discovery_->unregister_service (
-              discovery_protocol::service_type_gateway_receiver,
-              service_name_.c_str (), advertise_endpoint_.c_str ())
+        if (discovery_owned_service::unregister_endpoint (
+              discovery_, discovery_protocol::service_type_gateway_receiver,
+              endpoint_)
             == 0)
             return 0;
 
@@ -104,11 +103,15 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
         }
 
         _discovery = discovery_;
+        _service_name = discovery_->service_name ();
         _summary_last_changed_ms = _runtime->clock.now_ms ();
-        _discovery->add_observer (this);
+        if (_discovery->add_observer (this) != 0) {
+            _discovery = NULL;
+            _service_name.clear ();
+            return -1;
+        }
         _runtime->force_refresh_all = true;
-        if (!_service_name.empty ())
-            _runtime->pending_updates.insert (_service_name);
+        _runtime->pending_updates.insert (_service_name);
         if (!_bind_endpoint.empty ()) {
             should_register = true;
             should_emit_ready = !_service_ready_emitted;
@@ -120,8 +123,9 @@ int gateway_t::attach_discovery (discovery_t *discovery_)
     if (should_register && register_service (bind_endpoint.c_str (), server_weight) != 0) {
         scoped_lock_t lock (_sync);
         if (_discovery == discovery_) {
-            _discovery->remove_observer (this);
+            (void) _discovery->remove_observer (this);
             _discovery = NULL;
+            _service_name.clear ();
         }
         return -1;
     }
@@ -234,7 +238,6 @@ int gateway_t::register_service (const char *advertise_endpoint_,
     socket_base_t *router_socket = NULL;
     zlink_routing_id_t routing_id;
     memset (&routing_id, 0, sizeof (routing_id));
-    std::string service_name;
     std::string advertise_endpoint;
     {
         scoped_lock_t lock (_sync);
@@ -264,7 +267,6 @@ int gateway_t::register_service (const char *advertise_endpoint_,
         }
 
         discovery = _discovery;
-        service_name = _service_name;
         routing_id = _routing_id;
         advertise_endpoint = resolve_advertise (advertise_endpoint_);
         if (advertise_endpoint.empty ()) {
@@ -279,10 +281,9 @@ int gateway_t::register_service (const char *advertise_endpoint_,
     // stable by waiting long enough for the registry path to become usable.
     const uint64_t deadline_ms = _runtime->clock.now_ms () + 15000;
     while (true) {
-        if (discovery->register_service (
-              discovery_protocol::service_type_gateway_receiver,
-              service_name.c_str (), advertise_endpoint.c_str (), weight_,
-              &resolved, &routing_id)
+        if (discovery_owned_service::register_endpoint (
+              discovery, discovery_protocol::service_type_gateway_receiver,
+              advertise_endpoint.c_str (), weight_, &resolved, &routing_id)
             == 0)
             break;
 
@@ -300,7 +301,6 @@ int gateway_t::register_service (const char *advertise_endpoint_,
 
     {
         scoped_lock_t lock (_sync);
-        _server_service_name = service_name;
         _advertise_endpoint =
           !resolved.empty () ? resolved : advertise_endpoint;
         _server_weight = weight_;
@@ -324,15 +324,15 @@ int gateway_t::update_weight (uint32_t weight_)
         errno = ENOTSUP;
         return -1;
     }
-    if (_advertise_endpoint.empty () || _server_service_name != _service_name) {
+    if (_advertise_endpoint.empty ()) {
         errno = EFSM;
         return -1;
     }
 
     const uint32_t value = weight_;
-    if (_discovery->update_service_weight (
-          discovery_protocol::service_type_gateway_receiver,
-          _service_name.c_str (), _advertise_endpoint.c_str (), value)
+    if (discovery_owned_service::update_weight (
+          _discovery, discovery_protocol::service_type_gateway_receiver,
+          _advertise_endpoint.c_str (), value)
         != 0)
         return -1;
     _server_weight = value;
@@ -357,25 +357,23 @@ int gateway_t::unregister_service ()
             errno = ENOTSUP;
             return -1;
         }
-        if (_server_service_name.empty () || _advertise_endpoint.empty ()
-            || _server_service_name != _service_name) {
+        if (_advertise_endpoint.empty ()) {
             errno = EINVAL;
             return -1;
         }
 
         discovery = _discovery;
-        service_name = _server_service_name;
+        service_name = _service_name;
         endpoint = _advertise_endpoint;
     }
 
     if (unregister_gateway_service_with_retry_local (
-          discovery, service_name, endpoint, &_runtime->clock, 15000)
+          discovery, endpoint.c_str (), &_runtime->clock, 15000)
         != 0)
         return -1;
 
     {
         scoped_lock_t lock (_sync);
-        _server_service_name.clear ();
         _advertise_endpoint.clear ();
         _last_register_error.clear ();
         _service_ready_emitted = false;
@@ -437,14 +435,14 @@ int gateway_t::destroy ()
     _runtime->refresh_task_id = 0;
     const auto destroy_detach_phase = [&]() {
         discovery_t *discovery = _discovery;
-        const std::string service_name (_server_service_name);
+        const std::string service_name (_service_name);
         const std::string endpoint (_advertise_endpoint);
 
         if (discovery)
             discovery->remove_observer (this);
         if (discovery && !service_name.empty () && !endpoint.empty ()) {
             (void) unregister_gateway_service_with_retry_local (
-              discovery, service_name, endpoint, &_runtime->clock, 15000);
+              discovery, endpoint.c_str (), &_runtime->clock, 15000);
             report_topology (service_name, endpoint,
                              ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0);
         }

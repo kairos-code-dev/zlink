@@ -114,7 +114,7 @@ void discovery_t::tick ()
 
 void discovery_t::notify_observers (const std::set<std::string> &services_)
 {
-    if (services_.empty ())
+    if (services_.find (_service_name) == services_.end ())
         return;
     std::vector<discovery_observer_t *> observers;
     {
@@ -123,24 +123,21 @@ void discovery_t::notify_observers (const std::set<std::string> &services_)
     }
     if (observers.empty ())
         return;
-    for (std::set<std::string>::const_iterator sit = services_.begin ();
-         sit != services_.end (); ++sit) {
-        for (size_t i = 0; i < observers.size (); ++i) {
-            if (!observers[i])
+    for (size_t i = 0; i < observers.size (); ++i) {
+        if (!observers[i])
+            continue;
+        {
+            scoped_lock_t lock (_sync);
+            if (_observers.find (observers[i]) == _observers.end ())
                 continue;
-            {
-                scoped_lock_t lock (_sync);
-                if (_observers.find (observers[i]) == _observers.end ())
-                    continue;
-                ++_observer_callbacks_inflight;
-            }
-            observers[i]->on_service_update (*sit);
-            {
-                scoped_lock_t lock (_sync);
-                if (_observer_callbacks_inflight > 0)
-                    --_observer_callbacks_inflight;
-                _observer_cv.broadcast ();
-            }
+            ++_observer_callbacks_inflight;
+        }
+        observers[i]->on_service_update (_service_name);
+        {
+            scoped_lock_t lock (_sync);
+            if (_observer_callbacks_inflight > 0)
+                --_observer_callbacks_inflight;
+            _observer_cv.broadcast ();
         }
     }
 }
@@ -166,7 +163,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         return;
     }
 
-    std::map<std::string, service_state_t> updated;
+    service_state_t updated;
 
     size_t index = 4;
     for (uint32_t i = 0; i < service_count && index < frames_.size (); ++i) {
@@ -182,10 +179,13 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             break;
 
         service_state_t state;
-        for (uint32_t p = 0; p < receiver_count && index + 2 < frames_.size ();
+        for (uint32_t p = 0; p < receiver_count && index + 3 < frames_.size ();
              ++p) {
             provider_info_t info;
             info.service_name = service_name;
+            if (!discovery_protocol::read_u16 (frames_[index++],
+                                               &info.service_role))
+                break;
             info.endpoint = discovery_protocol::read_string (frames_[index++]);
             discovery_protocol::read_routing_id (frames_[index++],
                                                  &info.routing_id);
@@ -195,17 +195,11 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
                 state.providers.push_back (info);
         }
 
-        if (service_type != _service_type)
+        if (service_type != _service_type || service_name != _service_name)
             continue;
-
-        std::map<std::string, service_state_t>::iterator it =
-          updated.find (service_name);
-        if (it == updated.end ())
-            updated[service_name] = state;
-        else
-            it->second.providers.insert (it->second.providers.end (),
-                                         state.providers.begin (),
-                                         state.providers.end ());
+        updated.providers.insert (updated.providers.end (),
+                                  state.providers.begin (),
+                                  state.providers.end ());
     }
 
     std::set<std::string> changed;
@@ -221,6 +215,8 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         const auto provider_equal =
           [] (const provider_info_t &a_, const provider_info_t &b_) {
               if (a_.endpoint != b_.endpoint)
+                  return false;
+              if (a_.service_role != b_.service_role)
                   return false;
               if (a_.routing_id.size != b_.routing_id.size)
                   return false;
@@ -242,55 +238,30 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
               return true;
           };
 
-        for (std::map<std::string, service_state_t>::iterator uit =
-               updated.begin ();
-             uit != updated.end (); ++uit) {
-            std::map<std::string, service_state_t>::iterator oit =
-              _services.find (uit->first);
-            if (oit == _services.end ()
-                || !providers_equal (oit->second, uit->second)) {
-                _service_seq[uit->first] = _update_seq + 1;
-                changed.insert (uit->first);
+        if (!providers_equal (_service_state, updated)) {
+            _service_seq = _update_seq + 1;
+            changed.insert (_service_name);
 
-                zlink_service_event_t ev;
-                memset (&ev, 0, sizeof (ev));
-                ev.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
-                ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
-                                  | ZLINK_EVENT_DETAIL_SUBJECT_RID;
-                ev.routing_id = _bootstrap_runtime->routing_id_value ();
-                strncpy (ev.service_name, uit->first.c_str (),
-                         sizeof (ev.service_name) - 1);
-                ev.value = static_cast<uint32_t> (uit->second.providers.size ());
-                if (oit == _services.end () || oit->second.providers.empty ())
-                    ev.event_type = ZLINK_DISCOVERY_SERVICE_UP;
-                else if (uit->second.providers.empty ())
-                    ev.event_type = ZLINK_DISCOVERY_SERVICE_DOWN;
-                else
-                    ev.event_type = ZLINK_DISCOVERY_PROVIDERS_CHANGED;
-                events.push_back (ev);
-            }
-        }
-        for (std::map<std::string, service_state_t>::iterator oit =
-               _services.begin ();
-             oit != _services.end (); ++oit) {
-            if (updated.find (oit->first) == updated.end ()) {
-                _service_seq[oit->first] = _update_seq + 1;
-                changed.insert (oit->first);
-
-                zlink_service_event_t ev;
-                memset (&ev, 0, sizeof (ev));
-                ev.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+            zlink_service_event_t ev;
+            memset (&ev, 0, sizeof (ev));
+            ev.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+            ev.detail_flags =
+              ZLINK_EVENT_DETAIL_SERVICE_NAME | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+            ev.routing_id = _bootstrap_runtime->routing_id_value ();
+            strncpy (ev.service_name, _service_name.c_str (),
+                     sizeof (ev.service_name) - 1);
+            ev.value = static_cast<uint32_t> (updated.providers.size ());
+            if (_service_state.providers.empty ())
+                ev.event_type = ZLINK_DISCOVERY_SERVICE_UP;
+            else if (updated.providers.empty ())
                 ev.event_type = ZLINK_DISCOVERY_SERVICE_DOWN;
-                ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
-                                  | ZLINK_EVENT_DETAIL_SUBJECT_RID;
-                ev.routing_id = _bootstrap_runtime->routing_id_value ();
-                strncpy (ev.service_name, oit->first.c_str (),
-                         sizeof (ev.service_name) - 1);
-                events.push_back (ev);
-            }
+            else
+                ev.event_type = ZLINK_DISCOVERY_PROVIDERS_CHANGED;
+            events.push_back (ev);
         }
-        _services.swap (updated);
-        _update_seq++;
+        _service_state = updated;
+        if (!changed.empty ())
+            _update_seq++;
     }
 
     if (!changed.empty ())
@@ -312,6 +283,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             memset (&entry, 0, sizeof (entry));
             entry.routing_id = _bootstrap_runtime->routing_id_value ();
             entry.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+            entry.service_role = ZLINK_SERVICE_ROLE_INVALID;
             strncpy (entry.service_name, events[i].service_name,
                      sizeof (entry.service_name) - 1);
             entry.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;

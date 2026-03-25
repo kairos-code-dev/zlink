@@ -351,7 +351,7 @@ int child_server_main ()
     if (!ctx)
         return 2;
 
-    void *server = zlink_gateway_new (ctx, "gw-ready-process-contract");
+    void *server = zlink_gateway_new (ctx);
     if (!server) {
         zlink_ctx_term (ctx);
         return 2;
@@ -404,7 +404,7 @@ void test_gateway_ready_with_monitor_callback_across_process ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *client = zlink_gateway_new (ctx, "gw-ready-process-contract");
+    void *client = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (client);
     configure_gateway_handle (client);
     TEST_ASSERT_SUCCESS_ERRNO (

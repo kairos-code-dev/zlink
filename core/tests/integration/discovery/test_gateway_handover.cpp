@@ -164,21 +164,21 @@ void test_gateway_handover_provider_restart ()
                                   sizeof (registry_router));
 
     void *client_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "ho-svc");
     TEST_ASSERT_NOT_NULL (client_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (client_discovery, registry_router));
-    void *client = zlink_gateway_new (ctx, "ho-svc");
+    void *client = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (client);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_attach_discovery (client, client_discovery));
 
     void *server1_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "ho-svc");
     TEST_ASSERT_NOT_NULL (server1_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (server1_discovery, registry_router));
-    void *server1 = zlink_gateway_new (ctx, "ho-svc");
+    void *server1 = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (server1);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_attach_discovery (server1, server1_discovery));
@@ -201,11 +201,11 @@ void test_gateway_handover_provider_restart ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&server1_discovery));
 
     void *server2_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "ho-svc");
     TEST_ASSERT_NOT_NULL (server2_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (server2_discovery, registry_router));
-    void *server2 = zlink_gateway_new (ctx, "ho-svc");
+    void *server2 = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (server2);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_gateway_attach_discovery (server2, server2_discovery));
@@ -232,9 +232,9 @@ void test_provider_handover_gateway_reconnect ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *client = zlink_gateway_new (ctx, "manual-ho");
-    void *server1 = zlink_gateway_new (ctx, "manual-ho");
-    void *server2 = zlink_gateway_new (ctx, "manual-ho");
+    void *client = zlink_gateway_new (ctx);
+    void *server1 = zlink_gateway_new (ctx);
+    void *server2 = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (client);
     TEST_ASSERT_NOT_NULL (server1);
     TEST_ASSERT_NOT_NULL (server2);

@@ -59,9 +59,7 @@ gateway_runtime_t::gateway_runtime_t (gateway_t *owner_) :
 {
 }
 
-gateway_t::gateway_t (ctx_t *ctx_,
-                      const char *service_name_,
-                      const char *routing_id_) :
+gateway_t::gateway_t (ctx_t *ctx_, const char *routing_id_) :
     _ctx (ctx_),
     _discovery (NULL),
     _tag (gateway_tag_value),
@@ -76,7 +74,7 @@ gateway_t::gateway_t (ctx_t *ctx_,
     _last_summary_error (0),
     _summary_last_changed_ms (0),
     _tls_trust_system (0),
-    _service_name (service_name_ ? service_name_ : ""),
+    _service_name (),
     _routing_id_override (routing_id_ ? routing_id_ : ""),
     _handler (NULL),
     _handler_userdata (NULL),
@@ -92,10 +90,6 @@ gateway_t::gateway_t (ctx_t *ctx_,
         return;
     }
     _routing_id.size = 0;
-    if (_service_name.empty ()) {
-        _tag = 0xdeadbeef;
-        return;
-    }
     if (init_router_socket () != 0)
         _tag = 0xdeadbeef;
     if (_tag != gateway_tag_value)
@@ -280,7 +274,7 @@ gateway_service_pool_t *gateway_t::get_or_create_pool (
 
 gateway_service_pool_t *gateway_t::get_or_create_pool_cached ()
 {
-    return _service_name.empty () ? NULL : get_or_create_pool (_service_name);
+    return get_or_create_pool (_service_name);
 }
 
 } // namespace zlink

@@ -140,7 +140,7 @@ void *create_gateway_attached (void *ctx_,
                                const char *routing_id_,
                                zlink_socket_msg_handler_fn handler_)
 {
-    void *gateway = zlink_gateway_new (ctx_, service_name_);
+    void *gateway = zlink_gateway_new (ctx_);
     if (!gateway)
         return NULL;
     if (routing_id_
@@ -176,7 +176,7 @@ void *create_gateway (void *ctx_,
                       const char *routing_id_,
                       zlink_socket_msg_handler_fn handler_)
 {
-    void *gateway = zlink_gateway_new (ctx_, service_name_);
+    void *gateway = zlink_gateway_new (ctx_);
     if (!gateway)
         return NULL;
     if (routing_id_
@@ -647,7 +647,7 @@ void create_server_gateway (gateway_server_t *server_,
                             zlink_socket_msg_handler_fn handler_)
 {
     server_->discovery =
-      zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY, service_name_);
     TEST_ASSERT_NOT_NULL (server_->discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (server_->discovery, registry_ep_));
@@ -732,7 +732,7 @@ void *create_client_gateway (void *ctx_,
                              const char *routing_id_)
 {
     void *discovery =
-      zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx_, ZLINK_SERVICE_TYPE_GATEWAY, service_name_);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_ep_));
@@ -831,7 +831,7 @@ static void test_gateway_provider_setsockopt ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *client_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "opts-client");
     TEST_ASSERT_NOT_NULL (client_discovery);
     void *client =
       create_gateway_attached (ctx, client_discovery, "opts-client", NULL,
@@ -840,7 +840,7 @@ static void test_gateway_provider_setsockopt ()
 
     gateway_server_t server;
     server.discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "opts-server");
     TEST_ASSERT_NOT_NULL (server.discovery);
     server.gateway = create_gateway_attached (ctx, server.discovery, "opts-server",
                                         NULL, &discard_gateway_message);
@@ -879,7 +879,8 @@ static void test_gateway_can_be_polled_via_service_instance ()
       sizeof (registry_router));
     TEST_ASSERT_NOT_NULL (registry);
 
-    void *client_discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *client_discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "ready-svc");
     TEST_ASSERT_NOT_NULL (client_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (client_discovery, registry_router));
@@ -943,7 +944,8 @@ static void test_gateway_send_ready_handler_reentrant_replace_returns_edeadlk ()
       sizeof (registry_router));
     TEST_ASSERT_NOT_NULL (registry);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery = zlink_discovery_new (
+      ctx, ZLINK_SERVICE_TYPE_GATEWAY, "ready-reentrant");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -997,7 +999,8 @@ static void test_gateway_send_ready_handler_self_close_is_safe ()
       sizeof (registry_router));
     TEST_ASSERT_NOT_NULL (registry);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    void *discovery = zlink_discovery_new (
+      ctx, ZLINK_SERVICE_TYPE_GATEWAY, "ready-self-close");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -1113,7 +1116,8 @@ static void test_gateway_refreshes_existing_service_on_first_connection_count ()
                                  sizeof (endpoint), 3000);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY,
+                           "late-gateway-svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -1149,7 +1153,8 @@ static void test_gateway_router_peers_do_not_enter_pollable_mode ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY,
+                           "peer-stats-svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -1203,7 +1208,7 @@ static void test_gateway_single_service_tcp ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -1248,7 +1253,7 @@ static void test_gateway_send_rid_tcp ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -1308,9 +1313,9 @@ static void test_gateway_multi_service_tcp ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery_a =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-A");
     void *discovery_b =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-B");
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
@@ -1379,7 +1384,7 @@ static void test_gateway_refresh_on_update ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-update");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -1448,7 +1453,7 @@ static void test_gateway_protocol_ws ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-ws");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -1499,7 +1504,7 @@ static void test_gateway_protocol_tls ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-tls");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -1556,7 +1561,7 @@ static void test_gateway_protocol_wss ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-wss");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -1607,7 +1612,7 @@ static void test_gateway_load_balancing ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "lb-svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -1668,7 +1673,7 @@ static void test_gateway_weighted_load_balancing ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "lb-weighted");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -1820,7 +1825,7 @@ static void test_gateway_manual_connect_disconnect_topology_ownership ()
     step_log ("manual topology: server recv verified");
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "manual-svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -1901,8 +1906,8 @@ static void test_gateway_recv_model_receive_regression ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *server = zlink_gateway_new (ctx, "svc-gateway-recv-regression");
-    void *client = zlink_gateway_new (ctx, "svc-gateway-recv-regression");
+    void *server = zlink_gateway_new (ctx);
+    void *client = zlink_gateway_new (ctx);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
     const int linger = 0;
@@ -1983,7 +1988,7 @@ static void test_gateway_local_weight_zero_is_preserved ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "weight-zero");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, registry_router));
@@ -2049,7 +2054,7 @@ static void test_gateway_concurrent_send_and_updates ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-sync");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -2135,7 +2140,8 @@ static void test_gateway_runtime_reads_are_safe_during_concurrent_send ()
     step_log ("test_gateway_runtime_reads: registry ready");
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY,
+                           "svc-runtime-read");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -2240,7 +2246,8 @@ static void test_gateway_snapshot_monitor_churn_does_not_stall_destroy ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY,
+                           "svc-monitor-churn");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -2274,6 +2281,33 @@ static void test_gateway_snapshot_monitor_churn_does_not_stall_destroy ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
+static void test_discovery_destroy_invalidates_attached_gateway_handle ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (
+      ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc-owned-gateway");
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    void *gateway = zlink_gateway_new (ctx);
+    TEST_ASSERT_NOT_NULL (gateway);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_attach_discovery (gateway, discovery));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+
+    zlink_gateway_status_t status;
+    memset (&status, 0, sizeof (status));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_status_snapshot (gateway, &status));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_gateway_bind (gateway, "tcp://127.0.0.1:*"));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, errno);
+}
+
 static void test_gateway_concurrent_send_and_send_rid_and_updates ()
 {
     step_log ("test_gateway_concurrent_send_and_send_rid_and_updates");
@@ -2289,7 +2323,8 @@ static void test_gateway_concurrent_send_and_send_rid_and_updates ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY,
+                           "svc-send-plane");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -2397,7 +2432,8 @@ static void test_gateway_attach_and_monitor_queries_are_safe_same_handle ()
     TEST_ASSERT_NOT_NULL (registry);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY,
+                           "svc-attach-query");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
       discovery, registry_router));
@@ -2481,6 +2517,7 @@ int main (void)
     RUN_GATEWAY_TEST (test_gateway_send_ready_handler_self_close_is_safe);
     RUN_GATEWAY_TEST (test_gateway_runtime_reads_are_safe_during_concurrent_send);
     RUN_GATEWAY_TEST (test_gateway_snapshot_monitor_churn_does_not_stall_destroy);
+    RUN_GATEWAY_TEST (test_discovery_destroy_invalidates_attached_gateway_handle);
     RUN_GATEWAY_TEST (test_gateway_concurrent_send_and_send_rid_and_updates);
     RUN_GATEWAY_TEST (test_gateway_attach_and_monitor_queries_are_safe_same_handle);
 #undef RUN_GATEWAY_TEST

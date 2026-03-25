@@ -133,6 +133,7 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | `gateway_socket.cpp` | Internal ROUTER socket wiring |
 | `gateway_monitor.cpp` | Service monitor event emission |
 | `gateway_refresh.cpp` | Discovery-based peer refresh |
+| `routing_id_utils.hpp` | Common routing ID guarantee logic (set/ensure) |
 
 **SPOT** (`services/spot/`):
 
@@ -162,6 +163,9 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | `discovery_update.cpp` | Service list update handling |
 | `discovery_uplink.cpp` | Registry uplink/heartbeat |
 | `discovery_registry_client.cpp` | Registry protocol client |
+| `discovery_protocol.hpp` | Protocol constants, message types, serialization helpers |
+| `discovery_owned_service.hpp` | Inline convenience API for discovery-owned service registration |
+| `socket_discovery_attachment.cpp/hpp` | Socket-side integration: attach, register, peer refresh, lifecycle |
 | `registry_access.cpp/hpp` | Registry service API seam |
 | `registry_query_access.cpp/hpp` | Remote Registry query API seam |
 
@@ -245,7 +249,7 @@ core/src/
   services/
     common/       9 files — service_runtime_base, service_public_api_guard
     control/      2 files — service control runtime
-    discovery/   16 files — discovery + registry access
+    discovery/   23 files — discovery + registry access + socket attachment
     gateway/     11 files — gateway facade/lifecycle/pool/socket/monitor/refresh
     spot/        29 files — node/pub/sub/data_plane/handle/subject_access
   transports/    — tcp/ipc/tls/ws/pgm

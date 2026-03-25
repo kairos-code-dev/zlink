@@ -23,8 +23,8 @@ runtime에 호출 가능한 control path(저빈도 설정/관리 경로)이며,
 
 ## 2. Gateway 생성
 
-Gateway는 생성 시점에 서비스 이름만 고정한다. routing id와 I/O 모델 설정은
-후속 단계로 분리된다.
+Gateway 핸들을 생성하고, Discovery를 통해 서비스 뷰에 연결한다. routing id와
+I/O 모델 설정은 후속 단계로 분리된다.
 
 Gateway는 **recv 모드**로 시작한다.
 - `zlink_recv_handler(gateway, ...)`는 지원되며 receive surface를 callback 모드로 전환한다.
@@ -35,7 +35,7 @@ Gateway는 **recv 모드**로 시작한다.
 ### Recv 모드
 
 ```c
-void *gateway = zlink_gateway_new(ctx, "payment-service");
+void *gateway = zlink_gateway_new(ctx);
 zlink_set_routing_id(gateway, "gateway-1", 9);
 /* 콜백 없음 -- recv 모드 유지, zlink_gateway_recv()로 수신 */
 ```
@@ -50,10 +50,11 @@ Registry에 등록한다. 서버 측 수신은 `zlink_gateway_recv()`로 모델�
 ```c
 void *ctx = zlink_ctx_new();
 
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "payment-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-void *server = zlink_gateway_new(ctx, "payment-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "payment-server-1", 16);
 /* recv 모드 유지 -- zlink_recv_handler() 호출 없음 */
 
@@ -78,10 +79,11 @@ Gateway 클라이언트도 recv 모드를 유지한다. Discovery를 연결하�
 ### Recv 모드 클라이언트
 
 ```c
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "payment-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-void *client = zlink_gateway_new(ctx, "payment-service");
+void *client = zlink_gateway_new(ctx);
 zlink_set_routing_id(client, "client-1", 8);
 /* recv 모드 유지 */
 
@@ -162,7 +164,7 @@ Gateway handle을 여러 스레드에서 자유롭게 공유하고, `send`/`send
 
 ```c
 /* Gateway는 thread-safe하므로 여러 스레드에서 공유 가능 */
-void *gateway = zlink_gateway_new(ctx, "my-service");
+void *gateway = zlink_gateway_new(ctx);
 zlink_set_routing_id(gateway, "gw-1", 4);
 zlink_gateway_attach_discovery(gateway, discovery);
 
@@ -241,19 +243,21 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Server === */
-void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *server_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
-void *server = zlink_gateway_new(ctx, "echo-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "echo-server-1", 13);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
 /* === Client === */
-void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *client_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service");
+void *client = zlink_gateway_new(ctx);
 zlink_set_routing_id(client, "client-1", 8);
 zlink_gateway_attach_discovery(client, client_discovery);
 
@@ -287,19 +291,21 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Server (recv 모드) === */
-void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *server_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
-void *server = zlink_gateway_new(ctx, "echo-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "echo-server-1", 13);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
 /* === Client (recv 모드) === */
-void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *client_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service");
+void *client = zlink_gateway_new(ctx);
 zlink_set_routing_id(client, "client-1", 8);
 zlink_gateway_attach_discovery(client, client_discovery);
 
@@ -330,7 +336,7 @@ zlink_ctx_term(ctx);
 
 | 함수 | 설명 |
 |------|------|
-| `zlink_gateway_new(ctx, service_name)` | recv 모드 Gateway 생성 |
+| `zlink_gateway_new(ctx)` | recv 모드 Gateway 생성 |
 | `zlink_set_routing_id(gateway, data, size)` | 첫 bind/connect 전 routing id 설정 |
 | `zlink_recv_handler(gateway, fn, userdata)` | 수신 callback attach |
 | `zlink_gateway_recv(gateway, ...)` | recv 모드에서 메시지 수신 |

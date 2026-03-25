@@ -102,9 +102,23 @@ Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여 클러스터 전체�
 
 자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)를 참고.
 
-### 3.4 Registry — 중앙 서비스 등록소
+### 3.4 소켓 패밀리 — Discovery 관리 raw 소켓
 
-서비스 엔트리를 등록·관리하는 중앙 저장소. Gateway/SPOT 노드의 등록, 하트비트, 토폴로지 브로드캐스트를 담당한다.
+raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(서비스 타입
+`ZLINK_SERVICE_TYPE_SOCKET`)에 연결하여 자동 피어 발견과 lifecycle
+관리를 할 수 있다. Gateway나 SPOT 추상화 없이 소켓 수준에서 위치투명
+통신을 제공한다.
+
+- Discovery를 통한 자동 엔드포인트 등록 및 heartbeat
+- 역할 기반 피어 매칭 (PUB↔SUB, ROUTER↔DEALER)
+- Lifecycle 위임 — Discovery가 연결된 소켓을 소유
+- 내부 모듈: `socket_discovery_attachment` (소켓 측 통합) · `discovery_owned_service` (등록 편의 API)
+
+자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md)를 참고.
+
+### 3.5 Registry — 중앙 서비스 등록소
+
+서비스 엔트리를 등록·관리하는 중앙 저장소. Gateway/SPOT 노드/소켓 패밀리의 등록, 하트비트, 토폴로지 브로드캐스트를 담당한다.
 
 - 내부 모듈: `registry_access` (API seam) · `registry_query_access` (원격 조회 seam)
 
@@ -146,25 +160,26 @@ service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
                     │  ROUTER) │
                     └────┬─────┘
                          │ SERVICE_LIST 브로드캐스트
-            ┌────────────┼────────────┐
-            │            │            │
-            v            v            v
-      ┌──────────┐ ┌──────────┐ ┌──────────┐
-      │Discovery │ │Discovery │ │Discovery │
-      │(Gateway용)│ │(SPOT 용) │ │(직접 사용)│
-      └────┬─────┘ └────┬─────┘ └──────────┘
-           │             │
-           v             v
-      ┌──────────┐ ┌──────────┐
-      │ Gateway  │ │   SPOT   │
-      │ (ROUTER) │ │(PUB+SUB) │
-      └──────────┘ └──────────┘
+       ┌─────────────────┼─────────────────┐
+       │                 │                 │
+       v                 v                 v
+ ┌──────────┐     ┌──────────┐     ┌──────────┐
+ │Discovery │     │Discovery │     │Discovery │
+ │(Gateway용)│     │(SPOT 용) │     │(Socket용)│
+ └────┬─────┘     └────┬─────┘     └────┬─────┘
+      │                │                │
+      v                v                v
+ ┌──────────┐     ┌──────────┐     ┌──────────┐
+ │ Gateway  │     │   SPOT   │     │  Socket  │
+ │ (ROUTER) │     │(PUB+SUB) │     │(R/D/P/S) │
+ └──────────┘     └──────────┘     └──────────┘
 ```
 
-- **Discovery가 기반 인프라**: Gateway와 SPOT 모두 Discovery를 통해 대상을 발견한다.
+- **Discovery가 기반 인프라**: Gateway, SPOT, 소켓 패밀리 모두 Discovery를 통해 대상을 발견한다.
 - **Gateway**는 DEALER/ROUTER 패턴으로 요청/응답을 처리한다.
 - **SPOT**은 PUB/SUB 패턴으로 토픽 메시지를 전파한다.
-- Gateway와 SPOT은 독립적으로 동작하며, 동일한 Registry 클러스터를 공유할 수 있다.
+- **소켓 패밀리**는 raw ROUTER/DEALER/PUB/SUB 소켓이 Discovery를 통해 피어를 등록·발견하여 소켓 수준의 위치투명 통신을 제공한다.
+- 모든 서비스는 독립적으로 동작하며, 동일한 Registry 클러스터를 공유할 수 있다.
 
 ---
 [← 모니터링](06-monitoring.ko.md) | [Discovery →](07-1-discovery.ko.md)

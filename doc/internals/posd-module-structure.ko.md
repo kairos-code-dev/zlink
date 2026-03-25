@@ -117,12 +117,12 @@ API facade의 규칙:
 
 | Access Seam | 위치 | 역할 |
 |-------------|------|------|
-| `gateway_access_t` | `services/gateway/` | Gateway lifecycle, send, option, TLS, monitor |
-| `discovery_access_t` | `services/discovery/` | Discovery lifecycle, connect_registry, monitor |
-| `registry_access_t` | `services/discovery/` | Registry lifecycle, bind, config, snapshot |
+| `gateway_access_t` | `services/gateway/` | Gateway lifecycle, send, bind/connect, option, TLS, monitor |
+| `discovery_access_t` | `services/discovery/` | Discovery lifecycle, connect_registry, option, monitor |
+| `registry_access_t` | `services/discovery/` | Registry lifecycle, bind, config, snapshot/query |
 | `registry_query_access_t` | `services/discovery/` | 원격 Registry topology query |
 | `spot_node_access_t` | `services/spot/` | SpotNode lifecycle, bind, discovery attach |
-| `spot_subject_access_t` | `services/spot/` | publish, subscribe, option, handler, monitor |
+| `spot_subject_access_t` | `services/spot/` | publish, subscribe, option, handler, monitor, type casting |
 
 `service_public_api_guard_t`는 모든 서비스에 공통되는 admission/close guard이다.
 callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공한다.
@@ -141,6 +141,7 @@ callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공
 | `gateway_socket.cpp` | 내부 ROUTER 소켓 wiring |
 | `gateway_monitor.cpp` | 서비스 모니터 이벤트 발행 |
 | `gateway_refresh.cpp` | Discovery 기반 피어 갱신 |
+| `routing_id_utils.hpp` | 공통 routing ID 보장 로직 (set/ensure) |
 
 **SPOT** (`services/spot/`):
 
@@ -170,6 +171,9 @@ callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공
 | `discovery_update.cpp` | 서비스 목록 업데이트 처리 |
 | `discovery_uplink.cpp` | Registry uplink/heartbeat |
 | `discovery_registry_client.cpp` | Registry 프로토콜 클라이언트 |
+| `discovery_protocol.hpp` | 프로토콜 상수, 메시지 타입, 직렬화 헬퍼 |
+| `discovery_owned_service.hpp` | discovery 소유 서비스 등록 편의 inline API |
+| `socket_discovery_attachment.cpp/hpp` | 소켓 측 통합: attach, 등록, 피어 갱신, lifecycle |
 | `registry_access.cpp/hpp` | Registry 서비스 API seam |
 | `registry_query_access.cpp/hpp` | 원격 Registry query API seam |
 
@@ -251,7 +255,7 @@ core/src/
   services/
     common/       9 files — service_runtime_base, service_public_api_guard
     control/      2 files — service control runtime
-    discovery/   16 files — discovery + registry access
+    discovery/   23 files — discovery + registry access + socket attachment
     gateway/     11 files — gateway facade/lifecycle/pool/socket/monitor/refresh
     spot/        29 files — node/pub/sub/data_plane/handle/subject_access
   transports/    — tcp/ipc/tls/ws/pgm

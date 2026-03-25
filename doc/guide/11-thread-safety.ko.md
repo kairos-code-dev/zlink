@@ -149,7 +149,7 @@ void *setup_thread(void *arg)
 | Socket | `send` | bind, connect, set_option 등 | `close` |
 | Gateway | `send`, `send_rid` | bind, attach_discovery 등 | `destroy` |
 | SPOT | `publish` | subscribe, unsubscribe 등 | `destroy` |
-| SPOT Node | `publish` | bind, connect_peer_pub 등 | `destroy` |
+| SPOT Node | `publish` | bind, connect_peer 등 | `destroy` |
 | Discovery | *(없음)* | connect_registry 등 | `destroy` |
 | Registry | *(없음)* | bind, add_peer 등 | `destroy` |
 

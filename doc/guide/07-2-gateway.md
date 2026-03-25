@@ -23,8 +23,8 @@ operations, and `destroy` uses a fail-fast lifecycle gate.
 
 ## 2. Creating a Gateway
 
-A Gateway fixes its service name at creation time. Routing ID and I/O
-model setup are explicit follow-up steps.
+Create a Gateway handle and attach it to a Discovery service view.
+Routing ID and I/O model setup are explicit follow-up steps.
 
 A Gateway starts in **recv model**.
 - `zlink_recv_handler(gateway, ...)` is supported and turns the receive surface into callback mode.
@@ -35,7 +35,7 @@ A Gateway starts in **recv model**.
 ### Recv model
 
 ```c
-void *gateway = zlink_gateway_new(ctx, "payment-service");
+void *gateway = zlink_gateway_new(ctx);
 zlink_set_routing_id(gateway, "gateway-1", 9);
 /* No callback -- stay in recv model, pull with zlink_gateway_recv() */
 ```
@@ -50,10 +50,11 @@ Discovery. Server-side receive is modeled with `zlink_gateway_recv()`.
 ```c
 void *ctx = zlink_ctx_new();
 
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "payment-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-void *server = zlink_gateway_new(ctx, "payment-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "payment-server-1", 16);
 /* Stay in recv model -- no zlink_recv_handler() call */
 
@@ -78,10 +79,11 @@ with `zlink_gateway_recv()` after send.
 ### Recv model client
 
 ```c
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "payment-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-void *client = zlink_gateway_new(ctx, "payment-service");
+void *client = zlink_gateway_new(ctx);
 zlink_set_routing_id(client, "client-1", 8);
 /* Stay in recv model */
 
@@ -187,7 +189,7 @@ The rules users need to remember are short:
 
 ```c
 /* Gateway is thread-safe, so it can be shared across threads */
-void *gateway = zlink_gateway_new(ctx, "my-service");
+void *gateway = zlink_gateway_new(ctx);
 zlink_set_routing_id(gateway, "gw-1", 4);
 zlink_gateway_attach_discovery(gateway, discovery);
 
@@ -288,19 +290,21 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Server === */
-void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *server_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
-void *server = zlink_gateway_new(ctx, "echo-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "echo-server-1", 13);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
 /* === Client === */
-void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *client_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service");
+void *client = zlink_gateway_new(ctx);
 zlink_set_routing_id(client, "client-1", 8);
 zlink_gateway_attach_discovery(client, client_discovery);
 
@@ -334,19 +338,21 @@ void *registry = zlink_registry_new(ctx);
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Server (recv model) === */
-void *server_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *server_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(server_discovery, "tcp://127.0.0.1:5551");
 
-void *server = zlink_gateway_new(ctx, "echo-service");
+void *server = zlink_gateway_new(ctx);
 zlink_set_routing_id(server, "echo-server-1", 13);
 zlink_gateway_attach_discovery(server, server_discovery);
 zlink_gateway_bind(server, "tcp://*:5555");
 
 /* === Client (recv model) === */
-void *client_discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+void *client_discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
 zlink_discovery_connect_registry(client_discovery, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx, "echo-service");
+void *client = zlink_gateway_new(ctx);
 zlink_set_routing_id(client, "client-1", 8);
 zlink_gateway_attach_discovery(client, client_discovery);
 
@@ -377,7 +383,7 @@ zlink_ctx_term(ctx);
 
 | Function | Description |
 |----------|-------------|
-| `zlink_gateway_new(ctx, service_name)` | Create Gateway in recv model |
+| `zlink_gateway_new(ctx)` | Create Gateway in recv model |
 | `zlink_set_routing_id(gateway, data, size)` | Set routing ID before first bind/connect |
 | `zlink_recv_handler(gateway, fn, userdata)` | Attach multipart receive callback; recv + `ZLINK_POLLIN` become `EBUSY` |
 | `zlink_gateway_recv(gateway, &rid, &parts, &count, flags)` | Pull message in recv model |

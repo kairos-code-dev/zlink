@@ -39,7 +39,8 @@ Gateway handle은 **recv 모드**로 시작합니다.
 
 ## 현재 권장 API 방향
 
-- `zlink_gateway_new()`로 서비스 이름만 고정하여 생성합니다.
+- `zlink_gateway_new()`로 Gateway 핸들을 생성합니다. 서비스 이름은
+  `zlink_discovery_new()` 호출 시 Discovery 생성 시점에 고정됩니다.
 - 대표 routing id가 필요하면 첫 bind/connect 전에
   `zlink_set_routing_id()`를 호출합니다.
 - `zlink_gateway_recv()`로 메시지를 직접 수신합니다.
@@ -111,13 +112,13 @@ Gateway는 `zlink_set_router_option` / `zlink_get_router_option`을 통해
 recv 모드의 Gateway를 생성합니다.
 
 ```c
-void *zlink_gateway_new (void *ctx,
-                         const char *service_name);
+void *zlink_gateway_new (void *ctx);
 ```
 
-새 Gateway 인스턴스를 할당하고 초기화합니다. `service_name`은 생성 시 고정되는
-서비스 아이덴티티입니다. 필요하면 이후 `zlink_set_routing_id()`로
-routing id를 설정합니다.
+새 Gateway 인스턴스를 할당하고 초기화합니다. 서비스 아이덴티티는 이후
+`zlink_gateway_attach_discovery()`로 연결할 Discovery 인스턴스에서 결정됩니다.
+필요하면 첫 bind/connect 전에 `zlink_set_routing_id()`로 routing id를
+설정합니다.
 
 **반환값:** 성공 시 Gateway 핸들, 실패 시 `NULL`.
 
@@ -468,7 +469,7 @@ typedef struct zlink_gateway_status_t
 
 | 필드 | 설명 |
 |------|------|
-| `service_name` | 생성 시 고정된 null 종료 서비스 이름. |
+| `service_name` | 연결된 Discovery의 null 종료 서비스 이름. |
 | `bind_endpoint` | null 종료 바인드 엔드포인트. |
 | `gateway_routing_id` | 이 Gateway의 라우팅 아이덴티티. |
 | `state` | `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, 또는 `ERROR`. |

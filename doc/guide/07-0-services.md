@@ -87,9 +87,23 @@ Automatically constructs a PUB/SUB Mesh based on Discovery to publish/subscribe 
 
 See the [SPOT Guide](07-3-spot.md) for details.
 
-### 3.4 Registry -- Central Service Registry
+### 3.4 Socket Family -- Discovery-Managed Raw Sockets
 
-Central store that registers and manages service entries. Handles Gateway/SPOT node registration, heartbeats, and topology broadcasts.
+Raw ROUTER/DEALER/PUB/SUB sockets can attach to a Discovery instance
+(service type `ZLINK_SERVICE_TYPE_SOCKET`) for automatic peer discovery
+and lifecycle management. This provides location-transparent communication
+at the socket level without the Gateway or SPOT abstractions.
+
+- Automatic endpoint registration and heartbeat via Discovery
+- Role-based peer matching (PUB↔SUB, ROUTER↔DEALER)
+- Lifecycle delegation -- Discovery owns the attached socket
+- Internal modules: `socket_discovery_attachment` (socket-side integration) · `discovery_owned_service` (registration convenience API)
+
+See the [Service Discovery Guide](07-1-discovery.md) for details.
+
+### 3.5 Registry -- Central Service Registry
+
+Central store that registers and manages service entries. Handles Gateway/SPOT node/socket family registration, heartbeats, and topology broadcasts.
 
 - Internal modules: `registry_access` (API seam) · `registry_query_access` (remote query seam)
 
@@ -132,25 +146,26 @@ service implementation files.
                     │  ROUTER) │
                     └────┬─────┘
                          │ SERVICE_LIST broadcast
-            ┌────────────┼────────────┐
-            │            │            │
-            v            v            v
-      ┌──────────┐ ┌──────────┐ ┌──────────┐
-      │Discovery │ │Discovery │ │Discovery │
-      │(Gateway) │ │ (SPOT)   │ │ (direct) │
-      └────┬─────┘ └────┬─────┘ └──────────┘
-           │             │
-           v             v
-      ┌──────────┐ ┌──────────┐
-      │ Gateway  │ │   SPOT   │
-      │ (ROUTER) │ │(PUB+SUB) │
-      └──────────┘ └──────────┘
+       ┌─────────────────┼─────────────────┐
+       │                 │                 │
+       v                 v                 v
+ ┌──────────┐     ┌──────────┐     ┌──────────┐
+ │Discovery │     │Discovery │     │Discovery │
+ │(Gateway) │     │ (SPOT)   │     │ (Socket) │
+ └────┬─────┘     └────┬─────┘     └────┬─────┘
+      │                │                │
+      v                v                v
+ ┌──────────┐     ┌──────────┐     ┌──────────┐
+ │ Gateway  │     │   SPOT   │     │  Socket  │
+ │ (ROUTER) │     │(PUB+SUB) │     │(R/D/P/S) │
+ └──────────┘     └──────────┘     └──────────┘
 ```
 
-- **Discovery is the foundation infrastructure**: Both Gateway and SPOT discover targets through Discovery.
+- **Discovery is the foundation infrastructure**: Gateway, SPOT, and Socket Family all discover targets through Discovery.
 - **Gateway** handles request/reply using the DEALER/ROUTER pattern.
 - **SPOT** propagates topic messages using the PUB/SUB pattern.
-- Gateway and SPOT operate independently and can share the same Registry cluster.
+- **Socket Family** enables raw ROUTER/DEALER/PUB/SUB sockets to register and discover peers through Discovery, providing location-transparent communication at the socket level.
+- All services operate independently and can share the same Registry cluster.
 
 ---
 [← Monitoring](06-monitoring.md) | [Discovery →](07-1-discovery.md)

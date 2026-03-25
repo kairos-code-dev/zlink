@@ -11,8 +11,10 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 | Term | Description |
 |------|-------------|
 | **Registry** | Manages service registration/deregistration, broadcasts service list (PUB+ROUTER) |
-| **Discovery** | Subscribes to Registry, manages service list (SUB) |
+| **Discovery** | Subscribes to Registry, manages service list (SUB); lifecycle owner for attached services |
 | **Gateway (server)** | Server-side Gateway, registers with Registry via Discovery |
+| **Socket Family** | Raw ROUTER/DEALER/PUB/SUB sockets that register and discover peers via Discovery |
+| **Service Role** | Socket-level role (ROUTER/DEALER/PUB/SUB) used for peer matching in socket family mode |
 | **Heartbeat** | Service liveness check (5-second interval, 15-second timeout) |
 
 ### Architecture
@@ -25,14 +27,14 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 │       │ (service list broadcast)          │
 └───────┼──────────────────────────────────┘
         │
-   ┌────┴────┐
-   │Discovery│
-   │ (SUB)   │
-   │    │    │
-   │    ▼    │
-   │ Gateway │  (client or server via bind)
-   │(ROUTER) │
-   └─────────┘
+   ┌────┴─────────────────────────────┐
+   │           Discovery (SUB)         │
+   │  ┌─────────┬──────────┬────────┐ │
+   │  │ Gateway │ SPOT     │ Socket │ │
+   │  │(ROUTER) │(PUB+SUB) │Family  │ │
+   │  │         │          │(R/D/P/S│ │
+   │  └─────────┴──────────┴────────┘ │
+   └───────────────────────────────────┘
 ```
 
 ## 2. Registry Setup and Execution
@@ -69,8 +71,10 @@ zlink_ctx_term(ctx);
 ## 3. Using Discovery
 
 ```c
-/* service_type: ZLINK_SERVICE_TYPE_GATEWAY or ZLINK_SERVICE_TYPE_SPOT */
-void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+/* service_type: ZLINK_SERVICE_TYPE_GATEWAY, ZLINK_SERVICE_TYPE_SPOT,
+   or ZLINK_SERVICE_TYPE_SOCKET */
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_GATEWAY, "order-service");
 
 /* Connect to Registry bootstrap/control endpoint (multiple allowed) */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
@@ -91,10 +95,45 @@ zlink_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
 
+## 3.1 Socket Family Discovery
+
+Raw ROUTER/DEALER/PUB/SUB sockets can use Discovery for automatic peer
+discovery and lifecycle management. This enables location-transparent
+communication at the socket level without the Gateway or SPOT abstractions.
+
+```c
+/* Create Discovery with SOCKET type */
+void *discovery = zlink_discovery_new(ctx,
+    ZLINK_SERVICE_TYPE_SOCKET, "price-feed");
+zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
+
+/* Create a PUB socket and attach it to Discovery */
+void *pub = zlink_socket_new(ctx, ZLINK_PUB);
+zlink_bind(pub, "tcp://*:9100");
+zlink_socket_attach_discovery(pub, discovery);
+/* Discovery registers the PUB endpoint and manages heartbeats.
+   Remote SUB sockets in the same service ("price-feed") will
+   automatically discover and connect to this endpoint. */
+
+/* ... publish messages ... */
+
+/* Destroy Discovery to shut down the attached socket */
+zlink_discovery_destroy(&discovery);
+```
+
+**Role matching:** Discovery uses service roles to determine which remote
+providers are relevant. A PUB socket discovers SUB peers and vice versa.
+ROUTER and DEALER discover each other. This is automatic -- the role is
+derived from the socket type at attach time.
+
+**Lifecycle:** Once a socket is attached, manual `connect`, `disconnect`,
+`unbind`, and `close` calls fail. Destroying the Discovery instance
+terminates all attached sockets.
+
 ## 4. Liveness and Summary Updates
 
 ```
-Gateway/SpotNode            Discovery               Registry
+Gateway/SpotNode/Socket     Discovery               Registry
    │  REGISTER / summary        │                      │
    │──────────────────────────► │                      │
    │                            │ bootstrap + uplink   │
@@ -108,8 +147,8 @@ Gateway/SpotNode            Discovery               Registry
 
 - Registry visibility is maintained through Discovery-owned heartbeat/topology
   uplink.
-- Gateway and Spot services still submit local registration/summary changes,
-  but Discovery owns the periodic uplink cadence.
+- Gateway, Spot, and socket family services submit local registration/summary
+  changes, but Discovery owns the periodic uplink cadence.
 - Registry summary is eventually consistent and should be treated as a
   coarse/global view, not a strict final readiness gate.
 

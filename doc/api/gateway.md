@@ -40,7 +40,8 @@ A single Gateway handle can be used concurrently from multiple threads
 
 ## Current API Direction
 
-- Use `zlink_gateway_new()` with a fixed service name.
+- Use `zlink_gateway_new()` to create a Gateway handle. Service name is now
+  fixed at Discovery creation time via `zlink_discovery_new()`.
 - Use `zlink_set_routing_id()` before the first bind/connect when a
   stable routing id is required.
 - Use `zlink_gateway_recv()` to pull messages.
@@ -111,13 +112,13 @@ See [socket.md](socket.md) for the full `zlink_router_option_t` reference.
 Create a Gateway in recv model.
 
 ```c
-void *zlink_gateway_new (void *ctx,
-                         const char *service_name);
+void *zlink_gateway_new (void *ctx);
 ```
 
-Allocates and initializes a new Gateway instance. The `service_name` is the
-service identity fixed at creation time. Configure a representative routing id
-later with `zlink_set_routing_id()` if needed.
+Allocates and initializes a new Gateway instance. The service identity is
+determined by the Discovery instance attached later via
+`zlink_gateway_attach_discovery()`. Configure a representative routing id
+with `zlink_set_routing_id()` before the first bind/connect if needed.
 
 **Returns:** A Gateway handle on success, or `NULL` on failure.
 
@@ -467,7 +468,7 @@ typedef struct zlink_gateway_status_t
 
 | Field | Description |
 |-------|-------------|
-| `service_name` | Null-terminated service name fixed at construction. |
+| `service_name` | Null-terminated service name from the attached Discovery. |
 | `bind_endpoint` | Null-terminated bound endpoint. |
 | `gateway_routing_id` | Routing identity of this Gateway. |
 | `state` | `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, or `ERROR`. |

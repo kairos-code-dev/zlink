@@ -2,10 +2,13 @@
 
 # Discovery
 
-Discovery is a client-side cache that subscribes to Registry broadcasts and
-maintains a local service directory. Applications use Discovery to look up
-available Gateway peers or SPOT Nodes by service name without contacting the
-Registry directly.
+Discovery is a client-side service view that subscribes to Registry broadcasts
+and maintains a local service directory. Applications use Discovery to look up
+available service providers by service name without contacting the Registry
+directly. Discovery serves as the lifecycle owner for attached services --
+Gateway, SPOT Node, and raw socket families (ROUTER/DEALER/PUB/SUB) all
+delegate provider registration, peer refresh, and shutdown to their Discovery
+instance.
 
 ## Thread-Safety Summary
 
@@ -39,11 +42,14 @@ Not every call has the same timing constraints, though.
 
 ## Constants
 
+### Service Types
+
 ```c
 typedef enum zlink_service_type_t
 {
     ZLINK_SERVICE_TYPE_GATEWAY = 0x3001,
-    ZLINK_SERVICE_TYPE_SPOT    = 0x3002
+    ZLINK_SERVICE_TYPE_SPOT    = 0x3002,
+    ZLINK_SERVICE_TYPE_SOCKET  = 0x3003
 } zlink_service_type_t;
 ```
 
@@ -51,22 +57,63 @@ typedef enum zlink_service_type_t
 |----------|-------------|
 | `ZLINK_SERVICE_TYPE_GATEWAY` | Discovery type for Gateway services |
 | `ZLINK_SERVICE_TYPE_SPOT` | Discovery type for SPOT Node services |
+| `ZLINK_SERVICE_TYPE_SOCKET` | Discovery type for raw socket families (ROUTER/DEALER/PUB/SUB) |
+
+### Service Roles
+
+```c
+typedef enum zlink_service_role_t
+{
+    ZLINK_SERVICE_ROLE_INVALID = 0,
+    ZLINK_SERVICE_ROLE_GATEWAY = 1,
+    ZLINK_SERVICE_ROLE_SPOT    = 2,
+    ZLINK_SERVICE_ROLE_ROUTER  = 3,
+    ZLINK_SERVICE_ROLE_DEALER  = 4,
+    ZLINK_SERVICE_ROLE_PUB     = 5,
+    ZLINK_SERVICE_ROLE_SUB     = 6
+} zlink_service_role_t;
+```
+
+| Constant | Description |
+|----------|-------------|
+| `ZLINK_SERVICE_ROLE_GATEWAY` | Fixed role for Gateway service type |
+| `ZLINK_SERVICE_ROLE_SPOT` | Fixed role for SPOT service type |
+| `ZLINK_SERVICE_ROLE_ROUTER` | Socket family: ROUTER socket |
+| `ZLINK_SERVICE_ROLE_DEALER` | Socket family: DEALER socket |
+| `ZLINK_SERVICE_ROLE_PUB` | Socket family: PUB socket |
+| `ZLINK_SERVICE_ROLE_SUB` | Socket family: SUB socket |
+
+Gateway and SPOT have fixed roles (automatically derived from their service
+type). Socket family services require an explicit role matching the socket
+type. Role matching rules: PUB pairs with SUB; ROUTER and DEALER pair with
+each other.
 
 ## Functions
 
 ### zlink_discovery_new
 
-Create a Discovery instance with a fixed service family.
+Create a Discovery instance with a fixed service view.
 
 ```c
-void *zlink_discovery_new (void *ctx, zlink_service_type_t service_type);
+void *zlink_discovery_new (void *ctx,
+                           zlink_service_type_t service_type,
+                           const char *service_name);
 ```
 
 Allocates and initializes a new Discovery instance scoped to the given
-service type. The type is fixed at creation time and cannot be changed. All
-get and count queries operate within the specified service type scope. Use
-`ZLINK_SERVICE_TYPE_GATEWAY` for Gateway services or
-`ZLINK_SERVICE_TYPE_SPOT` for SPOT Node services.
+service type and logical service name. Both are fixed at creation time and
+cannot be changed. All subscribe/get/count queries operate within that one
+logical service view.
+
+Use `ZLINK_SERVICE_TYPE_GATEWAY` for Gateway services,
+`ZLINK_SERVICE_TYPE_SPOT` for SPOT Node services, or
+`ZLINK_SERVICE_TYPE_SOCKET` for raw socket family services
+(ROUTER/DEALER/PUB/SUB).
+
+**Parameters:**
+- `ctx` -- Context handle.
+- `service_type` -- Service family for this handle.
+- `service_name` -- Fixed logical service name for this handle.
 
 **Returns:** A Discovery handle on success, or `NULL` on failure.
 
@@ -158,6 +205,42 @@ int zlink_get_routing_id (void *discovery,
 
 ---
 
+### zlink_socket_attach_discovery
+
+Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery service view.
+
+```c
+int zlink_socket_attach_discovery (void *socket, void *discovery);
+```
+
+Attaches the socket to the given Discovery instance. The Discovery service
+type must be `ZLINK_SERVICE_TYPE_SOCKET` and the socket type must be one of
+ROUTER, DEALER, PUB, or SUB. The service role is derived automatically from
+the socket type.
+
+Once attached, the socket delegates provider registration, peer refresh, and
+shutdown to the Discovery instance. Manual `connect`, `disconnect`, `unbind`,
+and `close` operations fail on attached sockets. Destroy the Discovery
+instance to terminate the attached socket lifecycle.
+
+**Parameters:**
+- `socket` -- Socket handle (must be ROUTER, DEALER, PUB, or SUB).
+- `discovery` -- Discovery handle created with `ZLINK_SERVICE_TYPE_SOCKET`.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- Invalid socket or discovery handle.
+- `ENOTSUP` -- Socket type not supported (must be ROUTER, DEALER, PUB, or SUB).
+- `EBUSY` -- Socket already attached to a discovery instance, or has existing
+  connect endpoints or attached pipes.
+
+**Thread safety:** Same-handle calls remain thread-safe.
+
+**See also:** `zlink_discovery_new`, `zlink_discovery_destroy`
+
+---
+
 ### zlink_discovery_destroy
 
 Destroy the Discovery instance and release all resources.
@@ -167,8 +250,10 @@ int zlink_discovery_destroy(void **discovery_p);
 ```
 
 Closes the internal SUB socket, frees all cached data, and releases the
-Discovery instance. The pointer at `*discovery_p` is set to `NULL` after
-destruction.
+Discovery instance. Destroying a Discovery also shuts down every attached
+service participant (Gateway, SPOT Node, or socket) that delegated lifecycle
+ownership to this service view. The pointer at `*discovery_p` is set to
+`NULL` after destruction.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 

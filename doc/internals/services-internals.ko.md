@@ -16,6 +16,7 @@ struct service_entry_t {
     std::string service_name;
     std::string endpoint;
     zlink_routing_id_t routing_id;
+    uint16_t service_role;
     uint64_t registered_at;
     uint64_t last_heartbeat;
     uint32_t weight;
@@ -38,7 +39,7 @@ struct registry_state_t {
 
 | 트리거 | 설명 |
 |--------|------|
-| 등록 | Receiver REGISTER 성공 후 |
+| 등록 | 서비스 REGISTER 성공 후 |
 | 해제 | UNREGISTER 또는 Heartbeat 타임아웃 |
 | 주기적 | 30초 (기본, 설정 가능) |
 
@@ -55,12 +56,80 @@ struct registry_state_t {
 [AVAILABLE] → SERVICE_LIST(count==0) → [UNAVAILABLE]
 ```
 
-### 3.2 구독 동작
+### 3.2 서비스 타입과 역할
+
+Discovery는 프로바이더를 (service_type, service_role) 쌍으로 추적한다:
+
+```cpp
+// 서비스 타입
+static const uint16_t service_type_gateway_receiver = 1;
+static const uint16_t service_type_spot_node = 2;
+static const uint16_t service_type_socket = 3;
+
+// 서비스 역할
+enum service_role_t {
+    service_role_invalid = 0,
+    service_role_gateway = 1,  // gateway 타입 고정
+    service_role_spot    = 2,  // spot 타입 고정
+    service_role_router  = 3,  // 소켓 패밀리
+    service_role_dealer  = 4,  // 소켓 패밀리
+    service_role_pub     = 5,  // 소켓 패밀리
+    service_role_sub     = 6   // 소켓 패밀리
+};
+```
+
+Gateway와 SPOT은 서비스 타입에서 파생되는 고정 역할을 가진다. 소켓 패밀리
+서비스는 소켓 타입에 맞는 명시적 역할이 필요하다. 피어 발견을 위한 역할
+매칭 규칙:
+- PUB ↔ SUB
+- ROUTER ↔ ROUTER, ROUTER ↔ DEALER, DEALER ↔ DEALER
+- Gateway ↔ Gateway
+- SPOT ↔ SPOT
+
+### 3.3 Discovery 소유 서비스 실행
+
+Discovery는 연결된 서비스의 lifecycle owner 역할을 한다. 각 서비스 타입은
+`discovery_owned_service` 편의 API를 통해 엔드포인트를 등록한다:
+
+```cpp
+namespace discovery_owned_service {
+    int register_endpoint(discovery_t *, uint16_t service_type,
+                          const char *endpoint, uint32_t weight,
+                          std::string *resolved_endpoint_out,
+                          const zlink_routing_id_t *routing_id = NULL,
+                          uint16_t service_role = 0);
+    int update_weight(discovery_t *, uint16_t service_type,
+                      const char *endpoint, uint32_t weight,
+                      uint16_t service_role = 0);
+    int unregister_endpoint(discovery_t *, uint16_t service_type,
+                            const char *endpoint,
+                            uint16_t service_role = 0);
+}
+```
+
+Discovery는 내부적으로 `(service_type, service_role, service_name,
+endpoint)` 키의 `_registered_services` 맵을 유지하고,
+`refresh_registered_service_heartbeats()`로 등록된 모든 서비스의
+heartbeat를 주기적으로 갱신한다.
+
+### 3.4 소켓 Discovery 연결
+
+`socket_discovery_attachment_t`는 raw 소켓 lifecycle을 Discovery와
+통합한다. 소켓이 연결되면:
+
+1. 소켓 타입 지원 여부 검증 (ROUTER/DEALER/PUB/SUB)
+2. 소켓 타입에서 서비스 역할 파생
+3. `discovery_owned_service`를 통해 소켓의 bind 엔드포인트 등록
+4. 서비스 목록 업데이트를 관찰하고 피어 연결 갱신
+5. 토폴로지 상태 변경을 Discovery에 보고
+6. 수동 connect/disconnect/unbind/close 차단
+
+### 3.5 구독 동작
 - Registry PUB 전체 구독 (네트워크 필터링 없음)
 - subscribe/unsubscribe는 내부 필터로 동작
 - Gateway 알림/조회 대상만 제한
 
-### 3.3 중복/역전 처리
+### 3.6 중복/역전 처리
 - (registry_id, list_seq) 기준 최신 스냅샷만 적용
 - 동일 registry_id에서 이전 list_seq는 무시
 
@@ -118,13 +187,22 @@ Frame 1~N: Payload (가변)
 
 | msgId | 이름 | 방향 |
 |-------|------|------|
-| 0x0001 | REGISTER | Receiver → Registry |
-| 0x0002 | REGISTER_ACK | Registry → Receiver |
-| 0x0003 | UNREGISTER | Receiver → Registry |
-| 0x0004 | HEARTBEAT | Receiver → Registry |
+| 0x0001 | REGISTER | Service → Registry |
+| 0x0002 | REGISTER_ACK | Registry → Service |
+| 0x0003 | UNREGISTER | Service → Registry |
+| 0x0004 | HEARTBEAT | Service → Registry |
 | 0x0005 | SERVICE_LIST | Registry → Discovery |
 | 0x0006 | REGISTRY_SYNC | Registry → Registry |
-| 0x0007 | UPDATE_WEIGHT | Receiver → Registry |
+| 0x0007 | UPDATE_WEIGHT | Service → Registry |
+| 0x0008 | BOOTSTRAP_REQ | Discovery → Registry |
+| 0x0009 | BOOTSTRAP_REP | Registry → Discovery |
+| 0x000A | TOPOLOGY_REPORT | Discovery → Registry |
+| 0x000B | TOPOLOGY_QUERY | Client → Registry |
+| 0x000C | TOPOLOGY_REPLY | Registry → Client |
+| 0x000D | UNREGISTER_ACK | Registry → Service |
+| 0x000E | GATEWAY_PEER_REPORT | Discovery → Registry |
+| 0x000F | GATEWAY_PEER_QUERY | Client → Registry |
+| 0x0010 | GATEWAY_PEER_REPLY | Registry → Client |
 
 ### 6.3 SERVICE_LIST 포맷
 ```
@@ -132,13 +210,16 @@ Frame 0: msgId = 0x0005
 Frame 1: registry_id (uint32_t)
 Frame 2: list_seq (uint64_t)
 Frame 3: service_count (uint32_t)
-Frame 4~N: 서비스 엔트리
+Frame 4~N: 서비스 엔트리 (service_count만큼 반복)
+  - service_type (uint16_t)
   - service_name (string)
-  - receiver_count (uint32_t)
-  - receiver entries: endpoint, routing_id, weight
+  - provider_count (uint32_t)
+  - provider entries (provider_count만큼 반복):
+      service_role (uint16_t), endpoint (string),
+      routing_id, weight (uint32_t)
 ```
 
-### 6.4 비즈니스 메시지 (Gateway ↔ Receiver)
+### 6.4 비즈니스 메시지 (Gateway ↔ Gateway)
 ```
 Frame 0: routing_id
 Frame 1: request_id (uint64_t)
@@ -181,7 +262,10 @@ Frame 3~N: Payload
 - `spot_sub_t`: raw SUB socket 노출하지 않음;
   callback/recv API로만 소비
 
-### 7.4 Discovery 타입 분리
-- service_type 필드로 gateway_receiver/spot_node 분리
-  - `ZLINK_SERVICE_TYPE_GATEWAY` (1), `ZLINK_SERVICE_TYPE_SPOT` (2)
-- 상세: [plan/type-segmentation.md](../plan/type-segmentation.ko.md)
+### 7.6 Discovery 타입 분리
+- service_type 필드로 gateway_receiver/spot_node/socket_family 분리
+  - `service_type_gateway_receiver` (1), `service_type_spot_node` (2), `service_type_socket` (3)
+- 소켓 패밀리 서비스는 추가로 `service_role` 필드를 가진다
+  (ROUTER=3, DEALER=4, PUB=5, SUB=6) — 역할 기반 피어 매칭용
+- 역할 매칭은 `service_roles_match()`가 강제한다 — PUB은 SUB과 짝,
+  ROUTER/DEALER는 서로 짝을 이룬다

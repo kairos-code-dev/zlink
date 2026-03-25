@@ -1,5 +1,6 @@
 #include "../common/bench_common.hpp"
 #include "../common/perf_single_metric_header.hpp"
+#include "../../common/perf_spot_handle.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -160,6 +161,8 @@ void spot_client_handler (const zlink_routing_id_t *,
 
 void cleanup_spot_case (service_event_probe_t *sub_monitor_,
                         service_event_probe_t *pub_monitor_,
+                        void **sub_handle_,
+                        void **pub_handle_,
                         void **sub_node_,
                         void **pub_node_)
 {
@@ -167,6 +170,10 @@ void cleanup_spot_case (service_event_probe_t *sub_monitor_,
         close_service_event_probe (*sub_monitor_);
     if (pub_monitor_)
         close_service_event_probe (*pub_monitor_);
+    if (sub_handle_ && *sub_handle_)
+        perf_destroy_default_spot_handle (sub_handle_);
+    if (pub_handle_ && *pub_handle_)
+        perf_destroy_default_spot_handle (pub_handle_);
     if (sub_node_ && *sub_node_)
         (void) zlink_spot_node_destroy (sub_node_);
     if (pub_node_ && *pub_node_)
@@ -354,8 +361,10 @@ int run_case (const std::string &lib_name_,
     if (!ctx.valid ())
         return 1;
 
-    void *pub_node = zlink_spot_node_new (ctx.get (), "perf-spot");
-    void *sub_node = zlink_spot_node_new (ctx.get (), "perf-spot-client");
+    void *pub_node = zlink_spot_node_new (ctx.get ());
+    void *sub_node = zlink_spot_node_new (ctx.get ());
+    void *pub = NULL;
+    void *sub = NULL;
     if (!pub_node || !sub_node) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] node create failed err=" << zlink_errno ()
@@ -373,21 +382,6 @@ int run_case (const std::string &lib_name_,
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
     const int nodrop = 1;
-    (void) zlink_set_option (
-      pub_node, ZLINK_OPT_LINGER, &linger, sizeof (linger));
-    (void) zlink_set_option (
-      pub_node, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
-    (void) zlink_set_option (
-      pub_node, ZLINK_OPT_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
-    (void) zlink_set_pub_option (
-      pub_node, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof (nodrop));
-    (void) zlink_set_option (
-      sub_node, ZLINK_OPT_LINGER, &linger, sizeof (linger));
-    (void) zlink_set_option (
-      sub_node, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
-    (void) zlink_set_option (
-      sub_node, ZLINK_OPT_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
-
     if (!setup_tls_server (pub_node, transport_)
         || !setup_tls_client (sub_node, transport_)) {
         if (bench_debug_enabled ())
@@ -398,12 +392,33 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    void *pub = pub_node;
-    void *sub = sub_node;
+    pub = perf_create_default_spot_handle (pub_node);
+    sub = perf_create_default_spot_handle (sub_node);
+    if (!pub || !sub) {
+        perf_destroy_default_spot_handle (&sub);
+        perf_destroy_default_spot_handle (&pub);
+        zlink_spot_node_destroy (&sub_node);
+        zlink_spot_node_destroy (&pub_node);
+        return 1;
+    }
+
+    (void) zlink_set_option (pub, ZLINK_OPT_LINGER, &linger, sizeof (linger));
+    (void) zlink_set_option (pub, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
+    (void) zlink_set_option (
+      pub, ZLINK_OPT_SNDTIMEO, &sndtimeo_ms, sizeof (sndtimeo_ms));
+    (void) zlink_set_pub_option (pub, ZLINK_PUB_OPT_NODROP, &nodrop,
+                                 sizeof (nodrop));
+    (void) zlink_set_option (sub, ZLINK_OPT_LINGER, &linger, sizeof (linger));
+    (void) zlink_set_option (sub, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
+    (void) zlink_set_option (
+      sub, ZLINK_OPT_RCVTIMEO, &rcvtimeo_ms, sizeof (rcvtimeo_ms));
+
     if (zlink_subscribe_handler (sub, &spot_client_handler, NULL) != 0) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] callback handler attach failed err="
                       << zlink_errno () << std::endl;
+        perf_destroy_default_spot_handle (&sub);
+        perf_destroy_default_spot_handle (&pub);
         zlink_spot_node_destroy (&sub_node);
         zlink_spot_node_destroy (&pub_node);
         return 1;
@@ -432,7 +447,7 @@ int run_case (const std::string &lib_name_,
                       << (pub_monitor.monitor != NULL) << " err="
                       << zlink_errno () << std::endl;
         cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub_node, &pub_node);
+          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -443,7 +458,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] bind failed err=" << zlink_errno ()
                       << std::endl;
         cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub_node, &pub_node);
+          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -452,7 +467,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] connect peer failed err=" << zlink_errno ()
                       << std::endl;
         cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub_node, &pub_node);
+          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -461,7 +476,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] subscribe failed err=" << zlink_errno ()
                       << std::endl;
         cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub_node, &pub_node);
+          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -495,12 +510,13 @@ int run_case (const std::string &lib_name_,
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready wait failed" << std::endl;
         cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub_node, &pub_node);
+          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
     if (!start_single_metric_worker (&metric_worker)) {
-        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub_node, &pub_node);
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
@@ -520,7 +536,8 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       0.0,
                       queue_stats);
-        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub_node, &pub_node);
+        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                           &pub_node);
         return 1;
     }
 
@@ -542,7 +559,8 @@ int run_case (const std::string &lib_name_,
                   active_ok ? latency.p99_us : 0.0,
                   queue_stats);
 
-    cleanup_spot_case (&sub_monitor, &pub_monitor, &sub_node, &pub_node);
+    cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
+                       &pub_node);
     return active_ok ? 0 : 1;
 }
 } // namespace

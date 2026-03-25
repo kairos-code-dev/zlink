@@ -406,12 +406,11 @@ int run_case (const std::string &lib_name_,
         print_fail_result (lib_name_, k_pattern, transport_, msg_size_, probe);
     };
     const std::string run_token = make_gateway_run_token ();
-    const std::string service_name = "perf-gateway-" + run_token;
     const std::string server_routing_id = "perf-gateway-server-" + run_token;
     const std::string client_routing_id = "perf-gateway-client-" + run_token;
 
-    void *server_gateway = zlink_gateway_new (ctx.get (), service_name.c_str ());
-    void *client_gateway = zlink_gateway_new (ctx.get (), service_name.c_str ());
+    void *server_gateway = zlink_gateway_new (ctx.get ());
+    void *client_gateway = zlink_gateway_new (ctx.get ());
     if (!server_gateway || !client_gateway) {
         print_fail ();
         cleanup_gateway_case (&client_gateway, &server_gateway);

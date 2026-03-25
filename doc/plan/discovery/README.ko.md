@@ -5,6 +5,14 @@ raw `ROUTER`, `DEALER`, `PUB`, `SUB`도
 서비스 단위로 위치투명하게 자동 연결하도록 만드는
 상세 스펙과 설계 문서를 담는다.
 
+현재 상태:
+
+- 실행 가이드는 종료 상태까지 정리되어 있다.
+- 최종 종료 판정은
+  [`logs/codex_execution_guide_loop_20260325_155234/03_last_message.txt`](./logs/codex_execution_guide_loop_20260325_155234/03_last_message.txt)
+  의 `미적용 사항이 없습니다.`다.
+- 최종 반영 commit은 `89046e93 refactor: finish discovery-owned service execution`이다.
+
 문서:
 
 - [`raw-socket-service-discovery-spec.ko.md`](./raw-socket-service-discovery-spec.ko.md)

@@ -441,7 +441,7 @@ bool create_gateway_slots(gateway_client_state_t *state,
         if (!slot)
             return false;
 
-        slot->gateway = zlink_gateway_new(ctx.get(), k_service_name);
+        slot->gateway = zlink_gateway_new(ctx.get());
         if (!slot->gateway || !apply_gateway_options(slot->gateway, settings)
             || zlink_set_routing_id(slot->gateway, routing_id,
                                     std::strlen(routing_id))

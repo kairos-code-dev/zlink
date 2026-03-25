@@ -1,6 +1,7 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_metric_header.hpp"
+#include "../../common/perf_spot_handle.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 #include <algorithm>
 #include <atomic>
@@ -500,7 +501,8 @@ int run_server_benchmark(const std::string &lib_name,
             max_msg_size = msg_sizes[i];
     }
 
-    void *node = zlink_spot_node_new(ctx.get(), k_service_name);
+    void *node = zlink_spot_node_new(ctx.get());
+    void *pub = NULL;
     if (!node) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-server] node create failed err="
@@ -516,10 +518,17 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
-    if (!apply_spot_server_options(node, settings)) {
+    pub = perf_create_default_spot_handle(node);
+    if (!pub) {
+        zlink_spot_node_destroy(&node);
+        return 1;
+    }
+
+    if (!apply_spot_server_options(pub, settings)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-server] pub init failed err="
                       << zlink_errno() << std::endl;
+        perf_destroy_default_spot_handle(&pub);
         zlink_spot_node_destroy(&node);
         return 1;
     }
@@ -531,11 +540,10 @@ int run_server_benchmark(const std::string &lib_name,
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-server] bind failed err="
                       << zlink_errno() << std::endl;
+        perf_destroy_default_spot_handle(&pub);
         zlink_spot_node_destroy(&node);
         return 1;
     }
-
-    void *pub = node;
 
     spot_server_state_t state;
     state.node = node;

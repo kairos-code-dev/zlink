@@ -2,6 +2,7 @@
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
 #include "../common/perf_multi_metric_header.hpp"
+#include "../../common/perf_spot_handle.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
@@ -39,12 +40,14 @@ struct spot_client_slot_t
 {
     spot_client_slot_t() :
         node(NULL),
+        handle(NULL),
         index(0),
         stop(false)
     {
     }
 
     void *node;
+    void *handle;
     size_t index;
     ready_monitor_t monitor;
     std::atomic<bool> stop;
@@ -340,11 +343,11 @@ bool apply_spot_sub_options(void *sub, const multi_bench_settings_t &settings)
 
 bool open_spot_ready_monitor(spot_client_slot_t *slot)
 {
-    if (!slot || !slot->node)
+    if (!slot || !slot->handle)
         return false;
 
     if (!open_configured_service_monitor(
-          slot->node,
+          slot->handle,
           ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR,
           &slot->monitor)) {
         return false;
@@ -406,6 +409,8 @@ void destroy_spot_slots(spot_client_state_t *state,
                       << " node=" << (slot->node ? 1 : 0) << std::endl;
         }
         close_spot_ready_monitor(slot);
+        if (slot->handle)
+            perf_destroy_default_spot_handle(&slot->handle);
         if (slot->node) {
             zlink_spot_node_destroy(&slot->node);
             if (bench_transition_debug_enabled() && i < 4) {
@@ -545,7 +550,7 @@ void spot_client_sub_handler(const zlink_routing_id_t *,
 
 bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
 {
-    if (!slot || !slot->node)
+    if (!slot || !slot->handle)
         return false;
 
     if (received)
@@ -556,7 +561,7 @@ bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
     const int rc = zlink_subscribe(
-      slot->node, &parts, &part_count, flags, topic, &topic_len);
+      slot->handle, &parts, &part_count, flags, topic, &topic_len);
     if (rc != 0) {
         int err = zlink_errno();
         if (err == 0)
@@ -703,8 +708,8 @@ bool start_spot_recv_workers(spot_client_state_t *state)
     for (size_t i = 0; i < state->slots.size(); ++i) {
         spot_client_slot_t *slot = state->slots[i];
         spot_recv_worker_t *worker = state->recv_workers[i % worker_count];
-        if (!slot || !worker || !worker->poller
-            || zlink_poller_add(worker->poller, slot->node, slot, ZLINK_POLLIN)
+        if (!slot || !worker || !worker->poller || !slot->handle
+            || zlink_poller_add(worker->poller, slot->handle, slot, ZLINK_POLLIN)
                  != 0) {
             return false;
         }
@@ -747,9 +752,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
             return false;
         slot->index = i;
 
-        char service_name[64];
-        std::snprintf(service_name, sizeof(service_name), "perf-spot-c%zu", i);
-        slot->node = zlink_spot_node_new(ctx.get(), service_name);
+        slot->node = zlink_spot_node_new(ctx.get());
         if (!slot->node || !setup_tls_client(slot->node, transport)) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] node create/tls failed slot="
@@ -760,20 +763,30 @@ bool create_spot_slots(ctx_guard_t &ctx,
             return false;
         }
 
+        slot->handle = perf_create_default_spot_handle(slot->node);
+        if (!slot->handle) {
+            if (slot->node)
+                zlink_spot_node_destroy(&slot->node);
+            delete slot;
+            return false;
+        }
+
         if ((recv_mode == spot_recv_callback
-             && zlink_subscribe_handler(slot->node, &spot_client_sub_handler,
+             && zlink_subscribe_handler(slot->handle, &spot_client_sub_handler,
                                         slot)
                   != 0)
-            || !apply_spot_sub_options(slot->node, settings)
+            || !apply_spot_sub_options(slot->handle, settings)
             || !open_spot_ready_monitor(slot)
             || zlink_spot_node_connect_peer(slot->node, endpoint.c_str()) != 0
-            || zlink_set_subscription (slot->node, k_topic)
+            || zlink_set_subscription (slot->handle, k_topic)
                  != 0) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-client] slot create failed slot=" << i
                           << " node=" << (slot->node != NULL)
                           << " err=" << zlink_errno() << std::endl;
             close_spot_ready_monitor(slot);
+            if (slot->handle)
+                perf_destroy_default_spot_handle(&slot->handle);
             if (slot->node)
                 zlink_spot_node_destroy(&slot->node);
             delete slot;

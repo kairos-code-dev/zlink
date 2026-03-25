@@ -529,7 +529,7 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
-    void *gateway = zlink_gateway_new(ctx.get(), k_service_name);
+    void *gateway = zlink_gateway_new(ctx.get());
     if (!gateway)
         return 1;
     if (zlink_set_routing_id(gateway, k_server_routing_id,

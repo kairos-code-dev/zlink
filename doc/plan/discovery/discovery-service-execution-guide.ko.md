@@ -1,9 +1,10 @@
 # Discovery / Registry 서비스 자동 연결 실행 가이드
 
-> 상태: active
+> 상태: 완료
 > 기준 문서: `doc/plan/discovery/raw-socket-service-discovery-spec.ko.md`
 > 대상 범위: `core/`, `core/tests/`, `doc/plan/discovery/`
 > 목적: discovery-owned service model 전환과 registry/discovery/raw socket/gateway/spot 확장을 중단 없이 끝까지 밀기 위한 실행 순서 고정
+> 최종 종료 판정: `미적용 사항이 없습니다.`
 
 ## 1. 문서 목적
 
@@ -696,3 +697,18 @@ git push
 ```text
 계속 진행 필요
 ```
+
+## 7. 종료 증거
+
+최종 종료 판정은 아래 증거를 기준으로 닫았다.
+
+- 최종 실행 결과:
+  [`logs/codex_execution_guide_loop_20260325_155234/03_last_message.txt`](./logs/codex_execution_guide_loop_20260325_155234/03_last_message.txt)
+  - 내용: `미적용 사항이 없습니다.`
+- 최종 반영 commit:
+  - `89046e93 refactor: finish discovery-owned service execution`
+  - 시각: `2026-03-25T16:39:13+09:00`
+
+이 섹션은 guide `6. 종료 판정`의
+`각 단계 완료 직후 commit / push 기록이 남아 있음` 요구를
+이 디렉토리에서 바로 추적할 수 있게 남긴 요약 증거다.

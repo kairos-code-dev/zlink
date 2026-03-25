@@ -4,9 +4,44 @@
 #define __ZLINK_SPOT_INTERNAL_RECEIVER_HPP_INCLUDED__
 
 #include "services/spot/spot_sub.hpp"
+#include "utils/mutex.hpp"
+
+#include <atomic>
+#include <set>
+#include <vector>
 
 namespace zlink
 {
+class spot_pub_t;
+
+struct spot_node_option_setting_t
+{
+    spot_node_option_setting_t () : enabled (false), value (0), size (0) {}
+
+    bool enabled;
+    int value;
+    size_t size;
+};
+
+struct spot_node_pub_defaults_t
+{
+    spot_node_option_setting_t sndhwm;
+    spot_node_option_setting_t sndtimeo;
+    spot_node_option_setting_t linger;
+    spot_node_option_setting_t nodrop;
+    spot_node_option_setting_t sndbuf;
+    spot_node_option_setting_t rcvbuf;
+};
+
+struct spot_node_sub_defaults_t
+{
+    spot_node_option_setting_t rcvhwm;
+    spot_node_option_setting_t linger;
+    spot_node_option_setting_t sndbuf;
+    spot_node_option_setting_t rcvbuf;
+    spot_node_option_setting_t rcvtimeo;
+};
+
 class spot_internal_receiver_t
 {
   public:
@@ -57,6 +92,75 @@ class spot_internal_receiver_t
 
   private:
     spot_sub_t *_sub;
+};
+
+class spot_node_default_handles_t
+{
+  public:
+    typedef spot_node_option_setting_t option_setting_t;
+    typedef spot_node_pub_defaults_t pub_defaults_t;
+    typedef spot_node_sub_defaults_t sub_defaults_t;
+
+    spot_node_default_handles_t ();
+
+    static int validate_pub_option (int option_,
+                                    const void *optval_,
+                                    size_t optvallen_);
+    static int validate_sub_option (int option_,
+                                    const void *optval_,
+                                    size_t optvallen_);
+    static void copy_option_setting (option_setting_t *dst_,
+                                     const void *optval_,
+                                     size_t optvallen_);
+
+    int set_pub_option (int option_, const void *optval_, size_t optvallen_);
+    int set_sub_option (int option_, const void *optval_, size_t optvallen_);
+
+    pub_defaults_t load_pub_defaults () const;
+    sub_defaults_t load_sub_defaults () const;
+
+    spot_pub_t *default_pub () const;
+    spot_sub_t *default_sub () const;
+    spot_internal_receiver_t *internal_receiver () const;
+
+    spot_pub_t *fast_default_pub () const;
+    spot_sub_t *fast_default_sub () const;
+    spot_internal_receiver_t *fast_internal_receiver () const;
+    mutex_t &default_pub_init_lock () { return _default_pub_sync; }
+    mutex_t &default_sub_init_lock () { return _default_sub_sync; }
+
+    void publish_default_pub (spot_pub_t *pub_,
+                              spot_pub_t **published_default_pub_out_);
+    void publish_default_sub (spot_sub_t *sub_);
+    spot_internal_receiver_t *publish_internal_receiver (
+      spot_internal_receiver_t *receiver_,
+      spot_sub_t *created_sub_,
+      spot_sub_t *previous_default_sub_,
+      bool *installed_out_);
+
+    void remove_spot_pub (spot_pub_t *pub_);
+    bool remove_spot_sub (spot_sub_t *sub_);
+    void snapshot_destroy_handles (const std::set<spot_pub_t *> &pubs_,
+                                   const std::set<spot_sub_t *> &subs_,
+                                   std::vector<spot_pub_t *> *pubs_out_,
+                                   std::vector<spot_sub_t *> *subs_out_);
+    spot_internal_receiver_t *detach_internal_receiver ();
+
+  private:
+    void store_pub_option (int option_, const void *optval_, size_t optvallen_);
+    void store_sub_option (int option_, const void *optval_, size_t optvallen_);
+
+    mutable mutex_t _sync;
+    mutable mutex_t _default_pub_sync;
+    mutable mutex_t _default_sub_sync;
+    spot_pub_t *_default_pub;
+    spot_sub_t *_default_sub;
+    spot_internal_receiver_t *_internal_receiver;
+    std::atomic<spot_pub_t *> _default_pub_fast;
+    std::atomic<spot_sub_t *> _default_sub_fast;
+    std::atomic<spot_internal_receiver_t *> _internal_receiver_fast;
+    pub_defaults_t _pub_defaults;
+    sub_defaults_t _sub_defaults;
 };
 }
 

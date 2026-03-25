@@ -281,7 +281,7 @@ int spot_node_t::ensure_registered ()
         if (!discovery->latest_registry_uplink (&_registration_uplink_endpoint))
             _registration_uplink_endpoint.clear ();
         _registration_tls_locked = true;
-        need_default_pub = _pubs.empty () && !_default_pub;
+        need_default_pub = _pubs.empty () && !_handle_defaults.default_pub ();
     }
 
     if (need_default_pub && !ensure_default_pub ())
@@ -485,7 +485,8 @@ int spot_node_t::destroy ()
         }
         for (std::set<spot_sub_t *>::const_iterator it = _subs.begin ();
              it != _subs.end (); ++it) {
-            if (_internal_receiver && *it == _internal_receiver->impl ())
+            spot_internal_receiver_t *receiver = _handle_defaults.internal_receiver ();
+            if (receiver && *it == receiver->impl ())
                 continue;
             if (*it && !(*it)->is_node_owned_default ()) {
                 errno = EBUSY;

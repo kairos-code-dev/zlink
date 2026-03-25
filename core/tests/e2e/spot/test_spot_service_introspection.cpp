@@ -4,6 +4,7 @@
 #include "../../testutil_unity.hpp"
 #include "../../testutil_monitoring.hpp"
 #include "../../../src/services/spot/spot_node.hpp"
+#include "../../../src/services/spot/spot_node_access.hpp"
 #include "../../../src/services/spot/spot_pub.hpp"
 #include "../../../src/core/msg.hpp"
 
@@ -957,6 +958,44 @@ static void test_spot_publish_rollback_preserves_next_topic_boundary ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_node_default_handle_owner_keeps_defaults_private ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node_handle = create_node (ctx, "spot-default-owner");
+    zlink::spot_node_t *node =
+      static_cast<zlink::spot_node_t *> (node_handle);
+    TEST_ASSERT_NOT_NULL (node);
+
+    const int pub_sndhwm = 345;
+    TEST_ASSERT_SUCCESS_ERRNO (node->set_pub_option (
+      ZLINK_SPOT_PUB_OPT_SNDHWM, &pub_sndhwm, sizeof (pub_sndhwm)));
+
+    zlink::spot_pub_t *default_pub = node->ensure_default_pub ();
+    TEST_ASSERT_NOT_NULL (default_pub);
+    TEST_ASSERT_EQUAL_PTR (default_pub, node->ensure_default_pub ());
+
+    const int sub_rcvhwm = 678;
+    TEST_ASSERT_SUCCESS_ERRNO (node->set_sub_option (
+      ZLINK_SPOT_SUB_OPT_RCVHWM, &sub_rcvhwm, sizeof (sub_rcvhwm)));
+
+    zlink::spot_internal_receiver_t *receiver =
+      zlink::spot_node_access_t::ensure_internal_receiver (node);
+    TEST_ASSERT_NOT_NULL (receiver);
+    TEST_ASSERT_EQUAL_PTR (
+      receiver, zlink::spot_node_access_t::ensure_internal_receiver (node));
+    TEST_ASSERT_NULL (node->default_sub ());
+
+    zlink::spot_sub_t *default_sub = node->ensure_default_sub ();
+    TEST_ASSERT_NOT_NULL (default_sub);
+    TEST_ASSERT_TRUE (receiver->impl () != default_sub);
+    TEST_ASSERT_EQUAL_PTR (default_sub, node->default_sub ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_handle));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 static bool should_run_spot_introspection_test (const char *name_)
 {
     const char *selected = getenv ("ZLINK_TEST_CASE");
@@ -981,6 +1020,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_callback_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_publish_rollback_preserves_next_topic_boundary);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_node_default_handle_owner_keeps_defaults_private);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_snapshot_status_peers_subjects);
 #undef RUN_SPOT_INTROSPECTION_TEST

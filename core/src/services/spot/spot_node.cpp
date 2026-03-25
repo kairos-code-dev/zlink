@@ -239,13 +239,7 @@ spot_node_t::spot_node_t (ctx_t *ctx_, const char *service_name_) :
     _send_ready_handler (NULL),
     _send_ready_handler_userdata (NULL),
     _local_filtered_sub_count (0),
-    _active_peer_count (0),
-    _default_pub (NULL),
-    _default_sub (NULL),
-    _internal_receiver (NULL),
-    _default_pub_fast (NULL),
-    _default_sub_fast (NULL),
-    _internal_receiver_fast (NULL)
+    _active_peer_count (0)
 {
     _lifecycle.transition_to (service_state_starting);
     _service_name = service_name_ ? service_name_ : "";

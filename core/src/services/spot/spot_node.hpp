@@ -32,33 +32,9 @@ struct spot_node_access_t;
 class spot_node_t : public discovery_observer_t
 {
   public:
-    struct option_setting_t
-    {
-        option_setting_t () : enabled (false), value (0), size (0) {}
-
-        bool enabled;
-        int value;
-        size_t size;
-    };
-
-    struct pub_defaults_t
-    {
-        option_setting_t sndhwm;
-        option_setting_t sndtimeo;
-        option_setting_t linger;
-        option_setting_t nodrop;
-        option_setting_t sndbuf;
-        option_setting_t rcvbuf;
-    };
-
-    struct sub_defaults_t
-    {
-        option_setting_t rcvhwm;
-        option_setting_t linger;
-        option_setting_t sndbuf;
-        option_setting_t rcvbuf;
-        option_setting_t rcvtimeo;
-    };
+    typedef spot_node_option_setting_t option_setting_t;
+    typedef spot_node_pub_defaults_t pub_defaults_t;
+    typedef spot_node_sub_defaults_t sub_defaults_t;
 
     spot_node_t (ctx_t *ctx_, const char *service_name_);
     ~spot_node_t ();
@@ -160,17 +136,6 @@ class spot_node_t : public discovery_observer_t
                                                bool node_owned_default_);
     int apply_pub_defaults (spot_pub_t *pub_, const pub_defaults_t &defaults_);
     int apply_sub_defaults (spot_sub_t *sub_, const sub_defaults_t &defaults_);
-    static int validate_pub_option (int option_,
-                                    const void *optval_,
-                                    size_t optvallen_);
-    static int validate_sub_option (int option_,
-                                    const void *optval_,
-                                    size_t optvallen_);
-    static void copy_option_setting (option_setting_t *dst_,
-                                     const void *optval_,
-                                     size_t optvallen_);
-    void store_pub_option (int option_, const void *optval_, size_t optvallen_);
-    void store_sub_option (int option_, const void *optval_, size_t optvallen_);
     int resolve_advertise_endpoint (const char *advertise_endpoint_,
                                     std::string *out_) const;
     void refresh_local_pub_ingress_hwm ();
@@ -221,8 +186,6 @@ class spot_node_t : public discovery_observer_t
     uint32_t _tag;
 
     mutable mutex_t _sync;
-    mutable mutex_t _default_pub_sync;
-    mutable mutex_t _default_sub_sync;
 
     spot_runtime_t *_runtime;
     uint64_t _connected_peer_version_seen;
@@ -283,14 +246,7 @@ class spot_node_t : public discovery_observer_t
     std::atomic<uint32_t> _local_filtered_sub_count;
     std::atomic<uint32_t> _active_peer_count;
 
-    spot_pub_t *_default_pub;
-    spot_sub_t *_default_sub;
-    spot_internal_receiver_t *_internal_receiver;
-    std::atomic<spot_pub_t *> _default_pub_fast;
-    std::atomic<spot_sub_t *> _default_sub_fast;
-    std::atomic<spot_internal_receiver_t *> _internal_receiver_fast;
-    pub_defaults_t _pub_defaults;
-    sub_defaults_t _sub_defaults;
+    spot_node_default_handles_t _handle_defaults;
     std::set<spot_pub_t *> _pubs;
     std::set<spot_sub_t *> _subs;
     service_runtime_base_t _lifecycle;

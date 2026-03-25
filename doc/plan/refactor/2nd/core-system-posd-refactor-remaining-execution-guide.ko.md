@@ -329,14 +329,15 @@ archive로만 남긴다.
 | Gap review 기준 service residual deep-module 마감 | 완료 | 5.6A | `core/src/services/discovery/registry.cpp`, `core/src/services/discovery/registry_query.cpp`, `core/src/services/discovery/registry_state.cpp`, `core/src/services/discovery/registry_runtime.cpp`, `core/src/services/spot/spot_subject_access.cpp`, `core/src/services/spot/spot_subject_query.cpp`, `core/src/services/spot/spot_subject_poller.cpp`, `core/src/services/spot/spot_subject_publish.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract)$'`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_spot_subject_access|unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: efdc15db` |
 | Post-residual 기준 `spot` secure multi-peer 구조 잔여 마감 | 진행중 | 5.7A | `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/unittest/unittest_spot_data_plane_protocol.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp` | current authority note: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
 | Post-residual 기준 `socket_message_api.cpp` / `options_t` ownership 재정리 | 미착수 | 5.7B | `core/src/api/socket_message_api.cpp`, `core/src/core/options.hpp`, `core/src/core/options_owner.cpp`, `core/src/core/options_dispatch.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; 대표 회귀는 current owner 정리 후 별도 기록 |
-| Post-residual 기준 `spot_node_t` / `discovery_t` facade 구조 마감 | 미착수 | 5.7C | `core/src/services/spot/spot_node.hpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/*` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current owner 정리 후 기록 |
-| Post-residual 기준 engine / transport owner 재판정 | 미착수 | 5.7D | `core/src/engine/asio/asio_engine.cpp`, `core/src/transports/ws/asio_ws_engine.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current 구조 정리 후 기록 |
+| Post-residual 기준 `spot_node_t` handle/defaults/facade 구조 마감 | 미착수 | 5.7C | `core/src/services/spot/spot_node.hpp`, `core/src/services/spot/spot_node_handles.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_internal_receiver.*` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current owner 정리 후 기록 |
+| Post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감 | 미착수 | 5.7D | `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_protocol.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current owner 정리 후 기록 |
+| Post-residual 기준 engine / transport owner 재판정 | 미착수 | 5.7E | `core/src/engine/asio/asio_engine.cpp`, `core/src/transports/ws/asio_ws_engine.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current 구조 정리 후 기록 |
 
 이 표는 각 작업 묶음이 끝날 때마다 반드시 갱신한다.
 표에 `미착수`, `진행중`, `검증중`이 하나라도 남아 있으면 문서 완료가 아니다.
 표의 `검증 증거` 칸이 비어 있으면 상태를 `완료`로 바꿀 수 없다.
 5.0 표의 첫 미완료 행보다 아래 행을 먼저 진행하는 것은 금지한다.
-`5.7A`~`5.7D`는 post-residual 구조 잔여를 순서대로 닫기 위한 행이다.
+`5.7A`~`5.7E`는 post-residual 구조 잔여를 순서대로 닫기 위한 행이다.
 성능 개선용 별도 umbrella 행은 두지 않는다.
 
 ### 5.1 API facade 마무리
@@ -550,6 +551,15 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - [post-residual-review `10. 함께 닫아야 하는 구조 범위`](./core-system-posd-refactor-post-residual-review.ko.md#10-현재-perf-마감을-위해-함께-닫아야-하는-구조-범위)
 - [residual-execution-spec `9. 현재 active handoff`](./core-system-posd-refactor-residual-execution-spec.ko.md#9-현재-active-handoff)
 
+구현 고정 해석:
+
+- top-level owner 문장: `spot_node_t`는 service semantic facade이고, secure multi-peer hot-path detail은 `runtime/protocol/control` private owner가 가진다.
+- 남길 책임: service semantic entry, external lifecycle contract, public handler/summary facade
+- 숨길 책임: monitor ready 해석, connected peer membership, ready peer count, budget/control hint, secure send path detail
+- 허용 파일 경계: `spot_data_plane_internal.hpp`, `spot_data_plane_protocol.cpp`, `spot_data_plane_runtime.cpp`, `spot_node_control.cpp`, `spot_runtime.hpp`, 필요 시 이에 직접 연결된 `core/tests/` 회귀
+- 금지: `spot_node_t`에 hot-path field/cache를 다시 추가하는 것, timing 완화로 회귀를 숨기는 것, `core/perf/`를 수정하는 것
+- 필수 대표 gate: `unittest_spot_data_plane_budget`, `unittest_spot_data_plane_protocol`, `test_single_spot_benchmark_process`, `test_multi_spot_benchmark_process`, `test_spot_pubsub_scenario`, `test_spot_service_introspection`
+
 - [ ] `spot` secure multi-peer 경로에서 남아 있는 lifecycle/control/data-plane 허브를 다시 기록한다.
 - [ ] [`spot_data_plane_internal.hpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp),
   [`spot_data_plane_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_runtime.cpp),
@@ -580,6 +590,15 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - [post-residual-review `10. 함께 닫아야 하는 구조 범위`](./core-system-posd-refactor-post-residual-review.ko.md#10-현재-perf-마감을-위해-함께-닫아야-하는-구조-범위)
 - [residual-execution-spec `6. post-residual 진입 및 재진입 규칙`](./core-system-posd-refactor-residual-execution-spec.ko.md#6-post-residual-진입-및-재진입-규칙)
 
+구현 고정 해석:
+
+- top-level owner 문장: `socket_message_api.cpp`는 public message facade이고, domain-specific decode/dispatch는 narrower entry owner로 내려가야 한다.
+- 남길 책임: 공개 message API entry, 공통 tag/argument 검증, semantic routing to collaborator
+- 숨길 책임: socket/service/stream/spot별 concrete branching, option bag 직접 해석, domain-specific reply/decode detail
+- 허용 파일 경계: `socket_message_api.cpp`, `options.hpp`, `options_owner.cpp`, `options_dispatch.cpp`, 필요 시 이에 직접 연결된 `core/src/api/` private helper와 `core/tests/`
+- 금지: public API surface 변경, unrelated service/transport 파일로 확산, `options_t`를 다른 central bag 이름으로만 바꾸는 이동
+- 필수 대표 gate: `unittest_typed_option`, `test_stream_threadsafe`, `test_spot_service_introspection`, 필요 시 `Phase 1c` 대표 core API smoke 일부 재실행
+
 - [ ] [`socket_message_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_api.cpp)가
   socket/service/stream/spot 분기 허브로 남는 지점을 다시 기록한다.
 - [ ] [`options.hpp`](/home/hep7/project/kairos/zlink/core/src/core/options.hpp),
@@ -595,7 +614,7 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - 변경 범위가 unrelated service/transport로 넓게 번지지 않는다.
 - 대표 회귀와 ABI 무변경 확인을 함께 남긴다.
 
-### 5.7C post-residual 기준 `spot_node_t` / `discovery_t` facade 구조 마감
+### 5.7C post-residual 기준 `spot_node_t` handle/defaults/facade 구조 마감
 
 참고 authority:
 
@@ -603,21 +622,62 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - [post-residual-review `10. 함께 닫아야 하는 구조 범위`](./core-system-posd-refactor-post-residual-review.ko.md#10-현재-perf-마감을-위해-함께-닫아야-하는-구조-범위)
 - [residual-execution-spec `6. post-residual 진입 및 재진입 규칙`](./core-system-posd-refactor-residual-execution-spec.ko.md#6-post-residual-진입-및-재진입-규칙)
 
+구현 고정 해석:
+
+- top-level owner 문장: `spot_node_t`는 service semantic facade이고, default handle lifecycle과 option default policy는 dedicated private owner가 가진다.
+- 남길 책임: bind/connect/discovery attach 같은 semantic service entry, public child-handle contract, high-level snapshot facade
+- 숨길 책임: default `pub/sub` 생성/보존/파기, internal receiver 생성/전환, option default 저장/적용, fast-path cache detail
+- 허용 파일 경계: `spot_node.hpp`, `spot_node_handles.cpp`, `spot_node_control.cpp`, `spot_internal_receiver.*`, 필요 시 이에 직접 연결된 `test_spot_service_introspection`
+- 금지: `spot_node.hpp`에 friend/access seam을 더 늘리는 것, handle lifecycle을 `spot_node_control.cpp`로 다시 되밀어 넣는 것, public child-handle contract 변경
+- 필수 대표 gate: `test_spot_service_introspection`, `test_spot_pubsub_scenario`, `test_spot_service_introspection_handler_monitor_close`, `git diff -- core/include/zlink.h core/src/libzlink.vers`
+
 - [ ] [`spot_node.hpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp)와
-  [`discovery.hpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery.hpp)가
-  facade인지 giant coordinator인지 다시 판정한다.
-- [ ] `spot_node_control.cpp` current owner 수정이 끝난 뒤에도 top-level facade가 hot-path를 오염시키는지 확인한다.
-- [ ] ownership, lifecycle, invariant를 어떤 private owner가 가지는지 먼저 문장으로 고정한다.
-- [ ] friend/access seam이 내부 우회 통로로 남는 지점을 줄인다.
+  [`spot_node_handles.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_handles.cpp)가
+  semantic facade인지 default-handle coordinator인지 다시 판정한다.
+- [ ] default `pub/sub`, internal receiver, option default 저장/적용이 어떤 private owner에 속하는지 먼저 문장으로 고정한다.
+- [ ] `spot_node_control.cpp` current owner 수정이 끝난 뒤에도 top-level facade가 hot-path와 handle lifecycle을 함께 오염시키는지 확인한다.
+- [ ] friend/access seam과 fast-path pointer cache가 내부 우회 통로로 남는 지점을 줄인다.
 - [ ] 이 항목은 `5.7A`, `5.7B` 완료 후에만 진행한다.
 
 닫힘 기준:
 
-- `spot_node_t`와 `discovery_t` 설명이 "semantic facade + private owner 조정" 수준으로 줄어든다.
-- current hot-path 수정과 무관한 정책/상태가 top-level facade에 다시 남지 않는다.
+- `spot_node_t` 설명이 "semantic facade + handle/defaults owner 위임" 수준으로 줄어든다.
+- default handle 생성/보존/파기와 option default 적용이 top-level facade 바깥 private owner로 설명된다.
 - service core 회귀가 유지된다.
 
-### 5.7D post-residual 기준 engine / transport owner 재판정
+### 5.7D post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감
+
+참고 authority:
+
+- [post-residual-review `8. 코드 전반 우선순위 재판정`](./core-system-posd-refactor-post-residual-review.ko.md#8-코드-전반-우선순위-재판정)
+- [post-residual-review `10. 함께 닫아야 하는 구조 범위`](./core-system-posd-refactor-post-residual-review.ko.md#10-현재-perf-마감을-위해-함께-닫아야-하는-구조-범위)
+- [residual-execution-spec `6. post-residual 진입 및 재진입 규칙`](./core-system-posd-refactor-residual-execution-spec.ko.md#6-post-residual-진입-및-재진입-규칙)
+
+구현 고정 해석:
+
+- top-level owner 문장: `discovery_t`는 discovery semantic facade이고, registry bootstrap/uplink/control detail은 dedicated private owner가 가진다.
+- 남길 책임: registry connect/register/update/unregister semantic contract, observer facade, topology snapshot facade
+- 숨길 책임: bootstrap retry/wakeup, routing-id lock detail, socket option 저장/적용, tls client option materialization, uplink/control dealer state
+- 허용 파일 경계: `discovery.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_protocol.cpp`, 필요 시 이에 직접 연결된 `core/tests/`
+- 금지: bootstrap state를 `discovery_t` 본체 field로 더 늘리는 것, `spot/gateway`에서 discovery internal state를 직접 읽게 하는 것, transport restriction contract 완화
+- 필수 대표 gate: `test_service_discovery`, `test_service_introspection`, `test_service_introspection_discovery_self_close`, `test_service_introspection_discovery_control_path`, `test_monitor_service_contract`
+
+- [ ] [`discovery.hpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery.hpp)와
+  [`discovery_bootstrap.cpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery_bootstrap.cpp),
+  [`discovery_uplink.cpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery_uplink.cpp)가
+  semantic facade인지 bootstrap/uplink coordinator인지 다시 판정한다.
+- [ ] registry bootstrap, routing-id lock, socket option 저장/적용, tls client option 반영이 어떤 private owner에 속하는지 먼저 문장으로 고정한다.
+- [ ] bootstrap retry/wakeup/control task 시작 조건이 top-level facade와 뒤섞인 지점을 줄인다.
+- [ ] friend/access seam과 internal bootstrap helper가 상태 우회 통로로 남는 지점을 줄인다.
+- [ ] 이 항목은 `5.7A`, `5.7B`, `5.7C` 완료 후에만 진행한다.
+
+닫힘 기준:
+
+- `discovery_t` 설명이 "semantic facade + bootstrap/uplink owner 위임" 수준으로 줄어든다.
+- registry bootstrap과 uplink/control state가 top-level facade 바깥 private owner로 설명된다.
+- service/discovery 대표 회귀가 유지된다.
+
+### 5.7E post-residual 기준 engine / transport owner 재판정
 
 참고 authority:
 
@@ -625,12 +685,21 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - [post-residual-review `10.3 최종 구조 완료 판정 기준`](./core-system-posd-refactor-post-residual-review.ko.md#103-최종-구조-완료-판정-기준)
 - [residual-execution-spec `8. 반복 리뷰 절차`](./core-system-posd-refactor-residual-execution-spec.ko.md#8-반복-리뷰-절차)
 
+구현 고정 해석:
+
+- top-level owner 문장: engine/transport는 current active 구조 row의 collaborator여야 하며, 독립 giant owner가 아니면 새 구조 작업을 열지 않는다.
+- 남길 책임: backend-specific event loop, transport-local wire/channel execution
+- 숨길 책임: service/socket semantic policy, cross-layer lifecycle orchestration, unrelated global owner knowledge
+- 허용 파일 경계: `asio_engine.cpp`, `asio_ws_engine.cpp`, 해당 판정에 직접 필요한 companion file만 제한적으로 포함
+- 금지: 단순 파일 크기만으로 분해를 시작하는 것, `5.7A`~`5.7D` 미해결 owner를 engine/transport로 떠넘기는 것, representative gate 없이 local polish를 완료로 적는 것
+- 필수 대표 gate: 현재 판정과 직접 연결된 transport smoke 1개 이상 + `git diff -- core/include/zlink.h core/src/libzlink.vers`
+
 - [ ] [`asio_engine.cpp`](/home/hep7/project/kairos/zlink/core/src/engine/asio/asio_engine.cpp)와
   [`asio_ws_engine.cpp`](/home/hep7/project/kairos/zlink/core/src/transports/ws/asio_ws_engine.cpp)가
   단순 대형 파일인지 실제 owner 붕괴인지 구분한다.
 - [ ] 현재 구조 허브와 직접 연결되는 engine/transport owner가 있을 때만 구조 작업으로 승격한다.
 - [ ] 현재 active 구조 row와 직접 연결되지 않으면 이 항목은 local polish 후보로 내린다.
-- [ ] 이 항목은 `5.7A`, `5.7B`, `5.7C` 이후 마지막 구조 판정으로만 수행한다.
+- [ ] 이 항목은 `5.7A`, `5.7B`, `5.7C`, `5.7D` 이후 마지막 구조 판정으로만 수행한다.
 - [ ] 실제 구조 작업이 불필요하다고 판정한 경우에도 그 근거와 representative 확인 명령을
   `5.0` 표의 검증 증거 칸에 남긴다.
 
@@ -669,7 +738,7 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - `Phase 5~6` full service core smoke 완료
 - `Phase 2`, `Phase 3` 의무 stress 완료
 - gap review 기준 residual 구조 항목(`5.2A`, `5.3A`, `5.6A`) 완료
-- post-residual 추가 구조 항목(`5.7A`, `5.7B`, `5.7C`, `5.7D`) 완료
+- post-residual 추가 구조 항목(`5.7A`, `5.7B`, `5.7C`, `5.7D`, `5.7E`) 완료
 - ABI surface 무변경 확인
 - 남은 허브가 문서의 original concern 묶음을 다시 재집중시키지 않음
 
@@ -689,10 +758,11 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 10. gap review 기준 `registry` / `spot` residual deep module 마감
 11. post-residual 기준 `spot` secure multi-peer 구조 잔여 마감
 12. post-residual 기준 `socket_message_api.cpp` / `options_t` ownership 재정리
-13. post-residual 기준 `spot_node_t` / `discovery_t` facade 구조 마감
-14. post-residual 기준 engine / transport owner 재판정
-15. stress / lane 최종 게이트
-16. 최종 검증과 문서 완료 판정
+13. post-residual 기준 `spot_node_t` handle/defaults/facade 구조 마감
+14. post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감
+15. post-residual 기준 engine / transport owner 재판정
+16. stress / lane 최종 게이트
+17. 최종 검증과 문서 완료 판정
 
 이 순서를 어기려면 아래 둘 중 하나를 만족해야 한다.
 
@@ -705,6 +775,22 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 2. 이 단계의 대표 테스트 묶음이 green인가?
 3. 이 단계 변경이 unrelated module 수정으로 넓게 번지지 않는가?
 4. 다음 단계가 이전 단계의 의미를 다시 뒤흔들지 않는가?
+
+## 7.3 post-residual 구현 기록 형식
+
+`5.7A`~`5.7E`의 각 row는 구현 전에 아래 다섯 줄을 먼저 기록한 뒤 시작한다.
+
+1. top-level owner 한 문장
+2. 남길 책임 2~4개
+3. 숨길 책임 2~4개
+4. 이번 row의 필수 대표 gate
+5. 이번 row의 금지 사항 중 특히 위험한 것 1개
+
+구현이 끝난 뒤에는 아래 세 줄을 같은 row 증거에 남긴다.
+
+1. 실제 수정 파일 목록
+2. 통과한 gate 명령
+3. "이제 이 row를 한 문장으로 어떻게 설명하는가" 최종 문장
 
 post-residual 구조 단계의 반복 규칙은 아래처럼 고정한다.
 

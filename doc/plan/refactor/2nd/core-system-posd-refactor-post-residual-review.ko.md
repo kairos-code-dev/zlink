@@ -2,13 +2,14 @@
 
 > 상태: active
 > 대상 범위: `core/`, `core/tests/`
-> 기준 원칙: POSD(깊은 모듈 + 얇은 hot-path + 성능 포함 구조 판단) + 공개 API/ABI 유지
+> 기준 원칙: POSD(깊은 모듈 + 얇은 hot-path) + 공개 API/ABI 유지
 > 관련 문서:
 > - `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
 > - `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
 > - `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`
 > - `doc/plan/refactor/2nd/core-system-posd-refactor-residual-execution-spec.ko.md`
 > 기준 시점: 2026-03-25 현재 워크트리 재리뷰
+> 적용 메모: 현재 active 실행 authority와 완료 게이트는 `core-system-posd-refactor-remaining-execution-guide.ko.md`를 따른다. 이 문서의 성능 서술은 구조 우선순위를 설명하는 배경 근거로만 사용한다.
 
 ## 1. 문서 목적
 
@@ -23,15 +24,14 @@ residual execution spec`까지 진행된 뒤, 현재 코드 상태를 다시 읽
 
 - residual 실행 이후에도 왜 추가 리팩토링 계획이 필요한지 현재 코드 기준으로 설명한다.
 - 팀장님이 고정한 새 기준인 `깊은 모듈 + 얇은 hot-path`를 기준으로 다음 구조 우선순위를 다시 고정한다.
-- 현재 진행 중인 성능 개선 작업이 중간에 방향을 잃지 않고,
-  필요한 추가 구조 개선까지 완료한 뒤 perf 최종 마감으로 연결되게 만든다.
+- post-residual 구조 작업에서 어떤 허브를 active owner로 봐야 하는지 배경 근거를 남긴다.
 
 핵심 해석은 아래처럼 고정한다.
 
 ```text
 이번 문서에서 말하는 'POSD 관점의 올바른 구조'는
-정보 은닉과 변경 증폭 억제만 만족하는 구조가 아니라,
-공통 hot-path의 비용까지 함께 설명되는 구조다.
+정보 은닉과 변경 증폭 억제, semantic facade 축소,
+공통 hot-path detail의 private owner 격리를 함께 만족하는 구조다.
 ```
 
 ## 2. 현재 단계 해석

@@ -118,7 +118,9 @@ Gateway/SpotNode            Discovery               Registry
 ## 5. Registry 클러스터 HA
 
 - 3노드 클러스터 권장
-- flooding 방식 동기화 (각 Registry가 다른 Registry의 PUB 구독)
+- flooding 방식 동기화 — 각 Registry가 수신한 서비스 목록 변경을 나머지
+  모든 Registry에게 재전파하여, 최종적으로 전체 노드가 동일 정보를 갖게 되는
+  브로드캐스트 전파 기법 (각 Registry가 다른 Registry의 PUB 구독)
 - Eventually Consistent: 모든 Registry가 동일 상태 수렴
 - `registry_id` + `list_seq`로 중복/역전 업데이트 무시
 

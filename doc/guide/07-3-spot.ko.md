@@ -23,7 +23,7 @@ Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여,
 | **SPOT Sub** | 토픽 구독/수신 핸들 |
 | **Topic** | 문자열 키 기반 메시지 채널 |
 | **Pattern** | 접두어 + `*` 와일드카드 구독 |
-| **Handler** | 메시지 수신 시 자동 호출되는 콜백 함수 |
+| **Handler** | callback 수신 시 자동 호출되는 콜백 함수 |
 
 ## 2. 아키텍처
 
@@ -34,12 +34,13 @@ Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여,
     │               (worker)               │
     │  ── publish ──►  │                   │
     │    (inproc)      │                   │
-    │                  │ ── callback ─────► │
+    │                  │ ── deliver ──────► │
     │                  │    (inproc)        │
 ```
 
 SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 SpotSub에게
-callback으로 바로 전달한다.
+바로 전달한다. SpotSub은 callback 또는 recv 두 가지 방식으로 메시지를 수신할 수
+있다.
 
 ### 원격 전파 — 클러스터 노드 간 전달
 
@@ -51,7 +52,7 @@ callback으로 바로 전달한다.
     │   (inproc)     │                   │                  │
     │                │ ── PUB ─────────► │                  │
     │                │   (tcp mesh)      │                  │
-    │                │                   │ ── callback ───► │
+    │                │                   │ ── deliver ────► │
     │                │                   │    (inproc)      │
 ```
 

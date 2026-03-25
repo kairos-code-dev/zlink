@@ -149,39 +149,14 @@ zlink_gateway_update_peer_weight(server, &peer_rid, 5);
 
 ## 7. Thread-Safety
 
-### 일반 소켓 vs Gateway
+일반 소켓과 마찬가지로 Gateway의 공개 handle API는 **모두 thread-safe**다.
+Gateway handle을 여러 스레드에서 자유롭게 공유하고, `send`/`send_rid`를
+동시에 호출해도 된다. `attach`, `bind`, `connect` 같은 control-path API도
+런타임에 안전하게 호출할 수 있다.
 
-| 항목 | 일반 공개 socket handle | Gateway |
-|------|---|---|
-| **스레드 안전성** | 기본적으로 thread-safe | thread-safe |
-| **고빈도 경로** | `send`가 hot path | `send` / `send_rid`가 hot path |
-| **저빈도 경로** | bind/connect 등 직렬화 | attach/option 등 직렬화 |
-| **종료** | `close` fail-fast gate | `destroy` fail-fast gate |
-
-### Thread-safe API
-
-Gateway는 "모든 API가 같은 비용 모델"인 것은 아니지만, 공개 handle API는
-기본적으로 thread-safe다.
-
-- `zlink_gateway_send()`
-- `zlink_gateway_send_rid()`
-- `zlink_gateway_set_lb_strategy()`
-- `zlink_set_option()`
-- `zlink_gateway_attach_discovery()`
-- `zlink_gateway_bind()`
-- `zlink_gateway_connect()` / `zlink_gateway_disconnect()`
-- `zlink_set_tls_client()` / `zlink_set_tls_server()`
-- `zlink_get_option(gateway, ZLINK_OPT_LAST_ENDPOINT, ...)`
-- open한 gateway monitor에 대한 `zlink_monitor_snapshot()`
-- `zlink_gateway_destroy()`
-
-사용자가 외우면 되는 규칙은 네 가지다.
-
-1. Gateway handle은 여러 스레드에서 공유해도 된다.
-2. `send` / `send_rid`는 여러 스레드에서 동시 호출이 가능하다.
-3. control-path API도 runtime에 호출할 수 있다.
-4. `destroy`는 fail-fast이며 admitted API가 있으면 `EBUSY`, accepted 이후 새
-   진입은 `ESHUTDOWN`이다.
+유일하게 주의할 점은 `destroy`다. `destroy`는 fail-fast gate로 동작하며,
+아직 실행 중인 API가 있으면 `EBUSY`를 반환하고, `destroy`가 accepted된
+이후의 새 진입은 `ESHUTDOWN`으로 거부된다.
 
 ### 멀티스레드 사용 예제
 
@@ -214,29 +189,12 @@ for (int i = 0; i < 4; i++)
 Gateway의 `send` / `send_rid`는 고빈도 경로를 기준으로 설계되어 있어, control
 path와 다른 비용 모델을 사용한다.
 
-**2. 애플리케이션 아키텍처 단순화**
-
-Gateway는 추가 프록시 계층 없이 여러 스레드가 같은 handle에 직접 send를
-호출할 수 있다.
-
-```
-일반 소켓 (멀티스레드):
-  Thread A ──┐
-  Thread B ──┼── inproc 큐 ── 전용 I/O 스레드 ── ROUTER 소켓
-  Thread C ──┘
-
-Gateway (멀티스레드):
-  Thread A ──┐
-  Thread B ──┼── Gateway ── send ──→ Server
-  Thread C ──┘
-```
-
-**3. Discovery 갱신이 send를 블록하지 않음**
+**2. Discovery 갱신이 send를 블록하지 않음**
 
 서비스 풀 갱신(서버 추가/제거, 연결/재연결)은 전용 백그라운드 워커 스레드가
 처리한다. send 호출 중에 Discovery 이벤트가 도착해도 사용자 API가 블록되지 않는다.
 
-**4. 동시 전송과 가중치 갱신이 안전**
+**3. 동시 전송과 가중치 갱신이 안전**
 
 여러 스레드가 동시에 메시지를 전송하면서, 동시에 서버가
 `zlink_gateway_update_peer_weight()`로 가중치를 갱신해도 데이터 경합 없이

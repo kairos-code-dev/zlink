@@ -1,0 +1,246 @@
+=== Running unittest lane (jobs=20) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+      Start 131: unittest_spot_subject_access
+      Start 121: unittest_service_mode_policy
+      Start 132: unittest_typed_option
+      Start 123: unittest_ip_resolver
+      Start 122: unittest_mtrie
+      Start 120: unittest_poller
+      Start 124: unittest_radix_tree
+      Start 119: unittest_ypipe
+      Start 126: unittest_raw_decoder
+      Start 127: unittest_msg_view
+      Start 125: unittest_zmp_decoder
+      Start 128: unittest_service_runtime_base
+      Start 129: unittest_spot_data_plane_protocol
+      Start 130: unittest_spot_data_plane_budget
+ 1/14 Test #123: unittest_ip_resolver ................   Passed    0.01 sec
+ 2/14 Test #122: unittest_mtrie ......................   Passed    0.01 sec
+ 3/14 Test #124: unittest_radix_tree .................   Passed    0.01 sec
+ 4/14 Test #119: unittest_ypipe ......................   Passed    0.01 sec
+ 5/14 Test #126: unittest_raw_decoder ................   Passed    0.00 sec
+ 6/14 Test #127: unittest_msg_view ...................   Passed    0.00 sec
+ 7/14 Test #125: unittest_zmp_decoder ................   Passed    0.00 sec
+ 8/14 Test #129: unittest_spot_data_plane_protocol ...   Passed    0.00 sec
+ 9/14 Test #130: unittest_spot_data_plane_budget .....   Passed    0.00 sec
+10/14 Test #128: unittest_service_runtime_base .......   Passed    0.00 sec
+11/14 Test #120: unittest_poller .....................   Passed    0.15 sec
+12/14 Test #132: unittest_typed_option ...............   Passed    2.01 sec
+13/14 Test #131: unittest_spot_subject_access ........   Passed    4.05 sec
+14/14 Test #121: unittest_service_mode_policy ........   Passed    6.57 sec
+
+100% tests passed, 0 tests failed out of 14
+
+Label Time Summary:
+parallel-safe    =  12.82 sec*proc (14 tests)
+unittest         =  12.82 sec*proc (14 tests)
+
+Total Test time (real) =   6.57 sec
+=== Running integration lane (jobs=1) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+      Start   1: test_ancillaries
+ 1/80 Test   #1: test_ancillaries ...........................................   Passed    0.00 sec
+      Start   2: test_thread_safe_contract_policy
+ 2/80 Test   #2: test_thread_safe_contract_policy ...........................   Passed    0.00 sec
+      Start   3: test_monitor_enhanced
+ 3/80 Test   #3: test_monitor_enhanced ......................................   Passed    0.01 sec
+      Start   4: test_monitor_socket_contract
+ 4/80 Test   #4: test_monitor_socket_contract ...............................   Passed    0.26 sec
+      Start   5: test_monitor_perf_contract
+ 5/80 Test   #5: test_monitor_perf_contract .................................   Passed    0.25 sec
+      Start   6: test_multi_pubsub_benchmark_process
+ 6/80 Test   #6: test_multi_pubsub_benchmark_process ........................   Passed    2.08 sec
+      Start   7: test_multi_spot_benchmark_process
+ 7/80 Test   #7: test_multi_spot_benchmark_process ..........................   Passed   79.45 sec
+      Start   8: test_multi_stream_benchmark_process
+ 8/80 Test   #8: test_multi_stream_benchmark_process ........................   Passed    4.06 sec
+      Start   9: test_gateway_monitor_process
+ 9/80 Test   #9: test_gateway_monitor_process ...............................   Passed    0.04 sec
+      Start  10: test_single_pair_benchmark_process
+10/80 Test  #10: test_single_pair_benchmark_process .........................   Passed    2.03 sec
+      Start  11: test_single_spot_benchmark_process
+11/80 Test  #11: test_single_spot_benchmark_process .........................   Passed   45.49 sec
+      Start  12: test_monitor_service_contract
+12/80 Test  #12: test_monitor_service_contract ..............................   Passed   18.25 sec
+      Start  13: test_monitor_with_handler
+13/80 Test  #13: test_monitor_with_handler ..................................   Passed    0.16 sec
+      Start  14: test_socket_with_handler
+14/80 Test  #14: test_socket_with_handler ...................................   Passed    0.91 sec
+      Start  15: test_connect_resolve
+15/80 Test  #15: test_connect_resolve .......................................   Passed    0.00 sec
+      Start  17: test_gateway_with_handler
+16/80 Test  #17: test_gateway_with_handler ..................................   Passed    0.02 sec
+      Start  18: test_gateway_handover
+17/80 Test  #18: test_gateway_handover ......................................   Passed    0.03 sec
+      Start  19: test_capabilities
+18/80 Test  #19: test_capabilities ..........................................   Passed    0.00 sec
+      Start  20: test_socket_null
+19/80 Test  #20: test_socket_null ...........................................   Passed    0.00 sec
+      Start  21: test_heartbeats
+20/80 Test  #21: test_heartbeats ............................................   Passed    0.12 sec
+      Start  22: test_multi_socket_contract_regressions
+21/80 Test  #22: test_multi_socket_contract_regressions .....................   Passed    6.26 sec
+      Start  23: test_reconnect_ivl
+22/80 Test  #23: test_reconnect_ivl .........................................   Passed    0.64 sec
+      Start  24: test_reconnect_options
+23/80 Test  #24: test_reconnect_options .....................................   Passed    3.82 sec
+      Start  25: test_pubsub_filter_xpub
+24/80 Test  #25: test_pubsub_filter_xpub ....................................   Passed    1.51 sec
+      Start  26: test_router_multiple_dealers
+25/80 Test  #26: test_router_multiple_dealers ...............................   Passed    0.61 sec
+      Start  27: test_stream_socket
+26/80 Test  #27: test_stream_socket .........................................   Passed    8.49 sec
+      Start  28: test_stream_threadsafe
+27/80 Test  #28: test_stream_threadsafe .....................................   Passed    9.70 sec
+      Start  29: test_stream_send_blocking_wakeup
+28/80 Test  #29: test_stream_send_blocking_wakeup ...........................   Passed    3.02 sec
+      Start  30: test_stream_fastpath
+29/80 Test  #30: test_stream_fastpath .......................................   Passed    0.00 sec
+      Start  31: test_transport_matrix
+30/80 Test  #31: test_transport_matrix ......................................   Passed    9.05 sec
+      Start  32: test_router_auto_id_format
+31/80 Test  #32: test_router_auto_id_format .................................   Passed    0.00 sec
+      Start  33: test_stream_routing_id_size
+32/80 Test  #33: test_stream_routing_id_size ................................   Passed    0.01 sec
+      Start  67: test_service_discovery_provider_registration
+33/80 Test  #67: test_service_discovery_provider_registration ...............   Passed    0.09 sec
+      Start  68: test_service_discovery_service_filtering
+34/80 Test  #68: test_service_discovery_service_filtering ...................   Passed    0.10 sec
+      Start  69: test_service_discovery_heartbeat_timeout
+35/80 Test  #69: test_service_discovery_heartbeat_timeout ...................   Passed    0.45 sec
+      Start  70: test_service_discovery_registry_rebind
+36/80 Test  #70: test_service_discovery_registry_rebind .....................   Passed    0.01 sec
+      Start  71: test_spot_service_introspection_pub_sub_options
+37/80 Test  #71: test_spot_service_introspection_pub_sub_options ............   Passed    4.57 sec
+      Start  72: test_spot_service_introspection_monitors
+38/80 Test  #72: test_spot_service_introspection_monitors ...................   Passed    4.57 sec
+      Start  73: test_spot_service_introspection_late_connect
+39/80 Test  #73: test_spot_service_introspection_late_connect ...............   Passed    4.59 sec
+      Start  74: test_spot_service_introspection_subscription_ready_loss
+40/80 Test  #74: test_spot_service_introspection_subscription_ready_loss ....   Passed    4.56 sec
+      Start  75: test_spot_service_introspection_handler_monitor_close
+41/80 Test  #75: test_spot_service_introspection_handler_monitor_close ......   Passed   21.14 sec
+      Start  76: test_spot_service_introspection_callback_recv_regression
+42/80 Test  #76: test_spot_service_introspection_callback_recv_regression ...   Passed    4.57 sec
+      Start  77: test_spot_service_introspection_recv_model_regression
+43/80 Test  #77: test_spot_service_introspection_recv_model_regression ......   Passed    4.57 sec
+      Start  78: test_spot_service_introspection_publish_rollback
+44/80 Test  #78: test_spot_service_introspection_publish_rollback ...........   Passed    4.57 sec
+      Start  79: test_spot_service_introspection_unified_spot
+45/80 Test  #79: test_spot_service_introspection_unified_spot ...............   Passed    4.05 sec
+      Start  80: test_spot_service_introspection_snapshots
+46/80 Test  #80: test_spot_service_introspection_snapshots ..................   Passed    4.57 sec
+      Start  81: test_gateway_provider_options
+47/80 Test  #81: test_gateway_provider_options ..............................   Passed    0.01 sec
+      Start  82: test_gateway_refresh_existing_service
+48/80 Test  #82: test_gateway_refresh_existing_service ......................   Passed    0.03 sec
+      Start  83: test_gateway_router_peer_stats
+49/80 Test  #83: test_gateway_router_peer_stats .............................   Passed    0.04 sec
+      Start  85: test_gateway_send_rid
+50/80 Test  #85: test_gateway_send_rid ......................................   Passed    0.05 sec
+      Start  88: test_gateway_ws
+51/80 Test  #88: test_gateway_ws ............................................   Passed    0.04 sec
+      Start  89: test_gateway_tls
+52/80 Test  #89: test_gateway_tls ...........................................   Passed    0.04 sec
+      Start  90: test_gateway_wss
+53/80 Test  #90: test_gateway_wss ...........................................   Passed    0.04 sec
+      Start  91: test_gateway_round_robin
+54/80 Test  #91: test_gateway_round_robin ...................................   Passed    0.07 sec
+      Start  92: test_gateway_weighted
+55/80 Test  #92: test_gateway_weighted ......................................   Passed    1.06 sec
+      Start  93: test_gateway_callback_recv_regression
+56/80 Test  #93: test_gateway_callback_recv_regression ......................   Passed    0.01 sec
+      Start  94: test_gateway_recv_model_regression
+57/80 Test  #94: test_gateway_recv_model_regression .........................   Passed    0.02 sec
+      Start  95: test_gateway_manual_topology_ownership
+58/80 Test  #95: test_gateway_manual_topology_ownership .....................   Passed    0.01 sec
+      Start  96: test_gateway_local_weight_zero
+59/80 Test  #96: test_gateway_local_weight_zero .............................   Passed    4.03 sec
+      Start  97: test_gateway_send_ready_self_close
+60/80 Test  #97: test_gateway_send_ready_self_close .........................   Passed   10.06 sec
+      Start  98: test_gateway_runtime_reads
+61/80 Test  #98: test_gateway_runtime_reads .................................   Passed    0.03 sec
+      Start  99: test_gateway_monitor_snapshot_churn
+62/80 Test  #99: test_gateway_monitor_snapshot_churn ........................   Passed    0.06 sec
+      Start 101: test_gateway_attach_query_ordering
+63/80 Test #101: test_gateway_attach_query_ordering .........................   Passed    0.02 sec
+      Start 102: test_gateway_monitor_self_close
+64/80 Test #102: test_gateway_monitor_self_close ............................   Passed    0.03 sec
+      Start 103: test_spot_pubsub_scenario_peer_ipc
+65/80 Test #103: test_spot_pubsub_scenario_peer_ipc .........................   Passed    4.63 sec
+      Start 104: test_spot_pubsub_scenario_peer_tcp
+66/80 Test #104: test_spot_pubsub_scenario_peer_tcp .........................   Passed    4.64 sec
+      Start 105: test_spot_pubsub_scenario_peer_ws
+67/80 Test #105: test_spot_pubsub_scenario_peer_ws ..........................   Passed    4.64 sec
+      Start 106: test_spot_pubsub_scenario_peer_tls
+68/80 Test #106: test_spot_pubsub_scenario_peer_tls .........................   Passed    6.23 sec
+      Start 107: test_spot_pubsub_scenario_peer_wss
+69/80 Test #107: test_spot_pubsub_scenario_peer_wss .........................   Passed    9.79 sec
+      Start 108: test_spot_pubsub_scenario_unified_wss_ready_delivery
+70/80 Test #108: test_spot_pubsub_scenario_unified_wss_ready_delivery .......   Passed    9.27 sec
+      Start 109: test_spot_pubsub_scenario_multi_publisher
+71/80 Test #109: test_spot_pubsub_scenario_multi_publisher ..................   Passed    6.08 sec
+      Start 110: test_spot_pubsub_scenario_concurrent_publish
+72/80 Test #110: test_spot_pubsub_scenario_concurrent_publish ...............   Passed    4.07 sec
+      Start 111: test_spot_pubsub_scenario_node_child_interop
+73/80 Test #111: test_spot_pubsub_scenario_node_child_interop ...............   Passed    4.27 sec
+      Start 112: test_spot_pubsub_scenario_node_remote_mesh
+74/80 Test #112: test_spot_pubsub_scenario_node_remote_mesh .................   Passed    4.12 sec
+      Start 113: test_spot_pubsub_scenario_sub_option_inheritance
+75/80 Test #113: test_spot_pubsub_scenario_sub_option_inheritance ...........   Passed    2.01 sec
+      Start 114: test_spot_pubsub_scenario_first_publish_race
+76/80 Test #114: test_spot_pubsub_scenario_first_publish_race ...............   Passed    4.07 sec
+      Start 115: test_spot_pubsub_scenario_sub_handler_basic
+77/80 Test #115: test_spot_pubsub_scenario_sub_handler_basic ................   Passed    4.07 sec
+      Start 116: test_spot_pubsub_scenario_recv_handle_isolation
+78/80 Test #116: test_spot_pubsub_scenario_recv_handle_isolation ............   Passed    6.12 sec
+      Start 117: test_spot_pubsub_scenario_recv_service_isolation
+79/80 Test #117: test_spot_pubsub_scenario_recv_service_isolation ...........   Passed    8.36 sec
+      Start 118: test_spot_pubsub_scenario_source_rid
+80/80 Test #118: test_spot_pubsub_scenario_source_rid .......................   Passed    4.13 sec
+
+100% tests passed, 0 tests failed out of 80
+
+Label Time Summary:
+integration    = 360.84 sec*proc (80 tests)
+serial         = 360.84 sec*proc (80 tests)
+
+Total Test time (real) = 360.86 sec
+=== Running e2e lane (jobs=1) ===
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 34: test_service_discovery
+1/9 Test #34: test_service_discovery ............   Passed    0.62 sec
+    Start 35: test_service_introspection
+2/9 Test #35: test_service_introspection ........   Passed    2.50 sec
+    Start 36: test_spot_pubsub_scenario
+3/9 Test #36: test_spot_pubsub_scenario .........   Passed   19.05 sec
+    Start 37: test_spot_service_introspection
+4/9 Test #37: test_spot_service_introspection ...   Passed   63.70 sec
+    Start 38: test_scenario_stream_client
+5/9 Test #38: test_scenario_stream_client .......   Passed    0.00 sec
+    Start 39: test_scenario_stream_zlink
+6/9 Test #39: test_scenario_stream_zlink ........   Passed    0.00 sec
+    Start 40: test_scenario_stream_asio
+7/9 Test #40: test_scenario_stream_asio .........   Passed    0.00 sec
+    Start 41: test_scenario_stream_zmq
+8/9 Test #41: test_scenario_stream_zmq ..........   Passed    0.00 sec
+    Start 84: test_gateway_single_service
+9/9 Test #84: test_gateway_single_service .......   Passed    0.07 sec
+
+100% tests passed, 0 tests failed out of 9
+
+Label Time Summary:
+asio        =   0.00 sec*proc (1 test)
+client      =   0.00 sec*proc (1 test)
+e2e         =  85.96 sec*proc (9 tests)
+scenario    =   0.01 sec*proc (4 tests)
+serial      =  85.96 sec*proc (9 tests)
+stream      =   0.01 sec*proc (4 tests)
+zlink       =   0.00 sec*proc (1 test)
+zmq         =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  85.96 sec
+=== Test lanes completed ===

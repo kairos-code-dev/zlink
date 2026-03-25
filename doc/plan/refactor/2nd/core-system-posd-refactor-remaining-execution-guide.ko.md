@@ -1,6 +1,6 @@
 # POSD 2차 리팩토링 잔여 작업 실행 가이드
 
-> 상태: active
+> 상태: complete
 > 기준 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
 > 재평가 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
 > residual 실행 스펙: `doc/plan/refactor/2nd/core-system-posd-refactor-residual-execution-spec.ko.md`
@@ -332,6 +332,7 @@ archive로만 남긴다.
 | Post-residual 기준 `spot_node_t` handle/defaults/facade 구조 마감 | 완료 | 5.7C | `core/src/services/spot/spot_node.hpp`, `core/src/services/spot/spot_node_handles.cpp`, `core/src/services/spot/spot_node_lifecycle.cpp`, `core/src/services/spot/spot_internal_receiver.*`, `core/tests/e2e/spot/test_spot_service_introspection.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection_handler_monitor_close)$'`, `doc/plan/refactor/2nd/logs/phase5_7C_spot_node_gate_20260325_113854.log`, `doc/plan/refactor/2nd/logs/phase5_7C_spot_node_gate_20260325_113854.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; owner 문장: `spot_node_t`는 semantic facade이고 default handle lifecycle/option defaults는 `spot_node_default_handles_t`가 소유; `commit: 6c3b2812` |
 | Post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감 | 완료 | 5.7D | `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/discovery_runtime_internal.hpp`, `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_state.cpp`, `core/src/services/discovery/discovery_update.cpp`, `core/src/services/discovery/discovery_registry_client.cpp` | 실제 수정 파일: `discovery.hpp`, `discovery_runtime_internal.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_state.cpp`, `discovery_update.cpp`, `discovery_registry_client.cpp`; gate: `cmake --build core/build -j\"$(nproc)\"`, `ctest --test-dir core/build --output-on-failure -R '^(test_service_discovery|test_service_introspection|test_service_introspection_discovery_self_close|test_service_introspection_discovery_control_path|test_monitor_service_contract)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; 최종 문장: `discovery_t`는 discovery semantic facade이고 registry bootstrap/socket-option/routing-id/uplink dealer detail은 `discovery_bootstrap_runtime_t`와 `discovery_uplink_runtime_t`가 소유한다; `commit: 95b44aea` |
 | Post-residual 기준 engine / transport owner 재판정 | 완료 | 5.7E | `core/src/engine/asio/asio_engine.cpp`, `core/src/transports/ws/asio_ws_engine.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; 구조 판정: `asio_engine_t`는 backend-common async runtime/stream fast-path owner이고 `asio_ws_engine_t`는 ws/wss transport-local wire/channel execution owner라서 현재 active 구조 row와 직접 연결되는 giant owner로 승격하지 않음; gate: `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^test_stream_fastpath$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_ws|test_gateway_wss|test_service_introspection_transport_ws|test_service_introspection_registry_peer_mixed_ws|test_spot_pubsub_scenario_peer_wss)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; 로그: `doc/plan/refactor/2nd/logs/phase5_7E_transport_smoke_20260325_120318.log`, `doc/plan/refactor/2nd/logs/phase5_7E_transport_smoke_20260325_120318.log.exitcode` |
+| Final lane gate 및 master plan 8.1/8.2/9 완료 판정 | 완료 | 5.8, 6.3 | `core/tests/run_test_lanes.sh`, `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md` | preflight: `ctest --test-dir core/build -N -L '^unittest$'`, `ctest --test-dir core/build -N -L '^integration$'`, `ctest --test-dir core/build -N -L '^e2e$'`; gate: `cmake --build core/build -j"$(nproc)"`, `./core/tests/run_test_lanes.sh --include-e2e`, `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log`, `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; 재점검: master plan Phase 1~6, 8.1, 8.2, 9와 gap review 재대조 결과 추가 미적용 구현 항목 없음 |
 
 이 표는 각 작업 묶음이 끝날 때마다 반드시 갱신한다.
 표에 `미착수`, `진행중`, `검증중`이 하나라도 남아 있으면 문서 완료가 아니다.
@@ -747,6 +748,30 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - 통과한 gate 명령: `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^test_stream_fastpath$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_ws|test_gateway_wss|test_service_introspection_transport_ws|test_service_introspection_registry_peer_mixed_ws|test_spot_pubsub_scenario_peer_wss)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`
 - 최종 문장: `asio_engine_t`는 backend-common async runtime과 stream fast-path tuning을 소유하고, `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution을 소유하는 transport-local owner이므로 현재 POSD residual의 새 구조 phase를 열 대상이 아니다.
 - 마스터 플랜 재점검: Phase 1~6, 8.1, 8.2, 9 기준으로 `5.7E` 외 추가 구현 누락은 발견하지 못했고, 다음 순서는 최종 lane gate와 완료 판정이다.
+
+### 5.8 최종 lane gate 및 완료 판정
+
+- [x] `core/build/` 기준 preflight로 `unittest`, `integration`, `e2e` lane 등록 상태를 다시 확인한다.
+- [x] `cmake --build core/build -j"$(nproc)"`를 다시 수행해 최종 gate 직전 build 상태를 고정한다.
+- [x] `./core/tests/run_test_lanes.sh --include-e2e`를 로그와 exitcode 파일로 남기며 끝까지 통과시킨다.
+- [x] `git diff -- core/include/zlink.h core/src/libzlink.vers`가 비어 있음을 다시 확인한다.
+- [x] master plan Phase 1~6, 8.1, 8.2, 9와 gap review를 재대조해 실행 가이드 5장에 빠진 구현 항목이 없는지 최종 확인한다.
+
+검증 메모:
+
+- preflight: `ctest --test-dir core/build -N -L '^unittest$'`, `ctest --test-dir core/build -N -L '^integration$'`, `ctest --test-dir core/build -N -L '^e2e$'`
+- build: `cmake --build core/build -j"$(nproc)"`
+- final lane gate: `./core/tests/run_test_lanes.sh --include-e2e`
+- 최종 로그: `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log`
+- exitcode: `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log.exitcode`
+- ABI 확인: `git diff -- core/include/zlink.h core/src/libzlink.vers` 빈 출력
+- 마스터 플랜/갭 리뷰 재점검: Phase 1~6, 8.1, 8.2, 9와 `core-system-posd-refactor-gap-review.ko.md`를 다시 훑은 결과, 실행 가이드 5장에 추가해야 할 미반영 구현 항목은 발견하지 못했다.
+
+닫힘 기준:
+
+- 최종 lane gate 로그가 `unittest`, `integration`, `e2e`를 모두 green으로 기록한다.
+- ABI surface diff가 없고, 5.0 표와 5.1~5.8 체크리스트에 미완료가 남지 않는다.
+- master plan 8.1, 8.2, 9의 완료 판정이 실행 가이드 6.3 증거와 함께 설명된다.
 ## 6. 검증 게이트
 
 각 단계는 아래 게이트를 통과해야 다음으로 넘어간다.
@@ -867,7 +892,7 @@ post-residual 구조 단계에서의 금지 규칙은 아래와 같다.
 아래 셋을 모두 만족해야 `미완료 0개`로 판정한다.
 
 1. 5.0 추적 표에 `미착수`, `진행중`, `검증중`이 없다.
-2. 5.1~5.7 체크리스트에 빈 칸이 없다.
+2. 5.1~5.8 체크리스트에 빈 칸이 없다.
 3. 6.3 최종 완료 게이트가 모두 충족된다.
 
 셋 중 하나라도 만족하지 못하면, 문서상 완료가 아니다.

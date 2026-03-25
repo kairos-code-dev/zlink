@@ -172,7 +172,7 @@ Frame 4~N: 서비스 엔트리 (service_count만큼 반복)
 
 ## 5. SPOT 내부 구현
 
-### 7.1 구조
+### 5.1 구조
 - `spot_node_t` -- 네트워크 제어
   - PUB/SUB 소켓 소유, mesh 관리, worker 스레드
 - `spot_pub_t` -- 발행 핸들
@@ -180,7 +180,7 @@ Frame 4~N: 서비스 엔트리 (service_count만큼 반복)
 - `spot_sub_t` -- 구독/수신 핸들
   - 내부 큐, 패턴 매칭, 조건변수 기반 blocking recv
 
-### 7.2 동시성 모델
+### 5.2 동시성 모델
 - 발행: 호출자 스레드에서 직접 수행,
   `_pub_sync` mutex로 직렬화 (thread-safe)
 - 수신: worker 스레드가 SUB 소켓에서 수신,
@@ -188,26 +188,26 @@ Frame 4~N: 서비스 엔트리 (service_count만큼 반복)
 - 잠금 순서: `_sync` → `_pub_sync` (데드락 방지)
 - 비동기 큐 없이 직접 발행 (publish path에 메시지 버퍼링 없음)
 
-### 7.3 구독 집계
+### 5.3 구독 집계
 - refcount 기반 SUB 필터 관리
 - 동일 토픽의 중복 구독 시 refcount 증가
 - spot_sub_t별 구독 셋 관리 (정확한 토픽 + 패턴 별도)
 
-### 7.4 전달 정책
+### 5.4 전달 정책
 - 로컬 publish (spot_pub):
   로컬 spot_sub 분배 + PUB 송출 (원격 전파)
 - 원격 수신 (SUB):
   로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
 
-### 7.5 Raw 소켓 정책
+### 5.5 Raw 소켓 정책
 - `spot_pub_t`: raw PUB socket 노출하지 않음
   (thread-safety 우회 방지)
 - `spot_sub_t`: raw SUB socket 노출하지 않음;
   callback/recv API로만 소비
 
-### 7.6 Discovery 타입 분리
-- service_type 필드로 gateway_receiver/spot_node/socket_family 분리
-  - `service_type_gateway_receiver` (1), `service_type_spot_node` (2), `service_type_socket` (3)
+### 5.6 Discovery 타입 분리
+- service_type 필드로 spot_node/socket_family 분리
+  - `service_type_spot_node` (2), `service_type_socket` (3)
 - 소켓 패밀리 서비스는 추가로 `service_role` 필드를 가진다
   (ROUTER=3, DEALER=4, PUB=5, SUB=6) — 역할 기반 피어 매칭용
 - 역할 매칭은 `service_roles_match()`가 강제한다 — PUB은 SUB과 짝,

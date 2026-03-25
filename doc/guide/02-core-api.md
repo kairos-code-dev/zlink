@@ -146,7 +146,7 @@ For advanced backpressure patterns, see
 
 #### Logical Multipart Send
 
-Multipart sends via `zlink_send()`, `zlink_gateway_send()`,
+Multipart sends via `zlink_send()`,
 `zlink_publish()`, and other public/service surfaces internally use a
 shared **logical multipart send** module. This module provides the
 following common guarantees:

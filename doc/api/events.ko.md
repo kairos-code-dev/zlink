@@ -111,17 +111,6 @@ disconnect reason:
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | provider 소실 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 |
 
-### Gateway
-
-| 상수 | 의미 |
-|---|---|
-| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | 로컬 service readiness 변화 |
-| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send readiness 변화 |
-| `ZLINK_GATEWAY_ROUTE_UP` | route 활성화 |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | route 비활성화 |
-
-모든 Gateway 이벤트에서 `value`는 `current_ready_count`입니다.
-
 ### SPOT
 
 | 상수 | 발생 주체 | 의미 |

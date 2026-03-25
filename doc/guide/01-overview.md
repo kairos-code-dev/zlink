@@ -31,7 +31,7 @@ Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
 │  validate + delegate, per-handle admission guard      │
 ├──────────────────────────────────────────────────────┤
 │  Service Layer                                        │
-│  Gateway · Discovery · SPOT · Registry                │
+│  Discovery · SPOT · Registry                          │
 │  service access seam (*_access) · lifecycle · runtime │
 ├──────────────────────────────────────────────────────┤
 │  Socket Semantic / Runtime                            │
@@ -63,7 +63,7 @@ Key roles per layer:
 | Layer | Role |
 |-------|------|
 | Public API Facade | C API entry point. Validate + delegate only; does not know concrete service/socket details |
-| Service Layer | Gateway/Discovery/SPOT/Registry semantics and lifecycle. Connected to the API layer via service-local access seams |
+| Service Layer | Discovery/SPOT/Registry semantics and lifecycle. Connected to the API layer via service-local access seams |
 | Socket Semantic/Runtime | Socket family semantics (semantic) and common mechanism (runtime components) are separated |
 | Runtime Core | Context, shutdown, close/drain orchestration, option dispatch, logical multipart send |
 | Engine Layer | Boost.Asio-based poller, io_context, mailbox execution backbone |

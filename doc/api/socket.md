@@ -5,7 +5,7 @@
 The Socket API provides functions for creating, configuring, binding,
 connecting, and performing I/O on zlink sockets. All sockets start in recv
 model. Multipart callback receive (`zlink_recv_handler()`) is supported on
-raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`, and `gateway`. Topic callback
+raw `PAIR`, `DEALER`, `ROUTER`, and `STREAM`. Topic callback
 receive (`zlink_subscribe_handler()`) is supported on raw `SUB`, `XSUB`,
 `spot`, and `spot_node`. Send-ready callback (`zlink_send_ready_handler()`)
 is an independent axis available on all send-capable subjects.
@@ -39,7 +39,7 @@ typedef void (*zlink_socket_msg_handler_fn) (
 ```
 
 Callback for multipart message dispatch on multipart receive subjects (raw
-`PAIR`, `DEALER`, `ROUTER`, `STREAM`, and `gateway`). Invoked on the owning
+`PAIR`, `DEALER`, `ROUTER`, and `STREAM`). Invoked on the owning
 I/O thread. Ownership of all message parts is transferred to the callback;
 each part must be closed or consumed exactly once. Used with
 `zlink_recv_handler()`.
@@ -65,7 +65,7 @@ of socket types to registration functions:
 
 | Socket Type | Registration Function | Callback |
 |---|---|---|
-| PAIR, DEALER, ROUTER, STREAM, gateway | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
 | SUB, XSUB, spot, spot_node | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
 | PUB | N/A | Send-only; no handler needed |
 
@@ -312,7 +312,7 @@ int zlink_recv_handler (void *s_,
 ```
 
 Attach a message receive handler to a multipart receive subject. Supported
-subjects are raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`, and `gateway`.
+subjects are raw `PAIR`, `DEALER`, `ROUTER`, and `STREAM`.
 After attach, direct recv and data-plane poller `ZLINK_POLLIN` on the same
 subject fail with `errno=EBUSY`. A second attach on the same subject also
 fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
@@ -837,7 +837,7 @@ success, ownership of every part is transferred to the library. On failure,
 ownership remains with the caller.
 
 Applicable handle types: ROUTER (directed reply), STREAM (peer-addressed
-send), Gateway (directed request/reply).
+send).
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
@@ -1015,7 +1015,7 @@ visible from the next writable transition. If called reentrantly from the
 same handle's send-ready callback, the call fails with `errno=EDEADLK`.
 
 Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`gateway`, `spot`, and `spot_node`. Send-ready is independent from receive
+`spot`, and `spot_node`. Send-ready is independent from receive
 callback mode. After attach, data-plane poller `ZLINK_POLLOUT` on the same
 subject fails with `errno=EBUSY`. Unsupported subjects return `ENOTSUP`.
 

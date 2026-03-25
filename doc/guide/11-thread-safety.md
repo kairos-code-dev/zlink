@@ -5,7 +5,7 @@
 ## 1. The Short Answer
 
 **Yes, zlink handles are thread-safe.** You can share a single socket,
-Gateway, SPOT, or Discovery handle across multiple threads and call its
+SPOT, or Discovery handle across multiple threads and call its
 APIs without adding your own mutex or lock.
 
 ```
@@ -41,8 +41,7 @@ When you're done, close the handle and check the return code.
 These functions allow fully concurrent calls on the same handle:
 
 - `zlink_send()` — raw sockets
-- `zlink_gateway_send()` / `zlink_gateway_send_rid()` — Gateway
-- `zlink_publish()` / `zlink_publish()` — SPOT
+- `zlink_publish()` — SPOT
 - Calling `send` / `publish` from inside a callback is also safe
 
 **Ordering:**
@@ -103,10 +102,10 @@ Includes:
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
+- `zlink_spot_node_attach_discovery()`
 - `zlink_socket_monitor_open()` / `zlink_service_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
+- `zlink_set_option()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - Query/snapshot functions
 
@@ -149,7 +148,6 @@ Every handle type follows the same three-category model:
 | Handle | Sending (concurrent) | Configuration (serialized) | Cleanup |
 |---|---|---|---|
 | Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
-| Gateway | `zlink_gateway_send`, `send_rid` | bind, connect, attach_discovery, set_option, set_lb_strategy, monitor_open | `zlink_gateway_destroy` |
 | SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
 | SPOT Node | `zlink_publish` | bind, connect_peer, disconnect_peer, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
 | Discovery | *(no sending — config only)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
@@ -181,25 +179,25 @@ atomic_int g_running = 1;
 /* Worker threads check g_running and also handle ESHUTDOWN */
 void *sender(void *arg)
 {
-    void *gw = arg;
+    void *socket = arg;
     while (atomic_load(&g_running)) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, 32);
-        int rc = zlink_gateway_send(gw, &part, 1, 0);
+        int rc = zlink_send(socket, &part, 1, 0);
         if (rc == -1 && zlink_errno() == ESHUTDOWN)
             break;  /* handle is shutting down, stop gracefully */
     }
     return NULL;
 }
 
-void shutdown_gateway(void *gw)
+void shutdown_socket(void *socket)
 {
     /* Step 1: tell workers to stop */
     atomic_store(&g_running, 0);
 
-    /* Step 2: give workers a moment to finish, then destroy */
+    /* Step 2: give workers a moment to finish, then close */
     msleep(50);
-    zlink_gateway_destroy(&gw);
+    zlink_close(socket);
 }
 ```
 
@@ -272,32 +270,32 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ## 7. Practical Patterns
 
-### 7.1 Multi-threaded Worker Pool (Gateway)
+### 7.1 Multi-threaded Worker Pool (Socket)
 
-Multiple threads send through one Gateway — no locking needed:
+Multiple threads send through one socket — no locking needed:
 
 ```c
-typedef struct { void *gw; int id; } gw_worker_t;
+typedef struct { void *socket; int id; } socket_worker_t;
 
-void *gw_worker(void *arg)
+void *socket_worker(void *arg)
 {
-    gw_worker_t *w = (gw_worker_t *)arg;
+    socket_worker_t *w = (socket_worker_t *)arg;
     for (int i = 0; i < 50000; i++) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, 64);
-        snprintf(zlink_msg_data(&part), 64, "gw-%d-%d", w->id, i);
-        zlink_gateway_send(w->gw, &part, 1, 0);
+        snprintf(zlink_msg_data(&part), 64, "worker-%d-%d", w->id, i);
+        zlink_send(w->socket, &part, 1, 0);
     }
     return NULL;
 }
 
-void run_gateway_pool(void *gateway)
+void run_socket_pool(void *socket)
 {
     pthread_t threads[4];
-    gw_worker_t args[4];
+    socket_worker_t args[4];
     for (int i = 0; i < 4; i++) {
-        args[i] = (gw_worker_t){gateway, i};
-        pthread_create(&threads[i], NULL, gw_worker, &args[i]);
+        args[i] = (socket_worker_t){socket, i};
+        pthread_create(&threads[i], NULL, socket_worker, &args[i]);
     }
     for (int i = 0; i < 4; i++)
         pthread_join(threads[i], NULL);

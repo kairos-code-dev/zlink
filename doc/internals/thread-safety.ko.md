@@ -8,7 +8,7 @@
 
 ## 1. 개요
 
-zlink의 공개 핸들(소켓, Gateway, SPOT, Discovery, Registry, 모니터)은
+zlink의 공개 핸들(소켓, SPOT, Discovery, Registry, 모니터)은
 기본적으로 thread-safe이지만, 모든 API가 같은 비용을 가지지는 않습니다.
 내부적으로 라이브러리는 모든 공개 API를 세 가지 계층 중 하나로 분류하며,
 각 계층은 고유한 순서 의미론, 성능 제약, 에러 규칙을 가집니다.
@@ -24,7 +24,6 @@ three-tier contract는 내부 설계 도구입니다 — 사용자에게는 "자
 **대상 API:**
 
 - `zlink_send()`
-- `zlink_gateway_send()` / `zlink_gateway_send_rid()`
 - `zlink_spot_publish()` / `zlink_spot_node_publish()`
 - 허용된 callback 내 동일 handle `send` / `publish`
 
@@ -55,10 +54,9 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
-- `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
+- `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - Heavy query: `zlink_registry_topology_query()`, 스냅샷 함수
 
@@ -84,8 +82,7 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 **대상 API:**
 
 - `zlink_close()` (소켓)
-- `zlink_gateway_destroy()` / `zlink_spot_destroy()` /
-  `zlink_spot_node_destroy()`
+- `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
 - `zlink_discovery_destroy()` / `zlink_registry_destroy()`
 - Monitor 핸들 `close` / `destroy`
 
@@ -133,21 +130,7 @@ send queue에 발행합니다 — 단일 스레드 send에 사용되는 것과 �
   hot-path admission gate와 상태나 캐시 라인을 공유하지 않는
   별도 직렬화 경로를 거칩니다.
 
-### 3.2 Gateway
-
-Gateway는 data-plane과 control-plane API가 함께 있는 mixed
-subject입니다.
-
-- **Data-plane:** `gateway_send` / `gateway_send_rid`는 hot-path
-  계약을 사용합니다. Send 경로는 control-plane lock을 완전히
-  우회합니다.
-- **Control-plane:** route mutation, `attach_discovery`, option 변경,
-  `monitor_open`은 별도 직렬화된 control path를 거칩니다.
-  Control-plane lock은 steady-state send 처리량을 방해하지 않습니다.
-- **Lifecycle:** `gateway_destroy`는 `service_public_api_guard_t`
-  admission gate를 사용합니다 (4절 참고).
-
-### 3.3 SPOT / SPOT Node
+### 3.2 SPOT / SPOT Node
 
 - **공개 계약:** `spot_publish` / `spot_node_publish`는 hot-path
   계층을 따릅니다. 구독 변경, peer mutation, `attach_discovery`는
@@ -157,7 +140,7 @@ subject입니다.
   계약이 이들을 포함합니다. Child ordering과 open/destroy
   선형화는 내부 구현 관심사입니다.
 
-### 3.4 Discovery / Registry
+### 3.3 Discovery / Registry
 
 Discovery와 Registry는 control-plane 중심 subject입니다. Hot-path
 send API가 없습니다.
@@ -165,11 +148,11 @@ send API가 없습니다.
 - 정확성과 가시성이 주요 관심사입니다.
 - 내부 직렬화가 topology query, peer mutation, heartbeat 설정의
   일관성을 보장합니다.
-- `attach_discovery`를 통해 Gateway나 SPOT Node에 연결될 때,
+- `attach_discovery`를 통해 SPOT Node에 연결될 때,
   Discovery/Registry 직렬화가 parent data-plane 성능을 저하시키면
   안 됩니다.
 
-### 3.5 Monitor
+### 3.4 Monitor
 
 Monitor는 control-plane 중심 subject입니다.
 
@@ -181,7 +164,7 @@ Monitor는 control-plane 중심 subject입니다.
 
 ## 4. Service Public API Guard
 
-`service_public_api.hpp`는 Gateway, SPOT, SPOT Node, Discovery,
+`service_public_api.hpp`는 SPOT, SPOT Node, Discovery,
 Registry가 lifecycle과 control-path 계층을 구현하는 데 사용하는
 `service_public_api_guard_t` 클래스를 제공합니다.
 

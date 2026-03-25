@@ -426,112 +426,87 @@ zlink_ctx_term(ctx);
 
 ### 6.3 Member Peer 조회
 
-서비스 수준의 토폴로지 외에도, Registry는 등록된 서비스의 피어별 연결
-상태를 추적한다. 운영 시 연결 상태와 피어 분포를 확인하는 데 유용하다.
+Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 opaque
+메타데이터를 노출하는 member peer 조회를 제공한다. 가중치 기반 라우팅
+결정과 운영 모니터링에 유용하다.
 
-#### 로컬 Member Peer 조회
+#### Registry Member Peer 조회
 
 ```c
-/* 전체 member peer 연결 스냅샷 */
+/* 로컬 Registry에서 특정 서비스의 member peer 조회 */
 size_t count = 0;
-zlink_registry_member_peers(registry, NULL, NULL, &count);
+zlink_registry_member_peers(registry,
+    ZLINK_SERVICE_TYPE_SOCKET, "payment-service", NULL, &count);
 
 zlink_member_peer_entry_t *peers = malloc(
     count * sizeof(zlink_member_peer_entry_t));
-zlink_registry_member_peers(registry, NULL, peers, &count);
+zlink_registry_member_peers(registry,
+    ZLINK_SERVICE_TYPE_SOCKET, "payment-service", peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("service=%s endpoint=%s peer=%s state=%d\n",
+    printf("service=%s endpoint=%s value=%lld\n",
            peers[i].service_name,
-           peers[i].member_endpoint,
-           peers[i].peer_endpoint,
-           peers[i].state);
+           peers[i].endpoint,
+           (long long)peers[i].value);
 }
 free(peers);
-
-/* 필터: 특정 서비스의 피어만 조회 */
-zlink_member_peer_filter_t peer_filter;
-memset(&peer_filter, 0, sizeof(peer_filter));
-strncpy(peer_filter.service_name, "payment-service",
-        sizeof(peer_filter.service_name) - 1);
-
-size_t filtered_count = 64;
-zlink_member_peer_entry_t filtered[64];
-zlink_registry_member_peers(registry, &peer_filter,
-                            filtered, &filtered_count);
 ```
 
-#### Member Peer 메타데이터 (로컬)
+#### Member Peer 메타데이터
 
 ```c
-/* 특정 멤버의 피어 메타데이터 조회 */
-size_t meta_count = 0;
-zlink_registry_member_peer_metadata(registry, "payment-service",
-                                    NULL, &meta_count);
-
-zlink_member_peer_entry_t *meta = malloc(
-    meta_count * sizeof(zlink_member_peer_entry_t));
-zlink_registry_member_peer_metadata(registry, "payment-service",
-                                    meta, &meta_count);
-
-for (size_t i = 0; i < meta_count; i++) {
-    printf("  peer=%s state=%d connected_since=%llu\n",
-           meta[i].peer_endpoint,
-           meta[i].state,
-           (unsigned long long)meta[i].connected_since_ms);
+/* 특정 피어의 opaque 메타데이터 blob 조회 */
+zlink_msg_t metadata;
+zlink_msg_init(&metadata);
+int rc = zlink_registry_member_peer_metadata(registry,
+    ZLINK_SERVICE_TYPE_SOCKET, "payment-service",
+    ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
+    &metadata);
+if (rc == 0) {
+    printf("metadata size=%zu\n", zlink_msg_size(&metadata));
 }
-free(meta);
+zlink_msg_close(&metadata);
 ```
 
 #### Member Peer 엔트리 필드
 
 | 필드 | 설명 |
 |------|------|
-| `member_routing_id` | 서비스 멤버의 라우팅 ID |
-| `member_endpoint` | 서비스 멤버 엔드포인트 |
-| `service_name` | 서비스 이름 |
-| `peer_routing_id` | 연결된 피어의 라우팅 ID |
-| `peer_endpoint` | 피어 엔드포인트 |
-| `state` | 현재 상태 (`ZLINK_TOPOLOGY_STATE_*`) |
-| `connected_since_ms` | 피어 연결 시점 타임스탬프 (epoch ms) |
-| `last_reported_ms` | 마지막 업데이트 타임스탬프 (epoch ms) |
+| `service_type` | 서비스 타입 (`ZLINK_SERVICE_TYPE_*`) |
+| `service_role` | 서비스 인스턴스의 역할 |
+| `service_name` | null 종료 서비스 이름 |
+| `endpoint` | null 종료 엔드포인트 |
+| `routing_id` | 피어의 라우팅 아이덴티티 |
+| `value` | 서비스별 숫자 값 (`int64_t`) |
 
-#### 원격 Member Peer 조회 (Discovery 경유)
+#### Discovery Member Peer 조회
 
 ```c
-/* Discovery를 통해 member peer 조회 (다른 프로세스에서) */
+/* 로컬 Discovery 캐시에서 member peer 조회 */
 size_t count = 0;
-zlink_discovery_member_peers(discovery, NULL, NULL, &count);
+zlink_discovery_member_peers(discovery, NULL, &count);
 
 zlink_member_peer_entry_t *peers = malloc(
     count * sizeof(zlink_member_peer_entry_t));
-zlink_discovery_member_peers(discovery, NULL, peers, &count);
+zlink_discovery_member_peers(discovery, peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("[%s] %s -> %s  state=%d\n",
+    printf("[%s] endpoint=%s role=%u value=%lld\n",
            peers[i].service_name,
-           peers[i].member_endpoint,
-           peers[i].peer_endpoint,
-           peers[i].state);
+           peers[i].endpoint,
+           peers[i].service_role,
+           (long long)peers[i].value);
 }
 free(peers);
 
-/* 특정 서비스의 메타데이터 조회 */
-size_t meta_count = 0;
-zlink_discovery_member_peer_metadata(discovery, "payment-service",
-                                     NULL, &meta_count);
-
-zlink_member_peer_entry_t *meta = malloc(
-    meta_count * sizeof(zlink_member_peer_entry_t));
-zlink_discovery_member_peer_metadata(discovery, "payment-service",
-                                     meta, &meta_count);
-
-for (size_t i = 0; i < meta_count; i++) {
-    printf("  peer=%s connected_since=%llu\n",
-           meta[i].peer_endpoint,
-           (unsigned long long)meta[i].connected_since_ms);
-}
-free(meta);
+/* Discovery를 통해 특정 피어의 메타데이터 조회 */
+zlink_msg_t metadata;
+zlink_msg_init(&metadata);
+zlink_discovery_member_peer_metadata(discovery,
+    ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
+    &metadata);
+printf("metadata size=%zu\n", zlink_msg_size(&metadata));
+zlink_msg_close(&metadata);
 ```
 
 ## 7. 운영 패턴

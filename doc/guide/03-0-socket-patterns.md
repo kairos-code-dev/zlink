@@ -80,7 +80,7 @@ Is the communication peer an external client (browser, game)?
 | External TCP client | STREAM + tcp/tls | Length-prefix RAW communication |
 
 > For location transparency (auto-connect, load balancing, topic mesh),
-> use the service layer (Gateway, SPOT) instead of raw sockets.
+> use the service layer (SPOT) instead of raw sockets.
 > See [Services Overview](07-0-services.md) for details.
 
 ## 6. Sub-Documents

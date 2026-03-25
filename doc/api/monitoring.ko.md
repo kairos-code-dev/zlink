@@ -101,7 +101,7 @@ typedef struct zlink_monitor_snapshot_t
 
 | 필드 | 설명 |
 |------|------|
-| `source_kind` | snapshot source(`SOCKET`, `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`) |
+| `source_kind` | snapshot source(`SOCKET`, `SPOT_PUB`, `SPOT_SUB`) |
 | `state_flags` | `READY`, `BOUND_READY`, `SEND_READY` 같은 aggregate 상태 |
 | `detail_flags` | 어떤 numeric field가 채워졌는지 표시 |
 | `ready_count` | 지원되는 경우 aggregate ready/connected peer 수 |
@@ -116,7 +116,6 @@ typedef struct zlink_monitor_snapshot_t
 typedef enum zlink_monitor_source_kind_t
 {
     ZLINK_MONITOR_SOURCE_SOCKET   = 1,
-    ZLINK_MONITOR_SOURCE_GATEWAY  = 2,
     ZLINK_MONITOR_SOURCE_SPOT_PUB = 3,
     ZLINK_MONITOR_SOURCE_SPOT_SUB = 4
 } zlink_monitor_source_kind_t;
@@ -299,13 +298,13 @@ int zlink_monitor_close (void **monitor_p_);
 
 ## 서비스 모니터 API
 
-서비스 모니터는 서비스 계층 컴포넌트(Discovery, Gateway, SPOT)의 상태 전이
+서비스 모니터는 서비스 계층 컴포넌트(Discovery, SPOT)의 상태 전이
 이벤트를 제공합니다. transport 레벨 이벤트를 보고하는 소켓 모니터와 달리,
 서비스 모니터는 readiness, route 변화, SPOT 필터 적용 등의 상위 수준 이벤트를
 보고합니다.
 
 `zlink_service_monitor_open()`의 target은 모든 서비스 핸들(Discovery,
-Gateway, Spot, SpotNode)을 받습니다. 서비스 종류는 핸들의 runtime tag에서
+Spot, SpotNode)을 받습니다. 서비스 종류는 핸들의 runtime tag에서
 결정되며, per-service open 함수나 `role` 파라미터는 없습니다. 내부
 pub/sub 구조는 숨겨집니다.
 
@@ -374,7 +373,6 @@ typedef struct zlink_service_monitor_open_options_t
 | 상수 | 값 | 설명 |
 |------|-----|------|
 | `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery 컴포넌트 |
-| `ZLINK_SERVICE_KIND_GATEWAY` | 2 | Gateway 컴포넌트 |
 | `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | SPOT Subscriber 컴포넌트 |
 | `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | SPOT Publisher 컴포넌트 |
 
@@ -397,15 +395,6 @@ typedef struct zlink_service_monitor_open_options_t
 | `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | 검색된 서비스가 활성화됨 |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | 검색된 서비스가 비활성화됨 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | 서비스 provider 집합이 변경됨 |
-
-#### Gateway 이벤트
-
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | `1 << 8` | Gateway readiness 변화 |
-| `ZLINK_GATEWAY_SEND_READY_CHANGED` | `1 << 10` | aggregate send readiness 변화 |
-| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | 피어 경로 활성화 |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | 피어 경로 비활성화 |
 
 #### SPOT 이벤트
 
@@ -435,12 +424,6 @@ typedef struct zlink_service_monitor_open_options_t
 - `..._DISCOVERY_SERVICE_UP` -> `ZLINK_DISCOVERY_SERVICE_UP`
 - `..._DISCOVERY_SERVICE_DOWN` -> `ZLINK_DISCOVERY_SERVICE_DOWN`
 - `..._DISCOVERY_PROVIDERS_CHANGED` -> `ZLINK_DISCOVERY_PROVIDERS_CHANGED`
-
-**Gateway:**
-- `..._GATEWAY_READY_CHANGED` -> `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED`
-- `..._GATEWAY_SEND_READY_CHANGED` -> `ZLINK_GATEWAY_SEND_READY_CHANGED`
-- `..._GATEWAY_ROUTE_UP` -> `ZLINK_GATEWAY_ROUTE_UP`
-- `..._GATEWAY_ROUTE_DOWN` -> `ZLINK_GATEWAY_ROUTE_DOWN`
 
 **SPOT:**
 - `..._SPOT_READY_CHANGED` -> `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED`
@@ -475,7 +458,7 @@ void *zlink_service_monitor_open (
 ```
 
 모든 서비스 핸들에 서비스 모니터를 생성하고 핸들을 반환합니다. `target_`은
-Discovery, Gateway, Spot, SpotNode 핸들을 받을 수 있으며, 서비스 종류는
+Discovery, Spot, SpotNode 핸들을 받을 수 있으며, 서비스 종류는
 핸들의 runtime tag에서 결정됩니다. Spot 및 SpotNode target의 경우 내부
 pub/sub 구조가 숨겨지며, `role` 파라미터는 없습니다.
 

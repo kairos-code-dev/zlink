@@ -99,6 +99,8 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 3.2 Request/Reply API (#03)
 
+> **Note:** Gateway service was removed in v4.x. These decisions are retained as historical context.
+
 **Deprecation reason**:
 - Gateway API provides the same functionality more completely
 - Maintaining a separate API creates duplicate code/concepts
@@ -117,6 +119,8 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 4.1 Discovery/Gateway Separation
 
+> **Note:** Gateway service was removed in v4.x. These decisions are retained as historical context.
+
 **Decision**: Separate Discovery (service finding) and Gateway (message routing) into distinct components.
 
 **Rationale**:
@@ -126,6 +130,8 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 4.2 ROUTER/ROUTER Pattern
 
+> **Note:** Gateway service was removed in v4.x. These decisions are retained as historical context.
+
 **Decision**: Use ROUTER/ROUTER for Gateway <-> Receiver communication.
 
 **Rationale**:
@@ -134,6 +140,8 @@ This document records the rationale and alternative analyses for key design deci
 - Bidirectional socket handles both request sending and response receiving
 
 ### 4.3 request_id-Based Mapping
+
+> **Note:** Gateway service was removed in v4.x. These decisions are retained as historical context.
 
 **Decision**: Use uint64_t request_id for request-response mapping.
 

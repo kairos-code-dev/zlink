@@ -32,7 +32,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 │  validate + delegate, per-handle admission guard      │
 ├──────────────────────────────────────────────────────┤
 │  Service Layer                                        │
-│  Gateway · Discovery · SPOT · Registry                │
+│  Discovery · SPOT · Registry                          │
 │  service access seam (*_access) · lifecycle · runtime │
 ├──────────────────────────────────────────────────────┤
 │  Socket Semantic / Runtime                            │

@@ -34,7 +34,7 @@ API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 
 HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 재개된다.
 이 간격이 writable/non-writable 진동을 방지하는 히스테리시스다.
 
-**소켓 타입별 차이:** 모든 소켓에 동일하게 적용. 서비스(Gateway, SPOT)도
+**소켓 타입별 차이:** 모든 소켓에 동일하게 적용. 서비스(SPOT)도
 내부 소켓에 fan-out으로 적용.
 
 ---
@@ -69,7 +69,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 | **0** | non-blocking과 동일 (즉시 반환) |
 | **>0** | 지정 시간(ms)까지 대기 후 `EAGAIN` 반환 |
 
-**서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파. Gateway 내부 ROUTER에도 적용.
+**서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파.
 
 ---
 

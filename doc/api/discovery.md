@@ -235,6 +235,81 @@ instance to terminate the attached socket lifecycle.
 
 ---
 
+### zlink_discovery_set_value
+
+Set the numeric routing attribute for this Discovery instance.
+
+```c
+int zlink_discovery_set_value (void *discovery, int64_t value);
+```
+
+Sets the `value` field that is published alongside this service's
+registration. Remote consumers see it in `zlink_member_peer_entry_t.value`.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_discovery_get_value`, `zlink_discovery_set_metadata`
+
+---
+
+### zlink_discovery_get_value
+
+Get the current numeric routing attribute.
+
+```c
+int zlink_discovery_get_value (void *discovery, int64_t *value_out);
+```
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**See also:** `zlink_discovery_set_value`
+
+---
+
+### zlink_discovery_set_metadata
+
+Set the opaque metadata blob for this Discovery instance.
+
+```c
+int zlink_discovery_set_metadata (void *discovery,
+                                   const void *data,
+                                   size_t size);
+```
+
+Sets the opaque metadata blob published alongside this service's
+registration. Remote consumers retrieve it via
+`zlink_discovery_member_peer_metadata()` or
+`zlink_registry_member_peer_metadata()`. Max size is runtime-configurable
+(default 4 KiB); oversized blobs fail with `EMSGSIZE`.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_discovery_get_metadata`, `zlink_discovery_set_value`
+
+---
+
+### zlink_discovery_get_metadata
+
+Get the current metadata blob.
+
+```c
+int zlink_discovery_get_metadata (void *discovery,
+                                   zlink_msg_t *metadata_out);
+```
+
+Copies the current metadata into `metadata_out`. The caller must
+initialize the message before the call and close it after use.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**See also:** `zlink_discovery_set_metadata`
+
+---
+
 ### zlink_discovery_destroy
 
 Destroy the Discovery instance and release all resources.

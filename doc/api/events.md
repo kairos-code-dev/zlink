@@ -109,15 +109,6 @@ Disconnect reasons:
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | A service provider disappeared |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | Provider set changed |
 
-### Gateway
-
-| Constant | Meaning |
-|---|---|
-| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | Local service readiness changed; `value` is current_ready_count |
-| `ZLINK_GATEWAY_SEND_READY_CHANGED` | Gateway send-readiness changed; `value` is current_ready_count |
-| `ZLINK_GATEWAY_ROUTE_UP` | A route became active; `value` is current_ready_count |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | A route became inactive; `value` is current_ready_count |
-
 ### SPOT
 
 | Constant | Producer | Meaning |

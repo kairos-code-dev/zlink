@@ -35,7 +35,7 @@ Internally, options are classified into three categories:
 With HWM=100, LWM=50. Queue blocks at 100 and resumes only when drained to 50 or below.
 This gap is the hysteresis that prevents writable/non-writable oscillation.
 
-**Per-socket-type:** Applies identically to all sockets. Services (Gateway, SPOT) fan-out to their internal sockets.
+**Per-socket-type:** Applies identically to all sockets. Services (SPOT) fan-out to their internal sockets.
 
 ---
 
@@ -67,7 +67,7 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 | **0** | Equivalent to non-blocking (immediate return) |
 | **>0** | Wait up to specified time (ms), then return `EAGAIN` |
 
-**Service application:** Propagated to SPOT pub/sub internal sockets. Applied to Gateway internal ROUTER as well.
+**Service application:** Propagated to SPOT pub/sub internal sockets.
 
 ---
 

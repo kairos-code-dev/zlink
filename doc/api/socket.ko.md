@@ -4,8 +4,8 @@
 
 소켓 API는 zlink 소켓의 생성, 구성, 바인딩, 연결, I/O 수행을 위한 함수를
 제공합니다. 모든 소켓은 recv 모드로 시작합니다. 멀티파트 callback receive
-(`zlink_recv_handler()`)는 raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`,
-`gateway`에서 지원됩니다. 토픽 callback receive
+(`zlink_recv_handler()`)는 raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`에서
+지원됩니다. 토픽 callback receive
 (`zlink_subscribe_handler()`)는 raw `SUB`, `XSUB`, `spot`, `spot_node`에서
 지원됩니다. send-ready callback (`zlink_send_ready_handler()`)는 독립 축으로
 모든 send-capable subject에서 사용할 수 있습니다.
@@ -38,8 +38,8 @@ typedef void (*zlink_socket_msg_handler_fn) (
   void *userdata_);
 ```
 
-멀티파트 수신 subject(raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`,
-`gateway`)에서 멀티파트 메시지 dispatch에 사용되는 콜백입니다.
+멀티파트 수신 subject(raw `PAIR`, `DEALER`, `ROUTER`, `STREAM`)에서
+멀티파트 메시지 dispatch에 사용되는 콜백입니다.
 소유 I/O 스레드에서 호출됩니다. 모든 메시지 파트의 소유권이 콜백으로
 이전되며, 각 파트는 정확히 한 번 close하거나 소비해야 합니다.
 `zlink_recv_handler()`와 함께 사용합니다.
@@ -64,7 +64,7 @@ typedef void (*zlink_subscribe_handler_fn) (const zlink_routing_id_t *source_rid
 
 | 소켓 타입 | 등록 함수 | 콜백 |
 |---|---|---|
-| PAIR, DEALER, ROUTER, STREAM, gateway | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
+| PAIR, DEALER, ROUTER, STREAM | `zlink_recv_handler` | `zlink_socket_msg_handler_fn` |
 | SUB, XSUB, spot, spot_node | `zlink_subscribe_handler` | `zlink_subscribe_handler_fn` |
 | PUB | N/A | 송신 전용; 핸들러 불필요 |
 
@@ -131,7 +131,7 @@ ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
 #### 공통 옵션 (`zlink_option_t`)
 
 `zlink_set_option()` / `zlink_get_option()`과 함께 사용합니다.
-모든 소켓 타입, gateway, discovery(fan-out)에 적용됩니다.
+모든 소켓 타입과 discovery(fan-out)에 적용됩니다.
 
 내부적으로 옵션은 세 소유권 카테고리로 분류되어 각 도메인 소유자가
 validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 옵션
@@ -307,7 +307,7 @@ int zlink_recv_handler (void *s_,
 ```
 
 멀티파트 수신 subject에 메시지 수신 핸들러를 부착합니다. 지원 대상은 raw
-`PAIR`, `DEALER`, `ROUTER`, `STREAM`, `gateway`입니다. attach 이후 같은
+`PAIR`, `DEALER`, `ROUTER`, `STREAM`입니다. attach 이후 같은
 subject의 direct recv와 data-plane poller `ZLINK_POLLIN`은 `errno=EBUSY`로
 실패합니다. 동일 subject에 대한 두 번째 attach도 `errno=EBUSY`입니다.
 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.
@@ -379,7 +379,7 @@ int zlink_set_option (void *handle_,
                       size_t optvallen_);
 ```
 
-공통 옵션을 설정합니다. 모든 소켓 타입, gateway, discovery(fan-out)에서
+공통 옵션을 설정합니다. 모든 소켓 타입과 discovery(fan-out)에서
 사용합니다. `option_` 매개변수는 `zlink_option_t` enum 값입니다. `optval_`
 포인터는 값을 제공하고 `optvallen_`은 크기를 바이트 단위로 지정합니다.
 
@@ -792,8 +792,7 @@ int zlink_send_rid (void *s_,
 모든 파트의 소유권이 라이브러리로 이전됩니다. 실패 시 소유권은 호출자에게
 유지됩니다.
 
-적용 대상: ROUTER (directed reply), STREAM (피어 지정 send), Gateway
-(directed request/reply).
+적용 대상: ROUTER (directed reply), STREAM (피어 지정 send).
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
@@ -988,7 +987,7 @@ int zlink_send_ready_handler (void *s_,
 `errno=EDEADLK`로 실패합니다.
 
 지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`gateway`, `spot`, `spot_node`입니다. send-ready는 receive callback 모드와
+`spot`, `spot_node`입니다. send-ready는 receive callback 모드와
 독립적입니다. attach 이후 같은 subject의 data-plane poller
 `ZLINK_POLLOUT`은 `errno=EBUSY`로 실패합니다. 지원하지 않는 subject는
 `ENOTSUP`를 반환합니다.

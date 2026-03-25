@@ -143,7 +143,7 @@ zlink_send(socket, parts, 2, 0);
 
 #### Logical Multipart Send
 
-`zlink_send()`, `zlink_gateway_send()`, `zlink_publish()` 등 공개/서비스 surface의
+`zlink_send()`, `zlink_publish()` 등 공개/서비스 surface의
 멀티파트 송신은 내부적으로 공통 **logical multipart send** 모듈을 사용한다.
 이 모듈은 다음 의미를 공통으로 보장한다.
 

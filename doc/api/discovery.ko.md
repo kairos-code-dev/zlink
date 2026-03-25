@@ -232,6 +232,81 @@ SUB 중 하나여야 합니다. 서비스 역할은 소켓 타입에서 자동�
 
 ---
 
+### zlink_discovery_set_value
+
+이 Discovery 인스턴스의 숫자 라우팅 속성을 설정합니다.
+
+```c
+int zlink_discovery_set_value (void *discovery, int64_t value);
+```
+
+서비스 등록과 함께 게시되는 `value` 필드를 설정합니다. 원격 소비자는
+`zlink_member_peer_entry_t.value`에서 이 값을 확인할 수 있습니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_discovery_get_value`, `zlink_discovery_set_metadata`
+
+---
+
+### zlink_discovery_get_value
+
+현재 숫자 라우팅 속성을 가져옵니다.
+
+```c
+int zlink_discovery_get_value (void *discovery, int64_t *value_out);
+```
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**참고:** `zlink_discovery_set_value`
+
+---
+
+### zlink_discovery_set_metadata
+
+이 Discovery 인스턴스의 opaque 메타데이터 blob을 설정합니다.
+
+```c
+int zlink_discovery_set_metadata (void *discovery,
+                                   const void *data,
+                                   size_t size);
+```
+
+서비스 등록과 함께 게시되는 opaque 메타데이터 blob을 설정합니다.
+원격 소비자는 `zlink_discovery_member_peer_metadata()` 또는
+`zlink_registry_member_peer_metadata()`로 조회할 수 있습니다.
+최대 크기는 런타임 설정 가능(기본 4 KiB)이며, 초과 시 `EMSGSIZE`로
+실패합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_discovery_get_metadata`, `zlink_discovery_set_value`
+
+---
+
+### zlink_discovery_get_metadata
+
+현재 메타데이터 blob을 가져옵니다.
+
+```c
+int zlink_discovery_get_metadata (void *discovery,
+                                   zlink_msg_t *metadata_out);
+```
+
+현재 메타데이터를 `metadata_out`에 복사합니다. 호출 전에 메시지를
+초기화하고, 사용 후에 닫아야 합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**참고:** `zlink_discovery_set_metadata`
+
+---
+
 ### zlink_discovery_destroy
 
 Discovery 인스턴스를 파괴하고 모든 리소스를 해제합니다.

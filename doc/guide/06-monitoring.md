@@ -290,7 +290,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 ## 8.1 Service Monitor
 
 The service monitor observes state changes on service handles such as
-Gateway, SPOT, and Discovery. It is a separate API from the socket monitor.
+SPOT and Discovery. It is a separate API from the socket monitor.
 
 - **Event type**: `zlink_service_event_t` (different from socket monitor's `zlink_monitor_event_t`)
 - **Callback type**: `zlink_service_monitor_handler_fn`
@@ -300,30 +300,30 @@ Gateway, SPOT, and Discovery. It is a separate API from the socket monitor.
 ### Opening a service monitor
 
 ```c
-/* Gateway service monitor */
+/* SPOT service monitor */
 zlink_service_monitor_open_options_t opts = {
     .events = ZLINK_SERVICE_MONITOR_EVENT_ALL
 };
-void *mon = zlink_service_monitor_open(gateway, &opts);
+void *mon = zlink_service_monitor_open(spot_node, &opts);
 ```
 
-Pass any service handle (discovery, gateway, spot, spot_node).
+Pass any service handle (discovery, spot, spot_node).
 The handle kind is determined automatically at runtime.
 
 ### Callback mode
 
 ```c
-void on_gateway_event(const zlink_service_event_t *ev, void *userdata)
+void on_spot_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED) {
-        printf("send ready: %u\n", ev->value);
+    if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED) {
+        printf("sub delivery ready\n");
     }
-    if (ev->event_type & ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP) {
-        printf("route up, ready routes: %u\n", ev->value);
+    if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED) {
+        printf("pub first delivery ready\n");
     }
 }
 
-zlink_service_monitor_handler(mon, on_gateway_event, NULL);
+zlink_service_monitor_handler(mon, on_spot_event, NULL);
 ```
 
 ### Recv mode
@@ -340,15 +340,6 @@ if (rc == 0) {
 
 Events observed via `zlink_service_monitor_open()`.
 Different services emit different events.
-
-#### Gateway events
-
-| Constant | Description | `value` | After this event |
-|---|---|---|---|
-| `GATEWAY_MONITOR_EVENT_READY_CHANGED` | service readiness changed | `current_ready_count` | — |
-| `GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED` | send readiness changed | `current_ready_count` | **value>0: start `zlink_gateway_send()`** |
-| `GATEWAY_MONITOR_EVENT_ROUTE_UP` | peer route activated | current ready route count | — |
-| `GATEWAY_MONITOR_EVENT_ROUTE_DOWN` | peer route deactivated | current ready route count | — |
 
 #### SPOT events
 
@@ -543,27 +534,7 @@ zlink_monitor_close(&sub_mon);
 | PUB | `PUB_DELIVERY_READY_CHANGED(value>=expected_subs)` | `zlink_publish()` delivery |
 | SUB | `SUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_subscribe()` recv |
 
-### 11.4 Services — Gateway
-
-Ready to send immediately after `GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED(value>0)`.
-
-```c
-/* Open service monitor on client gateway */
-zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
-              | ZLINK_GATEWAY_MONITOR_EVENT_ERROR
-};
-void *mon = zlink_service_monitor_open(client, &opts);
-
-void on_gw(const zlink_service_event_t *ev, void *userdata) {
-    if (ev->event_type == ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED && ev->value > 0) {
-        /* routes ready — zlink_gateway_send() is possible now */
-    }
-}
-zlink_service_monitor_handler(mon, on_gw, NULL);
-```
-
-### 11.5 Services — SPOT
+### 11.4 Services — SPOT
 
 SPOT uses separate service monitors for sub and pub, each subscribing to
 different events.
@@ -590,21 +561,20 @@ void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 
 | Service | Wait for | Then you can |
 |---|---|---|
-| Gateway | `GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED(value>0)` | `zlink_gateway_send()` |
 | SPOT sub | `SUB_DELIVERY_READY_CHANGED` | start receiving via `zlink_subscribe()` |
 | SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | start delivering via `zlink_publish()` |
 
-### 11.6 Snapshots
+### 11.5 Snapshots
 
 `zlink_monitor_snapshot()` and `zlink_*_status_snapshot()` return
 a point-in-time view of the current state. Use them for dashboards,
 health checks, and debugging.
 
 ```c
-/* Check current gateway health */
-zlink_gateway_status_t status;
-zlink_gateway_status_snapshot(gateway, &status);
-printf("state=%d, ready_providers=%u\n", status.state, status.ready_provider_count);
+/* Check current discovery health */
+zlink_discovery_status_t status;
+zlink_discovery_status_snapshot(discovery, &status);
+printf("state=%d\n", status.state);
 ```
 
 ---

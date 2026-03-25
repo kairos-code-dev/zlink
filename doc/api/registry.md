@@ -13,8 +13,8 @@
 
 The Registry is the central service directory for the zlink service layer. It
 accepts service registration, deregistration, and heartbeat requests from
-Gateways and SPOT Nodes, and periodically broadcasts the aggregated service
-list to all connected Discovery instances.
+SPOT Nodes and socket family services, and periodically broadcasts the
+aggregated service list to all connected Discovery instances.
 
 ## Constants
 
@@ -69,7 +69,8 @@ Binds the Registry's PUB and ROUTER endpoints, verifies the bind succeeds,
 starts the internal control task, and begins accepting registrations and
 broadcasting the service list. The PUB endpoint is used for broadcasting to
 Discovery instances. The ROUTER endpoint is used for receiving registration,
-deregistration, and heartbeat messages from Gateways and SPOT Nodes.
+deregistration, and heartbeat messages from SPOT Nodes and socket family
+services.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
@@ -244,7 +245,6 @@ typedef struct zlink_registry_status_t
     char bind_endpoint[256];
     zlink_registry_state_t state;
     uint32_t topology_entry_count;
-    uint32_t gateway_peer_entry_count;
     uint32_t peer_registry_count;
     uint32_t connected_peer_registry_count;
     uint64_t list_seq;
@@ -259,7 +259,6 @@ typedef struct zlink_registry_status_t
 | `bind_endpoint` | Null-terminated bound endpoint. |
 | `state` | `IDLE`, `ACTIVE`, `DEGRADED`, or `ERROR`. |
 | `topology_entry_count` | Total entries in the topology table. |
-| `gateway_peer_entry_count` | Total gateway peer entries. |
 | `peer_registry_count` | Configured peer registry count. |
 | `connected_peer_registry_count` | Currently connected peer registries. |
 | `list_seq` | Monotonic sequence number of the latest broadcast. |
@@ -544,124 +543,116 @@ Closes the client connection and sets `*client_p` to `NULL`.
 
 ---
 
-## Gateway Peers Topology API
+## Member Peers API
 
-These APIs provide introspection into the per-peer connection state of
-Gateway services managed by the Registry.
+These APIs provide introspection into the per-member peer state of
+services managed by the Registry and Discovery.
 
-### Gateway Peers Types
+### Member Peers Types
 
-#### zlink_registry_gateway_peer_entry_t
+#### zlink_member_peer_entry_t
 
 ```c
-typedef struct zlink_registry_gateway_peer_entry_t
+typedef struct zlink_member_peer_entry_t
 {
-    zlink_routing_id_t gateway_routing_id;
-    char gateway_endpoint[256];
+    zlink_service_type_t service_type;
+    uint16_t service_role;
     char service_name[256];
-    zlink_routing_id_t peer_routing_id;
-    char peer_endpoint[256];
-    zlink_topology_state_t state;
-    uint32_t weight;
-    uint64_t connected_since_ms;
-    uint64_t last_reported_ms;
-} zlink_registry_gateway_peer_entry_t;
+    char endpoint[256];
+    zlink_routing_id_t routing_id;
+    int64_t value;
+} zlink_member_peer_entry_t;
 ```
 
 | Field | Description |
 |-------|-------------|
-| `gateway_routing_id` | Routing identity of the Gateway instance. |
-| `gateway_endpoint` | Null-terminated Gateway endpoint. |
+| `service_type` | Service type (`ZLINK_SERVICE_TYPE_*`). |
+| `service_role` | Role of the service instance. |
 | `service_name` | Null-terminated service name. |
-| `peer_routing_id` | Routing identity of the connected peer. |
-| `peer_endpoint` | Null-terminated peer endpoint. |
-| `state` | Current state (`ZLINK_TOPOLOGY_STATE_*`). |
-| `weight` | Peer weight for weighted load balancing. |
-| `connected_since_ms` | Timestamp (epoch ms) when the peer connected. |
-| `last_reported_ms` | Timestamp (epoch ms) of the last heartbeat or update. |
-
-#### zlink_registry_gateway_peer_filter_t
-
-```c
-typedef struct zlink_registry_gateway_peer_filter_t
-{
-    zlink_routing_id_t gateway_routing_id;
-    char service_name[256];
-    zlink_routing_id_t peer_routing_id;
-    zlink_topology_state_t state;
-} zlink_registry_gateway_peer_filter_t;
-```
-
-Set fields to non-zero values to filter by that criterion. Zero-valued
-fields are treated as wildcards (match all).
+| `endpoint` | Null-terminated endpoint. |
+| `routing_id` | Routing identity of the peer. |
+| `value` | Service-specific numeric value. |
 
 ---
 
-### zlink_registry_gateway_peers_snapshot
+### zlink_registry_member_peers
 
-Get a snapshot of all gateway peer connections from a local Registry.
+Get member peer entries for a service from a local Registry.
 
 ```c
-int zlink_registry_gateway_peers_snapshot(
-  void *registry,
-  zlink_registry_gateway_peer_entry_t *entries,
-  size_t *count);
+int zlink_registry_member_peers(void *registry,
+                                zlink_service_type_t service_type,
+                                const char *service_name,
+                                zlink_member_peer_entry_t *entries,
+                                size_t *count);
 ```
 
-Fills `entries` with all gateway peer connections. On input `*count` is
-the array capacity; on output it is the actual count. Pass `entries = NULL`
-to query the required count first.
+Fills `entries` with member peer entries matching the given service type
+and name. On input `*count` is the array capacity; on output it is the
+actual count. Pass `entries = NULL` to query the required count first.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_registry_gateway_peers_query`
-
 ---
 
-### zlink_registry_gateway_peers_query
+### zlink_registry_member_peer_metadata
 
-Query gateway peer connections from a local Registry with a filter.
+Get metadata for a specific member peer from a local Registry.
 
 ```c
-int zlink_registry_gateway_peers_query(
-  void *registry,
-  const zlink_registry_gateway_peer_filter_t *filter,
-  zlink_registry_gateway_peer_entry_t *entries,
-  size_t *count);
+int zlink_registry_member_peer_metadata(void *registry,
+                                        zlink_service_type_t service_type,
+                                        const char *service_name,
+                                        uint16_t service_role,
+                                        const char *endpoint,
+                                        zlink_msg_t *metadata_out);
 ```
 
-Like `zlink_registry_gateway_peers_snapshot` but only returns entries
-matching the `filter` criteria.
+Retrieves metadata for the member peer identified by service type, name,
+role, and endpoint. The metadata is written into `metadata_out`.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_registry_gateway_peers_snapshot`
-
 ---
 
-### zlink_registry_query_gateway_peers_snapshot
+### zlink_discovery_member_peers
 
-Query gateway peer connections from a remote Registry via query client.
+Get member peer entries from a local Discovery instance.
 
 ```c
-int zlink_registry_query_gateway_peers_snapshot(
-  void *client,
-  const zlink_registry_gateway_peer_filter_t *filter,
-  zlink_registry_gateway_peer_entry_t *entries,
-  size_t *count);
+int zlink_discovery_member_peers(void *discovery,
+                                 zlink_member_peer_entry_t *entries,
+                                 size_t *count);
 ```
 
-Sends a gateway peers query to the connected remote Registry and fills
-`entries` with matching results. On input `*count` is the array capacity;
-on output it is the actual count. Pass `filter = NULL` for an unfiltered
-snapshot.
+Fills `entries` with all member peer entries known to the Discovery
+instance. On input `*count` is the array capacity; on output it is the
+actual count. Pass `entries = NULL` to query the required count first.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Not thread-safe.
+**Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_registry_query_client_connect`
+---
+
+### zlink_discovery_member_peer_metadata
+
+Get metadata for a specific member peer from a local Discovery instance.
+
+```c
+int zlink_discovery_member_peer_metadata(void *discovery,
+                                         uint16_t service_role,
+                                         const char *endpoint,
+                                         zlink_msg_t *metadata_out);
+```
+
+Retrieves metadata for the member peer identified by role and endpoint.
+The metadata is written into `metadata_out`.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.

@@ -430,113 +430,87 @@ zlink_ctx_term(ctx);
 
 ### 6.3 Member Peer Introspection
 
-Beyond the service-level topology, Registry also tracks per-peer
-connection state for registered services. This is useful for inspecting
-connection health and peer distribution in operations.
+Registry and Discovery provide member peer queries that expose per-peer
+routing attributes (`value`) and opaque metadata for services. This is
+useful for weighted routing decisions and operational inspection.
 
-#### Local Member Peer Query
+#### Registry Member Peer Query
 
 ```c
-/* Full snapshot of all member peer connections */
+/* Query member peers of a specific service from the local Registry */
 size_t count = 0;
-zlink_registry_member_peers(registry, NULL, NULL, &count);
+zlink_registry_member_peers(registry,
+    ZLINK_SERVICE_TYPE_SOCKET, "payment-service", NULL, &count);
 
 zlink_member_peer_entry_t *peers = malloc(
     count * sizeof(zlink_member_peer_entry_t));
-zlink_registry_member_peers(registry, NULL, peers, &count);
+zlink_registry_member_peers(registry,
+    ZLINK_SERVICE_TYPE_SOCKET, "payment-service", peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("service=%s endpoint=%s peer=%s state=%d\n",
+    printf("service=%s endpoint=%s value=%lld\n",
            peers[i].service_name,
-           peers[i].member_endpoint,
-           peers[i].peer_endpoint,
-           peers[i].state);
+           peers[i].endpoint,
+           (long long)peers[i].value);
 }
 free(peers);
-
-/* Filtered: only peers of a specific service */
-zlink_member_peer_filter_t peer_filter;
-memset(&peer_filter, 0, sizeof(peer_filter));
-strncpy(peer_filter.service_name, "payment-service",
-        sizeof(peer_filter.service_name) - 1);
-
-size_t filtered_count = 64;
-zlink_member_peer_entry_t filtered[64];
-zlink_registry_member_peers(registry, &peer_filter,
-                            filtered, &filtered_count);
 ```
 
-#### Member Peer Metadata (Local)
+#### Member Peer Metadata
 
 ```c
-/* Retrieve metadata for a specific member's peers */
-size_t meta_count = 0;
-zlink_registry_member_peer_metadata(registry, "payment-service",
-                                    NULL, &meta_count);
-
-zlink_member_peer_entry_t *meta = malloc(
-    meta_count * sizeof(zlink_member_peer_entry_t));
-zlink_registry_member_peer_metadata(registry, "payment-service",
-                                    meta, &meta_count);
-
-for (size_t i = 0; i < meta_count; i++) {
-    printf("  peer=%s state=%d connected_since=%llu\n",
-           meta[i].peer_endpoint,
-           meta[i].state,
-           (unsigned long long)meta[i].connected_since_ms);
+/* Retrieve opaque metadata blob for a specific peer */
+zlink_msg_t metadata;
+zlink_msg_init(&metadata);
+int rc = zlink_registry_member_peer_metadata(registry,
+    ZLINK_SERVICE_TYPE_SOCKET, "payment-service",
+    ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
+    &metadata);
+if (rc == 0) {
+    printf("metadata size=%zu\n", zlink_msg_size(&metadata));
 }
-free(meta);
+zlink_msg_close(&metadata);
 ```
 
 #### Member Peer Entry Fields
 
 | Field | Description |
 |-------|-------------|
-| `member_routing_id` | Routing identity of the service member |
-| `member_endpoint` | Service member endpoint |
-| `service_name` | Service name |
-| `peer_routing_id` | Routing identity of the connected peer |
-| `peer_endpoint` | Peer endpoint |
-| `state` | Current state (`ZLINK_TOPOLOGY_STATE_*`) |
-| `connected_since_ms` | Timestamp (epoch ms) when the peer connected |
-| `last_reported_ms` | Timestamp (epoch ms) of the last heartbeat or update |
+| `service_type` | Service type (`ZLINK_SERVICE_TYPE_*`) |
+| `service_role` | Role of the service instance |
+| `service_name` | Null-terminated service name |
+| `endpoint` | Null-terminated endpoint |
+| `routing_id` | Routing identity of the peer |
+| `value` | Service-specific numeric value (`int64_t`) |
 
-#### Remote Member Peer Query (via Discovery)
+#### Discovery Member Peer Query
 
 ```c
-/* Query member peers through Discovery (from a different process) */
+/* Query member peers from the local Discovery cache */
 size_t count = 0;
-zlink_discovery_member_peers(discovery, NULL, NULL, &count);
+zlink_discovery_member_peers(discovery, NULL, &count);
 
 zlink_member_peer_entry_t *peers = malloc(
     count * sizeof(zlink_member_peer_entry_t));
-zlink_discovery_member_peers(discovery, NULL, peers, &count);
+zlink_discovery_member_peers(discovery, peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("[%s] %s -> %s  state=%d\n",
+    printf("[%s] endpoint=%s role=%u value=%lld\n",
            peers[i].service_name,
-           peers[i].member_endpoint,
-           peers[i].peer_endpoint,
-           peers[i].state);
+           peers[i].endpoint,
+           peers[i].service_role,
+           (long long)peers[i].value);
 }
 free(peers);
 
-/* Retrieve metadata for a specific service */
-size_t meta_count = 0;
-zlink_discovery_member_peer_metadata(discovery, "payment-service",
-                                     NULL, &meta_count);
-
-zlink_member_peer_entry_t *meta = malloc(
-    meta_count * sizeof(zlink_member_peer_entry_t));
-zlink_discovery_member_peer_metadata(discovery, "payment-service",
-                                     meta, &meta_count);
-
-for (size_t i = 0; i < meta_count; i++) {
-    printf("  peer=%s connected_since=%llu\n",
-           meta[i].peer_endpoint,
-           (unsigned long long)meta[i].connected_since_ms);
-}
-free(meta);
+/* Retrieve metadata for a specific peer via Discovery */
+zlink_msg_t metadata;
+zlink_msg_init(&metadata);
+zlink_discovery_member_peer_metadata(discovery,
+    ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
+    &metadata);
+printf("metadata size=%zu\n", zlink_msg_size(&metadata));
+zlink_msg_close(&metadata);
 ```
 
 ## 7. Operational Patterns

@@ -292,7 +292,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 
 ## 8.1 서비스 모니터
 
-서비스 모니터는 Gateway, SPOT, Discovery 같은 서비스 핸들의
+서비스 모니터는 SPOT, Discovery 같은 서비스 핸들의
 상태 변화를 관찰한다. socket monitor와는 별도 API다.
 
 - **이벤트 타입**: `zlink_service_event_t` (socket monitor의 `zlink_monitor_event_t`와 다름)
@@ -303,30 +303,30 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 ### 서비스 모니터 열기
 
 ```c
-/* Gateway 서비스 모니터 */
+/* SPOT 서비스 모니터 */
 zlink_service_monitor_open_options_t opts = {
     .events = ZLINK_SERVICE_MONITOR_EVENT_ALL
 };
-void *mon = zlink_service_monitor_open(gateway, &opts);
+void *mon = zlink_service_monitor_open(spot_node, &opts);
 ```
 
-대상 handle(discovery, gateway, spot, spot_node)을 넘기면 된다.
+대상 handle(discovery, spot, spot_node)을 넘기면 된다.
 handle 종류는 런타임에 자동 판별된다.
 
 ### 콜백 모드
 
 ```c
-void on_gateway_event(const zlink_service_event_t *ev, void *userdata)
+void on_spot_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED) {
-        printf("send ready: %u\n", ev->value);
+    if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED) {
+        printf("sub delivery ready\n");
     }
-    if (ev->event_type & ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP) {
-        printf("route up, ready routes: %u\n", ev->value);
+    if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED) {
+        printf("pub first delivery ready\n");
     }
 }
 
-zlink_service_monitor_handler(mon, on_gateway_event, NULL);
+zlink_service_monitor_handler(mon, on_spot_event, NULL);
 ```
 
 ### Recv 모드
@@ -343,15 +343,6 @@ if (rc == 0) {
 
 `zlink_service_monitor_open()`으로 관찰하는 이벤트다.
 서비스별로 발생하는 이벤트가 다르다.
-
-#### Gateway 이벤트
-
-| 상수 | 설명 | `value` | 이후 가능한 동작 |
-|---|---|---|---|
-| `GATEWAY_MONITOR_EVENT_READY_CHANGED` | 서비스 준비 상태 변화 | `current_ready_count` | — |
-| `GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED` | send 가능 상태 변화 | `current_ready_count` | **value>0이면 `zlink_gateway_send()` 시작** |
-| `GATEWAY_MONITOR_EVENT_ROUTE_UP` | peer route 활성화 | 현재 ready route 수 | — |
-| `GATEWAY_MONITOR_EVENT_ROUTE_DOWN` | peer route 비활성화 | 현재 ready route 수 | — |
 
 #### SPOT 이벤트
 
@@ -562,28 +553,7 @@ zlink_monitor_close(&sub_mon);
 | PUB | `PUB_DELIVERY_READY_CHANGED(value>=expected_subs)` | `zlink_publish()` delivery |
 | SUB | `SUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_subscribe()` 수신 |
 
-### 11.4 서비스 — Gateway
-
-`GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED(value>0)` 이벤트를 받으면 바로 send가 가능하다.
-
-```c
-/* client gateway에 service monitor 열기 */
-zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
-              | ZLINK_GATEWAY_MONITOR_EVENT_ERROR
-};
-void *mon = zlink_service_monitor_open(client, &opts);
-
-/* callback으로 ready 확인 */
-void on_gw(const zlink_service_event_t *ev, void *userdata) {
-    if (ev->event_type == ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED && ev->value > 0) {
-        /* route 준비 완료 — 바로 zlink_gateway_send() 가능 */
-    }
-}
-zlink_service_monitor_handler(mon, on_gw, NULL);
-```
-
-### 11.5 서비스 — SPOT
+### 11.4 서비스 — SPOT
 
 SPOT은 sub과 pub에 각각 별도 service monitor를 열어서 다른 이벤트를 구독한다.
 
@@ -609,23 +579,22 @@ void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 
 | 서비스 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| Gateway | `GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED(value>0)` | `zlink_gateway_send()` |
 | SPOT sub | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 시작 |
 | SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | `zlink_publish()` delivery 시작 |
 
 snapshot/status 조회는 운영 관찰/디버깅용이며, 메시징 시작 판정에는
 위 이벤트를 사용한다.
 
-### 11.6 Snapshot
+### 11.5 Snapshot
 
 `zlink_monitor_snapshot()`과 `zlink_*_status_snapshot()`은
 현재 상태를 조회하는 용도다. 운영 대시보드, health check, 디버깅에 활용한다.
 
 ```c
-/* 현재 gateway 상태 확인 */
-zlink_gateway_status_t status;
-zlink_gateway_status_snapshot(gateway, &status);
-printf("state=%d, ready_providers=%u\n", status.state, status.ready_provider_count);
+/* 현재 discovery 상태 확인 */
+zlink_discovery_status_t status;
+zlink_discovery_status_snapshot(discovery, &status);
+printf("state=%d\n", status.state);
 ```
 
 ---

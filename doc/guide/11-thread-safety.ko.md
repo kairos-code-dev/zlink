@@ -4,7 +4,7 @@
 
 ## 1. 한줄 요약
 
-**네, zlink 핸들은 thread-safe입니다.** 소켓, Gateway, SPOT, Discovery
+**네, zlink 핸들은 thread-safe입니다.** 소켓, SPOT, Discovery
 핸들 하나를 여러 스레드에서 공유하면서 별도의 mutex나 lock 없이 API를
 호출할 수 있습니다.
 
@@ -41,7 +41,6 @@
 다음 함수들은 같은 핸들에서 완전한 동시 호출을 허용합니다:
 
 - `zlink_send()` — 원시 소켓
-- `zlink_gateway_send()` / `zlink_gateway_send_rid()` — Gateway
 - `zlink_publish()` — SPOT
 - 콜백 내에서 `send` / `publish` 호출도 안전
 
@@ -101,10 +100,10 @@ int main(void)
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_set_subscription()` / `zlink_unset_subscription()`
-- `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
+- `zlink_spot_node_attach_discovery()`
 - `zlink_socket_monitor_open()` / `zlink_service_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
+- `zlink_set_option()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - 조회/스냅샷 함수
 
@@ -147,7 +146,6 @@ void *setup_thread(void *arg)
 | 핸들 | 전송 | 설정·운영 | 정리 |
 |---|---|---|---|
 | Socket | `send` | bind, connect, set_option 등 | `close` |
-| Gateway | `send`, `send_rid` | bind, attach_discovery 등 | `destroy` |
 | SPOT | `publish` | subscribe, unsubscribe 등 | `destroy` |
 | SPOT Node | `publish` | bind, connect_peer 등 | `destroy` |
 | Discovery | *(없음)* | connect_registry 등 | `destroy` |
@@ -179,25 +177,25 @@ atomic_int g_running = 1;
 /* 워커 스레드는 g_running을 확인하고 ESHUTDOWN도 처리 */
 void *sender(void *arg)
 {
-    void *gw = arg;
+    void *socket = arg;
     while (atomic_load(&g_running)) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, 32);
-        int rc = zlink_gateway_send(gw, &part, 1, 0);
+        int rc = zlink_send(socket, &part, 1, 0);
         if (rc == -1 && zlink_errno() == ESHUTDOWN)
             break;  /* 핸들이 종료 중, 정상 종료 */
     }
     return NULL;
 }
 
-void shutdown_gateway(void *gw)
+void shutdown_socket(void *socket)
 {
     /* 1단계: 워커에게 중단 신호 전송 */
     atomic_store(&g_running, 0);
 
-    /* 2단계: 워커가 마무리할 시간을 주고 destroy */
+    /* 2단계: 워커가 마무리할 시간을 주고 close */
     msleep(50);
-    zlink_gateway_destroy(&gw);
+    zlink_close(socket);
 }
 ```
 
@@ -270,32 +268,32 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ## 7. 실용 패턴
 
-### 7.1 멀티 스레드 워커 풀 (Gateway)
+### 7.1 멀티 스레드 워커 풀 (Socket)
 
-여러 스레드가 하나의 Gateway를 통해 전송 — 잠금 불필요:
+여러 스레드가 하나의 소켓을 통해 전송 — 잠금 불필요:
 
 ```c
-typedef struct { void *gw; int id; } gw_worker_t;
+typedef struct { void *socket; int id; } socket_worker_t;
 
-void *gw_worker(void *arg)
+void *socket_worker(void *arg)
 {
-    gw_worker_t *w = (gw_worker_t *)arg;
+    socket_worker_t *w = (socket_worker_t *)arg;
     for (int i = 0; i < 50000; i++) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, 64);
-        snprintf(zlink_msg_data(&part), 64, "gw-%d-%d", w->id, i);
-        zlink_gateway_send(w->gw, &part, 1, 0);
+        snprintf(zlink_msg_data(&part), 64, "worker-%d-%d", w->id, i);
+        zlink_send(w->socket, &part, 1, 0);
     }
     return NULL;
 }
 
-void run_gateway_pool(void *gateway)
+void run_socket_pool(void *socket)
 {
     pthread_t threads[4];
-    gw_worker_t args[4];
+    socket_worker_t args[4];
     for (int i = 0; i < 4; i++) {
-        args[i] = (gw_worker_t){gateway, i};
-        pthread_create(&threads[i], NULL, gw_worker, &args[i]);
+        args[i] = (socket_worker_t){socket, i};
+        pthread_create(&threads[i], NULL, socket_worker, &args[i]);
     }
     for (int i = 0; i < 4; i++)
         pthread_join(threads[i], NULL);

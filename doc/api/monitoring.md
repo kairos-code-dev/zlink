@@ -96,7 +96,7 @@ typedef struct zlink_monitor_snapshot_t
 
 | Field | Description |
 |---|---|
-| `source_kind` | Snapshot source (`SOCKET`, `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`). |
+| `source_kind` | Snapshot source (`SOCKET`, `SPOT_PUB`, `SPOT_SUB`). |
 | `state_flags` | Aggregate state bits such as `READY`, `BOUND_READY`, `SEND_READY`. |
 | `detail_flags` | Indicates which numeric fields are populated. |
 | `ready_count` | Aggregate ready/connected peer count when supported. |
@@ -111,7 +111,6 @@ typedef struct zlink_monitor_snapshot_t
 typedef enum zlink_monitor_source_kind_t
 {
     ZLINK_MONITOR_SOURCE_SOCKET   = 1,
-    ZLINK_MONITOR_SOURCE_GATEWAY  = 2,
     ZLINK_MONITOR_SOURCE_SPOT_PUB = 3,
     ZLINK_MONITOR_SOURCE_SPOT_SUB = 4
 } zlink_monitor_source_kind_t;
@@ -299,12 +298,12 @@ monitors and service monitors.
 ## Service Monitor API
 
 Service monitors provide state transition events for service-layer
-components (Discovery, Gateway, SPOT). Unlike raw socket monitors that
+components (Discovery and SPOT). Unlike raw socket monitors that
 report transport-level events, service monitors report higher-level events
 such as readiness, route changes, and SPOT filter application.
 
 The target for `zlink_service_monitor_open()` is any service handle
-(Discovery, Gateway, Spot, or SpotNode). The service kind is determined
+(Discovery, Spot, or SpotNode). The service kind is determined
 from the handle's runtime tag -- there is no per-service open function and
 no `role` parameter. Internal pub/sub structure is hidden.
 
@@ -373,7 +372,6 @@ typedef struct zlink_service_monitor_open_options_t
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery component |
-| `ZLINK_SERVICE_KIND_GATEWAY` | 2 | Gateway component |
 | `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | SPOT Subscriber component |
 | `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | SPOT Publisher component |
 
@@ -396,15 +394,6 @@ typedef struct zlink_service_monitor_open_options_t
 | `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | A discovered service came up |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | A discovered service went down |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | The set of providers for a service changed |
-
-#### Gateway Events
-
-| Constant | Bit | Description |
-|----------|-----|-------------|
-| `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` | `1 << 8` | Gateway readiness changed; `value` is the current ready count |
-| `ZLINK_GATEWAY_SEND_READY_CHANGED` | `1 << 10` | Aggregate send-readiness changed; `value` is `0` or `1` |
-| `ZLINK_GATEWAY_ROUTE_UP` | `1 << 11` | A route came up; `value` is current ready route count |
-| `ZLINK_GATEWAY_ROUTE_DOWN` | `1 << 12` | A route went down; `value` is current ready route count |
 
 #### SPOT Events
 
@@ -433,10 +422,6 @@ They map to the same underlying bits as the per-service constants above.
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_READY_CHANGED` | `ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED` | `ZLINK_GATEWAY_SEND_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP` | `ZLINK_GATEWAY_ROUTE_UP` |
-| `ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN` | `ZLINK_GATEWAY_ROUTE_DOWN` |
 | `ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED` | `ZLINK_SPOT_SUB_FILTER_APPLIED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` |
@@ -469,7 +454,7 @@ void *zlink_service_monitor_open (
 ```
 
 Creates a service monitor on any service handle and returns a handle.
-`target_` can be a Discovery, Gateway, Spot, or SpotNode handle -- the
+`target_` can be a Discovery, Spot, or SpotNode handle -- the
 service kind is determined from the handle's runtime tag. For Spot and
 SpotNode targets, internal pub/sub structure is hidden; there is no `role`
 parameter.

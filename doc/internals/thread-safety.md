@@ -8,7 +8,7 @@ cannot do), see [Thread-Safety Guide](../guide/11-thread-safety.md).
 
 ## 1. Overview
 
-zlink's public handles (sockets, Gateway, SPOT, Discovery, Registry,
+zlink's public handles (sockets, SPOT, Discovery, Registry,
 monitors) are thread-safe by default, but not all APIs carry the same
 cost. Internally the library classifies every public API into one of
 three tiers, each with its own ordering semantics, performance
@@ -25,7 +25,6 @@ explains how each tier is implemented.
 **Target APIs:**
 
 - `zlink_send()`
-- `zlink_gateway_send()` / `zlink_gateway_send_rid()`
 - `zlink_spot_publish()` / `zlink_spot_node_publish()`
 - Same-handle `send` / `publish` from inside an admitted callback
 
@@ -59,10 +58,9 @@ enqueued messages drain before teardown completes (drain-then-close).
 - `zlink_bind()` / `zlink_connect()` / `zlink_disconnect()`
 - `zlink_set_option()` / `zlink_get_option()`
 - `zlink_spot_subscribe()` / `zlink_spot_unsubscribe()`
-- `zlink_gateway_attach_discovery()` / `zlink_spot_node_attach_discovery()`
+- `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_set_option()` / `zlink_gateway_set_lb_strategy()`
 - `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
 - Heavy queries: `zlink_registry_topology_query()`, snapshot functions
 
@@ -90,8 +88,7 @@ but not forced through the heaviest serialization lane.
 **Target APIs:**
 
 - `zlink_close()` (sockets)
-- `zlink_gateway_destroy()` / `zlink_spot_destroy()` /
-  `zlink_spot_node_destroy()`
+- `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
 - `zlink_discovery_destroy()` / `zlink_registry_destroy()`
 - Monitor handle `close` / `destroy`
 
@@ -141,20 +138,7 @@ concurrent entry.
   through a separate serialization path that does not share state or
   cache lines with the hot-path admission gate.
 
-### 3.2 Gateway
-
-Gateway is a mixed subject with both data-plane and control-plane APIs.
-
-- **Data-plane:** `gateway_send` / `gateway_send_rid` use the hot-path
-  contract. The send path avoids the control-plane lock entirely.
-- **Control-plane:** route mutation, `attach_discovery`, option changes,
-  and `monitor_open` go through a separate serialized control path.
-  The control-plane lock does not interfere with steady-state send
-  throughput.
-- **Lifecycle:** `gateway_destroy` uses the
-  `service_public_api_guard_t` admission gate (see section 4).
-
-### 3.3 SPOT / SPOT Node
+### 3.2 SPOT / SPOT Node
 
 - **Public contract:** `spot_publish` / `spot_node_publish` follow the
   hot-path tier. Subscription changes, peer mutations, and
@@ -165,7 +149,7 @@ Gateway is a mixed subject with both data-plane and control-plane APIs.
   Child ordering and open/destroy linearization are internal
   implementation concerns.
 
-### 3.4 Discovery / Registry
+### 3.3 Discovery / Registry
 
 Discovery and Registry are control-plane-centric subjects. They have no
 hot-path send APIs.
@@ -175,9 +159,9 @@ hot-path send APIs.
   and heartbeat configuration are consistent.
 - Discovery/Registry serialization must not degrade the parent
   data-plane performance when `attach_discovery` links them to a
-  Gateway or SPOT Node.
+  SPOT Node.
 
-### 3.5 Monitor
+### 3.4 Monitor
 
 Monitor is a control-plane-centric subject.
 
@@ -189,7 +173,7 @@ Monitor is a control-plane-centric subject.
 ## 4. Service Public API Guard
 
 `service_public_api.hpp` provides the `service_public_api_guard_t`
-class used by Gateway, SPOT, SPOT Node, Discovery, and Registry to
+class used by SPOT, SPOT Node, Discovery, and Registry to
 implement the lifecycle and control-path tiers.
 
 **Implementation:**

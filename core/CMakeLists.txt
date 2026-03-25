@@ -963,6 +963,8 @@ set(api-sources
     src/api/service_option_api.cpp
     src/api/service_option_spot_api.cpp
     src/api/socket_message_api.cpp
+    src/api/socket_message_handler_api.cpp
+    src/api/socket_message_send_api.cpp
     src/api/socket_api.cpp
     src/api/zlink.cpp
     src/api/zlink_option.cpp

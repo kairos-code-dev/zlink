@@ -328,7 +328,7 @@ archive로만 남긴다.
 | Gap review 기준 `ctx_t` runtime orchestration residual split | 완료 | 5.3A | `core/src/core/ctx.hpp`, `core/src/core/ctx.cpp`, `core/src/core/ctx_bootstrap.*`, `core/src/core/ctx_termination.*` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_runtime_base|test_service_introspection_discovery_self_close|test_gateway_send_ready_self_close|test_spot_service_introspection_handler_monitor_close)$'`, `doc/plan/refactor/2nd/logs/posd_refactor_gate_20260324_215831.log`, `doc/plan/refactor/2nd/logs/posd_refactor_gate_20260324_215831.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: e68d5e3d` |
 | Gap review 기준 service residual deep-module 마감 | 완료 | 5.6A | `core/src/services/discovery/registry.cpp`, `core/src/services/discovery/registry_query.cpp`, `core/src/services/discovery/registry_state.cpp`, `core/src/services/discovery/registry_runtime.cpp`, `core/src/services/spot/spot_subject_access.cpp`, `core/src/services/spot/spot_subject_query.cpp`, `core/src/services/spot/spot_subject_poller.cpp`, `core/src/services/spot/spot_subject_publish.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract)$'`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_spot_subject_access|unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: efdc15db` |
 | Post-residual 기준 `spot` secure multi-peer 구조 잔여 마감 | 완료 | 5.7A | `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_node.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.cpp`, `core/src/services/spot/spot_runtime.hpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/unittest/unittest_spot_data_plane_protocol.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_owner_gate_20260325_110639.log`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_owner_gate_20260325_110639.log.exitcode`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_pubsub_scenario|test_spot_service_introspection)$'`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_service_gate_20260325_110850.log`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_service_gate_20260325_110850.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: 73ffa1b5` |
-| Post-residual 기준 `socket_message_api.cpp` / `options_t` ownership 재정리 | 미착수 | 5.7B | `core/src/api/socket_message_api.cpp`, `core/src/core/options.hpp`, `core/src/core/options_owner.cpp`, `core/src/core/options_dispatch.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; 대표 회귀는 current owner 정리 후 별도 기록 |
+| Post-residual 기준 `socket_message_api.cpp` / `options_t` ownership 재정리 | 완료 | 5.7B | `core/src/api/socket_message_api.cpp`, `core/src/api/socket_message_send_api.cpp`, `core/src/api/socket_message_handler_api.cpp`, `core/src/core/options.hpp`, `core/src/core/options_owner.cpp`, `core/src/core/options_dispatch.cpp`, `core/CMakeLists.txt` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_typed_option|test_stream_threadsafe|test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'`, `doc/plan/refactor/2nd/logs/phase5_7B_message_option_gate_20260325_112021.log`, `doc/plan/refactor/2nd/logs/phase5_7B_message_option_gate_20260325_112021.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: pending` |
 | Post-residual 기준 `spot_node_t` handle/defaults/facade 구조 마감 | 미착수 | 5.7C | `core/src/services/spot/spot_node.hpp`, `core/src/services/spot/spot_node_handles.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_internal_receiver.*` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current owner 정리 후 기록 |
 | Post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감 | 미착수 | 5.7D | `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_protocol.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current owner 정리 후 기록 |
 | Post-residual 기준 engine / transport owner 재판정 | 미착수 | 5.7E | `core/src/engine/asio/asio_engine.cpp`, `core/src/transports/ws/asio_ws_engine.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current 구조 정리 후 기록 |
@@ -612,14 +612,26 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - 금지: public API surface 변경, unrelated service/transport 파일로 확산, `options_t`를 다른 central bag 이름으로만 바꾸는 이동
 - 필수 대표 gate: `unittest_typed_option`, `test_stream_threadsafe`, `test_spot_service_introspection`, 필요 시 `Phase 1c` 대표 core API smoke 일부 재실행
 
-- [ ] [`socket_message_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_api.cpp)가
+- [x] [`socket_message_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_api.cpp)가
   socket/service/stream/spot 분기 허브로 남는 지점을 다시 기록한다.
-- [ ] [`options.hpp`](/home/hep7/project/kairos/zlink/core/src/core/options.hpp),
+- [x] [`options.hpp`](/home/hep7/project/kairos/zlink/core/src/core/options.hpp),
   [`options_owner.cpp`](/home/hep7/project/kairos/zlink/core/src/core/options_owner.cpp),
   [`options_dispatch.cpp`](/home/hep7/project/kairos/zlink/core/src/core/options_dispatch.cpp)가
   중앙 bag/dispatcher로 남는지 판정한다.
-- [ ] 공통 검증과 도메인별 entry를 분리하는 최소 경계를 먼저 문장으로 고정한다.
-- [ ] 이 항목은 `5.7A`가 닫히기 전에는 착수하지 않는다.
+- [x] 공통 검증과 도메인별 entry를 분리하는 최소 경계를 먼저 문장으로 고정한다.
+- [x] 이 항목은 `5.7A`가 닫히기 전에는 착수하지 않는다.
+
+구조 평결:
+
+- `socket_message_api.cpp`는 recv/xpub-subscription entry만 남는 public message facade로 줄였고, socket/service fallback 허브 역할은 더 이상 직접 소유하지 않는다.
+- `socket_message_send_api.cpp`는 raw socket send/publish/routed-send entry와 whole-message send helper를 소유한다.
+- `socket_message_handler_api.cpp`는 recv/send-ready handler registration과 poller admission guard를 소유한다.
+- `options_owner.cpp`와 `options_dispatch.cpp`는 기존 owner map/dispatcher를 유지하되, 이번 항목의 immediate giant hub는 `socket_message_api.cpp` 쪽이라는 점을 재확인했다.
+
+검증 메모:
+
+- `5.7B`는 `socket_message_api.cpp` giant hub를 `recv entry / send entry / handler entry` 세 축으로 나누는 것을 완료 기준으로 삼았고, `options_t` storage layout과 owner map은 Phase 4 계약을 유지한 채 재판정만 수행했다.
+- 마스터 플랜 Phase 1~6, 8.1, 8.2, 9 재대조 결과 이번 단계에서 실행 가이드에 추가해야 할 누락 구현 항목은 발견되지 않았다.
 
 닫힘 기준:
 

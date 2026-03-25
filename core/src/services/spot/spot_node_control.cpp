@@ -55,18 +55,6 @@ static void spot_ready_ack_debugf (const char *fmt_, ...)
     va_end (args);
 }
 
-static void snapshot_connected_mesh_peer_endpoints (const spot_runtime_t *runtime_,
-                                                    std::set<std::string> *out_)
-{
-    if (!out_)
-        return;
-    out_->clear ();
-    if (!runtime_)
-        return;
-    scoped_lock_t lock (const_cast<mutex_t &> (runtime_->connected_peer_sync));
-    *out_ = runtime_->connected_peer_endpoints;
-}
-
 static unsigned int subscription_ready_holdoff_ticks (
   const std::set<std::string> &connected_endpoints_)
 {
@@ -248,7 +236,7 @@ bool spot_node_t::can_suspend_control_task () const
     }
     if (!_runtime)
         return false;
-    return _runtime->connected_peer_version.load (std::memory_order_acquire)
+    return mesh_peer_version (&_runtime->mesh_peer_state)
            == _connected_peer_version_seen;
 }
 
@@ -264,7 +252,7 @@ void spot_node_t::control_tick ()
     {
         scoped_lock_t lock (_sync);
         const uint64_t connected_peer_version =
-          _runtime->connected_peer_version.load (std::memory_order_acquire);
+          mesh_peer_version (&_runtime->mesh_peer_state);
         skip_extra = _discovery == NULL
                      && connected_peer_version == _connected_peer_version_seen
                      && !_subscription_replay_pending
@@ -473,13 +461,13 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         runtime = _runtime;
         if (!runtime)
             return;
-        connected_peer_version =
-          runtime->connected_peer_version.load (std::memory_order_acquire);
+        connected_peer_version = mesh_peer_version (&runtime->mesh_peer_state);
         if (connected_peer_version == _connected_peer_version_seen)
             return;
         _connected_peer_version_seen = connected_peer_version;
     }
-    snapshot_connected_mesh_peer_endpoints (runtime, &connected);
+    snapshot_connected_mesh_peer_endpoints (&runtime->mesh_peer_state,
+                                            &connected);
 
     bool changed = false;
     std::vector<spot_sub_t *> subs;
@@ -601,9 +589,7 @@ uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
     const uint32_t active_peer_count =
       static_cast<uint32_t> (_active_peer_endpoints.size ());
     const uint32_t connected_ready_count =
-      _runtime ? _runtime->connected_ready_peer_count.load (
-                   std::memory_order_acquire)
-               : 0u;
+      connected_ready_peer_count (_runtime ? &_runtime->mesh_peer_state : NULL);
     uint32_t max_ready_count = 0;
     for (std::map<std::string, std::set<std::string> >::const_iterator it =
            _pub_delivery_ready_sources.begin ();
@@ -623,21 +609,11 @@ void spot_node_t::publish_mesh_pub_budget_hint_locked ()
         return;
 
     const uint32_t ready_count = max_pub_delivery_ready_count_locked ();
-    const uint32_t previous =
-      _runtime->mesh_pub_ready_peer_count.load (std::memory_order_acquire);
-    if (previous == ready_count)
-        return;
-
-    _runtime->mesh_pub_ready_peer_count.store (ready_count,
-                                               std::memory_order_release);
-    const std::string bound_endpoint = _runtime->bound_endpoint;
     // Keep the ready-peer count authoritative, but only force the data plane to
     // touch the live mesh_pub socket when the effective budget actually changes.
-    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
-                                               ready_count)) {
-        _runtime->mesh_pub_budget_version.fetch_add (1,
-                                                     std::memory_order_acq_rel);
-    }
+    (void) publish_mesh_pub_budget_hint (&_runtime->mesh_peer_state,
+                                         _runtime->bound_endpoint,
+                                         ready_count);
 }
 
 void spot_node_t::schedule_subscription_ready_refresh ()
@@ -856,9 +832,8 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         const uint32_t active_peer_count =
           static_cast<uint32_t> (_active_peer_endpoints.size ());
         const uint32_t connected_ready_count =
-          _runtime ? _runtime->connected_ready_peer_count.load (
-                       std::memory_order_acquire)
-                   : 0u;
+          connected_ready_peer_count (_runtime ? &_runtime->mesh_peer_state
+                                               : NULL);
         std::set<std::string> &ready_sources =
           _pub_delivery_ready_sources[subject_];
 

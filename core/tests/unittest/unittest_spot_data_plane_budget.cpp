@@ -69,6 +69,25 @@ void test_ready_peer_count_is_clamped_to_connected_peers ()
     TEST_ASSERT_EQUAL_UINT (
       0, zlink::clamp_ready_peer_count (7, 0));
 }
+
+void test_mesh_pub_budget_hint_updates_private_runtime_owner ()
+{
+    zlink::spot_mesh_peer_state_t state;
+
+    TEST_ASSERT_TRUE (zlink::publish_mesh_pub_budget_hint (
+      &state, "wss://127.0.0.1:9000", 1));
+    TEST_ASSERT_EQUAL_UINT (1, zlink::mesh_pub_ready_peer_count (&state));
+    TEST_ASSERT_EQUAL_UINT64 (1, zlink::mesh_pub_budget_version (&state));
+
+    TEST_ASSERT_TRUE (zlink::publish_mesh_pub_budget_hint (
+      &state, "wss://127.0.0.1:9000", 2));
+    TEST_ASSERT_EQUAL_UINT (2, zlink::mesh_pub_ready_peer_count (&state));
+    TEST_ASSERT_EQUAL_UINT64 (2, zlink::mesh_pub_budget_version (&state));
+
+    zlink::reset_mesh_pub_budget_state (&state);
+    TEST_ASSERT_EQUAL_UINT (0, zlink::mesh_pub_ready_peer_count (&state));
+    TEST_ASSERT_EQUAL_UINT64 (3, zlink::mesh_pub_budget_version (&state));
+}
 }
 
 int main (int argc, char **argv)
@@ -79,5 +98,6 @@ int main (int argc, char **argv)
     RUN_TEST (
       test_mesh_pub_budget_refresh_follows_ready_peer_count_changes);
     RUN_TEST (test_ready_peer_count_is_clamped_to_connected_peers);
+    RUN_TEST (test_mesh_pub_budget_hint_updates_private_runtime_owner);
     return UNITY_END ();
 }

@@ -5,6 +5,9 @@
 
 #include <zlink.h>
 
+#include "utils/mutex.hpp"
+
+#include <atomic>
 #include <map>
 #include <set>
 #include <string>
@@ -22,6 +25,24 @@ struct spot_data_plane_protocol_state_t
     std::map<std::string, std::set<std::string> > peer_ready_filters;
     std::map<std::string, std::map<std::string, std::set<std::string> > >
       outbound_ready_filters;
+};
+
+struct spot_mesh_peer_state_t
+{
+    spot_mesh_peer_state_t () :
+        version (0),
+        budget_version (0),
+        mesh_pub_ready_peer_count (0),
+        connected_ready_peer_count (0)
+    {
+    }
+
+    mutable mutex_t sync;
+    std::atomic<uint64_t> version;
+    std::atomic<uint64_t> budget_version;
+    std::atomic<uint32_t> mesh_pub_ready_peer_count;
+    std::atomic<uint32_t> connected_ready_peer_count;
+    std::set<std::string> connected_endpoints;
 };
 
 inline bool is_websocket_transport (const std::string &endpoint_)
@@ -115,6 +136,142 @@ inline uint32_t clamp_ready_peer_count (uint32_t ready_count_,
 {
     return ready_count_ < connected_peer_count_ ? ready_count_
                                                 : connected_peer_count_;
+}
+
+inline void snapshot_connected_mesh_peer_endpoints (
+  const spot_mesh_peer_state_t *state_, std::set<std::string> *out_)
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    if (!state_)
+        return;
+    scoped_lock_t lock (const_cast<mutex_t &> (state_->sync));
+    *out_ = state_->connected_endpoints;
+}
+
+inline bool sync_mesh_peer_monitor_state (spot_mesh_peer_state_t *state_,
+                                          const zlink_monitor_event_t &raw_)
+{
+    if (!state_ || raw_.remote_addr[0] == '\0')
+        return false;
+
+    scoped_lock_t lock (state_->sync);
+    bool changed =
+      sync_monitor_connected_endpoint (&state_->connected_endpoints, raw_);
+    if (raw_.event == ZLINK_EVENT_DISCONNECTED
+        && state_->connected_endpoints.empty ()
+        && state_->connected_ready_peer_count.load (std::memory_order_acquire)
+             != 0) {
+        state_->connected_ready_peer_count.store (0,
+                                                  std::memory_order_release);
+        changed = true;
+    }
+
+    uint32_t ready_peer_count =
+      state_->connected_ready_peer_count.load (std::memory_order_acquire);
+    if (apply_monitor_ready_peer_count (&ready_peer_count, raw_)) {
+        state_->connected_ready_peer_count.store (ready_peer_count,
+                                                  std::memory_order_release);
+        changed = true;
+    }
+
+    if (changed)
+        state_->version.fetch_add (1, std::memory_order_acq_rel);
+    return changed;
+}
+
+inline bool clear_mesh_peer_monitor_state (spot_mesh_peer_state_t *state_)
+{
+    if (!state_)
+        return false;
+
+    scoped_lock_t lock (state_->sync);
+    if (!state_->connected_endpoints.empty ()) {
+        state_->connected_endpoints.clear ();
+        state_->connected_ready_peer_count.store (0,
+                                                  std::memory_order_release);
+        state_->version.fetch_add (1, std::memory_order_acq_rel);
+        return true;
+    }
+    state_->connected_ready_peer_count.store (0, std::memory_order_release);
+    return false;
+}
+
+inline bool remove_connected_mesh_peer_endpoint (spot_mesh_peer_state_t *state_,
+                                                 const std::string &endpoint_)
+{
+    if (!state_ || endpoint_.empty ())
+        return false;
+
+    scoped_lock_t lock (state_->sync);
+    const std::set<std::string>::iterator it =
+      state_->connected_endpoints.find (endpoint_);
+    if (it == state_->connected_endpoints.end ())
+        return false;
+
+    state_->connected_endpoints.erase (it);
+    if (state_->connected_endpoints.empty ())
+        state_->connected_ready_peer_count.store (0,
+                                                  std::memory_order_release);
+    state_->version.fetch_add (1, std::memory_order_acq_rel);
+    return true;
+}
+
+inline uint32_t connected_ready_peer_count (
+  const spot_mesh_peer_state_t *state_)
+{
+    return state_ ? state_->connected_ready_peer_count.load (
+                     std::memory_order_acquire)
+                  : 0u;
+}
+
+inline uint32_t mesh_pub_ready_peer_count (const spot_mesh_peer_state_t *state_)
+{
+    return state_ ? state_->mesh_pub_ready_peer_count.load (
+                     std::memory_order_acquire)
+                  : 0u;
+}
+
+inline uint64_t mesh_peer_version (const spot_mesh_peer_state_t *state_)
+{
+    return state_ ? state_->version.load (std::memory_order_acquire) : 0u;
+}
+
+inline uint64_t mesh_pub_budget_version (const spot_mesh_peer_state_t *state_)
+{
+    return state_ ? state_->budget_version.load (std::memory_order_acquire)
+                  : 0u;
+}
+
+inline void reset_mesh_pub_budget_state (spot_mesh_peer_state_t *state_)
+{
+    if (!state_)
+        return;
+
+    state_->mesh_pub_ready_peer_count.store (0, std::memory_order_release);
+    state_->budget_version.fetch_add (1, std::memory_order_acq_rel);
+}
+
+inline bool publish_mesh_pub_budget_hint (spot_mesh_peer_state_t *state_,
+                                          const std::string &endpoint_,
+                                          uint32_t ready_count_)
+{
+    if (!state_)
+        return false;
+
+    const uint32_t previous =
+      state_->mesh_pub_ready_peer_count.load (std::memory_order_acquire);
+    if (previous == ready_count_)
+        return false;
+
+    state_->mesh_pub_ready_peer_count.store (ready_count_,
+                                             std::memory_order_release);
+    if (should_refresh_mesh_pub_budget (endpoint_, previous, ready_count_)) {
+        state_->budget_version.fetch_add (1, std::memory_order_acq_rel);
+        return true;
+    }
+    return false;
 }
 
 struct spot_data_plane_runtime_state_t

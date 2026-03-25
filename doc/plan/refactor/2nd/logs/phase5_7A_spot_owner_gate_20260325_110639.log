@@ -1,0 +1,20 @@
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start   7: test_multi_spot_benchmark_process
+1/4 Test   #7: test_multi_spot_benchmark_process ....   Passed   78.37 sec
+    Start  11: test_single_spot_benchmark_process
+2/4 Test  #11: test_single_spot_benchmark_process ...   Passed   45.38 sec
+    Start 129: unittest_spot_data_plane_protocol
+3/4 Test #129: unittest_spot_data_plane_protocol ....   Passed    0.00 sec
+    Start 130: unittest_spot_data_plane_budget
+4/4 Test #130: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+integration      = 123.75 sec*proc (2 tests)
+parallel-safe    =   0.00 sec*proc (2 tests)
+serial           = 123.75 sec*proc (2 tests)
+unittest         =   0.00 sec*proc (2 tests)
+
+Total Test time (real) = 123.75 sec

@@ -126,18 +126,6 @@ static int send_ascii_frame (socket_base_t *socket_,
     return rc;
 }
 
-static void snapshot_connected_mesh_peer_endpoints (const spot_runtime_t *runtime_,
-                                                    std::set<std::string> *out_)
-{
-    if (!out_)
-        return;
-    out_->clear ();
-    if (!runtime_)
-        return;
-    scoped_lock_t lock (const_cast<mutex_t &> (runtime_->connected_peer_sync));
-    *out_ = runtime_->connected_peer_endpoints;
-}
-
 static unsigned int subscription_ready_holdoff_ticks (
   const std::set<std::string> &connected_endpoints_)
 {

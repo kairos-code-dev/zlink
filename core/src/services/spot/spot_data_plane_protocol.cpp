@@ -34,25 +34,11 @@ static int resolve_initial_mesh_pub_sndhwm_for_endpoint (
 {
     unsigned int ready_peers = 0;
     if (runtime_) {
-        ready_peers = runtime_->mesh_pub_ready_peer_count.load (
-          std::memory_order_acquire);
+        ready_peers = mesh_pub_ready_peer_count (&runtime_->mesh_peer_state);
     }
     return spot_data_plane_forwarder_t::resolve_internal_hwm_override (
       "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
       zlink::resolve_mesh_pub_sndhwm_default (endpoint_, ready_peers));
-}
-
-static void reset_mesh_pub_budget_state (spot_runtime_t *runtime_)
-{
-    if (!runtime_)
-        return;
-
-    runtime_->mesh_pub_ready_peer_count.store (0,
-                                               std::memory_order_release);
-    runtime_->connected_ready_peer_count.store (0,
-                                                std::memory_order_release);
-    runtime_->mesh_pub_budget_version.fetch_add (1,
-                                                 std::memory_order_acq_rel);
 }
 
 static void spot_ctrl_debugf (const char *fmt_, ...)
@@ -439,34 +425,8 @@ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
     if (!runtime_ || raw_.remote_addr[0] == '\0')
         return;
 
-    scoped_lock_t lock (runtime_->connected_peer_sync);
-    bool changed = false;
-    changed = sync_monitor_connected_endpoint (
-                &runtime_->connected_peer_endpoints, raw_)
-              || changed;
-    if (raw_.event == ZLINK_EVENT_DISCONNECTED
-        && runtime_->connected_peer_endpoints.empty ()
-        && runtime_->connected_ready_peer_count.load (
-             std::memory_order_acquire)
-             != 0) {
-        runtime_->connected_ready_peer_count.store (0,
-                                                    std::memory_order_release);
-        changed = true;
-    }
-
-    uint32_t ready_peer_count =
-      runtime_->connected_ready_peer_count.load (std::memory_order_acquire);
-    if (apply_monitor_ready_peer_count (&ready_peer_count, raw_)) {
-        runtime_->connected_ready_peer_count.store (ready_peer_count,
-                                                    std::memory_order_release);
-        changed = true;
-    }
-
-    if (!changed)
+    if (!sync_mesh_peer_monitor_state (&runtime_->mesh_peer_state, raw_))
         return;
-
-    runtime_->connected_peer_version.fetch_add (1,
-                                                std::memory_order_acq_rel);
     if (runtime_->owner)
         spot_node_access_t::wake_control_task (runtime_->owner);
 }
@@ -477,20 +437,9 @@ void spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
     if (!runtime_)
         return;
 
-    scoped_lock_t lock (runtime_->connected_peer_sync);
-    if (!runtime_->connected_peer_endpoints.empty ()) {
-        runtime_->connected_peer_endpoints.clear ();
-        runtime_->connected_ready_peer_count.store (0,
-                                                    std::memory_order_release);
-        runtime_->connected_peer_version.fetch_add (1,
-                                                    std::memory_order_acq_rel);
-        if (runtime_->owner)
-            spot_node_access_t::wake_control_task (runtime_->owner);
-        return;
-    }
-    runtime_->connected_ready_peer_count.store (0,
-                                                std::memory_order_release);
-    runtime_->connected_peer_endpoints.clear ();
+    const bool changed = clear_mesh_peer_monitor_state (&runtime_->mesh_peer_state);
+    if (changed && runtime_->owner)
+        spot_node_access_t::wake_control_task (runtime_->owner);
 }
 
 void spot_data_plane_protocol_t::clear_snapshot_sources (
@@ -916,7 +865,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
               runtime_->peer_ctrl_endpoint.c_str ());
         runtime_->peer_ctrl_endpoint.clear ();
         runtime_->bound_endpoint.clear ();
-        reset_mesh_pub_budget_state (runtime_);
+        zlink::reset_mesh_pub_budget_state (&runtime_->mesh_peer_state);
         if (mesh_pub_->term_endpoint (arg.c_str ()) != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;
@@ -958,12 +907,10 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             return 0;
         }
 
-        {
-            scoped_lock_t lock (runtime_->connected_peer_sync);
-            runtime_->connected_peer_endpoints.erase (arg);
-            if (runtime_->connected_peer_endpoints.empty ())
-                runtime_->connected_ready_peer_count.store (
-                  0, std::memory_order_release);
+        if (remove_connected_mesh_peer_endpoint (&runtime_->mesh_peer_state,
+                                                 arg)
+            && runtime_->owner) {
+            spot_node_access_t::wake_control_task (runtime_->owner);
         }
         return send_ok_reply (ctrl_);
     }

@@ -66,10 +66,6 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     faulted (false),
     fault_errno (0),
     abortive_shutdown (false),
-    connected_peer_version (0),
-    mesh_pub_budget_version (0),
-    mesh_pub_ready_peer_count (0),
-    connected_ready_peer_count (0),
     next_attachment_id (0)
 {
     if (node_id == 0)

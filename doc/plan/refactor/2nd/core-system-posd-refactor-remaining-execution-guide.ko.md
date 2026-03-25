@@ -327,7 +327,7 @@ archive로만 남긴다.
 | Gap review 기준 `socket_base_t` residual split 재개 | 완료 | 5.2A | `core/src/sockets/socket_base.hpp`, `core/src/sockets/socket_base.cpp`, `core/src/sockets/socket_base_api.cpp`, `core/src/sockets/socket_base_dispatch.cpp`, `core/src/sockets/socket_base_endpoint.cpp`, `core/src/sockets/socket_base_lifecycle.cpp`, `core/src/sockets/socket_base_monitor.cpp`, `core/src/sockets/socket_runtime.hpp`, `core/src/sockets/socket_runtime.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_gateway_monitor_snapshot_churn)$'`, `doc/plan/refactor/2nd/logs/posd_refactor_gate_20260324_213227.log`, `doc/plan/refactor/2nd/logs/posd_refactor_gate_20260324_213227.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: 6f236851` |
 | Gap review 기준 `ctx_t` runtime orchestration residual split | 완료 | 5.3A | `core/src/core/ctx.hpp`, `core/src/core/ctx.cpp`, `core/src/core/ctx_bootstrap.*`, `core/src/core/ctx_termination.*` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_runtime_base|test_service_introspection_discovery_self_close|test_gateway_send_ready_self_close|test_spot_service_introspection_handler_monitor_close)$'`, `doc/plan/refactor/2nd/logs/posd_refactor_gate_20260324_215831.log`, `doc/plan/refactor/2nd/logs/posd_refactor_gate_20260324_215831.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: e68d5e3d` |
 | Gap review 기준 service residual deep-module 마감 | 완료 | 5.6A | `core/src/services/discovery/registry.cpp`, `core/src/services/discovery/registry_query.cpp`, `core/src/services/discovery/registry_state.cpp`, `core/src/services/discovery/registry_runtime.cpp`, `core/src/services/spot/spot_subject_access.cpp`, `core/src/services/spot/spot_subject_query.cpp`, `core/src/services/spot/spot_subject_poller.cpp`, `core/src/services/spot/spot_subject_publish.cpp`, `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_gateway_handover|test_service_discovery|test_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection|test_monitor_service_contract)$'`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_spot_subject_access|unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: efdc15db` |
-| Post-residual 기준 `spot` secure multi-peer 구조 잔여 마감 | 진행중 | 5.7A | `core/src/services/spot/spot_data_plane.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/unittest/unittest_spot_data_plane_protocol.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp` | current authority note: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate: `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'` |
+| Post-residual 기준 `spot` secure multi-peer 구조 잔여 마감 | 완료 | 5.7A | `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_node.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.cpp`, `core/src/services/spot/spot_runtime.hpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/unittest/unittest_spot_data_plane_protocol.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_owner_gate_20260325_110639.log`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_owner_gate_20260325_110639.log.exitcode`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_pubsub_scenario|test_spot_service_introspection)$'`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_service_gate_20260325_110850.log`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_service_gate_20260325_110850.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: pending` |
 | Post-residual 기준 `socket_message_api.cpp` / `options_t` ownership 재정리 | 미착수 | 5.7B | `core/src/api/socket_message_api.cpp`, `core/src/core/options.hpp`, `core/src/core/options_owner.cpp`, `core/src/core/options_dispatch.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; 대표 회귀는 current owner 정리 후 별도 기록 |
 | Post-residual 기준 `spot_node_t` handle/defaults/facade 구조 마감 | 미착수 | 5.7C | `core/src/services/spot/spot_node.hpp`, `core/src/services/spot/spot_node_handles.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_internal_receiver.*` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current owner 정리 후 기록 |
 | Post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감 | 미착수 | 5.7D | `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_protocol.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current owner 정리 후 기록 |
@@ -560,21 +560,34 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - 금지: `spot_node_t`에 hot-path field/cache를 다시 추가하는 것, timing 완화로 회귀를 숨기는 것, `core/perf/`를 수정하는 것
 - 필수 대표 gate: `unittest_spot_data_plane_budget`, `unittest_spot_data_plane_protocol`, `test_single_spot_benchmark_process`, `test_multi_spot_benchmark_process`, `test_spot_pubsub_scenario`, `test_spot_service_introspection`
 
-- [ ] `spot` secure multi-peer 경로에서 남아 있는 lifecycle/control/data-plane 허브를 다시 기록한다.
-- [ ] [`spot_data_plane_internal.hpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp),
+- [x] `spot` secure multi-peer 경로에서 남아 있는 lifecycle/control/data-plane 허브를 다시 기록한다.
+- [x] [`spot_data_plane_internal.hpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp),
   [`spot_data_plane_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_runtime.cpp),
   [`spot_node_control.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp),
   [`spot_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_runtime.hpp)
   사이의 ownership/invariant를 다시 한 문장씩 고정한다.
-- [ ] monitor ready 해석, connected peer 상태, budget/control hint, secure send path가
+- [x] monitor ready 해석, connected peer 상태, budget/control hint, secure send path가
   각각 어느 private owner에 속하는지 다시 분리한다.
-- [ ] `spot_node_t` top-level facade가 hot path detail을 과하게 아는 지점을 더 줄인다.
-- [ ] 필요 시 `core/tests` 회귀를 보강하되 timing/perf 현상을 숨기는 완화가 아니라
+- [x] `spot_node_t` top-level facade가 hot path detail을 과하게 아는 지점을 더 줄인다.
+- [x] 필요 시 `core/tests` 회귀를 보강하되 timing/perf 현상을 숨기는 완화가 아니라
   구조 owner를 더 좁히는 재현 surface로만 추가한다.
-- [ ] 변경 후 아래 검증을 직렬로 다시 닫는다.
+- [x] 변경 후 아래 검증을 직렬로 다시 닫는다.
   - `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`
   - `ctest --test-dir core/build --output-on-failure -R '^(test_spot_pubsub_scenario|test_spot_service_introspection)$'`
   - `git diff -- core/include/zlink.h core/src/libzlink.vers`
+
+구조 평결:
+
+- `spot_data_plane_internal.hpp`는 secure multi-peer monitor membership, ready-peer count, budget version invariant를 숨기는 private state owner다.
+- `spot_data_plane_protocol.cpp`는 monitor/control decode를 `mesh_peer_state` 갱신과 control wakeup으로 연결하는 protocol owner다.
+- `spot_data_plane_runtime.cpp`는 live `mesh_pub` budget apply와 runtime socket wiring을 소유하고, semantic facade에 live socket tuning detail을 노출하지 않는다.
+- `spot_node_control.cpp`는 semantic facade로 남아 peer-version 관찰과 subscription/pub delivery hint만 조정한다.
+- `spot_runtime.hpp`는 runtime socket bundle과 `mesh_peer_state` storage를 들고, hot-path cache 정책은 직접 소유하지 않는다.
+
+검증 메모:
+
+- 최초 representative gate에서 `test_multi_spot_benchmark_process`의 `tls 262144` 경로가 한 차례 timeout을 보였고, 단일 재현 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`는 통과했다.
+- 이후 explicit disconnect가 `mesh_peer_state` 버전/wakeup 불변식을 빠뜨리지 않도록 helper를 추가하고, 신규 unit 회귀 `test_explicit_disconnect_updates_private_mesh_peer_state`를 보강한 뒤 representative gate를 새 로그로 다시 통과시켰다.
 
 닫힘 기준:
 

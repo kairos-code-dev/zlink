@@ -168,10 +168,7 @@ void spot_data_plane_t::reset_mesh_pub_budget_state (
     if (!runtime_)
         return;
 
-    runtime_->mesh_pub_ready_peer_count.store (0,
-                                               std::memory_order_release);
-    runtime_->mesh_pub_budget_version.fetch_add (1,
-                                                 std::memory_order_acq_rel);
+    zlink::reset_mesh_pub_budget_state (&runtime_->mesh_peer_state);
 }
 
 int spot_data_plane_t::resolve_mesh_pub_sndhwm_default (
@@ -181,7 +178,7 @@ int spot_data_plane_t::resolve_mesh_pub_sndhwm_default (
         return zlink::resolve_mesh_pub_sndhwm_default (std::string (), 0);
 
     const uint32_t ready_peers =
-      runtime_->mesh_pub_ready_peer_count.load (std::memory_order_acquire);
+      mesh_pub_ready_peer_count (&runtime_->mesh_peer_state);
     return zlink::resolve_mesh_pub_sndhwm_default (runtime_->bound_endpoint,
                                                    ready_peers);
 }
@@ -199,7 +196,7 @@ void spot_data_plane_t::refresh_mesh_pub_sndhwm (
     }
 
     const uint64_t budget_version =
-      runtime_->mesh_pub_budget_version.load (std::memory_order_acquire);
+      mesh_pub_budget_version (&runtime_->mesh_peer_state);
     const std::string bound_endpoint = runtime_->bound_endpoint;
     if (budget_version == *last_budget_version_
         && bound_endpoint == *last_bound_endpoint_) {

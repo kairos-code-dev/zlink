@@ -3,14 +3,13 @@
 #ifndef __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 #define __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 
+#include "services/spot/spot_data_plane_internal.hpp"
 #include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
 
-#include <atomic>
 #include <map>
-#include <set>
 #include <string>
 
 namespace zlink
@@ -85,14 +84,9 @@ struct spot_runtime_t
     int fault_errno;
     bool abortive_shutdown;
     mutable mutex_t attachment_sync;
-    mutable mutex_t connected_peer_sync;
-    std::atomic<uint64_t> connected_peer_version;
-    std::atomic<uint64_t> mesh_pub_budget_version;
-    std::atomic<uint32_t> mesh_pub_ready_peer_count;
-    std::atomic<uint32_t> connected_ready_peer_count;
+    spot_mesh_peer_state_t mesh_peer_state;
     uint64_t next_attachment_id;
     std::map<uint64_t, spot_attachment_t> attachments;
-    std::set<std::string> connected_peer_endpoints;
 };
 }
 

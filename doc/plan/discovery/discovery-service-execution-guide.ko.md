@@ -178,7 +178,7 @@ git push
 - [`8.1 register 계열 payload`](./raw-socket-service-discovery-spec.ko.md#81-register-계열-payload)
 - [`17.1 Step A: protocol / enum 정리`](./raw-socket-service-discovery-spec.ko.md#171-step-a-protocol--enum-정리)
 
-상태: `미착수`
+상태: `완료`
 
 작업:
 
@@ -189,6 +189,10 @@ git push
 완료 기준:
 
 - protocol layer가 raw socket family와 role을 이해한다
+
+검증:
+
+- `./core/build/bin/unittest_service_mode_policy`
 
 ### 5.2 discovery ownership 전환
 

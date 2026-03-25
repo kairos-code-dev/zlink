@@ -20,6 +20,8 @@ void *discovery_access_t::create (ctx_t *ctx_,
           discovery_protocol::service_type_gateway_receiver;
     else if (service_type_ == ZLINK_SERVICE_TYPE_SPOT)
         internal_service_type = discovery_protocol::service_type_spot_node;
+    else if (service_type_ == ZLINK_SERVICE_TYPE_SOCKET)
+        internal_service_type = discovery_protocol::service_type_socket;
     else {
         errno = EINVAL;
         return NULL;

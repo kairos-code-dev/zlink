@@ -3,6 +3,8 @@
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
 
+#include "services/discovery/discovery_protocol.hpp"
+
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
@@ -393,6 +395,101 @@ void test_spot_node_pollin_matches_subscribe_surface ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&server));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+void test_discovery_protocol_accepts_socket_family_and_roles ()
+{
+    using namespace zlink::discovery_protocol;
+
+    TEST_ASSERT_TRUE (is_valid_service_type (service_type_gateway_receiver));
+    TEST_ASSERT_TRUE (is_valid_service_type (service_type_spot_node));
+    TEST_ASSERT_TRUE (is_valid_service_type (service_type_socket));
+    TEST_ASSERT_FALSE (is_valid_service_type (0));
+
+    TEST_ASSERT_EQUAL_UINT16 (service_role_gateway,
+                              fixed_service_role_for_type (
+                                service_type_gateway_receiver));
+    TEST_ASSERT_EQUAL_UINT16 (service_role_spot,
+                              fixed_service_role_for_type (
+                                service_type_spot_node));
+    TEST_ASSERT_EQUAL_UINT16 (service_role_invalid,
+                              fixed_service_role_for_type (
+                                service_type_socket));
+
+    TEST_ASSERT_TRUE (is_valid_service_role_for_type (
+      service_type_gateway_receiver, service_role_gateway));
+    TEST_ASSERT_FALSE (is_valid_service_role_for_type (
+      service_type_gateway_receiver, service_role_spot));
+    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_spot_node,
+                                                      service_role_spot));
+    TEST_ASSERT_FALSE (is_valid_service_role_for_type (
+      service_type_spot_node, service_role_pub));
+    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
+                                                      service_role_router));
+    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
+                                                      service_role_dealer));
+    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
+                                                      service_role_pub));
+    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
+                                                      service_role_sub));
+    TEST_ASSERT_FALSE (is_valid_service_role_for_type (service_type_socket,
+                                                       service_role_gateway));
+}
+
+void test_discovery_protocol_derives_socket_roles_and_matching ()
+{
+    using namespace zlink::discovery_protocol;
+
+    TEST_ASSERT_EQUAL_UINT16 (service_role_router,
+                              derive_socket_service_role (
+                                ZLINK_CORE_SOCKET_ROUTER));
+    TEST_ASSERT_EQUAL_UINT16 (service_role_dealer,
+                              derive_socket_service_role (
+                                ZLINK_CORE_SOCKET_DEALER));
+    TEST_ASSERT_EQUAL_UINT16 (service_role_pub,
+                              derive_socket_service_role (
+                                ZLINK_CORE_SOCKET_PUB));
+    TEST_ASSERT_EQUAL_UINT16 (service_role_sub,
+                              derive_socket_service_role (
+                                ZLINK_CORE_SOCKET_SUB));
+    TEST_ASSERT_EQUAL_UINT16 (service_role_invalid,
+                              derive_socket_service_role (
+                                ZLINK_CORE_SOCKET_PAIR));
+
+    TEST_ASSERT_TRUE (service_roles_match (service_role_gateway,
+                                           service_role_gateway));
+    TEST_ASSERT_TRUE (
+      service_roles_match (service_role_spot, service_role_spot));
+    TEST_ASSERT_TRUE (
+      service_roles_match (service_role_pub, service_role_sub));
+    TEST_ASSERT_TRUE (
+      service_roles_match (service_role_sub, service_role_pub));
+    TEST_ASSERT_TRUE (
+      service_roles_match (service_role_router, service_role_router));
+    TEST_ASSERT_TRUE (
+      service_roles_match (service_role_router, service_role_dealer));
+    TEST_ASSERT_TRUE (
+      service_roles_match (service_role_dealer, service_role_router));
+    TEST_ASSERT_TRUE (
+      service_roles_match (service_role_dealer, service_role_dealer));
+    TEST_ASSERT_FALSE (
+      service_roles_match (service_role_pub, service_role_pub));
+    TEST_ASSERT_FALSE (
+      service_roles_match (service_role_sub, service_role_sub));
+    TEST_ASSERT_FALSE (
+      service_roles_match (service_role_pub, service_role_router));
+}
+
+void test_discovery_new_accepts_socket_family ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET);
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 }
 
 int main (void)
@@ -404,6 +501,9 @@ int main (void)
     RUN_TEST (test_gateway_callback_contract);
     RUN_TEST (test_spot_node_callback_policy);
     RUN_TEST (test_spot_node_pollin_matches_subscribe_surface);
+    RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);
+    RUN_TEST (test_discovery_protocol_derives_socket_roles_and_matching);
+    RUN_TEST (test_discovery_new_accepts_socket_family);
     RUN_TEST (test_stream_send_ready_is_independent_from_recv_callback);
     RUN_TEST (test_generic_monitor_poller_accepts_non_pollin_events);
 

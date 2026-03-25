@@ -968,7 +968,8 @@ ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
 typedef enum zlink_service_type_t
 {
     ZLINK_SERVICE_TYPE_GATEWAY = 0x3001,
-    ZLINK_SERVICE_TYPE_SPOT = 0x3002
+    ZLINK_SERVICE_TYPE_SPOT = 0x3002,
+    ZLINK_SERVICE_TYPE_SOCKET = 0x3003
 } zlink_service_type_t;
 /** @} */
 

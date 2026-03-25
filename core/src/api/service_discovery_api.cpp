@@ -15,7 +15,8 @@ void *zlink_discovery_new (void *ctx_, zlink_service_type_t service_type_)
         return NULL;
     }
     if (service_type_ != ZLINK_SERVICE_TYPE_GATEWAY
-        && service_type_ != ZLINK_SERVICE_TYPE_SPOT) {
+        && service_type_ != ZLINK_SERVICE_TYPE_SPOT
+        && service_type_ != ZLINK_SERVICE_TYPE_SOCKET) {
         errno = EINVAL;
         return NULL;
     }

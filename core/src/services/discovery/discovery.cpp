@@ -15,12 +15,6 @@ namespace zlink
 {
 static const uint32_t discovery_tag_value = 0x1e6700d6;
 
-static bool is_valid_service_type (uint16_t service_type_)
-{
-    return service_type_ == discovery_protocol::service_type_gateway_receiver
-           || service_type_ == discovery_protocol::service_type_spot_node;
-}
-
 discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _ctx (ctx_),
     _tag (discovery_tag_value),
@@ -39,7 +33,7 @@ discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _monitor (ctx_)
 {
     zlink_assert (_ctx);
-    zlink_assert (is_valid_service_type (_service_type));
+    zlink_assert (discovery_protocol::is_valid_service_type (_service_type));
     zlink_assert (_bootstrap_runtime);
     zlink_assert (_uplink_runtime);
 }

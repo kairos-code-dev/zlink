@@ -1257,6 +1257,13 @@ v1 목표:
 - `service_role_t` 정의
 - family-role validation helper 추가
 
+진행 메모:
+
+- 2026-03-25: `ZLINK_SERVICE_TYPE_SOCKET`, internal raw socket family, `service_role_t`,
+  family-role validation helper를 `core/include/zlink.h`,
+  `core/src/services/discovery/discovery_protocol.hpp`에 반영하고
+  `./core/build/bin/unittest_service_mode_policy`로 검증함.
+
 완료 기준:
 
 - protocol layer가 raw socket family와 role 개념을 이해한다.

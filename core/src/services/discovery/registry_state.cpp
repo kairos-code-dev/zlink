@@ -472,8 +472,7 @@ void registry_t::handle_register (void *router_,
 
     uint16_t service_type = 0;
     if (!discovery_protocol::read_u16 (frames_[1], &service_type)
-        || (service_type != discovery_protocol::service_type_gateway_receiver
-            && service_type != discovery_protocol::service_type_spot_node)) {
+        || !discovery_protocol::is_valid_service_type (service_type)) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid type");
         return;
@@ -601,8 +600,7 @@ void registry_t::handle_update_weight (void *router_,
 
     uint16_t service_type = 0;
     if (!discovery_protocol::read_u16 (frames_[1], &service_type)
-        || (service_type != discovery_protocol::service_type_gateway_receiver
-            && service_type != discovery_protocol::service_type_spot_node)) {
+        || !discovery_protocol::is_valid_service_type (service_type)) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid type");
         return;

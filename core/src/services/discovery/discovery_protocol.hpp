@@ -3,6 +3,7 @@
 #ifndef __ZLINK_DISCOVERY_PROTOCOL_HPP_INCLUDED__
 #define __ZLINK_DISCOVERY_PROTOCOL_HPP_INCLUDED__
 
+#include "core/internal_defs.hpp"
 #include "core/send_internal.hpp"
 #include "core/msg.hpp"
 #include "utils/err.hpp"
@@ -33,6 +34,96 @@ static const uint16_t msg_gateway_peer_reply = 0x0010;
 
 static const uint16_t service_type_gateway_receiver = 1;
 static const uint16_t service_type_spot_node = 2;
+static const uint16_t service_type_socket = 3;
+
+enum service_role_t
+{
+    service_role_invalid = 0,
+    service_role_gateway = 1,
+    service_role_spot = 2,
+    service_role_router = 3,
+    service_role_dealer = 4,
+    service_role_pub = 5,
+    service_role_sub = 6
+};
+
+inline bool is_valid_service_type (uint16_t service_type_)
+{
+    return service_type_ == service_type_gateway_receiver
+           || service_type_ == service_type_spot_node
+           || service_type_ == service_type_socket;
+}
+
+inline bool is_valid_service_role (uint16_t service_role_)
+{
+    return service_role_ == service_role_gateway
+           || service_role_ == service_role_spot
+           || service_role_ == service_role_router
+           || service_role_ == service_role_dealer
+           || service_role_ == service_role_pub
+           || service_role_ == service_role_sub;
+}
+
+inline uint16_t fixed_service_role_for_type (uint16_t service_type_)
+{
+    if (service_type_ == service_type_gateway_receiver)
+        return service_role_gateway;
+    if (service_type_ == service_type_spot_node)
+        return service_role_spot;
+    return service_role_invalid;
+}
+
+inline bool is_valid_service_role_for_type (uint16_t service_type_,
+                                            uint16_t service_role_)
+{
+    if (!is_valid_service_type (service_type_)
+        || !is_valid_service_role (service_role_)) {
+        return false;
+    }
+
+    if (service_type_ == service_type_gateway_receiver)
+        return service_role_ == service_role_gateway;
+    if (service_type_ == service_type_spot_node)
+        return service_role_ == service_role_spot;
+
+    return service_role_ == service_role_router
+           || service_role_ == service_role_dealer
+           || service_role_ == service_role_pub
+           || service_role_ == service_role_sub;
+}
+
+inline uint16_t derive_socket_service_role (int socket_type_)
+{
+    if (socket_type_ == ZLINK_CORE_SOCKET_ROUTER)
+        return service_role_router;
+    if (socket_type_ == ZLINK_CORE_SOCKET_DEALER)
+        return service_role_dealer;
+    if (socket_type_ == ZLINK_CORE_SOCKET_PUB)
+        return service_role_pub;
+    if (socket_type_ == ZLINK_CORE_SOCKET_SUB)
+        return service_role_sub;
+    return service_role_invalid;
+}
+
+inline bool service_roles_match (uint16_t local_role_, uint16_t remote_role_)
+{
+    if (!is_valid_service_role (local_role_)
+        || !is_valid_service_role (remote_role_)) {
+        return false;
+    }
+
+    if (local_role_ == service_role_gateway)
+        return remote_role_ == service_role_gateway;
+    if (local_role_ == service_role_spot)
+        return remote_role_ == service_role_spot;
+    if (local_role_ == service_role_pub)
+        return remote_role_ == service_role_sub;
+    if (local_role_ == service_role_sub)
+        return remote_role_ == service_role_pub;
+
+    return remote_role_ == service_role_router
+           || remote_role_ == service_role_dealer;
+}
 
 struct bootstrap_req_t
 {

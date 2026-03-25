@@ -118,7 +118,6 @@ $DefaultPatterns = @(
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "PUBSUB",
-    "GATEWAY",
     "SPOT",
     "STREAM",
 )

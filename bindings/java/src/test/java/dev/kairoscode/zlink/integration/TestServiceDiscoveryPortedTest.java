@@ -24,7 +24,7 @@ public class TestServiceDiscoveryPortedTest {
             String regRouter = TestSupport.inprocEndpoint("reg-router-basic");
 
             try (Registry registry = new Registry(ctx);
-                 Discovery discovery = new Discovery(ctx, ServiceType.GATEWAY);
+                 Discovery discovery = new Discovery(ctx, ServiceType.SPOT);
                  Receiver receiver = new Receiver(ctx)) {
                 registry.setEndpoints(regPub, regRouter);
                 registry.start();
@@ -69,7 +69,7 @@ public class TestServiceDiscoveryPortedTest {
             String regRouter = TestSupport.inprocEndpoint("reg-router-filter");
 
             try (Registry registry = new Registry(ctx);
-                 Discovery discovery = new Discovery(ctx, ServiceType.GATEWAY);
+                 Discovery discovery = new Discovery(ctx, ServiceType.SPOT);
                  Receiver receiverA = new Receiver(ctx);
                  Receiver receiverB = new Receiver(ctx)) {
                 registry.setEndpoints(regPub, regRouter);

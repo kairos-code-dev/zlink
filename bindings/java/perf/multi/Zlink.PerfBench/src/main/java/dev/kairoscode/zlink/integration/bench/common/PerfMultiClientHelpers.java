@@ -23,7 +23,7 @@ public final class PerfMultiClientHelpers {
         }
 
         String p = pattern == null ? "" : pattern.toUpperCase();
-        if ((p.equals("MULTI_GATEWAY") || p.equals("MULTI_SPOT"))
+        if (p.equals("MULTI_SPOT")
             && (tr.equals("inproc") || tr.equals("ipc"))) {
             return false;
         }

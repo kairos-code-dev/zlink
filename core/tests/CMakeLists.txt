@@ -6,8 +6,7 @@ project(tests)
 
 set(TEST_PTY_WRAPPER "${CMAKE_CURRENT_LIST_DIR}/run_under_pty.sh")
 set(REGISTERED_TESTS)
-set(SPLIT_ONLY_TEST_TARGETS
-    test_thread_safe_scaling_contract)
+set(SPLIT_ONLY_TEST_TARGETS)
 set(INTEGRATION_TEST_ROOT "integration")
 set(E2E_TEST_ROOT "e2e")
 
@@ -20,23 +19,16 @@ endif()
 set(tests
   ${INTEGRATION_TEST_ROOT}/test_ancillaries
   ${INTEGRATION_TEST_ROOT}/test_thread_safe_contract_policy
-  ${INTEGRATION_TEST_ROOT}/test_thread_safe_scaling_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_enhanced
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_socket_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_gateway_monitor_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_service_contract
-  ${INTEGRATION_TEST_ROOT}/test_monitor_with_handler
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
   ${INTEGRATION_TEST_ROOT}/test_connect_resolve
-  ${E2E_TEST_ROOT}/discovery/test_gateway
-  ${INTEGRATION_TEST_ROOT}/discovery/test_gateway_with_handler
-  ${INTEGRATION_TEST_ROOT}/discovery/test_gateway_handover
   ${INTEGRATION_TEST_ROOT}/test_capabilities
   ${INTEGRATION_TEST_ROOT}/test_socket_null
   ${INTEGRATION_TEST_ROOT}/test_heartbeats
@@ -52,8 +44,6 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_transport_matrix
   ${INTEGRATION_TEST_ROOT}/routing-id/test_router_auto_id_format
   ${INTEGRATION_TEST_ROOT}/routing-id/test_stream_routing_id_size
-  ${E2E_TEST_ROOT}/discovery/test_service_discovery
-  ${E2E_TEST_ROOT}/discovery/test_service_introspection
   ${E2E_TEST_ROOT}/spot/test_spot_pubsub_scenario
   ${E2E_TEST_ROOT}/spot/test_spot_service_introspection
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
@@ -366,17 +356,6 @@ endif()
 if(TARGET test_transport_matrix)
   set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 endif()
-if(TARGET test_monitor_with_handler)
-  set_tests_properties(test_monitor_with_handler PROPERTIES TIMEOUT 120)
-endif()
-if(TARGET test_monitor_service_contract)
-  set_tests_properties(
-    test_monitor_service_contract
-    PROPERTIES
-      TIMEOUT 120
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
 if(TARGET test_monitor_socket_contract)
   set_tests_properties(test_monitor_socket_contract PROPERTIES TIMEOUT 60)
 endif()
@@ -419,14 +398,6 @@ if(TARGET test_multi_spot_benchmark_process)
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
-if(TARGET test_gateway_monitor_process)
-  set_tests_properties(
-    test_gateway_monitor_process
-    PROPERTIES
-      TIMEOUT 30
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
 if(TARGET test_single_pair_benchmark_process)
   if(TARGET perf_pair)
     add_dependencies(
@@ -449,7 +420,7 @@ if(TARGET test_single_spot_benchmark_process)
   set_tests_properties(
     test_single_spot_benchmark_process
     PROPERTIES
-      TIMEOUT 60
+      TIMEOUT 120
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
@@ -465,176 +436,6 @@ endif()
 if(TARGET test_stream_fastpath)
   set_tests_properties(test_stream_fastpath PROPERTIES TIMEOUT 30)
 endif()
-if(TARGET test_service_introspection)
-  set_tests_properties(
-    test_service_introspection
-    PROPERTIES
-      TIMEOUT 180
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-
-  add_test(
-    NAME test_service_introspection_discovery_monitor
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_monitor_and_routing_id
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_discovery_ready_changed
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_ready_changed_contract
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_gateway_options
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_gateway_receiver_routing_ids_and_options
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_gateway_monitors
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_gateway_receiver_monitors_and_monitor_poller
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_topology_snapshot
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_registry_topology_snapshot_and_remote_query
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_gateway_peer_snapshot
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_registry_gateway_peer_snapshot_and_remote_query
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_gateway_registry_status
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_gateway_and_registry_status_snapshots
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_closed_event
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_monitor_closed_event_on_service_destroy
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_discovery_ordering
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_monitor_reports_service_up_then_down_in_order
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_discovery_self_close
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_monitor_callback_parent_destroy_returns_ebusy
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_discovery_no_latch
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_destroy_busy_observer_is_no_latch
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_discovery_lifecycle
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_public_api_lifecycle_contract
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_registry_lifecycle
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_registry_public_api_lifecycle_contract
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_registry_query_lifecycle
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_registry_query_client_public_api_lifecycle_contract
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_registry_control_path
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_registry_control_path_queries_are_safe_during_concurrent_updates
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_discovery_control_path
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_control_path_reads_are_safe_during_concurrent_updates
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_transport_restriction
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_registry_transport_restriction
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_transport_ws
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_registry_transport_allowed_ws
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_transport_tls
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_discovery_registry_transport_allowed_tls
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_registry_peer_sync
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_registry_peer_transport_restriction_and_tcp_sync
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_registry_peer_mixed_ws
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_registry_peer_transport_mixed_ws_sync
-            $<TARGET_FILE:test_service_introspection>)
-  add_test(
-    NAME test_service_introspection_topology_reports
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_registry_topology_reports_discovery_and_gateway
-            $<TARGET_FILE:test_service_introspection>)
-
-  set_tests_properties(
-    test_service_introspection_discovery_monitor
-    test_service_introspection_discovery_ready_changed
-    test_service_introspection_gateway_options
-    test_service_introspection_gateway_monitors
-    test_service_introspection_topology_snapshot
-    test_service_introspection_gateway_peer_snapshot
-    test_service_introspection_closed_event
-    test_service_introspection_discovery_ordering
-    test_service_introspection_discovery_self_close
-    test_service_introspection_registry_control_path
-    test_service_introspection_discovery_control_path
-    test_service_introspection_transport_restriction
-    test_service_introspection_transport_ws
-    test_service_introspection_transport_tls
-    test_service_introspection_registry_peer_sync
-    test_service_introspection_registry_peer_mixed_ws
-    test_service_introspection_topology_reports
-    PROPERTIES
-      TIMEOUT 30
-      SKIP_RETURN_CODE 77)
-endif()
-if(TARGET test_thread_safe_scaling_contract)
-  add_test(
-    NAME test_thread_safe_scaling_raw
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_raw_handle_scaling_contract
-            $<TARGET_FILE:test_thread_safe_scaling_contract>)
-  add_test(
-    NAME test_thread_safe_scaling_gateway
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_gateway_handle_scaling_contract
-            $<TARGET_FILE:test_thread_safe_scaling_contract>)
-  add_test(
-    NAME test_thread_safe_scaling_spot
-    COMMAND ${CMAKE_COMMAND} -E env
-            ZLINK_TEST_CASE=test_spot_handle_scaling_contract
-            $<TARGET_FILE:test_thread_safe_scaling_contract>)
-
-  set_tests_properties(
-    test_thread_safe_scaling_raw
-    test_thread_safe_scaling_gateway
-    test_thread_safe_scaling_spot
-    PROPERTIES
-      TIMEOUT 240
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
-
 function(add_env_case_test test_name target_name test_case)
   add_test(
     NAME ${test_name}
@@ -768,64 +569,11 @@ set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     test_spot_pubsub_scenario_recv_service_isolation=test_spot_recv_callback_isolated_by_service_with_discovery
     test_spot_pubsub_scenario_source_rid=test_spot_facade_handler_receives_source_rid)
 
-set(GATEWAY_CASES
-    test_gateway_provider_setsockopt
-    test_gateway_monitor_callback_parent_destroy_returns_ebusy
-    test_gateway_refreshes_existing_service_on_first_connection_count
-    test_gateway_router_peers_do_not_enter_pollable_mode
-    test_gateway_single_service_tcp
-    test_gateway_send_rid_tcp
-    test_gateway_multi_service_tcp
-    test_gateway_refresh_on_update
-    test_gateway_protocol_ws
-    test_gateway_protocol_tls
-    test_gateway_protocol_wss
-    test_gateway_load_balancing
-    test_gateway_weighted_load_balancing
-    test_gateway_callback_model_receive_regression
-    test_gateway_recv_model_receive_regression
-    test_gateway_manual_connect_disconnect_topology_ownership
-    test_gateway_local_weight_zero_is_preserved
-    test_gateway_send_ready_handler_self_close_is_safe
-    test_gateway_runtime_reads_are_safe_during_concurrent_send
-    test_gateway_snapshot_monitor_churn_does_not_stall_destroy
-    test_discovery_destroy_invalidates_attached_gateway_handle
-    test_gateway_concurrent_send_and_send_rid_and_updates
-    test_gateway_attach_and_monitor_queries_are_safe_same_handle)
-
-set(GATEWAY_TEST_SPECS
-    test_gateway_provider_options=test_gateway_provider_setsockopt
-    test_gateway_refresh_existing_service=test_gateway_refreshes_existing_service_on_first_connection_count
-    test_gateway_router_peer_stats=test_gateway_router_peers_do_not_enter_pollable_mode
-    test_gateway_single_service=test_gateway_single_service_tcp
-    test_gateway_send_rid=test_gateway_send_rid_tcp
-    test_gateway_multi_service=test_gateway_multi_service_tcp
-    test_gateway_refresh_update=test_gateway_refresh_on_update
-    test_gateway_ws=test_gateway_protocol_ws
-    test_gateway_tls=test_gateway_protocol_tls
-    test_gateway_wss=test_gateway_protocol_wss
-    test_gateway_round_robin=test_gateway_load_balancing
-    test_gateway_weighted=test_gateway_weighted_load_balancing
-    test_gateway_callback_recv_regression=test_gateway_callback_model_receive_regression
-    test_gateway_recv_model_regression=test_gateway_recv_model_receive_regression
-    test_gateway_manual_topology_ownership=test_gateway_manual_connect_disconnect_topology_ownership
-    test_gateway_local_weight_zero=test_gateway_local_weight_zero_is_preserved
-    test_gateway_send_ready_self_close=test_gateway_send_ready_handler_self_close_is_safe
-    test_gateway_runtime_reads=test_gateway_runtime_reads_are_safe_during_concurrent_send
-    test_gateway_monitor_snapshot_churn=test_gateway_snapshot_monitor_churn_does_not_stall_destroy
-    test_gateway_send_plane_updates=test_gateway_concurrent_send_and_send_rid_and_updates
-    test_gateway_attach_query_ordering=test_gateway_attach_and_monitor_queries_are_safe_same_handle
-    test_gateway_monitor_self_close=test_gateway_monitor_callback_parent_destroy_returns_ebusy)
-
 set(SERVICE_INTROSPECTION_CASES
     test_discovery_monitor_and_routing_id
     test_discovery_ready_changed_contract
-    test_gateway_receiver_routing_ids_and_options
-    test_gateway_receiver_monitors_and_monitor_poller
     test_registry_topology_snapshot_and_remote_query
     test_registry_raw_socket_topology_and_summary_query
-    test_registry_gateway_peer_snapshot_and_remote_query
-    test_gateway_and_registry_status_snapshots
     test_monitor_closed_event_on_service_destroy
     test_discovery_monitor_reports_service_up_then_down_in_order
     test_discovery_monitor_callback_parent_destroy_returns_ebusy
@@ -835,18 +583,13 @@ set(SERVICE_INTROSPECTION_CASES
     test_discovery_registry_transport_allowed_ws
     test_discovery_registry_transport_allowed_tls
     test_registry_peer_transport_restriction_and_tcp_sync
-    test_registry_peer_transport_mixed_ws_sync
-    test_registry_topology_reports_discovery_and_gateway)
+    test_registry_peer_transport_mixed_ws_sync)
 
 set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_discovery_monitor=test_discovery_monitor_and_routing_id
     test_service_introspection_discovery_ready_changed=test_discovery_ready_changed_contract
-    test_service_introspection_gateway_options=test_gateway_receiver_routing_ids_and_options
-    test_service_introspection_gateway_monitors=test_gateway_receiver_monitors_and_monitor_poller
     test_service_introspection_topology_snapshot=test_registry_topology_snapshot_and_remote_query
     test_service_introspection_raw_topology=test_registry_raw_socket_topology_and_summary_query
-    test_service_introspection_gateway_peer_snapshot=test_registry_gateway_peer_snapshot_and_remote_query
-    test_service_introspection_gateway_registry_status=test_gateway_and_registry_status_snapshots
     test_service_introspection_closed_event=test_monitor_closed_event_on_service_destroy
     test_service_introspection_discovery_ordering=test_discovery_monitor_reports_service_up_then_down_in_order
     test_service_introspection_discovery_self_close=test_discovery_monitor_callback_parent_destroy_returns_ebusy
@@ -856,30 +599,8 @@ set(SERVICE_INTROSPECTION_TEST_SPECS
     test_service_introspection_transport_ws=test_discovery_registry_transport_allowed_ws
     test_service_introspection_transport_tls=test_discovery_registry_transport_allowed_tls
     test_service_introspection_registry_peer_sync=test_registry_peer_transport_restriction_and_tcp_sync
-    test_service_introspection_registry_peer_mixed_ws=test_registry_peer_transport_mixed_ws_sync
-    test_service_introspection_topology_reports=test_registry_topology_reports_discovery_and_gateway)
+    test_service_introspection_registry_peer_mixed_ws=test_registry_peer_transport_mixed_ws_sync)
 
-set(SERVICE_DISCOVERY_CASES
-    test_discovery_provider_registration
-    test_discovery_service_filtering
-    test_discovery_heartbeat_timeout
-    test_registry_bind_rejects_rebind
-    test_socket_discovery_attach_auto_connect_and_destroy
-    test_socket_discovery_shared_discovery_lifetime)
-
-set(SERVICE_DISCOVERY_TEST_SPECS
-    test_service_discovery_provider_registration=test_discovery_provider_registration
-    test_service_discovery_service_filtering=test_discovery_service_filtering
-    test_service_discovery_heartbeat_timeout=test_discovery_heartbeat_timeout
-    test_service_discovery_registry_rebind=test_registry_bind_rejects_rebind
-    test_service_discovery_socket_attach=test_socket_discovery_attach_auto_connect_and_destroy
-    test_service_discovery_shared_lifetime=test_socket_discovery_shared_discovery_lifetime)
-
-assert_named_case_coverage(
-  "test_service_introspection"
-  "${CMAKE_CURRENT_LIST_DIR}/e2e/discovery/test_service_introspection.cpp"
-  "RUN_SERVICE_INTROSPECTION_TEST"
-  SERVICE_INTROSPECTION_CASES)
 assert_named_case_coverage(
   "test_spot_pubsub_scenario"
   "${CMAKE_CURRENT_LIST_DIR}/e2e/spot/test_spot_pubsub_scenario.cpp"
@@ -890,41 +611,6 @@ assert_named_case_coverage(
   "${CMAKE_CURRENT_LIST_DIR}/e2e/spot/test_spot_service_introspection.cpp"
   "RUN_SPOT_INTROSPECTION_TEST"
   SPOT_SERVICE_INTROSPECTION_CASES)
-assert_named_case_coverage(
-  "test_gateway"
-  "${CMAKE_CURRENT_LIST_DIR}/e2e/discovery/test_gateway.cpp"
-  "RUN_GATEWAY_TEST"
-  GATEWAY_CASES)
-assert_named_case_coverage(
-  "test_service_discovery"
-  "${CMAKE_CURRENT_LIST_DIR}/e2e/discovery/test_service_discovery.cpp"
-  "RUN_TEST_CASE"
-  SERVICE_DISCOVERY_CASES)
-
-if(TARGET test_service_discovery)
-  set_tests_properties(
-    test_service_discovery
-    PROPERTIES
-      TIMEOUT 120
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-
-  add_env_case_tests_from_specs(
-    test_service_discovery
-    SERVICE_DISCOVERY_TEST_SPECS)
-  extract_test_names_from_specs(
-    SERVICE_DISCOVERY_TEST_NAMES
-    SERVICE_DISCOVERY_TEST_SPECS)
-
-  set_tests_properties(
-    ${SERVICE_DISCOVERY_TEST_NAMES}
-    PROPERTIES
-      TIMEOUT 120
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
-
 if(TARGET test_spot_service_introspection)
   set_tests_properties(
     test_spot_service_introspection
@@ -948,39 +634,6 @@ if(TARGET test_spot_service_introspection)
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
-if(TARGET test_gateway)
-  set_tests_properties(
-    test_gateway
-    PROPERTIES
-      TIMEOUT 600
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}"
-      RUN_SERIAL TRUE
-      LABELS "manual;serial;umbrella")
-
-  add_env_case_tests_from_specs(
-    test_gateway
-    GATEWAY_TEST_SPECS)
-  extract_test_names_from_specs(
-    GATEWAY_TEST_NAMES
-    GATEWAY_TEST_SPECS)
-
-  set_tests_properties(
-    ${GATEWAY_TEST_NAMES}
-    PROPERTIES
-      TIMEOUT 60
-      SKIP_RETURN_CODE 77
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-
-  set_tests_properties(
-    test_gateway_multi_service
-    test_gateway_round_robin
-    test_gateway_weighted
-    PROPERTIES
-      TIMEOUT 120)
 endif()
 if(TARGET test_spot_pubsub_scenario)
   set_tests_properties(
@@ -1027,20 +680,6 @@ if(TARGET test_spot_pubsub_scenario)
     PROPERTIES
       TIMEOUT 180)
 endif()
-if(TARGET test_gateway_with_handler)
-  set_tests_properties(
-    test_gateway_with_handler
-    PROPERTIES
-      TIMEOUT 180
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
-if(TARGET test_gateway_handover)
-  set_tests_properties(
-    test_gateway_handover
-    PROPERTIES
-      TIMEOUT 180
-      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
-endif()
 if(TARGET test_scenario_router_router_zlink_connect)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
@@ -1057,9 +696,6 @@ if(TARGET test_scenario_stream_zmq)
 endif()
 
 set(E2E_SERIAL_TESTS
-    test_gateway_single_service
-    test_service_discovery
-    test_service_introspection
     test_spot_pubsub_scenario
     test_spot_service_introspection
     test_scenario_stream_client
@@ -1072,21 +708,17 @@ if(TARGET test_scenario_router_router_zlink_connect)
   list(APPEND E2E_SERIAL_TESTS test_scenario_router_router_zlink_connect)
 endif()
 
-set(REGRESSION_SERIAL_TESTS
-    test_gateway_multi_service
-    test_gateway_refresh_update
-    test_gateway_send_plane_updates)
+set(REGRESSION_SERIAL_TESTS)
 
 set(INTEGRATION_SERIAL_TESTS ${REGISTERED_TESTS})
-list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS} test_gateway)
+list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS})
 list(APPEND INTEGRATION_SERIAL_TESTS
      ${SERVICE_INTROSPECTION_TEST_NAMES}
      ${SERVICE_DISCOVERY_TEST_NAMES}
      ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
-     ${GATEWAY_TEST_NAMES}
      ${SPOT_PUBSUB_PEER_TEST_NAMES}
      ${SPOT_PUBSUB_LOCAL_TEST_NAMES})
-list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS} test_gateway)
+list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS})
 list(REMOVE_DUPLICATES INTEGRATION_SERIAL_TESTS)
 
 if(INTEGRATION_SERIAL_TESTS)

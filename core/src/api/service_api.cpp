@@ -70,5 +70,47 @@ void destroy_spot_handle_for_testing (void *spot_)
     spot->tag = 0xdeadbeef;
     delete spot;
 }
+}
 
+int zlink_service_send_internal (void *handle_,
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 zlink_send_flags_t flags_)
+{
+    LIBZLINK_UNUSED (handle_);
+    LIBZLINK_UNUSED (parts_);
+    LIBZLINK_UNUSED (part_count_);
+    LIBZLINK_UNUSED (flags_);
+    errno = EFAULT;
+    return -1;
+}
+
+int zlink_service_send_rid_internal (void *handle_,
+                                     const zlink_routing_id_t *target_rid_,
+                                     zlink_msg_t *parts_,
+                                     size_t part_count_,
+                                     zlink_send_flags_t flags_)
+{
+    LIBZLINK_UNUSED (handle_);
+    LIBZLINK_UNUSED (target_rid_);
+    LIBZLINK_UNUSED (parts_);
+    LIBZLINK_UNUSED (part_count_);
+    LIBZLINK_UNUSED (flags_);
+    errno = EFAULT;
+    return -1;
+}
+
+int zlink_service_recv_internal (void *handle_,
+                                 zlink_routing_id_t *source_rid_out_,
+                                 zlink_msg_t **parts_out_,
+                                 size_t *part_count_out_,
+                                 zlink_send_flags_t flags_)
+{
+    LIBZLINK_UNUSED (handle_);
+    LIBZLINK_UNUSED (source_rid_out_);
+    LIBZLINK_UNUSED (parts_out_);
+    LIBZLINK_UNUSED (part_count_out_);
+    LIBZLINK_UNUSED (flags_);
+    errno = EFAULT;
+    return -1;
 }

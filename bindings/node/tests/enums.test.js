@@ -71,13 +71,7 @@ test('ProtocolError values match C defines', () => {
 });
 
 test('ServiceType values match C defines', () => {
-  assert.strictEqual(zlink.ServiceType.GATEWAY, 1);
   assert.strictEqual(zlink.ServiceType.SPOT, 2);
-});
-
-test('GatewayLbStrategy values match C defines', () => {
-  assert.strictEqual(zlink.GatewayLbStrategy.ROUND_ROBIN, 0);
-  assert.strictEqual(zlink.GatewayLbStrategy.WEIGHTED, 1);
 });
 
 test('socket role values match C defines', () => {
@@ -85,7 +79,6 @@ test('socket role values match C defines', () => {
   assert.strictEqual(zlink.RegistrySocketRole.ROUTER, 2);
   assert.strictEqual(zlink.RegistrySocketRole.PEER_SUB, 3);
   assert.strictEqual(zlink.DiscoverySocketRole.SUB, 1);
-  assert.strictEqual(zlink.GatewaySocketRole.ROUTER, 1);
   assert.strictEqual(zlink.ReceiverSocketRole.ROUTER, 1);
   assert.strictEqual(zlink.ReceiverSocketRole.DEALER, 2);
   assert.strictEqual(zlink.SpotNodeSocketRole.NODE, 0);
@@ -110,7 +103,6 @@ test('constant objects are frozen', () => {
   assert.ok(Object.isFrozen(zlink.MonitorEvent));
   assert.ok(Object.isFrozen(zlink.PollEvent));
   assert.ok(Object.isFrozen(zlink.ServiceType));
-  assert.ok(Object.isFrozen(zlink.GatewayLbStrategy));
   assert.ok(Object.isFrozen(zlink.RegistrySocketRole));
   assert.ok(Object.isFrozen(zlink.DisconnectReason));
   assert.ok(Object.isFrozen(zlink.ContextOption));
@@ -118,7 +110,6 @@ test('constant objects are frozen', () => {
   assert.ok(Object.isFrozen(zlink.ErrorCode));
   assert.ok(Object.isFrozen(zlink.ProtocolError));
   assert.ok(Object.isFrozen(zlink.DiscoverySocketRole));
-  assert.ok(Object.isFrozen(zlink.GatewaySocketRole));
   assert.ok(Object.isFrozen(zlink.ReceiverSocketRole));
   assert.ok(Object.isFrozen(zlink.SpotNodeSocketRole));
   assert.ok(Object.isFrozen(zlink.SpotNodeOption));

@@ -12,7 +12,6 @@
 #include "zlink/monitor.hpp"
 #include "zlink/services/registry.hpp"
 #include "zlink/services/discovery.hpp"
-#include "zlink/services/gateway.hpp"
 #include "zlink/services/spot.hpp"
 #include "zlink/atomic_counter.hpp"
 #include "zlink/timers.hpp"

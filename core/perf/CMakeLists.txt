@@ -101,7 +101,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_single(perf_dealer_dealer single/src/perf_dealer_dealer.cpp)
     add_current_bench_single(perf_dealer_router single/src/perf_dealer_router.cpp)
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
-    add_current_bench_single(perf_gateway single/src/perf_gateway.cpp)
     add_current_bench_single(perf_spot single/src/perf_spot.cpp)
     # Standalone STREAM client (multi-only).
     add_executable(
@@ -123,8 +122,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                            multi/src/perf_multi_router_router_server.cpp)
     add_current_bench_multi(comp_src_pubsub_server
                            multi/src/perf_multi_pubsub_server.cpp)
-    add_current_bench_multi(comp_src_gateway_server
-                           multi/src/perf_multi_gateway_server.cpp)
     add_current_bench_multi(comp_src_spot_server
                            multi/src/perf_multi_spot_server.cpp)
     add_current_bench_multi(comp_src_dealer_dealer_client
@@ -135,8 +132,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                            multi/src/perf_multi_router_router_client.cpp)
     add_current_bench_multi(comp_src_pubsub_client
                            multi/src/perf_multi_pubsub_client.cpp)
-    add_current_bench_multi(comp_src_gateway_client
-                           multi/src/perf_multi_gateway_client.cpp)
     add_current_bench_multi(comp_src_spot_client
                            multi/src/perf_multi_spot_client.cpp)
     add_current_bench_multi(comp_src_stream_server

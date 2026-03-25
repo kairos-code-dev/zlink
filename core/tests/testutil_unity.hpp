@@ -133,32 +133,6 @@ inline int zlink_recv (void *s_,
     return result;
 }
 
-inline int zlink_gateway_send (void *gateway_,
-                               zlink_msg_t *parts_,
-                               size_t part_count_,
-                               zlink_send_flags_t flags_)
-{
-    return ::zlink_send (gateway_, parts_, part_count_, flags_);
-}
-
-inline int zlink_gateway_send_rid (void *gateway_,
-                                   const zlink_routing_id_t *routing_id_,
-                                   zlink_msg_t *parts_,
-                                   size_t part_count_,
-                                   zlink_send_flags_t flags_)
-{
-    return ::zlink_send_rid (gateway_, routing_id_, parts_, part_count_, flags_);
-}
-
-inline int zlink_gateway_recv (void *gateway_,
-                               zlink_routing_id_t *source_rid_out_,
-                               zlink_msg_t **parts_,
-                               size_t *part_count_,
-                               int flags_)
-{
-    return ::zlink_recv (gateway_, source_rid_out_, parts_, part_count_, flags_);
-}
-
 inline int zlink_subscribe (void *subject_,
                             zlink_msg_t **parts_,
                             size_t *part_count_,

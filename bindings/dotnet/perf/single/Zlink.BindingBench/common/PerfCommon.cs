@@ -126,22 +126,6 @@ internal static partial class PerfRunner
         return false;
     }
 
-    internal static void GatewayReceiveProviderMessage(Zlink.Socket router,
-        Span<byte> routingIdBuffer, Span<byte> payloadBuffer)
-    {
-        int idLen = ReceiveBlocking(router, routingIdBuffer);
-        if (idLen <= 0 || router.GetOption(SocketOptions.RcvMore) == 0)
-            throw new InvalidOperationException(
-                "Gateway provider message missing routing frame.");
-
-        int payloadLen = ReceiveBlocking(router, payloadBuffer);
-        if (payloadLen < 0)
-            throw new InvalidOperationException(
-                "Gateway provider message payload receive failed.");
-
-        DrainRemainingFramesNonBlocking(router);
-    }
-
     internal static void PrintResult(string pattern, string transport, int size,
         double thr, double latUs)
     {
@@ -237,8 +221,7 @@ internal static partial class PerfRunner
 
     internal static int ResolveSingleWarmupCount(string pattern)
     {
-        int fallback = pattern.Equals("GATEWAY", StringComparison.OrdinalIgnoreCase)
-                       || pattern.Equals("SPOT", StringComparison.OrdinalIgnoreCase)
+        int fallback = pattern.Equals("SPOT", StringComparison.OrdinalIgnoreCase)
             ? 200
             : 1000;
         return ParseEnv("PERF_WARMUP_COUNT", fallback);
@@ -246,16 +229,10 @@ internal static partial class PerfRunner
 
     internal static int ResolveSingleLatencyCount(string pattern)
     {
-        int fallback = pattern.Equals("GATEWAY", StringComparison.OrdinalIgnoreCase)
-                       || pattern.Equals("SPOT", StringComparison.OrdinalIgnoreCase)
+        int fallback = pattern.Equals("SPOT", StringComparison.OrdinalIgnoreCase)
             ? 200
             : 500;
         return ParseEnv("PERF_LAT_COUNT", fallback);
-    }
-
-    internal static int ResolveGatewayReadyTimeoutMs()
-    {
-        return 1000;
     }
 
     internal static int ResolveSpotDiscoveryTimeoutMs()

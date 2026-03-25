@@ -1,13 +1,14 @@
 # Gateway 삭제 / Metadata 후속 작업 Execution Guide
 
 > 상태: active
-> 대상 범위: `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`
+> 대상 범위: `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`
 > 목적: `gateway` 삭제와 metadata 후속 작업을 랄프 루프에서 중단 없이 순서대로 끝내기 위한 실행 기준 고정
 
 ## 1. 문서 목적
 
-이 문서는 `gateway` 관련 작업의 상위 authority이자 실행 문서다.
-즉 별도 master plan 없이 이 문서가 작업 순서, 종료 조건, 실행 체크리스트를 함께 고정한다.
+이 문서는 `gateway` 관련 작업의 실행 authority다.
+작업 순서, 종료 조건, 실행 체크리스트는 이 문서가 고정한다.
+실제 구현 범위와 설계 intent는 아래 master plan 문서들이 함께 authority다.
 새 설계를 제안하지 않는다.
 
 설계 authority는 아래 문서들로 고정한다.
@@ -20,11 +21,11 @@
 
 ## 2. 실행 authority
 
-단일 상위 실행 authority:
+실행 authority:
 
 - [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
 
-상세 authority:
+master plan authority:
 
 - [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
 - [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
@@ -54,7 +55,7 @@ metadata infra를 먼저 만들고 `gateway` 삭제를 나중에 결정하는 �
 
 아래를 모두 만족해야 이번 묶음 작업이 끝난다.
 
-- `gateway` family symbol과 전용 구현이 `core/`, `core/tests/`, `core/perf/`에서 제거된다.
+- `gateway` family symbol과 전용 구현이 `core/`, `core/tests/`, `core/perf/`, `bindings/`에서 제거된다.
 - 삭제 직후 관련 discovery/registry/service/perf 코드에 대해 POSD 리팩토링이 반영된다.
 - metadata/member query contract는 삭제 후 실제 공백이 남을 때만 구현된다.
 - metadata 작업을 진행했다면 완료 후 관련 코드에 대해 두 번째 POSD 리팩토링이 반영된다.
@@ -79,7 +80,7 @@ metadata infra를 먼저 만들고 `gateway` 삭제를 나중에 결정하는 �
 
 - authority 문서만으로는 해결할 수 없는 C API/ABI 계약 충돌
 - 사용자 변경과 직접 충돌하는 워크트리 변경 발견
-- `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
+- `core/`, `core/tests/`, `core/perf/`, `bindings/`, `doc/plan/service/gateway/`만으로 해결 불가능한 blocker
 
 위 경우가 아니면:
 
@@ -109,7 +110,8 @@ ctest --test-dir core/build --output-on-failure -L e2e -j1
 
 ```bash
 rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" \
-  core core/tests core/perf doc/plan/service/gateway
+  core core/tests core/perf bindings doc/plan/service/gateway \
+  -g '!doc/plan/service/gateway/logs/**'
 ```
 
 필수 git 명령:
@@ -132,13 +134,23 @@ git push
 
 ### 5.1 authority / preflight 정리
 
-상태: `미착수`
+상태: `완료`
+
+진행 메모:
+
+- execution guide 검색 baseline이 `logs/` 산출물에 오염되지 않도록 source 문서만 보게 수정했다.
+- removal plan에 있던 `bindings/` 제거 범위와 최종 grep 범위를 execution guide에 반영했다.
+- execution guide의 authority 설명을 `실행 가이드 + master plan` 조합으로 정렬했다.
+- 현재 baseline 기준 잔여물은 `core/include 62`, `core/src 219`, `core/tests 145`, `core/perf 36`, `bindings 278`건이다.
+- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
 
 작업:
 
 - execution guide와 상세 plan 사이의 순서/범위 불일치를 먼저 정리
 - `gateway` 삭제 대상과 metadata 후속 대상이 충돌 없이 분리됐는지 확인
-- `core/tests`, `core/perf` 기준의 삭제 잔여물 검색 baseline을 남긴다
+- `core/tests`, `core/perf`, `bindings`, source 문서 기준의 삭제 잔여물 검색 baseline을 남긴다
 
 완료 기준:
 
@@ -147,17 +159,56 @@ git push
 
 검증:
 
-- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf`
+- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
 
 ### 5.2 gateway 제거 구현
 
-상태: `미착수`
+상태: `검증중`
+
+진행 메모:
+
+- `core/tests/unittest/unittest_service_mode_policy.cpp`에서 gateway callback policy 회귀를 제거했다.
+- `core/tests/unittest/unittest_typed_option.cpp`에서 gateway/discovery typed option 회귀를 제거했다.
+- `core/tests/testutil_unity.hpp`에서 gateway send/recv test helper alias를 제거했다.
+- `core/tests/e2e/discovery/test_gateway.cpp`를 삭제했다.
+- `core/tests/integration/discovery/test_gateway_handover.cpp`를 삭제했다.
+- `core/tests/integration/discovery/test_gateway_with_handler.cpp`를 삭제했다.
+- `core/tests/integration/monitoring/test_gateway_monitor_process.cpp`를 삭제했다.
+- `core/tests/CMakeLists.txt`에서 gateway 전용 test target을 lane 구성에서 제외했다.
+- `core/tests/README.md`의 삭제된 gateway umbrella/lane 설명을 현재 상태에 맞게 정리했다.
+- `core/include/zlink.h`, `core/src/api/`, `core/src/services/discovery/`, `core/perf/`에서 gateway public/internal/protocol/perf 경로를 제거했다.
+- 공통 routing-id helper를 `core/src/services/discovery/routing_id_utils.hpp`로 승격해 discovery/spot에서 gateway 없이 재사용하도록 정리했다.
+- `bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`, `bindings/python`에서 gateway public wrapper, enum, native glue, 전용 테스트를 제거하고 `bindings/perf/run_policy_bench.py`의 gateway 벤치 엔트리를 삭제했다.
+- `bindings/cpp/API_DRAFT.md`, `bindings/java/PORTING_ISSUES.md`, `bindings/dotnet/perf/single/Zlink.BindingBench/common/PerfCommon.cs`에서 삭제된 gateway API/테스트/helper 잔재를 정리했다.
+- `core/tests/run_thread_safe_contract_*.sh`, `core/tests/README.md`에서 gateway stress/tsan/scaling lane 설명과 엔트리를 제거했다.
+- `core/perf/run_benchmarks*.{sh,ps1}`, `core/perf/multi/common/perf_common.hpp`, `core/perf/README*.md`, `core/perf/single/tests/*.py`에서 gateway 패턴과 기대값을 제거했다.
+- `bindings/dotnet/perf`, `bindings/java/perf`, `bindings/perf/run_binding_multi.sh`에서 gateway perf main entry, multi runner entry, TLS helper, 전용 소스 파일을 제거했다.
+- `bindings/node/tests/helpers.js`, `bindings/python/tests/integration/helpers.py`, `bindings/dotnet/tests/Zlink.Tests/CoreTestSupport.cs`에서 삭제된 gateway 테스트 helper를 제거했다.
+- 현재 exact symbol baseline 기준 `core/`, `core/tests/`, `core/perf/`, `bindings/`에서는 `zlink_gateway_*`, `ZLINK_GATEWAY_*`, `SERVICE_TYPE_GATEWAY`, `SERVICE_ROLE_GATEWAY`, `gateway_peer`, `perf_gateway`, `comp_src_gateway` 잔여물이 없다.
+- 현재 broad 잔여 hotspot은 bindings perf 구현 계획 문서(`CPP_PORTING_PLAN.md`, `DOTNOET_IMPLEMENTATION_PLAN.md`, `JAVA_IMPLEMENTATION_PLAN.md`) 중심의 historical/migration 서술이다.
+- 검증 중 `test_single_spot_benchmark_process`가 callback 경로 4건에서 실패했고, 단일 재현에서도 동일하게 재현된다.
+- 단일 프로세스 재현 기준 `PERF_RECV_MODE=callback ./core/build/bin/perf_spot_callback current tcp 64`는 `[perf-spot] callback handler attach failed err=95`로 종료한다.
+- 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+- 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
+- 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
+- 검증: `cmake --build core/build -j"$(nproc)"`
+- 검증: `ctest --test-dir core/build --output-on-failure -L unittest -j"$(nproc)"`
+- 검증 실패: `ctest --test-dir core/build --output-on-failure -L integration -j1`
+- 검증 실패: `ctest --test-dir core/build --output-on-failure -R '^test_single_spot_benchmark_process$' -j1`
+- 검증: `python -m pytest core/perf/single/tests/test_run_comparison_policy.py core/perf/single/tests/test_multi_run_comparison_policy.py`
+- 검증: `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings -g '!**/build/**' -g '!**/obj/**' -g '!**/bin/**'`
 
 작업:
 
-- `gateway-removal-plan.ko.md`의 삭제 범위에 맞춰 `core/`, `core/tests/`, `core/perf/`에서 `gateway` 제거
+- `gateway-removal-plan.ko.md`의 삭제 범위에 맞춰 `core/`, `core/tests/`, `core/perf/`, `bindings/`에서 `gateway` 제거
+- `core/include/zlink.h`의 `gateway` public function/type/constant와
+  registry snapshot/count의 `gateway_peer_entry_count` 제거
 - public/internal/protocol/test/perf 잔여물 제거
-- 필요하면 migration 문서/메모를 authority 문서에 반영
+- `service_discovery_api.cpp`의 gateway service-type special case와
+  discovery/registry query path의 gateway summary/store/message branch 제거
+- bindings source tree의 API draft / porting note / perf implementation plan에 남은
+  gateway 서술이 실제 코드 상태와 어긋나면 먼저 문서를 현재 상태로 갱신
+- 필요하면 migration 문서/메모와 bindings 대응 메모를 authority 문서에 반영
 
 완료 기준:
 
@@ -168,7 +219,7 @@ git push
 - `cmake --build core/build -j"$(nproc)"`
 - `ctest --test-dir core/build --output-on-failure -L unittest -j"$(nproc)"`
 - `ctest --test-dir core/build --output-on-failure -L integration -j1`
-- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf`
+- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
 
 ### 5.3 삭제 직후 POSD 리팩토링
 
@@ -207,7 +258,7 @@ git push
 
 검증:
 
-- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf`
+- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
 - 관련 migration 메모 또는 authority 문서 상태 갱신
 
 ### 5.5 metadata 모델 / plumbing
@@ -279,7 +330,7 @@ git push
 작업:
 
 - README, execution guide, 두 상세 plan의 상태와 완료 판정 정리
-- 필요하면 `core/perf` 및 테스트 문서의 잔여 gateway 언급 정리
+- 필요하면 `core/perf`, `bindings`, 테스트 문서의 잔여 gateway 언급 정리
 - 종료 증거와 commit hash를 문서에 남길 수 있으면 남긴다
 
 완료 기준:
@@ -290,7 +341,7 @@ git push
 
 - `cmake --build core/build -j"$(nproc)"`
 - `./core/tests/run_test_lanes.sh --include-e2e`
-- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf doc/plan/service/gateway`
+- `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
 
 ## 6. 랄프 루프 종료 계약
 

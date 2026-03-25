@@ -13,7 +13,6 @@
 enum poller_subject_kind_t
 {
     poller_subject_none = 0,
-    poller_subject_gateway,
     poller_subject_spot_pub,
     poller_subject_spot_sub,
     poller_subject_spot_node_pub,

@@ -162,65 +162,6 @@ void test_typed_raw_socket_options ()
     close_ctx (ctx);
 }
 
-void test_typed_gateway_discovery_tls_and_last_endpoint ()
-{
-    void *ctx = new_ctx ();
-    void *gateway = zlink_gateway_new (ctx);
-    void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_GATEWAY, "svc");
-    void *registry = zlink_registry_new (ctx);
-    TEST_ASSERT_NOT_NULL (gateway);
-    TEST_ASSERT_NOT_NULL (discovery);
-    TEST_ASSERT_NOT_NULL (registry);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_tls_client (gateway, "ca.pem", "host", 1));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_tls_server (gateway, "cert.pem", "key.pem", 1));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_tls_client (discovery, "ca.pem", "host", 1));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_tls_server (registry, "cert.pem", "key.pem", 1));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_tls_client (registry, "ca.pem", "host", 1));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_gateway_bind (gateway, "tcp://127.0.0.1:*"));
-
-    int value = 123;
-    size_t size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (gateway, ZLINK_OPT_SNDHWM, &value, sizeof (value)));
-    value = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (gateway, ZLINK_OPT_SNDHWM, &value, &size));
-    TEST_ASSERT_EQUAL_INT (123, value);
-
-    char endpoint[256];
-    size_t endpoint_size = sizeof (endpoint);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (gateway, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_size));
-    TEST_ASSERT_TRUE (endpoint_size > 0);
-
-    value = 500;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (discovery, ZLINK_OPT_HEARTBEAT_IVL, &value, sizeof (value)));
-    TEST_ASSERT_EQUAL_INT (-1, zlink_get_option (discovery, ZLINK_OPT_HEARTBEAT_IVL,
-                                                 &value, &size));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof (rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (discovery, &rid));
-    TEST_ASSERT_EQUAL_UINT8 (4, rid.size);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
-    close_ctx (ctx);
-}
-
 void test_typed_spot_node_unified_options ()
 {
     void *ctx = new_ctx ();
@@ -330,7 +271,6 @@ int main (void)
 
     UNITY_BEGIN ();
     RUN_TEST (test_typed_raw_socket_options);
-    RUN_TEST (test_typed_gateway_discovery_tls_and_last_endpoint);
     RUN_TEST (test_typed_spot_node_unified_options);
     RUN_TEST (test_option_owner_map_matches_domains);
     return UNITY_END ();

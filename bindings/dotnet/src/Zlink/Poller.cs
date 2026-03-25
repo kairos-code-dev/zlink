@@ -17,19 +17,16 @@ public sealed class Poller : IDisposable
         "zlink_poller_add",
         "zlink_poller_add_spot_sub",
         "zlink_poller_add_spot_pub",
-        "zlink_poller_add_gateway",
         "zlink_poller_add_receiver",
         "zlink_poller_add_fd",
         "zlink_poller_modify",
         "zlink_poller_modify_spot_sub",
         "zlink_poller_modify_spot_pub",
-        "zlink_poller_modify_gateway",
         "zlink_poller_modify_receiver",
         "zlink_poller_modify_fd",
         "zlink_poller_remove",
         "zlink_poller_remove_spot_sub",
         "zlink_poller_remove_spot_pub",
-        "zlink_poller_remove_gateway",
         "zlink_poller_remove_receiver",
         "zlink_poller_remove_fd",
         "zlink_poller_wait_all"
@@ -121,24 +118,6 @@ public sealed class Poller : IDisposable
             IntPtr.Zero, 0, events, tag));
     }
 
-    public void AddGateway(Gateway gateway, PollEvents events, object? tag = null)
-    {
-        EnsureNotDisposed();
-        if (gateway == null)
-            throw new ArgumentNullException(nameof(gateway));
-
-        IntPtr userData = AllocateUserData();
-        int rc = NativeMethods.zlink_poller_add_gateway(_handle, gateway.Handle,
-            userData, (short)events);
-        if (rc != 0)
-        {
-            ReleaseUserData(userData);
-            ZlinkException.ThrowIfError(rc);
-        }
-        RegisterItem(new PollItem(PollItemKind.Gateway, null, gateway, userData,
-            IntPtr.Zero, 0, events, tag));
-    }
-
     public void AddReceiver(Receiver receiver, PollEvents events,
         object? tag = null)
     {
@@ -225,23 +204,6 @@ public sealed class Poller : IDisposable
         _items[index].Events = events;
     }
 
-    public void ModifyGateway(Gateway gateway, PollEvents events)
-    {
-        EnsureNotDisposed();
-        if (gateway == null)
-            throw new ArgumentNullException(nameof(gateway));
-
-        int index = FindService(PollItemKind.Gateway, gateway);
-        if (index < 0)
-            throw new ArgumentException("gateway is not registered",
-                nameof(gateway));
-
-        int rc = NativeMethods.zlink_poller_modify_gateway(_handle,
-            gateway.Handle, (short)events);
-        ZlinkException.ThrowIfError(rc);
-        _items[index].Events = events;
-    }
-
     public void ModifyReceiver(Receiver receiver, PollEvents events)
     {
         EnsureNotDisposed();
@@ -318,23 +280,6 @@ public sealed class Poller : IDisposable
 
         int rc = NativeMethods.zlink_poller_remove_spot_pub(_handle,
             spot.PubHandle);
-        ZlinkException.ThrowIfError(rc);
-        UnregisterItem(index);
-        return true;
-    }
-
-    public bool RemoveGateway(Gateway gateway)
-    {
-        EnsureNotDisposed();
-        if (gateway == null)
-            throw new ArgumentNullException(nameof(gateway));
-
-        int index = FindService(PollItemKind.Gateway, gateway);
-        if (index < 0)
-            return false;
-
-        int rc = NativeMethods.zlink_poller_remove_gateway(_handle,
-            gateway.Handle);
         ZlinkException.ThrowIfError(rc);
         UnregisterItem(index);
         return true;
@@ -572,7 +517,6 @@ public sealed class Poller : IDisposable
         Socket,
         SpotSub,
         SpotPub,
-        Gateway,
         Receiver,
         Fd
     }

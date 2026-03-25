@@ -5,6 +5,7 @@
 
 #include "utils/err.hpp"
 #include "services/common/service_public_api.hpp"
+#include "services/common/service_mode_state.hpp"
 #include "services/spot/spot_node.hpp"
 
 namespace zlink
@@ -36,6 +37,7 @@ struct spot_handle_t
     void *handler_userdata;
     zlink::spot_node_t::pub_defaults_t pending_pub_defaults;
     zlink::spot_node_t::sub_defaults_t pending_sub_defaults;
+    zlink::service_mode_state_t mode_state;
 };
 
 #endif

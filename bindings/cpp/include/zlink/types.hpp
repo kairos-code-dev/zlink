@@ -373,17 +373,7 @@ inline poll_event operator| (poll_event a, poll_event b)
  */
 enum class service_type : int
 {
-    gateway = ZLINK_SERVICE_TYPE_GATEWAY,
     spot = ZLINK_SERVICE_TYPE_SPOT
-};
-
-/**
- * @brief Load-balancing strategy for gateway services.
- */
-enum class gateway_lb_strategy : int
-{
-    round_robin = ZLINK_GATEWAY_LB_ROUND_ROBIN,
-    weighted = ZLINK_GATEWAY_LB_WEIGHTED
 };
 
 /**
@@ -402,14 +392,6 @@ enum class registry_socket_role : int
 enum class discovery_socket_role : int
 {
     sub = 0
-};
-
-/**
- * @brief Socket roles exposed by gateway.
- */
-enum class gateway_socket_role : int
-{
-    router = 0
 };
 
 /**

@@ -9,7 +9,6 @@ from ._monitor import MonitorSocket, MonitorEvent as _MonitorEventStruct
 from ._discovery import (
     Registry,
     Discovery,
-    Gateway,
     Receiver,
 )
 from ._spot import SpotNode, Spot
@@ -26,10 +25,8 @@ from ._enums import (
     DisconnectReason,
     PollEvent,
     ServiceType,
-    GatewayLbStrategy,
     RegistrySocketRole,
     DiscoverySocketRole,
-    GatewaySocketRole,
     ReceiverSocketRole,
     SpotNodeSocketRole,
     SpotNodeOption,
@@ -38,8 +35,6 @@ from ._enums import (
     SpotSocketRole,
 )
 
-# Backward-compatible aliases
-SERVICE_TYPE_GATEWAY = ServiceType.GATEWAY
 SERVICE_TYPE_SPOT = ServiceType.SPOT
 
 
@@ -61,9 +56,7 @@ __all__ = [
     "MonitorSocket",
     "Registry",
     "Discovery",
-    "Gateway",
     "Receiver",
-    "SERVICE_TYPE_GATEWAY",
     "SERVICE_TYPE_SPOT",
     "SpotNode",
     "Spot",
@@ -80,10 +73,8 @@ __all__ = [
     "DisconnectReason",
     "PollEvent",
     "ServiceType",
-    "GatewayLbStrategy",
     "RegistrySocketRole",
     "DiscoverySocketRole",
-    "GatewaySocketRole",
     "ReceiverSocketRole",
     "SpotNodeSocketRole",
     "SpotNodeOption",

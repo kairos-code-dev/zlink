@@ -14,29 +14,6 @@ namespace compat
 namespace detail
 {
 
-inline int gateway_option_from_socket_option (int option_)
-{
-    switch (option_) {
-    case ZLINK_SNDHWM:
-        return ZLINK_GATEWAY_OPT_SNDHWM;
-    case ZLINK_RCVHWM:
-        return ZLINK_GATEWAY_OPT_RCVHWM;
-    case ZLINK_SNDTIMEO:
-        return ZLINK_GATEWAY_OPT_SNDTIMEO;
-    case ZLINK_RCVTIMEO:
-        return ZLINK_GATEWAY_OPT_RCVTIMEO;
-    case ZLINK_LINGER:
-        return ZLINK_GATEWAY_OPT_LINGER;
-    case ZLINK_SNDBUF:
-        return ZLINK_GATEWAY_OPT_SNDBUF;
-    case ZLINK_RCVBUF:
-        return ZLINK_GATEWAY_OPT_RCVBUF;
-    default:
-        errno = EINVAL;
-        return -1;
-    }
-}
-
 inline int receiver_option_from_socket_option (int option_)
 {
     switch (option_) {
@@ -307,77 +284,6 @@ inline int receiver_setsockopt (void *receiver_,
 inline void *receiver_router_socket_unsafe (void *receiver_)
 {
     (void) receiver_;
-    errno = ENOTSUP;
-    return NULL;
-}
-
-inline void *gateway_new (void *ctx_, void *discovery_, const char *routing_id_)
-{
-    void *gw = zlink_gateway_new (ctx_, NULL, routing_id_, NULL, NULL);
-    if (gw && discovery_) {
-        if (zlink_gateway_attach_discovery (gw, discovery_) != 0) {
-            zlink_gateway_destroy (&gw);
-            return NULL;
-        }
-    }
-    return gw;
-}
-inline int gateway_destroy (void **gateway_) { return zlink_gateway_destroy (gateway_); }
-inline int gateway_send (void *gateway_,
-                         const char *service_,
-                         zlink_msg_t *parts_,
-                         size_t count_,
-                         int flags_)
-{
-    return zlink_gateway_send (gateway_, service_, parts_, count_, flags_);
-}
-inline int gateway_send_bytes (void *gateway_,
-                               const char *service_,
-                               const void *data_,
-                               size_t size_,
-                               int flags_)
-{
-    return zlink_gateway_send_bytes (gateway_, service_, data_, size_, flags_);
-}
-inline int gateway_send_rid_bytes (void *gateway_,
-                                   const char *service_,
-                                   const zlink_routing_id_t *routing_id_,
-                                   const void *data_,
-                                   size_t size_,
-                                   int flags_)
-{
-    return zlink_gateway_send_rid_bytes (
-      gateway_,
-      service_,
-      const_cast<zlink_routing_id_t *> (routing_id_),
-      data_,
-      size_,
-      flags_);
-}
-inline int gateway_setsockopt (void *gateway_,
-                               int option_,
-                               const void *value_,
-                               size_t len_)
-{
-    const int mapped = detail::gateway_option_from_socket_option (option_);
-    if (mapped < 0)
-        return -1;
-
-    return zlink_gateway_set_option (gateway_, mapped, value_, len_);
-}
-inline int gateway_connection_count (void *gateway_, const char *service_)
-{
-    return zlink_gateway_connection_count (gateway_, service_);
-}
-inline void *gateway_router_socket_unsafe (void *gateway_)
-{
-    (void) gateway_;
-    errno = ENOTSUP;
-    return NULL;
-}
-inline void *gateway_router_socket (void *gateway_)
-{
-    (void) gateway_;
     errno = ENOTSUP;
     return NULL;
 }

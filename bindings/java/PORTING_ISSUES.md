@@ -47,7 +47,6 @@ This report covers issues found while porting core tests to `bindings/java` with
 - `test_shutdown_stress` -> `TestShutdownStressPortedTest`
 - `test_spec_router` -> `TestSpecRouterPortedTest`
 - `test_stream_fastpath` -> `TestStreamFastpathPortedTest`
-- `discovery/test_gateway` -> `TestGatewayPortedTest`
 - `test_stream_send_blocking_wakeup` -> `TestStreamSendBlockingWakeupPortedTest`
 - `spot/test_spot_pubsub_scenario` -> `TestSpotPubsubScenarioPortedTest`
 - `test_zmp_ws_wss` -> `TestZmpWsWssPortedTest`

@@ -50,15 +50,6 @@ struct registry_access_t
       const zlink_registry_topology_filter_t *filter_,
       zlink_registry_topology_entry_t *entries_,
       size_t *count_);
-    static int gateway_peers_snapshot (
-      registry_t *registry_,
-      zlink_registry_gateway_peer_entry_t *entries_,
-      size_t *count_);
-    static int gateway_peers_query (
-      registry_t *registry_,
-      const zlink_registry_gateway_peer_filter_t *filter_,
-      zlink_registry_gateway_peer_entry_t *entries_,
-      size_t *count_);
 };
 }
 

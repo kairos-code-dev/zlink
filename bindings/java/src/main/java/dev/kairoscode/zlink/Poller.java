@@ -3,7 +3,6 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
-import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.service.receiver.Receiver;
 import dev.kairoscode.zlink.service.spot.Spot;
 import java.lang.foreign.Arena;
@@ -113,31 +112,6 @@ public final class Poller implements AutoCloseable {
         addSpotPub(spot, PollEventType.combine(events), tag);
     }
 
-    public void addGateway(Gateway gateway, int events) {
-        addGateway(gateway, events, null);
-    }
-
-    public void addGateway(Gateway gateway, int events, Object tag) {
-        ensureOpen();
-        Objects.requireNonNull(gateway, "gateway");
-        MemorySegment gatewayHandle = gateway.handle();
-        PollItem item = newPollItem(null, gatewayHandle, 0, events, tag, true);
-        int rc = Native.pollerAddGateway(handle, gatewayHandle,
-            item.userData, events);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_add_gateway");
-        registerItem(item);
-    }
-
-    public void addGateway(Gateway gateway, PollEventType... events) {
-        addGateway(gateway, PollEventType.combine(events), null);
-    }
-
-    public void addGateway(Gateway gateway, Object tag,
-                           PollEventType... events) {
-        addGateway(gateway, PollEventType.combine(events), tag);
-    }
-
     public void addReceiver(Receiver receiver, int events) {
         addReceiver(receiver, events, null);
     }
@@ -235,23 +209,6 @@ public final class Poller implements AutoCloseable {
         modifySpotPub(spot, PollEventType.combine(events));
     }
 
-    public void modifyGateway(Gateway gateway, int events) {
-        ensureOpen();
-        Objects.requireNonNull(gateway, "gateway");
-        MemorySegment gatewayHandle = gateway.handle();
-        int index = findSocket(gatewayHandle);
-        if (index < 0)
-            throw new IllegalArgumentException("gateway is not registered");
-        int rc = Native.pollerModifyGateway(handle, gatewayHandle, events);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_modify_gateway");
-        items.get(index).events = events;
-    }
-
-    public void modifyGateway(Gateway gateway, PollEventType... events) {
-        modifyGateway(gateway, PollEventType.combine(events));
-    }
-
     public void modifyReceiver(Receiver receiver, int events) {
         ensureOpen();
         Objects.requireNonNull(receiver, "receiver");
@@ -321,20 +278,6 @@ public final class Poller implements AutoCloseable {
         int rc = Native.pollerRemoveSpotPub(handle, spotPub);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_poller_remove_spot_pub");
-        unregisterItem(index);
-        return true;
-    }
-
-    public boolean removeGateway(Gateway gateway) {
-        ensureOpen();
-        Objects.requireNonNull(gateway, "gateway");
-        MemorySegment gatewayHandle = gateway.handle();
-        int index = findSocket(gatewayHandle);
-        if (index < 0)
-            return false;
-        int rc = Native.pollerRemoveGateway(handle, gatewayHandle);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_poller_remove_gateway");
         unregisterItem(index);
         return true;
     }

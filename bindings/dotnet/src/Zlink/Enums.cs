@@ -195,12 +195,6 @@ public enum PollEvents
     PollPri = 8
 }
 
-public enum GatewayLoadBalancing
-{
-    RoundRobin = 0,
-    Weighted = 1
-}
-
 public enum RegistrySocketRole
 {
     Pub = 1,
@@ -211,11 +205,6 @@ public enum RegistrySocketRole
 public enum DiscoverySocketRole
 {
     Sub = 1
-}
-
-public enum GatewaySocketRole
-{
-    Router = 1
 }
 
 public enum ReceiverSocketRole

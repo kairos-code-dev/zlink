@@ -9,7 +9,6 @@ namespace Zlink.Service;
 
 public enum DiscoveryServiceType : ushort
 {
-    Gateway = 1,
     Spot = 2
 }
 

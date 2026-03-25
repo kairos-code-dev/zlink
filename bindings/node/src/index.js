@@ -155,11 +155,7 @@ const PollEvent = Object.freeze({
 });
 
 const ServiceType = Object.freeze({
-  GATEWAY: 1, SPOT: 2
-});
-
-const GatewayLbStrategy = Object.freeze({
-  ROUND_ROBIN: 0, WEIGHTED: 1
+  SPOT: 2
 });
 
 const RegistrySocketRole = Object.freeze({
@@ -168,10 +164,6 @@ const RegistrySocketRole = Object.freeze({
 
 const DiscoverySocketRole = Object.freeze({
   SUB: 1
-});
-
-const GatewaySocketRole = Object.freeze({
-  ROUTER: 1
 });
 
 const ReceiverSocketRole = Object.freeze({
@@ -369,50 +361,6 @@ class Discovery {
   close() { if (!this._native) return; requireNative().discoveryDestroy(this._native); this._native = null; }
 }
 
-class Gateway {
-  constructor(ctx, discovery, routingId = null) {
-    this._native = requireNative().gatewayNew(ctx._native, discovery._native, routingId);
-  }
-  send(service, payloadOrParts, flags = 0) {
-    if (Array.isArray(payloadOrParts)) {
-      requireNative().gatewaySend(this._native, service, payloadOrParts, flags);
-      return;
-    }
-    const payload = Buffer.isBuffer(payloadOrParts)
-      ? payloadOrParts
-      : Buffer.from(payloadOrParts);
-    requireNative().gatewaySend(this._native, service, payload, flags);
-  }
-  sendToRoutingId(service, routingId, payloadOrParts, flags = 0) {
-    const rid = Buffer.isBuffer(routingId) ? routingId : Buffer.from(routingId);
-    if (Array.isArray(payloadOrParts)) {
-      requireNative().gatewaySendToRoutingId(this._native, service, rid, payloadOrParts, flags);
-      return;
-    }
-    const payload = Buffer.isBuffer(payloadOrParts)
-      ? payloadOrParts
-      : Buffer.from(payloadOrParts);
-    requireNative().gatewaySendToRoutingId(this._native, service, rid, payload, flags);
-  }
-  recv(flags = 0) { return requireNative().gatewayRecv(this._native, flags); }
-  setLoadBalancing(service, strategy) { requireNative().gatewaySetLbStrategy(this._native, service, strategy); }
-  setTlsClient(ca, host, trust) { requireNative().gatewaySetTlsClient(this._native, ca, host, trust); }
-  connectionCount(service) { return requireNative().gatewayConnectionCount(this._native, service); }
-  routerSocket() {
-    const h = requireNative().gatewayRouter(this._native);
-    const s = Object.create(Socket.prototype);
-    s._native = h;
-    s._own = false;
-    return s;
-  }
-  routerPeers() { return requireNative().gatewayRouterPeers(this._native); }
-  setSockOpt(option, value) {
-    const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
-    requireNative().gatewaySetSockOpt(this._native, option, b);
-  }
-  close() { if (!this._native) return; requireNative().gatewayDestroy(this._native); this._native = null; }
-}
-
 class Receiver {
   constructor(ctx, routingId = null) { this._native = requireNative().providerNew(ctx._native, routingId); }
   bind(endpoint) { requireNative().providerBind(this._native, endpoint); }
@@ -494,7 +442,6 @@ function version() { return requireNative().version(); }
 module.exports = {
   version,
   // Backward-compatible constant aliases
-  SERVICE_TYPE_GATEWAY: ServiceType.GATEWAY,
   SERVICE_TYPE_SPOT: ServiceType.SPOT,
   SocketType,
   ContextOption,
@@ -508,10 +455,8 @@ module.exports = {
   DisconnectReason,
   PollEvent,
   ServiceType,
-  GatewayLbStrategy,
   RegistrySocketRole,
   DiscoverySocketRole,
-  GatewaySocketRole,
   ReceiverSocketRole,
   SpotNodeSocketRole,
   SpotNodeOption,
@@ -524,7 +469,6 @@ module.exports = {
   Poller,
   Registry,
   Discovery,
-  Gateway,
   Receiver,
   SpotNode,
   Spot

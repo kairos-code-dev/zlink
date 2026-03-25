@@ -10,7 +10,7 @@
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_protocol.hpp"
-#include "services/gateway/routing_id_utils.hpp"
+#include "services/discovery/routing_id_utils.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 #include "utils/err.hpp"

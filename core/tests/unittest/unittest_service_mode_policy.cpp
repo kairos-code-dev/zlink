@@ -163,45 +163,6 @@ std::string bind_socket_test_endpoint (void *socket_)
     return std::string ();
 }
 
-void test_gateway_callback_contract ()
-{
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *gateway = zlink_gateway_new (ctx);
-    TEST_ASSERT_NOT_NULL (gateway);
-
-    void *poller = zlink_poller_new ();
-    TEST_ASSERT_NOT_NULL (poller);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (gateway, &noop_socket_handler, NULL));
-
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_gateway_recv (gateway, NULL, &parts, &part_count,
-                              ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (gateway, NULL, &parts, &part_count, ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, gateway, gateway, ZLINK_POLLIN));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_send_ready_handler (gateway, &noop_send_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_poller_add (poller, gateway, gateway, ZLINK_POLLOUT));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
-}
-
 void test_spot_callback_policy ()
 {
     void *ctx = zlink_ctx_new ();
@@ -374,14 +335,10 @@ void test_discovery_protocol_accepts_socket_family_and_roles ()
 {
     using namespace zlink::discovery_protocol;
 
-    TEST_ASSERT_TRUE (is_valid_service_type (service_type_gateway_receiver));
     TEST_ASSERT_TRUE (is_valid_service_type (service_type_spot_node));
     TEST_ASSERT_TRUE (is_valid_service_type (service_type_socket));
     TEST_ASSERT_FALSE (is_valid_service_type (0));
 
-    TEST_ASSERT_EQUAL_UINT16 (service_role_gateway,
-                              fixed_service_role_for_type (
-                                service_type_gateway_receiver));
     TEST_ASSERT_EQUAL_UINT16 (service_role_spot,
                               fixed_service_role_for_type (
                                 service_type_spot_node));
@@ -389,10 +346,6 @@ void test_discovery_protocol_accepts_socket_family_and_roles ()
                               fixed_service_role_for_type (
                                 service_type_socket));
 
-    TEST_ASSERT_TRUE (is_valid_service_role_for_type (
-      service_type_gateway_receiver, service_role_gateway));
-    TEST_ASSERT_FALSE (is_valid_service_role_for_type (
-      service_type_gateway_receiver, service_role_spot));
     TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_spot_node,
                                                       service_role_spot));
     TEST_ASSERT_FALSE (is_valid_service_role_for_type (
@@ -405,8 +358,6 @@ void test_discovery_protocol_accepts_socket_family_and_roles ()
                                                       service_role_pub));
     TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
                                                       service_role_sub));
-    TEST_ASSERT_FALSE (is_valid_service_role_for_type (service_type_socket,
-                                                       service_role_gateway));
 }
 
 void test_discovery_protocol_derives_socket_roles_and_matching ()
@@ -429,8 +380,6 @@ void test_discovery_protocol_derives_socket_roles_and_matching ()
                               derive_socket_service_role (
                                 ZLINK_CORE_SOCKET_PAIR));
 
-    TEST_ASSERT_TRUE (service_roles_match (service_role_gateway,
-                                           service_role_gateway));
     TEST_ASSERT_TRUE (
       service_roles_match (service_role_spot, service_role_spot));
     TEST_ASSERT_TRUE (
@@ -543,7 +492,6 @@ int main (void)
 
     setup_test_environment ();
 
-    RUN_TEST (test_gateway_callback_contract);
     RUN_TEST (test_spot_callback_policy);
     RUN_TEST (test_spot_node_generic_data_plane_surface_removed);
     RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);

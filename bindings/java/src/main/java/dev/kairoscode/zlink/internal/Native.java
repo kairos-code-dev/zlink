@@ -102,10 +102,6 @@ public final class Native {
         "zlink_poller_add_spot_pub",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
             ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
-    private static final MethodHandle MH_POLLER_ADD_GATEWAY = downcall(
-        "zlink_poller_add_gateway",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_POLLER_ADD_RECEIVER = downcall(
         "zlink_poller_add_receiver",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -124,10 +120,6 @@ public final class Native {
         "zlink_poller_modify_spot_pub",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
             ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
-    private static final MethodHandle MH_POLLER_MODIFY_GATEWAY = downcall(
-        "zlink_poller_modify_gateway",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_POLLER_MODIFY_RECEIVER = downcall(
         "zlink_poller_modify_receiver",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -144,10 +136,6 @@ public final class Native {
             ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_REMOVE_SPOT_PUB = downcall(
         "zlink_poller_remove_spot_pub",
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS));
-    private static final MethodHandle MH_POLLER_REMOVE_GATEWAY = downcall(
-        "zlink_poller_remove_gateway",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
             ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_REMOVE_RECEIVER = downcall(
@@ -206,37 +194,8 @@ public final class Native {
     private static final MethodHandle MH_DISC_DESTROY = downcall("zlink_discovery_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
-    private static final MethodHandle MH_GATEWAY_NEW = downcall("zlink_gateway_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_GATEWAY_ATTACH_DISC = downcall("zlink_gateway_attach_discovery",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_GATEWAY_SEND = downcall("zlink_gateway_send",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_GATEWAY_SEND_BYTES = downcall("zlink_gateway_send_bytes",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_GATEWAY_SEND_RID_BYTES = downcall("zlink_gateway_send_rid_bytes",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_GATEWAY_SEND_RID = downcall("zlink_gateway_send_rid",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_GATEWAY_RECV = downcall("zlink_gateway_recv",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_GATEWAY_LB = downcall("zlink_gateway_set_lb_strategy",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_GATEWAY_TLS = downcall("zlink_gateway_set_tls_client",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_GATEWAY_COUNT = downcall("zlink_gateway_connection_count",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_GATEWAY_ROUTER_PEERS = downcall("zlink_gateway_router_peers",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_GATEWAY_DESTROY = downcall("zlink_gateway_destroy",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-
     private static final MethodHandle MH_PROVIDER_NEW = downcall("zlink_receiver_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_GATEWAY_SET_OPTION = downcall("zlink_gateway_set_option",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_PROVIDER_SET_OPTION = downcall("zlink_receiver_set_option",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
@@ -690,18 +649,6 @@ public final class Native {
         }
     }
 
-    public static int pollerAddGateway(MemorySegment poller,
-                                        MemorySegment gateway,
-                                        MemorySegment userData,
-                                        int events) {
-        try {
-            return (int) MH_POLLER_ADD_GATEWAY.invokeExact(poller, gateway,
-                userData, (short) events);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_poller_add_gateway failed", t);
-        }
-    }
-
     public static int pollerAddReceiver(MemorySegment poller,
                                          MemorySegment receiver,
                                          MemorySegment userData,
@@ -758,17 +705,6 @@ public final class Native {
         }
     }
 
-    public static int pollerModifyGateway(MemorySegment poller,
-                                           MemorySegment gateway,
-                                           int events) {
-        try {
-            return (int) MH_POLLER_MODIFY_GATEWAY.invokeExact(poller, gateway,
-                (short) events);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_poller_modify_gateway failed", t);
-        }
-    }
-
     public static int pollerModifyReceiver(MemorySegment poller,
                                             MemorySegment receiver,
                                             int events) {
@@ -815,15 +751,6 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException("zlink_poller_remove_spot_pub failed",
               t);
-        }
-    }
-
-    public static int pollerRemoveGateway(MemorySegment poller,
-                                           MemorySegment gateway) {
-        try {
-            return (int) MH_POLLER_REMOVE_GATEWAY.invokeExact(poller, gateway);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_poller_remove_gateway failed", t);
         }
     }
 
@@ -971,130 +898,6 @@ public final class Native {
             return (int) MH_DISC_DESTROY.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_destroy failed", t);
-        }
-    }
-
-    public static MemorySegment gatewayNew(MemorySegment ctx, MemorySegment disc, MemorySegment routingId) {
-        try {
-            MemorySegment gw = (MemorySegment) MH_GATEWAY_NEW.invokeExact(ctx, MemorySegment.NULL, routingId, MemorySegment.NULL, MemorySegment.NULL);
-            if (gw.equals(MemorySegment.NULL))
-                return gw;
-            if (!disc.equals(MemorySegment.NULL)) {
-                int rc = (int) MH_GATEWAY_ATTACH_DISC.invokeExact(gw, disc);
-                if (rc != 0) {
-                    Arena arena = Arena.ofConfined();
-                    MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
-                    p.set(ValueLayout.ADDRESS, 0, gw);
-                    MH_GATEWAY_DESTROY.invokeExact(p);
-                    arena.close();
-                    return MemorySegment.NULL;
-                }
-            }
-            return gw;
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_new failed", t);
-        }
-    }
-
-    public static int gatewaySend(MemorySegment gw, MemorySegment service, MemorySegment parts, long count, int flags) {
-        try {
-            return (int) MH_GATEWAY_SEND.invokeExact(gw, service, parts, count, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_send failed", t);
-        }
-    }
-
-    public static int gatewaySendBytes(MemorySegment gw, MemorySegment service,
-                                       MemorySegment data, long size, int flags) {
-        try {
-            return (int) MH_GATEWAY_SEND_BYTES.invokeExact(gw, service, data,
-              size, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_send_bytes failed", t);
-        }
-    }
-
-    public static int gatewaySendRid(MemorySegment gw, MemorySegment service,
-                                     MemorySegment routingId,
-                                     MemorySegment parts, long count,
-                                     int flags) {
-        try {
-            return (int) MH_GATEWAY_SEND_RID.invokeExact(gw, service, routingId,
-              parts, count, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_send_rid failed", t);
-        }
-    }
-
-    public static int gatewaySendRidBytes(MemorySegment gw, MemorySegment service,
-                                          MemorySegment routingId,
-                                          MemorySegment data, long size,
-                                          int flags) {
-        try {
-            return (int) MH_GATEWAY_SEND_RID_BYTES.invokeExact(gw, service,
-              routingId, data, size, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_send_rid_bytes failed", t);
-        }
-    }
-
-    public static int gatewayRecv(MemorySegment gw, MemorySegment partsPtr, MemorySegment count, int flags, MemorySegment serviceOut) {
-        try {
-            return (int) MH_GATEWAY_RECV.invokeExact(gw, partsPtr, count, flags, serviceOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_recv failed", t);
-        }
-    }
-
-    public static int gatewaySetLbStrategy(MemorySegment gw, MemorySegment service, int strategy) {
-        try {
-            return (int) MH_GATEWAY_LB.invokeExact(gw, service, strategy);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_set_lb_strategy failed", t);
-        }
-    }
-
-    public static int gatewaySetTlsClient(MemorySegment gw, MemorySegment ca, MemorySegment host, int trust) {
-        try {
-            return (int) MH_GATEWAY_TLS.invokeExact(gw, ca, host, trust);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_set_tls_client failed", t);
-        }
-    }
-
-    public static int gatewayConnectionCount(MemorySegment gw, MemorySegment service) {
-        try {
-            return (int) MH_GATEWAY_COUNT.invokeExact(gw, service);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_connection_count failed", t);
-        }
-    }
-
-    public static int gatewayRouterPeers(MemorySegment gw, MemorySegment peers,
-                                         MemorySegment count) {
-        try {
-            return (int) MH_GATEWAY_ROUTER_PEERS.invokeExact(gw, peers, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_router_peers failed", t);
-        }
-    }
-
-    public static int gatewaySetOption(MemorySegment gw, int option,
-                                       MemorySegment value, long len) {
-        try {
-            return (int) MH_GATEWAY_SET_OPTION.invokeExact(gw, option, value, len);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_set_option failed", t);
-        }
-    }
-
-    public static int gatewayDestroy(MemorySegment gwPtr) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
-            p.set(ValueLayout.ADDRESS, 0, gwPtr);
-            return (int) MH_GATEWAY_DESTROY.invokeExact(p);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_gateway_destroy failed", t);
         }
     }
 

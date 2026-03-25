@@ -5,8 +5,6 @@
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 
-#include "services/gateway/gateway_access.hpp"
-
 int validate_recv_flags (int flags_)
 {
     if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
@@ -26,29 +24,6 @@ int zlink_service_send_ready_handler_internal (
         return -1;
     }
 
-    if (is_registered_gateway_handle (handle_)) {
-        zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (handle_);
-        if (!gateway)
-            return -1;
-        zlink::service_public_api_guard_t *guard =
-          zlink::gateway_access_t::public_api_guard (gateway);
-        if (!guard) {
-            errno = EFAULT;
-            return -1;
-        }
-        zlink::service_public_api_scope_t admission (*guard);
-        if (!admission.acquired ())
-            return -1;
-        bool already_active = false;
-        if (gateway_activate_send_ready_mode (gateway, &already_active) != 0)
-            return -1;
-        const int rc = zlink::gateway_access_t::set_send_ready_handler (
-          gateway, handler_, userdata_);
-        if (rc != 0 && !already_active)
-            gateway_revert_send_ready_mode (gateway);
-        return rc;
-    }
-
     if (is_registered_spot_handle (handle_)) {
         return spot_install_send_ready_handler (
           static_cast<spot_handle_t *> (handle_), handler_, userdata_);
@@ -59,6 +34,18 @@ int zlink_service_send_ready_handler_internal (
         return -1;
     }
 
+    errno = EFAULT;
+    return -1;
+}
+
+int zlink_service_msg_recv_handler_internal (
+  void *handle_,
+  zlink_socket_msg_handler_fn handler_,
+  void *userdata_)
+{
+    LIBZLINK_UNUSED (handle_);
+    LIBZLINK_UNUSED (handler_);
+    LIBZLINK_UNUSED (userdata_);
     errno = EFAULT;
     return -1;
 }

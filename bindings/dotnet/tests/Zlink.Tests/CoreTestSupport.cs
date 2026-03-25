@@ -131,25 +131,6 @@ internal static class CoreTestSupport
         throw new TimeoutException("send timeout");
     }
 
-    internal static void SendGatewayWithRetry(Gateway gateway, string serviceName,
-        ReadOnlySpan<byte> payload, int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                gateway.Send(serviceName, payload, SendFlags.DontWait);
-                return;
-            }
-            catch (ZlinkException)
-            {
-                Thread.Sleep(10);
-            }
-        }
-        throw new TimeoutException("gateway send timeout");
-    }
-
     internal static Message ReceiveMessageWithTimeout(Zlink.Socket socket,
         int timeoutMs)
     {
@@ -314,24 +295,6 @@ internal static class CoreTestSupport
             Thread.Sleep(5);
         }
         return true;
-    }
-
-    internal static GatewayMessage ReceiveGatewayWithTimeout(Gateway gateway,
-        int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                return gateway.Receive(ReceiveFlags.DontWait);
-            }
-            catch (ZlinkException)
-            {
-                Thread.Sleep(10);
-            }
-        }
-        throw new TimeoutException("gateway receive timeout");
     }
 
     internal static SpotMessage ReceiveSpotWithTimeout(Spot spot, int timeoutMs)

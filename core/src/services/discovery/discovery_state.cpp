@@ -74,32 +74,6 @@ void discovery_t::upsert_service_summary (
         runtime->wakeup_task (_task_id);
 }
 
-void discovery_t::upsert_gateway_peer_summary (
-  const zlink_registry_gateway_peer_entry_t &entry_)
-{
-    if (entry_.gateway_routing_id.size == 0 || entry_.peer_routing_id.size == 0
-        || entry_.service_name[0] == '\0') {
-        return;
-    }
-
-    gateway_peer_key_t key;
-    key.gateway_routing_id_key =
-      topology_routing_key_local (entry_.gateway_routing_id);
-    key.service_name = entry_.service_name;
-    key.peer_routing_id_key = topology_routing_key_local (entry_.peer_routing_id);
-
-    {
-        scoped_lock_t lock (_sync);
-        gateway_peer_summary_t &summary = _gateway_peer_summary_store[key];
-        summary.entry = entry_;
-        summary.dirty = true;
-    }
-
-    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _task_id != 0)
-        runtime->wakeup_task (_task_id);
-}
-
 void discovery_t::erase_service_summary (uint16_t service_kind_,
                                          const zlink_routing_id_t &routing_id_,
                                          const std::string &service_name_,

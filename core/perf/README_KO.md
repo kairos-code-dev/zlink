@@ -19,7 +19,7 @@ zlink perf는 아래 두 개의 진입 스크립트로 실행한다.
 ## run_benchmarks.sh
 
 single 패턴(PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER,
-ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
+ROUTER_ROUTER, SPOT)의 성능을 측정한다.
 
 ### 옵션
 
@@ -57,7 +57,7 @@ ROUTER_ROUTER, GATEWAY, SPOT)의 성능을 측정한다.
 
 - single canonical lane: `callback`
 - `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
+  `ROUTER_ROUTER`, `SPOT`
 - `recv`: `SPOT`만
 
 monitor gate 검증은 항상 callback 기준이며, 별도 perf pattern matrix로 취급하지
@@ -83,7 +83,7 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 
 ### 기본 패턴
 
-`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM`
+`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM`
 
 ### 옵션
 
@@ -134,7 +134,7 @@ results/
 현재 multi recv 모드 지원 범위:
 
 - `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`,
-  `GATEWAY`, `SPOT`, `STREAM`
+  `SPOT`, `STREAM`
 - `callback`: `SPOT`, `STREAM`
 
 지원하지 않는 조합은 묵시적 fallback 없이 fail-fast로 종료한다.

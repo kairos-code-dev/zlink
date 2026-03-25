@@ -13,7 +13,6 @@
 
 namespace zlink
 {
-class gateway_t;
 class spot_node_t;
 class spot_pub_t;
 class spot_sub_t;
@@ -78,8 +77,6 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
 
 int socket_monitor_snapshot_provider (void *subject_,
                                       zlink_monitor_snapshot_t *out_);
-int gateway_monitor_snapshot_provider (void *subject_,
-                                       zlink_monitor_snapshot_t *out_);
 int spot_pub_monitor_snapshot_provider (void *subject_,
                                         zlink_monitor_snapshot_t *out_);
 int spot_sub_monitor_snapshot_provider (void *subject_,

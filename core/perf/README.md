@@ -19,7 +19,7 @@ Policy references:
 ## run_benchmarks.sh
 
 Measures current single-pattern performance (PAIR, PUBSUB, DEALER_DEALER,
-DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT).
+DEALER_ROUTER, ROUTER_ROUTER, SPOT).
 
 ### Options
 
@@ -57,7 +57,7 @@ Current single recv-mode support:
 
 - canonical single lane: `callback`
 - `callback`: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `GATEWAY`, `SPOT`
+  `ROUTER_ROUTER`, `SPOT`
 - `recv`: `SPOT` only
 
 Monitor gates are always validated in callback mode and are not treated as a
@@ -83,7 +83,7 @@ and delegates execution to `run_benchmarks.sh`.
 
 ### Default patterns
 
-`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM`
+`DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM`
 
 ### Options
 
@@ -134,7 +134,7 @@ results/
 Current multi recv-mode support:
 
 - `recv`: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`,
-  `GATEWAY`, `SPOT`, `STREAM`
+  `SPOT`, `STREAM`
 - `callback`: `SPOT`, `STREAM`
 
 Unsupported combinations fail fast instead of silently falling back.

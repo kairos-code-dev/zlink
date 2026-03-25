@@ -4,7 +4,6 @@ package dev.kairoscode.zlink.integration.bench.common;
 
 import dev.kairoscode.zlink.integration.bench.src.PerfMultiDealerDealerServer;
 import dev.kairoscode.zlink.integration.bench.src.PerfMultiDealerRouterServer;
-import dev.kairoscode.zlink.integration.bench.src.PerfMultiGatewayServer;
 import dev.kairoscode.zlink.integration.bench.src.PerfMultiPubSubServer;
 import dev.kairoscode.zlink.integration.bench.src.PerfMultiRouterRouterServer;
 import dev.kairoscode.zlink.integration.bench.src.PerfMultiSpotServer;
@@ -30,8 +29,6 @@ public final class PerfMultiServerEntry {
             case "MULTI_ROUTER_ROUTER" -> PerfMultiRouterRouterServer.runServer(
                 transport, msgSize);
             case "MULTI_PUBSUB" -> PerfMultiPubSubServer.runServer(transport,
-                msgSize);
-            case "MULTI_GATEWAY" -> PerfMultiGatewayServer.runServer(transport,
                 msgSize);
             case "MULTI_SPOT" -> PerfMultiSpotServer.runServer(transport, msgSize);
             case "MULTI_STREAM" -> PerfMultiStreamServer.runServer(transport,

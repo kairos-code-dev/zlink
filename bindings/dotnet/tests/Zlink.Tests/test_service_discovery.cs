@@ -23,7 +23,7 @@ public sealed class test_service_discovery
 
         using var ctx = new Context();
 
-        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Spot);
         Assert.Throws<ArgumentException>(() => discovery.ConnectRegistry(""));
         Assert.Throws<ArgumentException>(() => discovery.ReceiverCount(""));
         Assert.Throws<ArgumentException>(() => discovery.ServiceAvailable(""));
@@ -75,7 +75,7 @@ public sealed class test_service_discovery
         registry.SetEndpoints(regPub, regRouter);
         registry.Start();
 
-        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Spot);
         discovery.ConnectRegistry(regRouter);
         using var providerA = new Receiver(ctx);
         string bindA = CoreTestSupport.NewEndpoint("tcp", "svc-a");
@@ -118,7 +118,7 @@ public sealed class test_service_discovery
         registry.SetEndpoints(regPub, regRouter);
         registry.Start();
 
-        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Spot);
         discovery.ConnectRegistry(regRouter);
         using var providerA = new Receiver(ctx);
         using var providerB = new Receiver(ctx);
@@ -154,7 +154,7 @@ public sealed class test_service_discovery
         registry.SetHeartbeat(100, 500);
         registry.Start();
 
-        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Spot);
         discovery.ConnectRegistry(regRouter);
         using var provider = new Receiver(ctx);
         _ = RegisterProvider(provider, regRouter, "hb-svc", 1);
@@ -180,7 +180,7 @@ public sealed class test_service_discovery
         registry.SetEndpoints(regPub, regRouter);
         registry.Start();
 
-        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Spot);
         discovery.ConnectRegistry(regRouter);
         using var provider = new Receiver(ctx);
         _ = RegisterProvider(provider, regRouter, "weight-svc", 10);

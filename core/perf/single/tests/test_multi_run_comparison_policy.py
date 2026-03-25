@@ -51,16 +51,16 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
     def test_collect_unsupported_patterns_matches_current_multi_matrix(self):
         self.assertEqual(
             RC.collect_unsupported_patterns(
-                ["DEALER_DEALER", "GATEWAY", "STREAM"], "recv"
+                ["DEALER_DEALER", "STREAM"], "recv"
             ),
             [],
         )
         self.assertEqual(
             RC.collect_unsupported_patterns(
-                ["DEALER_DEALER", "PUBSUB", "GATEWAY", "SPOT", "STREAM"],
+                ["DEALER_DEALER", "PUBSUB", "SPOT", "STREAM"],
                 "callback",
             ),
-            ["DEALER_DEALER", "PUBSUB", "GATEWAY"],
+            ["DEALER_DEALER", "PUBSUB"],
         )
         self.assertEqual(
             RC.collect_unsupported_patterns(["SPOT", "STREAM"], "callback"),

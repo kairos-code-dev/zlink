@@ -23,7 +23,6 @@ internal static partial class PerfRunner
                 "DEALER_ROUTER" => PerfDealerRouterServer.Run(transport, size),
                 "ROUTER_ROUTER" => PerfRouterRouterServer.Run(transport, size),
                 "PUBSUB" => PerfPubSubServer.Run(transport, size),
-                "GATEWAY" => PerfGatewayServer.Run(transport, size),
                 "SPOT" => PerfSpotServer.Run(transport, size),
                 "STREAM" => PerfStreamServer.Run(transport, size),
                 "STREAM_CALLBACK" =>

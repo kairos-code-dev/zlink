@@ -16,17 +16,6 @@
 #include <climits>
 #include <zlink.h>
 
-#ifdef __cplusplus
-inline int zlink_gateway_send_rid (void *gateway_,
-                                   const zlink_routing_id_t *routing_id_,
-                                   zlink_msg_t *parts_,
-                                   size_t part_count_,
-                                   int flags_)
-{
-    return ::zlink_send_rid (gateway_, routing_id_, parts_, part_count_, flags_);
-}
-#endif
-
 typedef struct zlink_peer_info_t
 {
     uint64_t connected_time;

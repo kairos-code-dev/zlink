@@ -8,7 +8,6 @@
 
 #include "api/socket_api_internal.hpp"
 #include "services/discovery/discovery_access.hpp"
-#include "services/gateway/gateway_access.hpp"
 #include "services/spot/spot_node_access.hpp"
 
 namespace
@@ -92,35 +91,6 @@ void *open_discovery_service_monitor_internal (
     if (!handle.socket
         || set_monitor_handler_state (handle.socket, NULL, handler_, true, NULL,
                                       discovery, NULL, userdata_)
-             != 0) {
-        const int err = errno;
-        zlink_monitor_close (&monitor);
-        errno = err;
-        return NULL;
-    }
-    return monitor;
-}
-
-void *open_gateway_service_monitor_internal (
-  void *gateway_,
-  zlink_gateway_monitor_event_mask_t events_,
-  zlink_service_monitor_handler_fn handler_,
-  void *userdata_)
-{
-    if (!gateway_)
-        return NULL;
-    zlink::gateway_t *gateway = zlink::gateway_access_t::from_handle (gateway_);
-    if (!gateway)
-        return NULL;
-    void *monitor = zlink::gateway_access_t::monitor_open (gateway, events_);
-    if (!monitor)
-        return NULL;
-    socket_handle_t handle = as_socket_handle (monitor);
-    if (!handle.socket
-        || set_monitor_handler_state (handle.socket, NULL, handler_, true,
-                                      &gateway_monitor_snapshot_provider,
-                                      static_cast<void *> (gateway), NULL,
-                                      userdata_)
              != 0) {
         const int err = errno;
         zlink_monitor_close (&monitor);
@@ -221,13 +191,6 @@ void *zlink_service_monitor_open (
         return open_discovery_service_monitor_internal (
           discovery,
           static_cast<zlink_discovery_monitor_event_mask_t> (options_->events),
-          NULL, NULL);
-    }
-
-    if (is_registered_gateway_handle (target_)) {
-        return open_gateway_service_monitor_internal (
-          target_,
-          static_cast<zlink_gateway_monitor_event_mask_t> (options_->events),
           NULL, NULL);
     }
 

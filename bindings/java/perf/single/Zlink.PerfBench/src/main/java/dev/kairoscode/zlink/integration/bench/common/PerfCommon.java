@@ -227,8 +227,7 @@ public final class PerfCommon {
     }
 
     public static int resolveWarmupCount(String pattern, int msgSize) {
-        int fallback = ("GATEWAY".equals(pattern) || "SPOT".equals(pattern))
-            ? 200 : 1000;
+        int fallback = "SPOT".equals(pattern) ? 200 : 1000;
         int configured = parseEnv("PERF_WARMUP_COUNT", fallback);
         if ("SPOT".equals(pattern) && msgSize >= 65_536) {
             return Math.min(configured, 20);
@@ -250,10 +249,6 @@ public final class PerfCommon {
 
     public static int resolveLatencySampleCap() {
         return parseEnv("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200_000);
-    }
-
-    public static int resolveGatewayReadyTimeoutMs() {
-        return 1000;
     }
 
     public static int resolveSpotDiscoveryTimeoutMs() {

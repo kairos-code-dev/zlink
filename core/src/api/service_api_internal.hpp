@@ -12,41 +12,23 @@
 
 namespace zlink
 {
-class gateway_t;
 }
 
-bool is_registered_gateway_handle (void *gateway_);
 bool is_registered_spot_node_handle (void *node_);
 bool is_registered_spot_handle (void *spot_);
 
-void register_gateway_mode_state (zlink::gateway_t *gateway_);
-void register_spot_node_mode_state (zlink::spot_node_t *node_);
-void register_spot_mode_state (spot_handle_t *spot_);
-void erase_gateway_mode_state (zlink::gateway_t *gateway_);
-void erase_spot_node_mode_state (zlink::spot_node_t *node_);
-void erase_spot_mode_state (spot_handle_t *spot_);
-int gateway_transition_to_callback_mode (zlink::gateway_t *gateway_);
-void gateway_revert_callback_transition (zlink::gateway_t *gateway_);
 int spot_node_transition_to_callback_mode (zlink::spot_node_t *node_);
 void spot_node_revert_callback_transition (zlink::spot_node_t *node_);
 int spot_transition_to_callback_mode (spot_handle_t *spot_);
 void spot_revert_callback_transition (spot_handle_t *spot_);
-int gateway_require_recv_model (zlink::gateway_t *gateway_);
 int spot_node_require_recv_model (zlink::spot_node_t *node_);
 int spot_require_recv_model (spot_handle_t *spot_);
-int gateway_activate_send_ready_mode (zlink::gateway_t *gateway_,
-                                      bool *already_active_out_);
-void gateway_revert_send_ready_mode (zlink::gateway_t *gateway_);
 int spot_activate_send_ready_mode (spot_handle_t *spot_,
                                    bool *already_active_out_);
 void spot_revert_send_ready_mode (spot_handle_t *spot_);
 int spot_node_activate_send_ready_mode (zlink::spot_node_t *node_,
                                         bool *already_active_out_);
 void spot_node_revert_send_ready_mode (zlink::spot_node_t *node_);
-int increment_gateway_poller_ref (zlink::gateway_t *gateway_);
-int increment_gateway_poller_ref (zlink::gateway_t *gateway_, short events_);
-void decrement_gateway_poller_ref (zlink::gateway_t *gateway_);
-void decrement_gateway_poller_ref (zlink::gateway_t *gateway_, short events_);
 int increment_spot_node_poller_ref (zlink::spot_node_t *node_);
 int increment_spot_node_poller_ref (zlink::spot_node_t *node_, short events_);
 void decrement_spot_node_poller_ref (zlink::spot_node_t *node_);
@@ -58,26 +40,9 @@ void decrement_spot_poller_ref (spot_handle_t *spot_, short events_);
 int validate_recv_flags (int flags_);
 int validate_spot_generic_poller_events (short events_, bool *is_pub_out_);
 void release_poller_registration (const poller_registration_t &registration_);
-int poller_add_gateway_registration (poller_handle_t *poller_,
-                                     void *gateway_,
-                                     void *user_data_,
-                                     short events_);
-int poller_modify_gateway_registration (poller_handle_t *poller_,
-                                        void *gateway_,
-                                        short events_);
 int increment_spot_subject_poller_ref (void *spot_or_node_, short events_);
 poller_subject_kind_t poller_spot_pub_kind_for_subject (void *spot_or_node_);
 poller_subject_kind_t poller_spot_sub_kind_for_subject (void *spot_or_node_);
-
-int gateway_send_parts (void *gateway_,
-                        zlink_msg_t *parts_,
-                        size_t part_count_,
-                        zlink_send_flags_t flags_);
-int gateway_send_parts_rid (void *gateway_,
-                            const zlink_routing_id_t *routing_id_,
-                            zlink_msg_t *parts_,
-                            size_t part_count_,
-                            zlink_send_flags_t flags_);
 int spot_node_publish_internal (void *node_,
                                 const char *topic_id_,
                                 zlink_msg_t *parts_,

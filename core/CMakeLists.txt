@@ -950,7 +950,6 @@ set(api-sources
     src/api/poller_api.cpp
   src/api/service_api.cpp
     src/api/service_discovery_api.cpp
-    src/api/service_gateway_api.cpp
     src/api/service_handler_api.cpp
     src/api/service_mode_api.cpp
   src/api/service_poller_api.cpp
@@ -1028,14 +1027,7 @@ set(discovery-sources
     src/services/discovery/socket_discovery_attachment.cpp
     src/services/discovery/discovery_state.cpp
     src/services/discovery/discovery_uplink.cpp
-    src/services/discovery/discovery_update.cpp
-    src/services/gateway/gateway_access.cpp
-    src/services/gateway/gateway_facade.cpp
-    src/services/gateway/gateway_lifecycle.cpp
-    src/services/gateway/gateway_monitor.cpp
-    src/services/gateway/gateway_pool.cpp
-    src/services/gateway/gateway_socket.cpp
-    src/services/gateway/gateway_refresh.cpp)
+    src/services/discovery/discovery_update.cpp)
 
 set(spot-sources
     src/services/spot/spot_data_plane.cpp
@@ -1152,7 +1144,6 @@ include_directories(
     src/services
     src/services/common
     src/services/discovery
-    src/services/gateway
     src/services/spot
     src/core
     src/protocol

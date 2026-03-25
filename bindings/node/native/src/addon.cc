@@ -42,18 +42,6 @@ static napi_value init(napi_env env, napi_value exports)
         {"discoverySetTlsClient", 0, discovery_set_tls_client, 0, 0, 0, napi_default, 0},
         {"discoveryDestroy", 0, discovery_destroy, 0, 0, 0, napi_default, 0},
 
-        {"gatewayNew", 0, gateway_new, 0, 0, 0, napi_default, 0},
-        {"gatewaySend", 0, gateway_send, 0, 0, 0, napi_default, 0},
-        {"gatewaySendToRoutingId", 0, gateway_send_rid, 0, 0, 0, napi_default, 0},
-        {"gatewayRecv", 0, gateway_recv, 0, 0, 0, napi_default, 0},
-        {"gatewaySetLbStrategy", 0, gateway_set_lb, 0, 0, 0, napi_default, 0},
-        {"gatewaySetTlsClient", 0, gateway_set_tls, 0, 0, 0, napi_default, 0},
-        {"gatewayConnectionCount", 0, gateway_connection_count, 0, 0, 0, napi_default, 0},
-        {"gatewayRouter", 0, gateway_router, 0, 0, 0, napi_default, 0},
-        {"gatewayRouterPeers", 0, gateway_router_peers, 0, 0, 0, napi_default, 0},
-        {"gatewaySetSockOpt", 0, gateway_setsockopt, 0, 0, 0, napi_default, 0},
-        {"gatewayDestroy", 0, gateway_destroy, 0, 0, 0, napi_default, 0},
-
         {"providerNew", 0, provider_new, 0, 0, 0, napi_default, 0},
         {"providerBind", 0, provider_bind, 0, 0, 0, napi_default, 0},
         {"providerConnectRegistry", 0, provider_connect_registry, 0, 0, 0, napi_default, 0},

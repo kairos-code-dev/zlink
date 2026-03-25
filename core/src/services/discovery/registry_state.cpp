@@ -45,21 +45,6 @@ void registry_t::upsert_topology_entry (
     _summary_last_changed_ms = now_ms_;
 }
 
-void registry_t::upsert_gateway_peer_entry (
-  const zlink_registry_gateway_peer_entry_t &entry_,
-  uint64_t now_ms_)
-{
-    gateway_peer_key_t key;
-    key.gateway_routing_id_key = routing_id_key_of (entry_.gateway_routing_id);
-    key.service_name = entry_.service_name;
-    key.peer_routing_id_key = routing_id_key_of (entry_.peer_routing_id);
-
-    gateway_peer_entry_t &stored = _gateway_peers[key];
-    stored.entry = entry_;
-    stored.entry.last_reported_ms = now_ms_;
-    _summary_last_changed_ms = now_ms_;
-}
-
 void registry_t::send_service_list (void *pub_)
 {
     uint32_t registry_id = 0;

@@ -133,7 +133,6 @@ void test_public_header_retains_send_ready_and_monitor_surface ()
     assert_text_present (header, "zlink_socket_monitor_handler");
     assert_text_present (header, "zlink_service_monitor_handler");
     assert_text_absent (header, "zlink_discovery_monitor_open");
-    assert_text_absent (header, "zlink_gateway_monitor_open");
     assert_text_absent (header, "zlink_spot_monitor_open");
     assert_text_absent (header, "zlink_spot_node_monitor_open");
     assert_text_absent (header, "zlink_service_monitor_ignore_handler");
@@ -155,9 +154,6 @@ void test_docs_reflect_tiered_thread_safe_contract ()
     const std::string discovery_doc =
       read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/api/discovery.md")
                         .c_str ());
-    const std::string gateway_doc =
-      read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/api/gateway.ko.md")
-                        .c_str ());
     const std::string threading_doc = read_text_file (
       (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.md")
         .c_str ());
@@ -170,14 +166,12 @@ void test_docs_reflect_tiered_thread_safe_contract ()
     assert_text_present (socket_doc, "fails with `errno=ESHUTDOWN`");
     assert_text_present (discovery_doc,
                          "Discovery is a control-plane subject in the tiered");
-    assert_text_present (gateway_doc, "serialized control path");
     assert_text_present (threading_doc,
                          "control paths serialize for correctness");
 
     assert_text_absent (overview, "same-handle operational APIs");
     assert_text_absent (overview_ko, "모든 operational API 동일 강도 thread-safe");
     assert_text_absent (socket_doc, "control-plane = 초기화 단계 전용");
-    assert_text_absent (gateway_doc, "send-ready setter 제거");
 }
 }
 

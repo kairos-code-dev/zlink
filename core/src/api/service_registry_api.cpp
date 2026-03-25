@@ -168,31 +168,6 @@ int zlink_registry_topology_query (
                     : -1;
 }
 
-int zlink_registry_gateway_peers_snapshot (
-  void *registry_,
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
-    return registry ? zlink::registry_access_t::gateway_peers_snapshot (
-                        registry, entries_, count_)
-                    : -1;
-}
-
-int zlink_registry_gateway_peers_query (
-  void *registry_,
-  const zlink_registry_gateway_peer_filter_t *filter_,
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
-    return registry ? zlink::registry_access_t::gateway_peers_query (
-                        registry, filter_, entries_, count_)
-                    : -1;
-}
-
 void *zlink_registry_query_client_new (void *ctx_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
@@ -217,16 +192,6 @@ int zlink_registry_query_snapshot (
 {
     return zlink::registry_query_access_t::topology_query (client_, filter_,
                                                            entries_, count_);
-}
-
-int zlink_registry_query_gateway_peers_snapshot (
-  void *client_,
-  const zlink_registry_gateway_peer_filter_t *filter_,
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    return zlink::registry_query_access_t::gateway_peers_query (
-      client_, filter_, entries_, count_);
 }
 
 int zlink_registry_query_destroy (void **client_p_)

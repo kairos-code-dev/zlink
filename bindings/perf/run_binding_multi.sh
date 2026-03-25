@@ -55,7 +55,7 @@ python_bin() {
   fi
 }
 
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
 TRANSPORTS_DEFAULT="tcp,tls,ws,wss"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 BUILD_DIR="$(binding_default_build_dir)"
@@ -267,7 +267,7 @@ Usage: bindings/${BINDING}/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
 Legacy MULTI_ prefix is accepted and stripped automatically.
 By default, this wrapper runs current ${BINDING} only.
 By default, multi-bench keeps warmup at 2s and duration window at 5s.

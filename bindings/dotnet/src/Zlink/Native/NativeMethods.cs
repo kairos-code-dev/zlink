@@ -241,10 +241,6 @@ internal static class NativeMethods
         IntPtr spotPub, IntPtr userData, short events);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_poller_add_gateway(IntPtr poller,
-        IntPtr gateway, IntPtr userData, short events);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_add_receiver(IntPtr poller,
         IntPtr receiver, IntPtr userData, short events);
 
@@ -265,10 +261,6 @@ internal static class NativeMethods
         IntPtr spotPub, short events);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_poller_modify_gateway(IntPtr poller,
-        IntPtr gateway, short events);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_modify_receiver(IntPtr poller,
         IntPtr receiver, short events);
 
@@ -286,10 +278,6 @@ internal static class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_remove_spot_pub(IntPtr poller,
         IntPtr spotPub);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_poller_remove_gateway(IntPtr poller,
-        IntPtr gateway);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poller_remove_receiver(IntPtr poller,
@@ -385,107 +373,6 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_destroy(ref IntPtr discovery);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_gateway_new(IntPtr ctx,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string? serviceName);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_set_routing_id(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string routingId, nuint size);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_attach_discovery(IntPtr gateway,
-        IntPtr discovery);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_send(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        [In] ZlinkMsg[] parts, nuint partCount, int flags);
-
-    [DllImport(LibraryName, EntryPoint = "zlink_gateway_send",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static unsafe extern int zlink_gateway_send(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        ZlinkMsg* parts, nuint partCount, int flags);
-
-    [DllImport(LibraryName, EntryPoint = "zlink_gateway_send",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static unsafe extern int zlink_gateway_send(IntPtr gateway,
-        byte* serviceName, ZlinkMsg* parts, nuint partCount, int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_send_rid(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        [In] ref ZlinkRoutingId routingId, [In] ZlinkMsg[] parts,
-        nuint partCount, int flags);
-
-    [DllImport(LibraryName, EntryPoint = "zlink_gateway_send_rid",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static unsafe extern int zlink_gateway_send_rid(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        ZlinkRoutingId* routingId, ZlinkMsg* parts, nuint partCount, int flags);
-
-    [DllImport(LibraryName, EntryPoint = "zlink_gateway_send_rid",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static unsafe extern int zlink_gateway_send_rid(IntPtr gateway,
-        byte* serviceName, ZlinkRoutingId* routingId, ZlinkMsg* parts,
-        nuint partCount, int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_send_bytes(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        IntPtr data, nuint size, int flags);
-
-    [DllImport(LibraryName, EntryPoint = "zlink_gateway_send_bytes",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static unsafe extern int zlink_gateway_send_bytes(IntPtr gateway,
-        byte* serviceName, byte* data, nuint size, int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_send_rid_bytes(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        [In] ref ZlinkRoutingId routingId, IntPtr data, nuint size, int flags);
-
-    [DllImport(LibraryName, EntryPoint = "zlink_gateway_send_rid_bytes",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static unsafe extern int zlink_gateway_send_rid_bytes(
-        IntPtr gateway, byte* serviceName, ZlinkRoutingId* routingId,
-        byte* data, nuint size, int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static unsafe extern int zlink_gateway_recv(IntPtr gateway,
-        out ZlinkRoutingId routingId, out IntPtr parts, out nuint partCount,
-        int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_set_lb_strategy(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName, int strategy);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_set_tls_client(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string caCert,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string hostname, int trustSystem);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_connection_count(IntPtr gateway,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_set_option(IntPtr gateway,
-        int option, IntPtr value, nuint length);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_router_peers(IntPtr gateway,
-        [In, Out] ZlinkPeerInfo[] peers, ref nuint count);
-
-    [DllImport(LibraryName, EntryPoint = "zlink_gateway_router_peers",
-        CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_router_peers(IntPtr gateway,
-        IntPtr peers, ref nuint count);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_gateway_destroy(ref IntPtr gateway);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_receiver_new(IntPtr ctx,

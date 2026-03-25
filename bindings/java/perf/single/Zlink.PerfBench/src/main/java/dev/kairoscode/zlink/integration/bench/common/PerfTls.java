@@ -4,7 +4,6 @@ package dev.kairoscode.zlink.integration.bench.common;
 
 import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.options.SocketOptions;
-import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.service.receiver.Receiver;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.net.URISyntaxException;
@@ -36,15 +35,6 @@ public final class PerfTls {
         socket.setOption(SocketOptions.TLS_CA, paths.caCert().toString());
         socket.setOption(SocketOptions.TLS_TRUST_SYSTEM, 0);
         socket.setOption(SocketOptions.TLS_HOSTNAME, "localhost");
-    }
-
-    public static void configureGatewayTlsClientIfNeeded(Gateway gateway,
-                                                         String transport) {
-        if (!isSecureTransport(transport)) {
-            return;
-        }
-        TlsPaths paths = requireTlsPaths();
-        gateway.setTlsClient(paths.caCert().toString(), "localhost", 0);
     }
 
     public static void configureReceiverTlsServerIfNeeded(Receiver receiver,

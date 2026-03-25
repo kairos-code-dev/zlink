@@ -154,13 +154,7 @@ class PollEvent(IntFlag):
 
 
 class ServiceType(IntEnum):
-    GATEWAY = 1
     SPOT = 2
-
-
-class GatewayLbStrategy(IntEnum):
-    ROUND_ROBIN = 0
-    WEIGHTED = 1
 
 
 class RegistrySocketRole(IntEnum):
@@ -171,10 +165,6 @@ class RegistrySocketRole(IntEnum):
 
 class DiscoverySocketRole(IntEnum):
     SUB = 1
-
-
-class GatewaySocketRole(IntEnum):
-    ROUTER = 1
 
 
 class ReceiverSocketRole(IntEnum):

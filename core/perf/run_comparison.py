@@ -53,14 +53,12 @@ PATTERN_SUFFIX = {
     "DEALER_ROUTER": "dealer_router",
     "ROUTER_ROUTER": "router_router",
     "PUBSUB": "pubsub",
-    "GATEWAY": "gateway",
     "SPOT": "spot",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "GATEWAY",
     "STREAM",
 }
 SINGLE_ECHO_PATTERNS = {
@@ -76,7 +74,6 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_dealer", "DEALER_DEALER"),
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
-    ("perf_gateway", "GATEWAY"),
     ("perf_spot", "SPOT"),
 ]
 MULTI_COMPARISONS = [
@@ -84,7 +81,6 @@ MULTI_COMPARISONS = [
     ("comp_src_dealer_router_client", "DEALER_ROUTER"),
     ("comp_src_router_router_client", "ROUTER_ROUTER"),
     ("comp_src_pubsub_client", "PUBSUB"),
-    ("comp_src_gateway_client", "GATEWAY"),
     ("comp_src_spot_client", "SPOT"),
     ("perf_stream_client", "STREAM"),
 ]
@@ -94,7 +90,6 @@ SUPPORTED_MULTI_RECV_MODES = {
     "DEALER_ROUTER": ("recv",),
     "ROUTER_ROUTER": ("recv",),
     "PUBSUB": ("recv",),
-    "GATEWAY": ("recv",),
     "SPOT": ("recv", "callback"),
     "STREAM": ("recv", "callback"),
 }
@@ -890,11 +885,8 @@ def is_pattern(pattern_name):
 
 
 def select_transports(pattern_name):
-    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name in (
-        "GATEWAY",
-        "SPOT",
-    )
-    if pattern_name in ("GATEWAY", "SPOT"):
+    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name == "SPOT"
+    if pattern_name == "SPOT":
         base = STREAM_TRANSPORTS
     elif service_or_stream:
         base = STREAM_TRANSPORTS
@@ -1368,10 +1360,7 @@ def build_bench_cmd(binary_path, args):
 
 
 def _resolve_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms):
-    if (
-        pattern_name in ("GATEWAY", "SPOT")
-        and transport in ("tls", "wss")
-    ):
+    if pattern_name == "SPOT" and transport in ("tls", "wss"):
         ready_timeout_ms = max(ready_timeout_ms, 20000)
         shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
     return ready_timeout_ms, shutdown_timeout_ms
@@ -1422,15 +1411,6 @@ def _prepare_case_env(
         connect_value = str(resolve_pattern_connect_concurrency(clients_int))
     set_env_pair(env, "PERF_CONNECT_CONCURRENCY", connect_value)
 
-    if pattern_name == "GATEWAY":
-        gateway_refresh_sleep_ms = max(
-            1, parse_env_int("PERF_GATEWAY_REFRESH_SLEEP_MS", 1)
-        )
-        receiver_hb_chunk_ms = max(
-            1, parse_env_int("PERF_RECEIVER_HEARTBEAT_CHUNK_MS", 100)
-        )
-        set_env_pair(env, "ZLINK_GATEWAY_REFRESH_SLEEP_MS", gateway_refresh_sleep_ms)
-        set_env_pair(env, "ZLINK_RECEIVER_HEARTBEAT_CHUNK_MS", receiver_hb_chunk_ms)
     if pattern_name == "SPOT":
         spot_idle_sleep_ms = max(1, parse_env_int("PERF_SPOT_IDLE_SLEEP_MS", 1))
         set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
@@ -2138,8 +2118,6 @@ def run_sizes_test_split(
         is_secure_transport = transport in ("tls", "wss")
         if pattern_name == "SPOT":
             timeout_sec = max(180, duration_seconds * size_count * 8 + 80)
-        elif pattern_name == "GATEWAY":
-            timeout_sec = max(120, duration_seconds * size_count * 8 + 40)
         elif is_secure_transport and has_large_payload:
             timeout_sec = max(240, duration_seconds * size_count * 12 + 60)
         else:

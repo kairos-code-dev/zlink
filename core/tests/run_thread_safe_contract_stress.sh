@@ -14,11 +14,6 @@ TEST_NAMES=(
   test_service_introspection_discovery_lifecycle
   test_service_introspection_registry_lifecycle
   test_service_introspection_registry_query_lifecycle
-  test_gateway_runtime_reads
-  test_gateway_send_plane_updates
-  test_gateway_attach_query_ordering
-  test_gateway_send_ready_self_close
-  test_gateway_monitor_self_close
   test_spot_service_introspection_monitors
   test_spot_service_introspection_late_connect
   test_spot_service_introspection_subscription_ready_loss

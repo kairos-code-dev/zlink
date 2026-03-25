@@ -126,14 +126,10 @@ ctest --test-dir core/build \
 
 - Some scenario-style e2e tests still live outside `core/tests/` because they
   are tied to benchmark/source-stack fixtures under `core/bench/`.
-- `test_gateway` remains available as a manual umbrella/debug executable, but it
-  is intentionally excluded from the default `integration`, `e2e`, and
-  `regression` lanes. Gateway lane coverage comes from split case tests, with
-  `test_gateway_single_service` serving as the e2e smoke case.
 - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
   Its top-level CTest entry is intentionally not registered; use the
-  `test_thread_safe_scaling_raw`, `test_thread_safe_scaling_gateway`, and
-  `test_thread_safe_scaling_spot` cases instead.
+  `test_thread_safe_scaling_raw` and `test_thread_safe_scaling_spot` cases
+  instead.
 - `test_spot_node_discovery_direct_and_child_interop` and
   `test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery` remain in
   `core/tests/e2e/spot/test_spot_pubsub_scenario.cpp`, but they are not part
@@ -151,14 +147,12 @@ ctest --test-dir core/build \
   the remaining execution guide. It repeatedly runs `codex exec`, tells Codex
   to continue from the first incomplete guide item, and stops only on exact
   sentinel output (`미적용 사항이 없습니다.` or `사용자 입력 필요: ...`).
-- The stress lane currently covers discovery control-path teardown, gateway
-  runtime read and attach/query ordering, gateway send-ready self-close,
-  spot runtime read, spot monitor-child destroy, and spot send-ready
-  self-close lifecycle cases.
-- `run_thread_safe_contract_perf.sh` executes the raw/gateway/spot 1/4/16/64
-  handle scaling contract cases with a configurable acceptance ratio.
+- The stress lane currently covers discovery control-path teardown,
+  discovery lifecycle/control-path queries, and spot monitor/runtime
+  lifecycle cases.
+- `run_thread_safe_contract_perf.sh` executes the raw/spot 1/4/16/64 handle
+  scaling contract cases with a configurable acceptance ratio.
 - `run_thread_safe_contract_tsan.sh` configures a dedicated TSan build and
   runs the thread-safe regression lane against that build tree, including the
-  discovery control-path, gateway attach/query, gateway self-close, and spot
-  monitor-child/self-close regressions.
+  discovery control-path and spot monitor-child/self-close regressions.
 - CURVE/libsodium and GSSAPI are not supported in zlink.

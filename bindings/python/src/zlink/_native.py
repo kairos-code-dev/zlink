@@ -300,62 +300,8 @@ def _load_lib():
     _lib.zlink_discovery_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
     _lib.zlink_discovery_destroy.restype = ctypes.c_int
 
-    _lib.zlink_gateway_new.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
-                                       ctypes.c_char_p]
-    _lib.zlink_gateway_new.restype = ctypes.c_void_p
-
-    _lib.zlink_gateway_send.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_char_p,
-        ctypes.POINTER(ZlinkMsg),
-        ctypes.c_size_t,
-        ctypes.c_int,
-    ]
-    _lib.zlink_gateway_send.restype = ctypes.c_int
-
-    _lib.zlink_gateway_recv.argtypes = [
-        ctypes.c_void_p,
-        ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
-        ctypes.POINTER(ctypes.c_size_t),
-        ctypes.c_int,
-        ctypes.c_char_p,
-    ]
-    _lib.zlink_gateway_recv.restype = ctypes.c_int
-
-    _lib.zlink_gateway_set_lb_strategy.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_char_p,
-        ctypes.c_int,
-    ]
-    _lib.zlink_gateway_set_lb_strategy.restype = ctypes.c_int
-
-    _lib.zlink_gateway_set_tls_client.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_char_p,
-        ctypes.c_char_p,
-        ctypes.c_int,
-    ]
-    _lib.zlink_gateway_set_tls_client.restype = ctypes.c_int
-
-    _lib.zlink_gateway_connection_count.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_char_p,
-    ]
-    _lib.zlink_gateway_connection_count.restype = ctypes.c_int
-
-    _lib.zlink_gateway_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-    _lib.zlink_gateway_destroy.restype = ctypes.c_int
-
     _lib.zlink_receiver_new.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
     _lib.zlink_receiver_new.restype = ctypes.c_void_p
-
-    _lib.zlink_gateway_setsockopt.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_int,
-        ctypes.c_void_p,
-        ctypes.c_size_t,
-    ]
-    _lib.zlink_gateway_setsockopt.restype = ctypes.c_int
 
     _lib.zlink_receiver_setsockopt.argtypes = [
         ctypes.c_void_p,

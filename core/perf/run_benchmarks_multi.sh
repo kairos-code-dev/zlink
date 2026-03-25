@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OFFICIAL_BUILD_DIR="${ROOT_DIR}/core/build"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
@@ -193,7 +193,7 @@ Usage: core/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM
 By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).

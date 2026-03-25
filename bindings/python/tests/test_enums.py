@@ -67,20 +67,12 @@ class EnumValueTests(unittest.TestCase):
         )
 
     def test_service_type_values(self):
-        self.assertEqual(int(zlink.ServiceType.GATEWAY), 1)
         self.assertEqual(int(zlink.ServiceType.SPOT), 2)
-
-    def test_gateway_lb_strategy_values(self):
-        self.assertEqual(int(zlink.GatewayLbStrategy.ROUND_ROBIN), 0)
-        self.assertEqual(int(zlink.GatewayLbStrategy.WEIGHTED), 1)
 
     def test_registry_socket_role_values(self):
         self.assertEqual(int(zlink.RegistrySocketRole.PUB), 1)
         self.assertEqual(int(zlink.RegistrySocketRole.ROUTER), 2)
         self.assertEqual(int(zlink.RegistrySocketRole.PEER_SUB), 3)
-
-    def test_gateway_socket_role_values(self):
-        self.assertEqual(int(zlink.GatewaySocketRole.ROUTER), 1)
 
     def test_receiver_socket_role_values(self):
         self.assertEqual(int(zlink.ReceiverSocketRole.ROUTER), 1)
@@ -115,7 +107,7 @@ class EnumTypeTests(unittest.TestCase):
 
     def test_int_enum_is_int(self):
         self.assertIsInstance(zlink.SocketType.PAIR, int)
-        self.assertIsInstance(zlink.ServiceType.GATEWAY, int)
+        self.assertIsInstance(zlink.ServiceType.SPOT, int)
         self.assertIsInstance(zlink.SocketOption.LINGER, int)
 
     def test_int_flag_is_int(self):
@@ -141,9 +133,7 @@ class BackwardCompatTests(unittest.TestCase):
     """Verify backward-compatible aliases work."""
 
     def test_service_type_aliases(self):
-        self.assertEqual(zlink.SERVICE_TYPE_GATEWAY, 1)
         self.assertEqual(zlink.SERVICE_TYPE_SPOT, 2)
-        self.assertEqual(zlink.SERVICE_TYPE_GATEWAY, zlink.ServiceType.GATEWAY)
         self.assertEqual(zlink.SERVICE_TYPE_SPOT, zlink.ServiceType.SPOT)
 
     def test_enum_usable_as_int_parameter(self):

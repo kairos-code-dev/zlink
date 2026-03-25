@@ -16,10 +16,7 @@ void *discovery_access_t::create (ctx_t *ctx_,
                                   const char *service_name_)
 {
     uint16_t internal_service_type = 0;
-    if (service_type_ == ZLINK_SERVICE_TYPE_GATEWAY)
-        internal_service_type =
-          discovery_protocol::service_type_gateway_receiver;
-    else if (service_type_ == ZLINK_SERVICE_TYPE_SPOT)
+    if (service_type_ == ZLINK_SERVICE_TYPE_SPOT)
         internal_service_type = discovery_protocol::service_type_spot_node;
     else if (service_type_ == ZLINK_SERVICE_TYPE_SOCKET)
         internal_service_type = discovery_protocol::service_type_socket;
@@ -130,13 +127,6 @@ void discovery_access_t::flush_topology_reports (discovery_t *discovery_)
 {
     if (discovery_)
         discovery_->flush_topology_reports ();
-}
-
-void discovery_access_t::upsert_gateway_peer_summary (
-  discovery_t *discovery_, const zlink_registry_gateway_peer_entry_t &entry_)
-{
-    if (discovery_)
-        discovery_->upsert_gateway_peer_summary (entry_);
 }
 
 void discovery_access_t::erase_service_summary (

@@ -49,10 +49,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
             [64, 256, 1024, 65536, 131072, 262144],
         )
         self.assertEqual(
-            RC.default_msg_sizes_for_pattern("GATEWAY"),
-            [64, 256, 1024, 65536, 131072, 262144],
-        )
-        self.assertEqual(
             RC.default_msg_sizes_for_pattern("SPOT"),
             [64, 256, 1024, 65536, 131072, 262144],
         )
@@ -105,26 +101,23 @@ class RunComparisonPolicyTests(unittest.TestCase):
             RC.resolve_binary_name("PUBSUB", "callback"), "perf_pubsub"
         )
         self.assertEqual(
-            RC.resolve_binary_name("GATEWAY", "callback"), "perf_gateway"
+            RC.resolve_binary_name("SPOT", "callback"), "perf_spot"
         )
-        self.assertEqual(RC.resolve_binary_name("SPOT", "callback"), "perf_spot")
         with self.assertRaises(ValueError):
             RC.resolve_binary_name("PAIR", "recv")
-        with self.assertRaises(ValueError):
-            RC.resolve_binary_name("GATEWAY", "recv")
         with self.assertRaises(ValueError):
             RC.resolve_binary_name("SPOT", "recv")
 
     def test_collect_unsupported_patterns_matches_current_single_matrix(self):
         self.assertEqual(
             RC.collect_unsupported_patterns(
-                ["PAIR", "GATEWAY", "SPOT"], "callback"
+                ["PAIR", "SPOT"], "callback"
             ),
             [],
         )
         self.assertEqual(
-            RC.collect_unsupported_patterns(["PAIR", "GATEWAY", "SPOT"], "recv"),
-            ["PAIR", "GATEWAY", "SPOT"],
+            RC.collect_unsupported_patterns(["PAIR", "SPOT"], "recv"),
+            ["PAIR", "SPOT"],
         )
 
 

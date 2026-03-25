@@ -43,9 +43,6 @@ struct discovery_access_t
     static void upsert_service_summary (
       discovery_t *discovery_, const zlink_registry_topology_entry_t &entry_);
     static void flush_topology_reports (discovery_t *discovery_);
-    static void upsert_gateway_peer_summary (
-      discovery_t *discovery_,
-      const zlink_registry_gateway_peer_entry_t &entry_);
     static void erase_service_summary (discovery_t *discovery_,
                                        uint16_t service_kind_,
                                        const zlink_routing_id_t &routing_id_,

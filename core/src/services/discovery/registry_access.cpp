@@ -127,23 +127,4 @@ int registry_access_t::topology_query (
     return registry_ ? registry_->topology_query (filter_, entries_, count_)
                      : -1;
 }
-
-int registry_access_t::gateway_peers_snapshot (
-  registry_t *registry_,
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    return registry_ ? registry_->gateway_peers_snapshot (entries_, count_)
-                     : -1;
-}
-
-int registry_access_t::gateway_peers_query (
-  registry_t *registry_,
-  const zlink_registry_gateway_peer_filter_t *filter_,
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    return registry_ ? registry_->gateway_peers_query (filter_, entries_, count_)
-                     : -1;
-}
 }

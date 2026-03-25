@@ -34,8 +34,6 @@ internal static partial class PerfRunner
                         normalizedEndpoint),
                 "PUBSUB" =>
                     PerfPubSubClient.Run(transport, size, normalizedEndpoint),
-                "GATEWAY" =>
-                    PerfGatewayClient.Run(transport, size, normalizedEndpoint),
                 "SPOT" =>
                     PerfSpotClient.Run(transport, size, normalizedEndpoint),
                 "STREAM" => PrintStreamClientUnsupported(outputPattern,

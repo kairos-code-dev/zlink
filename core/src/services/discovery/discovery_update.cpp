@@ -109,7 +109,6 @@ void discovery_t::tick ()
 
     refresh_registered_service_heartbeats (clock_t ().now_ms ());
     flush_topology_reports ();
-    flush_gateway_peer_reports ();
 }
 
 void discovery_t::notify_observers (const std::set<std::string> &services_)

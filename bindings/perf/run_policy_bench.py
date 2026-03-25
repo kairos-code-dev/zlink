@@ -38,7 +38,6 @@ SINGLE_PATTERNS: List[str] = [
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "GATEWAY",
     "SPOT",
 ]
 
@@ -47,7 +46,6 @@ MULTI_PATTERNS: List[str] = [
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
     "MULTI_PUBSUB",
-    "MULTI_GATEWAY",
     "MULTI_SPOT",
     "MULTI_STREAM",
 ]
@@ -56,7 +54,6 @@ SINGLE_STREAM_PATTERNS = {
     "STREAM",
     "STREAM_CALLBACK",
     "STREAM_LEN32BE",
-    "GATEWAY",
     "SPOT",
 }
 
@@ -89,7 +86,6 @@ SINGLE_ONE_WAY_PATTERNS = set(SINGLE_PATTERNS)
 MULTI_ECHO_PATTERNS = {
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
-    "MULTI_GATEWAY",
     "MULTI_STREAM",
     "MULTI_STREAM_CALLBACK",
     "MULTI_STREAM_LEN32BE",
@@ -151,7 +147,6 @@ CPP_SINGLE_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
         "run_pattern_router_router",
         "perf_router_router",
     ),
-    "GATEWAY": ("perf_gateway.cpp", "run_pattern_gateway", "perf_gateway"),
     "SPOT": ("perf_spot.cpp", "run_pattern_spot", "perf_spot"),
 }
 
@@ -175,11 +170,6 @@ CPP_MULTI_SERVER_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
         "perf_pubsub_server.cpp",
         "perf_pubsub_server",
         "comp_src_pubsub_server",
-    ),
-    "MULTI_GATEWAY": (
-        "perf_gateway_server.cpp",
-        "perf_gateway_server",
-        "comp_src_gateway_server",
     ),
     "MULTI_SPOT": (
         "perf_spot_server.cpp",
@@ -223,11 +213,6 @@ CPP_MULTI_CLIENT_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
         "perf_pubsub_client.cpp",
         "perf_pubsub_client",
         "comp_src_pubsub_client",
-    ),
-    "MULTI_GATEWAY": (
-        "perf_gateway_client.cpp",
-        "perf_gateway_client",
-        "comp_src_gateway_client",
     ),
     "MULTI_SPOT": (
         "perf_spot_client.cpp",
@@ -844,7 +829,6 @@ def binding_cmd_prefix(cfg: SuiteConfig, requested_pattern: str) -> Tuple[List[s
         "MULTI_DEALER_ROUTER": "DEALER_ROUTER",
         "MULTI_ROUTER_ROUTER": "ROUTER_ROUTER",
         "MULTI_PUBSUB": "PUBSUB",
-        "MULTI_GATEWAY": "GATEWAY",
         "MULTI_SPOT": "SPOT",
         "MULTI_STREAM": "STREAM",
     }

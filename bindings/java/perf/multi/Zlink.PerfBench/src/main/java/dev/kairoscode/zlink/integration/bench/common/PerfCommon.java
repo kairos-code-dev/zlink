@@ -202,7 +202,6 @@ public final class PerfCommon {
         String p = pattern == null ? "" : pattern.toUpperCase();
         return p.equals("MULTI_DEALER_ROUTER")
             || p.equals("MULTI_ROUTER_ROUTER")
-            || p.equals("MULTI_GATEWAY")
             || p.equals("MULTI_STREAM")
             || p.equals("MULTI_STREAM_CALLBACK")
             || p.equals("MULTI_STREAM_LEN32BE");

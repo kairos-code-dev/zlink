@@ -6,7 +6,7 @@
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
-#include "services/gateway/routing_id_utils.hpp"
+#include "services/discovery/routing_id_utils.hpp"
 
 #include <cstdarg>
 #include <cstdio>

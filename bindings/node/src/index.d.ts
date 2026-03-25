@@ -98,16 +98,10 @@ export declare const PollEvent: {
 };
 
 export declare const ServiceType: {
-  readonly GATEWAY: 1; readonly SPOT: 2;
+  readonly SPOT: 2;
 };
 
-// Backward-compatible aliases
-export declare const SERVICE_TYPE_GATEWAY: 1;
 export declare const SERVICE_TYPE_SPOT: 2;
-
-export declare const GatewayLbStrategy: {
-  readonly ROUND_ROBIN: 0; readonly WEIGHTED: 1;
-};
 
 export declare const RegistrySocketRole: {
   readonly PUB: 1; readonly ROUTER: 2; readonly PEER_SUB: 3;
@@ -115,10 +109,6 @@ export declare const RegistrySocketRole: {
 
 export declare const DiscoverySocketRole: {
   readonly SUB: 1;
-};
-
-export declare const GatewaySocketRole: {
-  readonly ROUTER: 1;
 };
 
 export declare const ReceiverSocketRole: {
@@ -213,29 +203,6 @@ export class Discovery {
   getReceivers(service: string): Array<{ serviceName: string; endpoint: string; weight: number; registeredAt: number }>;
   serviceAvailable(service: string): boolean;
   setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
-  close(): void;
-}
-
-export class Gateway {
-  constructor(ctx: Context, discovery: Discovery, routingId?: string | null);
-  send(
-    service: string,
-    payloadOrParts: Buffer | Uint8Array | string | Buffer[],
-    flags?: number
-  ): void;
-  sendToRoutingId(
-    service: string,
-    routingId: Buffer | Uint8Array | string,
-    payloadOrParts: Buffer | Uint8Array | string | Buffer[],
-    flags?: number
-  ): void;
-  recv(flags?: number): { service: string; parts: Buffer[] };
-  setLoadBalancing(service: string, strategy: number): void;
-  setTlsClient(ca: string, host: string, trust: number): void;
-  connectionCount(service: string): number;
-  routerSocket(): Socket;
-  routerPeers(): PeerInfo[];
-  setSockOpt(option: number, value: Buffer | Uint8Array | string): void;
   close(): void;
 }
 

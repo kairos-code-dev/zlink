@@ -1,8 +1,6 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.service.discovery.DiscoverySocketRole;
-import dev.kairoscode.zlink.service.gateway.GatewayLbStrategy;
-import dev.kairoscode.zlink.service.gateway.GatewaySocketRole;
 import dev.kairoscode.zlink.service.receiver.ReceiverSocketRole;
 import dev.kairoscode.zlink.service.registry.RegistrySocketRole;
 import dev.kairoscode.zlink.service.spot.SpotNodeOption;
@@ -83,19 +81,13 @@ public class CoreEnumPortedTest {
 
     @Test
     public void testServiceAndRoleValues() {
-        assertEquals(1, ServiceType.GATEWAY.getValue());
         assertEquals(2, ServiceType.SPOT.getValue());
-
-        assertEquals(0, GatewayLbStrategy.ROUND_ROBIN.getValue());
-        assertEquals(1, GatewayLbStrategy.WEIGHTED.getValue());
 
         assertEquals(1, RegistrySocketRole.PUB.getValue());
         assertEquals(2, RegistrySocketRole.ROUTER.getValue());
         assertEquals(3, RegistrySocketRole.PEER_SUB.getValue());
 
         assertEquals(1, DiscoverySocketRole.SUB.getValue());
-
-        assertEquals(1, GatewaySocketRole.ROUTER.getValue());
 
         assertEquals(1, ReceiverSocketRole.ROUTER.getValue());
         assertEquals(2, ReceiverSocketRole.DEALER.getValue());

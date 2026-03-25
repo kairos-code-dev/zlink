@@ -55,9 +55,6 @@ class BenchFastpathTests(unittest.TestCase):
                 bench_common.make_cext_recv_pair_drain_into(a, recv_buf, recv_buf)
             )
             self.assertIsNone(
-                bench_common.make_cext_gateway_send_many_const(None, "svc", payload)
-            )
-            self.assertIsNone(
                 bench_common.make_cext_spot_publish_many_const(None, "bench", payload)
             )
             self.assertIsNone(
@@ -148,7 +145,7 @@ class BenchFastpathTests(unittest.TestCase):
         dealer.close()
         ctx.close()
 
-    def test_cext_gateway_and_spot_many(self):
+    def test_cext_spot_many(self):
         if bench_common.FASTPATH_CEXT is None:
             self.skipTest("fastpath C-extension not available")
         try:
@@ -157,63 +154,15 @@ class BenchFastpathTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         suffix = str(int(time.time() * 1000))
-        reg_pub = f"inproc://py-fastpath-gw-pub-{suffix}"
-        reg_router = f"inproc://py-fastpath-gw-router-{suffix}"
-        provider_ep = f"inproc://py-fastpath-gw-provider-{suffix}"
-        registry = None
-        discovery = None
-        receiver = None
-        router = None
-        gateway = None
-
         node_pub = None
         node_sub = None
         spot_pub = None
         spot_sub = None
 
         try:
-            registry = zlink.Registry(ctx)
-            registry.set_heartbeat(5000, 60000)
-            registry.set_endpoints(reg_pub, reg_router)
-            registry.start()
-
-            discovery = zlink.Discovery(ctx, int(zlink.ServiceType.GATEWAY))
-            discovery.connect_registry(reg_pub)
-
-            receiver = zlink.Receiver(ctx)
-            receiver.bind(provider_ep)
-            receiver.connect_registry(reg_router)
-            receiver.register("svc", provider_ep, 1)
-            router = receiver.router_socket()
-
-            gateway = zlink.Gateway(ctx, discovery)
-            self.assertTrue(
-                bench_common.wait_until(lambda: discovery.receiver_count("svc") > 0, 5000)
-            )
-            self.assertTrue(
-                bench_common.wait_until(lambda: gateway.connection_count("svc") > 0, 5000)
-            )
-            time.sleep(0.1)
-
-            gw_payload = b"gateway-fastpath"
-            rid_buf = bytearray(256)
-            data_buf = bytearray(64)
-            gw_send_many = bench_common.make_cext_gateway_send_many_const(
-                gateway, "svc", gw_payload
-            )
-            gw_recv_many = bench_common.make_cext_recv_pair_many_into(
-                router, rid_buf, data_buf
-            )
-            self.assertIsNotNone(gw_send_many)
-            self.assertIsNotNone(gw_recv_many)
-
             count = 64
             send_none = int(zlink.SendFlag.NONE)
             recv_none = int(zlink.ReceiveFlag.NONE)
-            self.assertEqual(gw_send_many(count, send_none), count)
-            self.assertEqual(gw_recv_many(count, recv_none), count)
-            self.assertEqual(bytes(data_buf[: len(gw_payload)]), gw_payload)
-
             node_pub = zlink.SpotNode(ctx)
             node_sub = zlink.SpotNode(ctx)
             spot_ep = f"inproc://py-fastpath-spot-{suffix}"
@@ -248,16 +197,6 @@ class BenchFastpathTests(unittest.TestCase):
                 node_sub.close()
             if node_pub is not None:
                 node_pub.close()
-            if gateway is not None:
-                gateway.close()
-            if router is not None:
-                router.close()
-            if receiver is not None:
-                receiver.close()
-            if discovery is not None:
-                discovery.close()
-            if registry is not None:
-                registry.close()
             ctx.close()
 
 

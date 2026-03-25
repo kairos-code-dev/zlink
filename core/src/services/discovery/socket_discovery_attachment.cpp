@@ -8,7 +8,7 @@
 #include "sockets/socket_base.hpp"
 #include "services/discovery/discovery_access.hpp"
 #include "services/discovery/discovery_protocol.hpp"
-#include "services/gateway/routing_id_utils.hpp"
+#include "services/discovery/routing_id_utils.hpp"
 
 namespace zlink
 {

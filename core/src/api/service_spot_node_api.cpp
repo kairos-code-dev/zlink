@@ -63,8 +63,6 @@ void *zlink_spot_new (void *ctx_)
     }
 
     spot->node = node;
-    register_spot_mode_state (spot);
-    register_spot_node_mode_state (node);
     return static_cast<void *> (spot);
 }
 
@@ -89,7 +87,6 @@ int zlink_spot_destroy (void **spot_p_)
         return -1;
     }
 
-    erase_spot_mode_state (spot);
     zlink::destroy_spot_handle_for_testing (spot);
     *spot_p_ = NULL;
 
@@ -107,7 +104,6 @@ void *zlink_spot_node_new (void *ctx_)
       zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_)));
     if (!node)
         return NULL;
-    register_spot_node_mode_state (node);
     return static_cast<void *> (node);
 }
 
@@ -132,7 +128,6 @@ int zlink_spot_node_destroy (void **node_p_)
         zlink::spot_node_access_t::cancel_close (node);
         return -1;
     }
-    erase_spot_node_mode_state (node);
     zlink::spot_node_access_t::delete_handle (node);
     *node_p_ = NULL;
     return 0;

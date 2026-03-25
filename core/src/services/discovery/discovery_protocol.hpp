@@ -28,18 +28,13 @@ static const uint16_t msg_topology_report = 0x000A;
 static const uint16_t msg_topology_query = 0x000B;
 static const uint16_t msg_topology_reply = 0x000C;
 static const uint16_t msg_unregister_ack = 0x000D;
-static const uint16_t msg_gateway_peer_report = 0x000E;
-static const uint16_t msg_gateway_peer_query = 0x000F;
-static const uint16_t msg_gateway_peer_reply = 0x0010;
 
-static const uint16_t service_type_gateway_receiver = 1;
 static const uint16_t service_type_spot_node = 2;
 static const uint16_t service_type_socket = 3;
 
 enum service_role_t
 {
     service_role_invalid = 0,
-    service_role_gateway = 1,
     service_role_spot = 2,
     service_role_router = 3,
     service_role_dealer = 4,
@@ -49,15 +44,13 @@ enum service_role_t
 
 inline bool is_valid_service_type (uint16_t service_type_)
 {
-    return service_type_ == service_type_gateway_receiver
-           || service_type_ == service_type_spot_node
+    return service_type_ == service_type_spot_node
            || service_type_ == service_type_socket;
 }
 
 inline bool is_valid_service_role (uint16_t service_role_)
 {
-    return service_role_ == service_role_gateway
-           || service_role_ == service_role_spot
+    return service_role_ == service_role_spot
            || service_role_ == service_role_router
            || service_role_ == service_role_dealer
            || service_role_ == service_role_pub
@@ -66,8 +59,6 @@ inline bool is_valid_service_role (uint16_t service_role_)
 
 inline uint16_t fixed_service_role_for_type (uint16_t service_type_)
 {
-    if (service_type_ == service_type_gateway_receiver)
-        return service_role_gateway;
     if (service_type_ == service_type_spot_node)
         return service_role_spot;
     return service_role_invalid;
@@ -81,8 +72,6 @@ inline bool is_valid_service_role_for_type (uint16_t service_type_,
         return false;
     }
 
-    if (service_type_ == service_type_gateway_receiver)
-        return service_role_ == service_role_gateway;
     if (service_type_ == service_type_spot_node)
         return service_role_ == service_role_spot;
 
@@ -112,8 +101,6 @@ inline bool service_roles_match (uint16_t local_role_, uint16_t remote_role_)
         return false;
     }
 
-    if (local_role_ == service_role_gateway)
-        return remote_role_ == service_role_gateway;
     if (local_role_ == service_role_spot)
         return remote_role_ == service_role_spot;
     if (local_role_ == service_role_pub)

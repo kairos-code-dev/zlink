@@ -53,18 +53,6 @@ napi_value discovery_get_providers(napi_env env, napi_callback_info info);
 napi_value discovery_destroy(napi_env env, napi_callback_info info);
 napi_value discovery_set_tls_client(napi_env env, napi_callback_info info);
 
-napi_value gateway_new(napi_env env, napi_callback_info info);
-napi_value gateway_send(napi_env env, napi_callback_info info);
-napi_value gateway_send_rid(napi_env env, napi_callback_info info);
-napi_value gateway_recv(napi_env env, napi_callback_info info);
-napi_value gateway_set_lb(napi_env env, napi_callback_info info);
-napi_value gateway_set_tls(napi_env env, napi_callback_info info);
-napi_value gateway_connection_count(napi_env env, napi_callback_info info);
-napi_value gateway_router(napi_env env, napi_callback_info info);
-napi_value gateway_router_peers(napi_env env, napi_callback_info info);
-napi_value gateway_setsockopt(napi_env env, napi_callback_info info);
-napi_value gateway_destroy(napi_env env, napi_callback_info info);
-
 napi_value provider_new(napi_env env, napi_callback_info info);
 napi_value provider_bind(napi_env env, napi_callback_info info);
 napi_value provider_connect_registry(napi_env env, napi_callback_info info);

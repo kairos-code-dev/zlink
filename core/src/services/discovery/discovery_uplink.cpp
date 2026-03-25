@@ -5,8 +5,8 @@
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/routing_id_utils.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
-#include "services/gateway/routing_id_utils.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -36,21 +36,6 @@ static bool send_topology_report_frames_local (
 
     return zlink::discovery_protocol::send_u16 (
              dealer_, discovery_protocol::msg_topology_report, ZLINK_SNDMORE)
-             >= 0
-           && zlink::discovery_protocol::send_frame (
-                dealer_, &entry_, sizeof (entry_), 0)
-                >= 0;
-}
-
-static bool send_gateway_peer_report_frames_local (
-  socket_base_t *dealer_,
-  const zlink_registry_gateway_peer_entry_t &entry_)
-{
-    if (!dealer_)
-        return false;
-
-    return zlink::discovery_protocol::send_u16 (
-             dealer_, discovery_protocol::msg_gateway_peer_report, ZLINK_SNDMORE)
              >= 0
            && zlink::discovery_protocol::send_frame (
                 dealer_, &entry_, sizeof (entry_), 0)
@@ -276,77 +261,6 @@ void discovery_uplink_runtime_t::flush_topology_reports (discovery_t *owner_)
     }
 }
 
-void discovery_uplink_runtime_t::flush_gateway_peer_reports (
-  discovery_t *owner_)
-{
-    if (ensure_topology_reporters (owner_) != 0)
-        return;
-
-    std::vector<discovery_t::gateway_peer_key_t> keys;
-    std::vector<zlink_registry_gateway_peer_entry_t> entries;
-    {
-        scoped_lock_t lock (owner_->_sync);
-        for (std::map<discovery_t::gateway_peer_key_t,
-                      discovery_t::gateway_peer_summary_t>::iterator it =
-               owner_->_gateway_peer_summary_store.begin ();
-             it != owner_->_gateway_peer_summary_store.end (); ++it) {
-            if (!it->second.dirty)
-                continue;
-            keys.push_back (it->first);
-            entries.push_back (it->second.entry);
-        }
-    }
-
-    if (entries.empty ())
-        return;
-
-    std::vector<bool> sent (entries.size (), false);
-    std::vector<socket_base_t *> dealers;
-    {
-        scoped_lock_t lock (owner_->_sync);
-        for (std::map<std::string, socket_base_t *>::const_iterator it =
-               _report_dealers.begin ();
-             it != _report_dealers.end (); ++it) {
-            if (it->second)
-                dealers.push_back (it->second);
-        }
-    }
-    if (dealers.empty ())
-        return;
-
-    scoped_lock_t uplink_lock (owner_->_uplink_sync);
-    for (size_t i = 0; i < entries.size (); ++i) {
-        bool all_sent = true;
-        for (size_t d = 0; d < dealers.size (); ++d) {
-            if (!wait_socket_event_local (static_cast<void *> (dealers[d]),
-                                          ZLINK_POLLOUT, 0)) {
-                all_sent = false;
-                continue;
-            }
-            if (!send_gateway_peer_report_frames_local (dealers[d], entries[i]))
-                all_sent = false;
-        }
-        sent[i] = all_sent;
-        if (!all_sent) {
-            discovery_debugf_local (
-              "gateway peer report send failed service=%s errno=%d",
-              entries[i].service_name, errno);
-        }
-    }
-
-    {
-        scoped_lock_t lock (owner_->_sync);
-        for (size_t i = 0; i < keys.size (); ++i) {
-            std::map<discovery_t::gateway_peer_key_t,
-                     discovery_t::gateway_peer_summary_t>::iterator it =
-              owner_->_gateway_peer_summary_store.find (keys[i]);
-            if (it == owner_->_gateway_peer_summary_store.end () || !sent[i])
-                continue;
-            it->second.dirty = false;
-        }
-    }
-}
-
 void discovery_uplink_runtime_t::refresh_registered_service_heartbeats (
   discovery_t *owner_, uint64_t now_ms_)
 {
@@ -508,11 +422,6 @@ int discovery_t::ensure_topology_reporters ()
 void discovery_t::flush_topology_reports ()
 {
     _uplink_runtime->flush_topology_reports (this);
-}
-
-void discovery_t::flush_gateway_peer_reports ()
-{
-    _uplink_runtime->flush_gateway_peer_reports (this);
 }
 
 void discovery_t::refresh_registered_service_heartbeats (uint64_t now_ms_)

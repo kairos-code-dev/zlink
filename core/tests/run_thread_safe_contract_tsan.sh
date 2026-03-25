@@ -11,11 +11,6 @@ TEST_NAMES=(
   test_service_introspection_discovery_control_path
   test_service_introspection_discovery_ordering
   test_service_introspection_discovery_self_close
-  test_gateway_runtime_reads
-  test_gateway_send_plane_updates
-  test_gateway_attach_query_ordering
-  test_gateway_send_ready_self_close
-  test_gateway_monitor_self_close
   test_spot_service_introspection_runtime_reads
   test_spot_service_introspection_monitor_child_destroy
   test_spot_service_introspection_send_ready_self_close
@@ -23,7 +18,6 @@ TEST_NAMES=(
   test_spot_service_introspection_node_monitor_self_close
   test_spot_service_introspection_child_open_after_close
   test_service_introspection_registry_control_path
-  test_gateway_lifecycle_contract
   test_spot_service_introspection_lifecycle_contract
   test_spot_service_introspection_handle_lifecycle
 )
@@ -76,7 +70,7 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DENABLE_TSAN=ON
 
 cmake --build "${BUILD_DIR}" -j"$(nproc)" \
-  --target test_gateway test_spot_service_introspection test_service_introspection
+  --target test_spot_service_introspection test_service_introspection
 
 for test_name in "${TEST_NAMES[@]}"; do
   echo "=== TSAN ${test_name} ==="

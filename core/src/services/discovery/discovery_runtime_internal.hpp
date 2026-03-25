@@ -97,7 +97,6 @@ class discovery_uplink_runtime_t
                                socket_base_t **dealer_out_);
     int ensure_topology_reporters (discovery_t *owner_);
     void flush_topology_reports (discovery_t *owner_);
-    void flush_gateway_peer_reports (discovery_t *owner_);
     void refresh_registered_service_heartbeats (discovery_t *owner_,
                                                 uint64_t now_ms_);
     void remember_bootstrap_success (discovery_t *owner_,

@@ -44,21 +44,6 @@ internal static partial class PerfRunner
         socket.SetOption(SocketOptions.TlsHostname, "localhost");
     }
 
-    internal static void ConfigureGatewayTlsClientIfNeeded(Gateway gateway,
-        string transport)
-    {
-        if (!IsSecureTransport(transport))
-            return;
-
-        if (!TryResolvePerfTlsPaths(out _, out _, out string caPath))
-        {
-            throw new InvalidOperationException(
-                "TLS CA file not found under bindings/dotnet/tests/certs");
-        }
-
-        gateway.SetTlsClient(caPath, "localhost", false);
-    }
-
     internal static void ConfigureReceiverTlsServerIfNeeded(Receiver receiver,
         string transport)
     {

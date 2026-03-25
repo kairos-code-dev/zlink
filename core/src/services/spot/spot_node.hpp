@@ -7,6 +7,7 @@
 #include "core/msg.hpp"
 #include "core/thread.hpp"
 #include "services/common/service_public_api.hpp"
+#include "services/common/service_mode_state.hpp"
 #include "services/common/service_runtime_base.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/spot/spot_internal_receiver.hpp"
@@ -41,6 +42,8 @@ class spot_node_t : public discovery_observer_t
 
     bool check_tag () const;
     service_public_api_guard_t &public_api_guard () { return _public_api; }
+    service_mode_state_t &mode_state () { return _mode_state; }
+    const service_mode_state_t &mode_state () const { return _mode_state; }
 
     int bind (const char *endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);
@@ -249,6 +252,7 @@ class spot_node_t : public discovery_observer_t
     spot_node_default_handles_t _handle_defaults;
     std::set<spot_pub_t *> _pubs;
     std::set<spot_sub_t *> _subs;
+    service_mode_state_t _mode_state;
     service_runtime_base_t _lifecycle;
 
     friend struct spot_runtime_t;

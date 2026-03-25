@@ -432,15 +432,6 @@ private:
     void *_socket;
 };
 
-inline int zlink_gateway_send_rid(void *gateway_,
-                                  const zlink_routing_id_t *routing_id_,
-                                  zlink_msg_t *parts_,
-                                  size_t part_count_,
-                                  int flags_)
-{
-    return ::zlink_send_rid(gateway_, routing_id_, parts_, part_count_, flags_);
-}
-
 inline int zlink_stream_send_msg(void *socket_,
                                  const zlink_routing_id_t *rid_,
                                  zlink_msg_t *msg_,
@@ -868,11 +859,9 @@ inline void print_result(const std::string& lib_type,
     const bool is_echo_pattern =
       pattern == "DEALER_ROUTER"
       || pattern == "ROUTER_ROUTER"
-      || pattern == "GATEWAY"
       || pattern == "STREAM"
       || pattern == "MULTI_DEALER_ROUTER"
       || pattern == "MULTI_ROUTER_ROUTER"
-      || pattern == "MULTI_GATEWAY"
       || pattern == "MULTI_STREAM"
       ;
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;

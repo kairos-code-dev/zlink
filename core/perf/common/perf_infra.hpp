@@ -248,11 +248,6 @@ inline int perf_bind_socket_endpoint(void *socket_, const char *endpoint_)
     return zlink_bind(socket_, endpoint_);
 }
 
-inline int perf_bind_gateway_endpoint(void *gateway_, const char *endpoint_)
-{
-    return zlink_gateway_bind(gateway_, endpoint_);
-}
-
 inline int perf_bind_spot_node_endpoint(void *node_, const char *endpoint_)
 {
     return zlink_spot_node_bind(node_, endpoint_);

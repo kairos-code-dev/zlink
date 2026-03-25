@@ -30,7 +30,6 @@ DEFAULT_PATTERNS = [
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "GATEWAY",
     "SPOT",
 ]
 
@@ -40,7 +39,6 @@ PATTERN_TO_BINARY = {
     "DEALER_DEALER": "perf_dealer_dealer",
     "DEALER_ROUTER": "perf_dealer_router",
     "ROUTER_ROUTER": "perf_router_router",
-    "GATEWAY": "perf_gateway",
     "SPOT": "perf_spot",
 }
 
@@ -50,7 +48,6 @@ SUPPORTED_RECV_MODES = {
     "DEALER_DEALER": ("callback",),
     "DEALER_ROUTER": ("callback",),
     "ROUTER_ROUTER": ("callback",),
-    "GATEWAY": ("callback",),
     "SPOT": ("callback",),
 }
 
@@ -61,7 +58,6 @@ if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 STREAM_TRANSPORT_PATTERNS = {
-    "GATEWAY",
     "SPOT",
 }
 STREAM_SIZE_PATTERNS = set()

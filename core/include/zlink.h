@@ -583,7 +583,6 @@ ZLINK_EXPORT void *zlink_socket (void *, zlink_socket_type_t type_);
  * - raw `DEALER`
  * - raw `ROUTER`
  * - raw `STREAM`
- * - `gateway`
  *
  * The subject starts in recv model. After a successful attach, direct recv on
  * the same subject and data-plane poller `ZLINK_POLLIN` registration fail with
@@ -626,7 +625,6 @@ ZLINK_EXPORT int zlink_subscribe_handler (
  * - raw `DEALER`
  * - raw `ROUTER`
  * - raw `STREAM`
- * - `gateway`
  * - unified `spot`
  *
  * Send-ready is independent from receive callback mode. After a successful
@@ -862,7 +860,6 @@ ZLINK_EXPORT void zlink_monitor_ignore_handler (
 typedef enum zlink_monitor_source_kind_t
 {
     ZLINK_MONITOR_SOURCE_SOCKET = 1,
-    ZLINK_MONITOR_SOURCE_GATEWAY = 2,
     ZLINK_MONITOR_SOURCE_SPOT_PUB = 3,
     ZLINK_MONITOR_SOURCE_SPOT_SUB = 4
 } zlink_monitor_source_kind_t;
@@ -980,7 +977,6 @@ ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
 /** @{ */
 typedef enum zlink_service_type_t
 {
-    ZLINK_SERVICE_TYPE_GATEWAY = 0x3001,
     ZLINK_SERVICE_TYPE_SPOT = 0x3002,
     ZLINK_SERVICE_TYPE_SOCKET = 0x3003
 } zlink_service_type_t;
@@ -989,7 +985,6 @@ typedef enum zlink_service_type_t
 typedef enum zlink_service_role_t
 {
     ZLINK_SERVICE_ROLE_INVALID = 0,
-    ZLINK_SERVICE_ROLE_GATEWAY = 1,
     ZLINK_SERVICE_ROLE_SPOT = 2,
     ZLINK_SERVICE_ROLE_ROUTER = 3,
     ZLINK_SERVICE_ROLE_DEALER = 4,
@@ -1029,83 +1024,6 @@ ZLINK_EXPORT int zlink_discovery_connect_registry (
  * that delegated lifecycle ownership to this service view.
  */
 ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
-
-/* Gateway ------------------------------------------------------------------ */
-
-/**
- * @brief Create a Gateway in recv model.
- *
- * Gateway handles start in recv model. Use `zlink_gateway_recv()` or
- * `zlink_recv()` to pull multipart payloads, or call `zlink_recv_handler()` to
- * transition the receive surface to callback mode. Receive callback blocks
- * direct recv and data-plane `ZLINK_POLLIN` poller registration with
- * errno=EBUSY.
- *
- * Writable readiness can be observed through poller `ZLINK_POLLOUT` or
- * `zlink_send_ready_handler()`. Once send-ready is attached, data-plane
- * `ZLINK_POLLOUT` poller registration fails with errno=EBUSY.
- *
- * Representative routing id is configured separately via
- * `zlink_set_routing_id()` before the first bind/connect. If not set
- * explicitly, the internal ROUTER auto routing id is used.
- */
-ZLINK_EXPORT void *zlink_gateway_new (void *ctx);
-
-/**
- * @brief Attach the Gateway to a fixed discovery-owned service view.
- *
- * Service selection, provider registration, peer refresh, and shutdown
- * ownership move to the discovery after a successful attach.
- */
-ZLINK_EXPORT int zlink_gateway_attach_discovery (void *gateway,
-                                                 void *discovery);
-
-ZLINK_EXPORT int zlink_gateway_bind (void *gateway,
-                                     const char *bind_endpoint);
-
-/**
- * @brief Connect the Gateway to a manually managed remote peer route.
- *
- * The remote routing id identifies the peer for request dispatch.
- * Returns EFSM if discovery is already attached.
- */
-ZLINK_EXPORT int zlink_gateway_connect (void *gateway,
-                                        const char *endpoint,
-                                        const zlink_routing_id_t *routing_id);
-
-/**
- * @brief Disconnect a manually managed remote peer route.
- *
- * Returns EFSM if discovery is already attached.
- */
-ZLINK_EXPORT int zlink_gateway_disconnect (void *gateway,
-                                           const char *endpoint);
-
-typedef enum zlink_gateway_lb_strategy_t
-{
-    ZLINK_GATEWAY_LB_STRATEGY_ROUND_ROBIN = 0,
-    ZLINK_GATEWAY_LB_STRATEGY_WEIGHTED = 1
-} zlink_gateway_lb_strategy_t;
-
-#define ZLINK_GATEWAY_LB_ROUND_ROBIN ZLINK_GATEWAY_LB_STRATEGY_ROUND_ROBIN
-#define ZLINK_GATEWAY_LB_WEIGHTED ZLINK_GATEWAY_LB_STRATEGY_WEIGHTED
-
-/** @brief Set the load-balancing strategy for the bound service. */
-ZLINK_EXPORT int zlink_gateway_set_lb_strategy (
-  void *gateway, zlink_gateway_lb_strategy_t strategy);
-
-/** @brief Update the authoritative weight for a specific service peer. */
-ZLINK_EXPORT int zlink_gateway_update_peer_weight (
-  void *gateway,
-  const zlink_routing_id_t *routing_id,
-  uint32_t weight);
-
-/**
- * @brief Destroy the Gateway and release all resources.
- *
- * Attached gateways are normally shut down by `zlink_discovery_destroy()`.
- */
-ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
 
 /******************************************************************************/
 /*  SPOT PUB/SUB API                                                          */
@@ -1183,14 +1101,12 @@ typedef enum zlink_spot_role_t
 typedef enum zlink_service_kind_t
 {
     ZLINK_SERVICE_KIND_DISCOVERY = 1,
-    ZLINK_SERVICE_KIND_GATEWAY = 2,
     ZLINK_SERVICE_KIND_SPOT_SUB = 3,
     ZLINK_SERVICE_KIND_SPOT_PUB = 4,
     ZLINK_SERVICE_KIND_SOCKET = 5
 } zlink_service_kind_t;
 
 typedef uint32_t zlink_discovery_monitor_event_mask_t;
-typedef uint32_t zlink_gateway_monitor_event_mask_t;
 typedef uint32_t zlink_spot_monitor_event_mask_t;
 typedef uint32_t zlink_service_event_detail_mask_t;
 typedef uint32_t zlink_service_monitor_event_mask_t;
@@ -1207,19 +1123,6 @@ typedef uint32_t zlink_service_monitor_event_mask_t;
     ((zlink_discovery_monitor_event_mask_t) (1u << 7))
 #define ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED                                 \
     ((zlink_discovery_monitor_event_mask_t) (1u << 17))
-
-#define ZLINK_GATEWAY_MONITOR_EVENT_ERROR                                    \
-    ((zlink_gateway_monitor_event_mask_t) (1u << 4))
-#define ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED                            \
-    ((zlink_gateway_monitor_event_mask_t) (1u << 8))
-#define ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED                       \
-    ((zlink_gateway_monitor_event_mask_t) (1u << 10))
-#define ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP                                 \
-    ((zlink_gateway_monitor_event_mask_t) (1u << 11))
-#define ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN                               \
-    ((zlink_gateway_monitor_event_mask_t) (1u << 12))
-#define ZLINK_GATEWAY_MONITOR_EVENT_CLOSED                                   \
-    ((zlink_gateway_monitor_event_mask_t) (1u << 17))
 
 #define ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED                               \
     ((zlink_spot_monitor_event_mask_t) (1u << 0))
@@ -1252,8 +1155,6 @@ typedef uint32_t zlink_service_monitor_event_mask_t;
 #define ZLINK_DISCOVERY_SERVICE_UP ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
 #define ZLINK_DISCOVERY_SERVICE_DOWN ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
 #define ZLINK_DISCOVERY_PROVIDERS_CHANGED ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
-#define ZLINK_GATEWAY_ROUTE_UP ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP
-#define ZLINK_GATEWAY_ROUTE_DOWN ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN
 #define ZLINK_SPOT_SUB_FILTER_APPLIED ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
 #define ZLINK_SPOT_PUB_QUEUE_FULL ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL
 #define ZLINK_SPOT_PUB_QUEUE_DRAINED ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED
@@ -1316,7 +1217,6 @@ typedef enum zlink_monitor_target_kind_t
 {
     ZLINK_MONITOR_TARGET_SOCKET = 1,
     ZLINK_MONITOR_TARGET_DISCOVERY = 2,
-    ZLINK_MONITOR_TARGET_GATEWAY = 3,
     ZLINK_MONITOR_TARGET_SPOT = 4,
     ZLINK_MONITOR_TARGET_SPOT_NODE = 5
 } zlink_monitor_target_kind_t;
@@ -1331,14 +1231,6 @@ typedef enum zlink_monitor_target_kind_t
     ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
 #define ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED              \
     ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
-#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_READY_CHANGED                     \
-    ZLINK_GATEWAY_MONITOR_EVENT_READY_CHANGED
-#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED                \
-    ZLINK_GATEWAY_MONITOR_EVENT_SEND_READY_CHANGED
-#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP                          \
-    ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_UP
-#define ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN                        \
-    ZLINK_GATEWAY_MONITOR_EVENT_ROUTE_DOWN
 #define ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED                       \
     ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
 #define ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED                       \
@@ -1359,10 +1251,6 @@ typedef enum zlink_monitor_target_kind_t
        | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP                     \
        | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN                   \
        | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED              \
-       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_READY_CHANGED                    \
-       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_SEND_READY_CHANGED               \
-       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_UP                         \
-       | ZLINK_SERVICE_MONITOR_EVENT_GATEWAY_ROUTE_DOWN                       \
        | ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED                       \
        | ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED                      \
        | ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED          \
@@ -1455,29 +1343,6 @@ typedef struct zlink_spot_node_subject_filter_t
     uint32_t subject_kind;
 } zlink_spot_node_subject_filter_t;
 
-typedef enum zlink_gateway_state_t
-{
-    ZLINK_GATEWAY_STATE_IDLE = 1,
-    ZLINK_GATEWAY_STATE_CONNECTING = 2,
-    ZLINK_GATEWAY_STATE_PARTIAL_READY = 3,
-    ZLINK_GATEWAY_STATE_READY = 4,
-    ZLINK_GATEWAY_STATE_ERROR = 5
-} zlink_gateway_state_t;
-
-typedef struct zlink_gateway_status_t
-{
-    char service_name[256];
-    char bind_endpoint[256];
-    zlink_routing_id_t gateway_routing_id;
-    zlink_gateway_state_t state;
-    uint32_t observed_provider_count;
-    uint32_t ready_provider_count;
-    uint32_t active_route_count;
-    uint32_t send_ready;
-    int32_t last_error;
-    uint64_t last_changed_ms;
-} zlink_gateway_status_t;
-
 typedef enum zlink_registry_state_t
 {
     ZLINK_REGISTRY_STATE_IDLE = 1,
@@ -1492,7 +1357,6 @@ typedef struct zlink_registry_status_t
     char bind_endpoint[256];
     zlink_registry_state_t state;
     uint32_t topology_entry_count;
-    uint32_t gateway_peer_entry_count;
     uint32_t peer_registry_count;
     uint32_t connected_peer_registry_count;
     uint64_t list_seq;
@@ -1537,9 +1401,6 @@ ZLINK_EXPORT int zlink_spot_node_subjects_snapshot (
   const zlink_spot_node_subject_filter_t *filter_,
   zlink_spot_node_subject_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT int zlink_gateway_status_snapshot (
-  void *gateway_,
-  zlink_gateway_status_t *out_);
 ZLINK_EXPORT int zlink_registry_status_snapshot (
   void *registry_,
   zlink_registry_status_t *out_);
@@ -1610,41 +1471,6 @@ ZLINK_EXPORT int zlink_registry_query_snapshot (
   zlink_registry_topology_entry_t *entries,
   size_t *count);
 
-typedef struct zlink_registry_gateway_peer_entry_t
-{
-    zlink_routing_id_t gateway_routing_id;
-    char gateway_endpoint[256];
-    char service_name[256];
-    zlink_routing_id_t peer_routing_id;
-    char peer_endpoint[256];
-    zlink_topology_state_t state;
-    uint32_t weight;
-    uint64_t connected_since_ms;
-    uint64_t last_reported_ms;
-} zlink_registry_gateway_peer_entry_t;
-
-typedef struct zlink_registry_gateway_peer_filter_t
-{
-    zlink_routing_id_t gateway_routing_id;
-    char service_name[256];
-    zlink_routing_id_t peer_routing_id;
-    zlink_topology_state_t state;
-} zlink_registry_gateway_peer_filter_t;
-
-ZLINK_EXPORT int zlink_registry_gateway_peers_snapshot (
-  void *registry,
-  zlink_registry_gateway_peer_entry_t *entries,
-  size_t *count);
-ZLINK_EXPORT int zlink_registry_gateway_peers_query (
-  void *registry,
-  const zlink_registry_gateway_peer_filter_t *filter,
-  zlink_registry_gateway_peer_entry_t *entries,
-  size_t *count);
-ZLINK_EXPORT int zlink_registry_query_gateway_peers_snapshot (
-  void *client,
-  const zlink_registry_gateway_peer_filter_t *filter,
-  zlink_registry_gateway_peer_entry_t *entries,
-  size_t *count);
 ZLINK_EXPORT int zlink_registry_query_destroy (void **client_p);
 
 #if defined _WIN32

@@ -320,7 +320,6 @@ int registry_t::status_snapshot (zlink_registry_status_t *out_)
                  sizeof (out_->bind_endpoint) - 1);
     }
     out_->topology_entry_count = static_cast<uint32_t> (_topology.size ());
-    out_->gateway_peer_entry_count = static_cast<uint32_t> (_gateway_peers.size ());
     out_->peer_registry_count = static_cast<uint32_t> (_peer_pubs.size ());
     out_->connected_peer_registry_count =
       static_cast<uint32_t> (_peer_last_seen.size ());
@@ -481,12 +480,6 @@ void registry_t::handle_router (void *router_)
         case discovery_protocol::msg_topology_query:
             handle_topology_query (router_, &frames[0], frames.size (), sender);
             break;
-        case discovery_protocol::msg_gateway_peer_report:
-            handle_gateway_peer_report (&frames[0], frames.size ());
-            break;
-        case discovery_protocol::msg_gateway_peer_query:
-            handle_gateway_peer_query (router_, &frames[0], frames.size (), sender);
-            break;
         case discovery_protocol::msg_update_weight:
             handle_update_weight (router_, &frames[0], frames.size (), sender);
             break;
@@ -517,23 +510,6 @@ void registry_t::handle_topology_report (const zlink_msg_t *frames_,
             zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
             sizeof (entry));
     upsert_topology_entry (entry, zlink::clock_t ().now_ms ());
-}
-
-void registry_t::handle_gateway_peer_report (const zlink_msg_t *frames_,
-                                             size_t frame_count_)
-{
-    if (frame_count_ < 2)
-        return;
-    if (zlink_msg_size (&frames_[1])
-        != sizeof (zlink_registry_gateway_peer_entry_t)) {
-        return;
-    }
-
-    zlink_registry_gateway_peer_entry_t entry;
-    memcpy (&entry,
-            zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
-            sizeof (entry));
-    upsert_gateway_peer_entry (entry, zlink::clock_t ().now_ms ());
 }
 
 void registry_t::send_register_ack (void *router_,

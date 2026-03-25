@@ -197,16 +197,6 @@ static int recv_topology_reply_frames (
       socket_, zlink::discovery_protocol::msg_topology_reply, entries_,
       sizeof (zlink_registry_topology_entry_t), count_);
 }
-
-static int recv_gateway_peer_reply_frames (
-  void *socket_,
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    return recv_registry_reply_frames (
-      socket_, zlink::discovery_protocol::msg_gateway_peer_reply, entries_,
-      sizeof (zlink_registry_gateway_peer_entry_t), count_);
-}
 }
 
 namespace zlink
@@ -291,47 +281,6 @@ int registry_query_access_t::topology_query (
 
     return recv_topology_reply_frames (static_cast<void *> (client->dealer),
                                        entries_, count_);
-}
-
-int registry_query_access_t::gateway_peers_query (
-  void *client_,
-  const zlink_registry_gateway_peer_filter_t *filter_,
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    registry_query_client_t *client = as_registry_query_client (client_);
-    if (!client || !client->dealer) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    service_public_api_scope_t admission (client->public_api);
-    if (!admission.acquired ())
-        return -1;
-
-    scoped_lock_t lock (client->sync);
-    if (!client->dealer) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    if (discovery_protocol::send_u16 (
-          static_cast<void *> (client->dealer),
-          discovery_protocol::msg_gateway_peer_query, ZLINK_SNDMORE)
-        < 0)
-        return -1;
-
-    zlink_registry_gateway_peer_filter_t filter;
-    memset (&filter, 0, sizeof (filter));
-    if (filter_)
-        filter = *filter_;
-    if (discovery_protocol::send_frame (static_cast<void *> (client->dealer),
-                                        &filter, sizeof (filter), 0)
-        < 0)
-        return -1;
-
-    return recv_gateway_peer_reply_frames (static_cast<void *> (client->dealer),
-                                           entries_, count_);
 }
 
 int registry_query_access_t::destroy (void **client_p_)

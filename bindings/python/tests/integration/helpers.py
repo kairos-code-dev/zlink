@@ -73,21 +73,6 @@ def send_with_retry(sock, data, flags, timeout_ms):
     raise RuntimeError("timeout")
 
 
-def gateway_send_with_retry(gw, service, parts, flags, timeout_ms):
-    deadline = time.time() + (timeout_ms / 1000.0)
-    last = None
-    while time.time() < deadline:
-        try:
-            gw.send(service, parts, flags)
-            return
-        except zlink.ZlinkError as exc:
-            last = exc
-            time.sleep(0.01)
-    if last:
-        raise last
-    raise RuntimeError("timeout")
-
-
 def wait_until(fn, timeout_ms, interval_ms=10):
     deadline = time.time() + (timeout_ms / 1000.0)
     while time.time() < deadline:
@@ -98,20 +83,6 @@ def wait_until(fn, timeout_ms, interval_ms=10):
             pass
         time.sleep(interval_ms / 1000.0)
     return False
-
-
-def gateway_recv_with_timeout(gw, timeout_ms):
-    deadline = time.time() + (timeout_ms / 1000.0)
-    last = None
-    while time.time() < deadline:
-        try:
-            return gw.recv(ZLINK_DONTWAIT)
-        except zlink.ZlinkError as exc:
-            last = exc
-            time.sleep(0.01)
-    if last:
-        raise last
-    raise RuntimeError("timeout")
 
 
 def spot_recv_with_timeout(spot, timeout_ms):

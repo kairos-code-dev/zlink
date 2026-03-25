@@ -12,8 +12,7 @@ try {
 test('construct/close service objects', { skip: !nativeOk }, () => {
   const ctx = new zlink.Context();
   const reg = new zlink.Registry(ctx);
-  const disc = new zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY);
-  const gw = new zlink.Gateway(ctx, disc);
+  const disc = new zlink.Discovery(ctx, zlink.SERVICE_TYPE_SPOT);
   const receiver = new zlink.Receiver(ctx);
   const node = new zlink.SpotNode(ctx);
   const spot = new zlink.Spot(node);
@@ -21,7 +20,6 @@ test('construct/close service objects', { skip: !nativeOk }, () => {
   spot.close();
   node.close();
   receiver.close();
-  gw.close();
   disc.close();
   reg.close();
   ctx.close();

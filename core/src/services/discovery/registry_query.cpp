@@ -43,40 +43,6 @@ bool topology_filter_match (
     return true;
 }
 
-bool gateway_peer_filter_match (
-  const zlink_registry_gateway_peer_entry_t &entry_,
-  const zlink_registry_gateway_peer_filter_t *filter_)
-{
-    if (!filter_)
-        return true;
-    if (filter_->state != 0 && filter_->state != entry_.state)
-        return false;
-    if (filter_->service_name[0] != '\0'
-        && strcmp (filter_->service_name, entry_.service_name) != 0) {
-        return false;
-    }
-    if (filter_->gateway_routing_id.size > 0) {
-        if (filter_->gateway_routing_id.size != entry_.gateway_routing_id.size)
-            return false;
-        if (memcmp (filter_->gateway_routing_id.data,
-                    entry_.gateway_routing_id.data,
-                    filter_->gateway_routing_id.size)
-            != 0) {
-            return false;
-        }
-    }
-    if (filter_->peer_routing_id.size > 0) {
-        if (filter_->peer_routing_id.size != entry_.peer_routing_id.size)
-            return false;
-        if (memcmp (filter_->peer_routing_id.data, entry_.peer_routing_id.data,
-                    filter_->peer_routing_id.size)
-            != 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool topology_entry_less (const zlink_registry_topology_entry_t &lhs_,
                           const zlink_registry_topology_entry_t &rhs_)
 {
@@ -250,55 +216,6 @@ int zlink::registry_t::service_summary_snapshot (
     return 0;
 }
 
-int zlink::registry_t::gateway_peers_snapshot (
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-    return gateway_peers_query (NULL, entries_, count_);
-}
-
-int zlink::registry_t::gateway_peers_query (
-  const zlink_registry_gateway_peer_filter_t *filter_,
-  zlink_registry_gateway_peer_entry_t *entries_,
-  size_t *count_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-    if (!count_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::vector<zlink_registry_gateway_peer_entry_t> matched;
-    {
-        scoped_lock_t lock (_sync);
-        for (std::map<gateway_peer_key_t, gateway_peer_entry_t>::const_iterator it =
-               _gateway_peers.begin ();
-             it != _gateway_peers.end (); ++it) {
-            if (gateway_peer_filter_match (it->second.entry, filter_))
-                matched.push_back (it->second.entry);
-        }
-    }
-
-    if (!entries_) {
-        *count_ = matched.size ();
-        return 0;
-    }
-    if (*count_ < matched.size ()) {
-        *count_ = matched.size ();
-        errno = ENOBUFS;
-        return -1;
-    }
-    for (size_t i = 0; i < matched.size (); ++i)
-        entries_[i] = matched[i];
-    *count_ = matched.size ();
-    return 0;
-}
-
 void zlink::registry_t::handle_topology_query (
   void *router_,
   const zlink_msg_t *frames_,
@@ -330,36 +247,6 @@ void zlink::registry_t::handle_topology_query (
     send_topology_reply (router_, sender_id_, entries);
 }
 
-void zlink::registry_t::handle_gateway_peer_query (
-  void *router_,
-  const zlink_msg_t *frames_,
-  size_t frame_count_,
-  const zlink_routing_id_t &sender_id_)
-{
-    zlink_registry_gateway_peer_filter_t filter;
-    memset (&filter, 0, sizeof (filter));
-    const zlink_registry_gateway_peer_filter_t *filter_ptr = NULL;
-
-    if (frame_count_ >= 2 && zlink_msg_size (&frames_[1]) == sizeof (filter)) {
-        memcpy (&filter,
-                zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
-                sizeof (filter));
-        filter_ptr = &filter;
-    }
-
-    std::vector<zlink_registry_gateway_peer_entry_t> entries;
-    {
-        scoped_lock_t lock (_sync);
-        for (std::map<gateway_peer_key_t, gateway_peer_entry_t>::const_iterator it =
-               _gateway_peers.begin ();
-             it != _gateway_peers.end (); ++it) {
-            if (gateway_peer_filter_match (it->second.entry, filter_ptr))
-                entries.push_back (it->second.entry);
-        }
-    }
-    send_gateway_peer_reply (router_, sender_id_, entries);
-}
-
 void zlink::registry_t::send_topology_reply (
   void *router_,
   const zlink_routing_id_t &sender_id_,
@@ -376,32 +263,6 @@ void zlink::registry_t::send_topology_reply (
 
     discovery_protocol::send_u16 (router_, discovery_protocol::msg_topology_reply,
                                   ZLINK_SNDMORE);
-    discovery_protocol::send_u32 (router_,
-                                  static_cast<uint32_t> (entries_.size ()),
-                                  entries_.empty () ? 0 : ZLINK_SNDMORE);
-    for (size_t i = 0; i < entries_.size (); ++i) {
-        discovery_protocol::send_frame (
-          router_, &entries_[i], sizeof (entries_[i]),
-          (i + 1 == entries_.size ()) ? 0 : ZLINK_SNDMORE);
-    }
-}
-
-void zlink::registry_t::send_gateway_peer_reply (
-  void *router_,
-  const zlink_routing_id_t &sender_id_,
-  const std::vector<zlink_registry_gateway_peer_entry_t> &entries_)
-{
-    zlink_msg_t id_frame;
-    zlink_msg_init_size (&id_frame, sender_id_.size);
-    if (sender_id_.size > 0)
-        memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
-    if (zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE) == -1) {
-        zlink_msg_close (&id_frame);
-        return;
-    }
-
-    discovery_protocol::send_u16 (
-      router_, discovery_protocol::msg_gateway_peer_reply, ZLINK_SNDMORE);
     discovery_protocol::send_u32 (router_,
                                   static_cast<uint32_t> (entries_.size ()),
                                   entries_.empty () ? 0 : ZLINK_SNDMORE);

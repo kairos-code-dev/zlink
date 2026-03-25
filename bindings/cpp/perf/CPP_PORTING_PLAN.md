@@ -38,7 +38,7 @@ bindings/cpp/
     │   │   ├── perf_dealer_dealer.cpp
     │   │   ├── perf_dealer_router.cpp
     │   │   ├── perf_router_router.cpp
-    │   │   ├── perf_gateway.cpp
+    │   │   ├── [removed service bench]
     │   │   └── perf_spot.cpp
     │   ├── build/                           ← 컴파일된 바이너리 (gitignore)
     │   ├── run_benchmarks.sh
@@ -65,8 +65,8 @@ bindings/cpp/
     │   │   ├── perf_router_router_client.cpp
     │   │   ├── perf_pubsub_server.cpp
     │   │   ├── perf_pubsub_client.cpp
-    │   │   ├── perf_gateway_server.cpp
-    │   │   ├── perf_gateway_client.cpp
+    │   │   ├── [removed service server bench]
+    │   │   ├── [removed service client bench]
     │   │   ├── perf_spot_server.cpp
     │   │   ├── perf_spot_client.cpp
     │   │   ├── perf_stream_server.cpp             ← 서버 only (클라이언트=공통 stream client)
@@ -170,7 +170,7 @@ bindings/cpp/native/<os>-<arch>/libzlink.so
 | `perf_dealer_dealer` | `single/common/*.cpp` + `single/src/perf_dealer_dealer.cpp` |
 | `perf_dealer_router` | `single/common/*.cpp` + `single/src/perf_dealer_router.cpp` |
 | `perf_router_router` | `single/common/*.cpp` + `single/src/perf_router_router.cpp` |
-| `perf_gateway` | `single/common/*.cpp` + `single/src/perf_gateway.cpp` |
+| removed single service bench | n/a |
 | `perf_spot` | `single/common/*.cpp` + `single/src/perf_spot.cpp` |
 
 **Multi 타겟:**
@@ -185,8 +185,8 @@ bindings/cpp/native/<os>-<arch>/libzlink.so
 | `comp_src_router_router_client` | 동일 패턴 |
 | `comp_src_pubsub_server` | 동일 패턴 |
 | `comp_src_pubsub_client` | 동일 패턴 |
-| `comp_src_gateway_server` | 동일 패턴 |
-| `comp_src_gateway_client` | 동일 패턴 |
+| removed multi service server bench | n/a |
+| removed multi service client bench | n/a |
 | `comp_src_spot_server` | 동일 패턴 |
 | `comp_src_spot_client` | 동일 패턴 |
 | `comp_src_stream_server` | 서버 only |
@@ -263,7 +263,6 @@ CPP_SINGLE_PATTERN_SPECS = {
     "DEALER_DEALER":      ("perf_dealer_dealer.cpp",     "run_pattern_dealer_dealer",     "perf_dealer_dealer"),
     "DEALER_ROUTER":      ("perf_dealer_router.cpp",     "run_pattern_dealer_router",     "perf_dealer_router"),
     "ROUTER_ROUTER":      ("perf_router_router.cpp",     "run_pattern_router_router",     "perf_router_router"),
-    "GATEWAY":            ("perf_gateway.cpp",           "run_pattern_gateway",           "perf_gateway"),
     "SPOT":               ("perf_spot.cpp",              "run_pattern_spot",              "perf_spot"),
 }
 
@@ -272,7 +271,6 @@ CPP_MULTI_SERVER_PATTERN_SPECS = {
     "MULTI_DEALER_ROUTER":   ("perf_dealer_router_server.cpp",   ...),
     "MULTI_ROUTER_ROUTER":   ("perf_router_router_server.cpp",   ...),
     "MULTI_PUBSUB":          ("perf_pubsub_server.cpp",          ...),
-    "MULTI_GATEWAY":         ("perf_gateway_server.cpp",         ...),
     "MULTI_SPOT":            ("perf_spot_server.cpp",            ...),
     "MULTI_STREAM_CALLBACK": ("perf_stream_callback_server.cpp", ...),
     "MULTI_STREAM_LEN32BE":  ("perf_stream_len32be_server.cpp",  ...),
@@ -431,7 +429,7 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 3 | perf_dealer_dealer.cpp | DEALER_DEALER | `socket_type::dealer` ×2 | echo | tcp,tls,ws,wss,inproc,ipc |
 | 4 | perf_dealer_router.cpp | DEALER_ROUTER | `socket_type::dealer` + `socket_type::router` | echo | tcp,tls,ws,wss,inproc,ipc |
 | 5 | perf_router_router.cpp | ROUTER_ROUTER | `socket_type::router` ×2 | echo | tcp,tls,ws,wss,inproc,ipc |
-| 7 | perf_gateway.cpp | GATEWAY | `service::gateway_t` + `service::receiver_t` | echo | tcp,tls,ws,wss |
+| 7 | [removed bench] | REMOVED | n/a | n/a | n/a |
 | 8 | perf_spot.cpp | SPOT | `service::spot_node_t` (pub/sub) | one-way | tcp,tls,ws,wss |
 
 ### 7.2 Multi 패턴
@@ -444,7 +442,7 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 2 | perf_dealer_router_server | perf_dealer_router_client | DEALER_ROUTER | ROUTER bind, echo | DEALER connect, send+recv |
 | 3 | perf_router_router_server | perf_router_router_client | ROUTER_ROUTER | ROUTER bind, echo | ROUTER connect, send+recv |
 | 4 | perf_pubsub_server | perf_pubsub_client | PUBSUB | PUB bind, publish | SUB connect, recv |
-| 5 | perf_gateway_server | perf_gateway_client | GATEWAY | Receiver bind, echo | Gateway connect, send+recv |
+| 5 | [removed server] | [removed client] | REMOVED | n/a | n/a |
 | 6 | perf_spot_server | perf_spot_client | SPOT | Spot publish | Spot subscribe |
 | 7 | perf_stream_server | (core 공통 stream client) | STREAM | STREAM bind, raw echo | core/perf/common/streamclient |
 | 8 | perf_stream_callback_server | (core 공통 stream client) | STREAM_CALLBACK | stream_attach callback | core/perf/common/streamclient |
@@ -813,10 +811,10 @@ gateway.set_tls_client(ca_path, hostname, trust);
 | `zlink_receiver_bind(r, ep)` | `recv.bind(ep)` |
 | `zlink_receiver_register(r, svc, adv, w)` | `recv.register_service(svc, adv, w)` |
 | `zlink_receiver_set_tls_server(r, c, k)` | `recv.set_tls_server(cert, key)` |
-| `zlink_gateway_new(ctx, disc)` | `zlink::service::gateway_t gw(ctx, disc)` |
-| `zlink_gateway_send(g, svc, buf, len, fl)` | `gw.send(svc, buf, len, flags)` |
-| `zlink_gateway_recv(g, parts, svc, fl)` | `gw.recv(parts, svc, flags)` |
-| `zlink_gateway_set_tls_client(g, ca, h, t)` | `gw.set_tls_client(ca, hostname, trust)` |
+| removed gateway constructor | removed |
+| removed gateway send | removed |
+| removed gateway recv | removed |
+| removed gateway tls client | removed |
 | `zlink_spot_node_new(...)` | `zlink::service::spot_node_t spot(...)` |
 
 ---
@@ -987,7 +985,7 @@ bindings/cpp/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 
 ### Phase 3: Single 서비스 패턴 (2개)
 
-22. `single/src/perf_gateway.cpp`
+22. removed single service bench
 23. `single/src/perf_spot.cpp`
 
 ### Phase 4: Multi 패턴 — server/client 분리 (6×2 + 3 서버 only)
@@ -996,7 +994,7 @@ bindings/cpp/perf/results/multi/report/perf_linux_YYYYMMDD_HHMMSS[_tag].txt
 25. `multi/src/perf_dealer_router_server.cpp` + `perf_dealer_router_client.cpp`
 26. `multi/src/perf_router_router_server.cpp` + `perf_router_router_client.cpp`
 27. `multi/src/perf_pubsub_server.cpp` + `perf_pubsub_client.cpp`
-28. `multi/src/perf_gateway_server.cpp` + `perf_gateway_client.cpp`
+28. removed multi service bench pair
 29. `multi/src/perf_spot_server.cpp` + `perf_spot_client.cpp`
 30. `multi/src/perf_stream_server.cpp` (서버 only)
 31. `multi/src/perf_stream_callback_server.cpp` (서버 only)
@@ -1517,7 +1515,7 @@ CXX=${CXX:-c++}; $CXX -Wall -Wextra -Wpedantic -Wunused -std=c++17 -fsyntax-only
 
 ### Phase 3: Single 서비스 패턴 (2개)
 
-- [x] `single/src/perf_gateway.cpp` — GATEWAY echo 벤치마크
+- [x] removed single service bench
   - [x] 빌드 성공
   - [x] smoke 테스트 통과 (tcp, size=64)
   - [x] TLS smoke 통과 (tls, size=64)
@@ -1553,7 +1551,7 @@ CXX=${CXX:-c++}; $CXX -Wall -Wextra -Wpedantic -Wunused -std=c++17 -fsyntax-only
 - [x] `multi/src/perf_pubsub_server.cpp` + `_client.cpp`
   - [x] 빌드 성공
   - [x] smoke 테스트 통과
-- [x] `multi/src/perf_gateway_server.cpp` + `_client.cpp`
+- [x] removed multi service bench pair
   - [x] 빌드 성공
   - [x] smoke 테스트 통과
 - [x] `multi/src/perf_spot_server.cpp` + `_client.cpp`
@@ -1663,7 +1661,7 @@ CXX=${CXX:-c++}; $CXX -Wall -Wextra -Wpedantic -Wunused -std=c++17 -fsyntax-only
   - [x] `perf_dealer_router_client.cpp`
   - [x] `perf_router_router_client.cpp`
   - [x] `perf_pubsub_client.cpp`
-  - [x] `perf_gateway_client.cpp`
+  - [x] removed service client bench
   - [x] `perf_spot_client.cpp`
 
 #### 6.5 주석 정리

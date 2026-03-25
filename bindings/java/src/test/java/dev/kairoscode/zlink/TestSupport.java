@@ -1,6 +1,5 @@
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.service.receiver.Receiver;
 import dev.kairoscode.zlink.service.spot.Spot;
 import org.junit.jupiter.api.Assumptions;
@@ -64,23 +63,6 @@ public final class TestSupport {
         if (last != null)
             throw last;
         throw new RuntimeException("recv timeout");
-    }
-
-    public static Gateway.GatewayMessage gatewayRecvWithTimeout(
-      Gateway gateway, int timeoutMs) {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        RuntimeException last = null;
-        while (System.currentTimeMillis() < deadline) {
-            try {
-                return gateway.recv(ReceiveFlag.DONTWAIT);
-            } catch (RuntimeException ex) {
-                last = ex;
-                sleepMs(POLL_INTERVAL_MS);
-            }
-        }
-        if (last != null)
-            throw last;
-        throw new RuntimeException("gateway recv timeout");
     }
 
     public static Spot.SpotMessage spotRecvWithTimeout(Spot spot,

@@ -271,10 +271,7 @@ double run_single_spot_process_case (const char *self_path_,
                                      std::string *debug_text_out_ = NULL)
 {
     process_capture_t proc;
-    const char *binary_name =
-      std::strcmp (recv_mode_, "callback") == 0 ? "perf_spot_callback"
-                                                : "perf_spot";
-    const std::string path = sibling_binary_path (self_path_, binary_name);
+    const std::string path = sibling_binary_path (self_path_, "perf_spot");
 
     std::vector<std::string> args;
     args.push_back ("current");

@@ -20,7 +20,6 @@ namespace zlink
 {
 class socket_base_t;
 class discovery_t;
-class gateway_t;
 class spot_node_t;
 class discovery_bootstrap_runtime_t;
 class discovery_uplink_runtime_t;
@@ -110,7 +109,6 @@ class discovery_t
     }
 
   private:
-    friend class gateway_t;
     friend class spot_node_t;
     friend struct discovery_access_t;
     friend class discovery_bootstrap_runtime_t;
@@ -127,8 +125,6 @@ class discovery_t
     int add_observer (discovery_observer_t *observer_);
     int remove_observer (discovery_observer_t *observer_);
     void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
-    void upsert_gateway_peer_summary (
-      const zlink_registry_gateway_peer_entry_t &entry_);
     void erase_service_summary (uint16_t service_kind_,
                                 const zlink_routing_id_t &routing_id_,
                                 const std::string &service_name_,
@@ -141,7 +137,6 @@ class discovery_t
     void emit_ready_changed (uint32_t ready_count_);
     int ensure_topology_reporters ();
     void flush_topology_reports ();
-    void flush_gateway_peer_reports ();
     void refresh_registered_service_heartbeats (uint64_t now_ms_);
 
     struct topology_key_t
@@ -168,28 +163,6 @@ class discovery_t
         zlink_registry_topology_entry_t entry;
         bool dirty;
         bool tombstone;
-    };
-
-    struct gateway_peer_key_t
-    {
-        std::string gateway_routing_id_key;
-        std::string service_name;
-        std::string peer_routing_id_key;
-
-        bool operator< (const gateway_peer_key_t &other_) const
-        {
-            if (gateway_routing_id_key != other_.gateway_routing_id_key)
-                return gateway_routing_id_key < other_.gateway_routing_id_key;
-            if (service_name != other_.service_name)
-                return service_name < other_.service_name;
-            return peer_routing_id_key < other_.peer_routing_id_key;
-        }
-    };
-
-    struct gateway_peer_summary_t
-    {
-        zlink_registry_gateway_peer_entry_t entry;
-        bool dirty;
     };
 
     struct registered_service_key_t
@@ -258,7 +231,6 @@ class discovery_t
     bool _discovery_summary_enabled;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
     std::map<topology_key_t, topology_summary_t> _summary_store;
-    std::map<gateway_peer_key_t, gateway_peer_summary_t> _gateway_peer_summary_store;
     service_monitor_hub_t _monitor;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };

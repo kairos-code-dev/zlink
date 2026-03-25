@@ -74,6 +74,15 @@ int discovery_access_t::set_option (discovery_t *discovery_,
                       : -1;
 }
 
+int discovery_access_t::get_option (discovery_t *discovery_,
+                                    int option_,
+                                    void *optval_,
+                                    size_t *optvallen_)
+{
+    return discovery_ ? discovery_->get_option (option_, optval_, optvallen_)
+                      : -1;
+}
+
 int discovery_access_t::set_routing_id (discovery_t *discovery_,
                                         const void *data_,
                                         size_t size_)
@@ -85,6 +94,47 @@ int discovery_access_t::routing_id (discovery_t *discovery_,
                                     zlink_routing_id_t *out_)
 {
     return discovery_ ? discovery_->routing_id (out_) : -1;
+}
+
+int discovery_access_t::set_value (discovery_t *discovery_, int64_t value_)
+{
+    return discovery_ ? discovery_->set_value (value_) : -1;
+}
+
+int discovery_access_t::get_value (discovery_t *discovery_, int64_t *value_out_)
+{
+    return discovery_ ? discovery_->get_value (value_out_) : -1;
+}
+
+int discovery_access_t::set_metadata (discovery_t *discovery_,
+                                      const void *data_,
+                                      size_t size_)
+{
+    return discovery_ ? discovery_->set_metadata (data_, size_) : -1;
+}
+
+int discovery_access_t::get_metadata (discovery_t *discovery_,
+                                      zlink_msg_t *metadata_out_)
+{
+    return discovery_ ? discovery_->get_metadata (metadata_out_) : -1;
+}
+
+int discovery_access_t::member_peers (discovery_t *discovery_,
+                                      zlink_member_peer_entry_t *entries_,
+                                      size_t *count_)
+{
+    return discovery_ ? discovery_->member_peers (entries_, count_) : -1;
+}
+
+int discovery_access_t::member_peer_metadata (discovery_t *discovery_,
+                                              uint16_t service_role_,
+                                              const char *endpoint_,
+                                              zlink_msg_t *metadata_out_)
+{
+    return discovery_
+             ? discovery_->member_peer_metadata (service_role_, endpoint_,
+                                                 metadata_out_)
+             : -1;
 }
 
 int discovery_access_t::destroy (discovery_t *discovery_)

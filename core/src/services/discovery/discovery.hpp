@@ -21,6 +21,7 @@ namespace zlink
 class socket_base_t;
 class discovery_t;
 class spot_node_t;
+class service_control_runtime_t;
 class discovery_bootstrap_runtime_t;
 class discovery_uplink_runtime_t;
 struct discovery_access_t;
@@ -36,7 +37,8 @@ struct provider_info_t
     std::string endpoint;
     zlink_routing_id_t routing_id;
     uint16_t service_role;
-    uint32_t weight;
+    int64_t value;
+    std::vector<unsigned char> metadata;
     uint64_t registered_at;
 };
 
@@ -68,24 +70,37 @@ class discovery_t
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
     int set_option (int option_, const void *optval_, size_t optvallen_);
+    int get_option (int option_, void *optval_, size_t *optvallen_) const;
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
+    int set_value (int64_t value_);
+    int get_value (int64_t *value_out_) const;
+    int set_metadata (const void *data_, size_t size_);
+    int get_metadata (zlink_msg_t *metadata_out_) const;
+    void snapshot_member_peers (
+      std::vector<zlink_member_peer_entry_t> *out_) const;
+    int member_peers (zlink_member_peer_entry_t *entries_, size_t *count_) const;
+    int member_peer_metadata (uint16_t service_role_,
+                              const char *endpoint_,
+                              zlink_msg_t *metadata_out_) const;
     void *monitor_open (int events_);
 
     int destroy ();
     int register_service (uint16_t service_type_,
                           const char *service_name_,
                           const char *endpoint_,
-                          uint32_t weight_,
+                          int64_t value_,
+                          const std::vector<unsigned char> *metadata_,
                           std::string *resolved_endpoint_out_,
                           const zlink_routing_id_t *routing_id_ = NULL,
                           uint16_t service_role_ = 0);
-    int update_service_weight (uint16_t service_type_,
-                               const char *service_name_,
-                               const char *endpoint_,
-                               uint32_t weight_,
-                               uint16_t service_role_ = 0);
+    int update_service_attributes (uint16_t service_type_,
+                                   const char *service_name_,
+                                   const char *endpoint_,
+                                   int64_t value_,
+                                   const std::vector<unsigned char> *metadata_,
+                                   uint16_t service_role_ = 0);
     int unregister_service (uint16_t service_type_,
                             const char *service_name_,
                             const char *endpoint_,
@@ -138,6 +153,11 @@ class discovery_t
     int ensure_topology_reporters ();
     void flush_topology_reports ();
     void refresh_registered_service_heartbeats (uint64_t now_ms_);
+    socket_base_t *create_tracked_socket (int socket_type_);
+    int close_tracked_socket (socket_base_t *&socket_, int timeout_ms_);
+    int close_tracked_socket_and_wait (socket_base_t *&socket_, int timeout_ms_);
+    service_control_runtime_t *control_runtime () const;
+    int ensure_control_task_active ();
 
     struct topology_key_t
     {
@@ -191,13 +211,14 @@ class discovery_t
         std::string service_name;
         std::string endpoint;
         std::string uplink_endpoint;
-        uint32_t weight;
+        int64_t value;
+        std::vector<unsigned char> metadata;
         uint64_t last_heartbeat_ms;
 
         registered_service_t () :
             service_type (0),
             service_role (0),
-            weight (1),
+            value (0),
             last_heartbeat_ms (0)
         {
         }
@@ -230,6 +251,9 @@ class discovery_t
     std::string _service_name;
     bool _discovery_summary_enabled;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
+    int64_t _local_value;
+    std::vector<unsigned char> _local_metadata;
+    size_t _metadata_max_size;
     std::map<topology_key_t, topology_summary_t> _summary_store;
     service_monitor_hub_t _monitor;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)

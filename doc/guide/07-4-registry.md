@@ -5,8 +5,8 @@
 ## 1. Overview
 
 Registry is the central service directory and topology summary source for
-the zlink service layer. It accepts service registrations from Gateway,
-SPOT nodes, and socket family services (via Discovery), manages heartbeat-based liveness, and
+the zlink service layer. It accepts service registrations from SPOT nodes
+and socket family services (via Discovery), manages heartbeat-based liveness, and
 periodically broadcasts the aggregated service list to all connected
 Discovery instances.
 
@@ -15,20 +15,19 @@ Discovery instances.
 | Mode | Description |
 |------|-------------|
 | **Standalone process** | Registry runs as a dedicated service. Multiple applications connect through Discovery. |
-| **Embedded** | Registry is created inside the application process alongside Discovery and Gateway/SPOT. |
+| **Embedded** | Registry is created inside the application process alongside Discovery and services (SPOT/Socket). |
 
 **Registry is thread-safe.** A single Registry handle can be used
 concurrently from multiple threads. Configuration APIs (`set_id`, `add_peer`,
 `set_heartbeat`, `set_broadcast_interval`, `setsockopt`) must be called
 before `bind`. Topology query APIs (`topology_snapshot`, `topology_query`,
-`gateway_peers_snapshot`, `gateway_peers_query`) are safe to call from any
+`member_peers_snapshot`, `member_peers_query`) are safe to call from any
 thread at any time after bind.
 
 ## 2. Quick Start
 
-Minimal setup to get a Registry running and a Gateway connected through
-Discovery. Gateway supports both callback and recv models for receiving
-messages (see [Gateway Guide](07-2-gateway.md) for details on I/O models).
+Minimal setup to get a Registry running and a ROUTER socket connected
+through Discovery.
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -40,20 +39,17 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Discovery === */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "my-service");
+    ZLINK_SERVICE_TYPE_SOCKET, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* === Gateway (server, recv model) === */
-void *server = zlink_gateway_new(ctx);
-zlink_set_routing_id(server, "server-1", 8);
-/* recv model -- pull with zlink_gateway_recv() */
-zlink_gateway_attach_discovery(server, discovery);
-zlink_gateway_bind(server, "tcp://*:5555");
+/* === ROUTER socket (server, Discovery-managed) === */
+void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
+zlink_bind(server, "tcp://*:5555");
+zlink_socket_attach_discovery(server, discovery);
 
 /* ... application logic ... */
 
 /* Cleanup */
-zlink_gateway_destroy(&server);
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
@@ -140,7 +136,7 @@ through their own Discovery instances.
    ┌──────┐ ┌──────┐ ┌──────┐
    │App A │ │App B │ │App C │
    │Disc. │ │Disc. │ │Disc. │
-   │ GW   │ │ GW   │ │ SPOT │
+   │ SOCK │ │ SOCK │ │ SPOT │
    └──────┘ └──────┘ └──────┘
 ```
 
@@ -152,7 +148,7 @@ This is the recommended pattern for production deployments:
 
 ### 4.2 Embedded Deployment
 
-Registry, Discovery, and Gateway/SPOT all live in a single process.
+Registry, Discovery, and services (SPOT/Socket) all live in a single process.
 Useful for development, testing, or single-node deployments.
 
 ```c
@@ -165,42 +161,37 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery (same process) */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
+    ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* Server Gateway (recv model) */
-void *server = zlink_gateway_new(ctx);
-zlink_set_routing_id(server, "echo-server-1", 13);
-/* recv model -- pull with zlink_gateway_recv() */
-zlink_gateway_attach_discovery(server, discovery);
-zlink_gateway_bind(server, "tcp://*:5555");
+/* ROUTER socket (server, Discovery-managed) */
+void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
+zlink_bind(server, "tcp://*:5555");
+zlink_socket_attach_discovery(server, discovery);
 
-/* Client Gateway (same process, recv model) */
+/* DEALER socket (client, same process) */
 void *client_disc = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
+    ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx);
-zlink_set_routing_id(client, "client-1", 8);
-/* recv model -- no zlink_recv_handler() call */
-zlink_gateway_attach_discovery(client, client_disc);
+void *client = zlink_socket_new(ctx, ZLINK_DEALER);
+zlink_socket_attach_discovery(client, client_disc);
 
 /* Send request */
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_gateway_send(client, &part, 1, 0);
+zlink_send(client, &part, 1, 0);
 
-/* Pull reply (recv model) */
-zlink_routing_id_t source_rid;
+/* Receive reply */
 zlink_msg_t *reply_parts = NULL;
 size_t reply_count = 0;
-zlink_gateway_recv(client, &source_rid, &reply_parts, &reply_count, 0);
+zlink_recv(client, &reply_parts, &reply_count, 0);
 
 /* Cleanup (reverse order) */
-zlink_gateway_destroy(&client);
+zlink_close(client);
 zlink_discovery_destroy(&client_disc);
-zlink_gateway_destroy(&server);
+zlink_close(server);
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
@@ -288,7 +279,7 @@ zlink_registry_bind(reg3, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery connects to multiple Registries (HA — a single one suffices for service visibility) */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "my-service");
+    ZLINK_SERVICE_TYPE_SOCKET, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry3:5551");
@@ -335,10 +326,10 @@ free(entries);
 #### Filtered Query
 
 ```c
-/* Query only READY Gateway instances of "payment-service" */
+/* Query only READY SOCKET instances of "payment-service" */
 zlink_registry_topology_filter_t filter;
 memset(&filter, 0, sizeof(filter));
-filter.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+filter.service_kind = ZLINK_SERVICE_KIND_SOCKET;
 strncpy(filter.service_name, "payment-service",
         sizeof(filter.service_name) - 1);
 filter.state = ZLINK_TOPOLOGY_STATE_READY;
@@ -359,7 +350,7 @@ for (size_t i = 0; i < count; i++) {
 | Field | Description |
 |-------|-------------|
 | `routing_id` | Routing identity of the service instance |
-| `service_kind` | `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, or `DISCOVERY` |
+| `service_kind` | `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, or `DISCOVERY` |
 | `service_name` | Logical service name |
 | `endpoint` | Advertised endpoint |
 | `source` | How the entry was added (`MANUAL`, `DISCOVERY`, `REGISTRY`) |
@@ -405,13 +396,13 @@ zlink_registry_query_snapshot(client, NULL, entries, &count);
 /* Print topology dump */
 for (size_t i = 0; i < count; i++) {
     const char *kind_str = "?";
-    if (entries[i].service_kind == ZLINK_SERVICE_KIND_GATEWAY)
-        kind_str = "GW";
-    else if (entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
-             || entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_SUB)
+    if (entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
+        || entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_SUB)
         kind_str = "SPOT";
     else if (entries[i].service_kind == ZLINK_SERVICE_KIND_SOCKET)
         kind_str = "SOCK";
+    else if (entries[i].service_kind == ZLINK_SERVICE_KIND_DISCOVERY)
+        kind_str = "DISC";
     printf("[%s] %s @ %s  state=%d  ready=%u/%u\n",
            kind_str,
            entries[i].service_name,
@@ -437,80 +428,115 @@ zlink_registry_query_destroy(&client);
 zlink_ctx_term(ctx);
 ```
 
-### 6.3 Gateway Peer Introspection
+### 6.3 Member Peer Introspection
 
 Beyond the service-level topology, Registry also tracks per-peer
-connection state for Gateway services. This is useful for inspecting
-load-balancing state in operations.
+connection state for registered services. This is useful for inspecting
+connection health and peer distribution in operations.
 
-#### Local Gateway Peer Query
+#### Local Member Peer Query
 
 ```c
-/* Full snapshot of all gateway peer connections */
+/* Full snapshot of all member peer connections */
 size_t count = 0;
-zlink_registry_gateway_peers_snapshot(registry, NULL, &count);
+zlink_registry_member_peers(registry, NULL, NULL, &count);
 
-zlink_registry_gateway_peer_entry_t *peers = malloc(
-    count * sizeof(zlink_registry_gateway_peer_entry_t));
-zlink_registry_gateway_peers_snapshot(registry, peers, &count);
+zlink_member_peer_entry_t *peers = malloc(
+    count * sizeof(zlink_member_peer_entry_t));
+zlink_registry_member_peers(registry, NULL, peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("gateway=%s peer=%s state=%d weight=%u\n",
-           peers[i].gateway_endpoint,
+    printf("service=%s endpoint=%s peer=%s state=%d\n",
+           peers[i].service_name,
+           peers[i].member_endpoint,
            peers[i].peer_endpoint,
-           peers[i].state,
-           peers[i].weight);
+           peers[i].state);
 }
 free(peers);
 
 /* Filtered: only peers of a specific service */
-zlink_registry_gateway_peer_filter_t peer_filter;
+zlink_member_peer_filter_t peer_filter;
 memset(&peer_filter, 0, sizeof(peer_filter));
 strncpy(peer_filter.service_name, "payment-service",
         sizeof(peer_filter.service_name) - 1);
 
 size_t filtered_count = 64;
-zlink_registry_gateway_peer_entry_t filtered[64];
-zlink_registry_gateway_peers_query(registry, &peer_filter,
-                                   filtered, &filtered_count);
+zlink_member_peer_entry_t filtered[64];
+zlink_registry_member_peers(registry, &peer_filter,
+                            filtered, &filtered_count);
 ```
 
-#### Gateway Peer Entry Fields
+#### Member Peer Metadata (Local)
+
+```c
+/* Retrieve metadata for a specific member's peers */
+size_t meta_count = 0;
+zlink_registry_member_peer_metadata(registry, "payment-service",
+                                    NULL, &meta_count);
+
+zlink_member_peer_entry_t *meta = malloc(
+    meta_count * sizeof(zlink_member_peer_entry_t));
+zlink_registry_member_peer_metadata(registry, "payment-service",
+                                    meta, &meta_count);
+
+for (size_t i = 0; i < meta_count; i++) {
+    printf("  peer=%s state=%d connected_since=%llu\n",
+           meta[i].peer_endpoint,
+           meta[i].state,
+           (unsigned long long)meta[i].connected_since_ms);
+}
+free(meta);
+```
+
+#### Member Peer Entry Fields
 
 | Field | Description |
 |-------|-------------|
-| `gateway_routing_id` | Routing identity of the Gateway instance |
-| `gateway_endpoint` | Gateway endpoint |
+| `member_routing_id` | Routing identity of the service member |
+| `member_endpoint` | Service member endpoint |
 | `service_name` | Service name |
 | `peer_routing_id` | Routing identity of the connected peer |
 | `peer_endpoint` | Peer endpoint |
 | `state` | Current state (`ZLINK_TOPOLOGY_STATE_*`) |
-| `weight` | Peer weight for weighted load balancing |
 | `connected_since_ms` | Timestamp (epoch ms) when the peer connected |
 | `last_reported_ms` | Timestamp (epoch ms) of the last heartbeat or update |
 
-#### Remote Gateway Peer Query
+#### Remote Member Peer Query (via Discovery)
 
 ```c
-/* Query gateway peers from a remote Registry via query client */
-void *client = zlink_registry_query_client_new(ctx);
-zlink_registry_query_client_connect(client, "tcp://registry1:5551");
+/* Query member peers through Discovery (from a different process) */
+size_t count = 0;
+zlink_discovery_member_peers(discovery, NULL, NULL, &count);
 
-size_t count = 128;
-zlink_registry_gateway_peer_entry_t peers[128];
-zlink_registry_query_gateway_peers_snapshot(client, NULL,
-                                            peers, &count);
+zlink_member_peer_entry_t *peers = malloc(
+    count * sizeof(zlink_member_peer_entry_t));
+zlink_discovery_member_peers(discovery, NULL, peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("[%s] %s → %s  weight=%u state=%d\n",
+    printf("[%s] %s -> %s  state=%d\n",
            peers[i].service_name,
-           peers[i].gateway_endpoint,
+           peers[i].member_endpoint,
            peers[i].peer_endpoint,
-           peers[i].weight,
            peers[i].state);
 }
+free(peers);
 
-zlink_registry_query_destroy(&client);
+/* Retrieve metadata for a specific service */
+size_t meta_count = 0;
+zlink_discovery_member_peer_metadata(discovery, "payment-service",
+                                     NULL, &meta_count);
+
+zlink_member_peer_entry_t *meta = malloc(
+    meta_count * sizeof(zlink_member_peer_entry_t));
+zlink_discovery_member_peer_metadata(discovery, "payment-service",
+                                     meta, &meta_count);
+
+for (size_t i = 0; i < meta_count; i++) {
+    printf("  peer=%s connected_since=%llu\n",
+           meta[i].peer_endpoint,
+           (unsigned long long)meta[i].connected_since_ms);
+}
+free(meta);
 ```
 
 ## 7. Operational Patterns
@@ -518,7 +544,7 @@ zlink_registry_query_destroy(&client);
 ### 7.1 Service Registration/Deregistration Flow
 
 ```
-Gateway/SPOT          Discovery              Registry
+SpotNode/Socket       Discovery              Registry
     │                     │                      │
     │ attach_discovery    │                      │
     │ + bind              │                      │
@@ -581,7 +607,7 @@ Registry and local service monitors serve different purposes:
 
 - **Registry topology**: "How many `payment-service` instances are READY
   cluster-wide?" — first-pass operational assessment.
-- **Local monitor**: "Why is this specific Gateway not connecting to
+- **Local monitor**: "Why is this specific service not connecting to
   peer X?" — detailed root-cause analysis.
 
 Recommended workflow:
@@ -593,7 +619,6 @@ Recommended workflow:
 ## 9. Next Steps
 
 - [Service Discovery](07-1-discovery.md) -- Foundation infrastructure
-- [Gateway Service](07-2-gateway.md) -- Location-transparent request/reply
 - [SPOT PUB/SUB](07-3-spot.md) -- Location-transparent publish/subscribe
 - [Registry API Reference](../api/registry.md) -- Complete API documentation
 

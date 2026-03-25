@@ -1,8 +1,23 @@
 # Socket Metadata 공유 상세 계획
 
-> 상태: draft
+> 상태: completed
 > 대상 범위: `core/`, `core/tests/`, `doc/plan/service/`, `doc/plan/discovery/`, `doc/plan/registry/`
 > 목적: `gateway` 제거 이후에도 필요한 service peer별 `value`와 opaque `metadata` 공유 모델을 generic contract로 설계한다.
+
+## 진행 상태
+
+- Phase 1~6 구현이 `core/`와 `core/tests/`에 반영됐다.
+- public C API는 `zlink_discovery_set/get_value`, `zlink_discovery_set/get_metadata`,
+  `zlink_registry_member_peers`, `zlink_registry_member_peer_metadata`,
+  `zlink_discovery_member_peers`, `zlink_discovery_member_peer_metadata`,
+  `zlink_member_peer_entry_t`, `ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE` 기준으로 고정됐다.
+- registry/discovery는 `value + metadata`를 canonical row/blob query로 배포하고,
+  discovery peer-view는 remote member attribute snapshot만 반환한다.
+- topology refresh는 provider snapshot 경계를 유지하고,
+  member peer query는 정책/attribute query 경계로만 남겨
+  local attached participant 제외 규칙과 연결 그래프 계산을 다시 섞지 않도록 정리했다.
+- 검증: `./core/tests/run_test_lanes.sh --include-e2e`
+- 검증: `./core/tools/run_execution_gate_loop.sh --label gateway_removal_metadata_gate --count 1`
 
 ## 0. 선행 조건
 
@@ -241,6 +256,9 @@ int zlink_discovery_member_peer_metadata(
 ```c
 /*
  * - metadata maximum size는 runtime-configurable이다.
+ * - 현재 구현은 discovery handle에서
+ *   zlink_set_option(discovery_, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE, ...)
+ *   로 조정한다.
  * - 설정된 maximum size를 초과하는 metadata set/update는 실패해야 한다.
  * - oversize 입력은 truncate하지 않는다.
  * - 실패 시 errno는 EMSGSIZE로 고정한다.

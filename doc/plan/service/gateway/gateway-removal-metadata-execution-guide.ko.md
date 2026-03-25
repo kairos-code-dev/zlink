@@ -163,7 +163,7 @@ git push
 
 ### 5.2 gateway 제거 구현
 
-상태: `검증중`
+상태: `완료`
 
 진행 메모:
 
@@ -186,15 +186,14 @@ git push
 - `bindings/node/tests/helpers.js`, `bindings/python/tests/integration/helpers.py`, `bindings/dotnet/tests/Zlink.Tests/CoreTestSupport.cs`에서 삭제된 gateway 테스트 helper를 제거했다.
 - 현재 exact symbol baseline 기준 `core/`, `core/tests/`, `core/perf/`, `bindings/`에서는 `zlink_gateway_*`, `ZLINK_GATEWAY_*`, `SERVICE_TYPE_GATEWAY`, `SERVICE_ROLE_GATEWAY`, `gateway_peer`, `perf_gateway`, `comp_src_gateway` 잔여물이 없다.
 - 현재 broad 잔여 hotspot은 bindings perf 구현 계획 문서(`CPP_PORTING_PLAN.md`, `DOTNOET_IMPLEMENTATION_PLAN.md`, `JAVA_IMPLEMENTATION_PLAN.md`) 중심의 historical/migration 서술이다.
-- 검증 중 `test_single_spot_benchmark_process`가 callback 경로 4건에서 실패했고, 단일 재현에서도 동일하게 재현된다.
-- 단일 프로세스 재현 기준 `PERF_RECV_MODE=callback ./core/build/bin/perf_spot_callback current tcp 64`는 `[perf-spot] callback handler attach failed err=95`로 종료한다.
+- `spot` callback sub destroy가 마지막 filtered sub 제거 뒤에도 불필요한 `replay_subscriptions` control command를 보내던 경로를 정리했다.
+- 단일 재현 기준 `PERF_RECV_MODE=callback PERF_SINGLE_DURATION_SECONDS=1 PERF_SINGLE_WARMUP_SECONDS=1 ./core/build/bin/perf_spot current tcp 64 >/tmp/perf_spot_fixcheck.out`가 종료까지 정상 통과한다.
 - 검증: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
 - 검증: `cmake --build core/build -j"$(nproc)" --target unittest_service_mode_policy unittest_typed_option`
 - 검증: `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option)$'`
 - 검증: `cmake --build core/build -j"$(nproc)"`
 - 검증: `ctest --test-dir core/build --output-on-failure -L unittest -j"$(nproc)"`
-- 검증 실패: `ctest --test-dir core/build --output-on-failure -L integration -j1`
-- 검증 실패: `ctest --test-dir core/build --output-on-failure -R '^test_single_spot_benchmark_process$' -j1`
+- 검증: `ctest --test-dir core/build --output-on-failure -R '^(test_single_spot_benchmark_process|unittest_service_mode_policy|unittest_typed_option)$' -j1`
 - 검증: `python -m pytest core/perf/single/tests/test_run_comparison_policy.py core/perf/single/tests/test_multi_run_comparison_policy.py`
 - 검증: `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings -g '!**/build/**' -g '!**/obj/**' -g '!**/bin/**'`
 
@@ -223,7 +222,18 @@ git push
 
 ### 5.3 삭제 직후 POSD 리팩토링
 
-상태: `미착수`
+상태: `완료`
+
+진행 메모:
+
+- discovery bootstrap/uplink dealer 생성/종료와 control task wakeup 경로를 `discovery_t` helper로 모아 socket lifecycle 책임을 한곳으로 줄였다.
+- `spot_node_t`의 peer/readiness/replay bookkeeping을 `spot_peer_state_t`로 모아 hidden coupling을 줄이고 읽기 경계를 정리했다.
+- `spot` monitor close는 외부 스레드의 in-flight callback에서도 동기 close 경로로 정리해 monitor userdata 수명과 close 결과가 어긋나지 않도록 맞췄다.
+- `spot` control loop에서 누락됐던 `emit_pending_pub_delivery_ready_events()` 호출을 복구해 pub ready 신호가 control tick에서 drain되도록 맞췄다.
+- `core/tests/run_thread_safe_contract_stress.sh`, `core/tests/run_thread_safe_contract_tsan.sh`, `core/tests/README.md`를 현재 CTest 등록 상태에 맞춰 정렬해 gate wrapper가 시작 단계에서 멈추지 않도록 수정했다.
+- `./core/tools/run_execution_gate_loop.sh --label gateway_removal_metadata_gate --count 1` 최소 gate는 현재 thread-safe stress lane을 끝까지 통과했고 증거 로그는 `doc/plan/refactor/2nd/logs/gateway_removal_metadata_gate_20260326_061636.log`에 남겼다.
+- `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$' -j1` 단일 재현은 2026-03-26에 78.81초로 통과했다.
+- `./core/tests/run_test_lanes.sh --include-e2e` 전체 lane 재실행도 2026-03-26에 끝까지 통과했다.
 
 작업:
 
@@ -239,11 +249,18 @@ git push
 검증:
 
 - `cmake --build core/build -j"$(nproc)"`
+- `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$' -j1`
 - `./core/tests/run_test_lanes.sh --include-e2e`
 
 ### 5.4 metadata 착수 판정
 
-상태: `미착수`
+상태: `완료`
+
+진행 메모:
+
+- `core/include/zlink.h`, `core/src/api/`, `core/tests/`, `bindings/` 기준으로 `zlink_discovery_set_value`, `zlink_discovery_set_metadata`, `zlink_registry_member_peers`, `zlink_discovery_member_peers`, `zlink_member_peer_entry_t` 같은 generic metadata/member query surface는 아직 없다.
+- discovery 내부에는 `provider_info_t.weight`, `register_service(..., uint32_t weight_)`, `update_service_weight(..., uint32_t weight_)`와 registry register/update-weight plumbing이 남아 있어 numeric attribute 자체는 internal 전용 contract로만 존재한다.
+- migration guide만으로는 이 공백을 메울 수 없고, `gateway` 삭제 뒤에도 "remote service peer attribute를 generic하게 읽고 배포하는 최소 contract"가 실제로 비어 있으므로 metadata 작업을 계속 진행한다.
 
 작업:
 
@@ -263,7 +280,15 @@ git push
 
 ### 5.5 metadata 모델 / plumbing
 
-상태: `미착수`
+상태: `완료`
+
+진행 메모:
+
+- `core/include/zlink.h`와 `core/src/api/`에 `zlink_discovery_set/get_value`, `zlink_discovery_set/get_metadata`, `zlink_member_peer_entry_t`, `zlink_registry_member_peers`, `zlink_registry_member_peer_metadata`, `zlink_discovery_member_peers`, `zlink_discovery_member_peer_metadata`를 추가했다.
+- metadata maximum size는 discovery handle 공통 option `ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE`로 runtime-configurable 하게 열고 oversize set은 `EMSGSIZE`로 fail-fast 하도록 고정했다.
+- discovery local owner는 `_local_value`, `_local_metadata`, `_metadata_max_size`를 보관하고 등록/갱신 시 registry uplink로 `value + metadata`를 함께 보낸다.
+- registry/discovery service list propagation과 peer cache는 기존 `weight` 전용 frame 대신 `int64_t value + metadata blob`을 같이 싣도록 확장했다.
+- registry canonical row와 discovery peer cache row는 모두 `routing_id + value`를 유지하고 full metadata는 blob query로 분리했다.
 
 작업:
 
@@ -280,11 +305,18 @@ git push
 검증:
 
 - `cmake --build core/build -j"$(nproc)"`
-- 관련 unittest / integration 회귀
+- `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_mode_policy|unittest_typed_option|test_spot_service_introspection_metadata_local)$' -j1`
 
 ### 5.6 metadata query / consumer 연결
 
-상태: `미착수`
+상태: `완료`
+
+진행 메모:
+
+- registry/discovery query surface가 실제로 `value` row와 metadata blob query를 반환하도록 연결했다.
+- `core/src/services/spot/spot_node_control.cpp`와 `core/src/services/discovery/socket_discovery_attachment.cpp`는 topology refresh를 provider snapshot 경계에 남기고, `member_peers` surface는 policy/attribute query 경계로만 유지하도록 정리했다.
+- `core/tests/e2e/spot/test_spot_service_introspection.cpp`에 local contract 회귀와 registry/discovery member peer query 회귀를 추가했고, 새 query surface 위에서 discovery-managed pub/sub 왕복도 같이 검증한다.
+- 검증: `ctest --test-dir core/build --output-on-failure -R '^(test_spot_service_introspection_metadata_local|test_spot_service_introspection_member_peers|test_spot_service_introspection)$' -j1`
 
 작업:
 
@@ -305,7 +337,15 @@ git push
 
 ### 5.7 metadata 완료 후 POSD 리팩토링
 
-상태: `미착수`
+상태: `완료`
+
+진행 메모:
+
+- discovery가 remote member row 계산과 local member 제외 규칙을 `snapshot_member_peers()` 안으로 모아 public query 구현 중복을 줄였다.
+- metadata query surface를 붙인 뒤 topology refresh와 attribute query 책임을 다시 분리해 `spot_node_control`과 `socket_discovery_attachment`는 provider snapshot 경계를 유지하고, `member_peers`는 정책/attribute query 전용 surface로 남겼다.
+- full lane 재실행 중 드러난 `test_spot_pubsub_scenario_recv_service_isolation` 회귀는 위 경계 복원으로 수정했고 단일 재현과 전체 lane에서 모두 사라졌다.
+- `./core/tools/run_execution_gate_loop.sh --label gateway_removal_metadata_gate --count 1`는 2026-03-26 07:03:36 +0900 시작, 2026-03-26 07:04:32 +0900 종료로 success였고 stress log는 `doc/plan/refactor/2nd/logs/gateway_removal_metadata_gate_20260326_070336.log`에 남겼다.
+- `./core/tests/run_test_lanes.sh --include-e2e` 전체 lane 재실행도 2026-03-26에 끝까지 통과했다.
 
 작업:
 
@@ -325,7 +365,17 @@ git push
 
 ### 5.8 문서 / 최종 검증
 
-상태: `미착수`
+상태: `완료`
+
+진행 메모:
+
+- `README.ko.md`, `gateway-removal-plan.ko.md`, `socket-metadata-sharing-plan.ko.md`, execution guide를 실제 구현/authority 기준으로 정렬했다.
+- master plan 문서 상태를 `completed`로 올리고, metadata query와 topology/provider 경계가 다시 섞이지 않도록 구현 결과를 문서에 남겼다.
+- 최종 grep 기준 source 쪽 `gateway` 구현 잔여물은 없고, 남은 검색 hit는 execution/master plan의 historical checklist 설명뿐이다.
+- 검증: `cmake --build core/build -j"$(nproc)"`
+- 검증: `./core/tests/run_test_lanes.sh --include-e2e`
+- 검증: `./core/tools/run_execution_gate_loop.sh --label gateway_removal_metadata_gate --count 1`
+- 검증: `rg -n "zlink_gateway_|ZLINK_GATEWAY_|SERVICE_TYPE_GATEWAY|SERVICE_ROLE_GATEWAY|gateway_peer|perf_gateway|comp_src_gateway" core core/tests core/perf bindings doc/plan/service/gateway -g '!doc/plan/service/gateway/logs/**'`
 
 작업:
 

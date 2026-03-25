@@ -296,4 +296,4 @@ zlink_discovery_destroy(&discovery);
 > `zlink_discovery_destroy()` cascades shutdown to attached participants.
 
 ---
-[← Gateway](07-2-gateway.md) | [Registry →](07-4-registry.md) | [Routing ID →](08-routing-id.md)
+[← Discovery](07-1-discovery.md) | [Registry →](07-4-registry.md) | [Routing ID →](08-routing-id.md)

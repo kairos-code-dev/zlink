@@ -92,14 +92,14 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
             errno = EBUSY;
             return -1;
         }
-        had_active_peers = !_active_peer_endpoints.empty ();
-        if (_manual_peer_endpoints.count (peer_pub_endpoint_) != 0)
+        had_active_peers = !_peer_state.active_endpoints.empty ();
+        if (_peer_state.manual_endpoints.count (peer_pub_endpoint_) != 0)
             return 0;
-        _manual_peer_endpoints.insert (peer_pub_endpoint_);
-        _peer_observations[peer_pub_endpoint_].last_changed_ms =
+        _peer_state.manual_endpoints.insert (peer_pub_endpoint_);
+        _peer_state.observations[peer_pub_endpoint_].last_changed_ms =
           zlink::clock_t ().now_ms ();
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
-        if (_active_peer_endpoints.count (peer_pub_endpoint_) == 0)
+        if (_peer_state.active_endpoints.count (peer_pub_endpoint_) == 0)
             need_connect = true;
     }
 
@@ -107,7 +107,7 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
                                                  peer_pub_endpoint_)
                            != 0) {
         scoped_lock_t lock (_sync);
-        _manual_peer_endpoints.erase (peer_pub_endpoint_);
+        _peer_state.manual_endpoints.erase (peer_pub_endpoint_);
         return -1;
     }
 
@@ -115,12 +115,12 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
     {
         scoped_lock_t lock (_sync);
         _mesh_client_tls_locked = true;
-        if (_active_peer_endpoints.insert (peer_pub_endpoint_).second)
+        if (_peer_state.active_endpoints.insert (peer_pub_endpoint_).second)
             _active_peer_count.fetch_add (1, std::memory_order_acq_rel);
-        _peer_observations[peer_pub_endpoint_].last_changed_ms =
+        _peer_state.observations[peer_pub_endpoint_].last_changed_ms =
           zlink::clock_t ().now_ms ();
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
-        has_active_peers = !_active_peer_endpoints.empty ();
+        has_active_peers = !_peer_state.active_endpoints.empty ();
     }
     if (has_active_peers) {
         if (has_local_filtered_subs ()) {
@@ -157,15 +157,15 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
             errno = EBUSY;
             return -1;
         }
-        had_active_peers = !_active_peer_endpoints.empty ();
-        _manual_peer_endpoints.erase (peer_pub_endpoint_);
-        _peer_observations[peer_pub_endpoint_].last_changed_ms =
+        had_active_peers = !_peer_state.active_endpoints.empty ();
+        _peer_state.manual_endpoints.erase (peer_pub_endpoint_);
+        _peer_state.observations[peer_pub_endpoint_].last_changed_ms =
           zlink::clock_t ().now_ms ();
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
-        if (_discovery_peer_endpoints.count (peer_pub_endpoint_) == 0
-            && _active_peer_endpoints.count (peer_pub_endpoint_) != 0) {
+        if (_peer_state.discovery_endpoints.count (peer_pub_endpoint_) == 0
+            && _peer_state.active_endpoints.count (peer_pub_endpoint_) != 0) {
             need_disconnect = true;
-            disconnecting_last_active_peer = _active_peer_endpoints.size () == 1;
+            disconnecting_last_active_peer = _peer_state.active_endpoints.size () == 1;
         }
     }
 
@@ -188,13 +188,13 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
         bool has_active_peers = false;
         {
             scoped_lock_t lock (_sync);
-            if (_active_peer_endpoints.erase (peer_pub_endpoint_) != 0)
+            if (_peer_state.active_endpoints.erase (peer_pub_endpoint_) != 0)
                 _active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
-            _peer_observations[peer_pub_endpoint_].last_changed_ms =
+            _peer_state.observations[peer_pub_endpoint_].last_changed_ms =
               zlink::clock_t ().now_ms ();
-            _peer_observations[peer_pub_endpoint_].connected_since_ms = 0;
+            _peer_state.observations[peer_pub_endpoint_].connected_since_ms = 0;
             _summary_last_changed_ms = zlink::clock_t ().now_ms ();
-            has_active_peers = !_active_peer_endpoints.empty ();
+            has_active_peers = !_peer_state.active_endpoints.empty ();
         }
         if (had_active_peers && !has_active_peers) {
             std::vector<spot_sub_t *> subs;
@@ -202,21 +202,10 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
             std::vector<std::pair<std::string, uint32_t> > pub_ready_updates;
             {
                 scoped_lock_t lock (_sync);
-                _connected_peer_endpoints.clear ();
                 _summary_last_changed_ms = zlink::clock_t ().now_ms ();
-                _subscription_ready_refresh_pending = false;
-                _subscription_ready_refresh_holdoff_ticks = 0;
-                _pending_subscription_ready_filters.clear ();
                 subs.assign (_subs.begin (), _subs.end ());
                 pubs.assign (_pubs.begin (), _pubs.end ());
-                for (std::map<std::string, std::set<std::string> >::iterator it =
-                       _pub_delivery_ready_sources.begin ();
-                     it != _pub_delivery_ready_sources.end (); ++it) {
-                    pub_ready_updates.push_back (
-                      std::make_pair (it->first, static_cast<uint32_t> (0)));
-                }
-                _pub_delivery_ready_sources.clear ();
-                publish_mesh_pub_budget_hint_locked ();
+                clear_peer_readiness_locked (&pub_ready_updates);
             }
             refresh_sub_peer_summaries (false, true);
             for (size_t i = 0; i < subs.size (); ++i)
@@ -270,7 +259,7 @@ int spot_node_t::ensure_registered ()
     std::string resolved;
     if (discovery_owned_service::register_endpoint (
           discovery, discovery_protocol::service_type_spot_node,
-          advertise.c_str (), 1, &resolved)
+          advertise.c_str (), &resolved)
         != 0) {
         return -1;
     }
@@ -344,7 +333,7 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         scoped_lock_t lock (_sync);
         if (_discovery == discovery_)
             return 0;
-        if (_discovery || !_manual_peer_endpoints.empty ()) {
+        if (_discovery || !_peer_state.manual_endpoints.empty ()) {
             errno = EBUSY;
             return -1;
         }
@@ -352,7 +341,7 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         _discovery_service = discovery_->service_name ();
         _discovery_seq = 0;
         _pending_service_updates.insert (_discovery_service);
-        _discovery_peer_endpoints.clear ();
+        _peer_state.discovery_endpoints.clear ();
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         should_register = !_bound_endpoint.empty ();
     }
@@ -396,8 +385,8 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     _discovery_service.clear ();
     _discovery_seq = 0;
     _pending_service_updates.clear ();
-    _discovery_peer_endpoints.clear ();
-    _connected_peer_endpoints.clear ();
+    _peer_state.discovery_endpoints.clear ();
+    _peer_state.connected_endpoints.clear ();
     _registered = false;
     _advertise_endpoint.clear ();
     _registration_uplink_endpoint.clear ();
@@ -523,8 +512,8 @@ int spot_node_t::destroy ()
         (void) unregister_registered ();
     {
         scoped_lock_t lock (_sync);
-        active_peer_endpoints.assign (_active_peer_endpoints.begin (),
-                                      _active_peer_endpoints.end ());
+        active_peer_endpoints.assign (_peer_state.active_endpoints.begin (),
+                                      _peer_state.active_endpoints.end ());
         bound_endpoint = _bound_endpoint;
     }
     for (size_t i = 0; i < active_peer_endpoints.size (); ++i)
@@ -555,11 +544,11 @@ int spot_node_t::destroy ()
         _discovery_service.clear ();
         _discovery_seq = 0;
         _pending_service_updates.clear ();
-        _manual_peer_endpoints.clear ();
-        _active_peer_endpoints.clear ();
+        _peer_state.manual_endpoints.clear ();
+        _peer_state.active_endpoints.clear ();
         _active_peer_count.store (0, std::memory_order_release);
-        _connected_peer_endpoints.clear ();
-        _discovery_peer_endpoints.clear ();
+        _peer_state.connected_endpoints.clear ();
+        _peer_state.discovery_endpoints.clear ();
         _registered = false;
         _advertise_endpoint.clear ();
         _registration_uplink_endpoint.clear ();

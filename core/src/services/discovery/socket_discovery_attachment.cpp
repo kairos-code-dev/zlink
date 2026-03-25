@@ -115,7 +115,7 @@ int socket_discovery_attachment_t::register_bound_endpoint (
 
     return discovery_owned_service::register_endpoint (
       discovery_, discovery_protocol::service_type_socket, endpoint_.c_str (),
-      1, resolved_endpoint_out_, NULL, local_role_);
+      resolved_endpoint_out_, NULL, local_role_);
 }
 
 bool socket_discovery_attachment_t::ensure_socket_routing_id (
@@ -183,7 +183,7 @@ void socket_discovery_attachment_t::refresh_peers (
     for (size_t i = 0; i < providers.size (); ++i) {
         const provider_info_t &provider = providers[i];
         if (provider.endpoint.empty ()
-            || provider.endpoint == advertise_endpoint_
+            || advertise_endpoint_ == provider.endpoint
             || !discovery_protocol::service_roles_match (
               local_role_, provider.service_role)) {
             continue;

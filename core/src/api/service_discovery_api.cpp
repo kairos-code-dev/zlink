@@ -39,6 +39,69 @@ int zlink_discovery_connect_registry (void *discovery_,
                      : -1;
 }
 
+int zlink_discovery_set_value (void *discovery_, int64_t value_)
+{
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    return discovery ? zlink::discovery_access_t::set_value (discovery, value_)
+                     : -1;
+}
+
+int zlink_discovery_get_value (void *discovery_, int64_t *value_out_)
+{
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    return discovery
+             ? zlink::discovery_access_t::get_value (discovery, value_out_)
+             : -1;
+}
+
+int zlink_discovery_set_metadata (void *discovery_,
+                                  const void *data_,
+                                  size_t size_)
+{
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    return discovery
+             ? zlink::discovery_access_t::set_metadata (discovery, data_, size_)
+             : -1;
+}
+
+int zlink_discovery_get_metadata (void *discovery_, zlink_msg_t *metadata_out_)
+{
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    return discovery
+             ? zlink::discovery_access_t::get_metadata (discovery,
+                                                        metadata_out_)
+             : -1;
+}
+
+int zlink_discovery_member_peers (void *discovery_,
+                                  zlink_member_peer_entry_t *entries_,
+                                  size_t *count_)
+{
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    return discovery
+             ? zlink::discovery_access_t::member_peers (discovery, entries_,
+                                                        count_)
+             : -1;
+}
+
+int zlink_discovery_member_peer_metadata (void *discovery_,
+                                          uint16_t service_role_,
+                                          const char *endpoint_,
+                                          zlink_msg_t *metadata_out_)
+{
+    zlink::discovery_t *discovery =
+      zlink::discovery_access_t::from_handle (discovery_);
+    return discovery
+             ? zlink::discovery_access_t::member_peer_metadata (
+                 discovery, service_role_, endpoint_, metadata_out_)
+             : -1;
+}
+
 int zlink_discovery_set_tls_client (void *discovery_,
                                     const char *ca_cert_,
                                     const char *hostname_,

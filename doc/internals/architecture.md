@@ -247,7 +247,7 @@ The port from libzmq to zlink used **selective per-layer replacement**, not a fu
 │  │  Native WS/WSS/TLS Transports                                │ │
 │  │  - Beast WebSocket + OpenSSL unified via i_asio_transport    │ │
 │  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Service Layer (Registry, Discovery, Gateway, Receiver, SPOT)│ │
+│  │  Service Layer (Registry, Discovery, SPOT)                  │ │
 │  │  - Higher-level service abstractions not present in libzmq   │ │
 │  └───────────────────────────────────────────────────────────────┘ │
 │                                                                     │
@@ -1253,17 +1253,6 @@ core/
 │   │   │   ├── discovery_protocol.hpp
 │   │   │   ├── registry_access.cpp/hpp   # Registry API seam
 │   │   │   └── registry_query_access.cpp/hpp # Remote query API seam
-│   │   ├── gateway/                 # Gateway (POSD modular split)
-│   │   │   ├── gateway.hpp          # Main header
-│   │   │   ├── gateway_access.cpp/hpp  # API seam
-│   │   │   ├── gateway_facade.cpp   # External API delegation
-│   │   │   ├── gateway_lifecycle.cpp # Create/destroy/attach sequencing
-│   │   │   ├── gateway_pool.cpp     # Peer pool management, load balancing
-│   │   │   ├── gateway_socket.cpp   # Internal ROUTER socket wiring
-│   │   │   ├── gateway_monitor.cpp  # Service monitor event emission
-│   │   │   ├── gateway_refresh.cpp  # Discovery-based peer refresh
-│   │   │   ├── gateway_runtime.hpp  # Gateway runtime state
-│   │   │   └── routing_id_utils.hpp
 │   │   └── spot/                    # SPOT service (POSD modular split)
 │   │       ├── spot_node.cpp/hpp    # Network control (PUB/SUB mesh)
 │   │       ├── spot_node_access.cpp/hpp  # SpotNode API seam

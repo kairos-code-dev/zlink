@@ -95,6 +95,24 @@ bool registry_service_summary_less (
         return name_cmp < 0;
     return lhs_.service_role < rhs_.service_role;
 }
+
+zlink_service_type_t public_service_type_local (zlink_service_type_t service_type_)
+{
+    return service_type_;
+}
+
+bool member_peer_entry_less (const zlink_member_peer_entry_t &lhs_,
+                             const zlink_member_peer_entry_t &rhs_)
+{
+    if (lhs_.service_type != rhs_.service_type)
+        return lhs_.service_type < rhs_.service_type;
+    const int name_cmp = strcmp (lhs_.service_name, rhs_.service_name);
+    if (name_cmp != 0)
+        return name_cmp < 0;
+    if (lhs_.service_role != rhs_.service_role)
+        return lhs_.service_role < rhs_.service_role;
+    return strcmp (lhs_.endpoint, rhs_.endpoint) < 0;
+}
 }
 
 int zlink::registry_t::topology_snapshot (zlink_registry_topology_entry_t *entries_,
@@ -213,6 +231,113 @@ int zlink::registry_t::service_summary_snapshot (
             out_->push_back (it->second);
     }
     std::sort (out_->begin (), out_->end (), registry_service_summary_less);
+    return 0;
+}
+
+int zlink::registry_t::member_peers (zlink_service_type_t service_type_,
+                                     const char *service_name_,
+                                     zlink_member_peer_entry_t *entries_,
+                                     size_t *count_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!service_name_ || service_name_[0] == '\0' || !count_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<zlink_member_peer_entry_t> matched;
+    {
+        scoped_lock_t lock (_sync);
+        service_key_t key;
+        key.service_type =
+          service_type_ == ZLINK_SERVICE_TYPE_SPOT
+            ? discovery_protocol::service_type_spot_node
+            : discovery_protocol::service_type_socket;
+        key.service_name = service_name_;
+        service_map_t::const_iterator sit = _services.find (key);
+        if (sit != _services.end ()) {
+            for (provider_map_t::const_iterator pit = sit->second.providers.begin ();
+                 pit != sit->second.providers.end (); ++pit) {
+                zlink_member_peer_entry_t entry;
+                memset (&entry, 0, sizeof (entry));
+                entry.service_type = public_service_type_local (service_type_);
+                entry.service_role = pit->second.service_role;
+                strncpy (entry.service_name, service_name_,
+                         sizeof (entry.service_name) - 1);
+                strncpy (entry.endpoint, pit->second.endpoint.c_str (),
+                         sizeof (entry.endpoint) - 1);
+                entry.routing_id = pit->second.routing_id;
+                entry.value = pit->second.value;
+                matched.push_back (entry);
+            }
+        }
+    }
+
+    std::sort (matched.begin (), matched.end (), member_peer_entry_less);
+    if (!entries_) {
+        *count_ = matched.size ();
+        return 0;
+    }
+    if (*count_ < matched.size ()) {
+        *count_ = matched.size ();
+        errno = ENOBUFS;
+        return -1;
+    }
+    for (size_t i = 0; i < matched.size (); ++i)
+        entries_[i] = matched[i];
+    *count_ = matched.size ();
+    return 0;
+}
+
+int zlink::registry_t::member_peer_metadata (zlink_service_type_t service_type_,
+                                             const char *service_name_,
+                                             uint16_t service_role_,
+                                             const char *endpoint_,
+                                             zlink_msg_t *metadata_out_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!service_name_ || service_name_[0] == '\0' || !endpoint_
+        || endpoint_[0] == '\0' || !metadata_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<unsigned char> metadata;
+    bool found = false;
+    {
+        scoped_lock_t lock (_sync);
+        service_key_t key;
+        key.service_type =
+          service_type_ == ZLINK_SERVICE_TYPE_SPOT
+            ? discovery_protocol::service_type_spot_node
+            : discovery_protocol::service_type_socket;
+        key.service_name = service_name_;
+        service_map_t::const_iterator sit = _services.find (key);
+        if (sit != _services.end ()) {
+            provider_key_t provider_key;
+            provider_key.service_role = service_role_;
+            provider_key.endpoint = endpoint_;
+            provider_map_t::const_iterator pit =
+              sit->second.providers.find (provider_key);
+            if (pit != sit->second.providers.end ()) {
+                metadata = pit->second.metadata;
+                found = true;
+            }
+        }
+    }
+
+    if (!found) {
+        errno = ENOENT;
+        return -1;
+    }
+    if (zlink_msg_init_size (metadata_out_, metadata.size ()) != 0)
+        return -1;
+    if (!metadata.empty ())
+        memcpy (zlink_msg_data (metadata_out_), &metadata[0], metadata.size ());
     return 0;
 }
 

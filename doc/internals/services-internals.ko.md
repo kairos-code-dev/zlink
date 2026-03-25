@@ -4,7 +4,7 @@
 
 ## 1. 개요
 
-zlink 서비스 계층은 Discovery, Gateway, SPOT 세 가지 고수준 서비스를 제공한다.
+zlink 서비스 계층은 Discovery와 SPOT 두 가지 고수준 서비스를 제공한다.
 이 문서는 내부 구현 상세를 다룬다.
 
 ## 2. Registry 내부 구현
@@ -62,14 +62,12 @@ Discovery는 프로바이더를 (service_type, service_role) 쌍으로 추적한
 
 ```cpp
 // 서비스 타입
-static const uint16_t service_type_gateway_receiver = 1;
 static const uint16_t service_type_spot_node = 2;
 static const uint16_t service_type_socket = 3;
 
 // 서비스 역할
 enum service_role_t {
     service_role_invalid = 0,
-    service_role_gateway = 1,  // gateway 타입 고정
     service_role_spot    = 2,  // spot 타입 고정
     service_role_router  = 3,  // 소켓 패밀리
     service_role_dealer  = 4,  // 소켓 패밀리
@@ -78,12 +76,11 @@ enum service_role_t {
 };
 ```
 
-Gateway와 SPOT은 서비스 타입에서 파생되는 고정 역할을 가진다. 소켓 패밀리
+SPOT은 서비스 타입에서 파생되는 고정 역할을 가진다. 소켓 패밀리
 서비스는 소켓 타입에 맞는 명시적 역할이 필요하다. 피어 발견을 위한 역할
 매칭 규칙:
 - PUB ↔ SUB
 - ROUTER ↔ ROUTER, ROUTER ↔ DEALER, DEALER ↔ DEALER
-- Gateway ↔ Gateway
 - SPOT ↔ SPOT
 
 ### 3.3 Discovery 소유 서비스 실행
@@ -127,63 +124,20 @@ heartbeat를 주기적으로 갱신한다.
 ### 3.5 구독 동작
 - Registry PUB 전체 구독 (네트워크 필터링 없음)
 - subscribe/unsubscribe는 내부 필터로 동작
-- Gateway 알림/조회 대상만 제한
 
 ### 3.6 중복/역전 처리
 - (registry_id, list_seq) 기준 최신 스냅샷만 적용
 - 동일 registry_id에서 이전 list_seq는 무시
 
-## 4. Gateway 내부 구현
+## 4. 메시지 프로토콜
 
-### 4.1 상태 머신 (서비스별)
-```
-[NO_POOL] → RECEIVER_ADDED → [POOL_READY]
-[POOL_READY] → last RECEIVER_REMOVED → [NO_POOL]
-```
-
-### 4.2 서비스 풀 구조
-- 서비스별 ROUTER 소켓 1개
-- 모든 Receiver endpoint에 connect
-- routing_id 기반 대상 지정
-
-### 4.3 요청-응답 매핑
-- request_id (uint64_t) 자동 생성
-- pending_requests 맵에 저장
-- 응답 수신 시 request_id로 매핑
-
-## 5. Receiver 내부 구현
-
-> **참고**: receiver 역할은 `gateway_t`로 통합되었다.
-> 별도 `receiver_t` 클래스는 없다. 현재 gateway 내부는
-> `gateway_facade`, `gateway_lifecycle`, `gateway_pool`, `gateway_socket`,
-> `gateway_monitor`, `gateway_refresh` 모듈로 분리되어 있다.
-> 상세는 [POSD 모듈 구조](posd-module-structure.ko.md)를 참고.
-
-### 5.1 상태 머신
-```
-[INIT] → bind() → [BOUND] → connect_registry() → [CONNECTED]
-→ register() → [REGISTERED] → heartbeat → [REGISTERED]
-→ unregister()/timeout → [UNREGISTERED]
-```
-
-### 5.2 Receiver 식별
-- 기본 키: service_name + advertise_endpoint
-- 동일 키 재등록 시 갱신 (routing_id/weight/heartbeat)
-
-### 5.3 Registry Failover
-- 단일 활성 Registry + 장애 시 재등록
-- 즉시 시도, 연속 실패 시 지수 백오프 (200ms~5s, ±20% 지터)
-- 라운드로빈 Registry 순회
-
-## 6. 메시지 프로토콜
-
-### 6.1 프레임 구조
+### 4.1 프레임 구조
 ```
 Frame 0: msgId (uint16_t)
 Frame 1~N: Payload (가변)
 ```
 
-### 6.2 메시지 타입
+### 4.2 메시지 타입
 
 | msgId | 이름 | 방향 |
 |-------|------|------|
@@ -193,18 +147,15 @@ Frame 1~N: Payload (가변)
 | 0x0004 | HEARTBEAT | Service → Registry |
 | 0x0005 | SERVICE_LIST | Registry → Discovery |
 | 0x0006 | REGISTRY_SYNC | Registry → Registry |
-| 0x0007 | UPDATE_WEIGHT | Service → Registry |
+| 0x0007 | UPDATE_ATTRIBUTES | Service → Registry |
 | 0x0008 | BOOTSTRAP_REQ | Discovery → Registry |
 | 0x0009 | BOOTSTRAP_REP | Registry → Discovery |
 | 0x000A | TOPOLOGY_REPORT | Discovery → Registry |
 | 0x000B | TOPOLOGY_QUERY | Client → Registry |
 | 0x000C | TOPOLOGY_REPLY | Registry → Client |
 | 0x000D | UNREGISTER_ACK | Registry → Service |
-| 0x000E | GATEWAY_PEER_REPORT | Discovery → Registry |
-| 0x000F | GATEWAY_PEER_QUERY | Client → Registry |
-| 0x0010 | GATEWAY_PEER_REPLY | Registry → Client |
 
-### 6.3 SERVICE_LIST 포맷
+### 4.3 SERVICE_LIST 포맷
 ```
 Frame 0: msgId = 0x0005
 Frame 1: registry_id (uint32_t)
@@ -219,15 +170,7 @@ Frame 4~N: 서비스 엔트리 (service_count만큼 반복)
       routing_id, weight (uint32_t)
 ```
 
-### 6.4 비즈니스 메시지 (Gateway ↔ Gateway)
-```
-Frame 0: routing_id
-Frame 1: request_id (uint64_t)
-Frame 2: msgId (uint16_t)
-Frame 3~N: Payload
-```
-
-## 7. SPOT 내부 구현
+## 5. SPOT 내부 구현
 
 ### 7.1 구조
 - `spot_node_t` -- 네트워크 제어

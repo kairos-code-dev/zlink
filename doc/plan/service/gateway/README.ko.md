@@ -3,6 +3,7 @@
 기존 `gateway 제거 및 socket metadata 공유` 논의를
 상세 plan 2개와 execution guide / 실행 스크립트로 정리했다.
 현재 작업 순서는 `gateway` 삭제 선행으로 고정한다.
+현재 구현 기준으로 execution guide의 `5.1`~`5.8`은 모두 반영됐다.
 
 ## 권장 작업 순서
 
@@ -29,5 +30,10 @@
 
 - 랄프 루프로 작업을 밀고 싶으면
   [`run_gateway_removal_metadata_execution.sh`](./run_gateway_removal_metadata_execution.sh)를 사용한다.
-- 자동 실행의 authority는
-  [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md) 하나로 본다.
+- 자동 실행에서도 authority는 하나가 아니다.
+- 실행 순서, 완료 판정, commit/push 기준은
+  [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)가 고정한다.
+- 실제 구현 범위와 설계 intent는
+  [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md),
+  [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+  를 함께 기준으로 확인한다.

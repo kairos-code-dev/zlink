@@ -11,6 +11,7 @@
 #include "services/common/service_runtime_base.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/spot/spot_internal_receiver.hpp"
+#include "services/spot/spot_peer_state.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
@@ -157,6 +158,8 @@ class spot_node_t : public discovery_observer_t
                                      bool lost_transition);
     void schedule_subscription_ready_refresh ();
     void schedule_pub_delivery_ready_refresh ();
+    void clear_peer_readiness_locked (
+      std::vector<std::pair<std::string, uint32_t> > *pub_ready_updates_out_);
     void queue_all_subscription_ready_filters ();
     void queue_subscription_ready_filter (const std::string &raw_filter_);
     void emit_pending_subscription_ready_events ();
@@ -195,31 +198,10 @@ class spot_node_t : public discovery_observer_t
     uint64_t _connected_peer_version_seen;
 
     std::string _bound_endpoint;
-    std::set<std::string> _manual_peer_endpoints;
-    std::set<std::string> _active_peer_endpoints;
-    std::set<std::string> _connected_peer_endpoints;
-    std::set<std::string> _discovery_peer_endpoints;
-    std::set<std::string> _pending_subscription_ready_filters;
-    std::map<std::string, std::set<std::string> > _pub_delivery_ready_sources;
-    std::map<std::string, uint32_t> _pending_pub_delivery_ready_counts;
-    struct peer_observation_t
-    {
-        peer_observation_t () : last_changed_ms (0), connected_since_ms (0) {}
-
-        uint64_t last_changed_ms;
-        uint64_t connected_since_ms;
-    };
-    std::map<std::string, peer_observation_t> _peer_observations;
+    spot_peer_state_t _peer_state;
     std::map<std::string, uint64_t> _subject_last_changed_ms;
     int _last_summary_error;
     uint64_t _summary_last_changed_ms;
-    bool _subscription_ready_refresh_pending;
-    unsigned int _subscription_ready_refresh_holdoff_ticks;
-    bool _subscription_replay_pending;
-    unsigned int _subscription_replay_attempts;
-    unsigned int _subscription_replay_holdoff_ticks;
-    bool _pub_delivery_ready_refresh_pending;
-    unsigned int _pub_delivery_ready_refresh_holdoff_ticks;
 
     discovery_t *_discovery;
     std::string _discovery_service;

@@ -29,10 +29,28 @@ struct discovery_access_t
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
+    static int get_option (discovery_t *discovery_,
+                           int option_,
+                           void *optval_,
+                           size_t *optvallen_);
     static int set_routing_id (discovery_t *discovery_,
                                const void *data_,
                                size_t size_);
     static int routing_id (discovery_t *discovery_, zlink_routing_id_t *out_);
+    static int set_value (discovery_t *discovery_, int64_t value_);
+    static int get_value (discovery_t *discovery_, int64_t *value_out_);
+    static int set_metadata (discovery_t *discovery_,
+                             const void *data_,
+                             size_t size_);
+    static int get_metadata (discovery_t *discovery_,
+                             zlink_msg_t *metadata_out_);
+    static int member_peers (discovery_t *discovery_,
+                             zlink_member_peer_entry_t *entries_,
+                             size_t *count_);
+    static int member_peer_metadata (discovery_t *discovery_,
+                                     uint16_t service_role_,
+                                     const char *endpoint_,
+                                     zlink_msg_t *metadata_out_);
     static int destroy (discovery_t *discovery_);
     static void *monitor_open (discovery_t *discovery_, int events_);
     static void set_summary_enabled (discovery_t *discovery_, bool enabled_);

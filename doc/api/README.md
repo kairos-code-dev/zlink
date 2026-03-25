@@ -21,7 +21,6 @@ constant exported by `<zlink.h>`.
 | Events | [events.md](events.md) | Canonical event catalog and readiness semantics |
 | Registry | [registry.md](registry.md) | Service registry creation, configuration, topology, and clustering |
 | Discovery | [discovery.md](discovery.md) | Service discovery, subscription, and peer lookup |
-| Gateway | [gateway.md](gateway.md) | Service-bound load-balanced request/reply |
 | SPOT | [spot.md](spot.md) | Topic-based PUB/SUB nodes and unified spot facades |
 | Proxy & Utilities | [polling.md](polling.md) | Proxy helpers and capability query |
 | Utilities | [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |

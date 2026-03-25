@@ -5,9 +5,9 @@
 Discovery는 Registry 브로드캐스트를 구독하고 로컬 서비스 디렉터리를 유지하는
 클라이언트 측 서비스 뷰입니다. 애플리케이션은 Discovery를 사용하여 Registry에
 직접 연락하지 않고도 서비스 이름으로 사용 가능한 프로바이더를 조회합니다.
-Discovery는 연결된 서비스의 lifecycle owner 역할을 합니다 — Gateway, SPOT
-Node, 그리고 raw 소켓 패밀리(ROUTER/DEALER/PUB/SUB) 모두 프로바이더 등록,
-피어 갱신, 종료를 자신의 Discovery 인스턴스에 위임합니다.
+Discovery는 연결된 서비스의 lifecycle owner 역할을 합니다 — SPOT Node와
+raw 소켓 패밀리(ROUTER/DEALER/PUB/SUB) 모두 프로바이더 등록, 피어 갱신,
+종료를 자신의 Discovery 인스턴스에 위임합니다.
 
 ## 스레드 안전성 요약
 
@@ -47,7 +47,6 @@ Node, 그리고 raw 소켓 패밀리(ROUTER/DEALER/PUB/SUB) 모두 프로바이�
 ```c
 typedef enum zlink_service_type_t
 {
-    ZLINK_SERVICE_TYPE_GATEWAY = 0x3001,
     ZLINK_SERVICE_TYPE_SPOT    = 0x3002,
     ZLINK_SERVICE_TYPE_SOCKET  = 0x3003
 } zlink_service_type_t;
@@ -55,7 +54,6 @@ typedef enum zlink_service_type_t
 
 | 상수 | 설명 |
 |------|------|
-| `ZLINK_SERVICE_TYPE_GATEWAY` | Gateway 서비스를 위한 Discovery 타입 |
 | `ZLINK_SERVICE_TYPE_SPOT` | SPOT 노드 서비스를 위한 Discovery 타입 |
 | `ZLINK_SERVICE_TYPE_SOCKET` | raw 소켓 패밀리(ROUTER/DEALER/PUB/SUB)를 위한 Discovery 타입 |
 
@@ -65,7 +63,6 @@ typedef enum zlink_service_type_t
 typedef enum zlink_service_role_t
 {
     ZLINK_SERVICE_ROLE_INVALID = 0,
-    ZLINK_SERVICE_ROLE_GATEWAY = 1,
     ZLINK_SERVICE_ROLE_SPOT    = 2,
     ZLINK_SERVICE_ROLE_ROUTER  = 3,
     ZLINK_SERVICE_ROLE_DEALER  = 4,
@@ -76,16 +73,15 @@ typedef enum zlink_service_role_t
 
 | 상수 | 설명 |
 |------|------|
-| `ZLINK_SERVICE_ROLE_GATEWAY` | Gateway 서비스 타입의 고정 역할 |
 | `ZLINK_SERVICE_ROLE_SPOT` | SPOT 서비스 타입의 고정 역할 |
 | `ZLINK_SERVICE_ROLE_ROUTER` | 소켓 패밀리: ROUTER 소켓 |
 | `ZLINK_SERVICE_ROLE_DEALER` | 소켓 패밀리: DEALER 소켓 |
 | `ZLINK_SERVICE_ROLE_PUB` | 소켓 패밀리: PUB 소켓 |
 | `ZLINK_SERVICE_ROLE_SUB` | 소켓 패밀리: SUB 소켓 |
 
-Gateway와 SPOT은 고정 역할을 가진다(서비스 타입에서 자동 파생). 소켓 패밀리
-서비스는 소켓 타입에 맞는 명시적 역할이 필요하다. 역할 매칭 규칙: PUB은 SUB과
-짝, ROUTER와 DEALER는 서로 짝을 이룬다.
+SPOT은 고정 역할을 가진다(서비스 타입에서 자동 파생). 소켓 패밀리 서비스는
+소켓 타입에 맞는 명시적 역할이 필요하다. 역할 매칭 규칙: PUB은 SUB과 짝,
+ROUTER와 DEALER는 서로 짝을 이룬다.
 
 ## 함수
 
@@ -104,9 +100,9 @@ void *zlink_discovery_new (void *ctx,
 없습니다. 모든 subscribe/get/count 조회는 해당 논리 서비스 뷰 안에서
 동작합니다.
 
-Gateway 서비스에는 `ZLINK_SERVICE_TYPE_GATEWAY`를, SPOT 노드 서비스에는
-`ZLINK_SERVICE_TYPE_SPOT`을, raw 소켓 패밀리 서비스(ROUTER/DEALER/PUB/SUB)
-에는 `ZLINK_SERVICE_TYPE_SOCKET`을 사용합니다.
+SPOT 노드 서비스에는 `ZLINK_SERVICE_TYPE_SPOT`을, raw 소켓 패밀리
+서비스(ROUTER/DEALER/PUB/SUB)에는 `ZLINK_SERVICE_TYPE_SOCKET`을
+사용합니다.
 
 **매개변수:**
 - `ctx` -- Context 핸들.
@@ -246,7 +242,7 @@ int zlink_discovery_destroy (void **discovery_p);
 
 내부 SUB 소켓을 닫고, 모든 캐시된 데이터를 해제하며, Discovery 인스턴스를
 해제합니다. Discovery를 파괴하면 이 서비스 뷰에 lifecycle 소유권을 위임한
-모든 참여자(Gateway, SPOT Node, 소켓)도 함께 종료됩니다. 파괴 후
+모든 참여자(SPOT Node, 소켓)도 함께 종료됩니다. 파괴 후
 `*discovery_p`의 포인터는 `NULL`로 설정됩니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).

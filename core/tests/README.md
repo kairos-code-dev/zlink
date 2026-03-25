@@ -147,12 +147,12 @@ ctest --test-dir core/build \
   the remaining execution guide. It repeatedly runs `codex exec`, tells Codex
   to continue from the first incomplete guide item, and stops only on exact
   sentinel output (`미적용 사항이 없습니다.` or `사용자 입력 필요: ...`).
-- The stress lane currently covers discovery control-path teardown,
-  discovery lifecycle/control-path queries, and spot monitor/runtime
-  lifecycle cases.
+- The stress lane currently covers monitor contract regressions and the
+  representative SPOT monitor/readiness lifecycle cases that are still
+  registered in CTest.
 - `run_thread_safe_contract_perf.sh` executes the raw/spot 1/4/16/64 handle
   scaling contract cases with a configurable acceptance ratio.
 - `run_thread_safe_contract_tsan.sh` configures a dedicated TSan build and
-  runs the thread-safe regression lane against that build tree, including the
-  discovery control-path and spot monitor-child/self-close regressions.
+  runs the same monitor/SPOT thread-safe regression lane against that build
+  tree.
 - CURVE/libsodium and GSSAPI are not supported in zlink.

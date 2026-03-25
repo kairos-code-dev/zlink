@@ -45,6 +45,15 @@ class registry_t
     int topology_query (const zlink_registry_topology_filter_t *filter_,
                         zlink_registry_topology_entry_t *entries_,
                         size_t *count_);
+    int member_peers (zlink_service_type_t service_type_,
+                      const char *service_name_,
+                      zlink_member_peer_entry_t *entries_,
+                      size_t *count_);
+    int member_peer_metadata (zlink_service_type_t service_type_,
+                              const char *service_name_,
+                              uint16_t service_role_,
+                              const char *endpoint_,
+                              zlink_msg_t *metadata_out_);
     int status_snapshot (zlink_registry_status_t *out_);
     int service_summary_snapshot (
       const zlink_registry_service_summary_filter_t *filter_,
@@ -75,7 +84,8 @@ class registry_t
         uint16_t service_role;
         std::string endpoint;
         zlink_routing_id_t routing_id;
-        uint32_t weight;
+        int64_t value;
+        std::vector<unsigned char> metadata;
         uint64_t registered_at;
         uint64_t last_heartbeat;
         uint32_t source_registry;
@@ -148,9 +158,10 @@ class registry_t
                                 const zlink_msg_t *frames_,
                                 size_t frame_count_,
                                 const zlink_routing_id_t &sender_id_);
-    void handle_update_weight (void *router_, const zlink_msg_t *frames_,
-                               size_t frame_count_,
-                               const zlink_routing_id_t &sender_id_);
+    void handle_update_attributes (void *router_,
+                                   const zlink_msg_t *frames_,
+                                   size_t frame_count_,
+                                   const zlink_routing_id_t &sender_id_);
     void send_register_ack (void *router_,
                             const zlink_routing_id_t &sender_id_,
                             uint8_t status_,
@@ -226,6 +237,7 @@ class registry_t
     std::map<topology_key_t, topology_entry_t> _topology;
     std::map<uint32_t, uint64_t> _peer_seq;
     std::map<uint32_t, uint64_t> _peer_last_seen;
+    size_t _metadata_max_size;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (registry_t)
 };

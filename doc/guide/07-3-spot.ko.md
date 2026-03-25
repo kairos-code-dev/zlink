@@ -295,4 +295,4 @@ zlink_discovery_destroy(&discovery);
 > `zlink_discovery_destroy()`가 attach된 참여자에게 종료를 전파한다.
 
 ---
-[← Gateway](07-2-gateway.ko.md) | [Registry →](07-4-registry.ko.md) | [Routing ID →](08-routing-id.ko.md)
+[← Discovery](07-1-discovery.ko.md) | [Registry →](07-4-registry.ko.md) | [Routing ID →](08-routing-id.ko.md)

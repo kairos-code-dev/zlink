@@ -21,7 +21,7 @@ static const uint16_t msg_unregister = 0x0003;
 static const uint16_t msg_heartbeat = 0x0004;
 static const uint16_t msg_service_list = 0x0005;
 static const uint16_t msg_registry_sync = 0x0006;
-static const uint16_t msg_update_weight = 0x0007;
+static const uint16_t msg_update_attributes = 0x0007;
 static const uint16_t msg_bootstrap_req = 0x0008;
 static const uint16_t msg_bootstrap_rep = 0x0009;
 static const uint16_t msg_topology_report = 0x000A;
@@ -158,6 +158,11 @@ inline int send_u64 (void *socket_, uint64_t value_, int flags_)
     return send_frame (socket_, &value_, sizeof (value_), flags_);
 }
 
+inline int send_i64 (void *socket_, int64_t value_, int flags_)
+{
+    return send_frame (socket_, &value_, sizeof (value_), flags_);
+}
+
 inline int send_string (void *socket_, const std::string &value_, int flags_)
 {
     return send_frame (socket_, value_.empty () ? NULL : value_.data (),
@@ -200,6 +205,17 @@ inline bool read_u64 (const zlink_msg_t &msg_, uint64_t *out_)
         return false;
     memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)),
             sizeof (uint64_t));
+    return true;
+}
+
+inline bool read_i64 (const zlink_msg_t &msg_, int64_t *out_)
+{
+    if (!out_)
+        return false;
+    if (zlink_msg_size (&msg_) != sizeof (int64_t))
+        return false;
+    memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)),
+            sizeof (int64_t));
     return true;
 }
 

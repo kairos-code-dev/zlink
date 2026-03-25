@@ -398,6 +398,97 @@ static int bind_node (void *node_, int *port_seed_, char *endpoint_out_)
     return -1;
 }
 
+static void *create_registry (void *ctx_,
+                              int *port_seed_,
+                              char *pub_endpoint_out_,
+                              char *router_endpoint_out_)
+{
+    void *registry = zlink_registry_new (ctx_);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    for (int i = 0; i < 32; ++i) {
+        snprintf (pub_endpoint_out_, MAX_SOCKET_STRING, "tcp://127.0.0.1:%d",
+                  test_port ((*port_seed_)++));
+        snprintf (router_endpoint_out_, MAX_SOCKET_STRING, "tcp://127.0.0.1:%d",
+                  test_port ((*port_seed_)++));
+        if (zlink_registry_bind (registry, pub_endpoint_out_,
+                                 router_endpoint_out_)
+            == 0) {
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_registry_set_broadcast_interval (registry, 50));
+            return registry;
+        }
+        if (zlink_errno () != EADDRINUSE)
+            break;
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    return NULL;
+}
+
+static bool connect_discovery_registry_until_ready (void *discovery_,
+                                                    const char *endpoint_,
+                                                    int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (zlink_discovery_connect_registry (discovery_, endpoint_) == 0)
+            return true;
+        msleep (20);
+    }
+    return false;
+}
+
+static bool wait_for_registry_member_count (void *registry_,
+                                            zlink_service_type_t service_type_,
+                                            const char *service_name_,
+                                            size_t expected_count_,
+                                            int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        size_t count = 0;
+        if (zlink_registry_member_peers (registry_, service_type_, service_name_,
+                                         NULL, &count)
+              == 0
+            && count == expected_count_) {
+            return true;
+        }
+        msleep (20);
+    }
+    return false;
+}
+
+static bool wait_for_discovery_member_count (void *discovery_,
+                                             size_t expected_count_,
+                                             int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        size_t count = 0;
+        if (zlink_discovery_member_peers (discovery_, NULL, &count) == 0
+            && count == expected_count_) {
+            return true;
+        }
+        msleep (20);
+    }
+    return false;
+}
+
+static const zlink_member_peer_entry_t *find_member_peer (
+  const std::vector<zlink_member_peer_entry_t> &entries_,
+  const char *endpoint_)
+{
+    for (size_t i = 0; i < entries_.size (); ++i) {
+        if (strcmp (entries_[i].endpoint, endpoint_) == 0)
+            return &entries_[i];
+    }
+    return NULL;
+}
+
 static int publish_text (void *subject_,
                          const char *topic_,
                          const char *payload_)
@@ -1078,6 +1169,172 @@ static void test_spot_node_default_handle_owner_keeps_defaults_private ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_discovery_local_value_metadata_contract ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "metadata-local");
+    TEST_ASSERT_NOT_NULL (discovery);
+
+    int64_t value = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_value (discovery, &value));
+    TEST_ASSERT_EQUAL_INT64 (0, value);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_set_value (discovery, -7));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_value (discovery, &value));
+    TEST_ASSERT_EQUAL_INT64 (-7, value);
+
+    size_t metadata_max_size = 4;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
+                        &metadata_max_size, sizeof (metadata_max_size)));
+    size_t read_size = sizeof (metadata_max_size);
+    size_t metadata_max_size_read = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
+                        &metadata_max_size_read, &read_size));
+    TEST_ASSERT_EQUAL_UINT (sizeof (metadata_max_size_read), read_size);
+    TEST_ASSERT_EQUAL_UINT (metadata_max_size, metadata_max_size_read);
+
+    zlink_msg_t metadata;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_get_metadata (discovery, &metadata));
+    TEST_ASSERT_EQUAL_UINT (0, zlink_msg_size (&metadata));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&metadata));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_set_metadata (discovery, "abcd", 4));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_get_metadata (discovery, &metadata));
+    TEST_ASSERT_EQUAL_UINT (4, zlink_msg_size (&metadata));
+    TEST_ASSERT_EQUAL_MEMORY ("abcd", zlink_msg_data (&metadata), 4);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&metadata));
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1,
+                           zlink_discovery_set_metadata (discovery, "abcde", 5));
+    TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_registry_and_discovery_member_peer_queries ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    int registry_seed = next_port_seed ();
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    void *registry =
+      create_registry (ctx, &registry_seed, registry_pub, registry_router);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    void *discovery_a =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-metadata");
+    void *discovery_b =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-metadata");
+    TEST_ASSERT_NOT_NULL (discovery_a);
+    TEST_ASSERT_NOT_NULL (discovery_b);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_set_value (discovery_a, 11));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_set_metadata (discovery_a, "alpha", 5));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_set_value (discovery_b, 22));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_set_metadata (discovery_b, NULL, 0));
+
+    TEST_ASSERT_TRUE (connect_discovery_registry_until_ready (
+      discovery_a, registry_router, 2000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_until_ready (
+      discovery_b, registry_router, 2000));
+
+    void *node_a = create_node (ctx, "spot-metadata");
+    void *node_b = create_node (ctx, "spot-metadata");
+    TEST_ASSERT_NOT_NULL (node_a);
+    TEST_ASSERT_NOT_NULL (node_b);
+
+    int port_seed = next_port_seed ();
+    char endpoint_a[MAX_SOCKET_STRING];
+    char endpoint_b[MAX_SOCKET_STRING];
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (node_a, &port_seed, endpoint_a));
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (node_b, &port_seed, endpoint_b));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_attach_discovery (node_a, discovery_a));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_attach_discovery (node_b, discovery_b));
+
+    TEST_ASSERT_TRUE (wait_for_registry_member_count (
+      registry, ZLINK_SERVICE_TYPE_SPOT, "spot-metadata", 2, 5000));
+    TEST_ASSERT_TRUE (
+      wait_for_discovery_member_count (discovery_a, 1, 5000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (default_sub_handle (node_b), "topic.metadata"));
+    TEST_ASSERT_TRUE (wait_for_pub_ready (node_a));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (node_a, "topic.metadata", "member-query"));
+    TEST_ASSERT_TRUE (wait_for_subscribe_payload (
+      node_b, "topic.metadata", "member-query", 5000));
+
+    size_t count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_member_peers (
+      registry, ZLINK_SERVICE_TYPE_SPOT, "spot-metadata", NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (2, count);
+    std::vector<zlink_member_peer_entry_t> members (count);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_member_peers (
+      registry, ZLINK_SERVICE_TYPE_SPOT, "spot-metadata", &members[0], &count));
+    TEST_ASSERT_EQUAL_UINT (2, count);
+
+    const zlink_member_peer_entry_t *member_a =
+      find_member_peer (members, endpoint_a);
+    const zlink_member_peer_entry_t *member_b =
+      find_member_peer (members, endpoint_b);
+    TEST_ASSERT_NOT_NULL (member_a);
+    TEST_ASSERT_NOT_NULL (member_b);
+    TEST_ASSERT_EQUAL_INT64 (11, member_a->value);
+    TEST_ASSERT_EQUAL_INT64 (22, member_b->value);
+
+    count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_member_peers (discovery_a, NULL, &count));
+    TEST_ASSERT_EQUAL_UINT (1, count);
+    std::vector<zlink_member_peer_entry_t> remote_members (count);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_member_peers (
+      discovery_a, &remote_members[0], &count));
+    TEST_ASSERT_EQUAL_UINT (1, count);
+    TEST_ASSERT_EQUAL_STRING (endpoint_b, remote_members[0].endpoint);
+    TEST_ASSERT_EQUAL_INT64 (22, remote_members[0].value);
+
+    zlink_msg_t metadata;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_member_peer_metadata (
+      registry, ZLINK_SERVICE_TYPE_SPOT, "spot-metadata",
+      member_a->service_role, endpoint_a, &metadata));
+    TEST_ASSERT_EQUAL_UINT (5, zlink_msg_size (&metadata));
+    TEST_ASSERT_EQUAL_MEMORY ("alpha", zlink_msg_data (&metadata), 5);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&metadata));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_member_peer_metadata (
+      discovery_a, remote_members[0].service_role, endpoint_b, &metadata));
+    TEST_ASSERT_EQUAL_UINT (0, zlink_msg_size (&metadata));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&metadata));
+
+    destroy_node_and_default_handle (&node_b);
+    destroy_node_and_default_handle (&node_a);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 static bool should_run_spot_introspection_test (const char *name_)
 {
     const char *selected = getenv ("ZLINK_TEST_CASE");
@@ -1105,6 +1362,8 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_default_handle_owner_keeps_defaults_private);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_snapshot_status_peers_subjects);
+    RUN_SPOT_INTROSPECTION_TEST (test_discovery_local_value_metadata_contract);
+    RUN_SPOT_INTROSPECTION_TEST (test_registry_and_discovery_member_peer_queries);
 #undef RUN_SPOT_INTROSPECTION_TEST
     return UNITY_END ();
 }

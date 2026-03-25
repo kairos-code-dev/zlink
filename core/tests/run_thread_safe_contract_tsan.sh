@@ -8,18 +8,13 @@ BUILD_DIR="${ROOT_DIR}/core/build-tsan"
 GENERATOR_ARGS=()
 
 TEST_NAMES=(
-  test_service_introspection_discovery_control_path
-  test_service_introspection_discovery_ordering
-  test_service_introspection_discovery_self_close
-  test_spot_service_introspection_runtime_reads
-  test_spot_service_introspection_monitor_child_destroy
-  test_spot_service_introspection_send_ready_self_close
-  test_spot_service_introspection_monitor_self_close
-  test_spot_service_introspection_node_monitor_self_close
-  test_spot_service_introspection_child_open_after_close
-  test_service_introspection_registry_control_path
-  test_spot_service_introspection_lifecycle_contract
-  test_spot_service_introspection_handle_lifecycle
+  test_monitor_enhanced
+  test_monitor_perf_contract
+  test_spot_service_introspection_monitors
+  test_spot_service_introspection_late_connect
+  test_spot_service_introspection_subscription_ready_loss
+  test_spot_service_introspection_handler_monitor_close
+  test_spot_service_introspection_snapshots
 )
 
 usage() {
@@ -70,7 +65,7 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DENABLE_TSAN=ON
 
 cmake --build "${BUILD_DIR}" -j"$(nproc)" \
-  --target test_spot_service_introspection test_service_introspection
+  --target test_monitor_enhanced test_monitor_perf_contract test_spot_service_introspection
 
 for test_name in "${TEST_NAMES[@]}"; do
   echo "=== TSAN ${test_name} ==="

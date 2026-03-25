@@ -112,6 +112,12 @@ class discovery_uplink_runtime_t
       std::vector<std::pair<std::string, socket_base_t *> > *control_dealers);
 
   private:
+    socket_base_t *create_uplink_dealer (discovery_t *owner_,
+                                         const std::string &uplink_endpoint_,
+                                         int linger_,
+                                         int sndtimeo_ms_,
+                                         int rcvtimeo_ms_,
+                                         bool use_bootstrap_routing_id_);
     std::set<std::string> _registry_uplink_endpoints;
     std::string _latest_registry_uplink_endpoint;
     std::map<std::string, socket_base_t *> _report_dealers;

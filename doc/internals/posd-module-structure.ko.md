@@ -28,14 +28,13 @@ API Facade (core/src/api/)
   ├─ context_api
   ├─ socket_api, socket_message_api
   ├─ message_api
-  ├─ service_api, service_*_api (gateway, spot, discovery, registry, ...)
+  ├─ service_api, service_*_api (spot, discovery, registry, ...)
   ├─ monitor_api, monitor_*_api
   ├─ poller_api
   └─ zlink_option, zlink_option_*_api
         │
         v
 Service Access Layer
-  ├─ gateway_access_t      (core/src/services/gateway/)
   ├─ discovery_access_t    (core/src/services/discovery/)
   ├─ registry_access_t     (core/src/services/discovery/)
   ├─ registry_query_access_t (core/src/services/discovery/)
@@ -44,8 +43,6 @@ Service Access Layer
         │
         v
 Service Runtime
-  ├─ Gateway:   gateway_facade, gateway_lifecycle, gateway_pool,
-  │             gateway_socket, gateway_monitor, gateway_refresh
   ├─ Discovery: discovery_bootstrap, discovery_state, discovery_update,
   │             discovery_uplink, discovery_registry_client
   ├─ SPOT:      spot_node, spot_pub, spot_sub (option, recv),
@@ -117,7 +114,6 @@ API facade의 규칙:
 
 | Access Seam | 위치 | 역할 |
 |-------------|------|------|
-| `gateway_access_t` | `services/gateway/` | Gateway lifecycle, send, bind/connect, option, TLS, monitor |
 | `discovery_access_t` | `services/discovery/` | Discovery lifecycle, connect_registry, option, monitor |
 | `registry_access_t` | `services/discovery/` | Registry lifecycle, bind, config, snapshot/query |
 | `registry_query_access_t` | `services/discovery/` | 원격 Registry topology query |
@@ -130,18 +126,6 @@ callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공
 ### 3.3 Service Runtime
 
 각 서비스의 concrete 구현. 공통 기반은 `services/common/`에 있다.
-
-**Gateway** (`services/gateway/`):
-
-| 모듈 | 역할 |
-|------|------|
-| `gateway_facade.cpp` | 외부 API 위임 처리 |
-| `gateway_lifecycle.cpp` | 생성/종료/attach 시퀀스 |
-| `gateway_pool.cpp` | 피어 풀 관리, 로드밸런싱 |
-| `gateway_socket.cpp` | 내부 ROUTER 소켓 wiring |
-| `gateway_monitor.cpp` | 서비스 모니터 이벤트 발행 |
-| `gateway_refresh.cpp` | Discovery 기반 피어 갱신 |
-| `routing_id_utils.hpp` | 공통 routing ID 보장 로직 (set/ensure) |
 
 **SPOT** (`services/spot/`):
 
@@ -216,8 +200,8 @@ Option은 세 카테고리로 분류되어 각 도메인 소유자가 validation
 
 #### Logical Multipart Send
 
-`multipart_send_txn.cpp/hpp`는 `zlink_send`, `gateway send/send_rid`,
-`spot publish`가 공통으로 사용하는 logical multipart send 모듈이다.
+`multipart_send_txn.cpp/hpp`는 `zlink_send`와 `spot publish`가 공통으로
+사용하는 logical multipart send 모듈이다.
 
 - nonblocking: one-shot 시도 + partial local state rollback
 - blocking: `sndtimeo` deadline까지 whole-message retry
@@ -256,7 +240,6 @@ core/src/
     common/       9 files — service_runtime_base, service_public_api_guard
     control/      2 files — service control runtime
     discovery/   23 files — discovery + registry access + socket attachment
-    gateway/     11 files — gateway facade/lifecycle/pool/socket/monitor/refresh
     spot/        29 files — node/pub/sub/data_plane/handle/subject_access
   transports/    — tcp/ipc/tls/ws/pgm
   utils/         — 도메인 무관 유틸리티

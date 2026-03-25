@@ -105,8 +105,10 @@ void registry_t::send_service_list (void *pub_)
                                              ZLINK_SNDMORE);
             discovery_protocol::send_routing_id (pub_, entry.routing_id,
                                                  ZLINK_SNDMORE);
-            discovery_protocol::send_u32 (pub_, entry.weight,
-                                          last_provider ? 0 : ZLINK_SNDMORE);
+            discovery_protocol::send_i64 (pub_, entry.value, ZLINK_SNDMORE);
+            discovery_protocol::send_frame (
+              pub_, entry.metadata.empty () ? NULL : &entry.metadata[0],
+              entry.metadata.size (), last_provider ? 0 : ZLINK_SNDMORE);
         }
 
         emitted++;
@@ -306,7 +308,7 @@ void registry_t::handle_peer (void *sub_)
         service_key.service_type = service_type;
         service_key.service_name = service_name;
         service_entry_t &service = incoming[service_key];
-        for (uint32_t p = 0; p < provider_count && index + 3 < frames.size ();
+        for (uint32_t p = 0; p < provider_count && index + 4 < frames.size ();
              ++p) {
             provider_entry_t entry;
             if (!discovery_protocol::read_u16 (frames[index++],
@@ -318,9 +320,18 @@ void registry_t::handle_peer (void *sub_)
             entry.endpoint = discovery_protocol::read_string (frames[index++]);
             discovery_protocol::read_routing_id (frames[index++],
                                                  &entry.routing_id);
-            uint32_t weight = 0;
-            discovery_protocol::read_u32 (frames[index++], &weight);
-            entry.weight = weight;
+            int64_t value = 0;
+            discovery_protocol::read_i64 (frames[index++], &value);
+            entry.value = value;
+            const size_t metadata_size = zlink_msg_size (&frames[index]);
+            entry.metadata.resize (metadata_size);
+            if (metadata_size > 0) {
+                memcpy (&entry.metadata[0],
+                        zlink_msg_data (const_cast<zlink_msg_t *> (
+                          &frames[index])),
+                        metadata_size);
+            }
+            ++index;
             entry.registered_at = now;
             entry.last_heartbeat = now;
             entry.source_registry = peer_registry_id;
@@ -364,7 +375,8 @@ void registry_t::handle_peer (void *sub_)
                         match =
                           cur.service_role == incoming_entry.service_role
                           &&
-                          cur.weight == incoming_entry.weight
+                          cur.value == incoming_entry.value
+                          && cur.metadata == incoming_entry.metadata
                           && cur.routing_id.size
                                == incoming_entry.routing_id.size
                           && (cur.routing_id.size == 0
@@ -496,9 +508,18 @@ void registry_t::handle_register (void *router_,
         return;
     }
 
-    uint32_t weight = 0;
+    int64_t value = 0;
     if (frame_count_ >= 6)
-        discovery_protocol::read_u32 (frames_[5], &weight);
+        discovery_protocol::read_i64 (frames_[5], &value);
+    std::vector<unsigned char> metadata;
+    if (frame_count_ >= 7) {
+        const size_t metadata_size = zlink_msg_size (&frames_[6]);
+        metadata.resize (metadata_size);
+        if (metadata_size > 0)
+            memcpy (&metadata[0],
+                    zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[6])),
+                    metadata_size);
+    }
 
     const uint64_t now = zlink::clock_t ().now_ms ();
 
@@ -513,7 +534,8 @@ void registry_t::handle_register (void *router_,
     entry.service_role = service_role;
     entry.endpoint = endpoint;
     entry.routing_id = sender_id_;
-    entry.weight = weight;
+    entry.value = value;
+    entry.metadata = metadata;
     entry.registered_at = now;
     entry.last_heartbeat = now;
     entry.source_registry = _registry_id;
@@ -618,10 +640,10 @@ void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
     pit->second.last_heartbeat = zlink::clock_t ().now_ms ();
 }
 
-void registry_t::handle_update_weight (void *router_,
-                                       const zlink_msg_t *frames_,
-                                       size_t frame_count_,
-                                       const zlink_routing_id_t &sender_id_)
+void registry_t::handle_update_attributes (void *router_,
+                                           const zlink_msg_t *frames_,
+                                           size_t frame_count_,
+                                           const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 6) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
@@ -648,8 +670,17 @@ void registry_t::handle_update_weight (void *router_,
       discovery_protocol::read_string (frames_[3]);
     const std::string endpoint =
       discovery_protocol::read_string (frames_[4]);
-    uint32_t weight = 0;
-    discovery_protocol::read_u32 (frames_[5], &weight);
+    int64_t value = 0;
+    discovery_protocol::read_i64 (frames_[5], &value);
+    std::vector<unsigned char> metadata;
+    if (frame_count_ >= 7) {
+        const size_t metadata_size = zlink_msg_size (&frames_[6]);
+        metadata.resize (metadata_size);
+        if (metadata_size > 0)
+            memcpy (&metadata[0],
+                    zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[6])),
+                    metadata_size);
+    }
 
     service_key_t service_key;
     service_key.service_type = service_type;
@@ -676,7 +707,8 @@ void registry_t::handle_update_weight (void *router_,
         return;
     }
 
-    pit->second.weight = weight;
+    pit->second.value = value;
+    pit->second.metadata = metadata;
     _list_seq++;
     send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
 }

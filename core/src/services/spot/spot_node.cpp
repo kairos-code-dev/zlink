@@ -220,13 +220,6 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _lifecycle (ctx_),
     _runtime (NULL),
     _connected_peer_version_seen (0),
-    _subscription_ready_refresh_pending (false),
-    _subscription_ready_refresh_holdoff_ticks (0),
-    _subscription_replay_pending (false),
-    _subscription_replay_attempts (0),
-    _subscription_replay_holdoff_ticks (0),
-    _pub_delivery_ready_refresh_pending (false),
-    _pub_delivery_ready_refresh_holdoff_ticks (0),
     _discovery (NULL),
     _discovery_seq (0),
     _registered (false),
@@ -405,9 +398,9 @@ void spot_node_t::note_local_sub_filters_changed (bool had_filters_,
 std::string spot_node_t::first_active_peer_endpoint () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    if (_active_peer_endpoints.empty ())
+    if (_peer_state.active_endpoints.empty ())
         return std::string ();
-    return *_active_peer_endpoints.begin ();
+    return *_peer_state.active_endpoints.begin ();
 }
 
 int spot_node_t::ensure_healthy () const

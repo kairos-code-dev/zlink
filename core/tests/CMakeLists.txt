@@ -512,7 +512,9 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_publish_rollback_preserves_next_topic_boundary
     test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_unified_spot_basic
-    test_spot_node_snapshot_status_peers_subjects)
+    test_spot_node_snapshot_status_peers_subjects
+    test_discovery_local_value_metadata_contract
+    test_registry_and_discovery_member_peer_queries)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
@@ -525,7 +527,9 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_publish_rollback=test_spot_publish_rollback_preserves_next_topic_boundary
     test_spot_service_introspection_default_handle_owner=test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
-    test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects)
+    test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects
+    test_spot_service_introspection_metadata_local=test_discovery_local_value_metadata_contract
+    test_spot_service_introspection_member_peers=test_registry_and_discovery_member_peer_queries)
 
 set(SPOT_PUBSUB_CASES
     test_spot_peer_ipc

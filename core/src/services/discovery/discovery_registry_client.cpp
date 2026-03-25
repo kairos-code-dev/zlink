@@ -226,7 +226,8 @@ static uint16_t resolve_registered_service_role_local (uint16_t service_type_,
 int discovery_t::register_service (uint16_t service_type_,
                                    const char *service_name_,
                                    const char *endpoint_,
-                                   uint32_t weight_,
+                                   int64_t value_,
+                                   const std::vector<unsigned char> *metadata_,
                                    std::string *resolved_endpoint_out_,
                                    const zlink_routing_id_t *routing_id_,
                                    uint16_t service_role_)
@@ -271,7 +272,11 @@ int discovery_t::register_service (uint16_t service_type_,
              < 0
         || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
              < 0
-        || discovery_protocol::send_u32 (dealer, weight_, 0) < 0) {
+        || discovery_protocol::send_i64 (dealer, value_, ZLINK_SNDMORE) < 0
+        || discovery_protocol::send_frame (
+             dealer, metadata_ && !metadata_->empty () ? &(*metadata_)[0] : NULL,
+             metadata_ ? metadata_->size () : 0, 0)
+             < 0) {
         (void) close_transient_dealer_local (_ctx, dealer);
         return -1;
     }
@@ -315,7 +320,8 @@ int discovery_t::register_service (uint16_t service_type_,
         service.service_name = service_name_;
         service.endpoint = key.endpoint;
         service.uplink_endpoint = uplink;
-        service.weight = weight_;
+        service.value = value_;
+        service.metadata = metadata_ ? *metadata_ : std::vector<unsigned char> ();
         service.last_heartbeat_ms = clock_t ().now_ms ();
     }
 
@@ -324,11 +330,12 @@ int discovery_t::register_service (uint16_t service_type_,
     return 0;
 }
 
-int discovery_t::update_service_weight (uint16_t service_type_,
-                                        const char *service_name_,
-                                        const char *endpoint_,
-                                        uint32_t weight_,
-                                        uint16_t service_role_)
+int discovery_t::update_service_attributes (uint16_t service_type_,
+                                            const char *service_name_,
+                                            const char *endpoint_,
+                                            int64_t value_,
+                                            const std::vector<unsigned char> *metadata_,
+                                            uint16_t service_role_)
 {
     if (!service_name_ || service_name_[0] == '\0' || !endpoint_
         || endpoint_[0] == '\0') {
@@ -368,13 +375,13 @@ int discovery_t::update_service_weight (uint16_t service_type_,
                                         &dealer)
         != 0) {
         discovery_debugf_local (
-          "update_service_weight pollout timeout uplink=%s", uplink.c_str ());
+          "update_service_attributes pollout timeout uplink=%s",
+          uplink.c_str ());
         return -1;
     }
 
-    const uint32_t value = weight_;
     if (discovery_protocol::send_u16 (
-          dealer, discovery_protocol::msg_update_weight, ZLINK_SNDMORE)
+          dealer, discovery_protocol::msg_update_attributes, ZLINK_SNDMORE)
           < 0
         || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
              < 0
@@ -385,7 +392,11 @@ int discovery_t::update_service_weight (uint16_t service_type_,
              < 0
         || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
              < 0
-        || discovery_protocol::send_u32 (dealer, value, 0) < 0) {
+        || discovery_protocol::send_i64 (dealer, value_, ZLINK_SNDMORE) < 0
+        || discovery_protocol::send_frame (
+             dealer, metadata_ && !metadata_->empty () ? &(*metadata_)[0] : NULL,
+             metadata_ ? metadata_->size () : 0, 0)
+             < 0) {
         (void) close_transient_dealer_local (_ctx, dealer);
         return -1;
     }
@@ -397,7 +408,7 @@ int discovery_t::update_service_weight (uint16_t service_type_,
                                &status, &resolved, &error)
         != 0) {
         discovery_debugf_local (
-          "update_service_weight ack recv failed errno=%d", errno);
+          "update_service_attributes ack recv failed errno=%d", errno);
         (void) close_transient_dealer_local (_ctx, dealer);
         return -1;
     }
@@ -405,12 +416,13 @@ int discovery_t::update_service_weight (uint16_t service_type_,
     if (status != 0) {
         if (status == -1) {
             discovery_debugf_local (
-              "update_service_weight ack timeout uplink=%s", uplink.c_str ());
+              "update_service_attributes ack timeout uplink=%s",
+              uplink.c_str ());
             errno = EAGAIN;
             return -1;
         }
         discovery_debugf_local (
-          "update_service_weight rejected status=%d error=%s", status,
+          "update_service_attributes rejected status=%d error=%s", status,
           error.c_str ());
         errno = EINVAL;
         return -1;
@@ -424,8 +436,11 @@ int discovery_t::update_service_weight (uint16_t service_type_,
     key.endpoint = endpoint_;
     std::map<registered_service_key_t, registered_service_t>::iterator it =
       _registered_services.find (key);
-    if (it != _registered_services.end ())
-        it->second.weight = value;
+    if (it != _registered_services.end ()) {
+        it->second.value = value_;
+        it->second.metadata =
+          metadata_ ? *metadata_ : std::vector<unsigned char> ();
+    }
     return 0;
 }
 

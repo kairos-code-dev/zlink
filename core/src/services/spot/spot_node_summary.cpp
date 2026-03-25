@@ -265,18 +265,18 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
         local_endpoint =
           !_advertise_endpoint.empty () ? _advertise_endpoint : _bound_endpoint;
         out_->configured_peer_count =
-          static_cast<uint32_t> (_manual_peer_endpoints.size ()
-                                 + _discovery_peer_endpoints.size ());
+          static_cast<uint32_t> (_peer_state.manual_endpoints.size ()
+                                 + _peer_state.discovery_endpoints.size ());
         {
-            std::set<std::string> union_peers = _manual_peer_endpoints;
-            union_peers.insert (_discovery_peer_endpoints.begin (),
-                                _discovery_peer_endpoints.end ());
+            std::set<std::string> union_peers = _peer_state.manual_endpoints;
+            union_peers.insert (_peer_state.discovery_endpoints.begin (),
+                                _peer_state.discovery_endpoints.end ());
             out_->configured_peer_count = static_cast<uint32_t> (union_peers.size ());
         }
         out_->active_peer_count =
-          static_cast<uint32_t> (_active_peer_endpoints.size ());
+          static_cast<uint32_t> (_peer_state.active_endpoints.size ());
         out_->connected_peer_count =
-          static_cast<uint32_t> (_connected_peer_endpoints.size ());
+          static_cast<uint32_t> (_peer_state.connected_endpoints.size ());
         out_->last_error = _last_summary_error;
         if (_runtime && _runtime->faulted)
             out_->last_error = _runtime->fault_errno;
@@ -339,17 +339,17 @@ int spot_node_t::snapshot_peers (
     std::set<std::string> discovery;
     std::set<std::string> active;
     std::set<std::string> connected;
-    std::map<std::string, peer_observation_t> observations;
+    std::map<std::string, spot_peer_observation_t> observations;
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
         service_name = _discovery_service;
         local_endpoint =
           !_advertise_endpoint.empty () ? _advertise_endpoint : _bound_endpoint;
-        manual = _manual_peer_endpoints;
-        discovery = _discovery_peer_endpoints;
-        active = _active_peer_endpoints;
-        connected = _connected_peer_endpoints;
-        observations = _peer_observations;
+        manual = _peer_state.manual_endpoints;
+        discovery = _peer_state.discovery_endpoints;
+        active = _peer_state.active_endpoints;
+        connected = _peer_state.connected_endpoints;
+        observations = _peer_state.observations;
     }
 
     std::set<std::string> universe = manual;
@@ -379,7 +379,7 @@ int spot_node_t::snapshot_peers (
             entry.state = ZLINK_SPOT_PEER_STATE_CONNECTING;
         else
             entry.state = ZLINK_SPOT_PEER_STATE_CONFIGURED;
-        std::map<std::string, peer_observation_t>::const_iterator oit =
+        std::map<std::string, spot_peer_observation_t>::const_iterator oit =
           observations.find (*it);
         if (oit != observations.end ()) {
             entry.connected_since_ms = oit->second.connected_since_ms;
@@ -414,7 +414,7 @@ int spot_node_t::snapshot_subjects (
     std::map<std::string, uint64_t> subject_last_changed;
     {
         scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        active_peer_count = static_cast<uint32_t> (_active_peer_endpoints.size ());
+        active_peer_count = static_cast<uint32_t> (_peer_state.active_endpoints.size ());
         subs.assign (_subs.begin (), _subs.end ());
         subject_last_changed = _subject_last_changed_ms;
     }

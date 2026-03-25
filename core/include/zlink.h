@@ -411,6 +411,7 @@ typedef enum zlink_option_t
     ZLINK_OPT_TYPE = 0x3009,
     ZLINK_OPT_LAST_ENDPOINT = 0x3014,
     ZLINK_OPT_ZMP_METADATA = 0x3030,
+    ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE = 0x3032,
 } zlink_option_t;
 
 typedef enum zlink_router_option_t
@@ -1017,6 +1018,15 @@ ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
 ZLINK_EXPORT int zlink_discovery_connect_registry (
   void *discovery, const char *registry_endpoint);
 
+ZLINK_EXPORT int zlink_discovery_set_value (void *discovery_, int64_t value_);
+ZLINK_EXPORT int zlink_discovery_get_value (void *discovery_,
+                                            int64_t *value_out_);
+ZLINK_EXPORT int zlink_discovery_set_metadata (void *discovery_,
+                                               const void *data_,
+                                               size_t size_);
+ZLINK_EXPORT int zlink_discovery_get_metadata (void *discovery_,
+                                               zlink_msg_t *metadata_out_);
+
 /**
  * @brief Destroy the discovery instance and release all resources.
  *
@@ -1384,6 +1394,16 @@ typedef struct zlink_registry_service_summary_filter_t
     char service_name[256];
 } zlink_registry_service_summary_filter_t;
 
+typedef struct zlink_member_peer_entry_t
+{
+    zlink_service_type_t service_type;
+    uint16_t service_role;
+    char service_name[256];
+    char endpoint[256];
+    zlink_routing_id_t routing_id;
+    int64_t value;
+} zlink_member_peer_entry_t;
+
 ZLINK_EXPORT int zlink_spot_node_status_snapshot (
   void *node_,
   zlink_spot_node_status_t *out_);
@@ -1409,6 +1429,27 @@ ZLINK_EXPORT int zlink_registry_service_summary_snapshot (
   const zlink_registry_service_summary_filter_t *filter_,
   zlink_registry_service_summary_entry_t *entries_,
   size_t *count_);
+ZLINK_EXPORT int zlink_registry_member_peers (
+  void *registry_,
+  zlink_service_type_t service_type_,
+  const char *service_name_,
+  zlink_member_peer_entry_t *entries_,
+  size_t *count_);
+ZLINK_EXPORT int zlink_registry_member_peer_metadata (
+  void *registry_,
+  zlink_service_type_t service_type_,
+  const char *service_name_,
+  uint16_t service_role_,
+  const char *endpoint_,
+  zlink_msg_t *metadata_out_);
+ZLINK_EXPORT int zlink_discovery_member_peers (void *discovery_,
+                                               zlink_member_peer_entry_t *entries_,
+                                               size_t *count_);
+ZLINK_EXPORT int zlink_discovery_member_peer_metadata (
+  void *discovery_,
+  uint16_t service_role_,
+  const char *endpoint_,
+  zlink_msg_t *metadata_out_);
 
 typedef enum zlink_topology_source_t
 {

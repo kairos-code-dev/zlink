@@ -246,7 +246,7 @@ libzmq에서 zlink로의 이식은 "전면 교체"가 아닌 **계층별 선택�
 │  │  네이티브 WS/WSS/TLS 트랜스포트                               │ │
 │  │  - Beast WebSocket + OpenSSL을 i_asio_transport으로 통합     │ │
 │  ├───────────────────────────────────────────────────────────────┤ │
-│  │  서비스 레이어 (Registry, Discovery, Gateway, Receiver, SPOT) │ │
+│  │  서비스 레이어 (Registry, Discovery, SPOT)                    │ │
 │  │  - libzmq에 없는 상위 서비스 추상화                           │ │
 │  └───────────────────────────────────────────────────────────────┘ │
 │                                                                     │
@@ -1247,17 +1247,6 @@ core/
 │   │   │   ├── discovery_protocol.hpp
 │   │   │   ├── registry_access.cpp/hpp   # Registry API seam
 │   │   │   └── registry_query_access.cpp/hpp # 원격 query API seam
-│   │   ├── gateway/                 # 게이트웨이 (POSD 모듈 분리)
-│   │   │   ├── gateway.hpp          # 메인 헤더
-│   │   │   ├── gateway_access.cpp/hpp  # API seam
-│   │   │   ├── gateway_facade.cpp   # 외부 API 위임
-│   │   │   ├── gateway_lifecycle.cpp # 생성/종료/attach 시퀀스
-│   │   │   ├── gateway_pool.cpp     # 피어 풀 관리, 로드밸런싱
-│   │   │   ├── gateway_socket.cpp   # 내부 ROUTER 소켓 wiring
-│   │   │   ├── gateway_monitor.cpp  # 서비스 모니터 이벤트 발행
-│   │   │   ├── gateway_refresh.cpp  # Discovery 기반 피어 갱신
-│   │   │   ├── gateway_runtime.hpp  # 게이트웨이 런타임 상태
-│   │   │   └── routing_id_utils.hpp
 │   │   └── spot/                    # SPOT 서비스 (POSD 모듈 분리)
 │   │       ├── spot_node.cpp/hpp    # 네트워크 제어 (PUB/SUB mesh)
 │   │       ├── spot_node_access.cpp/hpp  # SpotNode API seam

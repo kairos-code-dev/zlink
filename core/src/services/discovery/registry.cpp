@@ -83,7 +83,8 @@ registry_t::registry_t (ctx_t *ctx_) :
     _next_broadcast_ms (0),
     _last_sent_seq (0),
     _started (false),
-    _next_socket_retry_ms (0)
+    _next_socket_retry_ms (0),
+    _metadata_max_size (4096)
 {
     zlink_assert (_ctx);
 
@@ -480,8 +481,9 @@ void registry_t::handle_router (void *router_)
         case discovery_protocol::msg_topology_query:
             handle_topology_query (router_, &frames[0], frames.size (), sender);
             break;
-        case discovery_protocol::msg_update_weight:
-            handle_update_weight (router_, &frames[0], frames.size (), sender);
+        case discovery_protocol::msg_update_attributes:
+            handle_update_attributes (router_, &frames[0], frames.size (),
+                                      sender);
             break;
         default:
             break;

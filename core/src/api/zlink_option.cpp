@@ -264,17 +264,27 @@ int zlink_set_option (void *handle_,
         return -1;
     }
 
-    const int socket_option = map_common_option (option_);
-    if (socket_option < 0)
-        return -1;
+    int socket_option = 0;
+    if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE)
+        socket_option = option_;
+    else {
+        socket_option = map_common_option (option_);
+        if (socket_option < 0)
+            return -1;
+    }
     if (option_ == ZLINK_OPT_LAST_ENDPOINT || option_ == ZLINK_OPT_FD
         || option_ == ZLINK_OPT_EVENTS || option_ == ZLINK_OPT_TYPE) {
         errno = EINVAL;
         return -1;
     }
 
-    if (zlink::socket_base_t *socket = as_socket (handle_))
+    if (zlink::socket_base_t *socket = as_socket (handle_)) {
+        if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
+            errno = EINVAL;
+            return -1;
+        }
         return socket->setsockopt (socket_option, optval_, optvallen_);
+    }
     errno = 0;
 
     return zlink_service_set_common_option (handle_, option_, socket_option,
@@ -291,12 +301,22 @@ int zlink_get_option (void *handle_,
         return -1;
     }
 
-    const int socket_option = map_common_option (option_);
-    if (socket_option < 0)
-        return -1;
+    int socket_option = 0;
+    if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE)
+        socket_option = option_;
+    else {
+        socket_option = map_common_option (option_);
+        if (socket_option < 0)
+            return -1;
+    }
 
-    if (zlink::socket_base_t *socket = as_socket (handle_))
+    if (zlink::socket_base_t *socket = as_socket (handle_)) {
+        if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
+            errno = EINVAL;
+            return -1;
+        }
         return socket->getsockopt (socket_option, optval_, optvallen_);
+    }
     errno = 0;
 
     return zlink_service_get_common_option (handle_, option_, socket_option,

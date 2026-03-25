@@ -1,8 +1,21 @@
 # Gateway 제거 상세 계획
 
-> 상태: draft
+> 상태: completed
 > 대상 범위: `core/`, `core/tests/`, `core/perf/`, `doc/plan/service/`, `doc/plan/discovery/`
 > 목적: `gateway`를 먼저 제거하고, 남는 요구를 raw socket profile과 generic metadata/query contract로 재정리한다.
+
+## 진행 상태
+
+- Phase 1~5 구현이 `core/`, `core/tests/`, `core/perf/`, `bindings/`,
+  `doc/plan/service/gateway/`에 반영됐다.
+- `gateway` family public/internal/protocol/test/perf/bindings surface는 제거됐고,
+  broad search 기준 남은 `gateway` 언급은 plan/migration 문서 설명만 남는다.
+- 후속 generic contract는 registry/discovery metadata distribution으로만 다시 도입했고,
+  topology/introspection query와 member peer attribute query 경계를 분리한 상태로 마감했다.
+- 삭제 이후 POSD 정리에서는 discovery lifecycle helper, `spot_peer_state_t`,
+  topology/provider 경계 정리를 통해 hidden coupling과 shallow wrapper를 줄였다.
+- 검증: `./core/tests/run_test_lanes.sh --include-e2e`
+- 검증: `./core/tools/run_execution_gate_loop.sh --label gateway_removal_metadata_gate --count 1`
 
 ## 0. 선행 결정
 

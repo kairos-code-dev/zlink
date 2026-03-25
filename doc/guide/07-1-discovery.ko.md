@@ -14,7 +14,6 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템이다.
 |------|------|
 | **Registry** | 서비스 등록/해제 관리, 목록 브로드캐스트 (PUB+ROUTER) |
 | **Discovery** | Registry 구독, 서비스 목록 관리 (SUB); 연결된 서비스의 lifecycle owner |
-| **Gateway (서버)** | 서버 측 Gateway, Discovery를 통해 Registry에 등록 |
 | **소켓 패밀리** | Discovery를 통해 피어를 등록·발견하는 raw ROUTER/DEALER/PUB/SUB 소켓 |
 | **서비스 역할** | 소켓 패밀리 모드에서 피어 매칭에 사용되는 소켓 수준 역할 (ROUTER/DEALER/PUB/SUB) |
 | **Heartbeat** | 서비스 생존 확인 (5초 주기, 15초 타임아웃) |
@@ -31,11 +30,10 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템이다.
         │
    ┌────┴─────────────────────────────┐
    │           Discovery (SUB)         │
-   │  ┌─────────┬──────────┬────────┐ │
-   │  │ Gateway │ SPOT     │ Socket │ │
-   │  │(ROUTER) │(PUB+SUB) │Family  │ │
-   │  │         │          │(R/D/P/S│ │
-   │  └─────────┴──────────┴────────┘ │
+   │  ┌──────────┬─────────────────┐  │
+   │  │ SPOT     │ Socket Family   │  │
+   │  │(PUB+SUB) │ (R/D/P/S)      │  │
+   │  └──────────┴─────────────────┘  │
    └───────────────────────────────────┘
 ```
 
@@ -73,10 +71,9 @@ zlink_ctx_term(ctx);
 ## 3. Discovery 사용
 
 ```c
-/* service_type: ZLINK_SERVICE_TYPE_GATEWAY, ZLINK_SERVICE_TYPE_SPOT,
-   또는 ZLINK_SERVICE_TYPE_SOCKET */
+/* service_type: ZLINK_SERVICE_TYPE_SPOT 또는 ZLINK_SERVICE_TYPE_SOCKET */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "order-service");
+    ZLINK_SERVICE_TYPE_SPOT, "order-service");
 
 /* Registry bootstrap/control 엔드포인트 연결 (여러 개 가능) */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
@@ -100,8 +97,8 @@ zlink_discovery_destroy(&discovery);
 ## 3.1 소켓 패밀리 Discovery
 
 raw ROUTER/DEALER/PUB/SUB 소켓은 Discovery를 사용하여 자동 피어 발견과
-lifecycle 관리를 할 수 있다. Gateway나 SPOT 추상화 없이 소켓 수준에서
-위치투명 통신을 가능하게 한다.
+lifecycle 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 위치투명
+통신을 가능하게 한다.
 
 ```c
 /* SOCKET 타입으로 Discovery 생성 */
@@ -135,7 +132,7 @@ PUB 소켓은 SUB 피어를 발견하고 그 반대도 마찬가지다. ROUTER�
 ## 4. Liveness 및 Summary 업데이트
 
 ```
-Gateway/SpotNode/Socket     Discovery               Registry
+SpotNode/Socket             Discovery               Registry
    │  REGISTER / summary        │                      │
    │──────────────────────────► │                      │
    │                            │ bootstrap + uplink   │
@@ -149,8 +146,8 @@ Gateway/SpotNode/Socket     Discovery               Registry
 
 - Registry visibility는 Discovery가 소유하는 heartbeat/topology uplink로
   유지됩니다.
-- Gateway, Spot, 그리고 소켓 패밀리 서비스는 로컬 registration/summary
-  변경을 제출하지만, 주기적 uplink cadence는 Discovery가 담당합니다.
+- SPOT과 소켓 패밀리 서비스는 로컬 registration/summary 변경을 제출하지만,
+  주기적 uplink cadence는 Discovery가 담당합니다.
 - Registry summary는 eventually consistent한 coarse/global view이며,
   strict final readiness gate로 사용하면 안 됩니다.
 
@@ -178,9 +175,8 @@ Discovery가 하나의 Registry에만 연결해도 피어 Registry에 등록된 
 
 ## 6. 다음 단계
 
-- [Gateway 서비스](07-2-gateway.ko.md) — Discovery 기반 위치투명 요청/응답
 - [SPOT PUB/SUB](07-3-spot.ko.md) — Discovery 기반 위치투명 발행/구독
 - [Registry 가이드](07-4-registry.ko.md) — 클러스터 구성, 토폴로지 조회, 운영 패턴
 
 ---
-[← 서비스 개요](07-0-services.ko.md) | [Gateway →](07-2-gateway.ko.md)
+[← 서비스 개요](07-0-services.ko.md) | [SPOT →](07-3-spot.ko.md)

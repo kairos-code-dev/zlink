@@ -35,10 +35,11 @@ int zlink_service_get_common_option (void *handle_,
                                      void *optval_,
                                      size_t *optvallen_)
 {
-    if (zlink::discovery_access_t::from_handle (handle_)) {
-        errno = ENOTSUP;
-        return -1;
-    }
+    if (zlink::discovery_t *discovery =
+          zlink::discovery_access_t::from_handle (handle_))
+        return zlink::discovery_access_t::get_option (
+          discovery, socket_option_, optval_, optvallen_);
+    errno = 0;
     if (zlink_service_spot_get_common_option_internal (
           handle_, option_, socket_option_, optval_, optvallen_)
         == 0)

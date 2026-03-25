@@ -5,6 +5,7 @@
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
+#include "services/control/service_control_runtime.hpp"
 
 #include "utils/err.hpp"
 
@@ -34,6 +35,8 @@ discovery_t::discovery_t (ctx_t *ctx_,
     _service_type (service_type_),
     _discovery_summary_enabled (true),
     _service_name (service_name_),
+    _local_value (0),
+    _metadata_max_size (4096),
     _monitor (ctx_)
 {
     zlink_assert (_ctx);
@@ -87,6 +90,48 @@ void discovery_t::set_discovery_summary_enabled (bool enabled_)
 {
     scoped_lock_t lock (_sync);
     _discovery_summary_enabled = enabled_;
+}
+
+socket_base_t *discovery_t::create_tracked_socket (int socket_type_)
+{
+    socket_base_t *socket = _ctx ? _ctx->create_socket (socket_type_) : NULL;
+    if (socket)
+        _lifecycle.register_socket (socket);
+    return socket;
+}
+
+int discovery_t::close_tracked_socket (socket_base_t *&socket_, int timeout_ms_)
+{
+    return _lifecycle.close_socket (socket_, timeout_ms_);
+}
+
+int discovery_t::close_tracked_socket_and_wait (socket_base_t *&socket_,
+                                                int timeout_ms_)
+{
+    return _lifecycle.close_socket_and_wait (socket_, timeout_ms_);
+}
+
+service_control_runtime_t *discovery_t::control_runtime () const
+{
+    return _ctx ? _ctx->service_control_runtime () : NULL;
+}
+
+int discovery_t::ensure_control_task_active ()
+{
+    service_control_runtime_t *runtime = control_runtime ();
+    if (!runtime) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    if (_task_id == 0) {
+        _task_id = runtime->add_periodic_task (discovery_t::control_task, this, 1,
+                                               true);
+        return _task_id == 0 ? -1 : 0;
+    }
+
+    runtime->wakeup_task (_task_id);
+    return 0;
 }
 
 }

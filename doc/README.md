@@ -39,7 +39,6 @@ English | [한국어](README.ko.md)
 |----------|-------------|
 | [07-0-services.md](guide/07-0-services.md) | Service layer overview |
 | [07-1-discovery.md](guide/07-1-discovery.md) | Service Discovery infrastructure |
-| [07-2-gateway.md](guide/07-2-gateway.md) | Gateway service (location-transparent request/response) |
 | [07-3-spot.md](guide/07-3-spot.md) | SPOT topic PUB/SUB (location-transparent publish/subscribe) |
 
 ### Reference
@@ -61,7 +60,6 @@ English | [한국어](README.ko.md)
 | [monitoring.md](api/monitoring.md) | Monitoring and peer information |
 | [registry.md](api/registry.md) | Registry API |
 | [discovery.md](api/discovery.md) | Discovery API |
-| [gateway.md](api/gateway.md) | Gateway API |
 | [spot.md](api/spot.md) | SPOT PUB/SUB API |
 | [polling.md](api/polling.md) | Polling and Proxy |
 | [utilities.md](api/utilities.md) | Utilities (timer, thread, etc.) |

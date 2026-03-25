@@ -178,7 +178,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             break;
 
         service_state_t state;
-        for (uint32_t p = 0; p < receiver_count && index + 3 < frames_.size ();
+        for (uint32_t p = 0; p < receiver_count && index + 4 < frames_.size ();
              ++p) {
             provider_info_t info;
             info.service_name = service_name;
@@ -188,7 +188,16 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             info.endpoint = discovery_protocol::read_string (frames_[index++]);
             discovery_protocol::read_routing_id (frames_[index++],
                                                  &info.routing_id);
-            discovery_protocol::read_u32 (frames_[index++], &info.weight);
+            discovery_protocol::read_i64 (frames_[index++], &info.value);
+            const size_t metadata_size = zlink_msg_size (&frames_[index]);
+            info.metadata.resize (metadata_size);
+            if (metadata_size > 0) {
+                memcpy (&info.metadata[0],
+                        zlink_msg_data (const_cast<zlink_msg_t *> (
+                          &frames_[index])),
+                        metadata_size);
+            }
+            ++index;
             info.registered_at = 0;
             if (service_type == _service_type)
                 state.providers.push_back (info);
@@ -224,7 +233,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
                              a_.routing_id.size)
                        != 0)
                   return false;
-              return a_.weight == b_.weight;
+              return a_.value == b_.value && a_.metadata == b_.metadata;
           };
         const auto providers_equal =
           [&] (const service_state_t &a_, const service_state_t &b_) {

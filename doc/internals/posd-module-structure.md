@@ -30,14 +30,13 @@ API Facade (core/src/api/)
   ├─ context_api
   ├─ socket_api · socket_message_api
   ├─ message_api
-  ├─ service_api · service_*_api (gateway, spot, discovery, registry, ...)
+  ├─ service_api · service_*_api (spot, discovery, registry, ...)
   ├─ monitor_api · monitor_*_api
   ├─ poller_api
   └─ zlink_option · zlink_option_*_api
         │
         v
 Service Access Layer
-  ├─ gateway_access_t      (core/src/services/gateway/)
   ├─ discovery_access_t    (core/src/services/discovery/)
   ├─ registry_access_t     (core/src/services/discovery/)
   ├─ registry_query_access_t (core/src/services/discovery/)
@@ -46,8 +45,6 @@ Service Access Layer
         │
         v
 Service Runtime
-  ├─ Gateway:   gateway_facade · gateway_lifecycle · gateway_pool
-  │             gateway_socket · gateway_monitor · gateway_refresh
   ├─ Discovery: discovery_bootstrap · discovery_state · discovery_update
   │             discovery_uplink · discovery_registry_client
   ├─ SPOT:      spot_node · spot_pub · spot_sub (option · recv)
@@ -110,7 +107,6 @@ Service-local seam provided by each service. Prevents the API layer from knowing
 
 | Access Seam | Location | Role |
 |-------------|----------|------|
-| `gateway_access_t` | `services/gateway/gateway_access.hpp` | Gateway lifecycle, send, bind/connect, option, TLS, monitor |
 | `discovery_access_t` | `services/discovery/discovery_access.hpp` | Discovery lifecycle, connect_registry, option, monitor |
 | `registry_access_t` | `services/discovery/registry_access.hpp` | Registry lifecycle, bind, config, snapshot/query |
 | `registry_query_access_t` | `services/discovery/registry_query_access.hpp` | Remote Registry topology query client |
@@ -122,18 +118,6 @@ Service-local seam provided by each service. Prevents the API layer from knowing
 ### 3.3 Service Runtime
 
 Concrete implementation of each service. Common infrastructure is in `services/common/`.
-
-**Gateway** (`services/gateway/`):
-
-| Module | Role |
-|--------|------|
-| `gateway_facade.cpp` | External API delegation |
-| `gateway_lifecycle.cpp` | Create/destroy/attach sequencing |
-| `gateway_pool.cpp` | Peer pool management, load balancing |
-| `gateway_socket.cpp` | Internal ROUTER socket wiring |
-| `gateway_monitor.cpp` | Service monitor event emission |
-| `gateway_refresh.cpp` | Discovery-based peer refresh |
-| `routing_id_utils.hpp` | Common routing ID guarantee logic (set/ensure) |
 
 **SPOT** (`services/spot/`):
 
@@ -211,7 +195,7 @@ utilities and dispatch function declarations.
 #### Logical Multipart Send
 
 `multipart_send_txn.cpp/hpp` is the shared logical multipart send module
-used by `zlink_send`, `gateway send/send_rid`, and `spot publish`.
+used by `zlink_send` and `spot publish`.
 
 - nonblocking: one-shot attempt + partial local state rollback
 - blocking: whole-message retry until `sndtimeo` deadline
@@ -250,7 +234,6 @@ core/src/
     common/       9 files — service_runtime_base, service_public_api_guard
     control/      2 files — service control runtime
     discovery/   23 files — discovery + registry access + socket attachment
-    gateway/     11 files — gateway facade/lifecycle/pool/socket/monitor/refresh
     spot/        29 files — node/pub/sub/data_plane/handle/subject_access
   transports/    — tcp/ipc/tls/ws/pgm
   utils/         — domain-agnostic utilities

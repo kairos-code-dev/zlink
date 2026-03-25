@@ -129,6 +129,8 @@ int spot_node_t::replay_subscriptions_if_active_peers ()
         return 0;
     if (ensure_healthy () != 0)
         return -1;
+    if (!has_local_filtered_subs ())
+        return 0;
     if (!has_active_peers ())
         return 0;
     if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
@@ -147,13 +149,13 @@ void spot_node_t::schedule_subscription_replay ()
     unsigned int attempts = 0;
     {
         scoped_lock_t lock (_sync);
-        _subscription_replay_pending = true;
+        _peer_state.subscription_replay_pending = true;
         const unsigned int target_attempts =
-          subscription_replay_attempt_count (_active_peer_endpoints);
-        if (_subscription_replay_attempts < target_attempts)
-            _subscription_replay_attempts = target_attempts;
-        _subscription_replay_holdoff_ticks = 0;
-        attempts = _subscription_replay_attempts;
+          subscription_replay_attempt_count (_peer_state.active_endpoints);
+        if (_peer_state.subscription_replay_attempts < target_attempts)
+            _peer_state.subscription_replay_attempts = target_attempts;
+        _peer_state.subscription_replay_holdoff_ticks = 0;
+        attempts = _peer_state.subscription_replay_attempts;
     }
     if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] scheduled attempts=%u\n",
@@ -230,8 +232,8 @@ bool spot_node_t::can_suspend_control_task () const
         return false;
     if (!_pending_service_updates.empty ())
         return false;
-    if (_subscription_replay_pending || _subscription_ready_refresh_pending
-        || _pub_delivery_ready_refresh_pending) {
+    if (_peer_state.subscription_replay_pending || _peer_state.subscription_ready_refresh_pending
+        || _peer_state.pub_delivery_ready_refresh_pending) {
         return false;
     }
     if (!_runtime)
@@ -255,14 +257,15 @@ void spot_node_t::control_tick ()
           mesh_peer_version (&_runtime->mesh_peer_state);
         skip_extra = _discovery == NULL
                      && connected_peer_version == _connected_peer_version_seen
-                     && !_subscription_replay_pending
-                     && !_subscription_ready_refresh_pending
-                     && !_pub_delivery_ready_refresh_pending;
+                     && !_peer_state.subscription_replay_pending
+                     && !_peer_state.subscription_ready_refresh_pending
+                     && !_peer_state.pub_delivery_ready_refresh_pending;
     }
     if (!skip_extra) {
         refresh_connected_peer_endpoints ();
         emit_pending_subscription_replays ();
         emit_pending_subscription_ready_events ();
+        emit_pending_pub_delivery_ready_events ();
     }
 
     uint64_t task_id = 0;
@@ -285,18 +288,18 @@ void spot_node_t::emit_pending_subscription_replays ()
 {
     if (is_shutting_down ()) {
         scoped_lock_t lock (_sync);
-        _subscription_replay_pending = false;
-        _subscription_replay_holdoff_ticks = 0;
-        _subscription_replay_attempts = 0;
+        _peer_state.subscription_replay_pending = false;
+        _peer_state.subscription_replay_holdoff_ticks = 0;
+        _peer_state.subscription_replay_attempts = 0;
         return;
     }
 
     std::vector<spot_sub_t *> subs;
     {
         scoped_lock_t lock (_sync);
-        if (!_subscription_replay_pending)
+        if (!_peer_state.subscription_replay_pending)
             return;
-        if (_active_peer_endpoints.empty ())
+        if (_peer_state.active_endpoints.empty ())
             return;
         subs.assign (_subs.begin (), _subs.end ());
     }
@@ -307,30 +310,30 @@ void spot_node_t::emit_pending_subscription_replays ()
     bool should_replay = false;
     {
         scoped_lock_t lock (_sync);
-        if (!_subscription_replay_pending)
+        if (!_peer_state.subscription_replay_pending)
             return;
-        if (_active_peer_endpoints.empty ())
+        if (_peer_state.active_endpoints.empty ())
             return;
         if (replay_filters.empty ()) {
-            _subscription_replay_pending = false;
-            _subscription_replay_holdoff_ticks = 0;
-            _subscription_replay_attempts = 0;
+            _peer_state.subscription_replay_pending = false;
+            _peer_state.subscription_replay_holdoff_ticks = 0;
+            _peer_state.subscription_replay_attempts = 0;
             return;
         }
-        if (_subscription_replay_attempts == 0) {
-            _subscription_replay_pending = false;
-            _subscription_replay_holdoff_ticks = 0;
+        if (_peer_state.subscription_replay_attempts == 0) {
+            _peer_state.subscription_replay_pending = false;
+            _peer_state.subscription_replay_holdoff_ticks = 0;
             return;
         }
-        if (_subscription_replay_holdoff_ticks > 0) {
-            --_subscription_replay_holdoff_ticks;
+        if (_peer_state.subscription_replay_holdoff_ticks > 0) {
+            --_peer_state.subscription_replay_holdoff_ticks;
             return;
         }
         should_replay = true;
-        --_subscription_replay_attempts;
-        _subscription_replay_holdoff_ticks = 10;
-        if (_subscription_replay_attempts == 0)
-            _subscription_replay_pending = false;
+        --_peer_state.subscription_replay_attempts;
+        _peer_state.subscription_replay_holdoff_ticks = 10;
+        if (_peer_state.subscription_replay_attempts == 0)
+            _peer_state.subscription_replay_pending = false;
     }
 
     if (!should_replay)
@@ -373,7 +376,7 @@ void spot_node_t::refresh_discovery_peers ()
     }
     for (size_t i = 0; i < providers.size (); ++i) {
         if (!providers[i].endpoint.empty ()
-            && providers[i].endpoint != self_endpoint)
+            && self_endpoint != providers[i].endpoint)
             new_endpoints.insert (providers[i].endpoint);
     }
 
@@ -382,19 +385,19 @@ void spot_node_t::refresh_discovery_peers ()
     size_t old_active_count = 0;
     {
         scoped_lock_t lock (_sync);
-        old_active_count = _active_peer_endpoints.size ();
+        old_active_count = _peer_state.active_endpoints.size ();
         for (std::set<std::string>::const_iterator it = new_endpoints.begin ();
              it != new_endpoints.end (); ++it) {
-            if (_discovery_peer_endpoints.count (*it) == 0
-                && _active_peer_endpoints.count (*it) == 0)
+            if (_peer_state.discovery_endpoints.count (*it) == 0
+                && _peer_state.active_endpoints.count (*it) == 0)
                 to_connect.push_back (*it);
         }
 
         for (std::set<std::string>::const_iterator it =
-               _discovery_peer_endpoints.begin ();
-             it != _discovery_peer_endpoints.end (); ++it) {
+               _peer_state.discovery_endpoints.begin ();
+             it != _peer_state.discovery_endpoints.end (); ++it) {
             if (new_endpoints.count (*it) == 0
-                && _manual_peer_endpoints.count (*it) == 0)
+                && _peer_state.manual_endpoints.count (*it) == 0)
                 to_disconnect.push_back (*it);
         }
     }
@@ -403,7 +406,7 @@ void spot_node_t::refresh_discovery_peers ()
         if (send_data_plane_command ("connect_peer_pub", to_connect[i].c_str ())
             == 0) {
             scoped_lock_t lock (_sync);
-            if (_active_peer_endpoints.insert (to_connect[i]).second)
+            if (_peer_state.active_endpoints.insert (to_connect[i]).second)
                 _active_peer_count.fetch_add (1, std::memory_order_acq_rel);
         }
     }
@@ -413,7 +416,7 @@ void spot_node_t::refresh_discovery_peers ()
                                      to_disconnect[i].c_str ())
             == 0) {
             scoped_lock_t lock (_sync);
-            if (_active_peer_endpoints.erase (to_disconnect[i]) != 0)
+            if (_peer_state.active_endpoints.erase (to_disconnect[i]) != 0)
                 _active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
         }
     }
@@ -421,8 +424,8 @@ void spot_node_t::refresh_discovery_peers ()
     size_t new_active_count = 0;
     {
         scoped_lock_t lock (_sync);
-        _discovery_peer_endpoints.swap (new_endpoints);
-        new_active_count = _active_peer_endpoints.size ();
+        _peer_state.discovery_endpoints.swap (new_endpoints);
+        new_active_count = _peer_state.active_endpoints.size ();
     }
 
     if (old_active_count == 0 && new_active_count > 0) {
@@ -476,59 +479,46 @@ void spot_node_t::refresh_connected_peer_endpoints ()
     bool became_empty = false;
     {
         scoped_lock_t lock (_sync);
-        if (connected == _connected_peer_endpoints)
+        if (connected == _peer_state.connected_endpoints)
             return;
         const uint64_t now_ms = zlink::clock_t ().now_ms ();
         for (std::set<std::string>::const_iterator it = connected.begin ();
              it != connected.end (); ++it) {
-            if (_connected_peer_endpoints.count (*it) == 0) {
-                peer_observation_t &obs = _peer_observations[*it];
+            if (_peer_state.connected_endpoints.count (*it) == 0) {
+                spot_peer_observation_t &obs = _peer_state.observations[*it];
                 obs.last_changed_ms = now_ms;
                 if (obs.connected_since_ms == 0)
                     obs.connected_since_ms = now_ms;
             }
         }
         for (std::set<std::string>::const_iterator it =
-               _connected_peer_endpoints.begin ();
-             it != _connected_peer_endpoints.end (); ++it) {
+               _peer_state.connected_endpoints.begin ();
+             it != _peer_state.connected_endpoints.end (); ++it) {
             if (connected.count (*it) == 0) {
-                peer_observation_t &obs = _peer_observations[*it];
+                spot_peer_observation_t &obs = _peer_state.observations[*it];
                 obs.last_changed_ms = now_ms;
                 obs.connected_since_ms = 0;
             }
         }
-        const size_t previous_connected_count = _connected_peer_endpoints.size ();
-        _connected_peer_endpoints.swap (connected);
+        const size_t previous_connected_count = _peer_state.connected_endpoints.size ();
+        _peer_state.connected_endpoints.swap (connected);
         changed = true;
         _summary_last_changed_ms = now_ms;
-        if (_connected_peer_endpoints.empty ()) {
-            _subscription_ready_refresh_pending = false;
-            _subscription_ready_refresh_holdoff_ticks = 0;
-            _pending_subscription_ready_filters.clear ();
-            _pub_delivery_ready_refresh_pending = false;
-            _pub_delivery_ready_refresh_holdoff_ticks = 0;
-            _pending_pub_delivery_ready_counts.clear ();
+        if (_peer_state.connected_endpoints.empty ()) {
             subs.assign (_subs.begin (), _subs.end ());
             pubs.assign (_pubs.begin (), _pubs.end ());
-            for (std::map<std::string, std::set<std::string> >::iterator it =
-                   _pub_delivery_ready_sources.begin ();
-                 it != _pub_delivery_ready_sources.end (); ++it) {
-                pub_ready_updates.push_back (
-                  std::make_pair (it->first, static_cast<uint32_t> (0)));
-            }
-            _pub_delivery_ready_sources.clear ();
-            publish_mesh_pub_budget_hint_locked ();
+            clear_peer_readiness_locked (&pub_ready_updates);
             became_empty = true;
         } else {
             subs.assign (_subs.begin (), _subs.end ());
             pubs.assign (_pubs.begin (), _pubs.end ());
-            const size_t connected_peer_count = _connected_peer_endpoints.size ();
+            const size_t connected_peer_count = _peer_state.connected_endpoints.size ();
             if (connected_peer_count < previous_connected_count) {
                 const uint32_t max_ready =
                   static_cast<uint32_t> (connected_peer_count);
                 for (std::map<std::string, std::set<std::string> >::iterator it =
-                       _pub_delivery_ready_sources.begin ();
-                     it != _pub_delivery_ready_sources.end (); ++it) {
+                       _peer_state.pub_delivery_ready_sources.begin ();
+                     it != _peer_state.pub_delivery_ready_sources.end (); ++it) {
                     const uint32_t current_ready =
                       static_cast<uint32_t> (it->second.size ());
                     if (current_ready <= max_ready)
@@ -579,21 +569,21 @@ void spot_node_t::refresh_connected_peer_endpoints ()
 std::string spot_node_t::first_connected_peer_endpoint () const
 {
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    if (_connected_peer_endpoints.empty ())
+    if (_peer_state.connected_endpoints.empty ())
         return std::string ();
-    return *_connected_peer_endpoints.begin ();
+    return *_peer_state.connected_endpoints.begin ();
 }
 
 uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
 {
     const uint32_t active_peer_count =
-      static_cast<uint32_t> (_active_peer_endpoints.size ());
+      static_cast<uint32_t> (_peer_state.active_endpoints.size ());
     const uint32_t connected_ready_count =
       connected_ready_peer_count (_runtime ? &_runtime->mesh_peer_state : NULL);
     uint32_t max_ready_count = 0;
     for (std::map<std::string, std::set<std::string> >::const_iterator it =
-           _pub_delivery_ready_sources.begin ();
-         it != _pub_delivery_ready_sources.end (); ++it) {
+           _peer_state.pub_delivery_ready_sources.begin ();
+         it != _peer_state.pub_delivery_ready_sources.end (); ++it) {
         const uint32_t ready_count = resolve_effective_ready_count (
           static_cast<uint32_t> (it->second.size ()), active_peer_count,
           connected_ready_count);
@@ -624,10 +614,10 @@ void spot_node_t::schedule_subscription_ready_refresh ()
     unsigned int holdoff_ticks = 20;
     {
         scoped_lock_t lock (_sync);
-        _subscription_ready_refresh_pending = true;
+        _peer_state.subscription_ready_refresh_pending = true;
         holdoff_ticks =
-          subscription_ready_holdoff_ticks (_connected_peer_endpoints);
-        _subscription_ready_refresh_holdoff_ticks = holdoff_ticks;
+          subscription_ready_holdoff_ticks (_peer_state.connected_endpoints);
+        _peer_state.subscription_ready_refresh_holdoff_ticks = holdoff_ticks;
     }
     wake_control_task ();
 }
@@ -640,12 +630,34 @@ void spot_node_t::schedule_pub_delivery_ready_refresh ()
     unsigned int holdoff_ticks = 20;
     {
         scoped_lock_t lock (_sync);
-        _pub_delivery_ready_refresh_pending = true;
+        _peer_state.pub_delivery_ready_refresh_pending = true;
         holdoff_ticks =
-          pub_delivery_ready_holdoff_ticks (_active_peer_endpoints);
-        _pub_delivery_ready_refresh_holdoff_ticks = holdoff_ticks;
+          pub_delivery_ready_holdoff_ticks (_peer_state.active_endpoints);
+        _peer_state.pub_delivery_ready_refresh_holdoff_ticks = holdoff_ticks;
     }
     wake_control_task ();
+}
+
+void spot_node_t::clear_peer_readiness_locked (
+  std::vector<std::pair<std::string, uint32_t> > *pub_ready_updates_out_)
+{
+    _peer_state.connected_endpoints.clear ();
+    _peer_state.subscription_ready_refresh_pending = false;
+    _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
+    _peer_state.pending_subscription_ready_filters.clear ();
+    _peer_state.pub_delivery_ready_refresh_pending = false;
+    _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
+    _peer_state.pending_pub_delivery_ready_counts.clear ();
+    if (pub_ready_updates_out_) {
+        for (std::map<std::string, std::set<std::string> >::iterator it =
+               _peer_state.pub_delivery_ready_sources.begin ();
+             it != _peer_state.pub_delivery_ready_sources.end (); ++it) {
+            pub_ready_updates_out_->push_back (
+              std::make_pair (it->first, static_cast<uint32_t> (0)));
+        }
+    }
+    _peer_state.pub_delivery_ready_sources.clear ();
+    publish_mesh_pub_budget_hint_locked ();
 }
 
 void spot_node_t::queue_all_subscription_ready_filters ()
@@ -668,7 +680,7 @@ void spot_node_t::queue_all_subscription_ready_filters ()
 
     {
         scoped_lock_t lock (_sync);
-        _pending_subscription_ready_filters.insert (raw_filters.begin (),
+        _peer_state.pending_subscription_ready_filters.insert (raw_filters.begin (),
                                                     raw_filters.end ());
     }
     schedule_subscription_ready_refresh ();
@@ -683,7 +695,7 @@ void spot_node_t::queue_subscription_ready_filter (const std::string &raw_filter
 
     {
         scoped_lock_t lock (_sync);
-        _pending_subscription_ready_filters.insert (raw_filter_);
+        _peer_state.pending_subscription_ready_filters.insert (raw_filter_);
     }
     schedule_subscription_ready_refresh ();
 }
@@ -692,9 +704,9 @@ void spot_node_t::emit_pending_subscription_ready_events ()
 {
     if (is_shutting_down ()) {
         scoped_lock_t lock (_sync);
-        _subscription_ready_refresh_pending = false;
-        _subscription_ready_refresh_holdoff_ticks = 0;
-        _pending_subscription_ready_filters.clear ();
+        _peer_state.subscription_ready_refresh_pending = false;
+        _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
+        _peer_state.pending_subscription_ready_filters.clear ();
         return;
     }
 
@@ -704,34 +716,34 @@ void spot_node_t::emit_pending_subscription_ready_events ()
     std::set<std::string> active_endpoints;
     {
         scoped_lock_t lock (_sync);
-        if (!_subscription_ready_refresh_pending)
+        if (!_peer_state.subscription_ready_refresh_pending)
             return;
-        if (_connected_peer_endpoints.empty () && _active_peer_endpoints.empty ()) {
-            _subscription_ready_refresh_pending = false;
-            _subscription_ready_refresh_holdoff_ticks = 0;
-            _pending_subscription_ready_filters.clear ();
-            return;
-        }
-        if (_subscription_ready_refresh_holdoff_ticks > 0) {
-            --_subscription_ready_refresh_holdoff_ticks;
+        if (_peer_state.connected_endpoints.empty () && _peer_state.active_endpoints.empty ()) {
+            _peer_state.subscription_ready_refresh_pending = false;
+            _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
+            _peer_state.pending_subscription_ready_filters.clear ();
             return;
         }
-        if (_pending_subscription_ready_filters.empty ()) {
-            _subscription_ready_refresh_pending = false;
-            _subscription_ready_refresh_holdoff_ticks = 0;
+        if (_peer_state.subscription_ready_refresh_holdoff_ticks > 0) {
+            --_peer_state.subscription_ready_refresh_holdoff_ticks;
             return;
         }
-        if (!_connected_peer_endpoints.empty ())
-            ready_endpoint = *_connected_peer_endpoints.begin ();
+        if (_peer_state.pending_subscription_ready_filters.empty ()) {
+            _peer_state.subscription_ready_refresh_pending = false;
+            _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
+            return;
+        }
+        if (!_peer_state.connected_endpoints.empty ())
+            ready_endpoint = *_peer_state.connected_endpoints.begin ();
         else {
-            active_endpoints = _active_peer_endpoints;
+            active_endpoints = _peer_state.active_endpoints;
             if (!active_endpoints.empty ())
                 ready_endpoint = *active_endpoints.begin ();
         }
         subs.assign (_subs.begin (), _subs.end ());
-        raw_filters.swap (_pending_subscription_ready_filters);
-        _subscription_ready_refresh_pending = false;
-        _subscription_ready_refresh_holdoff_ticks = 0;
+        raw_filters.swap (_peer_state.pending_subscription_ready_filters);
+        _peer_state.subscription_ready_refresh_pending = false;
+        _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
     }
 
     for (std::set<std::string>::const_iterator filter_it =
@@ -751,9 +763,9 @@ void spot_node_t::emit_pending_pub_delivery_ready_events ()
 {
     if (is_shutting_down ()) {
         scoped_lock_t lock (_sync);
-        _pub_delivery_ready_refresh_pending = false;
-        _pub_delivery_ready_refresh_holdoff_ticks = 0;
-        _pending_pub_delivery_ready_counts.clear ();
+        _peer_state.pub_delivery_ready_refresh_pending = false;
+        _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
+        _peer_state.pending_pub_delivery_ready_counts.clear ();
         return;
     }
 
@@ -761,26 +773,26 @@ void spot_node_t::emit_pending_pub_delivery_ready_events ()
     std::vector<std::pair<std::string, uint32_t> > updates;
     {
         scoped_lock_t lock (_sync);
-        if (!_pub_delivery_ready_refresh_pending)
+        if (!_peer_state.pub_delivery_ready_refresh_pending)
             return;
-        if (_pub_delivery_ready_refresh_holdoff_ticks > 0) {
-            --_pub_delivery_ready_refresh_holdoff_ticks;
+        if (_peer_state.pub_delivery_ready_refresh_holdoff_ticks > 0) {
+            --_peer_state.pub_delivery_ready_refresh_holdoff_ticks;
             return;
         }
-        if (_pending_pub_delivery_ready_counts.empty ()) {
-            _pub_delivery_ready_refresh_pending = false;
-            _pub_delivery_ready_refresh_holdoff_ticks = 0;
+        if (_peer_state.pending_pub_delivery_ready_counts.empty ()) {
+            _peer_state.pub_delivery_ready_refresh_pending = false;
+            _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
             return;
         }
         pubs.assign (_pubs.begin (), _pubs.end ());
         for (std::map<std::string, uint32_t>::const_iterator it =
-               _pending_pub_delivery_ready_counts.begin ();
-             it != _pending_pub_delivery_ready_counts.end (); ++it) {
+               _peer_state.pending_pub_delivery_ready_counts.begin ();
+             it != _peer_state.pending_pub_delivery_ready_counts.end (); ++it) {
             updates.push_back (std::make_pair (it->first, it->second));
         }
-        _pending_pub_delivery_ready_counts.clear ();
-        _pub_delivery_ready_refresh_pending = false;
-        _pub_delivery_ready_refresh_holdoff_ticks = 0;
+        _peer_state.pending_pub_delivery_ready_counts.clear ();
+        _peer_state.pub_delivery_ready_refresh_pending = false;
+        _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
     }
 
     for (size_t i = 0; i < pubs.size (); ++i) {
@@ -830,12 +842,12 @@ void spot_node_t::notify_pub_delivery_ready_ack (
     {
         scoped_lock_t lock (_sync);
         const uint32_t active_peer_count =
-          static_cast<uint32_t> (_active_peer_endpoints.size ());
+          static_cast<uint32_t> (_peer_state.active_endpoints.size ());
         const uint32_t connected_ready_count =
           connected_ready_peer_count (_runtime ? &_runtime->mesh_peer_state
                                                : NULL);
         std::set<std::string> &ready_sources =
-          _pub_delivery_ready_sources[subject_];
+          _peer_state.pub_delivery_ready_sources[subject_];
 
         if (subscribe_) {
             if (!ready_sources.insert (ack_source_id_).second)
@@ -844,7 +856,7 @@ void spot_node_t::notify_pub_delivery_ready_ack (
             if (ready_sources.erase (ack_source_id_) == 0)
                 return;
             if (ready_sources.empty ())
-                _pub_delivery_ready_sources.erase (subject_);
+                _peer_state.pub_delivery_ready_sources.erase (subject_);
         }
 
         ready_count = resolve_effective_ready_count (
@@ -854,9 +866,9 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         pubs.assign (_pubs.begin (), _pubs.end ());
         publish_mesh_pub_budget_hint_locked ();
         if (!subscribe_) {
-            _pending_pub_delivery_ready_counts.erase (subject_);
-            _pub_delivery_ready_refresh_pending = false;
-            _pub_delivery_ready_refresh_holdoff_ticks = 0;
+            _peer_state.pending_pub_delivery_ready_counts.erase (subject_);
+            _peer_state.pub_delivery_ready_refresh_pending = false;
+            _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
         }
     }
 

@@ -12,7 +12,6 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 |------|-------------|
 | **Registry** | Manages service registration/deregistration, broadcasts service list (PUB+ROUTER) |
 | **Discovery** | Subscribes to Registry, manages service list (SUB); lifecycle owner for attached services |
-| **Gateway (server)** | Server-side Gateway, registers with Registry via Discovery |
 | **Socket Family** | Raw ROUTER/DEALER/PUB/SUB sockets that register and discover peers via Discovery |
 | **Service Role** | Socket-level role (ROUTER/DEALER/PUB/SUB) used for peer matching in socket family mode |
 | **Heartbeat** | Service liveness check (5-second interval, 15-second timeout) |
@@ -29,11 +28,10 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
         │
    ┌────┴─────────────────────────────┐
    │           Discovery (SUB)         │
-   │  ┌─────────┬──────────┬────────┐ │
-   │  │ Gateway │ SPOT     │ Socket │ │
-   │  │(ROUTER) │(PUB+SUB) │Family  │ │
-   │  │         │          │(R/D/P/S│ │
-   │  └─────────┴──────────┴────────┘ │
+   │  ┌──────────┬─────────────────┐  │
+   │  │ SPOT     │ Socket Family   │  │
+   │  │(PUB+SUB) │ (R/D/P/S)      │  │
+   │  └──────────┴─────────────────┘  │
    └───────────────────────────────────┘
 ```
 
@@ -71,10 +69,9 @@ zlink_ctx_term(ctx);
 ## 3. Using Discovery
 
 ```c
-/* service_type: ZLINK_SERVICE_TYPE_GATEWAY, ZLINK_SERVICE_TYPE_SPOT,
-   or ZLINK_SERVICE_TYPE_SOCKET */
+/* service_type: ZLINK_SERVICE_TYPE_SPOT or ZLINK_SERVICE_TYPE_SOCKET */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "order-service");
+    ZLINK_SERVICE_TYPE_SPOT, "order-service");
 
 /* Connect to Registry bootstrap/control endpoint (multiple allowed) */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
@@ -99,7 +96,7 @@ zlink_discovery_destroy(&discovery);
 
 Raw ROUTER/DEALER/PUB/SUB sockets can use Discovery for automatic peer
 discovery and lifecycle management. This enables location-transparent
-communication at the socket level without the Gateway or SPOT abstractions.
+communication at the socket level without the SPOT abstraction.
 
 ```c
 /* Create Discovery with SOCKET type */
@@ -133,7 +130,7 @@ terminates all attached sockets.
 ## 4. Liveness and Summary Updates
 
 ```
-Gateway/SpotNode/Socket     Discovery               Registry
+SpotNode/Socket             Discovery               Registry
    │  REGISTER / summary        │                      │
    │──────────────────────────► │                      │
    │                            │ bootstrap + uplink   │
@@ -147,7 +144,7 @@ Gateway/SpotNode/Socket     Discovery               Registry
 
 - Registry visibility is maintained through Discovery-owned heartbeat/topology
   uplink.
-- Gateway, Spot, and socket family services submit local registration/summary
+- SPOT and socket family services submit local registration/summary
   changes, but Discovery owns the periodic uplink cadence.
 - Registry summary is eventually consistent and should be treated as a
   coarse/global view, not a strict final readiness gate.
@@ -174,9 +171,8 @@ via `connect_registry()` is for **HA (failover)**, not for service visibility.
 
 ## 6. Next Steps
 
-- [Gateway Service](07-2-gateway.md) -- Discovery-based location-transparent request/reply
 - [SPOT PUB/SUB](07-3-spot.md) -- Discovery-based location-transparent publish/subscribe
 - [Registry Guide](07-4-registry.md) -- Cluster setup, topology introspection, and operational patterns
 
 ---
-[← Services Overview](07-0-services.md) | [Gateway →](07-2-gateway.md)
+[← Services Overview](07-0-services.md) | [SPOT →](07-3-spot.md)

@@ -41,6 +41,17 @@ struct registry_access_t
                                   size_t *count_);
     static int status_snapshot (registry_t *registry_,
                                 zlink_registry_status_t *out_);
+    static int member_peers (registry_t *registry_,
+                             zlink_service_type_t service_type_,
+                             const char *service_name_,
+                             zlink_member_peer_entry_t *entries_,
+                             size_t *count_);
+    static int member_peer_metadata (registry_t *registry_,
+                                     zlink_service_type_t service_type_,
+                                     const char *service_name_,
+                                     uint16_t service_role_,
+                                     const char *endpoint_,
+                                     zlink_msg_t *metadata_out_);
     static int service_summary_snapshot (
       registry_t *registry_,
       const zlink_registry_service_summary_filter_t *filter_,

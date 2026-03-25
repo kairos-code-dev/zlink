@@ -5,7 +5,7 @@
 ## 1. 개요
 
 Registry는 zlink 서비스 계층의 중앙 서비스 디렉토리이자 토폴로지 요약 소스다.
-Gateway, SPOT 노드, 소켓 패밀리 서비스의 등록(Discovery를 통해)을 수락하고,
+SPOT 노드, 소켓 패밀리 서비스의 등록(Discovery를 통해)을 수락하고,
 하트비트 기반 생존 확인을 관리하며,
 집계된 서비스 목록을 연결된 Discovery에 주기적으로 브로드캐스트한다.
 
@@ -14,7 +14,7 @@ Gateway, SPOT 노드, 소켓 패밀리 서비스의 등록(Discovery를 통해)�
 | 모드 | 설명 |
 |------|------|
 | **독립 프로세스** | Registry를 전용 서비스로 실행. 여러 애플리케이션이 Discovery를 통해 연결. |
-| **임베디드** | 애플리케이션 프로세스 내에 Registry를 Discovery, Gateway/SPOT과 함께 직접 생성. |
+| **임베디드** | 애플리케이션 프로세스 내에 Registry를 Discovery, 서비스(SPOT/Socket)와 함께 직접 생성. |
 
 **Registry는 thread-safe하다.**
 하나의 Registry handle을 여러 스레드에서 동시에 사용할 수 있다.
@@ -24,9 +24,7 @@ Gateway, SPOT 노드, 소켓 패밀리 서비스의 등록(Discovery를 통해)�
 
 ## 2. Quick Start
 
-Registry를 실행하고 Discovery를 통해 Gateway를 연결하는 최소 예제.
-Gateway는 메시지 수신에 callback과 recv 두 모델을 지원한다
-(상세 내용은 [Gateway 가이드](07-2-gateway.ko.md)의 I/O 모델 참조).
+Registry를 실행하고 Discovery를 통해 ROUTER 소켓을 연결하는 최소 예제.
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -38,20 +36,17 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Discovery === */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "my-service");
+    ZLINK_SERVICE_TYPE_SOCKET, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* === Gateway (서버, recv 모드) === */
-void *server = zlink_gateway_new(ctx);
-zlink_set_routing_id(server, "server-1", 8);
-/* recv 모드 -- zlink_gateway_recv()로 수신 */
-zlink_gateway_attach_discovery(server, discovery);
-zlink_gateway_bind(server, "tcp://*:5555");
+/* === ROUTER 소켓 (서버, Discovery 관리) === */
+void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
+zlink_bind(server, "tcp://*:5555");
+zlink_socket_attach_discovery(server, discovery);
 
 /* ... 애플리케이션 로직 ... */
 
 /* 정리 */
-zlink_gateway_destroy(&server);
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
@@ -138,7 +133,7 @@ Registry를 전용 서비스로 실행한다. 여러 애플리케이션이 각�
    ┌──────┐ ┌──────┐ ┌──────┐
    │App A │ │App B │ │App C │
    │Disc. │ │Disc. │ │Disc. │
-   │ GW   │ │ GW   │ │ SPOT │
+   │ SOCK │ │ SOCK │ │ SPOT │
    └──────┘ └──────┘ └──────┘
 ```
 
@@ -150,7 +145,7 @@ Registry를 전용 서비스로 실행한다. 여러 애플리케이션이 각�
 
 ### 4.2 임베디드 배포
 
-Registry, Discovery, Gateway/SPOT이 모두 단일 프로세스에 존재한다.
+Registry, Discovery, 서비스(SPOT/Socket)가 모두 단일 프로세스에 존재한다.
 개발, 테스트, 또는 단일 노드 배포에 유용하다.
 
 ```c
@@ -163,42 +158,37 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery (같은 프로세스) */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
+    ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* 서버 Gateway (recv 모드) */
-void *server = zlink_gateway_new(ctx);
-zlink_set_routing_id(server, "echo-server-1", 13);
-/* recv 모드 -- zlink_gateway_recv()로 수신 */
-zlink_gateway_attach_discovery(server, discovery);
-zlink_gateway_bind(server, "tcp://*:5555");
+/* ROUTER 소켓 (서버, Discovery 관리) */
+void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
+zlink_bind(server, "tcp://*:5555");
+zlink_socket_attach_discovery(server, discovery);
 
-/* 클라이언트 Gateway (같은 프로세스, recv 모드) */
+/* DEALER 소켓 (클라이언트, 같은 프로세스) */
 void *client_disc = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "echo-service");
+    ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
-void *client = zlink_gateway_new(ctx);
-zlink_set_routing_id(client, "client-1", 8);
-/* recv 모드 -- zlink_recv_handler() 호출 없음 */
-zlink_gateway_attach_discovery(client, client_disc);
+void *client = zlink_socket_new(ctx, ZLINK_DEALER);
+zlink_socket_attach_discovery(client, client_disc);
 
 /* 요청 전송 */
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_gateway_send(client, &part, 1, 0);
+zlink_send(client, &part, 1, 0);
 
-/* 응답 수신 (recv 모드) */
-zlink_routing_id_t source_rid;
+/* 응답 수신 */
 zlink_msg_t *reply_parts = NULL;
 size_t reply_count = 0;
-zlink_gateway_recv(client, &source_rid, &reply_parts, &reply_count, 0);
+zlink_recv(client, &reply_parts, &reply_count, 0);
 
 /* 정리 (역순) */
-zlink_gateway_destroy(&client);
+zlink_close(client);
 zlink_discovery_destroy(&client_disc);
-zlink_gateway_destroy(&server);
+zlink_close(server);
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
@@ -285,7 +275,7 @@ zlink_registry_bind(reg3, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery가 여러 Registry에 연결 (HA — 서비스 가시성은 하나만으로도 충분) */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_GATEWAY, "my-service");
+    ZLINK_SERVICE_TYPE_SOCKET, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry3:5551");
@@ -332,10 +322,10 @@ free(entries);
 #### 필터 기반 조회
 
 ```c
-/* "payment-service"의 READY 상태 Gateway 인스턴스만 조회 */
+/* "payment-service"의 READY 상태 SOCKET 인스턴스만 조회 */
 zlink_registry_topology_filter_t filter;
 memset(&filter, 0, sizeof(filter));
-filter.service_kind = ZLINK_SERVICE_KIND_GATEWAY;
+filter.service_kind = ZLINK_SERVICE_KIND_SOCKET;
 strncpy(filter.service_name, "payment-service",
         sizeof(filter.service_name) - 1);
 filter.state = ZLINK_TOPOLOGY_STATE_READY;
@@ -356,7 +346,7 @@ for (size_t i = 0; i < count; i++) {
 | 필드 | 설명 |
 |------|------|
 | `routing_id` | 서비스 인스턴스의 라우팅 ID |
-| `service_kind` | `GATEWAY`, `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, 또는 `DISCOVERY` |
+| `service_kind` | `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, 또는 `DISCOVERY` |
 | `service_name` | 논리적 서비스 이름 |
 | `endpoint` | 광고된 엔드포인트 |
 | `source` | 추가 방식 (`MANUAL`/`DISCOVERY`/`REGISTRY`) |
@@ -402,13 +392,13 @@ zlink_registry_query_snapshot(client, NULL, entries, &count);
 /* 토폴로지 덤프 출력 */
 for (size_t i = 0; i < count; i++) {
     const char *kind_str = "?";
-    if (entries[i].service_kind == ZLINK_SERVICE_KIND_GATEWAY)
-        kind_str = "GW";
-    else if (entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
-             || entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_SUB)
+    if (entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
+        || entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_SUB)
         kind_str = "SPOT";
     else if (entries[i].service_kind == ZLINK_SERVICE_KIND_SOCKET)
         kind_str = "SOCK";
+    else if (entries[i].service_kind == ZLINK_SERVICE_KIND_DISCOVERY)
+        kind_str = "DISC";
     printf("[%s] %s @ %s  state=%d  ready=%u/%u\n",
            kind_str,
            entries[i].service_name,
@@ -434,79 +424,114 @@ zlink_registry_query_destroy(&client);
 zlink_ctx_term(ctx);
 ```
 
-### 6.3 Gateway Peer 조회
+### 6.3 Member Peer 조회
 
-서비스 수준의 토폴로지 외에도, Registry는 Gateway 서비스의 피어별 연결
-상태를 추적한다. 운영 시 로드밸런싱 상태를 확인하는 데 유용하다.
+서비스 수준의 토폴로지 외에도, Registry는 등록된 서비스의 피어별 연결
+상태를 추적한다. 운영 시 연결 상태와 피어 분포를 확인하는 데 유용하다.
 
-#### 로컬 Gateway Peer 조회
+#### 로컬 Member Peer 조회
 
 ```c
-/* 전체 gateway peer 연결 스냅샷 */
+/* 전체 member peer 연결 스냅샷 */
 size_t count = 0;
-zlink_registry_gateway_peers_snapshot(registry, NULL, &count);
+zlink_registry_member_peers(registry, NULL, NULL, &count);
 
-zlink_registry_gateway_peer_entry_t *peers = malloc(
-    count * sizeof(zlink_registry_gateway_peer_entry_t));
-zlink_registry_gateway_peers_snapshot(registry, peers, &count);
+zlink_member_peer_entry_t *peers = malloc(
+    count * sizeof(zlink_member_peer_entry_t));
+zlink_registry_member_peers(registry, NULL, peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("gateway=%s peer=%s state=%d weight=%u\n",
-           peers[i].gateway_endpoint,
+    printf("service=%s endpoint=%s peer=%s state=%d\n",
+           peers[i].service_name,
+           peers[i].member_endpoint,
            peers[i].peer_endpoint,
-           peers[i].state,
-           peers[i].weight);
+           peers[i].state);
 }
 free(peers);
 
 /* 필터: 특정 서비스의 피어만 조회 */
-zlink_registry_gateway_peer_filter_t peer_filter;
+zlink_member_peer_filter_t peer_filter;
 memset(&peer_filter, 0, sizeof(peer_filter));
 strncpy(peer_filter.service_name, "payment-service",
         sizeof(peer_filter.service_name) - 1);
 
 size_t filtered_count = 64;
-zlink_registry_gateway_peer_entry_t filtered[64];
-zlink_registry_gateway_peers_query(registry, &peer_filter,
-                                   filtered, &filtered_count);
+zlink_member_peer_entry_t filtered[64];
+zlink_registry_member_peers(registry, &peer_filter,
+                            filtered, &filtered_count);
 ```
 
-#### Gateway Peer 엔트리 필드
+#### Member Peer 메타데이터 (로컬)
+
+```c
+/* 특정 멤버의 피어 메타데이터 조회 */
+size_t meta_count = 0;
+zlink_registry_member_peer_metadata(registry, "payment-service",
+                                    NULL, &meta_count);
+
+zlink_member_peer_entry_t *meta = malloc(
+    meta_count * sizeof(zlink_member_peer_entry_t));
+zlink_registry_member_peer_metadata(registry, "payment-service",
+                                    meta, &meta_count);
+
+for (size_t i = 0; i < meta_count; i++) {
+    printf("  peer=%s state=%d connected_since=%llu\n",
+           meta[i].peer_endpoint,
+           meta[i].state,
+           (unsigned long long)meta[i].connected_since_ms);
+}
+free(meta);
+```
+
+#### Member Peer 엔트리 필드
 
 | 필드 | 설명 |
 |------|------|
-| `gateway_routing_id` | Gateway 인스턴스의 라우팅 ID |
-| `gateway_endpoint` | Gateway 엔드포인트 |
+| `member_routing_id` | 서비스 멤버의 라우팅 ID |
+| `member_endpoint` | 서비스 멤버 엔드포인트 |
 | `service_name` | 서비스 이름 |
 | `peer_routing_id` | 연결된 피어의 라우팅 ID |
 | `peer_endpoint` | 피어 엔드포인트 |
 | `state` | 현재 상태 (`ZLINK_TOPOLOGY_STATE_*`) |
-| `weight` | 가중 로드밸런싱을 위한 피어 가중치 |
 | `connected_since_ms` | 피어 연결 시점 타임스탬프 (epoch ms) |
 | `last_reported_ms` | 마지막 업데이트 타임스탬프 (epoch ms) |
 
-#### 원격 Gateway Peer 조회
+#### 원격 Member Peer 조회 (Discovery 경유)
 
 ```c
-/* 쿼리 클라이언트를 통해 원격 Registry의 gateway peer 조회 */
-void *client = zlink_registry_query_client_new(ctx);
-zlink_registry_query_client_connect(client, "tcp://registry1:5551");
+/* Discovery를 통해 member peer 조회 (다른 프로세스에서) */
+size_t count = 0;
+zlink_discovery_member_peers(discovery, NULL, NULL, &count);
 
-size_t count = 128;
-zlink_registry_gateway_peer_entry_t peers[128];
-zlink_registry_query_gateway_peers_snapshot(client, NULL,
-                                            peers, &count);
+zlink_member_peer_entry_t *peers = malloc(
+    count * sizeof(zlink_member_peer_entry_t));
+zlink_discovery_member_peers(discovery, NULL, peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("[%s] %s → %s  weight=%u state=%d\n",
+    printf("[%s] %s -> %s  state=%d\n",
            peers[i].service_name,
-           peers[i].gateway_endpoint,
+           peers[i].member_endpoint,
            peers[i].peer_endpoint,
-           peers[i].weight,
            peers[i].state);
 }
+free(peers);
 
-zlink_registry_query_destroy(&client);
+/* 특정 서비스의 메타데이터 조회 */
+size_t meta_count = 0;
+zlink_discovery_member_peer_metadata(discovery, "payment-service",
+                                     NULL, &meta_count);
+
+zlink_member_peer_entry_t *meta = malloc(
+    meta_count * sizeof(zlink_member_peer_entry_t));
+zlink_discovery_member_peer_metadata(discovery, "payment-service",
+                                     meta, &meta_count);
+
+for (size_t i = 0; i < meta_count; i++) {
+    printf("  peer=%s connected_since=%llu\n",
+           meta[i].peer_endpoint,
+           (unsigned long long)meta[i].connected_since_ms);
+}
+free(meta);
 ```
 
 ## 7. 운영 패턴
@@ -514,7 +539,7 @@ zlink_registry_query_destroy(&client);
 ### 7.1 서비스 등록/해제 흐름
 
 ```
-Gateway/SPOT          Discovery              Registry
+SpotNode/Socket       Discovery              Registry
     │                     │                      │
     │ attach_discovery    │                      │
     │ + bind              │                      │
@@ -574,7 +599,7 @@ Registry와 로컬 서비스 모니터는 다른 목적을 가진다:
 
 - **Registry 토폴로지**: "클러스터 전체에서 `payment-service` 인스턴스가 몇
   개 READY인가?" — 1차 운영 판단
-- **로컬 모니터**: "이 특정 Gateway가 왜 peer X에 연결하지 못하는가?" — 상세
+- **로컬 모니터**: "이 특정 서비스가 왜 peer X에 연결하지 못하는가?" — 상세
   원인 분석
 
 권장 워크플로우:
@@ -586,7 +611,6 @@ Registry와 로컬 서비스 모니터는 다른 목적을 가진다:
 ## 9. 다음 단계
 
 - [Service Discovery](07-1-discovery.ko.md) -- 기반 인프라
-- [Gateway 서비스](07-2-gateway.ko.md) -- 위치투명 요청/응답
 - [SPOT PUB/SUB](07-3-spot.ko.md) -- 위치투명 발행/구독
 - [Registry API 레퍼런스](../api/registry.ko.md) -- 전체 API 문서
 

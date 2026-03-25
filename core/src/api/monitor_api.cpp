@@ -385,21 +385,9 @@ int zlink_monitor_close (void **monitor_p_)
       monitor_state
       && !monitor_state->socket_handler.load (std::memory_order_acquire)
       && !monitor_state->service_handler.load (std::memory_order_acquire);
-    if (monitor_state
-        && monitor_state->callback_depth.load (std::memory_order_acquire) > 0
-        && g_current_monitor_handler_state != monitor_state) {
-        errno = EBUSY;
-        return -1;
-    }
     bool stop_socket_before_close = no_dispatch_monitor;
     if (monitor_state) {
         zlink::scoped_lock_t dispatch_lock (monitor_state->dispatch_sync);
-        if (monitor_state->callback_depth.load (std::memory_order_acquire) > 0
-            && g_current_monitor_handler_state != monitor_state) {
-            errno = EBUSY;
-            return -1;
-        }
-
         if (had_dispatch_monitor) {
             monitor_state->socket_handler.store (NULL,
                                                  std::memory_order_release);

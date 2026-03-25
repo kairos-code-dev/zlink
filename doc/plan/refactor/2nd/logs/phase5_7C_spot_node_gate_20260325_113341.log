@@ -1,0 +1,37 @@
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 36: test_spot_pubsub_scenario
+1/3 Test #36: test_spot_pubsub_scenario ...............................   Passed   19.61 sec
+    Start 37: test_spot_service_introspection
+2/3 Test #37: test_spot_service_introspection .........................***Failed   62.07 sec
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1036:test_spot_pub_sub_options_and_routing_ids:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1037:test_spot_monitors_and_monitor_poller:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1038:test_spot_late_connect_replays_existing_subscription:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1039:test_spot_subscription_ready_changed_reports_loss:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1040:test_spot_handler_monitor_close_after_ready_change_is_stable:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1041:test_spot_callback_model_receive_regression:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1042:test_spot_recv_model_receive_regression:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1043:test_spot_publish_rollback_preserves_next_topic_boundary:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:493:test_spot_node_default_handle_owner_keeps_defaults_private:FAIL: socket_->getsockopt (option_, &value, &value_size) failed, errno = 22 (Invalid argument)
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1045:test_spot_unified_spot_basic:PASS
+/home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp:1046:test_spot_node_snapshot_status_peers_subjects:PASS
+
+-----------------------
+11 Tests 1 Failures 0 Ignored 
+FAIL
+
+    Start 75: test_spot_service_introspection_handler_monitor_close
+3/3 Test #75: test_spot_service_introspection_handler_monitor_close ...   Passed   21.10 sec
+
+67% tests passed, 1 tests failed out of 3
+
+Label Time Summary:
+e2e            =  81.68 sec*proc (2 tests)
+integration    =  21.10 sec*proc (1 test)
+serial         = 102.78 sec*proc (3 tests)
+
+Total Test time (real) = 102.78 sec
+
+The following tests FAILED:
+	 37 - test_spot_service_introspection (Failed)
+Errors while running CTest

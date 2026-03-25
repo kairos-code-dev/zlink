@@ -22,8 +22,8 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
 
-Run Codex repeatedly against the remaining execution guide until the guide is
-fully applied or Codex reports that user input is required.
+Run Codex repeatedly against an execution guide and master plan until the guide
+is fully applied or Codex reports that user input is required.
 
 Options:
   --guide PATH          Execution guide path
@@ -206,9 +206,9 @@ while [[ "${iteration}" -le "${MAX_ITERATIONS}" ]]; do
 작업 규칙:
 - 실행 가이드와 마스터 플랜을 둘 다 authority로 사용한다.
 - 실행 순서와 완료 판정은 실행 가이드를 따르되, 실제 구현 내용과 설계 intent는 마스터 플랜을 기준으로 확인한다.
-- 각 작업 묶음을 끝낼 때마다 마스터 플랜의 Phase 1~6, 8.1, 8.2, 9장을 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 각 작업 묶음을 끝낼 때마다 마스터 플랜 전체와 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
 - 실행 가이드 체크리스트가 green이어도 마스터 플랜의 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
-- 마스터 플랜에 있는데 실행 가이드 5장 체크리스트에 없는 구현 항목을 발견하면 실행 가이드를 먼저 갱신한 뒤 작업을 계속한다.
+- 마스터 플랜에 있는데 실행 가이드 체크리스트에 없는 구현 항목을 발견하면 실행 가이드를 먼저 갱신한 뒤 작업을 계속한다.
 - 마스터 플랜과 실행 가이드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
 - 문서의 첫 미완료 항목부터 순서대로 진행한다.
 - core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
@@ -216,17 +216,13 @@ while [[ "${iteration}" -le "${MAX_ITERATIONS}" ]]; do
 - 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
 - flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 ${STRESS_COUNT}보다 더 크게 올릴 수 있다.
 - 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
-- 최종 perf phase 재개 시 이미 문서에 기록된 latest full perf snapshot과 baseline 비교 증거가 있으면 그것을 우선 사용한다.
-- 최종 perf phase를 새 iteration에서 다시 잡았다는 이유만으로 full perf를 처음부터 다시 돌리지 않는다.
-- 최종 perf phase 재개 첫 행동은 latest full 결과에서 worst tuple을 다시 확인하고 smoke 또는 targeted recheck부터 이어서 진행하는 것이다.
-- latest full perf 재실행은 문서에 정의된 invalidation 조건이 생겼거나, 모든 남은 tuple 회복 후 최종 확정이 필요할 때만 한다.
 - 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
-- 5.0 표의 각 행이나 각 phase를 완료로 바꾸는 순간에는 같은 흐름에서 해당 범위만 commit하고 현재 작업 브랜치로 push한다.
-- unrelated 변경은 commit/push에 섞지 않는다. phase 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
-- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남긴다.
+- 가이드나 마스터 플랜에 단계별 commit / push 규칙이 있으면 그대로 따른다.
+- unrelated 변경은 commit/push에 섞지 않는다. 현재 단계 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
+- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남길 수 있으면 남긴다.
 - routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
 - 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
-- stress/lane/perf는 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- stress/lane/perf/functional regression은 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
 - 테스트 통과만으로 마스터 플랜 구현 내용이 반영됐다고 추정하지 않는다.
 
 종료 판정 규칙:

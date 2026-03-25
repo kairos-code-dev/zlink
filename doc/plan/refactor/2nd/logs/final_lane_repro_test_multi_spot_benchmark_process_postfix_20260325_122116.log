@@ -1,0 +1,30 @@
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 7: test_multi_spot_benchmark_process
+    Test #7: test_multi_spot_benchmark_process ...***Failed  104.57 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:724:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:725:test_multi_spot_process_callback_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:726:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:476:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:FAIL: server:\nstdout:\nREADY,tls://127.0.0.1:32960\nRESULT,zlink,MULTI_SPOT,tls,262144,server_cpu_pct,8.81\nRESULT,zlink,MULTI_SPOT,tls,262144,server_mem_mb,704.34\nRESULT,zlink,MULTI_SPOT,tls,262144,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tls,262144,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tls,262144,server_rcv_pending_end,0.000\n\nclient:\nstdout:\nCLIENT_READY,262144\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:728:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:729:test_multi_spot_process_recv_many_clients_wss_large_sequence:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:730:test_multi_spot_process_recv_many_clients_wss_perf_window_sequence:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:731:test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeout:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:733:test_multi_spot_process_invalid_mode_is_rejected:PASS
+
+-----------------------
+9 Tests 1 Failures 0 Ignored 
+FAIL
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+integration    = 104.57 sec*proc (1 test)
+serial         = 104.57 sec*proc (1 test)
+
+Total Test time (real) = 104.57 sec
+
+The following tests FAILED:
+	  7 - test_multi_spot_benchmark_process (Failed)
+Errors while running CTest

@@ -5,6 +5,7 @@
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "services/gateway/routing_id_utils.hpp"
 
@@ -102,11 +103,26 @@ static bool recv_dealer_frames (socket_base_t *socket_,
     }
     return !frames_->empty ();
 }
-} // namespace
+}
 
-int discovery_t::connect_registry (const char *registry_endpoint_)
+discovery_bootstrap_runtime_t::bootstrap_state_t::bootstrap_state_t () :
+    dealer (NULL),
+    request_sent (false),
+    request_started_ms (0)
 {
-    service_public_api_scope_t admission (_public_api);
+}
+
+discovery_bootstrap_runtime_t::discovery_bootstrap_runtime_t () :
+    _routing_id_locked (false),
+    _heartbeat_interval_ms (5000)
+{
+    memset (&_routing_id, 0, sizeof (_routing_id));
+}
+
+int discovery_bootstrap_runtime_t::connect_registry (
+  discovery_t *owner_, const char *registry_endpoint_)
+{
+    service_public_api_scope_t admission (owner_->_public_api);
     if (!admission.acquired ())
         return -1;
     if (!registry_endpoint_) {
@@ -119,16 +135,16 @@ int discovery_t::connect_registry (const char *registry_endpoint_)
     }
 
     {
-        scoped_lock_t lock (_sync);
+        scoped_lock_t lock (owner_->_sync);
         _routing_id_locked = true;
     }
 
     zlink::clock_t clock;
     const uint64_t deadline_ms = clock.now_ms () + 2000;
     while (clock.now_ms () < deadline_ms) {
-        const int rc = bootstrap_registry (registry_endpoint_);
+        const int rc = bootstrap_registry (owner_, registry_endpoint_);
         if (rc == 0) {
-            scoped_lock_t lock (_sync);
+            scoped_lock_t lock (owner_->_sync);
             _registry_bootstrap_endpoints.insert (registry_endpoint_);
             break;
         }
@@ -138,35 +154,40 @@ int discovery_t::connect_registry (const char *registry_endpoint_)
     }
 
     {
-        scoped_lock_t lock (_sync);
+        scoped_lock_t lock (owner_->_sync);
         if (_bootstrapped_registry_endpoints.count (registry_endpoint_) == 0) {
             errno = EAGAIN;
             return -1;
         }
     }
 
-    if (_task_id == 0) {
-        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (owner_->_task_id == 0) {
+        service_control_runtime_t *runtime =
+          owner_->_ctx->service_control_runtime ();
         if (!runtime) {
             errno = ENOTSUP;
             return -1;
         }
-        _task_id = runtime->add_periodic_task (control_task, this, 1, true);
-        if (_task_id == 0)
+        owner_->_task_id =
+          runtime->add_periodic_task (discovery_t::control_task, owner_, 1, true);
+        if (owner_->_task_id == 0)
             return -1;
     } else {
-        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        service_control_runtime_t *runtime =
+          owner_->_ctx->service_control_runtime ();
         if (runtime)
-            runtime->wakeup_task (_task_id);
+            runtime->wakeup_task (owner_->_task_id);
     }
 
-    emit_ready_changed (1);
+    owner_->emit_ready_changed (1);
     return 0;
 }
 
-int discovery_t::set_routing_id (const void *data_, size_t size_)
+int discovery_bootstrap_runtime_t::set_routing_id (discovery_t *owner_,
+                                                   const void *data_,
+                                                   size_t size_)
 {
-    service_public_api_scope_t admission (_public_api);
+    service_public_api_scope_t admission (owner_->_public_api);
     if (!admission.acquired ())
         return -1;
     if (!data_ || size_ == 0 || size_ > sizeof (_routing_id.data)) {
@@ -174,8 +195,9 @@ int discovery_t::set_routing_id (const void *data_, size_t size_)
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
-    if (_routing_id_locked || _sub_socket || !_connected_endpoints.empty ()
+    scoped_lock_t lock (owner_->_sync);
+    if (_routing_id_locked || owner_->_sub_socket
+        || !owner_->_connected_endpoints.empty ()
         || !_registry_pub_endpoints.empty ()
         || !_registry_bootstrap_endpoints.empty ()) {
         errno = EFSM;
@@ -187,10 +209,10 @@ int discovery_t::set_routing_id (const void *data_, size_t size_)
     return 0;
 }
 
-int discovery_t::routing_id (zlink_routing_id_t *out_) const
+int discovery_bootstrap_runtime_t::routing_id (discovery_t *owner_,
+                                               zlink_routing_id_t *out_) const
 {
-    service_public_api_scope_t admission (
-      const_cast<service_public_api_guard_t &> (_public_api));
+    service_public_api_scope_t admission (owner_->_public_api);
     if (!admission.acquired ())
         return -1;
     if (!out_) {
@@ -198,7 +220,7 @@ int discovery_t::routing_id (zlink_routing_id_t *out_) const
         return -1;
     }
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (owner_->_sync);
     *out_ = _routing_id;
     if (out_->size > 0)
         return 0;
@@ -207,11 +229,12 @@ int discovery_t::routing_id (zlink_routing_id_t *out_) const
     return -1;
 }
 
-int discovery_t::set_option (int option_,
-                             const void *optval_,
-                             size_t optvallen_)
+int discovery_bootstrap_runtime_t::set_option (discovery_t *owner_,
+                                               int option_,
+                                               const void *optval_,
+                                               size_t optvallen_)
 {
-    service_public_api_scope_t admission (_public_api);
+    service_public_api_scope_t admission (owner_->_public_api);
     if (!admission.acquired ())
         return -1;
     if (!optval_ || optvallen_ == 0) {
@@ -219,11 +242,11 @@ int discovery_t::set_option (int option_,
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
+    scoped_lock_t lock (owner_->_sync);
     bool updated = false;
-    for (size_t i = 0; i < _sub_opts.size (); ++i) {
-        if (_sub_opts[i].option == option_) {
-            _sub_opts[i].value.assign (
+    for (size_t i = 0; i < _socket_options.size (); ++i) {
+        if (_socket_options[i].option == option_) {
+            _socket_options[i].value.assign (
               static_cast<const unsigned char *> (optval_),
               static_cast<const unsigned char *> (optval_) + optvallen_);
             updated = true;
@@ -236,21 +259,22 @@ int discovery_t::set_option (int option_,
         opt.value.assign (static_cast<const unsigned char *> (optval_),
                           static_cast<const unsigned char *> (optval_)
                             + optvallen_);
-        _sub_opts.push_back (opt);
+        _socket_options.push_back (opt);
     }
-    apply_socket_options_to_existing_locked (option_, optval_, optvallen_);
+    apply_socket_option_to_existing (owner_, option_, optval_, optvallen_);
     return 0;
 }
 
-int discovery_t::set_tls_client (const char *ca_cert_,
-                                 const char *hostname_,
-                                 int trust_system_)
+int discovery_bootstrap_runtime_t::set_tls_client (discovery_t *owner_,
+                                                   const char *ca_cert_,
+                                                   const char *hostname_,
+                                                   int trust_system_)
 {
-    service_public_api_scope_t admission (_public_api);
+    service_public_api_scope_t admission (owner_->_public_api);
     if (!admission.acquired ())
         return -1;
 
-    scoped_lock_t lock (_sync);
+    scoped_lock_t lock (owner_->_sync);
     const char *tls_ca = ca_cert_ ? ca_cert_ : "";
     const char *tls_hostname = hostname_ ? hostname_ : "";
     const size_t tls_ca_len = strlen (tls_ca) + 1;
@@ -269,9 +293,9 @@ int discovery_t::set_tls_client (const char *ca_cert_,
 
     for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); ++i) {
         bool updated = false;
-        for (size_t j = 0; j < _sub_opts.size (); ++j) {
-            if (_sub_opts[j].option == options[i].option) {
-                _sub_opts[j].value.assign (
+        for (size_t j = 0; j < _socket_options.size (); ++j) {
+            if (_socket_options[j].option == options[i].option) {
+                _socket_options[j].value.assign (
                   static_cast<const unsigned char *> (options[i].value),
                   static_cast<const unsigned char *> (options[i].value)
                     + options[i].size);
@@ -286,96 +310,86 @@ int discovery_t::set_tls_client (const char *ca_cert_,
               static_cast<const unsigned char *> (options[i].value),
               static_cast<const unsigned char *> (options[i].value)
                 + options[i].size);
-            _sub_opts.push_back (opt);
+            _socket_options.push_back (opt);
         }
-        apply_socket_options_to_existing_locked (
-          options[i].option, options[i].value, options[i].size);
+        apply_socket_option_to_existing (
+          owner_, options[i].option, options[i].value, options[i].size);
     }
     return 0;
 }
 
-void discovery_t::apply_socket_options_locked (socket_base_t *socket_)
+void discovery_bootstrap_runtime_t::apply_socket_options (
+  socket_base_t *socket_) const
 {
     if (!socket_)
         return;
-    for (size_t i = 0; i < _sub_opts.size (); ++i) {
-        if (!_sub_opts[i].value.empty ())
-            socket_->setsockopt (_sub_opts[i].option, &_sub_opts[i].value[0],
-                                 _sub_opts[i].value.size ());
+    for (size_t i = 0; i < _socket_options.size (); ++i) {
+        if (!_socket_options[i].value.empty ()) {
+            socket_->setsockopt (_socket_options[i].option,
+                                 &_socket_options[i].value[0],
+                                 _socket_options[i].value.size ());
+        }
     }
 }
 
-void discovery_t::apply_socket_options_to_existing_locked (int option_,
-                                                           const void *optval_,
-                                                           size_t optvallen_)
+void discovery_bootstrap_runtime_t::apply_socket_option_to_existing (
+  discovery_t *owner_, int option_, const void *optval_, size_t optvallen_) const
 {
-    if (_sub_socket)
-        static_cast<socket_base_t *> (_sub_socket)
+    if (owner_->_sub_socket) {
+        static_cast<socket_base_t *> (owner_->_sub_socket)
           ->setsockopt (option_, optval_, optvallen_);
+    }
 
-    for (std::map<std::string, bootstrap_state_t>::iterator it =
+    for (std::map<std::string, bootstrap_state_t>::const_iterator it =
            _bootstrap_states.begin ();
          it != _bootstrap_states.end (); ++it) {
         if (it->second.dealer)
             it->second.dealer->setsockopt (option_, optval_, optvallen_);
     }
 
-    for (std::map<std::string, socket_base_t *>::iterator it =
-           _report_dealers.begin ();
-         it != _report_dealers.end (); ++it) {
-        if (it->second)
-            it->second->setsockopt (option_, optval_, optvallen_);
-    }
-
-    for (std::map<std::string, socket_base_t *>::iterator it =
-           _control_dealers.begin ();
-         it != _control_dealers.end (); ++it) {
-        if (it->second)
-            it->second->setsockopt (option_, optval_, optvallen_);
-    }
+    owner_->_uplink_runtime->apply_socket_option_to_existing (
+      owner_, option_, optval_, optvallen_);
 }
 
-void *discovery_t::monitor_open (int events_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return NULL;
-    return _monitor.open (events_);
-}
-
-bool discovery_t::ensure_socket_routing_id (socket_base_t *socket_)
+bool discovery_bootstrap_runtime_t::ensure_socket_routing_id (
+  socket_base_t *socket_)
 {
     if (!socket_)
         return false;
     if (_routing_id.size > 0 && _routing_id_override.empty ()) {
-        return socket_->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, _routing_id.data,
-                                    _routing_id.size)
+        return socket_->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID,
+                                    _routing_id.data, _routing_id.size)
                == 0;
     }
     if (!zlink::discovery::set_socket_routing_id (
-          socket_, &_routing_id_override, &_routing_id))
+          socket_, &_routing_id_override, &_routing_id)) {
         return false;
-    if (_routing_id_override.empty () && _routing_id.size > 0)
-        _routing_id_override.assign (
-          reinterpret_cast<const char *> (_routing_id.data), _routing_id.size);
+    }
+    if (_routing_id_override.empty () && _routing_id.size > 0) {
+        _routing_id_override.assign (reinterpret_cast<const char *> (
+                                       _routing_id.data),
+                                     _routing_id.size);
+    }
     return true;
 }
 
-int discovery_t::bootstrap_registry (const char *registry_endpoint_)
+int discovery_bootstrap_runtime_t::bootstrap_registry (
+  discovery_t *owner_, const char *registry_endpoint_)
 {
     socket_base_t *dealer = NULL;
     zlink_routing_id_t rid;
     memset (&rid, 0, sizeof (rid));
-    if (ensure_bootstrap_dealer (registry_endpoint_, &dealer) != 0)
+    if (ensure_bootstrap_dealer (owner_, registry_endpoint_, &dealer) != 0)
         return -1;
     bootstrap_state_t *state = NULL;
     {
-        scoped_lock_t lock (_sync);
+        scoped_lock_t lock (owner_->_sync);
         state = &_bootstrap_states[registry_endpoint_];
         rid = _routing_id;
         discovery_debugf ("bootstrap state endpoint=%s sent=%d started=%llu dealer=%p",
                           registry_endpoint_, state->request_sent ? 1 : 0,
-                          static_cast<unsigned long long> (state->request_started_ms),
+                          static_cast<unsigned long long> (
+                            state->request_started_ms),
                           static_cast<void *> (state->dealer));
     }
     if (!state || !dealer) {
@@ -384,13 +398,12 @@ int discovery_t::bootstrap_registry (const char *registry_endpoint_)
     }
 
     if (!state->request_sent) {
-        if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT,
-                                0))
+        if (!wait_socket_event (static_cast<void *> (dealer), ZLINK_POLLOUT, 0))
             return 1;
         discovery_protocol::bootstrap_req_t req;
         memset (&req, 0, sizeof (req));
         req.msg_id = discovery_protocol::msg_bootstrap_req;
-        req.service_type = _service_type;
+        req.service_type = owner_->_service_type;
         req.routing_id = rid;
         if (discovery_protocol::send_frame (dealer, &req, sizeof (req), 0)
             < 0) {
@@ -400,7 +413,7 @@ int discovery_t::bootstrap_registry (const char *registry_endpoint_)
             return -1;
         }
 
-        scoped_lock_t lock (_sync);
+        scoped_lock_t lock (owner_->_sync);
         bootstrap_state_t &stored = _bootstrap_states[registry_endpoint_];
         stored.request_sent = true;
         stored.request_started_ms = zlink::clock_t ().now_ms ();
@@ -414,9 +427,9 @@ int discovery_t::bootstrap_registry (const char *registry_endpoint_)
         if (state->request_started_ms != 0
             && now_ms - state->request_started_ms > 2000) {
             discovery_debugf ("bootstrap timeout endpoint=%s", registry_endpoint_);
-            scoped_lock_t lock (_sync);
+            scoped_lock_t lock (owner_->_sync);
             bootstrap_state_t &stored = _bootstrap_states[registry_endpoint_];
-            (void) _lifecycle.close_socket_and_wait (stored.dealer, 1000);
+            (void) owner_->_lifecycle.close_socket_and_wait (stored.dealer, 1000);
             stored.request_sent = false;
             stored.request_started_ms = 0;
         }
@@ -461,22 +474,18 @@ int discovery_t::bootstrap_registry (const char *registry_endpoint_)
         return -1;
     }
 
+    socket_base_t *adopted_report_dealer = NULL;
     {
-        scoped_lock_t lock (_sync);
+        scoped_lock_t lock (owner_->_sync);
         _registry_pub_endpoints.insert (pub_endpoint);
-        _registry_uplink_endpoints.insert (uplink_endpoint);
-        _latest_registry_uplink_endpoint = uplink_endpoint;
         _bootstrapped_registry_endpoints.insert (registry_endpoint_);
         if (heartbeat_interval_ms > 0)
             _heartbeat_interval_ms = heartbeat_interval_ms;
         std::map<std::string, bootstrap_state_t>::iterator it =
           _bootstrap_states.find (registry_endpoint_);
         if (it != _bootstrap_states.end ()) {
-            if (it->second.dealer
-                && uplink_endpoint == registry_endpoint_
-                && _report_dealers.find (uplink_endpoint)
-                     == _report_dealers.end ()) {
-                _report_dealers[uplink_endpoint] = it->second.dealer;
+            if (it->second.dealer && uplink_endpoint == registry_endpoint_) {
+                adopted_report_dealer = it->second.dealer;
                 it->second.dealer = NULL;
             }
             if (it->second.dealer) {
@@ -487,16 +496,21 @@ int discovery_t::bootstrap_registry (const char *registry_endpoint_)
         }
     }
 
+    owner_->_uplink_runtime->remember_bootstrap_success (
+      owner_, registry_endpoint_, uplink_endpoint, adopted_report_dealer);
+
     discovery_debugf ("bootstrap ok endpoint=%s pub=%s uplink=%s",
                       registry_endpoint_, pub_endpoint.c_str (),
                       uplink_endpoint.c_str ());
 
-    (void) ensure_topology_reporters ();
+    (void) owner_->ensure_topology_reporters ();
     return 0;
 }
 
-int discovery_t::ensure_bootstrap_dealer (const std::string &registry_endpoint_,
-                                          socket_base_t **dealer_out_)
+int discovery_bootstrap_runtime_t::ensure_bootstrap_dealer (
+  discovery_t *owner_,
+  const std::string &registry_endpoint_,
+  socket_base_t **dealer_out_)
 {
     if (!dealer_out_) {
         errno = EINVAL;
@@ -504,29 +518,30 @@ int discovery_t::ensure_bootstrap_dealer (const std::string &registry_endpoint_,
     }
     *dealer_out_ = NULL;
 
-    scoped_lock_t lock (_sync);
+    scoped_lock_t lock (owner_->_sync);
     bootstrap_state_t &state = _bootstrap_states[registry_endpoint_];
     if (!state.dealer) {
-        state.dealer = _ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
+        state.dealer = owner_->_ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
         if (!state.dealer)
             return -1;
-        _lifecycle.register_socket (state.dealer);
+        owner_->_lifecycle.register_socket (state.dealer);
         if (!ensure_socket_routing_id (state.dealer)) {
-            (void) _lifecycle.close_socket (state.dealer);
+            (void) owner_->_lifecycle.close_socket (state.dealer);
             state.dealer = NULL;
             return -1;
         }
-        apply_socket_options_locked (state.dealer);
+        apply_socket_options (state.dealer);
         const int linger = 0;
         const int sndtimeo_ms = 0;
         const int rcvtimeo_ms = 0;
-        state.dealer->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
+        state.dealer->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger,
+                                  sizeof (linger));
         state.dealer->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms,
                                   sizeof (sndtimeo_ms));
         state.dealer->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms,
                                   sizeof (rcvtimeo_ms));
         if (state.dealer->connect (registry_endpoint_.c_str ()) != 0) {
-            (void) _lifecycle.close_socket (state.dealer);
+            (void) owner_->_lifecycle.close_socket (state.dealer);
             state.dealer = NULL;
             return -1;
         }
@@ -534,6 +549,97 @@ int discovery_t::ensure_bootstrap_dealer (const std::string &registry_endpoint_,
 
     *dealer_out_ = state.dealer;
     return 0;
+}
+
+void discovery_bootstrap_runtime_t::collect_pending_bootstrap_endpoints (
+  discovery_t *owner_, std::vector<std::string> *out_) const
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    scoped_lock_t lock (owner_->_sync);
+    for (std::set<std::string>::const_iterator it =
+           _registry_bootstrap_endpoints.begin ();
+         it != _registry_bootstrap_endpoints.end (); ++it) {
+        if (_bootstrapped_registry_endpoints.count (*it) == 0)
+            out_->push_back (*it);
+    }
+}
+
+void discovery_bootstrap_runtime_t::collect_registry_pub_endpoints (
+  discovery_t *owner_, std::set<std::string> *out_) const
+{
+    if (!out_)
+        return;
+    scoped_lock_t lock (owner_->_sync);
+    *out_ = _registry_pub_endpoints;
+}
+
+void discovery_bootstrap_runtime_t::take_shutdown_state (
+  discovery_t *owner_,
+  std::vector<std::pair<std::string, socket_base_t *> > *bootstrap_dealers)
+{
+    if (!bootstrap_dealers)
+        return;
+    bootstrap_dealers->clear ();
+    scoped_lock_t lock (owner_->_sync);
+    for (std::map<std::string, bootstrap_state_t>::iterator it =
+           _bootstrap_states.begin ();
+         it != _bootstrap_states.end (); ++it) {
+        if (it->second.dealer) {
+            bootstrap_dealers->push_back (
+              std::make_pair (it->first, it->second.dealer));
+            it->second.dealer = NULL;
+        }
+    }
+    _bootstrap_states.clear ();
+    _registry_bootstrap_endpoints.clear ();
+    _bootstrapped_registry_endpoints.clear ();
+    _registry_pub_endpoints.clear ();
+}
+
+int discovery_t::connect_registry (const char *registry_endpoint_)
+{
+    return _bootstrap_runtime->connect_registry (this, registry_endpoint_);
+}
+
+int discovery_t::set_routing_id (const void *data_, size_t size_)
+{
+    return _bootstrap_runtime->set_routing_id (this, data_, size_);
+}
+
+int discovery_t::routing_id (zlink_routing_id_t *out_) const
+{
+    return _bootstrap_runtime->routing_id (const_cast<discovery_t *> (this),
+                                           out_);
+}
+
+int discovery_t::set_option (int option_,
+                             const void *optval_,
+                             size_t optvallen_)
+{
+    return _bootstrap_runtime->set_option (this, option_, optval_, optvallen_);
+}
+
+int discovery_t::set_tls_client (const char *ca_cert_,
+                                 const char *hostname_,
+                                 int trust_system_)
+{
+    return _bootstrap_runtime->set_tls_client (this, ca_cert_, hostname_,
+                                               trust_system_);
+}
+
+void *discovery_t::monitor_open (int events_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return NULL;
+    return _monitor.open (events_);
+}
+
+int discovery_t::bootstrap_registry (const char *registry_endpoint_)
+{
+    return _bootstrap_runtime->bootstrap_registry (this, registry_endpoint_);
 }
 
 void discovery_t::snapshot_providers (const std::string &service_name_,
@@ -552,14 +658,7 @@ void discovery_t::snapshot_providers (const std::string &service_name_,
 
 bool discovery_t::latest_registry_uplink (std::string *out_)
 {
-    if (!out_)
-        return false;
-
-    scoped_lock_t lock (_sync);
-    if (_latest_registry_uplink_endpoint.empty ())
-        return false;
-    *out_ = _latest_registry_uplink_endpoint;
-    return true;
+    return _uplink_runtime->latest_registry_uplink (this, out_);
 }
 
 uint64_t discovery_t::update_seq ()

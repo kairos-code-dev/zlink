@@ -5,6 +5,7 @@
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -55,21 +56,11 @@ void discovery_t::tick ()
         return;
 
     std::vector<std::string> bootstrap_endpoints;
-    {
-        scoped_lock_t lock (_sync);
-        for (std::set<std::string>::const_iterator it =
-               _registry_bootstrap_endpoints.begin ();
-             it != _registry_bootstrap_endpoints.end (); ++it) {
-            if (_bootstrapped_registry_endpoints.count (*it) == 0)
-                bootstrap_endpoints.push_back (*it);
-        }
-    }
+    _bootstrap_runtime->collect_pending_bootstrap_endpoints (
+      this, &bootstrap_endpoints);
 
     for (size_t i = 0; i < bootstrap_endpoints.size (); ++i) {
-        if (bootstrap_registry (bootstrap_endpoints[i].c_str ()) == 0) {
-            scoped_lock_t lock (_sync);
-            _bootstrapped_registry_endpoints.insert (bootstrap_endpoints[i]);
-        }
+        (void) bootstrap_registry (bootstrap_endpoints[i].c_str ());
     }
 
     if (ensure_sub_socket () != 0)
@@ -80,8 +71,8 @@ void discovery_t::tick ()
     {
         scoped_lock_t lock (_sync);
         sub = _sub_socket;
-        endpoints = _registry_pub_endpoints;
     }
+    _bootstrap_runtime->collect_registry_pub_endpoints (this, &endpoints);
     if (!sub)
         return;
 
@@ -266,7 +257,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
                 ev.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
                 ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
                                   | ZLINK_EVENT_DETAIL_SUBJECT_RID;
-                ev.routing_id = _routing_id;
+                ev.routing_id = _bootstrap_runtime->routing_id_value ();
                 strncpy (ev.service_name, uit->first.c_str (),
                          sizeof (ev.service_name) - 1);
                 ev.value = static_cast<uint32_t> (uit->second.providers.size ());
@@ -292,7 +283,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
                 ev.event_type = ZLINK_DISCOVERY_SERVICE_DOWN;
                 ev.detail_flags = ZLINK_EVENT_DETAIL_SERVICE_NAME
                                   | ZLINK_EVENT_DETAIL_SUBJECT_RID;
-                ev.routing_id = _routing_id;
+                ev.routing_id = _bootstrap_runtime->routing_id_value ();
                 strncpy (ev.service_name, oit->first.c_str (),
                          sizeof (ev.service_name) - 1);
                 events.push_back (ev);
@@ -319,7 +310,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         if (_discovery_summary_enabled) {
             zlink_registry_topology_entry_t entry;
             memset (&entry, 0, sizeof (entry));
-            entry.routing_id = _routing_id;
+            entry.routing_id = _bootstrap_runtime->routing_id_value ();
             entry.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
             strncpy (entry.service_name, events[i].service_name,
                      sizeof (entry.service_name) - 1);

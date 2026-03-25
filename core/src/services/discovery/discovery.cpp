@@ -4,6 +4,7 @@
 
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
 
 #include "utils/err.hpp"
 
@@ -27,23 +28,28 @@ discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _stop (0),
     _task_id (0),
     _sub_socket (NULL),
+    _bootstrap_runtime (new discovery_bootstrap_runtime_t ()),
+    _uplink_runtime (new discovery_uplink_runtime_t ()),
     _update_seq (0),
     _observer_callbacks_inflight (0),
     _destroying (false),
     _monitor_ready_count (0),
     _service_type (service_type_),
     _discovery_summary_enabled (true),
-    _routing_id_locked (false),
-    _heartbeat_interval_ms (5000),
     _monitor (ctx_)
 {
     zlink_assert (_ctx);
     zlink_assert (is_valid_service_type (_service_type));
-    _routing_id.size = 0;
+    zlink_assert (_bootstrap_runtime);
+    zlink_assert (_uplink_runtime);
 }
 
 discovery_t::~discovery_t ()
 {
+    delete _uplink_runtime;
+    _uplink_runtime = NULL;
+    delete _bootstrap_runtime;
+    _bootstrap_runtime = NULL;
     _tag = 0xdeadbeef;
 }
 
@@ -65,9 +71,11 @@ void discovery_t::emit_ready_changed (uint32_t ready_count_)
         event.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
         event.event_type = ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED;
         event.value = ready_count_;
-        if (_routing_id.size > 0) {
+        const zlink_routing_id_t &routing_id =
+          _bootstrap_runtime->routing_id_value ();
+        if (routing_id.size > 0) {
             event.detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT_RID;
-            event.routing_id = _routing_id;
+            event.routing_id = routing_id;
         }
         emit = true;
     }

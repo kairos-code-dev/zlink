@@ -330,7 +330,7 @@ archive로만 남긴다.
 | Post-residual 기준 `spot` secure multi-peer 구조 잔여 마감 | 완료 | 5.7A | `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_node.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.cpp`, `core/src/services/spot/spot_runtime.hpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/unittest/unittest_spot_data_plane_protocol.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_owner_gate_20260325_110639.log`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_owner_gate_20260325_110639.log.exitcode`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_pubsub_scenario|test_spot_service_introspection)$'`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_service_gate_20260325_110850.log`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_service_gate_20260325_110850.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: 73ffa1b5` |
 | Post-residual 기준 `socket_message_api.cpp` / `options_t` ownership 재정리 | 완료 | 5.7B | `core/src/api/socket_message_api.cpp`, `core/src/api/socket_message_send_api.cpp`, `core/src/api/socket_message_handler_api.cpp`, `core/src/core/options.hpp`, `core/src/core/options_owner.cpp`, `core/src/core/options_dispatch.cpp`, `core/CMakeLists.txt` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_typed_option|test_stream_threadsafe|test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'`, `doc/plan/refactor/2nd/logs/phase5_7B_message_option_gate_20260325_112021.log`, `doc/plan/refactor/2nd/logs/phase5_7B_message_option_gate_20260325_112021.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: d8dabbaf` |
 | Post-residual 기준 `spot_node_t` handle/defaults/facade 구조 마감 | 완료 | 5.7C | `core/src/services/spot/spot_node.hpp`, `core/src/services/spot/spot_node_handles.cpp`, `core/src/services/spot/spot_node_lifecycle.cpp`, `core/src/services/spot/spot_internal_receiver.*`, `core/tests/e2e/spot/test_spot_service_introspection.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection_handler_monitor_close)$'`, `doc/plan/refactor/2nd/logs/phase5_7C_spot_node_gate_20260325_113854.log`, `doc/plan/refactor/2nd/logs/phase5_7C_spot_node_gate_20260325_113854.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; owner 문장: `spot_node_t`는 semantic facade이고 default handle lifecycle/option defaults는 `spot_node_default_handles_t`가 소유; `commit: 6c3b2812` |
-| Post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감 | 미착수 | 5.7D | `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_protocol.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current owner 정리 후 기록 |
+| Post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감 | 완료 | 5.7D | `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/discovery_runtime_internal.hpp`, `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_state.cpp`, `core/src/services/discovery/discovery_update.cpp`, `core/src/services/discovery/discovery_registry_client.cpp` | 실제 수정 파일: `discovery.hpp`, `discovery_runtime_internal.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_state.cpp`, `discovery_update.cpp`, `discovery_registry_client.cpp`; gate: `cmake --build core/build -j\"$(nproc)\"`, `ctest --test-dir core/build --output-on-failure -R '^(test_service_discovery|test_service_introspection|test_service_introspection_discovery_self_close|test_service_introspection_discovery_control_path|test_monitor_service_contract)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; 최종 문장: `discovery_t`는 discovery semantic facade이고 registry bootstrap/socket-option/routing-id/uplink dealer detail은 `discovery_bootstrap_runtime_t`와 `discovery_uplink_runtime_t`가 소유한다. |
 | Post-residual 기준 engine / transport owner 재판정 | 미착수 | 5.7E | `core/src/engine/asio/asio_engine.cpp`, `core/src/transports/ws/asio_ws_engine.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; representative gate는 current 구조 정리 후 기록 |
 
 이 표는 각 작업 묶음이 끝날 때마다 반드시 갱신한다.
@@ -683,24 +683,31 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - top-level owner 문장: `discovery_t`는 discovery semantic facade이고, registry bootstrap/uplink/control detail은 dedicated private owner가 가진다.
 - 남길 책임: registry connect/register/update/unregister semantic contract, observer facade, topology snapshot facade
 - 숨길 책임: bootstrap retry/wakeup, routing-id lock detail, socket option 저장/적용, tls client option materialization, uplink/control dealer state
-- 허용 파일 경계: `discovery.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_protocol.cpp`, 필요 시 이에 직접 연결된 `core/tests/`
+- 허용 파일 경계: `discovery.hpp`, `discovery_runtime_internal.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_state.cpp`, `discovery_update.cpp`, `discovery_registry_client.cpp`, 필요 시 이에 직접 연결된 `core/tests/`
 - 금지: bootstrap state를 `discovery_t` 본체 field로 더 늘리는 것, `spot/gateway`에서 discovery internal state를 직접 읽게 하는 것, transport restriction contract 완화
 - 필수 대표 gate: `test_service_discovery`, `test_service_introspection`, `test_service_introspection_discovery_self_close`, `test_service_introspection_discovery_control_path`, `test_monitor_service_contract`
 
-- [ ] [`discovery.hpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery.hpp)와
+- [x] [`discovery.hpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery.hpp)와
   [`discovery_bootstrap.cpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery_bootstrap.cpp),
   [`discovery_uplink.cpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery_uplink.cpp)가
   semantic facade인지 bootstrap/uplink coordinator인지 다시 판정한다.
-- [ ] registry bootstrap, routing-id lock, socket option 저장/적용, tls client option 반영이 어떤 private owner에 속하는지 먼저 문장으로 고정한다.
-- [ ] bootstrap retry/wakeup/control task 시작 조건이 top-level facade와 뒤섞인 지점을 줄인다.
-- [ ] friend/access seam과 internal bootstrap helper가 상태 우회 통로로 남는 지점을 줄인다.
-- [ ] 이 항목은 `5.7A`, `5.7B`, `5.7C` 완료 후에만 진행한다.
+- [x] registry bootstrap, routing-id lock, socket option 저장/적용, tls client option 반영이 어떤 private owner에 속하는지 먼저 문장으로 고정한다.
+- [x] bootstrap retry/wakeup/control task 시작 조건이 top-level facade와 뒤섞인 지점을 줄인다.
+- [x] friend/access seam과 internal bootstrap helper가 상태 우회 통로로 남는 지점을 줄인다.
+- [x] 이 항목은 `5.7A`, `5.7B`, `5.7C` 완료 후에만 진행한다.
 
 닫힘 기준:
 
 - `discovery_t` 설명이 "semantic facade + bootstrap/uplink owner 위임" 수준으로 줄어든다.
 - registry bootstrap과 uplink/control state가 top-level facade 바깥 private owner로 설명된다.
 - service/discovery 대표 회귀가 유지된다.
+
+구현 메모:
+
+- 실제 수정 파일: `discovery.hpp`, `discovery_runtime_internal.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_state.cpp`, `discovery_update.cpp`, `discovery_registry_client.cpp`
+- 통과한 gate 명령: `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_service_discovery|test_service_introspection|test_service_introspection_discovery_self_close|test_service_introspection_discovery_control_path|test_monitor_service_contract)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`
+- 최종 문장: `discovery_t`는 discovery semantic facade이고 registry bootstrap/socket-option/routing-id/uplink dealer detail은 `discovery_bootstrap_runtime_t`와 `discovery_uplink_runtime_t`가 소유한다.
+- 마스터 플랜 재점검: Phase 1~6, 8.1, 8.2, 9 기준으로 `5.7D` 외 추가 구현 누락은 발견하지 못했고, 다음 미완료 row는 `5.7E`다.
 
 ### 5.7E post-residual 기준 engine / transport owner 재판정
 

@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
 
 #include "services/control/service_control_runtime.hpp"
 
@@ -154,7 +155,7 @@ int discovery_t::destroy ()
     terminal.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
     terminal.event_type = ZLINK_MONITOR_EVENT_CLOSED;
     terminal.detail_flags = ZLINK_EVENT_DETAIL_SUBJECT_RID;
-    terminal.routing_id = _routing_id;
+    terminal.routing_id = _bootstrap_runtime->routing_id_value ();
     _monitor.close_all (&terminal);
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
     if (runtime && _task_id != 0)
@@ -162,33 +163,25 @@ int discovery_t::destroy ()
     _task_id = 0;
     void *sub_socket = NULL;
     std::set<std::string> connected_endpoints;
-    std::map<std::string, bootstrap_state_t> bootstrap_states;
-    std::map<std::string, socket_base_t *> report_dealers;
-    std::map<std::string, socket_base_t *> control_dealers;
+    std::vector<std::pair<std::string, socket_base_t *> > bootstrap_dealers;
+    std::vector<std::pair<std::string, socket_base_t *> > report_dealers;
+    std::vector<std::pair<std::string, socket_base_t *> > control_dealers;
     std::vector<discovery_observer_t *> observers;
     {
         scoped_lock_t lock (_sync);
         sub_socket = _sub_socket;
         connected_endpoints = _connected_endpoints;
-        bootstrap_states = _bootstrap_states;
-        report_dealers = _report_dealers;
-        control_dealers = _control_dealers;
         _sub_socket = NULL;
         _connected_endpoints.clear ();
         observers.assign (_observers.begin (), _observers.end ());
         _observers.clear ();
         _observer_callbacks_inflight = 0;
-        _report_dealers.clear ();
-        _control_dealers.clear ();
-        _bootstrap_states.clear ();
-        _registry_uplink_endpoints.clear ();
-        _latest_registry_uplink_endpoint.clear ();
-        _registry_bootstrap_endpoints.clear ();
-        _bootstrapped_registry_endpoints.clear ();
-        _registry_pub_endpoints.clear ();
         _registered_services.clear ();
         _summary_store.clear ();
     }
+    _bootstrap_runtime->take_shutdown_state (this, &bootstrap_dealers);
+    _uplink_runtime->take_shutdown_state (this, &report_dealers,
+                                          &control_dealers);
 
     if (sub_socket) {
         for (std::set<std::string>::const_iterator it =
@@ -200,36 +193,35 @@ int discovery_t::destroy ()
         (void) _lifecycle.close_socket_and_wait (sub, 1000);
     }
 
-    for (std::map<std::string, bootstrap_state_t>::iterator it =
-           bootstrap_states.begin ();
-         it != bootstrap_states.end (); ++it) {
-        if (!it->second.dealer)
+    for (size_t i = 0; i < bootstrap_dealers.size (); ++i) {
+        if (!bootstrap_dealers[i].second)
             continue;
-        if (!it->first.empty ())
-            zlink_disconnect (it->second.dealer, it->first.c_str ());
-        it->second.dealer->set_all_pipes_nodelay ();
-        (void) _lifecycle.close_socket_and_wait (it->second.dealer, 1000);
-        it->second.dealer = NULL;
+        if (!bootstrap_dealers[i].first.empty ()) {
+            zlink_disconnect (bootstrap_dealers[i].second,
+                              bootstrap_dealers[i].first.c_str ());
+        }
+        bootstrap_dealers[i].second->set_all_pipes_nodelay ();
+        (void) _lifecycle.close_socket_and_wait (bootstrap_dealers[i].second,
+                                                 1000);
     }
-    for (std::map<std::string, socket_base_t *>::iterator it =
-           report_dealers.begin ();
-         it != report_dealers.end (); ++it) {
-        if (!it->second)
+    for (size_t i = 0; i < report_dealers.size (); ++i) {
+        if (!report_dealers[i].second)
             continue;
-        if (!it->first.empty ())
-            zlink_disconnect (it->second, it->first.c_str ());
-        it->second->set_all_pipes_nodelay ();
-        (void) _lifecycle.close_socket_and_wait (it->second, 1000);
+        if (!report_dealers[i].first.empty ())
+            zlink_disconnect (report_dealers[i].second,
+                              report_dealers[i].first.c_str ());
+        report_dealers[i].second->set_all_pipes_nodelay ();
+        (void) _lifecycle.close_socket_and_wait (report_dealers[i].second, 1000);
     }
-    for (std::map<std::string, socket_base_t *>::iterator it =
-           control_dealers.begin ();
-         it != control_dealers.end (); ++it) {
-        if (!it->second)
+    for (size_t i = 0; i < control_dealers.size (); ++i) {
+        if (!control_dealers[i].second)
             continue;
-        if (!it->first.empty ())
-            zlink_disconnect (it->second, it->first.c_str ());
-        it->second->set_all_pipes_nodelay ();
-        (void) _lifecycle.close_socket_and_wait (it->second, 1000);
+        if (!control_dealers[i].first.empty ())
+            zlink_disconnect (control_dealers[i].second,
+                              control_dealers[i].first.c_str ());
+        control_dealers[i].second->set_all_pipes_nodelay ();
+        (void) _lifecycle.close_socket_and_wait (control_dealers[i].second,
+                                                 1000);
     }
     (void) _lifecycle.wait_drained (10000);
 
@@ -257,8 +249,10 @@ int discovery_t::ensure_sub_socket ()
         return -1;
     _lifecycle.register_socket (static_cast<socket_base_t *> (sub));
 
-    apply_socket_options_locked (static_cast<socket_base_t *> (sub));
-    if (!ensure_socket_routing_id (static_cast<socket_base_t *> (sub))) {
+    _bootstrap_runtime->apply_socket_options (
+      static_cast<socket_base_t *> (sub));
+    if (!_bootstrap_runtime->ensure_socket_routing_id (
+          static_cast<socket_base_t *> (sub))) {
         socket_base_t *sub_socket = static_cast<socket_base_t *> (sub);
         (void) _lifecycle.close_socket (sub_socket);
         return -1;

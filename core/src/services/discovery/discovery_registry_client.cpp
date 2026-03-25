@@ -5,6 +5,7 @@
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
 #include "services/gateway/routing_id_utils.hpp"
 
 #include <cstdarg>
@@ -154,11 +155,12 @@ static int close_transient_dealer_local (ctx_t *ctx_, socket_base_t *&dealer_)
 }
 
 static int prepare_transient_dealer_local (ctx_t *ctx_,
+                                           discovery_bootstrap_runtime_t *bootstrap_runtime_,
                                            const std::string &uplink_,
                                            const zlink_routing_id_t *routing_id_,
                                            socket_base_t **dealer_out_)
 {
-    if (!ctx_ || !dealer_out_) {
+    if (!ctx_ || !bootstrap_runtime_ || !dealer_out_) {
         errno = EINVAL;
         return -1;
     }
@@ -179,6 +181,8 @@ static int prepare_transient_dealer_local (ctx_t *ctx_,
         (void) close_transient_dealer_local (ctx_, dealer);
         return -1;
     }
+
+    bootstrap_runtime_->apply_socket_options (dealer);
 
     const int linger = 200;
     const int sndtimeo_ms = 500;
@@ -225,17 +229,15 @@ int discovery_t::register_service (uint16_t service_type_,
     }
 
     std::string uplink;
-    {
-        scoped_lock_t lock (_sync);
-        uplink = _latest_registry_uplink_endpoint;
-    }
-    if (uplink.empty ()) {
+    if (!_uplink_runtime->latest_registry_uplink (this, &uplink)) {
         errno = EAGAIN;
         return -1;
     }
 
     socket_base_t *dealer = NULL;
-    if (prepare_transient_dealer_local (_ctx, uplink, routing_id_, &dealer) != 0) {
+    if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime, uplink,
+                                        routing_id_, &dealer)
+        != 0) {
         discovery_debugf_local ("register_service pollout timeout uplink=%s",
                                 uplink.c_str ());
         return -1;
@@ -324,16 +326,18 @@ int discovery_t::update_service_weight (uint16_t service_type_,
           it = _registered_services.find (key);
         if (it != _registered_services.end ())
             uplink = it->second.uplink_endpoint;
-        else
-            uplink = _latest_registry_uplink_endpoint;
     }
+    if (uplink.empty ())
+        (void) _uplink_runtime->latest_registry_uplink (this, &uplink);
     if (uplink.empty ()) {
         errno = EAGAIN;
         return -1;
     }
 
     socket_base_t *dealer = NULL;
-    if (prepare_transient_dealer_local (_ctx, uplink, NULL, &dealer) != 0) {
+    if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime, uplink, NULL,
+                                        &dealer)
+        != 0) {
         discovery_debugf_local (
           "update_service_weight pollout timeout uplink=%s", uplink.c_str ());
         return -1;
@@ -414,16 +418,18 @@ int discovery_t::unregister_service (uint16_t service_type_,
           it = _registered_services.find (key);
         if (it != _registered_services.end ())
             uplink = it->second.uplink_endpoint;
-        else
-            uplink = _latest_registry_uplink_endpoint;
     }
+    if (uplink.empty ())
+        (void) _uplink_runtime->latest_registry_uplink (this, &uplink);
     if (uplink.empty ()) {
         errno = EAGAIN;
         return -1;
     }
 
     socket_base_t *dealer = NULL;
-    if (prepare_transient_dealer_local (_ctx, uplink, NULL, &dealer) != 0) {
+    if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime, uplink, NULL,
+                                        &dealer)
+        != 0) {
         discovery_debugf_local ("unregister_service pollout timeout uplink=%s",
                                 uplink.c_str ());
         return -1;

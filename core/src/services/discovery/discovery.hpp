@@ -22,6 +22,8 @@ class socket_base_t;
 class discovery_t;
 class gateway_t;
 class spot_node_t;
+class discovery_bootstrap_runtime_t;
+class discovery_uplink_runtime_t;
 struct discovery_access_t;
 
 enum discovery_socket_role_t
@@ -101,6 +103,8 @@ class discovery_t
     friend class gateway_t;
     friend class spot_node_t;
     friend struct discovery_access_t;
+    friend class discovery_bootstrap_runtime_t;
+    friend class discovery_uplink_runtime_t;
 
     struct service_state_t
     {
@@ -121,22 +125,11 @@ class discovery_t
                                 bool stopped_);
     int ensure_sub_socket ();
     void close_sub_socket ();
-    void apply_socket_options_locked (socket_base_t *socket_);
-    void apply_socket_options_to_existing_locked (int option_,
-                                                  const void *optval_,
-                                                  size_t optvallen_);
-    bool ensure_socket_routing_id (socket_base_t *socket_);
     int bootstrap_registry (const char *registry_endpoint_);
-    int ensure_bootstrap_dealer (const std::string &registry_endpoint_,
-                                 socket_base_t **dealer_out_);
     void handle_service_list (const std::vector<zlink_msg_t> &frames_);
     void notify_observers (const std::set<std::string> &services_);
     void emit_ready_changed (uint32_t ready_count_);
     int ensure_topology_reporters ();
-    int ensure_topology_reporter_locked (const std::string &uplink_endpoint_,
-                                         socket_base_t **dealer_out_);
-    int ensure_control_dealer_locked (const std::string &uplink_endpoint_,
-                                      socket_base_t **dealer_out_);
     void flush_topology_reports ();
     void flush_gateway_peer_reports ();
     void refresh_registered_service_heartbeats (uint64_t now_ms_);
@@ -186,20 +179,6 @@ class discovery_t
         bool dirty;
     };
 
-    struct bootstrap_state_t
-    {
-        socket_base_t *dealer;
-        bool request_sent;
-        uint64_t request_started_ms;
-
-        bootstrap_state_t () :
-            dealer (NULL),
-            request_sent (false),
-            request_started_ms (0)
-        {
-        }
-    };
-
     struct registered_service_key_t
     {
         uint16_t service_type;
@@ -245,14 +224,8 @@ class discovery_t
 
     mutex_t _sync;
     mutex_t _uplink_sync;
-    std::set<std::string> _registry_bootstrap_endpoints;
-    std::set<std::string> _bootstrapped_registry_endpoints;
-    std::map<std::string, bootstrap_state_t> _bootstrap_states;
-    std::set<std::string> _registry_pub_endpoints;
-    std::set<std::string> _registry_uplink_endpoints;
-    std::string _latest_registry_uplink_endpoint;
-    std::map<std::string, socket_base_t *> _report_dealers;
-    std::map<std::string, socket_base_t *> _control_dealers;
+    discovery_bootstrap_runtime_t *_bootstrap_runtime;
+    discovery_uplink_runtime_t *_uplink_runtime;
     std::map<std::string, service_state_t> _services;
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<discovery_observer_t *> _observers;
@@ -262,18 +235,8 @@ class discovery_t
     uint64_t _update_seq;
     uint32_t _monitor_ready_count;
     std::map<std::string, uint64_t> _service_seq;
-    struct socket_opt_t
-    {
-        int option;
-        std::vector<unsigned char> value;
-    };
-    std::vector<socket_opt_t> _sub_opts;
     uint16_t _service_type;
     bool _discovery_summary_enabled;
-    zlink_routing_id_t _routing_id;
-    std::string _routing_id_override;
-    bool _routing_id_locked;
-    uint32_t _heartbeat_interval_ms;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
     std::map<topology_key_t, topology_summary_t> _summary_store;
     std::map<gateway_peer_key_t, gateway_peer_summary_t> _gateway_peer_summary_store;

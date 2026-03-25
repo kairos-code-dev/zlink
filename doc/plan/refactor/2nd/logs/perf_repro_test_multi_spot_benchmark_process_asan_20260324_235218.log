@@ -1,0 +1,37 @@
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 7: test_multi_spot_benchmark_process
+1/1 Test #7: test_multi_spot_benchmark_process ...Subprocess aborted***Exception:   0.44 sec
+=================================================================
+==3681372==ERROR: AddressSanitizer: odr-violation (0x62762f465060):
+  [1] size=1 'id' /home/hep7/project/kairos/zlink/core/external/boost/boost/asio/execution_context.hpp:377:18 in /home/hep7/project/kairos/zlink/core/build/bin/test_multi_spot_benchmark_process
+  [2] size=1 'id' /home/hep7/project/kairos/zlink/core/external/boost/boost/asio/execution_context.hpp:377:18 in /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5
+These globals were registered at these points:
+  [1]:
+    #0 0x70677d85306f in __asan_register_globals ../../../../src/libsanitizer/asan/asan_globals.cpp:350
+    #1 0x70677ba2a303 in call_init ../csu/libc-start.c:145
+    #2 0x70677ba2a303 in __libc_start_main_impl ../csu/libc-start.c:347
+    #3 0x62762f447004 in _start (/home/hep7/project/kairos/zlink/core/build/bin/test_multi_spot_benchmark_process+0x8004) (BuildId: 41b5ed95779f5e6c3cf987828a5cded137b5524d)
+
+  [2]:
+    #0 0x70677d85306f in __asan_register_globals ../../../../src/libsanitizer/asan/asan_globals.cpp:350
+    #1 0x70677e03e71e in call_init elf/dl-init.c:74
+    #2 0x70677e03e823 in call_init elf/dl-init.c:120
+    #3 0x70677e03e823 in _dl_init elf/dl-init.c:121
+    #4 0x70677e05859f  (/lib64/ld-linux-x86-64.so.2+0x1f59f) (BuildId: da07864eb4c1b06504b8688d25d7e84759fe708d)
+
+==3681372==HINT: if you don't care about these errors you may set ASAN_OPTIONS=detect_odr_violation=0
+SUMMARY: AddressSanitizer: odr-violation: global 'id' at /home/hep7/project/kairos/zlink/core/external/boost/boost/asio/execution_context.hpp:377:18 in /home/hep7/project/kairos/zlink/core/build/bin/test_multi_spot_benchmark_process
+==3681372==ABORTING
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+integration    =   0.44 sec*proc (1 test)
+serial         =   0.44 sec*proc (1 test)
+
+Total Test time (real) =   0.45 sec
+
+The following tests FAILED:
+	  7 - test_multi_spot_benchmark_process (Subprocess aborted)

@@ -5,14 +5,20 @@
 > - `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
 > - `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
 > - `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`
+> - `doc/plan/refactor/2nd/core-system-posd-refactor-post-residual-review.ko.md`
 > 대상 범위: `core/`, `core/tests/`
-> 목적: `5.2A`, `5.3A`, `5.6A` residual 항목을 구현자 판단 없이 바로 실행 가능한 수준으로 고정
+> 목적: `5.2A`, `5.3A`, `5.6A` residual 항목의 고정 스펙과 post-residual 재진입 판단 기준을 구현자 판단 없이 바로 실행 가능한 수준으로 고정
 
 ## 1. 문서 역할
 
 이 문서는 residual 항목 3개를 위한 구현 스펙이다.
 설계 방향을 다시 토론하는 문서가 아니라, 실제 구현자가 어떤 책임을 어디로 옮기고
 무엇을 남겨야 하는지를 결정 완료 상태로 고정하는 문서다.
+
+현재 시점에서 `5.2A`, `5.3A`, `5.6A`는 `remaining-execution-guide` 기준 완료로 기록돼 있다.
+따라서 이 문서는 새 residual을 무한히 추가하는 문서가 아니라,
+이미 완료된 residual 경계를 다시 흐리지 않도록 고정하고
+후속 perf/구조 작업이 정말 이 residual owner를 다시 열어야 하는지 판단하는 기준으로도 사용한다.
 
 이 문서의 범위는 아래 세 항목으로 제한한다.
 
@@ -22,6 +28,16 @@
 
 이 문서에서 정하지 않은 사항은 실행 중 새로 결정하지 않는다.
 필요하면 이 문서를 먼저 수정한 뒤 구현한다.
+
+## 1.1 현재 적용 상태
+
+현재 워크트리에서 이 문서를 적용하는 방식은 아래처럼 고정한다.
+
+- `5.2A`, `5.3A`, `5.6A`의 owner 경계 정의는 이 문서가 그대로 authority다.
+- 이미 완료된 residual 항목을 다시 여는 경우에도, 먼저 이 문서의 owner 범위에 실제로 해당하는지 확인한다.
+- owner 범위를 벗어나는 추가 구조-성능 항목은
+  `core-system-posd-refactor-post-residual-review.ko.md`를 따른다.
+- 즉 이 문서는 residual 구현 스펙이면서 동시에 residual reentry guard다.
 
 ## 2. 공통 규칙
 
@@ -34,6 +50,10 @@
 - 파일 수 증가는 허용하지만, helper 나열이 아니라 owner 이동이 보여야 한다.
 - 기존 테스트를 약화하지 않는다.
 - residual 항목 완료 후 perf로 바로 넘어가기 전에 해당 항목 gate를 먼저 닫는다.
+- POSD 판단은 성능 판단을 포함한다.
+- 따라서 residual reentry를 허용하려면 구조 owner 경계와 hot-path 비용이 같이 설명돼야 한다.
+- 한 번 완료된 residual 항목은 "파일이 다시 커졌다"는 이유만으로 재오픈하지 않는다.
+  owner 붕괴, hot-path 재집중, gate 회귀 셋 중 하나가 증거로 있어야 한다.
 
 ## 3. `5.2A` `socket_base_t` Residual Split
 
@@ -316,7 +336,7 @@ ctest --test-dir core/build --output-on-failure -R \
 git diff -- core/include/zlink.h core/src/libzlink.vers
 ```
 
-## 6. perf 진입 조건
+## 6. post-residual 진입 및 재진입 규칙
 
 `5.7` perf 회복 루프에 다시 진입하려면 아래 셋이 모두 완료여야 한다.
 
@@ -327,9 +347,31 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 이 조건을 만족하기 전에는 perf targeted recheck를 새 authority로 승격하지 않는다.
 기존 perf 로그는 historical evidence로만 사용한다.
 
+현재는 위 세 항목이 이미 완료된 상태이므로,
+추가 구현은 아래처럼 구분한다.
+
+- 증상이 `socket_base_t`, `ctx_t`, `registry/spot residual owner`의 붕괴로 직접 설명되면
+  이 문서의 해당 residual 항목으로 재진입한다.
+- 증상이 현재 active owner인 `spot` secure multi-peer `mesh_pub` hot path,
+  `spot_data_plane_internal.hpp`,
+  `spot_data_plane_runtime.cpp`,
+  `spot_node_control.cpp` 경계로 더 잘 설명되면
+  residual 재오픈이 아니라 post-residual 작업으로 진행한다.
+- post-residual 작업의 실제 착수 순서와 체크리스트는
+  [remaining-execution-guide의 `5.7A`~`5.7D`](./core-system-posd-refactor-remaining-execution-guide.ko.md#57a-post-residual-기준-spot-secure-multi-peer-current-owner-마감)
+  를 따른다.
+- `socket_message_api.cpp`, `options_t`, `spot_node_t`, `discovery_t`,
+  engine/transport owner 정리는 이 문서 범위 밖이며
+  [post-residual-review의 우선순위/순서/완료 기준](./core-system-posd-refactor-post-residual-review.ko.md#8-코드-전반-우선순위-재판정)
+  를 따른다.
+
+즉 현재 단계에서 이 문서의 역할은
+"남은 모든 구조 작업을 담는 목록"이 아니라
+"이미 닫은 residual owner를 다시 열어야 하는지 판정하는 엄격한 기준"이다.
+
 ## 7. 구현 순서
 
-이 문서 기준 구현 순서는 아래로 고정한다.
+residual 자체를 처음 수행할 때의 구현 순서는 아래로 고정한다.
 
 1. `5.2A`
 2. `5.3A`
@@ -337,3 +379,59 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 4. `5.7`
 
 이 순서를 바꾸려면 먼저 이 문서를 수정해야 한다.
+
+현재 워크트리처럼 `5.2A`, `5.3A`, `5.6A`가 이미 완료된 단계에서는
+이 절을 현재 실행 순서로 해석하지 않는다.
+현재 active 구현 순서는
+[remaining-execution-guide의 `5.7A`](./core-system-posd-refactor-remaining-execution-guide.ko.md#57a-post-residual-기준-spot-secure-multi-peer-current-owner-마감),
+[`5.7B`](./core-system-posd-refactor-remaining-execution-guide.ko.md#57b-post-residual-기준-socket_message_apicpp--optionst-ownership-재정리),
+[`5.7C`](./core-system-posd-refactor-remaining-execution-guide.ko.md#57c-post-residual-기준-spot_nodet--discoveryt-facade-구조-마감),
+[`5.7D`](./core-system-posd-refactor-remaining-execution-guide.ko.md#57d-post-residual-기준-engine--transport-owner-재판정),
+[`5.7`](./core-system-posd-refactor-remaining-execution-guide.ko.md#57-coreperf-smoke--full-baseline-비교--성능-회복-루프)
+을 따른다.
+
+## 8. 반복 리뷰 절차
+
+현재처럼 residual 완료 후에도 구조-성능 이슈를 반복 리뷰할 때는
+아래 절차를 고정한다.
+
+1. latest 실행 로그와 exact tuple 비교에서 current worst tuple을 먼저 고정한다.
+2. current owner가 이 문서의 `5.2A`, `5.3A`, `5.6A` owner 경계 중 어디에 속하는지 판정한다.
+3. 속하지 않으면 residual 재오픈을 금지하고 `post-residual-review` 작업 목록으로 보낸다.
+   작업 목록은
+   [remaining-execution-guide의 `5.7A`~`5.7D`](./core-system-posd-refactor-remaining-execution-guide.ko.md#57a-post-residual-기준-spot-secure-multi-peer-current-owner-마감)
+   와
+   [post-residual-review의 추가 작업 순서](./core-system-posd-refactor-post-residual-review.ko.md#9-현재-성능-개선을-마무리하기-위한-추가-작업-순서)
+   를 함께 본다.
+4. 속하면 해당 residual 항목의 "남길 책임 / 빼낼 책임 / 금지 / 필수 게이트"를 그대로 다시 적용한다.
+5. 수정 후에는 관련 gate와 ABI 무변경 확인을 먼저 닫고,
+   그 다음에만 perf recheck를 증거로 추가한다.
+
+이 절차를 건너뛰고 "현재 perf가 안 좋으니 residual을 다시 열자"는 식으로 판단하는 것은 금지한다.
+
+## 9. 현재 active handoff
+
+2026-03-25 현재 latest 로그 기준 active issue는
+residual spec 자체보다 `spot` secure multi-peer `mesh_pub` hot path 쪽으로 좁혀져 있다.
+
+현재 immediate next step은 아래처럼 고정한다.
+
+- `spot_data_plane_internal.hpp`의 live budget / carryover 정책
+- `spot_data_plane_runtime.cpp`의 secure steady-state send path
+- `spot_node_control.cpp`의 ready-peer driven budget application
+
+현재 증거만으로는 `5.2A`, `5.3A`, `5.6A`를 다시 열 근거가 확정되지 않았다.
+따라서 이 문서를 읽고 바로 작업할 때도,
+첫 판단은 "residual 재오픈"이 아니라 "post-residual current owner 추적"이어야 한다.
+현재 current owner 정의와 immediate next step은
+[post-residual-review의 active issue 절](./core-system-posd-refactor-post-residual-review.ko.md#3-실행-로그-기준-현재-active-issue)
+과
+[remaining-execution-guide의 `5.7A`](./core-system-posd-refactor-remaining-execution-guide.ko.md#57a-post-residual-기준-spot-secure-multi-peer-current-owner-마감)
+를 함께 기준으로 삼는다.
+
+residual 재오픈은 아래 셋 중 하나를 로그와 코드로 함께 설명할 수 있을 때만 허용한다.
+
+- `socket_base_t` lifecycle/monitor/endpoint owner가 다시 hot-path에 재집중됐다.
+- `ctx_t` bootstrap/termination detail이 registry contract owner를 다시 오염시켰다.
+- `registry.cpp`, `spot_subject_access.cpp`, `spot_data_plane.cpp` 계열에서
+  owner 이동이 무너지고 giant helper 또는 cross-owner coupling이 다시 생겼다.

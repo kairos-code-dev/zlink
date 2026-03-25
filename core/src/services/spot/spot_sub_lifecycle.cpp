@@ -6,6 +6,7 @@
 
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
 
 #include "sockets/socket_base.hpp"
@@ -206,16 +207,8 @@ void spot_sub_t::monitor_loop ()
             case ZLINK_EVENT_CONNECTION_READY_CHANGED: {
                 {
                     scoped_lock_t lock (_sync);
-                    if (raw.remote_addr[0] != '\0') {
-                        const uint32_t ready_count = static_cast<uint32_t> (
-                          _ready_peer_endpoints.size ());
-                        if (raw.value == 0)
-                            _ready_peer_endpoints.erase (raw.remote_addr);
-                        else if (ready_count < raw.value)
-                            _ready_peer_endpoints.insert (raw.remote_addr);
-                        else if (ready_count > raw.value)
-                            _ready_peer_endpoints.erase (raw.remote_addr);
-                    }
+                    (void) sync_monitor_ready_endpoint (
+                      &_ready_peer_endpoints, raw);
                 }
                 fill_socket_monitor_event (
                   &batch[0], ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED, raw);

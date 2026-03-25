@@ -1,0 +1,13 @@
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:620:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:621:test_multi_spot_process_callback_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:622:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:623:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:522:test_multi_spot_process_recv_many_clients_wss_large_sequence:FAIL: server:\nstdout:\nREADY,wss://127.0.0.1:36433\n\nclient:\nstdout:\nCLIENT_READY,64\nRESULT,zlink,MULTI_SPOT,wss,64,throughput,154787.000\nRESULT,zlink,MULTI_SPOT,wss,64,bandwidth,9.906\nRESULT,zlink,MULTI_SPOT,wss,64,latency,206806.697\nRESULT,zlink,MULTI_SPOT,wss,64,latency_p95,216569.500\nRESULT,zlink,MULTI_SPOT,wss,64,latency_p99,221653.780\nRESULT,zlink,MULTI_SPOT,wss,64,client_cpu_pct,37.82\nRESULT,zlink,MULTI_SPOT,wss,64,client_mem_mb,1948.89\nCLIENT_READY,256\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_invalid_mode_is_rejected:PASS
+
+-----------------------
+6 Tests 1 Failures 0 Ignored 
+FAIL
+=================================================================
+==3832319==ERROR: AddressSanitizer: stack-use-after-return on address 0x733974804cc8 at pc 0x5bac8d727ebf bp 0x7339739f5590 sp 0x7339739f5580
+READ of size 8 at 0x733974804cc8 thread T17

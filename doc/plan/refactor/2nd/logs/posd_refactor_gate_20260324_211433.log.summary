@@ -1,0 +1,9 @@
+status=failure
+started_at=2026-03-24 21:14:33 +0900
+completed_at=2026-03-24 21:20:33 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/posd_refactor_gate_20260324_211433.log
+stress_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/posd_refactor_gate_20260324_211433.log.exitcode
+failed_test=test_spot_service_introspection_handler_monitor_close
+repro_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/posd_refactor_gate_repro_test_spot_service_introspection_handler_monitor_close_20260324_211433.log
+repro_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/posd_refactor_gate_repro_test_spot_service_introspection_handler_monitor_close_20260324_211433.log.exitcode
+repro_command=ctest --test-dir core/build --output-on-failure -R '^test_spot_service_introspection_handler_monitor_close$'

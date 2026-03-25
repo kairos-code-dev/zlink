@@ -1,0 +1,181 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "utils/macros.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "unity.h"
+
+#include <string.h>
+
+namespace
+{
+void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
+{
+    zlink::spot_runtime_t runtime (NULL);
+    runtime.connected_peer_endpoints.insert ("wss://127.0.0.1:9000");
+    runtime.connected_ready_peer_count.store (1);
+    zlink_monitor_event_t raw;
+    memset (&raw, 0, sizeof (raw));
+    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.value = 0;
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9000", sizeof (raw.remote_addr) - 1);
+
+    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+      &runtime, raw);
+    TEST_ASSERT_EQUAL_UINT (1, runtime.connected_peer_endpoints.size ());
+    TEST_ASSERT_EQUAL_UINT (0, runtime.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (1, runtime.connected_peer_version.load ());
+}
+
+void test_mesh_xsub_monitor_ready_count_growth_marks_connected ()
+{
+    zlink::spot_runtime_t runtime (NULL);
+    zlink_monitor_event_t raw;
+    memset (&raw, 0, sizeof (raw));
+    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.value = 1;
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9000", sizeof (raw.remote_addr) - 1);
+
+    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+      &runtime, raw);
+    TEST_ASSERT_EQUAL_UINT (1, runtime.connected_peer_endpoints.size ());
+    TEST_ASSERT_EQUAL_UINT (1, runtime.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (1, runtime.connected_peer_version.load ());
+}
+
+void test_mesh_xsub_monitor_disconnect_clears_connected_peer ()
+{
+    zlink::spot_runtime_t runtime (NULL);
+    zlink_monitor_event_t raw;
+    memset (&raw, 0, sizeof (raw));
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9000", sizeof (raw.remote_addr) - 1);
+
+    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.value = 1;
+    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+      &runtime, raw);
+
+    raw.event = ZLINK_EVENT_DISCONNECTED;
+    raw.value = 0;
+    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+      &runtime, raw);
+    TEST_ASSERT_TRUE (runtime.connected_peer_endpoints.empty ());
+    TEST_ASSERT_EQUAL_UINT (0, runtime.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (2, runtime.connected_peer_version.load ());
+}
+
+void test_mesh_xsub_monitor_ready_count_changes_without_rewriting_membership ()
+{
+    zlink::spot_runtime_t runtime (NULL);
+    runtime.connected_peer_endpoints.insert ("wss://127.0.0.1:9000");
+    runtime.connected_peer_endpoints.insert ("wss://127.0.0.1:9001");
+    runtime.connected_ready_peer_count.store (2);
+
+    zlink_monitor_event_t raw;
+    memset (&raw, 0, sizeof (raw));
+    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.value = 1;
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9001", sizeof (raw.remote_addr) - 1);
+
+    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+      &runtime, raw);
+    TEST_ASSERT_EQUAL_UINT (2, runtime.connected_peer_endpoints.size ());
+    TEST_ASSERT_EQUAL_UINT (1, runtime.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (1, runtime.connected_peer_version.load ());
+}
+
+void test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present ()
+{
+    zlink::spot_runtime_t runtime (NULL);
+    runtime.connected_peer_endpoints.insert ("wss://127.0.0.1:9000");
+
+    zlink_monitor_event_t raw;
+    memset (&raw, 0, sizeof (raw));
+    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.value = 1;
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9001",
+             sizeof (raw.remote_addr) - 1);
+
+    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+      &runtime, raw);
+    TEST_ASSERT_EQUAL_UINT (2, runtime.connected_peer_endpoints.size ());
+    TEST_ASSERT_TRUE (runtime.connected_peer_endpoints.count (
+                        "wss://127.0.0.1:9001")
+                      == 1);
+    TEST_ASSERT_EQUAL_UINT (1, runtime.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (1, runtime.connected_peer_version.load ());
+}
+
+void test_mesh_xsub_monitor_same_ready_count_does_not_bump_version ()
+{
+    zlink::spot_runtime_t runtime (NULL);
+    runtime.connected_peer_endpoints.insert ("wss://127.0.0.1:9000");
+    runtime.connected_peer_endpoints.insert ("wss://127.0.0.1:9001");
+
+    zlink_monitor_event_t raw;
+    memset (&raw, 0, sizeof (raw));
+    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.value = 2;
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9002",
+             sizeof (raw.remote_addr) - 1);
+
+    zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+      &runtime, raw);
+    TEST_ASSERT_EQUAL_UINT (3, runtime.connected_peer_endpoints.size ());
+    TEST_ASSERT_EQUAL_UINT (2, runtime.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (1, runtime.connected_peer_version.load ());
+}
+
+void test_ready_endpoint_helper_tracks_endpoint_local_readiness ()
+{
+    std::set<std::string> endpoints;
+    endpoints.insert ("wss://127.0.0.1:9000");
+    endpoints.insert ("wss://127.0.0.1:9001");
+
+    zlink_monitor_event_t raw;
+    memset (&raw, 0, sizeof (raw));
+
+    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.value = 1;
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9001",
+             sizeof (raw.remote_addr) - 1);
+    TEST_ASSERT_FALSE (
+      zlink::sync_monitor_ready_endpoint (&endpoints, raw));
+    TEST_ASSERT_EQUAL_UINT (2, endpoints.size ());
+    TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9001") == 1);
+
+    raw.value = 0;
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9000",
+             sizeof (raw.remote_addr) - 1);
+    TEST_ASSERT_TRUE (
+      zlink::sync_monitor_ready_endpoint (&endpoints, raw));
+    TEST_ASSERT_EQUAL_UINT (1, endpoints.size ());
+    TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9001") == 1);
+
+    raw.value = 2;
+    strncpy (raw.remote_addr, "wss://127.0.0.1:9002",
+             sizeof (raw.remote_addr) - 1);
+    TEST_ASSERT_TRUE (
+      zlink::sync_monitor_ready_endpoint (&endpoints, raw));
+    TEST_ASSERT_EQUAL_UINT (2, endpoints.size ());
+    TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9001") == 1);
+    TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9002") == 1);
+}
+}
+
+int main (int argc, char **argv)
+{
+    UNITY_BEGIN ();
+    RUN_TEST (test_mesh_xsub_monitor_ready_zero_clears_connected_peer);
+    RUN_TEST (test_mesh_xsub_monitor_ready_count_growth_marks_connected);
+    RUN_TEST (test_mesh_xsub_monitor_disconnect_clears_connected_peer);
+    RUN_TEST (
+      test_mesh_xsub_monitor_ready_count_changes_without_rewriting_membership);
+    RUN_TEST (test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present);
+    RUN_TEST (test_mesh_xsub_monitor_same_ready_count_does_not_bump_version);
+    RUN_TEST (test_ready_endpoint_helper_tracks_endpoint_local_readiness);
+    return UNITY_END ();
+}

@@ -1,0 +1,12 @@
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 7: test_multi_spot_benchmark_process
+1/1 Test #7: test_multi_spot_benchmark_process ...   Passed   51.40 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =  51.40 sec*proc (1 test)
+serial         =  51.40 sec*proc (1 test)
+
+Total Test time (real) =  51.40 sec

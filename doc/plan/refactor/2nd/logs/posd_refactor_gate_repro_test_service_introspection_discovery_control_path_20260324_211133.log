@@ -1,0 +1,18 @@
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 57: test_service_introspection_discovery_control_path
+1/1 Test #57: test_service_introspection_discovery_control_path ...***Failed    0.01 sec
+/home/hep7/project/kairos/zlink/core/tests/e2e/discovery/test_service_introspection.cpp:1337:test_discovery_control_path_reads_are_safe_during_concurrent_updates:FAIL: Expected 0 Was 1
+
+-----------------------
+1 Tests 1 Failures 0 Ignored 
+FAIL
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =   0.01 sec
+
+The following tests FAILED:
+	 57 - test_service_introspection_discovery_control_path (Failed)
+Errors while running CTest

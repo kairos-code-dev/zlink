@@ -49,6 +49,8 @@ static void reset_mesh_pub_budget_state (spot_runtime_t *runtime_)
 
     runtime_->mesh_pub_ready_peer_count.store (0,
                                                std::memory_order_release);
+    runtime_->connected_ready_peer_count.store (0,
+                                                std::memory_order_release);
     runtime_->mesh_pub_budget_version.fetch_add (1,
                                                  std::memory_order_acq_rel);
 }
@@ -432,26 +434,41 @@ int spot_data_plane_protocol_t::publish_bootstrap_descriptor (
 }
 
 void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
-  spot_runtime_t *runtime_, const zlink_monitor_event_t &raw_, bool connected_)
+  spot_runtime_t *runtime_, const zlink_monitor_event_t &raw_)
 {
     if (!runtime_ || raw_.remote_addr[0] == '\0')
         return;
 
     scoped_lock_t lock (runtime_->connected_peer_sync);
     bool changed = false;
-    if (connected_) {
-        changed =
-          runtime_->connected_peer_endpoints.insert (raw_.remote_addr).second;
-    } else {
-        changed =
-          runtime_->connected_peer_endpoints.erase (raw_.remote_addr) != 0;
+    changed = sync_monitor_connected_endpoint (
+                &runtime_->connected_peer_endpoints, raw_)
+              || changed;
+    if (raw_.event == ZLINK_EVENT_DISCONNECTED
+        && runtime_->connected_peer_endpoints.empty ()
+        && runtime_->connected_ready_peer_count.load (
+             std::memory_order_acquire)
+             != 0) {
+        runtime_->connected_ready_peer_count.store (0,
+                                                    std::memory_order_release);
+        changed = true;
     }
-    if (changed) {
-        runtime_->connected_peer_version.fetch_add (1,
-                                                    std::memory_order_acq_rel);
-        if (runtime_->owner)
-            spot_node_access_t::wake_control_task (runtime_->owner);
+
+    uint32_t ready_peer_count =
+      runtime_->connected_ready_peer_count.load (std::memory_order_acquire);
+    if (apply_monitor_ready_peer_count (&ready_peer_count, raw_)) {
+        runtime_->connected_ready_peer_count.store (ready_peer_count,
+                                                    std::memory_order_release);
+        changed = true;
     }
+
+    if (!changed)
+        return;
+
+    runtime_->connected_peer_version.fetch_add (1,
+                                                std::memory_order_acq_rel);
+    if (runtime_->owner)
+        spot_node_access_t::wake_control_task (runtime_->owner);
 }
 
 void spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
@@ -463,12 +480,16 @@ void spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
     scoped_lock_t lock (runtime_->connected_peer_sync);
     if (!runtime_->connected_peer_endpoints.empty ()) {
         runtime_->connected_peer_endpoints.clear ();
+        runtime_->connected_ready_peer_count.store (0,
+                                                    std::memory_order_release);
         runtime_->connected_peer_version.fetch_add (1,
                                                     std::memory_order_acq_rel);
         if (runtime_->owner)
             spot_node_access_t::wake_control_task (runtime_->owner);
         return;
     }
+    runtime_->connected_ready_peer_count.store (0,
+                                                std::memory_order_release);
     runtime_->connected_peer_endpoints.clear ();
 }
 
@@ -940,6 +961,9 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         {
             scoped_lock_t lock (runtime_->connected_peer_sync);
             runtime_->connected_peer_endpoints.erase (arg);
+            if (runtime_->connected_peer_endpoints.empty ())
+                runtime_->connected_ready_peer_count.store (
+                  0, std::memory_order_release);
         }
         return send_ok_reply (ctrl_);
     }

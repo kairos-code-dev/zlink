@@ -89,6 +89,7 @@ struct spot_runtime_t
     std::atomic<uint64_t> connected_peer_version;
     std::atomic<uint64_t> mesh_pub_budget_version;
     std::atomic<uint32_t> mesh_pub_ready_peer_count;
+    std::atomic<uint32_t> connected_ready_peer_count;
     uint64_t next_attachment_id;
     std::map<uint64_t, spot_attachment_t> attachments;
     std::set<std::string> connected_peer_endpoints;

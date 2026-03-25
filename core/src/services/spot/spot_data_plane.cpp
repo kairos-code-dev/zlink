@@ -152,22 +152,8 @@ void spot_data_plane_t::run (spot_node_t *node_)
                             break;
                         }
 
-                        switch (raw.event) {
-                            case ZLINK_EVENT_CONNECTION_READY_CHANGED:
-                                spot_data_plane_protocol_t::
-                                  sync_mesh_xsub_connected_endpoint (
-                                    runtime, raw, true);
-                                break;
-
-                            case ZLINK_EVENT_DISCONNECTED:
-                                spot_data_plane_protocol_t::
-                                  sync_mesh_xsub_connected_endpoint (
-                                    runtime, raw, false);
-                                break;
-
-                            default:
-                                break;
-                        }
+                        spot_data_plane_protocol_t::
+                          sync_mesh_xsub_connected_endpoint (runtime, raw);
                     }
                     if (!running)
                         break;

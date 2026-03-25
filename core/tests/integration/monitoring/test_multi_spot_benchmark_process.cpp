@@ -38,8 +38,6 @@ struct process_capture_t
     {
     }
 
-    ~process_capture_t ();
-
     pid_t pid;
     int stdin_fd;
     FILE *stdout_file;
@@ -56,9 +54,62 @@ struct process_capture_t
 
 void cleanup_child (process_capture_t *proc_);
 
-process_capture_t::~process_capture_t ()
+process_capture_t *g_active_processes[8] = {NULL};
+
+process_capture_t *create_process_capture ()
 {
-    cleanup_child (this);
+    return new process_capture_t ();
+}
+
+void unregister_active_process (process_capture_t *proc_)
+{
+    if (!proc_)
+        return;
+
+    for (size_t i = 0; i < sizeof (g_active_processes) / sizeof (*g_active_processes);
+         ++i) {
+        if (g_active_processes[i] == proc_)
+            g_active_processes[i] = NULL;
+    }
+}
+
+void register_active_process (process_capture_t *proc_)
+{
+    if (!proc_)
+        return;
+
+    unregister_active_process (proc_);
+    for (size_t i = 0; i < sizeof (g_active_processes) / sizeof (*g_active_processes);
+         ++i) {
+        if (!g_active_processes[i]) {
+            g_active_processes[i] = proc_;
+            return;
+        }
+    }
+    TEST_FAIL_MESSAGE ("active process registry overflow");
+}
+
+void destroy_process_capture (process_capture_t *proc_)
+{
+    if (!proc_)
+        return;
+
+    unregister_active_process (proc_);
+    cleanup_child (proc_);
+    delete proc_;
+}
+
+void cleanup_active_processes ()
+{
+    for (size_t i = 0; i < sizeof (g_active_processes) / sizeof (*g_active_processes);
+         ++i) {
+        process_capture_t *proc = g_active_processes[i];
+        if (!proc)
+            continue;
+        g_active_processes[i] = NULL;
+        cleanup_child (proc);
+        delete proc;
+    }
 }
 
 std::string sibling_binary_path (const char *argv0_, const char *name_)
@@ -324,6 +375,23 @@ void write_stdin_line (process_capture_t *proc_, const char *line_)
       static_cast<int> (size),
       static_cast<int> (write (proc_->stdin_fd, line_, size)));
 }
+
+void stop_server_process (process_capture_t *proc_, int timeout_ms)
+{
+    if (!proc_ || proc_->pid <= 0)
+        return;
+
+    if (proc_->stdin_fd >= 0) {
+        const char stop_line[] = "STOP\n";
+        if (write (proc_->stdin_fd, stop_line, sizeof (stop_line) - 1) < 0) {
+            // Best-effort graceful stop. Fallback cleanup still kills/waits.
+        }
+    }
+
+    int server_rc = INT_MIN;
+    if (wait_for_exit_code (proc_, timeout_ms, &server_rc))
+        close_process_capture (proc_);
+}
 } // namespace
 
 void run_multi_spot_process_case (const char *recv_mode_,
@@ -334,8 +402,10 @@ void run_multi_spot_process_case (const char *recv_mode_,
                                   int duration_seconds_ = 1,
                                   int warmup_seconds_ = 1)
 {
-    process_capture_t server;
-    process_capture_t client;
+    process_capture_t *server = create_process_capture ();
+    process_capture_t *client = create_process_capture ();
+    register_active_process (server);
+    register_active_process (client);
 
     const std::string server_path =
       sibling_binary_path (g_self_path, "comp_src_spot_server");
@@ -374,12 +444,12 @@ void run_multi_spot_process_case (const char *recv_mode_,
     server_args.push_back ("zlink");
     server_args.push_back (transport_);
     TEST_ASSERT_TRUE (
-      start_process (server_path, server_args, common_env, &server));
+      start_process (server_path, server_args, common_env, server));
 
     std::string ready_line;
     TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_stdout_prefix (&server, "READY,", 10000, &ready_line),
-      capture_case_debug_text (&server, &client).c_str ());
+      wait_for_stdout_prefix (server, "READY,", 10000, &ready_line),
+      capture_case_debug_text (server, client).c_str ());
     std::string endpoint = ready_line.substr (strlen ("READY,"));
     if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
         endpoint.erase (endpoint.size () - 1);
@@ -392,29 +462,29 @@ void run_multi_spot_process_case (const char *recv_mode_,
     client_args.push_back (endpoint);
 
     TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, common_env, &client));
+      start_process (client_path, client_args, common_env, client));
 
     const std::string ready_prefix = std::string ("CLIENT_READY,") + msg_size_;
     TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_stdout_prefix (&client, ready_prefix.c_str (), 20000, NULL),
-      capture_case_debug_text (&server, &client).c_str ());
-    write_stdin_line (&server, (std::string ("START,") + msg_size_ + "\n").c_str ());
+      wait_for_stdout_prefix (client, ready_prefix.c_str (), 20000, NULL),
+      capture_case_debug_text (server, client).c_str ());
+    write_stdin_line (server, (std::string ("START,") + msg_size_ + "\n").c_str ());
 
     int client_rc = INT_MIN;
     const int exit_timeout_ms =
       std::max (30000, (duration_seconds_ + warmup_seconds_ + 10) * 1000);
     TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_exit_code (&client, exit_timeout_ms, &client_rc),
-                              capture_case_debug_text (&server, &client).c_str ());
-    close_process_capture (&client);
+      wait_for_exit_code (client, exit_timeout_ms, &client_rc),
+      capture_case_debug_text (server, client).c_str ());
+    close_process_capture (client);
     TEST_ASSERT_EQUAL_INT_MESSAGE (0, client_rc,
-                                   capture_case_debug_text (&server, &client).c_str ());
+                                   capture_case_debug_text (server, client).c_str ());
 
     bool saw_throughput = false;
     {
-        std::lock_guard<std::mutex> lock (client.sync);
-        for (size_t i = 0; i < client.stdout_lines.size (); ++i) {
-            if (client.stdout_lines[i].find ("throughput")
+        std::lock_guard<std::mutex> lock (client->sync);
+        for (size_t i = 0; i < client->stdout_lines.size (); ++i) {
+            if (client->stdout_lines[i].find ("throughput")
                 != std::string::npos) {
                 saw_throughput = true;
                 break;
@@ -423,7 +493,9 @@ void run_multi_spot_process_case (const char *recv_mode_,
     }
     TEST_ASSERT_TRUE (saw_throughput);
 
-    cleanup_child (&server);
+    destroy_process_capture (client);
+    stop_server_process (server, exit_timeout_ms);
+    destroy_process_capture (server);
 }
 
 void run_multi_spot_process_sequence_case (
@@ -437,8 +509,10 @@ void run_multi_spot_process_sequence_case (
 {
     TEST_ASSERT_NOT_NULL (msg_sizes_);
 
-    process_capture_t server;
-    process_capture_t client;
+    process_capture_t *server = create_process_capture ();
+    process_capture_t *client = create_process_capture ();
+    register_active_process (server);
+    register_active_process (client);
 
     const std::string server_path =
       sibling_binary_path (g_self_path, "comp_src_spot_server");
@@ -496,12 +570,12 @@ void run_multi_spot_process_sequence_case (
     server_args.push_back ("zlink");
     server_args.push_back (transport_);
     TEST_ASSERT_TRUE (
-      start_process (server_path, server_args, common_env, &server));
+      start_process (server_path, server_args, common_env, server));
 
     std::string ready_line;
     TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_stdout_prefix (&server, "READY,", 10000, &ready_line),
-      capture_case_debug_text (&server, &client).c_str ());
+      wait_for_stdout_prefix (server, "READY,", 10000, &ready_line),
+      capture_case_debug_text (server, client).c_str ());
     std::string endpoint = ready_line.substr (strlen ("READY,"));
     if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
         endpoint.erase (endpoint.size () - 1);
@@ -514,15 +588,15 @@ void run_multi_spot_process_sequence_case (
     client_args.push_back (endpoint);
 
     TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, common_env, &client));
+      start_process (client_path, client_args, common_env, client));
 
     for (size_t i = 0; i < msg_sizes.size (); ++i) {
         const std::string ready_prefix =
           std::string ("CLIENT_READY,") + msg_sizes[i];
         TEST_ASSERT_TRUE_MESSAGE (
-          wait_for_stdout_prefix (&client, ready_prefix.c_str (), 30000, NULL),
-          capture_case_debug_text (&server, &client).c_str ());
-        write_stdin_line (&server,
+          wait_for_stdout_prefix (client, ready_prefix.c_str (), 30000, NULL),
+          capture_case_debug_text (server, client).c_str ());
+        write_stdin_line (server,
                           (std::string ("START,") + msg_sizes[i] + "\n")
                             .c_str ());
     }
@@ -532,17 +606,17 @@ void run_multi_spot_process_sequence_case (
       std::max (60000, (duration_seconds_ + warmup_seconds_ + 15)
                            * static_cast<int> (msg_sizes.size ()) * 1000);
     TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_exit_code (&client, exit_timeout_ms, &client_rc),
-      capture_case_debug_text (&server, &client).c_str ());
-    close_process_capture (&client);
+      wait_for_exit_code (client, exit_timeout_ms, &client_rc),
+      capture_case_debug_text (server, client).c_str ());
+    close_process_capture (client);
     TEST_ASSERT_EQUAL_INT_MESSAGE (0, client_rc,
-                                   capture_case_debug_text (&server, &client).c_str ());
+                                   capture_case_debug_text (server, client).c_str ());
 
     size_t throughput_count = 0;
     {
-        std::lock_guard<std::mutex> lock (client.sync);
-        for (size_t i = 0; i < client.stdout_lines.size (); ++i) {
-            if (client.stdout_lines[i].find ("throughput")
+        std::lock_guard<std::mutex> lock (client->sync);
+        for (size_t i = 0; i < client->stdout_lines.size (); ++i) {
+            if (client->stdout_lines[i].find ("throughput")
                 != std::string::npos) {
                 ++throughput_count;
             }
@@ -550,12 +624,15 @@ void run_multi_spot_process_sequence_case (
     }
     TEST_ASSERT_EQUAL_UINT (msg_sizes.size (), throughput_count);
 
-    cleanup_child (&server);
+    destroy_process_capture (client);
+    stop_server_process (server, exit_timeout_ms);
+    destroy_process_capture (server);
 }
 
 void run_multi_spot_invalid_mode_case ()
 {
-    process_capture_t client;
+    process_capture_t *client = create_process_capture ();
+    register_active_process (client);
     const std::string client_path =
       sibling_binary_path (g_self_path, "comp_src_spot_client");
 
@@ -571,14 +648,24 @@ void run_multi_spot_invalid_mode_case ()
     client_env.push_back ("PERF_MULTI_PATTERN=MULTI_SPOT");
 
     TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, client_env, &client));
+      start_process (client_path, client_args, client_env, client));
 
     int client_rc = INT_MIN;
-    TEST_ASSERT_TRUE (wait_for_exit_code (&client, 15000, &client_rc));
-    close_process_capture (&client);
+    TEST_ASSERT_TRUE (wait_for_exit_code (client, 15000, &client_rc));
+    close_process_capture (client);
     TEST_ASSERT_NOT_EQUAL (0, client_rc);
     TEST_ASSERT_TRUE (
-      client.stderr_text.find ("invalid --recv mode") != std::string::npos);
+      client->stderr_text.find ("invalid --recv mode") != std::string::npos);
+    destroy_process_capture (client);
+}
+
+void setUp ()
+{
+}
+
+void tearDown ()
+{
+    cleanup_active_processes ();
 }
 
 void test_multi_spot_process_recv_smoke ()
@@ -596,6 +683,11 @@ void test_multi_spot_process_recv_many_clients_tcp_large_smoke ()
     run_multi_spot_process_case ("recv", "tcp", "65536", 100, 5000);
 }
 
+void test_multi_spot_process_recv_many_clients_tls_very_large_smoke ()
+{
+    run_multi_spot_process_case ("recv", "tls", "262144", 100, 10000, 2, 2);
+}
+
 void test_multi_spot_process_recv_many_clients_ws_very_large_smoke ()
 {
     run_multi_spot_process_case ("recv", "ws", "262144", 100, 10000, 2, 2);
@@ -605,6 +697,18 @@ void test_multi_spot_process_recv_many_clients_wss_large_sequence ()
 {
     run_multi_spot_process_sequence_case (
       "recv", "wss", "64,256,1024,65536,131072,262144", 100, 10000, 2, 2);
+}
+
+void test_multi_spot_process_recv_many_clients_wss_perf_window_sequence ()
+{
+    run_multi_spot_process_sequence_case (
+      "recv", "wss", "64,256,65536,262144", 100, 10000, 1, 1);
+}
+
+void test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeout ()
+{
+    run_multi_spot_process_sequence_case (
+      "recv", "wss", "64,256,65536,262144", 100, 5000, 1, 1);
 }
 
 void test_multi_spot_process_invalid_mode_is_rejected ()
@@ -620,8 +724,12 @@ int main (int argc, char **argv)
     RUN_TEST (test_multi_spot_process_recv_smoke);
     RUN_TEST (test_multi_spot_process_callback_smoke);
     RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_large_smoke);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tls_very_large_smoke);
     RUN_TEST (test_multi_spot_process_recv_many_clients_ws_very_large_smoke);
     RUN_TEST (test_multi_spot_process_recv_many_clients_wss_large_sequence);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_wss_perf_window_sequence);
+    RUN_TEST (
+      test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeout);
     RUN_TEST (test_multi_spot_process_invalid_mode_is_rejected);
     return UNITY_END ();
 }

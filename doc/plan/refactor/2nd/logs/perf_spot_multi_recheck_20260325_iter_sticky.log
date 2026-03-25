@@ -1,0 +1,236 @@
+=== Running multi benchmark: MULTI_SPOT ===
+    warmup=1s duration=1s
+    recv_mode=recv
+Reusing build directory: /home/hep7/project/kairos/zlink/core/build
+Using CMake source directory: /home/hep7/project/kairos/zlink
+
+## Effective Options (runner)
+- patterns: MULTI_SPOT
+- build_dir: /home/hep7/project/kairos/zlink/core/build
+- build_mode: reuse
+- reuse_build: 1
+- clean_build: 0
+- runs: 1
+- recv_mode: recv
+- duration_seconds: 1
+- warmup_seconds: 1
+- hwm: default(binary)
+- send_hwm: default(binary)
+- recv_hwm: default(binary)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- pin_cpu: 0
+- io_threads: default(policy)
+- msg_sizes: 64,256,65536,262144
+- transports: tls,wss
+- results_dir: /home/hep7/project/kairos/zlink/core/perf/results
+- results_tag: residual-reentry-20260325-iter-sticky
+- result_file: /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260325_034057_residual-reentry-20260325-iter-sticky.txt
+- output_file: none
+- comparison_script: /home/hep7/project/kairos/zlink/core/perf/run_comparison.py
+- python: python3
+
+## Effective Env (runner)
+- PYTHONUNBUFFERED: 1
+- PERF_RECV_MODE: recv
+- PERF_MSG_SIZES: 64,256,65536,262144
+- PERF_TRANSPORTS: tls,wss
+- PERF_NO_AUTOBUILD: 1
+- PERF_DISABLE_RESOURCE_METRICS: 0
+
+META,os,Linux 6.6.87.2-microsoft-standard-WSL2
+META,cpu,Intel(R) Core(TM) Ultra 7 265K
+META,cores,20
+META,build,Release
+META,commit,7ab6f0ae
+META,timestamp,2026-03-25T03:40:57+09:00
+META,load_avg,5.25 5.26 4.94
+META,runs,1
+META,clients,100
+
+## Effective Options (start)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls,wss
+- msg_sizes: 64,256,65536,262144
+- warmup_seconds: 1
+- active_warmup: 0
+- duration_seconds: 1
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: 100 (default)
+- sndhwm: 100 (default)
+- rcvhwm: 100 (default)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- connect_concurrency: 128 (default)
+- settle_ms: 500
+- connect_ready_timeout_ms: 5000
+- monitor_hwm: 1000
+- server_ready_timeout_ms: 10000
+- server_shutdown_timeout_ms: 5000
+- server_bind_port: 0
+- transport_transition_ms: 3000
+- pattern_transition_ms: 3000
+- lat_timeout_ms: 5000
+- stream_non_tcp_clients_max: 10000
+- disable_resource_metrics: 0
+- timeout_seconds: auto
+## PATTERN: MULTI_SPOT (one-way)
+  > Benchmarking current for MULTI_SPOT...
+    Testing tls | 64B,256B,65536B,262144B:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|
+      | 64B      |  1230.893 Kmsg/s |     78.777 MB/s |    59.932 ms |    75.488 ms |    77.737 ms | 12.998 |   48.438 |         0 |         0 |         0 |
+      | 256B     |   868.319 Kmsg/s |    222.290 MB/s |     7.413 ms |    12.166 ms |    17.044 ms |  9.840 |   57.250 |         0 |         0 |         0 |
+      | 65536B   |    30.078 Kmsg/s |   1971.192 MB/s |    32.681 ms |   126.020 ms |   194.463 ms | 10.217 |  271.484 |         0 |         0 |         0 |
+      | 262144B  |    10.392 Kmsg/s |   2724.200 MB/s |   254.772 ms |   368.968 ms |   400.341 ms | 12.215 |  424.422 |         0 |         0 |         0 |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing wss | 64B,256B,65536B,262144B:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|
+      | 64B      |   733.797 Kmsg/s |     46.963 MB/s |    32.080 ms |    68.399 ms |    70.380 ms |  6.460 |   53.891 |         0 |         0 |         0 |
+      | 256B     |   828.797 Kmsg/s |    212.172 MB/s |     7.880 ms |    14.023 ms |    17.055 ms |  5.233 |   59.824 |         0 |         0 |         0 |
+      | 65536B   |    21.225 Kmsg/s |   1391.002 MB/s |   105.792 ms |   182.539 ms |   235.302 ms |  5.428 |  307.938 |         0 |         0 |         0 |
+      | 262144B  |     8.002 Kmsg/s |   2097.676 MB/s |   101.391 ms |   130.792 ms |   138.744 ms |  5.731 |  502.266 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls,wss
+- msg_sizes: 64,256,65536,262144
+- warmup_seconds: 1
+- active_warmup: 0
+- duration_seconds: 1
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: 100 (default)
+- sndhwm: 100 (default)
+- rcvhwm: 100 (default)
+- sndbuf: default(os)
+- rcvbuf: default(os)
+- sndtimeo_ms: 200
+- rcvtimeo_ms: 200
+- connect_concurrency: 128 (default)
+- settle_ms: 500
+- connect_ready_timeout_ms: 5000
+- monitor_hwm: 1000
+- server_ready_timeout_ms: 10000
+- server_shutdown_timeout_ms: 5000
+- server_bind_port: 0
+- transport_transition_ms: 3000
+- pattern_transition_ms: 3000
+- lat_timeout_ms: 5000
+- stream_non_tcp_clients_max: 10000
+- disable_resource_metrics: 0
+- timeout_seconds: auto
+
+## Result Data
+RESULT,current,MULTI_SPOT,tls,64,bandwidth,78.777
+RESULT,current,MULTI_SPOT,tls,64,latency,59931.933
+RESULT,current,MULTI_SPOT,tls,64,latency_p95,75488.000
+RESULT,current,MULTI_SPOT,tls,64,latency_p99,77737.330
+RESULT,current,MULTI_SPOT,tls,64,server_cpu_pct,13.270
+RESULT,current,MULTI_SPOT,tls,64,server_mem_mb,48.440
+RESULT,current,MULTI_SPOT,tls,64,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,tls,64,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,tls,64,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,tls,64,throughput,1230893.000
+RESULT,current,MULTI_SPOT,tls,256,bandwidth,222.290
+RESULT,current,MULTI_SPOT,tls,256,latency,7412.687
+RESULT,current,MULTI_SPOT,tls,256,latency_p95,12165.600
+RESULT,current,MULTI_SPOT,tls,256,latency_p99,17043.880
+RESULT,current,MULTI_SPOT,tls,256,server_cpu_pct,9.840
+RESULT,current,MULTI_SPOT,tls,256,server_mem_mb,57.250
+RESULT,current,MULTI_SPOT,tls,256,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,tls,256,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,tls,256,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,tls,256,throughput,868319.000
+RESULT,current,MULTI_SPOT,tls,65536,bandwidth,1971.192
+RESULT,current,MULTI_SPOT,tls,65536,latency,32681.332
+RESULT,current,MULTI_SPOT,tls,65536,latency_p95,126020.000
+RESULT,current,MULTI_SPOT,tls,65536,latency_p99,194463.400
+RESULT,current,MULTI_SPOT,tls,65536,server_cpu_pct,10.220
+RESULT,current,MULTI_SPOT,tls,65536,server_mem_mb,272.420
+RESULT,current,MULTI_SPOT,tls,65536,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,tls,65536,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,tls,65536,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,tls,65536,throughput,30078.000
+RESULT,current,MULTI_SPOT,tls,262144,bandwidth,2724.200
+RESULT,current,MULTI_SPOT,tls,262144,latency,254771.525
+RESULT,current,MULTI_SPOT,tls,262144,latency_p95,368968.000
+RESULT,current,MULTI_SPOT,tls,262144,latency_p99,400341.000
+RESULT,current,MULTI_SPOT,tls,262144,server_cpu_pct,12.560
+RESULT,current,MULTI_SPOT,tls,262144,server_mem_mb,424.830
+RESULT,current,MULTI_SPOT,tls,262144,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,tls,262144,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,tls,262144,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,tls,262144,throughput,10392.000
+RESULT,current,MULTI_SPOT,wss,64,bandwidth,46.963
+RESULT,current,MULTI_SPOT,wss,64,latency,32080.355
+RESULT,current,MULTI_SPOT,wss,64,latency_p95,68399.000
+RESULT,current,MULTI_SPOT,wss,64,latency_p99,70380.000
+RESULT,current,MULTI_SPOT,wss,64,server_cpu_pct,6.500
+RESULT,current,MULTI_SPOT,wss,64,server_mem_mb,53.890
+RESULT,current,MULTI_SPOT,wss,64,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,wss,64,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,64,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,64,throughput,733797.000
+RESULT,current,MULTI_SPOT,wss,256,bandwidth,212.172
+RESULT,current,MULTI_SPOT,wss,256,latency,7879.846
+RESULT,current,MULTI_SPOT,wss,256,latency_p95,14023.000
+RESULT,current,MULTI_SPOT,wss,256,latency_p99,17055.000
+RESULT,current,MULTI_SPOT,wss,256,server_cpu_pct,5.240
+RESULT,current,MULTI_SPOT,wss,256,server_mem_mb,59.820
+RESULT,current,MULTI_SPOT,wss,256,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,wss,256,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,256,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,256,throughput,828797.000
+RESULT,current,MULTI_SPOT,wss,65536,bandwidth,1391.002
+RESULT,current,MULTI_SPOT,wss,65536,latency,105791.639
+RESULT,current,MULTI_SPOT,wss,65536,latency_p95,182539.000
+RESULT,current,MULTI_SPOT,wss,65536,latency_p99,235301.720
+RESULT,current,MULTI_SPOT,wss,65536,server_cpu_pct,5.450
+RESULT,current,MULTI_SPOT,wss,65536,server_mem_mb,307.940
+RESULT,current,MULTI_SPOT,wss,65536,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,wss,65536,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,65536,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,65536,throughput,21225.000
+RESULT,current,MULTI_SPOT,wss,262144,bandwidth,2097.676
+RESULT,current,MULTI_SPOT,wss,262144,latency,101391.195
+RESULT,current,MULTI_SPOT,wss,262144,latency_p95,130791.500
+RESULT,current,MULTI_SPOT,wss,262144,latency_p99,138743.500
+RESULT,current,MULTI_SPOT,wss,262144,server_cpu_pct,5.770
+RESULT,current,MULTI_SPOT,wss,262144,server_mem_mb,502.580
+RESULT,current,MULTI_SPOT,wss,262144,server_rcv_pending_end,0.000
+RESULT,current,MULTI_SPOT,wss,262144,server_rcv_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,262144,server_snd_pending_max,0.000
+RESULT,current,MULTI_SPOT,wss,262144,throughput,8002.000
+
+Saved result file: /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260325_034057_residual-reentry-20260325-iter-sticky.txt (status=complete)
+
+## Status Summary
+- success: 8
+- unsupported: 0
+- skip: 0
+- fail: 0
+- expected result lines: 40
+- actual result lines: 40
+- status: complete
+Total benchmark time: 48s (48s, exit=0)

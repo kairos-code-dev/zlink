@@ -5,6 +5,7 @@
 #include "services/spot/spot_node.hpp"
 
 #include "services/control/service_control_runtime.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
@@ -19,6 +20,18 @@ namespace zlink
 {
 namespace
 {
+static uint32_t resolve_effective_ready_count (uint32_t ready_count_,
+                                               uint32_t active_peer_count_,
+                                               uint32_t connected_ready_count_)
+{
+    const uint32_t effective_peer_count =
+      active_peer_count_ > connected_ready_count_ ? active_peer_count_
+                                                  : connected_ready_count_;
+    if (effective_peer_count == 0)
+        return ready_count_;
+    return clamp_ready_peer_count (ready_count_, effective_peer_count);
+}
+
 static void spot_ready_ack_debugf (const char *fmt_, ...)
 {
     if (!std::getenv ("ZLINK_DEBUG_SPOT_READY_ACK"))
@@ -106,6 +119,19 @@ static std::string make_ready_ack_arg (const std::string &target_endpoint_,
                                        const std::string &ack_source_id_)
 {
     return target_endpoint_ + "\n" + raw_filter_ + "\n" + ack_source_id_;
+}
+
+static void collect_replay_raw_filters (const std::vector<spot_sub_t *> &subs_,
+                                        std::set<std::string> *out_)
+{
+    if (!out_)
+        return;
+
+    out_->clear ();
+    for (size_t i = 0; i < subs_.size (); ++i) {
+        if (subs_[i])
+            subs_[i]->append_replay_raw_filters (out_);
+    }
 }
 }
 
@@ -277,6 +303,19 @@ void spot_node_t::emit_pending_subscription_replays ()
         return;
     }
 
+    std::vector<spot_sub_t *> subs;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_subscription_replay_pending)
+            return;
+        if (_active_peer_endpoints.empty ())
+            return;
+        subs.assign (_subs.begin (), _subs.end ());
+    }
+
+    std::set<std::string> replay_filters;
+    collect_replay_raw_filters (subs, &replay_filters);
+
     bool should_replay = false;
     {
         scoped_lock_t lock (_sync);
@@ -284,6 +323,12 @@ void spot_node_t::emit_pending_subscription_replays ()
             return;
         if (_active_peer_endpoints.empty ())
             return;
+        if (replay_filters.empty ()) {
+            _subscription_replay_pending = false;
+            _subscription_replay_holdoff_ticks = 0;
+            _subscription_replay_attempts = 0;
+            return;
+        }
         if (_subscription_replay_attempts == 0) {
             _subscription_replay_pending = false;
             _subscription_replay_holdoff_ticks = 0;
@@ -553,12 +598,19 @@ std::string spot_node_t::first_connected_peer_endpoint () const
 
 uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
 {
+    const uint32_t active_peer_count =
+      static_cast<uint32_t> (_active_peer_endpoints.size ());
+    const uint32_t connected_ready_count =
+      _runtime ? _runtime->connected_ready_peer_count.load (
+                   std::memory_order_acquire)
+               : 0u;
     uint32_t max_ready_count = 0;
     for (std::map<std::string, std::set<std::string> >::const_iterator it =
            _pub_delivery_ready_sources.begin ();
          it != _pub_delivery_ready_sources.end (); ++it) {
-        const uint32_t ready_count =
-          static_cast<uint32_t> (it->second.size ());
+        const uint32_t ready_count = resolve_effective_ready_count (
+          static_cast<uint32_t> (it->second.size ()), active_peer_count,
+          connected_ready_count);
         if (ready_count > max_ready_count)
             max_ready_count = ready_count;
     }
@@ -578,8 +630,14 @@ void spot_node_t::publish_mesh_pub_budget_hint_locked ()
 
     _runtime->mesh_pub_ready_peer_count.store (ready_count,
                                                std::memory_order_release);
-    _runtime->mesh_pub_budget_version.fetch_add (1,
-                                                 std::memory_order_acq_rel);
+    const std::string bound_endpoint = _runtime->bound_endpoint;
+    // Keep the ready-peer count authoritative, but only force the data plane to
+    // touch the live mesh_pub socket when the effective budget actually changes.
+    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
+                                               ready_count)) {
+        _runtime->mesh_pub_budget_version.fetch_add (1,
+                                                     std::memory_order_acq_rel);
+    }
 }
 
 void spot_node_t::schedule_subscription_ready_refresh ()
@@ -795,20 +853,28 @@ void spot_node_t::notify_pub_delivery_ready_ack (
     uint32_t ready_count = 0;
     {
         scoped_lock_t lock (_sync);
+        const uint32_t active_peer_count =
+          static_cast<uint32_t> (_active_peer_endpoints.size ());
+        const uint32_t connected_ready_count =
+          _runtime ? _runtime->connected_ready_peer_count.load (
+                       std::memory_order_acquire)
+                   : 0u;
         std::set<std::string> &ready_sources =
           _pub_delivery_ready_sources[subject_];
 
         if (subscribe_) {
             if (!ready_sources.insert (ack_source_id_).second)
                 return;
-            ready_count = static_cast<uint32_t> (ready_sources.size ());
         } else {
             if (ready_sources.erase (ack_source_id_) == 0)
                 return;
-            ready_count = static_cast<uint32_t> (ready_sources.size ());
             if (ready_sources.empty ())
                 _pub_delivery_ready_sources.erase (subject_);
         }
+
+        ready_count = resolve_effective_ready_count (
+          static_cast<uint32_t> (ready_sources.size ()), active_peer_count,
+          connected_ready_count);
 
         pubs.assign (_pubs.begin (), _pubs.end ());
         publish_mesh_pub_budget_hint_locked ();

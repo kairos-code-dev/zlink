@@ -1,0 +1,2134 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: medium
+reasoning summaries: none
+session id: 019d212d-4e98-7853-b64e-e0b05f8d4f1d
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+  이 문서의 남은 작업을 중단 없이 끝까지 진행한다.
+- /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md
+  이 문서의 실제 구현 내용이 코드에 반영되도록 작업한다.
+
+작업 규칙:
+- 실행 가이드와 마스터 플랜을 둘 다 authority로 사용한다.
+- 실행 순서와 완료 판정은 실행 가이드를 따르되, 실제 구현 내용과 설계 intent는 마스터 플랜을 기준으로 확인한다.
+- 각 작업 묶음을 끝낼 때마다 마스터 플랜의 Phase 1~6, 8.1, 8.2, 9장을 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 마스터 플랜의 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 마스터 플랜에 있는데 실행 가이드 5장 체크리스트에 없는 구현 항목을 발견하면 실행 가이드를 먼저 갱신한 뒤 작업을 계속한다.
+- 마스터 플랜과 실행 가이드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --label posd_refactor_gate --count 1 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 1보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 최종 perf phase 재개 시 이미 문서에 기록된 latest full perf snapshot과 baseline 비교 증거가 있으면 그것을 우선 사용한다.
+- 최종 perf phase를 새 iteration에서 다시 잡았다는 이유만으로 full perf를 처음부터 다시 돌리지 않는다.
+- 최종 perf phase 재개 첫 행동은 latest full 결과에서 worst tuple을 다시 확인하고 smoke 또는 targeted recheck부터 이어서 진행하는 것이다.
+- latest full perf 재실행은 문서에 정의된 invalidation 조건이 생겼거나, 모든 남은 tuple 회복 후 최종 확정이 필요할 때만 한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- 5.0 표의 각 행이나 각 phase를 완료로 바꾸는 순간에는 같은 흐름에서 해당 범위만 commit하고 현재 작업 브랜치로 push한다.
+- unrelated 변경은 commit/push에 섞지 않는다. phase 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
+- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남긴다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+- stress/lane/perf는 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- 테스트 통과만으로 마스터 플랜 구현 내용이 반영됐다고 추정하지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+codex
+팀장님, 실행 가이드와 마스터 플랜을 먼저 대조해서 첫 미완료 항목과 문서 불일치를 확인하겠습니다. 그 다음 순서대로 코드와 문서를 같이 갱신하고, 각 작업 묶음 종료 시 플랜 잔여 구현 항목을 다시 점검하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# POSD 2차 리팩토링 잔여 작업 실행 가이드
+
+> 상태: active
+> 기준 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
+> 재평가 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
+> residual 실행 스펙: `doc/plan/refactor/2nd/core-system-posd-refactor-residual-execution-spec.ko.md`
+> 기준 커밋: `85ea0995`
+> 대상 범위: `core/`, `core/tests/`
+> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
+> 최종 성능 검증 도구: `core/perf/run_benchmarks.sh`, `core/perf/run_benchmarks_multi.sh`
+> 목적: 남은 POSD 2차 리팩토링 항목을 중간 중단 없이 끝까지 밀기 위한 실행 규칙 고정
+
+## 1. 문서 목적
+
+이 문서는 마스터 플랜의 "남은 작업"만을 대상으로,
+실제 구현자가 어떤 순서와 어떤 정지 규칙으로 끝까지 진행해야 하는지를 고정한다.
+
+이 문서는 새 설계를 제안하는 문서가 아니다.
+이미 반영된 2차 리팩토링 결과 위에서,
+남은 허브와 남은 ownership 정리를 끝까지 닫는 실행 문서다.
+exec
+/bin/bash -lc "sed -n '1,320p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# POSD 기반 `core` 2차 리팩토링 마스터 플랜
+
+> 상태: draft
+> 대상: `core/`
+> 기준 원칙: POSD + 공개 API 호환 유지 + 성능 비퇴행
+> 관련 문서:
+> - `doc/plan/refactor/1st/README.ko.md`
+> - `doc/plan/refactor/1st/00-core-system-posd-refactor-plan.ko.md`
+> - `doc/plan/refactor/1st/04-core-system-phase2-socket-runtime-split.ko.md`
+> - `doc/plan/refactor/1st/05-core-system-phase3-engine-transport-service-plan.ko.md`
+> - `doc/plan/thread-safe/thread-safe-socket-plan.ko.md`
+> - `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`
+
+## 1. 문서 목적
+
+이 문서는 `core` 1차 POSD 리팩토링 문서 세트를 바탕으로,
+**이미 1차 핵심 경계가 코드에 반영된 현재 코드베이스**를 기준으로 작성한
+2차 상세 실행 계획 마스터 플랜이다.
+
+1차 문서 세트가 ownership, runtime, 최종 source layout 관점에서
+exec
+/bin/bash -lc 'git status --short' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+ M core/perf/multi/src/perf_multi_spot_client.cpp
+ M core/src/services/discovery/discovery_bootstrap.cpp
+ M core/src/services/spot/spot_data_plane_internal.hpp
+ M core/src/services/spot/spot_node_control.cpp
+ M core/src/services/spot/spot_sub_recv.cpp
+ M core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp
+ M core/tests/unittest/unittest_spot_data_plane_budget.cpp
+ M doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+?? doc/plan/refactor/2nd/logs/asan_multi_spot_trace.3834830
+?? doc/plan/refactor/2nd/logs/asan_multi_spot_trace_sym.3846678
+?? doc/plan/refactor/2nd/logs/asan_multi_spot_trace_sym2.3848846
+?? doc/plan/refactor/2nd/logs/asan_spot_wss_report_20260324_235218.3686316
+?? doc/plan/refactor/2nd/logs/asan_spot_wss_report_postfix_20260324_235218.3689848
+?? doc/plan/refactor/2nd/logs/asan_test_multi_spot_benchmark_process_20260325_current.log
+?? doc/plan/refactor/2nd/logs/asan_test_multi_spot_trace.3855342
+?? doc/plan/refactor/2nd/logs/asan_test_multi_spot_trace_sym.3857751
+?? doc/plan/refactor/2nd/logs/codex_execution_guide_loop_20260324_210238/
+?? doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_20260324_233850.log
+?? doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_20260324_233850.log.exitcode
+?? doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_asan_20260324_235218.log
+codex
+팀장님, 워크트리에 기존 진행 흔적과 미커밋 변경이 이미 있어서 현재 phase 범위를 건드릴 때 충돌 여부를 먼저 확인하겠습니다. 실행 가이드의 5장 체크리스트와 상태표를 읽어 첫 미완료 행을 특정한 뒤, 그 범위 파일들만 분리해서 진행하겠습니다.
+exec
+/bin/bash -lc "sed -n '260,520p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc 'rg -n "''^## 5|''^### 5|'"\\[ \\]|미완료|완료|5\\.0|5\\.1|5\\.2|5\\.3|5\\.4|5\\.5|5\\.6|8\\.1|8\\.2|9\\.\" doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+  사용한다.
+- latest full 결과 이후에 perf 기준선을 무효화하는 변경이 없으면, 새 세션 시작
+  직후 full perf를 처음부터 다시 돌리지 않는다.
+- 최종 perf phase 재개 첫 행동은 latest full 결과에서 baseline 미만 tuple 목록과 worst
+  tuple을 다시 읽어 현재 owner를 확정하는 것이다.
+- 새 세션에서 바로 다시 수행하는 기본 검증은 full perf가 아니라 smoke와 해당
+  worst tuple의 targeted recheck다.
+- full single/full multi 재실행은 아래 경우에만 수행한다.
+  - latest full 결과 파일/비교 기록이 없거나 증거 경로가 비어 있을 때
+  - baseline 파일이 바뀌었을 때
+  - perf harness 또는 결과 파서가 바뀌었을 때
+  - latest full 결과 이후 변경이 perf hot path owner를 다시 흔들었다고 문서에
+    기록된 때
+  - 모든 남은 worst tuple이 baseline 이상으로 회복됐는지 최종 확정해야 할 때
+- targeted recheck가 실패해도 즉시 full perf 전체를 다시 돌리지 않는다. 같은
+  tuple owner 범위 안에서 원인 수정과 targeted recheck를 먼저 반복한다.
+- 최종 full perf는 최종 perf phase 종료 확정용 증거다. 중간 triage 단계에서는 기존 latest
+  full snapshot을 재사용하고, targeted recheck 로그를 추가 증거로 누적한다.
+
+결과 파일 선택과 worst regression 산출은 아래 명령으로 고정한다.
+ succeeded in 0ms:
+9:> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
+27:`5.2A`, `5.3A`, `5.6A`의 세부 구현 결정은
+48:- 문서 본체 완료 뒤에는 `core/perf` 기반 perf smoke, full perf, baseline 비교, 성능 회복 루프까지 포함한다.
+67:3. 중간 상태 설명, 부분 요약, 임시 완료 보고는 하지 않는다.
+70:6. 한 항목을 `완료`로 바꾼 직후에는 다음 미완료 항목으로 즉시 이동한다.
+93:- 미완료 표의 다음 행이 남아 있는 상태
+100:1. 미완료 항목 목록에서 가장 위의 항목 하나를 고른다.
+104:5. 문서의 미완료 목록에서 해당 항목을 줄이거나 제거한다.
+109:1. 방금 끝낸 항목의 상태를 5.0 표에 반영한다.
+110:2. 5.0 표에서 `완료`가 아닌 첫 행을 다시 찾는다.
+112:4. 5.0 표가 전부 `완료`일 때만 6.3 최종 게이트로 간다.
+145:- 이 문서의 phase 종료, 최종 완료, 중단 판정은 `core/`와 `core/tests/` 증거로만 닫는다.
+235:- 최종 완료 판정에서는 baseline 이상을 하한선이 아니라 필수선으로 사용한다.
+408:## 5. 남은 작업 체크리스트
+413:## 5.0 마스터 플랜 커버리지 추적 표
+423:- `완료`
+429:- `검증중 -> 완료`: 검증 증거 파일/명령/로그 위치까지 표에 기록한 시점
+430:- `완료 -> 진행중`: 이후 변경으로 해당 항목 owner 또는 검증 결과가 다시 흔들린 시점
+434:1. 5.0 표를 먼저 읽는다.
+435:2. 갭 리뷰 문서의 최신 평결이 5.0 표에 반영됐는지 확인한다.
+exec
+/bin/bash -lc "rg -n \"Phase 1|Phase 2|Phase 3|Phase 4|Phase 5|Phase 6|8\\.1|8\\.2|## 9|logical multipart|spot|discovery|socket_base|ctx|api/zlink|options_t|service_runtime_base\" doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+100:- 서비스 계층이 `gateway`, `discovery`, `spot`로 이미 디렉터리 분리돼 있다.
+112:### 2.3.1 `api/zlink.cpp`가 과도한 허브다
+114:`core/src/api/zlink.cpp`는 공개 C API의 구현 파일이지만,
+131:### 2.3.2 `socket_base_t`가 semantic과 mechanism을 함께 가진다
+133:`socket_base_t`는 socket abstraction의 중심이지만,
+150:### 2.3.3 `options_t`가 중앙 옵션 가방 역할을 한다
+152:`options_t`는 socket, transport, protocol, service 근처 정책이 한 struct에 같이 들어간다.
+161:즉 `options_t`는 compatibility carrier 이상의 역할을 맡고 있으며,
+164:### 2.3.4 `service_runtime_base_t` 경계는 더 선명해질 필요가 있다
+170:`socket_close_ops_t`와 `ctx_t`에 위임되어 있다.
+176:- `ctx_t`의 global removal tracking과의 협력 지점
+193:새 기능이 추가될수록 `api` 허브, `socket_base_t`, `options_t`,
+196:### 2.3.6 logical multipart send semantics가 상위 surface에 흩어져 있다
+201:- `api/zlink.cpp`의 `zlink_send`, `zlink_send_rid`, `zlink_publish`
+203:- `services/spot/spot_pub.cpp`의 `publish`
+215:**logical multipart send라는 하나의 use-case 모듈이
+220:`logical multipart send` deep module 추출 작업을 함께 포함한다.
+227:  logical multipart message를 whole-message 단위로 해석한다.
+269:- `gateway`, `discovery`, `spot` 서비스 경로와 관련 service access surface
+270:- socket message dispatch, spot handler, send-ready handler, stream dispatch 경로
+codex
+팀장님, 현재 5.0 표상 구조 phase들은 완료로 닫혀 있고 첫 미완료는 `5.7` perf recovery loop로 보입니다. 다만 기존 미커밋 변경이 `spot/discovery/perf/test/doc`에 걸쳐 있어서, 이 변경들이 이번 `5.7` owner와 같은 축인지 먼저 읽고 이어서 수정하겠습니다.
+exec
+/bin/bash -lc "sed -n '779,940p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+### 5.7 `core/perf` smoke / full baseline 비교 / 성능 회복 루프
+
+마스터 플랜 참조:
+[perf 검증 위임](./core-system-posd-refactor-master-plan.ko.md) (약 1266행)
+
+- [x] 모든 코드/테스트 체크리스트를 닫은 뒤 `core/perf` single smoke를 실행한다.
+- [x] single smoke가 정상이면 multi perf smoke를 실행한다.
+- [x] smoke 둘 다 정상이면 single full perf를 실행한다.
+- [x] single full 결과를 `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`와 비교한다.
+- [x] multi full perf를 실행하고 `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 비교한다.
+- [x] gap review 기준 residual 구조 작업(`5.2A`, `5.3A`, `5.6A`)이 닫힌 latest 코드에서 smoke와 targeted recheck를 다시 수행한다.
+- [ ] baseline 미만 tuple이 있으면 가장 regression이 큰 `pattern + transport + size`부터 개선한다.
+- [ ] 개선 후에는 해당 tuple이 속한 pattern targeted recheck를 먼저 수행하고, 모든 baseline 미만 tuple이 해소된 시점에만 full single/full multi를 1회 다시 실행한다.
+- [ ] 모든 tuple이 baseline 이상이 될 때까지 반복한다.
+- [ ] 최종 단계에서 `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과를 확보한다.
+
+진행 메모:
+
+- `single smoke`는 `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`에서 성공했고 결과 파일 `core/perf/results/single/report/perf_linux_callback_20260324_111453_smoke-single.txt`를 남겼다.
+- `multi smoke`는 `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_111740.log`에서 `MULTI_SPOT`의 `CLIENT_READY` 경로가 partial/exit 1로 실패했다.
+exec
+/bin/bash -lc "sed -n '520,610p' doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+  흐름에서 commit/push까지 끝낸다.
+- unrelated 변경이 워크트리에 섞여 있으면 그것까지 묶어서 commit하지 않는다.
+- unrelated 변경 때문에 phase 범위만 안전하게 commit할 수 없으면 그 행은 아직
+  `완료`가 아니다. 범위를 정리한 뒤 commit/push까지 끝내고 닫는다.
+- 커밋 메시지는 phase/owner가 바로 드러나게 짧고 구체적으로 쓴다.
+- push 대상은 현재 작업 브랜치다. 별도 release/tag 작업을 의미하지 않는다.
+- 최종 완료 직전에도 동일 규칙을 적용하되, 마지막 gate 결과와 문서 갱신을 함께
+  포함해 commit/push한다.
+
+| 마스터 플랜 항목 | 상태 | 실행 문서 체크 항목 | 관련 코드/파일 | 검증 증거 |
+|---|---|---|---|---|
+| 갭 리뷰 문서 추가 및 실행 authority 반영 | 완료 | 5.0 재판정 | `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`, `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md` | 갭 리뷰 문서 추가, 실행 문서 기준선/순서/추적표 갱신 |
+| Residual 실행 스펙 추가 및 authority 반영 | 완료 | 5.0 재판정 | `doc/plan/refactor/2nd/core-system-posd-refactor-residual-execution-spec.ko.md`, `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md` | residual 실행 스펙 추가, `5.2A`/`5.3A`/`5.6A` 구현 경계/검증 명령 고정 |
+| Phase 1a context/message/errno/version 분리 유지 | 완료 | 5.1 | `core/src/api/context_api.cpp`, `core/src/api/message_api.cpp` | `cmake --build core/build -j"$(nproc)"`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
+| Phase 1b socket/poller/monitor 분리 유지 | 완료 | 5.1 | `core/src/api/socket_*.cpp`, `core/src/api/poller_*.cpp`, `core/src/api/monitor*.cpp` | `ctest --test-dir core/build --output-on-failure -R '^(unittest_typed_option|unittest_poller)$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_monitor_service_contract|test_monitor_with_handler)$'` |
+| Phase 1b.5 logical multipart send deep module 유지 | 완료 | 5.1, 5.6 | `core/src/core/multipart_send_txn.*`, gateway/spot publish/send caller | `ctest --test-dir core/build --output-on-failure -R '^test_gateway_handover$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'` |
+| Phase 1c `zlink.cpp` concrete service knowledge 제거 완결 | 완료 | 5.1 | `core/src/api/zlink.cpp`, `core/src/api/service_*.cpp` | `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'` |
+| Phase 2 `socket_base_t` semantic/runtime 분리 | 완료 | 5.2 | `core/src/sockets/socket_base*`, `core/src/sockets/socket_runtime.cpp` | `ctest --test-dir core/build --output-on-failure -R '^(test_stream_socket|test_stream_threadsafe|test_stream_send_blocking_wakeup|test_gateway_monitor_snapshot_churn)$'`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log`, `doc/plan/refactor/2nd/logs/phase2_thread_safe_stress_20260324_090631.log.exitcode` |
+| Phase 3 close/drain contract 명확화 | 완료 | 5.3 | `core/src/services/common/service_runtime_base.*`, `core/src/services/common/service_socket_registry.hpp`, `core/src/core/ctx.*`, `core/src/sockets/socket_close_ops.*` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_service_runtime_base|test_service_introspection_discovery_self_close|test_gateway_send_ready_self_close|test_spot_service_introspection_handler_monitor_close)$'`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log`, `doc/plan/refactor/2nd/logs/phase3_thread_safe_stress_20260324_092245.log.exitcode` |
+| Phase 4 option ownership 분리 | 완료 | 5.4 | `core/src/core/options_dispatch.cpp`, `core/src/core/options_core_socket.cpp`, `core/src/core/options_transport_network.cpp`, `core/src/core/options_protocol_metadata.cpp`, `core/src/core/options_owner.*`, `core/src/api/zlink_option*.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^unittest_typed_option$'`, `ctest --test-dir core/build --output-on-failure -R '^test_stream_threadsafe$'`, `ctest --test-dir core/build --output-on-failure -R '^test_spot_service_introspection$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers` |
+exec
+/bin/bash -lc 'git diff -- core/src/services/discovery/discovery_bootstrap.cpp core/src/services/spot/spot_data_plane_internal.hpp core/src/services/spot/spot_node_control.cpp core/src/services/spot/spot_sub_recv.cpp core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp core/tests/unittest/unittest_spot_data_plane_budget.cpp core/perf/multi/src/perf_multi_spot_client.cpp doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 96b4db29..3fc83429 100644
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,6 +277,11 @@ size_t resolve_required_slot_count(size_t slot_count,
+     return std::max<size_t>(1, required);
+ }
+ 
++bool should_use_spot_slot_barrier(size_t slot_count)
++{
++    return slot_count > 0 && slot_count <= 16;
++}
++
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -441,39 +446,58 @@ void handle_spot_client_parts(const char *topic,
+     if (!header_ok)
+         return;
+ 
+codex
+팀장님, 현재 남은 owner는 `5.7`이고 최신 문서 메모상으로는 `wss` large-sequence correctness와 secure throughput instability가 핵심입니다. 먼저 현재 워크트리 기준 `core/build/` 빌드와 저장소 회귀를 다시 확인해 실제 출발점을 고정하겠습니다.
+exec
+/bin/bash -lc 'ctest --test-dir core/build -N | rg "test_multi_spot_benchmark_process|test_single_spot_benchmark_process|unittest_spot_data_plane_budget"' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+  Test   #7: test_multi_spot_benchmark_process
+  Test  #11: test_single_spot_benchmark_process
+  Test #129: unittest_spot_data_plane_budget
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlink succeeded in 266ms:
+[ 51%] Built target objects
+[ 52%] Built target libzlink-static
+[ 52%] Built target libzlink
+[ 53%] Built target perf_router_router
+[ 54%] Built target testutil
+[ 53%] Built target perf_pubsub
+[ 53%] Built target perf_dealer_router
+[ 55%] Built target testutil-static
+[ 55%] Built target perf_spot
+[ 56%] Built target perf_gateway
+[ 57%] Built target perf_pair
+[ 59%] Built target comp_src_dealer_dealer_server
+[ 59%] Built target perf_dealer_dealer
+[ 60%] Built target comp_src_dealer_router_server
+[ 61%] Built target comp_src_pubsub_client
+[ 62%] Built target comp_src_gateway_server
+[ 62%] Built target comp_src_dealer_dealer_client
+[ 63%] Built target comp_src_spot_server
+[ 63%] Built target comp_src_dealer_router_client
+[ 63%] Built target comp_src_router_router_server
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^test_multi_spot_benchmark_process$'"'" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process)$'"'" in /home/hep7/project/kairos/zlinkcodex
+팀장님, 현재 관련 회귀를 그대로 돌려 실제 red/green을 확인 중입니다. 결과가 갈리면 그 테스트 surface를 owner로 고정하고 바로 재현-수정-재검증 순서로 이어가겠습니다.
+ succeeded in 45.42s:
+1/2 Test  #11: test_single_spot_benchmark_process ...   Passed   45.56 sec
+    Start 129: unittest_spot_data_plane_budget
+2/2 Test #129: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+integration      =  45.56 sec*proc (1 test)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           =  45.56 sec*proc (1 test)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  45.56 sec
+codex
+팀장님, `test_single_spot_benchmark_process`와 `unittest_spot_data_plane_budget`은 현재 워크트리에서 통과했습니다. 이제 실제 출발점은 `test_multi_spot_benchmark_process` 단일 surface인지 확인만 남았습니다.
+ exited 8 in 1m 29s:
+1/1 Test #7: test_multi_spot_benchmark_process ...***Failed   90.00 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:463:test_multi_spot_process_recv_smoke:FAIL: Expected 0 Was 1. server:\nstdout:\nREADY,tcp://127.0.0.1:34456\nRESULT,zlink,MULTI_SPOT,tcp,64,server_cpu_pct,7.97\nRESULT,zlink,MULTI_SPOT,tcp,64,server_mem_mb,7.34\nRESULT,zlink,MULTI_SPOT,tcp,64,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tcp,64,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tcp,64,server_rcv_pending_end,0.000\n\nclient:\nstdout:\nCLIENT_READY,64\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:694:test_multi_spot_process_callback_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:695:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:459:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:FAIL: server:\nstdout:\nREADY,tls://127.0.0.1:33072\nRESULT,zlink,MULTI_SPOT,tls,262144,server_cpu_pct,9.33\nRESULT,zlink,MULTI_SPOT,tls,262144,server_mem_mb,672.44\nRESULT,zlink,MULTI_SPOT,tls,262144,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tls,262144,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tls,262144,server_rcv_pending_end,0.000\n\nclient:\nstdout:\nCLIENT_READY,262144\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:697:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:698:test_multi_spot_process_recv_many_clients_wss_large_sequence:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:699:test_multi_spot_process_invalid_mode_is_rejected:PASS
+
+-----------------------
+7 Tests 2 Failures 0 Ignored 
+FAIL
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+integration    =  90.00 sec*proc (1 test)
+serial         =  90.00 sec*proc (1 test)
+
+codex
+팀장님, 현재 non-debug 기준 단일 red가 고정됐습니다. `test_multi_spot_process_recv_smoke`와 새로 추가된 `tls 262144` smoke가 둘 다 `CLIENT_READY` 이후 서버 결과만 남기고 client가 끝나지 못하는 형태라서, next owner는 `perf_multi_spot_client`의 recv-start/phase completion 경계로 좁혀집니다.
+exec
+/bin/bash -lc 'rg -n "test_multi_spot_process_recv_smoke|recv_many_clients_tls_very_large_smoke|required_slot_count|use_slot_barrier|wait_msg_size_start|expected_msg_size|CLIENT_READY|size start timeout|spot_recv" core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp core/perf/multi/src/perf_multi_spot_client.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/perf/multi/src/perf_multi_spot_client.cpp:32:enum spot_recv_mode_t
+core/perf/multi/src/perf_multi_spot_client.cpp:34:    spot_recv_recv = 0,
+core/perf/multi/src/perf_multi_spot_client.cpp:35:    spot_recv_callback = 1
+core/perf/multi/src/perf_multi_spot_client.cpp:53:struct spot_recv_worker_t;
+core/perf/multi/src/perf_multi_spot_client.cpp:59:        expected_msg_size(0),
+core/perf/multi/src/perf_multi_spot_client.cpp:66:        use_slot_barrier(false),
+core/perf/multi/src/perf_multi_spot_client.cpp:67:        required_slot_count(0)
+core/perf/multi/src/perf_multi_spot_client.cpp:72:    std::vector<spot_recv_worker_t *> recv_workers;
+core/perf/multi/src/perf_multi_spot_client.cpp:79:    std::atomic<size_t> expected_msg_size;
+core/perf/multi/src/perf_multi_spot_client.cpp:86:    bool use_slot_barrier;
+core/perf/multi/src/perf_multi_spot_client.cpp:87:    size_t required_slot_count;
+core/perf/multi/src/perf_multi_spot_client.cpp:92:struct spot_recv_worker_t
+core/perf/multi/src/perf_multi_spot_client.cpp:94:    spot_recv_worker_t() :
+core/perf/multi/src/perf_multi_spot_client.cpp:239:size_t resolve_spot_recv_worker_count(size_t slot_count)
+core/perf/multi/src/perf_multi_spot_client.cpp:265:size_t resolve_required_slot_count(size_t slot_count,
+core/perf/multi/src/perf_multi_spot_client.cpp:285:spot_recv_mode_t resolve_spot_run_recv_mode()
+core/perf/multi/src/perf_multi_spot_client.cpp:288:             ? spot_recv_callback
+core/perf/multi/src/perf_multi_spot_client.cpp:289:             : spot_recv_recv;
+core/perf/multi/src/perf_multi_spot_client.cpp:292:const char *spot_recv_mode_name(spot_recv_mode_t mode)
+core/perf/multi/src/perf_multi_spot_client.cpp:295:        case spot_recv_callback:
+exec
+/bin/bash -lc "sed -n '260,980p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_QUORUM_PERCENT",
+                                 default_percent,
+                                 1);
+}
+
+size_t resolve_required_slot_count(size_t slot_count,
+                                   const std::string &transport)
+{
+    if (slot_count == 0)
+        return 0;
+
+    const int quorum_percent =
+      std::min(100, resolve_spot_phase_quorum_percent(transport));
+    const size_t required =
+      static_cast<size_t>(
+        (static_cast<unsigned long long>(slot_count) * quorum_percent + 99ULL)
+        / 100ULL);
+    return std::max<size_t>(1, required);
+}
+
+exec
+/bin/bash -lc "sed -n '1,260p' core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "testutil.hpp"
+#include "testutil_unity.hpp"
+
+#ifndef _WIN32
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <csignal>
+#include <climits>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <thread>
+exec
+/bin/bash -lc "sed -n '430,720p' core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+      start_process (server_path, server_args, common_env, server));
+
+    std::string ready_line;
+    TEST_ASSERT_TRUE_MESSAGE (
+      wait_for_stdout_prefix (server, "READY,", 10000, &ready_line),
+      capture_case_debug_text (server, client).c_str ());
+    std::string endpoint = ready_line.substr (strlen ("READY,"));
+    if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
+        endpoint.erase (endpoint.size () - 1);
+
+    std::vector<std::string> client_args;
+    client_args.push_back ("zlink");
+    client_args.push_back (transport_);
+    client_args.push_back (msg_size_);
+    client_args.push_back ("--endpoint");
+    client_args.push_back (endpoint);
+
+    TEST_ASSERT_TRUE (
+      start_process (client_path, client_args, common_env, client));
+
+exec
+/bin/bash -lc "sed -n '980,1160p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+            std::cerr << "[multi-spot-client] active start timeout size="
+                      << msg_size << std::endl;
+        }
+        state->collect_active.store(false, std::memory_order_release);
+        return false;
+    }
+
+    const bench_multi_cpu_sample_t sample_start =
+      bench_multi_capture_cpu_sample();
+    if (!wait_phase_duration(
+          state, static_cast<double>(std::max(1, settings.duration_seconds)))) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-client] active wait failed size="
+                      << msg_size << std::endl;
+        return false;
+    }
+    state->collect_active.store(false, std::memory_order_release);
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] collect done ts_us="
+                  << perf_multi_metric::now_us()
+codex
+팀장님, red는 이제 저장소 회귀로 충분히 고정됐습니다. 다음은 새 repro를 만들지 않고 같은 `test_multi_spot_benchmark_process`에 debug 환경만 얹어 client가 어느 단계에서 1로 끝나는지 보겠습니다.
+exec
+/bin/bash -lc "env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '"'^test_multi_spot_benchmark_process$'"'" in /home/hep7/project/kairos/zlink succeeded in 51.09s:
+1/1 Test #7: test_multi_spot_benchmark_process ...   Passed   51.23 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =  51.23 sec*proc (1 test)
+serial         =  51.23 sec*proc (1 test)
+
+Total Test time (real) =  51.23 sec
+codex
+팀장님, 이건 deterministic red가 아니라 timing-sensitive flake입니다. 같은 저장소 회귀를 그대로 반복해서 어느 조건에서만 깨지는지 먼저 좁히겠습니다.
+exec
+/bin/bash -lc 'i=1; while [ $i -le 5 ]; do echo "ITER=$i"; ctest --test-dir core/build --output-on-failure -R '"'"'^test_multi_spot_benchmark_process$'"' && i="'$((i+1)) || exit $?; done' in /home/hep7/project/kairos/zlinkcodex
+팀장님, 방금 잡힌 red는 제가 직렬 lane 테스트를 동시에 두 개 띄운 상태에서 나온 것이고, 단독 반복 실행에서는 현재 `test_multi_spot_benchmark_process`가 연속 통과합니다. 따라서 지금 단계의 실제 owner는 다시 `5.7` perf targeted recheck로 돌아가며, 최신 secure tuple을 현재 코드에서 다시 측정하겠습니다.
+ succeeded in 4m 21s:
+1/1 Test #7: test_multi_spot_benchmark_process ...   Passed   51.72 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =  51.72 sec*proc (1 test)
+serial         =  51.72 sec*proc (1 test)
+
+Total Test time (real) =  51.72 sec
+ITER=2
+Internal ctest changing into directory: /home/hep7/project/kairos/zlink/core/build
+Test project /home/hep7/project/kairos/zlink/core/build
+    Start 7: test_multi_spot_benchmark_process
+1/1 Test #7: test_multi_spot_benchmark_process ...   Passed   55.60 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =  55.60 sec*proc (1 test)
+serial         =  55.60 sec*proc (1 test)
+codex
+팀장님, 이제 문서 규칙대로 full 재실행이 아니라 secure worst tuple 대상 targeted recheck부터 이어갑니다. `tls,wss`와 `64,256,65536,262144`만 다시 재서 현재 코드의 잔량을 재확정하겠습니다.
+exec
+/bin/bash -lc 'ts=$(date +%Y%m%d_%H%M%S); log="doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_${ts}_iter_followup.log"; core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-${ts} 2>&1 | tee "$log"; ec=${PIPESTATUS[0]}; printf '"'%s' \""'$ec" > "$log.exitcode"; echo "LOG=$log"; echo "EXIT=$ec"' in /home/hep7/project/kairos/zlink succeeded in 48.17s:
+      | 64B      |   190.338 Kmsg/s |     12.182 MB/s |    35.699 ms |    72.260 ms |    74.831 ms | 12.134 |   49.211 |         0 |         0 |         0 |
+      | 256B     |  2013.978 Kmsg/s |    515.578 MB/s |     9.065 ms |    14.615 ms |    18.060 ms | 10.978 |   57.051 |         0 |         0 |         0 |
+      | 65536B   |    45.203 Kmsg/s |   2962.424 MB/s |    63.068 ms |   109.906 ms |   199.854 ms | 11.667 |  268.234 |         0 |         0 |         0 |
+      | 262144B  |     9.358 Kmsg/s |   2453.144 MB/s |   151.923 ms |   279.378 ms |   293.677 ms | 11.165 |  585.797 |         0 |         0 |         0 |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing wss | 64B,256B,65536B,262144B:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|
+      | 64B      |   227.749 Kmsg/s |     14.576 MB/s |    24.868 ms |    67.390 ms |    69.034 ms |  6.497 |   53.438 |         0 |         0 |         0 |
+      | 256B     |  1115.610 Kmsg/s |    285.596 MB/s |     6.935 ms |     9.687 ms |    11.482 ms |  5.734 |   61.090 |         0 |         0 |         0 |
+      | 65536B   |    24.145 Kmsg/s |   1582.367 MB/s |   167.801 ms |   204.241 ms |   216.838 ms |  5.657 |  313.395 |         0 |         0 |         0 |
+      | 262144B  |     4.443 Kmsg/s |   1164.706 MB/s |    89.948 ms |   139.912 ms |   153.192 ms |  5.276 |  583.453 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls,wss
+exec
+/bin/bash -lc "python - <<'PY'
+import re
+baseline_path='doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt'
+current_path='core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt'
+
+def parse(path):
+    rows={}
+    pattern=None
+    transport=None
+    with open(path,encoding='utf-8') as f:
+        for line in f:
+            m=re.match(r'## PATTERN:\\s+([A-Z0-9_]+)',line)
+            if m:
+                pattern=m.group(1); transport=None; continue
+            m=re.match(r'\\s*Testing\\s+([a-z0-9]+)\\b',line)
+            if m and 'Done' not in line:
+                transport=m.group(1); continue
+            if '|' not in line or pattern is None or transport is None:
+                continue
+            cols=[c.strip() for c in line.strip().strip('|').split('|')]
+            if len(cols)<2 or cols[0] in ('Size','----------'):
+                continue
+            size=cols[0]
+            thr=re.search(r'([0-9]+(?:\\.[0-9]+)?)', cols[1])
+            if thr:
+                rows[(pattern,transport,size)] = float(thr.group(1))
+    return rows
+baseline=parse(baseline_path)
+current=parse(current_path)
+keys=[k for k in baseline if k[0]=='MULTI_SPOT' and k[1] in ('tls','wss') and k[2] in ('64B','256B','65536B','262144B')]
+reg=[]
+for k in keys:
+    b=baseline[k]; c=current[k]; rel=(c-b)/b
+    reg.append((rel,k,b,c))
+reg.sort()
+for rel,k,b,c in reg:
+    print(f\"{k[0]},{k[1]},{k[2]},baseline={b:.1f},current={c:.1f},rel={rel:.2%}\")
+PY" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+MULTI_SPOT,wss,64B,baseline=1949.7,current=227.7,rel=-88.32%
+MULTI_SPOT,tls,64B,baseline=1340.7,current=190.3,rel=-85.80%
+MULTI_SPOT,wss,262144B,baseline=13.1,current=4.4,rel=-66.15%
+MULTI_SPOT,wss,256B,baseline=1744.1,current=1115.6,rel=-36.04%
+MULTI_SPOT,wss,65536B,baseline=35.6,current=24.1,rel=-32.10%
+MULTI_SPOT,tls,256B,baseline=2041.6,current=2014.0,rel=-1.36%
+MULTI_SPOT,tls,65536B,baseline=30.9,current=45.2,rel=46.11%
+MULTI_SPOT,tls,262144B,baseline=4.2,current=9.4,rel=124.30%
+codex
+팀장님, 현재 코드의 fresh targeted 결과는 `tls 64B -85.80%`, `wss 64B -88.32%`, `wss 262144B -66.15%`가 최악입니다. 즉 문서의 이전 메모보다도 `64B` secure steady-state가 더 강하게 흔들리고 있어서, 다음 owner는 `mesh_pub` budget 값 자체보다 live refresh 타이밍과 secure recv start path로 좁혀서 보겠습니다.
+exec
+/bin/bash -lc 'rg -n "mesh_pub_budget_version|refresh_mesh_pub_sndhwm|resolve_mesh_pub_sndhwm_default|mesh_pub_ready_peer_count|ready_ack|ready peer|SNDHWM|mesh_pub" core/src/services/spot' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/services/spot/spot_sub.hpp:107:    void send_ready_ack_lost_for_endpoint (const char *endpoint_);
+core/src/services/spot/spot_sub.hpp:141:    std::string ready_ack_source_id () const;
+core/src/services/spot/spot_sub.hpp:142:    void release_ready_ack_endpoints (const std::string &raw_filter_,
+core/src/services/spot/spot_sub.hpp:144:    void release_all_ready_ack_endpoints (
+core/src/services/spot/spot_sub.hpp:166:    std::map<std::string, std::set<std::string> > _ready_ack_endpoints;
+core/src/services/spot/spot_subject_query.cpp:57:        case ZLINK_OPT_SNDHWM:
+core/src/services/spot/spot_subject_query.cpp:58:            return ZLINK_SPOT_PUB_OPT_SNDHWM;
+core/src/services/spot/spot_subject_query.cpp:93:        case ZLINK_OPT_SNDHWM:
+core/src/services/spot/spot_subject_query.cpp:94:            return ZLINK_INTERNAL_OPT_SNDHWM;
+core/src/services/spot/spot_node.hpp:117:    void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
+core/src/services/spot/spot_node.hpp:197:    void publish_mesh_pub_budget_hint_locked ();
+core/src/services/spot/spot_node.hpp:202:    int send_ready_ack_update (const std::string &target_endpoint_,
+core/src/services/spot/spot_runtime.cpp:57:    mesh_pub (NULL),
+core/src/services/spot/spot_runtime.cpp:70:    mesh_pub_budget_version (0),
+core/src/services/spot/spot_runtime.cpp:71:    mesh_pub_ready_peer_count (0),
+core/src/services/spot/spot_runtime.cpp:271:    socket_base_t *mesh_pub_local = NULL;
+core/src/services/spot/spot_runtime.cpp:282:        mesh_pub_local = mesh_pub;
+core/src/services/spot/spot_runtime.cpp:294:    if (mesh_pub_local)
+core/src/services/spot/spot_runtime.cpp:295:        mesh_pub_local->stop ();
+core/src/services/spot/spot_runtime.cpp:313:    socket_base_t *mesh_pub_local = NULL;
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/spot/spot_data_plane_runtime.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/socket_monitor_bridge.hpp"
+#include "sockets/socket_base.hpp"
+
+#include <errno.h>
+#include <string.h>
+
+namespace zlink
+{
+namespace
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/services/spot/spot_node_control.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/spot/spot_node.hpp"
+
+#include "services/control/service_control_runtime.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_sub.hpp"
+#include "utils/sleep.hpp"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstdarg>
+#include <vector>
+
+namespace zlink
+{
+exec
+/bin/bash -lc "sed -n '1,240p' core/src/services/spot/spot_data_plane.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "core/socket_poller.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+
+namespace zlink
+{
+void spot_data_plane_t::thread_entry (void *arg_)
+{
+    run (static_cast<spot_node_t *> (arg_));
+codex
+팀장님, 현재 수치 패턴은 `mesh_pub` absolute HWM보다는 client 측 측정 시작 시점이 너무 이른 쪽과 더 맞습니다. 특히 이번 워크트리에서 새로 들어간 `slot_count > 16` barrier 비활성화가 secure 100-client 케이스를 과도하게 조기 시작시키는지 먼저 확인하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,120p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/perf_common.hpp"
+#include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_metric_header.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <new>
+#include <string>
+#include <thread>
+#include <vector>
+
+exec
+/bin/bash -lc 'rg -n "resolve_spot_phase_quorum_percent|PERF_MULTI_SPOT_PHASE_QUORUM_PERCENT|phase_quorum" core/perf/multi/src core/perf' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/perf/multi/src/perf_multi_spot_client.cpp:252:int resolve_spot_phase_quorum_percent(const std::string &transport)
+core/perf/multi/src/perf_multi_spot_client.cpp:260:    return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_QUORUM_PERCENT",
+core/perf/multi/src/perf_multi_spot_client.cpp:272:      std::min(100, resolve_spot_phase_quorum_percent(transport));
+core/perf/multi/src/perf_multi_spot_client.cpp:252:int resolve_spot_phase_quorum_percent(const std::string &transport)
+core/perf/multi/src/perf_multi_spot_client.cpp:260:    return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_QUORUM_PERCENT",
+core/perf/multi/src/perf_multi_spot_client.cpp:272:      std::min(100, resolve_spot_phase_quorum_percent(transport));
+exec
+/bin/bash -lc "sed -n '236,276p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+           || (sample_index % static_cast<unsigned long long>(stride)) == 0;
+}
+
+size_t resolve_spot_recv_worker_count(size_t slot_count)
+{
+    if (slot_count == 0)
+        return 0;
+
+    const size_t configured = static_cast<size_t>(
+      resolve_multi_int_env("PERF_MULTI_SPOT_RECV_WORKERS", 0, 0));
+    if (configured > 0)
+        return std::min(slot_count, configured);
+
+    return std::min(slot_count, size_t(4));
+}
+
+int resolve_spot_phase_quorum_percent(const std::string &transport)
+{
+    int default_percent = 90;
+    if (transport == "wss")
+codex
+팀장님, `slot_count > 16`에서 barrier를 끊어버린 현재 코드가 secure 100-client 측정 시작을 너무 앞당기는 쪽으로 보입니다. 이건 새로운 구조를 늘리는 수정이 아니라 기존 quorum 설계를 다시 일관되게 적용하는 되돌림이므로, 먼저 이 한 점만 좁게 되돌리고 회귀와 targeted recheck를 다시 보겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -279,7 +279,2 @@
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+@@ -798,4 +793,3 @@
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+apply_patch(auto_approved=true) exited 0 in 4ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+exec
+/bin/bash -lc 'git diff -- core/include/zlink.h core/src/libzlink.vers' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+ succeeded in 1.18s:
+[ 52%] Built target libzlink
+[ 52%] Built target libzlink-static
+[ 53%] Built target perf_pair
+[ 53%] Built target perf_pubsub
+[ 55%] Built target perf_dealer_dealer
+[ 55%] Built target perf_router_router
+[ 56%] Built target perf_gateway
+[ 56%] Built target perf_dealer_router
+[ 57%] Built target testutil-static
+[ 58%] Built target comp_src_dealer_dealer_server
+[ 58%] Built target comp_src_pubsub_server
+[ 58%] Built target perf_spot
+[ 59%] Built target comp_src_gateway_server
+[ 60%] Built target comp_src_dealer_router_server
+[ 60%] Built target comp_src_dealer_dealer_client
+[ 61%] Built target comp_src_spot_server
+[ 62%] Built target testutil
+[ 62%] Built target comp_src_router_router_server
+[ 63%] Built target comp_src_router_router_client
+[ 64%] Built target comp_src_pubsub_client
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^test_multi_spot_benchmark_process$'"'" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process)$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+codex
+팀장님, 직렬 integration을 다시 동시에 띄운 상태라 이 결과는 판정 근거로 쓰지 않겠습니다. 우선 두 프로세스를 마무리 확인한 뒤, 같은 묶음을 순차로 다시 돌려 유효한 증거만 남기겠습니다.
+ succeeded in 45.07s:
+1/2 Test  #11: test_single_spot_benchmark_process ...   Passed   45.21 sec
+    Start 129: unittest_spot_data_plane_budget
+2/2 Test #129: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+integration      =  45.21 sec*proc (1 test)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           =  45.21 sec*proc (1 test)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  45.21 sec
+ succeeded in 51.13s:
+1/1 Test #7: test_multi_spot_benchmark_process ...   Passed   51.27 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =  51.27 sec*proc (1 test)
+serial         =  51.27 sec*proc (1 test)
+
+Total Test time (real) =  51.28 sec
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+codex
+팀장님, 방금 concurrent run은 참고만 하고 버립니다. 코드 효과는 perf 재측정에서 먼저 드러나므로, 같은 patch로 secure targeted recheck를 재실행한 뒤 필요한 회귀만 순차 재검증하겠습니다.
+exec
+/bin/bash -lc 'ts=$(date +%Y%m%d_%H%M%S); log="doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_${ts}_iter_barrier_restore.log"; core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-barrier-restore-${ts} 2>&1 | tee "$log"; ec=${PIPESTATUS[0]}; printf '"'%s' \""'$ec" > "$log.exitcode"; echo "LOG=$log"; echo "EXIT=$ec"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+ succeeded in 47.98s:
+      | 64B      |  2358.850 Kmsg/s |    150.966 MB/s |   128.012 ms |   573.731 ms |   724.885 ms | 12.627 |   46.875 |         0 |         0 |         0 |
+      | 256B     |  1622.512 Kmsg/s |    415.363 MB/s |    67.311 ms |   329.061 ms |   439.149 ms | 10.180 |   56.180 |         0 |         0 |         0 |
+      | 65536B   |    16.032 Kmsg/s |   1050.673 MB/s |    33.009 ms |    98.243 ms |   158.216 ms |  9.236 |  335.762 |         0 |         0 |         0 |
+      | 262144B  |     4.049 Kmsg/s |   1061.421 MB/s |    88.857 ms |   170.066 ms |   185.268 ms |  9.468 |  564.945 |         0 |         0 |         0 |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing wss | 64B,256B,65536B,262144B:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|
+      | 64B      |   415.413 Kmsg/s |     26.586 MB/s |    42.101 ms |    64.562 ms |    67.236 ms |  6.504 |   54.812 |         0 |         0 |         0 |
+      | 256B     |  1159.490 Kmsg/s |    296.829 MB/s |     8.629 ms |    14.527 ms |    25.303 ms |  5.470 |   60.690 |         0 |         0 |         0 |
+      | 65536B   |    16.859 Kmsg/s |   1104.871 MB/s |    30.886 ms |    47.344 ms |    80.166 ms |  5.232 |  351.887 |         0 |         0 |         0 |
+      | 262144B  |     8.248 Kmsg/s |   2162.164 MB/s |    95.066 ms |   201.902 ms |   230.858 ms |  5.677 |  595.738 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls,wss
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+exec
+/bin/bash -lc "python - <<'PY'
+import re
+baseline_path='doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt'
+current_path='core/perf/results/multi/report/perf_linux_recv_20260325_035957_iter-barrier-restore-20260325_035957.txt'
+
+def parse(path):
+    rows={}
+    pattern=None
+    transport=None
+    with open(path,encoding='utf-8') as f:
+        for line in f:
+            m=re.match(r'## PATTERN:\\s+([A-Z0-9_]+)',line)
+            if m:
+                pattern=m.group(1); transport=None; continue
+            m=re.match(r'\\s*Testing\\s+([a-z0-9]+)\\b',line)
+            if m and 'Done' not in line:
+                transport=m.group(1); continue
+            if '|' not in line or pattern is None or transport is None:
+                continue
+            cols=[c.strip() for c in line.strip().strip('|').split('|')]
+            if len(cols)<2 or cols[0] in ('Size','----------'):
+                continue
+            size=cols[0]
+            thr=re.search(r'([0-9]+(?:\\.[0-9]+)?)', cols[1])
+            if thr:
+                rows[(pattern,transport,size)] = float(thr.group(1))
+    return rows
+baseline=parse(baseline_path)
+current=parse(current_path)
+keys=[k for k in baseline if k[0]=='MULTI_SPOT' and k[1] in ('tls','wss') and k[2] in ('64B','256B','65536B','262144B')]
+reg=[]
+for k in keys:
+    b=baseline[k]; c=current[k]; rel=(c-b)/b
+    reg.append((rel,k,b,c))
+reg.sort()
+for rel,k,b,c in reg:
+    print(f\"{k[0]},{k[1]},{k[2]},baseline={b:.1f},current={c:.1f},rel={rel:.2%}\")
+PY" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+MULTI_SPOT,wss,64B,baseline=1949.7,current=415.4,rel=-78.69%
+MULTI_SPOT,wss,65536B,baseline=35.6,current=16.9,rel=-52.59%
+MULTI_SPOT,tls,65536B,baseline=30.9,current=16.0,rel=-48.18%
+MULTI_SPOT,wss,262144B,baseline=13.1,current=8.2,rel=-37.17%
+MULTI_SPOT,wss,256B,baseline=1744.1,current=1159.5,rel=-33.52%
+MULTI_SPOT,tls,256B,baseline=2041.6,current=1622.5,rel=-20.53%
+MULTI_SPOT,tls,262144B,baseline=4.2,current=4.0,rel=-2.95%
+MULTI_SPOT,tls,64B,baseline=1340.7,current=2358.8,rel=75.95%
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+codex
+팀장님, barrier 복구로 `tls 64B`는 baseline 상회로 돌아왔고 secure small-message 조기 시작 문제가 실제로 맞았습니다. 다만 `wss 64B`, `wss 65536B`, `tls 65536B`, `wss 262144B`가 여전히 크게 남아 있으니, 이제 남은 owner는 조기 시작이 아니라 secure active 수집 자체로 좁혀졌습니다.
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process)$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+ succeeded in 45.47s:
+1/2 Test  #11: test_single_spot_benchmark_process ...   Passed   45.61 sec
+    Start 129: unittest_spot_data_plane_budget
+2/2 Test #129: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+integration      =  45.61 sec*proc (1 test)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           =  45.61 sec*proc (1 test)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  45.61 sec
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^test_multi_spot_benchmark_process$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+codex
+팀장님, 순차 회귀 재검증은 `single/unit`까지는 다시 녹색입니다. `multi`는 이번 patch 뒤에 평소보다 오래 걸리고 있어서, 종료 결과를 보고 hang 성격인지 단순 장주기인지 바로 판단하겠습니다.
+ exited 8 in 2m 18s:
+1/1 Test #7: test_multi_spot_benchmark_process ...***Failed  138.68 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:463:test_multi_spot_process_recv_smoke:FAIL: Expected 0 Was 1. server:\nstdout:\nREADY,tcp://127.0.0.1:38240\nRESULT,zlink,MULTI_SPOT,tcp,64,server_cpu_pct,7.91\nRESULT,zlink,MULTI_SPOT,tcp,64,server_mem_mb,7.19\nRESULT,zlink,MULTI_SPOT,tcp,64,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tcp,64,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tcp,64,server_rcv_pending_end,0.000\n\nclient:\nstdout:\nCLIENT_READY,64\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:694:test_multi_spot_process_callback_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:695:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:696:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:697:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:594:test_multi_spot_process_recv_many_clients_wss_large_sequence:FAIL: Expected 0 Was 1. server:\nstdout:\nREADY,wss://127.0.0.1:36416\nRESULT,zlink,MULTI_SPOT,wss,64,server_cpu_pct,6.99\nRESULT,zlink,MULTI_SPOT,wss,64,server_mem_mb,174.37\nRESULT,zlink,MULTI_SPOT,wss,64,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,64,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,64,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,256,server_cpu_pct,6.99\nRESULT,zlink,MULTI_SPOT,wss,256,server_mem_mb,174.37\nRESULT,zlink,MULTI_SPOT,wss,256,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,256,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,256,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,1024,server_cpu_pct,6.99\nRESULT,zlink,MULTI_SPOT,wss,1024,server_mem_mb,174.37\nRESULT,zlink,MULTI_SPOT,wss,1024,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,1024,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,1024,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,65536,server_cpu_pct,6.99\nRESULT,zlink,MULTI_SPOT,wss,65536,server_mem_mb,174.37\nRESULT,zlink,MULTI_SPOT,wss,65536,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,65536,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,65536,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,131072,server_cpu_pct,6.99\nRESULT,zlink,MULTI_SPOT,wss,131072,server_mem_mb,174.37\nRESULT,zlink,MULTI_SPOT,wss,131072,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,131072,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,131072,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,262144,server_cpu_pct,6.99\nRESULT,zlink,MULTI_SPOT,wss,262144,server_mem_mb,174.37\nRESULT,zlink,MULTI_SPOT,wss,262144,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,262144,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,262144,server_rcv_pending_end,0.000\n\nclient:\nstdout:\nCLIENT_READY,64\nRESULT,zlink,MULTI_SPOT,wss,64,throughput,97792.000\nRESULT,zlink,MULTI_SPOT,wss,64,bandwidth,6.259\nRESULT,zlink,MULTI_SPOT,wss,64,latency,5522957.089\nRESULT,zlink,MULTI_SPOT,wss,64,latency_p95,5582017.250\nRESULT,zlink,MULTI_SPOT,wss,64,latency_p99,5601344.150\nRESULT,zlink,MULTI_SPOT,wss,64,client_cpu_pct,34.37\nRESULT,zlink,MULTI_SPOT,wss,64,client_mem_mb,1620.38\nCLIENT_READY,256\nRESULT,zlink,MULTI_SPOT,wss,256,throughput,1259736.000\nRESULT,zlink,MULTI_SPOT,wss,256,bandwidth,322.492\nRESULT,zlink,MULTI_SPOT,wss,256,latency,2606835.769\nRESULT,zlink,MULTI_SPOT,wss,256,latency_p95,3214783.200\nRESULT,zlink,MULTI_SPOT,wss,256,latency_p99,3388293.640\nRESULT,zlink,MULTI_SPOT,wss,256,client_cpu_pct,30.10\nRESULT,zlink,MULTI_SPOT,wss,256,client_mem_mb,2422.88\nCLIENT_READY,1024\nRESULT,zlink,MULTI_SPOT,wss,1024,throughput,480256.000\nRESULT,zlink,MULTI_SPOT,wss,1024,bandwidth,491.782\nRESULT,zlink,MULTI_SPOT,wss,1024,latency,2269107.677\nRESULT,zlink,MULTI_SPOT,wss,1024,latency_p95,2803539.650\nRESULT,zlink,MULTI_SPOT,wss,1024,latency_p99,2958481.700\nRESULT,zlink,MULTI_SPOT,wss,1024,client_cpu_pct,25.17\nRESULT,zlink,MULTI_SPOT,wss,1024,client_mem_mb,2794.36\nCLIENT_READY,65536\nRESULT,zlink,MULTI_SPOT,wss,65536,throughput,15744.000\nRESULT,zlink,MULTI_SPOT,wss,65536,bandwidth,1031.799\nRESULT,zlink,MULTI_SPOT,wss,65536,latency,3090700.026\nRESULT,zlink,MULTI_SPOT,wss,65536,latency_p95,3952472.200\nRESULT,zlink,MULTI_SPOT,wss,65536,latency_p99,4493138.210\nRESULT,zlink,MULTI_SPOT,wss,65536,client_cpu_pct,11.25\nRESULT,zlink,MULTI_SPOT,wss,65536,client_mem_mb,2845.14\nCLIENT_READY,131072\nRESULT,zlink,MULTI_SPOT,wss,131072,throughput,11410.000\nRESULT,zlink,MULTI_SPOT,wss,131072,bandwidth,1495.532\nRESULT,zlink,MULTI_SPOT,wss,131072,latency,4433905.559\nRESULT,zlink,MULTI_SPOT,wss,131072,latency_p95,5336816.250\nRESULT,zlink,MULTI_SPOT,wss,131072,latency_p99,5492787.800\nRESULT,zlink,MULTI_SPOT,wss,131072,client_cpu_pct,10.85\nRESULT,zlink,MULTI_SPOT,wss,131072,client_mem_mb,2866.08\nCLIENT_READY,262144\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:699:test_multi_spot_process_invalid_mode_is_rejected:PASS
+
+-----------------------
+7 Tests 2 Failures 0 Ignored 
+FAIL
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+integration    = 138.68 sec*proc (1 test)
+serial         = 138.68 sec*proc (1 test)
+
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..95a1b087e249a3c4e1436163f209938f32bdcc21
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,11 +277,6 @@
+     return std::max<size_t>(1, required);
+ }
+ 
+-bool should_use_spot_slot_barrier(size_t slot_count)
+-{
+-    return slot_count > 0 && slot_count <= 16;
+-}
+-
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -796,8 +791,7 @@
+     state->slot_seen_phases.assign(
+       slots_out->size(),
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier =
+-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
++    state->use_slot_barrier = recv_mode == spot_recv_recv;
+     state->required_slot_count =
+       state->use_slot_barrier
+         ? resolve_required_slot_count(slots_out->size(), transport)
+
+codex
+팀장님, 이 되돌림은 baseline 쪽은 일부 회복시켰지만 correctness를 깨뜨렸습니다. `test_multi_spot_process_recv_smoke`와 `wss` sequence가 다시 red로 고정됐으니, 문서 규칙대로 이 patch는 원복하고 같은 회귀를 먼저 다시 녹색으로 돌리겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -279,2 +279,7 @@
+ 
++bool should_use_spot_slot_barrier(size_t slot_count)
++{
++    return slot_count > 0 && slot_count <= 16;
++}
++
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+@@ -793,3 +798,4 @@
+       static_cast<int>(perf_multi_metric::phase_unknown));
+-    state->use_slot_barrier = recv_mode == spot_recv_recv;
++    state->use_slot_barrier =
++      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
+     state->required_slot_count =
+apply_patch(auto_approved=true) exited 0 in 3ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlink succeeded in 1.18s:
+[ 52%] Built target libzlink
+[ 52%] Built target libzlink-static
+[ 53%] Built target perf_pubsub
+[ 56%] Built target perf_gateway
+[ 57%] Built target perf_dealer_dealer
+[ 53%] Built target perf_router_router
+[ 57%] Built target perf_dealer_router
+[ 58%] Built target perf_spot
+[ 57%] Built target testutil-static
+[ 58%] Built target testutil
+[ 57%] Built target perf_pair
+[ 59%] Built target comp_src_dealer_router_server
+[ 60%] Built target comp_src_dealer_dealer_server
+[ 61%] Built target comp_src_router_router_client
+[ 61%] Built target comp_src_dealer_router_client
+[ 61%] Built target comp_src_router_router_server
+[ 62%] Built target comp_src_pubsub_client
+[ 62%] Built target comp_src_dealer_dealer_client
+[ 62%] Built target comp_src_pubsub_server
+[ 64%] Built target comp_src_spot_server
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^test_multi_spot_benchmark_process$'"'" in /home/hep7/project/kairos/zlink exited 8 in 1m 16s:
+1/1 Test #7: test_multi_spot_benchmark_process ...***Failed   77.02 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:693:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:694:test_multi_spot_process_callback_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:695:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:459:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:FAIL: server:\nstdout:\nREADY,tls://127.0.0.1:39568\nRESULT,zlink,MULTI_SPOT,tls,262144,server_cpu_pct,9.40\nRESULT,zlink,MULTI_SPOT,tls,262144,server_mem_mb,669.61\nRESULT,zlink,MULTI_SPOT,tls,262144,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tls,262144,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,tls,262144,server_rcv_pending_end,0.000\n\nclient:\nstdout:\nCLIENT_READY,262144\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:697:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:698:test_multi_spot_process_recv_many_clients_wss_large_sequence:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:699:test_multi_spot_process_invalid_mode_is_rejected:PASS
+
+-----------------------
+7 Tests 1 Failures 0 Ignored 
+FAIL
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+integration    =  77.02 sec*proc (1 test)
+serial         =  77.02 sec*proc (1 test)
+
+codex
+팀장님, 원복 후 correctness는 대부분 복구됐지만 `test_multi_spot_process_recv_many_clients_tls_very_large_smoke`가 단독 red로 남았습니다. 따라서 지금부터는 이 단일 저장소 회귀를 owner로 유지하고, `tls 262144`가 `CLIENT_READY` 뒤 어디서 멈추는지만 추가 로그로 좁히겠습니다.
+exec
+/bin/bash -lc "env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '"'^test_multi_spot_benchmark_process$'"'" in /home/hep7/project/kairos/zlink succeeded in 51.32s:
+1/1 Test #7: test_multi_spot_benchmark_process ...   Passed   51.46 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+integration    =  51.46 sec*proc (1 test)
+serial         =  51.46 sec*proc (1 test)
+
+Total Test time (real) =  51.46 sec
+codex
+팀장님, 현재 문제는 `100 clients`에서 barrier를 완전히 끄면 너무 이르게 시작하고, quorum 전체를 강제하면 correctness를 깨는 양쪽 끝입니다. 그래서 다음 시도는 `recv` 모드에서는 barrier를 유지하되, 대형 fanout에서는 필요한 slot 수를 작게 cap해서 조기 시작과 과도한 대기를 둘 다 피하는 쪽으로 좁혀보겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -281,3 +281,16 @@
+ {
+-    return slot_count > 0 && slot_count <= 16;
++    return slot_count > 0;
++}
++
++size_t resolve_spot_phase_start_barrier_count(size_t slot_count,
++                                              const std::string &transport)
++{
++    const size_t required = resolve_required_slot_count(slot_count, transport);
++    if (slot_count <= 16)
++        return required;
++
++    // A full quorum on 100-client secure runs makes the size transition too
++    // brittle, but starting from a single slot is too noisy. Keep a small
++    // fixed barrier so the active window starts after multiple peers are live.
++    return std::min(required, static_cast<size_t>(16));
+ }
+@@ -802,3 +815,3 @@
+       state->use_slot_barrier
+-        ? resolve_required_slot_count(slots_out->size(), transport)
++        ? resolve_spot_phase_start_barrier_count(slots_out->size(), transport)
+         : 0;
+@@ -871,8 +884,3 @@
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+-                 || active_seen
+                  || count_slots_observed_size(state, msg_size)
+apply_patch(auto_approved=true) exited 0 in 4ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..3e1fe8dbda319985dc98f09ee46b3daadb5aca13
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -279,7 +279,20 @@
+ 
+ bool should_use_spot_slot_barrier(size_t slot_count)
+ {
+-    return slot_count > 0 && slot_count <= 16;
++    return slot_count > 0;
++}
++
++size_t resolve_spot_phase_start_barrier_count(size_t slot_count,
++                                              const std::string &transport)
++{
++    const size_t required = resolve_required_slot_count(slot_count, transport);
++    if (slot_count <= 16)
++        return required;
++
++    // A full quorum on 100-client secure runs makes the size transition too
++    // brittle, but starting from a single slot is too noisy. Keep a small
++    // fixed barrier so the active window starts after multiple peers are live.
++    return std::min(required, static_cast<size_t>(16));
+ }
+ 
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+@@ -800,7 +813,7 @@
+       recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
+     state->required_slot_count =
+       state->use_slot_barrier
+-        ? resolve_required_slot_count(slots_out->size(), transport)
++        ? resolve_spot_phase_start_barrier_count(slots_out->size(), transport)
+         : 0;
+ 
+     const auto deadline =
+@@ -869,12 +882,7 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+-                 || active_seen
+                  || count_slots_observed_size(state, msg_size)
+                       >= state->required_slot_count;
+       });
+
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..3e1fe8dbda319985dc98f09ee46b3daadb5aca13
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -279,7 +279,20 @@
+ 
+ bool should_use_spot_slot_barrier(size_t slot_count)
+ {
+-    return slot_count > 0 && slot_count <= 16;
++    return slot_count > 0;
++}
++
++size_t resolve_spot_phase_start_barrier_count(size_t slot_count,
++                                              const std::string &transport)
++{
++    const size_t required = resolve_required_slot_count(slot_count, transport);
++    if (slot_count <= 16)
++        return required;
++
++    // A full quorum on 100-client secure runs makes the size transition too
++    // brittle, but starting from a single slot is too noisy. Keep a small
++    // fixed barrier so the active window starts after multiple peers are live.
++    return std::min(required, static_cast<size_t>(16));
+ }
+ 
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+@@ -800,7 +813,7 @@
+       recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
+     state->required_slot_count =
+       state->use_slot_barrier
+-        ? resolve_required_slot_count(slots_out->size(), transport)
++        ? resolve_spot_phase_start_barrier_count(slots_out->size(), transport)
+         : 0;
+ 
+     const auto deadline =
+@@ -869,12 +882,7 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+-                 || active_seen
+                  || count_slots_observed_size(state, msg_size)
+                       >= state->required_slot_count;
+       });
+
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..3e1fe8dbda319985dc98f09ee46b3daadb5aca13
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -279,7 +279,20 @@
+ 
+ bool should_use_spot_slot_barrier(size_t slot_count)
+ {
+-    return slot_count > 0 && slot_count <= 16;
++    return slot_count > 0;
++}
++
++size_t resolve_spot_phase_start_barrier_count(size_t slot_count,
++                                              const std::string &transport)
++{
++    const size_t required = resolve_required_slot_count(slot_count, transport);
++    if (slot_count <= 16)
++        return required;
++
++    // A full quorum on 100-client secure runs makes the size transition too
++    // brittle, but starting from a single slot is too noisy. Keep a small
++    // fixed barrier so the active window starts after multiple peers are live.
++    return std::min(required, static_cast<size_t>(16));
+ }
+ 
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+@@ -800,7 +813,7 @@
+       recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
+     state->required_slot_count =
+       state->use_slot_barrier
+-        ? resolve_required_slot_count(slots_out->size(), transport)
++        ? resolve_spot_phase_start_barrier_count(slots_out->size(), transport)
+         : 0;
+ 
+     const auto deadline =
+@@ -869,12 +882,7 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+-                 || active_seen
+                  || count_slots_observed_size(state, msg_size)
+                       >= state->required_slot_count;
+       });
+
+ succeeded in 1.17s:
+[ 52%] Built target libzlink
+[ 52%] Built target libzlink-static
+[ 53%] Built target perf_dealer_dealer
+[ 53%] Built target perf_pubsub
+[ 53%] Built target perf_dealer_router
+[ 54%] Built target perf_gateway
+[ 55%] Built target perf_pair
+[ 56%] Built target perf_router_router
+[ 56%] Built target perf_spot
+[ 57%] Built target testutil
+[ 57%] Built target comp_src_router_router_server
+[ 58%] Built target comp_src_dealer_dealer_server
+[ 59%] Built target testutil-static
+[ 59%] Built target comp_src_pubsub_server
+[ 60%] Built target comp_src_gateway_server
+[ 61%] Built target comp_src_dealer_dealer_client
+[ 61%] Built target comp_src_dealer_router_server
+[ 62%] Built target comp_src_pubsub_client
+[ 62%] Built target comp_src_dealer_router_client
+[ 63%] Built target comp_src_spot_server
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..3e1fe8dbda319985dc98f09ee46b3daadb5aca13
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -279,7 +279,20 @@
+ 
+ bool should_use_spot_slot_barrier(size_t slot_count)
+ {
+-    return slot_count > 0 && slot_count <= 16;
++    return slot_count > 0;
++}
++
++size_t resolve_spot_phase_start_barrier_count(size_t slot_count,
++                                              const std::string &transport)
++{
++    const size_t required = resolve_required_slot_count(slot_count, transport);
++    if (slot_count <= 16)
++        return required;
++
++    // A full quorum on 100-client secure runs makes the size transition too
++    // brittle, but starting from a single slot is too noisy. Keep a small
++    // fixed barrier so the active window starts after multiple peers are live.
++    return std::min(required, static_cast<size_t>(16));
+ }
+ 
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+@@ -800,7 +813,7 @@
+       recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
+     state->required_slot_count =
+       state->use_slot_barrier
+-        ? resolve_required_slot_count(slots_out->size(), transport)
++        ? resolve_spot_phase_start_barrier_count(slots_out->size(), transport)
+         : 0;
+ 
+     const auto deadline =
+@@ -869,12 +882,7 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+-                 || active_seen
+                  || count_slots_observed_size(state, msg_size)
+                       >= state->required_slot_count;
+       });
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^test_multi_spot_benchmark_process$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..3e1fe8dbda319985dc98f09ee46b3daadb5aca13
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -279,7 +279,20 @@
+ 
+ bool should_use_spot_slot_barrier(size_t slot_count)
+ {
+-    return slot_count > 0 && slot_count <= 16;
++    return slot_count > 0;
++}
++
++size_t resolve_spot_phase_start_barrier_count(size_t slot_count,
++                                              const std::string &transport)
++{
++    const size_t required = resolve_required_slot_count(slot_count, transport);
++    if (slot_count <= 16)
++        return required;
++
++    // A full quorum on 100-client secure runs makes the size transition too
++    // brittle, but starting from a single slot is too noisy. Keep a small
++    // fixed barrier so the active window starts after multiple peers are live.
++    return std::min(required, static_cast<size_t>(16));
+ }
+ 
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+@@ -800,7 +813,7 @@
+       recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
+     state->required_slot_count =
+       state->use_slot_barrier
+-        ? resolve_required_slot_count(slots_out->size(), transport)
++        ? resolve_spot_phase_start_barrier_count(slots_out->size(), transport)
+         : 0;
+ 
+     const auto deadline =
+@@ -869,12 +882,7 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+-                 || active_seen
+                  || count_slots_observed_size(state, msg_size)
+                       >= state->required_slot_count;
+       });
+
+ exited 8 in 57.89s:
+1/1 Test #7: test_multi_spot_benchmark_process ...***Failed   58.03 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:693:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:694:test_multi_spot_process_callback_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:695:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:696:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:697:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:594:test_multi_spot_process_recv_many_clients_wss_large_sequence:FAIL: Expected 0 Was 1. server:\nstdout:\nREADY,wss://127.0.0.1:38472\nRESULT,zlink,MULTI_SPOT,wss,64,server_cpu_pct,12.31\nRESULT,zlink,MULTI_SPOT,wss,64,server_mem_mb,492.85\nRESULT,zlink,MULTI_SPOT,wss,64,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,64,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,64,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,256,server_cpu_pct,12.31\nRESULT,zlink,MULTI_SPOT,wss,256,server_mem_mb,492.85\nRESULT,zlink,MULTI_SPOT,wss,256,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,256,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,256,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,1024,server_cpu_pct,12.31\nRESULT,zlink,MULTI_SPOT,wss,1024,server_mem_mb,492.85\nRESULT,zlink,MULTI_SPOT,wss,1024,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,1024,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,1024,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,65536,server_cpu_pct,12.31\nRESULT,zlink,MULTI_SPOT,wss,65536,server_mem_mb,492.85\nRESULT,zlink,MULTI_SPOT,wss,65536,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,65536,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,65536,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,131072,server_cpu_pct,12.31\nRESULT,zlink,MULTI_SPOT,wss,131072,server_mem_mb,492.85\nRESULT,zlink,MULTI_SPOT,wss,131072,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,131072,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,131072,server_rcv_pending_end,0.000\nRESULT,zlink,MULTI_SPOT,wss,262144,server_cpu_pct,12.31\nRESULT,zlink,MULTI_SPOT,wss,262144,server_mem_mb,492.85\nRESULT,zlink,MULTI_SPOT,wss,262144,server_snd_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,262144,server_rcv_pending_max,0.000\nRESULT,zlink,MULTI_SPOT,wss,262144,server_rcv_pending_end,0.000\n\nclient:\nstdout:\nCLIENT_READY,64\nRESULT,zlink,MULTI_SPOT,wss,64,throughput,1474176.000\nRESULT,zlink,MULTI_SPOT,wss,64,bandwidth,94.347\nRESULT,zlink,MULTI_SPOT,wss,64,latency,4968.522\nRESULT,zlink,MULTI_SPOT,wss,64,latency_p95,7070.150\nRESULT,zlink,MULTI_SPOT,wss,64,latency_p99,10713.000\nRESULT,zlink,MULTI_SPOT,wss,64,client_cpu_pct,45.87\nRESULT,zlink,MULTI_SPOT,wss,64,client_mem_mb,810.71\nCLIENT_READY,256\nRESULT,zlink,MULTI_SPOT,wss,256,throughput,195705.500\nRESULT,zlink,MULTI_SPOT,wss,256,bandwidth,50.101\nRESULT,zlink,MULTI_SPOT,wss,256,latency,3050037.730\nRESULT,zlink,MULTI_SPOT,wss,256,latency_p95,3370057.400\nRESULT,zlink,MULTI_SPOT,wss,256,latency_p99,3465677.040\nRESULT,zlink,MULTI_SPOT,wss,256,client_cpu_pct,30.90\nRESULT,zlink,MULTI_SPOT,wss,256,client_mem_mb,2301.90\nCLIENT_READY,1024\nRESULT,zlink,MULTI_SPOT,wss,1024,throughput,765901.500\nRESULT,zlink,MULTI_SPOT,wss,1024,bandwidth,784.283\nRESULT,zlink,MULTI_SPOT,wss,1024,latency,8453.746\nRESULT,zlink,MULTI_SPOT,wss,1024,latency_p95,13863.000\nRESULT,zlink,MULTI_SPOT,wss,1024,latency_p99,16689.310\nRESULT,zlink,MULTI_SPOT,wss,1024,client_cpu_pct,39.90\nRESULT,zlink,MULTI_SPOT,wss,1024,client_mem_mb,2743.62\nCLIENT_READY,65536\nRESULT,zlink,MULTI_SPOT,wss,65536,throughput,18515.500\nRESULT,zlink,MULTI_SPOT,wss,65536,bandwidth,1213.432\nRESULT,zlink,MULTI_SPOT,wss,65536,latency,56489.498\nRESULT,zlink,MULTI_SPOT,wss,65536,latency_p95,69152.350\nRESULT,zlink,MULTI_SPOT,wss,65536,latency_p99,72920.340\nRESULT,zlink,MULTI_SPOT,wss,65536,client_cpu_pct,25.57\nRESULT,zlink,MULTI_SPOT,wss,65536,client_mem_mb,2952.35\nCLIENT_READY,131072\nRESULT,zlink,MULTI_SPOT,wss,131072,throughput,17724.500\nRESULT,zlink,MULTI_SPOT,wss,131072,bandwidth,2323.186\nRESULT,zlink,MULTI_SPOT,wss,131072,latency,71152.875\nRESULT,zlink,MULTI_SPOT,wss,131072,latency_p95,89404.000\nRESULT,zlink,MULTI_SPOT,wss,131072,latency_p99,96245.400\nRESULT,zlink,MULTI_SPOT,wss,131072,client_cpu_pct,19.90\nRESULT,zlink,MULTI_SPOT,wss,131072,client_mem_mb,2986.24\nCLIENT_READY,262144\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:699:test_multi_spot_process_invalid_mode_is_rejected:PASS
+
+-----------------------
+7 Tests 1 Failures 0 Ignored 
+FAIL
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+integration    =  58.03 sec*proc (1 test)
+serial         =  58.03 sec*proc (1 test)
+
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..3e1fe8dbda319985dc98f09ee46b3daadb5aca13
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -279,7 +279,20 @@
+ 
+ bool should_use_spot_slot_barrier(size_t slot_count)
+ {
+-    return slot_count > 0 && slot_count <= 16;
++    return slot_count > 0;
++}
++
++size_t resolve_spot_phase_start_barrier_count(size_t slot_count,
++                                              const std::string &transport)
++{
++    const size_t required = resolve_required_slot_count(slot_count, transport);
++    if (slot_count <= 16)
++        return required;
++
++    // A full quorum on 100-client secure runs makes the size transition too
++    // brittle, but starting from a single slot is too noisy. Keep a small
++    // fixed barrier so the active window starts after multiple peers are live.
++    return std::min(required, static_cast<size_t>(16));
+ }
+ 
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+@@ -800,7 +813,7 @@
+       recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
+     state->required_slot_count =
+       state->use_slot_barrier
+-        ? resolve_required_slot_count(slots_out->size(), transport)
++        ? resolve_spot_phase_start_barrier_count(slots_out->size(), transport)
+         : 0;
+ 
+     const auto deadline =
+@@ -869,12 +882,7 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+-                 || active_seen
+                  || count_slots_observed_size(state, msg_size)
+                       >= state->required_slot_count;
+       });
+
+codex
+팀장님, capped barrier도 correctness를 깨뜨렸습니다. `tls 262144`는 지나갔지만 `wss` sequence가 `CLIENT_READY,262144`에서 다시 멈춰서, 이 방향도 owner 해법이 아닙니다. 원복하고 현재 남은 문제를 문서/코드 상태에 반영한 뒤 다음 iteration owner를 더 좁혀야 합니다.
+file update
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -281,16 +281,3 @@
+ {
+-    return slot_count > 0;
+-}
+-
+-size_t resolve_spot_phase_start_barrier_count(size_t slot_count,
+-                                              const std::string &transport)
+-{
+-    const size_t required = resolve_required_slot_count(slot_count, transport);
+-    if (slot_count <= 16)
+-        return required;
+-
+-    // A full quorum on 100-client secure runs makes the size transition too
+-    // brittle, but starting from a single slot is too noisy. Keep a small
+-    // fixed barrier so the active window starts after multiple peers are live.
+-    return std::min(required, static_cast<size_t>(16));
++    return slot_count > 0 && slot_count <= 16;
+ }
+@@ -815,3 +802,3 @@
+       state->use_slot_barrier
+-        ? resolve_spot_phase_start_barrier_count(slots_out->size(), transport)
++        ? resolve_required_slot_count(slots_out->size(), transport)
+         : 0;
+@@ -885,2 +872,3 @@
+           return state->fatal.load(std::memory_order_acquire)
++                 || active_seen
+                  || count_slots_observed_size(state, msg_size)
+apply_patch(auto_approved=true) exited 0 in 4ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..531e944c2c416fb7036740a4c42a064e5024e9fa
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -869,10 +869,6 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+                  || active_seen
+                  || count_slots_observed_size(state, msg_size)
+
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..531e944c2c416fb7036740a4c42a064e5024e9fa
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -869,10 +869,6 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+                  || active_seen
+                  || count_slots_observed_size(state, msg_size)
+
+codex
+팀장님, 두 가지 후보 수정은 둘 다 correctness를 깨뜨려서 현재 코드에는 남기지 않겠습니다. 대신 `5.7` 진행 메모에 오늘 확인한 유효 증거와 기각된 가설을 남겨 다음 iteration의 owner가 다시 흔들리지 않게 정리하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -932,2 +932,7 @@
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+apply_patch(auto_approved=true) exited 0 in 6ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..531e944c2c416fb7036740a4c42a064e5024e9fa
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -869,10 +869,6 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+                  || active_seen
+                  || count_slots_observed_size(state, msg_size)
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..531e944c2c416fb7036740a4c42a064e5024e9fa
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -869,10 +869,6 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+                  || active_seen
+                  || count_slots_observed_size(state, msg_size)
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+codex
+팀장님, source는 원복했지만 현재 `core/build/` 바이너리는 마지막 rejected 실험 상태일 수 있어서 한 번 더 맞춰 두겠습니다. 이건 다음 iteration 출발점을 정확히 고정하기 위한 정리 단계입니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlink exited 2 in 397ms:
+[ 52%] Built target libzlink
+[ 52%] Built target libzlink-static
+[ 53%] Built target perf_dealer_dealer
+[ 54%] Built target perf_router_router
+[ 55%] Built target perf_pair
+[ 55%] Built target perf_pubsub
+[ 55%] Built target perf_dealer_router
+[ 55%] Built target comp_src_router_router_server
+[ 56%] Built target testutil
+[ 58%] Built target comp_src_dealer_router_server
+[ 58%] Built target perf_gateway
+[ 59%] Built target comp_src_dealer_dealer_server
+[ 59%] Built target perf_spot
+[ 60%] Built target testutil-static
+[ 61%] Built target comp_src_gateway_server
+[ 63%] Built target comp_src_spot_server
+[ 62%] Built target comp_src_router_router_client
+[ 63%] Built target comp_src_pubsub_server
+[ 63%] Built target comp_src_dealer_router_client
+[ 64%] Built target comp_src_pubsub_client
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..531e944c2c416fb7036740a4c42a064e5024e9fa
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -869,10 +869,6 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+                  || active_seen
+                  || count_slots_observed_size(state, msg_size)
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+codex
+팀장님, 원복 과정에서 `active_seen` 지역 변수 선언이 빠져 build가 깨졌습니다. 이건 rejected 실험 잔재라서 즉시 source를 원상복구하겠습니다.
+exec
+/bin/bash -lc "sed -n '858,882p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+{
+    std::unique_lock<std::mutex> lock(state->mutex);
+    return state->cv.wait_for(
+      lock,
+      std::chrono::milliseconds(std::max(1, timeout_ms)),
+      [state, msg_size]() {
+          if (!state->use_slot_barrier) {
+              return state->fatal.load(std::memory_order_acquire)
+                     || (state->seen_msg_size.load(std::memory_order_acquire)
+                           == msg_size
+                         && state->seen_phase.load(std::memory_order_acquire)
+                              != static_cast<int>(
+                                perf_multi_metric::phase_unknown));
+          }
+          return state->fatal.load(std::memory_order_acquire)
+                 || active_seen
+                 || count_slots_observed_size(state, msg_size)
+                      >= state->required_slot_count;
+      });
+}
+file update:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 3fc834299d1e207f030910a43312c1974c9c434c..531e944c2c416fb7036740a4c42a064e5024e9fa
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -869,10 +869,6 @@
+                               != static_cast<int>(
+                                 perf_multi_metric::phase_unknown));
+           }
+-          const bool active_seen =
+-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
+-            && state->seen_phase.load(std::memory_order_acquire)
+-                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+                  || active_seen
+                  || count_slots_observed_size(state, msg_size)
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+file update
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -871,2 +871,6 @@
+           }
++          const bool active_seen =
++            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
++            && state->seen_phase.load(std::memory_order_acquire)
++                 == static_cast<int>(perf_multi_metric::phase_active);
+           return state->fatal.load(std::memory_order_acquire)
+apply_patch(auto_approved=true) exited 0 in 6ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp
+file update:
+
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+file update:
+
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+ succeeded in 1.18s:
+[ 51%] Built target libzlink-static
+[ 52%] Built target libzlink
+[ 53%] Built target perf_dealer_router
+[ 53%] Built target perf_pair
+[ 53%] Built target perf_pubsub
+[ 55%] Built target perf_spot
+[ 55%] Built target perf_router_router
+[ 61%] Built target comp_src_dealer_router_client
+[ 61%] Built target comp_src_spot_server
+[ 61%] Built target comp_src_dealer_dealer_server
+[ 61%] Built target comp_src_dealer_router_server
+[ 61%] Built target comp_src_gateway_server
+[ 55%] Built target perf_dealer_dealer
+[ 61%] Built target comp_src_dealer_dealer_client
+[ 61%] Built target testutil
+[ 61%] Built target comp_src_pubsub_server
+[ 61%] Built target perf_gateway
+[ 63%] Built target testutil-static
+[ 63%] Built target comp_src_pubsub_client
+[ 64%] Built target comp_src_router_router_client
+file update:
+
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+codex
+계속 진행 필요
+file update:
+
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 3c9e92a0203fda3c4dadcf7000860a175a097435..a00b2f6d567193e0322e4cd147798f5d39fd74fb
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -930,6 +930,11 @@
+ - sticky 실험 원복 뒤 `cmake --build core/build -j"$(nproc)"`를 다시 통과시켰고, 직렬 회귀 `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`에서는 `test_single_spot_benchmark_process`, `unittest_spot_data_plane_budget`는 PASS였지만 `test_multi_spot_benchmark_process`가 다시 `test_multi_spot_process_recv_many_clients_wss_large_sequence`에서 `CLIENT_READY,262144` 직후 exit 1로 실패했다. 즉 이번 iteration 끝 시점의 immediate blocker는 perf baseline 미달 이전에 secure multi-client `wss` large-sequence correctness surface가 다시 흔들리는 점이다.
+ - 같은 단일 회귀를 `env PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`로 즉시 재현했을 때는 `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log`, `doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_dbg_iter.log.exitcode` 기준 PASS로 끝났다. 따라서 current owner는 deterministic red가 아니라 `wss` large-sequence에서 `CLIENT_READY,262144` 이후 exit 1을 내는 flaky receive/carryover surface이며, 다음 루프는 이 단일 회귀를 계속 owner로 유지한 채 non-debug/normal timing 차이와 secure recv teardown 경계를 더 좁히는 것이다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `test_multi_spot_process_recv_many_clients_wss_large_sequence`의 non-debug `CLIENT_READY,262144 -> exit 1` flake를 다시 고정 재현시키고, 그 동안 `tls/wss` targeted recheck가 흔드는 secure recv/carryover owner를 `core/src/services/spot/*` 안에서 더 좁히는 것이다.
++- 2026-03-25 추가 재검증에서 `test_multi_spot_benchmark_process`를 다른 serial/integration 회귀와 동시에 띄웠을 때만 `recv_smoke`, `tls_very_large_smoke`가 흔들리는 경우가 있었지만, 이는 실행 가이드의 직렬 lane 규칙을 어긴 invalid 증거로 버렸다. 같은 회귀를 단독으로 5회 연속 다시 돌렸을 때는 모두 PASS였다.
++- 같은 latest 코드 기준 secure targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag iter-followup-20260325_035648`는 `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log`, `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035648_iter_followup.log.exitcode`, `core/perf/results/multi/report/perf_linux_recv_20260325_035649_iter-followup-20260325_035648.txt`를 남겼다. baseline exact tuple 비교 결과 `tls 64B`(`1340655.8 -> 190338.0`, `-85.80%`), `wss 64B`(`1949744.0 -> 227749.0`, `-88.32%`), `wss 262144B`(`13126.8 -> 4443.0`, `-66.15%`), `wss 256B`(`1744141.4 -> 1115610.0`, `-36.04%`), `wss 65536B`(`35561.6 -> 24145.0`, `-32.10%`)가 최신 worst tuple이었다. 현재 authority 기준 latest valid targeted 증거는 이 run이다.
++- 같은 owner를 `perf_multi_spot_client.cpp`의 slot barrier로 설명할 수 있는지도 바로 재확인했다. 첫 시도로 `recv` mode에서 모든 slot 수에 barrier를 강제했더니 targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_035957_iter_barrier_restore.log`에서 `tls 64B`는 baseline 대비 `+75.95%`까지 회복됐지만, 단일 저장소 회귀 `ctest --test-dir core/build --output-on-failure -R '^test_multi_spot_benchmark_process$'`가 `recv_smoke`와 `wss_large_sequence`에서 각각 `CLIENT_READY,64`, `CLIENT_READY,262144` 이후 exit 1로 깨졌다. 해당 patch는 즉시 원복했다.
++- 후속으로 large fanout만 작은 고정 barrier를 두는 capped-barrier 실험도 했다. 그러나 이 variant는 `tls_very_large_smoke`는 닫혔지만 같은 단일 회귀가 `wss_large_sequence`에서 다시 `CLIENT_READY,262144` 직후 실패했다. 따라서 current authority 기준으로는 `slot barrier`의 on/off 또는 단순 cap만으로 secure tuple 잔량과 correctness를 동시에 닫을 수 없으며, 이 가설도 원복 후 기각했다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 `mesh_pub` budget 값이나 slot barrier 자체보다 secure transport의 recv/carryover start timing이 왜 `tls 64B`/`wss 64B` 성능과 `tls 262144B`/`wss 262144B` correctness를 함께 흔드는지 `core/src/services/spot/*`와 `core/perf/multi/src/perf_multi_spot_client.cpp` 경계에서 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+tokens used
+149,043
+계속 진행 필요

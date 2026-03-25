@@ -1,0 +1,3655 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: medium
+reasoning summaries: none
+session id: 019d2115-779c-7383-9bd9-79bcd1ed5a6e
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+  이 문서의 남은 작업을 중단 없이 끝까지 진행한다.
+- /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md
+  이 문서의 실제 구현 내용이 코드에 반영되도록 작업한다.
+
+작업 규칙:
+- 실행 가이드와 마스터 플랜을 둘 다 authority로 사용한다.
+- 실행 순서와 완료 판정은 실행 가이드를 따르되, 실제 구현 내용과 설계 intent는 마스터 플랜을 기준으로 확인한다.
+- 각 작업 묶음을 끝낼 때마다 마스터 플랜의 Phase 1~6, 8.1, 8.2, 9장을 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 마스터 플랜의 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 마스터 플랜에 있는데 실행 가이드 5장 체크리스트에 없는 구현 항목을 발견하면 실행 가이드를 먼저 갱신한 뒤 작업을 계속한다.
+- 마스터 플랜과 실행 가이드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --label posd_refactor_gate --count 1 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 1보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 최종 perf phase 재개 시 이미 문서에 기록된 latest full perf snapshot과 baseline 비교 증거가 있으면 그것을 우선 사용한다.
+- 최종 perf phase를 새 iteration에서 다시 잡았다는 이유만으로 full perf를 처음부터 다시 돌리지 않는다.
+- 최종 perf phase 재개 첫 행동은 latest full 결과에서 worst tuple을 다시 확인하고 smoke 또는 targeted recheck부터 이어서 진행하는 것이다.
+- latest full perf 재실행은 문서에 정의된 invalidation 조건이 생겼거나, 모든 남은 tuple 회복 후 최종 확정이 필요할 때만 한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- 5.0 표의 각 행이나 각 phase를 완료로 바꾸는 순간에는 같은 흐름에서 해당 범위만 commit하고 현재 작업 브랜치로 push한다.
+- unrelated 변경은 commit/push에 섞지 않는다. phase 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
+- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남긴다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+- stress/lane/perf는 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- 테스트 통과만으로 마스터 플랜 구현 내용이 반영됐다고 추정하지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+codex
+팀장님, 실행 가이드와 마스터 플랜을 먼저 대조해서 첫 미완료 항목과 문서 불일치부터 확인하겠습니다. 그 다음 순서대로 필요한 `core/` 및 `core/tests/` 변경, `core/build/` 검증, 문서 상태 갱신까지 같은 흐름으로 진행하겠습니다.
+Plan update
+  → 실행 가이드와 마스터 플랜의 현재 진행 상태를 읽고 첫 미완료 항목 및 문서 불일치 확인
+  • 필요 시 실행 가이드 문서부터 정합성 있게 갱신
+  • 첫 미완료 작업 묶음의 core 코드 및 regression test 구현
+  • core/build 기반 빌드·테스트·필요 시 gate 수행
+  • 문서 상태표/체크리스트/증거 갱신 후 phase 범위 검토
+exec
+/bin/bash -lc "sed -n '1,320p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# POSD 기반 `core` 2차 리팩토링 마스터 플랜
+
+> 상태: draft
+> 대상: `core/`
+> 기준 원칙: POSD + 공개 API 호환 유지 + 성능 비퇴행
+> 관련 문서:
+> - `doc/plan/refactor/1st/README.ko.md`
+> - `doc/plan/refactor/1st/00-core-system-posd-refactor-plan.ko.md`
+> - `doc/plan/refactor/1st/04-core-system-phase2-socket-runtime-split.ko.md`
+> - `doc/plan/refactor/1st/05-core-system-phase3-engine-transport-service-plan.ko.md`
+> - `doc/plan/thread-safe/thread-safe-socket-plan.ko.md`
+> - `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`
+
+## 1. 문서 목적
+
+이 문서는 `core` 1차 POSD 리팩토링 문서 세트를 바탕으로,
+**이미 1차 핵심 경계가 코드에 반영된 현재 코드베이스**를 기준으로 작성한
+2차 상세 실행 계획 마스터 플랜이다.
+
+1차 문서 세트가 ownership, runtime, 최종 source layout 관점에서
+ succeeded in 0ms:
+# POSD 2차 리팩토링 잔여 작업 실행 가이드
+
+> 상태: active
+> 기준 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
+> 재평가 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
+> residual 실행 스펙: `doc/plan/refactor/2nd/core-system-posd-refactor-residual-execution-spec.ko.md`
+> 기준 커밋: `85ea0995`
+> 대상 범위: `core/`, `core/tests/`
+> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
+> 최종 성능 검증 도구: `core/perf/run_benchmarks.sh`, `core/perf/run_benchmarks_multi.sh`
+> 목적: 남은 POSD 2차 리팩토링 항목을 중간 중단 없이 끝까지 밀기 위한 실행 규칙 고정
+
+## 1. 문서 목적
+
+이 문서는 마스터 플랜의 "남은 작업"만을 대상으로,
+실제 구현자가 어떤 순서와 어떤 정지 규칙으로 끝까지 진행해야 하는지를 고정한다.
+
+이 문서는 새 설계를 제안하는 문서가 아니다.
+이미 반영된 2차 리팩토링 결과 위에서,
+남은 허브와 남은 ownership 정리를 끝까지 닫는 실행 문서다.
+exec
+/bin/bash -lc 'git status --short' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+ M core/perf/multi/src/perf_multi_spot_client.cpp
+ M core/src/services/discovery/discovery_bootstrap.cpp
+ M core/src/services/spot/spot_data_plane_internal.hpp
+ M core/src/services/spot/spot_sub_recv.cpp
+ M core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp
+ M core/tests/unittest/unittest_spot_data_plane_budget.cpp
+ M doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+?? doc/plan/refactor/2nd/logs/asan_multi_spot_trace.3834830
+?? doc/plan/refactor/2nd/logs/asan_multi_spot_trace_sym.3846678
+?? doc/plan/refactor/2nd/logs/asan_multi_spot_trace_sym2.3848846
+?? doc/plan/refactor/2nd/logs/asan_spot_wss_report_20260324_235218.3686316
+?? doc/plan/refactor/2nd/logs/asan_spot_wss_report_postfix_20260324_235218.3689848
+?? doc/plan/refactor/2nd/logs/asan_test_multi_spot_benchmark_process_20260325_current.log
+?? doc/plan/refactor/2nd/logs/asan_test_multi_spot_trace.3855342
+?? doc/plan/refactor/2nd/logs/asan_test_multi_spot_trace_sym.3857751
+?? doc/plan/refactor/2nd/logs/codex_execution_guide_loop_20260324_210238/
+?? doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_20260324_233850.log
+?? doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_20260324_233850.log.exitcode
+?? doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_asan_20260324_235218.log
+?? doc/plan/refactor/2nd/logs/perf_repro_test_multi_spot_benchmark_process_asan_20260324_235218.log.exitcode
+codex
+팀장님, 워크트리에 기존 진행 흔적이 이미 있어서 그 변경을 건드리지 않도록 먼저 문서의 5장 상태표와 잔여 체크리스트를 정확히 읽고 있습니다. 첫 미완료 항목이 코드보다 문서 쪽 정합성 문제인지, 실제 `core/` 구현 잔량인지부터 고정하겠습니다.
+exec
+/bin/bash -lc 'rg -n "''^## 5|''^### 5|'"\\[ \\]|미완료|완료|Phase 1|8\\.1|8\\.2|## 9|5\\.0|5장\" /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+9:> 범위 해석 고정: 이 실행 문서의 완료 조건과 중간 게이트는 `core/`와 `core/tests/`만으로 닫는다. `bindings/*`는 별도 후속 검증 surface로 두며, 이 문서의 진행 차단 조건으로 사용하지 않는다.
+48:- 문서 본체 완료 뒤에는 `core/perf` 기반 perf smoke, full perf, baseline 비교, 성능 회복 루프까지 포함한다.
+67:3. 중간 상태 설명, 부분 요약, 임시 완료 보고는 하지 않는다.
+70:6. 한 항목을 `완료`로 바꾼 직후에는 다음 미완료 항목으로 즉시 이동한다.
+93:- 미완료 표의 다음 행이 남아 있는 상태
+100:1. 미완료 항목 목록에서 가장 위의 항목 하나를 고른다.
+104:5. 문서의 미완료 목록에서 해당 항목을 줄이거나 제거한다.
+109:1. 방금 끝낸 항목의 상태를 5.0 표에 반영한다.
+110:2. 5.0 표에서 `완료`가 아닌 첫 행을 다시 찾는다.
+112:4. 5.0 표가 전부 `완료`일 때만 6.3 최종 게이트로 간다.
+145:- 이 문서의 phase 종료, 최종 완료, 중단 판정은 `core/`와 `core/tests/` 증거로만 닫는다.
+235:- 최종 완료 판정에서는 baseline 이상을 하한선이 아니라 필수선으로 사용한다.
+408:## 5. 남은 작업 체크리스트
+413:## 5.0 마스터 플랜 커버리지 추적 표
+423:- `완료`
+429:- `검증중 -> 완료`: 검증 증거 파일/명령/로그 위치까지 표에 기록한 시점
+430:- `완료 -> 진행중`: 이후 변경으로 해당 항목 owner 또는 검증 결과가 다시 흔들린 시점
+434:1. 5.0 표를 먼저 읽는다.
+435:2. 갭 리뷰 문서의 최신 평결이 5.0 표에 반영됐는지 확인한다.
+436:3. `완료`가 아닌 첫 행을 이번 세션의 우선 작업으로 잡는다.
+exec
+/bin/bash -lc 'rg -n "''^## 4|''^## 5|''^## 6|''^## 7|''^## 8|''^## 9|''^### 8'"\\.1|"'^### 8'"\\.2|\\[ \\]|Phase 1|Phase 2|Phase 3|Phase 4|Phase 5|Phase 6|8\\.1|8\\.2|9장|logical multipart|socket_base_t|ctx_t|registry|spot\" /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+100:- 서비스 계층이 `gateway`, `discovery`, `spot`로 이미 디렉터리 분리돼 있다.
+131:### 2.3.2 `socket_base_t`가 semantic과 mechanism을 함께 가진다
+133:`socket_base_t`는 socket abstraction의 중심이지만,
+170:`socket_close_ops_t`와 `ctx_t`에 위임되어 있다.
+173:- service-owned socket registry
+176:- `ctx_t`의 global removal tracking과의 협력 지점
+193:새 기능이 추가될수록 `api` 허브, `socket_base_t`, `options_t`,
+196:### 2.3.6 logical multipart send semantics가 상위 surface에 흩어져 있다
+203:- `services/spot/spot_pub.cpp`의 `publish`
+215:**logical multipart send라는 하나의 use-case 모듈이
+220:`logical multipart send` deep module 추출 작업을 함께 포함한다.
+227:  logical multipart message를 whole-message 단위로 해석한다.
+269:- `gateway`, `discovery`, `spot` 서비스 경로와 관련 service access surface
+270:- socket message dispatch, spot handler, send-ready handler, stream dispatch 경로
+411:    spot/
+423:이 구조 위에서 `api/zlink.cpp`, `socket_base_t`, `options_t`,
+456:      endpoint_registry.*
+481:      registry/*
+488:    spot/
+489:      spot_node_access.*
+codex
+팀장님, 5.0 표상 첫 미완료는 `5.7 perf recovery loop`입니다. 문서도 이미 그 순서를 고정하고 있어서 지금은 latest full 기준 worst tuple 재확인과 현재 워크트리의 `spot` 관련 변경이 그 owner를 어떻게 좁히는지부터 읽겠습니다.
+exec
+/bin/bash -lc "sed -n '779,930p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+### 5.7 `core/perf` smoke / full baseline 비교 / 성능 회복 루프
+
+마스터 플랜 참조:
+[perf 검증 위임](./core-system-posd-refactor-master-plan.ko.md) (약 1266행)
+
+- [x] 모든 코드/테스트 체크리스트를 닫은 뒤 `core/perf` single smoke를 실행한다.
+- [x] single smoke가 정상이면 multi perf smoke를 실행한다.
+- [x] smoke 둘 다 정상이면 single full perf를 실행한다.
+- [x] single full 결과를 `doc/plan/refactor/2nd/perf_linux_callback_20260323_082648.txt`와 비교한다.
+- [x] multi full perf를 실행하고 `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 비교한다.
+- [x] gap review 기준 residual 구조 작업(`5.2A`, `5.3A`, `5.6A`)이 닫힌 latest 코드에서 smoke와 targeted recheck를 다시 수행한다.
+- [ ] baseline 미만 tuple이 있으면 가장 regression이 큰 `pattern + transport + size`부터 개선한다.
+- [ ] 개선 후에는 해당 tuple이 속한 pattern targeted recheck를 먼저 수행하고, 모든 baseline 미만 tuple이 해소된 시점에만 full single/full multi를 1회 다시 실행한다.
+- [ ] 모든 tuple이 baseline 이상이 될 때까지 반복한다.
+- [ ] 최종 단계에서 `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build --min-ratio 0.85` 결과를 확보한다.
+
+진행 메모:
+
+- `single smoke`는 `doc/plan/refactor/2nd/logs/perf_smoke_single_20260324_111453.log`에서 성공했고 결과 파일 `core/perf/results/single/report/perf_linux_callback_20260324_111453_smoke-single.txt`를 남겼다.
+- `multi smoke`는 `doc/plan/refactor/2nd/logs/perf_smoke_multi_20260324_111740.log`에서 `MULTI_SPOT`의 `CLIENT_READY` 경로가 partial/exit 1로 실패했다.
+exec
+/bin/bash -lc "sed -n '1360,1425p' /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+- `monitor_event_version`, hello/disconnect/hiccup, `busy_poll` 계열 의미 유지
+- option owner map과 validation/apply owner 재배치가 코드와 문서에서 함께 설명 가능
+
+### Phase 5~6 이후
+
+- `gateway`, `discovery`, `spot` 대표 integration 유지
+- 서비스 create/attach/start/stop 경로 회귀 없음
+- monitor / discovery / routing-id 관련 대표 시나리오 유지
+- thread-safe teardown 및 service lifecycle 관련 대표 회귀 축 유지
+
+### 8.3 테스트 추가 원칙
+
+- 새 seam이 생기면 그 seam에 대한 unit test를 추가한다.
+- 암묵 계약이 드러나면 `core/tests/`에 regression을 추가한다.
+- retry/sleep 기반 완화는 금지한다.
+- product bug를 test 약화로 숨기지 않는다.
+- C API/ABI에 닿는 변경은 `core/tests/`만으로 끝내지 말고
+  bindings 영향까지 함께 판단한다.
+
+## 9. 완료 판정 기준
+exec
+/bin/bash -lc 'git diff -- core/src/services/discovery/discovery_bootstrap.cpp core/src/services/spot/spot_data_plane_internal.hpp core/src/services/spot/spot_sub_recv.cpp core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp core/tests/unittest/unittest_spot_data_plane_budget.cpp core/perf/multi/src/perf_multi_spot_client.cpp doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/perf/multi/src/perf_multi_spot_client.cpp b/core/perf/multi/src/perf_multi_spot_client.cpp
+index 96b4db29..3fc83429 100644
+--- a/core/perf/multi/src/perf_multi_spot_client.cpp
++++ b/core/perf/multi/src/perf_multi_spot_client.cpp
+@@ -277,6 +277,11 @@ size_t resolve_required_slot_count(size_t slot_count,
+     return std::max<size_t>(1, required);
+ }
+ 
++bool should_use_spot_slot_barrier(size_t slot_count)
++{
++    return slot_count > 0 && slot_count <= 16;
++}
++
+ spot_recv_mode_t resolve_spot_run_recv_mode()
+ {
+     return multi_perf_callback_mode()
+@@ -441,39 +446,58 @@ void handle_spot_client_parts(const char *topic,
+     if (!header_ok)
+         return;
+ 
+codex
+팀장님, 지금 워크트리의 최근 수정이 실제로 녹색인지 먼저 다시 확인하겠습니다. 그 다음 `wss/tls` secure throughput 잔량의 공통 owner를 `mesh_pub budget refresh`와 `spot recv/ready-ack` 경계에서 좁히겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'"'" in /home/hep7/project/kairos/zlink succeeded in 268ms:
+[ 51%] Built target objects
+[ 52%] Built target libzlink
+[ 52%] Built target libzlink-static
+[ 53%] Built target perf_pair
+[ 54%] Built target perf_dealer_dealer
+[ 54%] Built target perf_dealer_router
+[ 56%] Built target perf_gateway
+[ 56%] Built target perf_router_router
+[ 56%] Built target perf_pubsub
+[ 57%] Built target comp_src_dealer_dealer_server
+[ 57%] Built target perf_spot
+[ 57%] Built target comp_src_router_router_server
+[ 57%] Built target comp_src_dealer_router_client
+[ 58%] Built target comp_src_dealer_router_server
+[ 59%] Built target comp_src_pubsub_client
+[ 59%] Built target comp_src_pubsub_server
+[ 61%] Built target testutil
+[ 61%] Built target comp_src_gateway_server
+[ 61%] Built target comp_src_dealer_dealer_client
+[ 62%] Built target comp_src_spot_client
+codex
+빌드까지는 문제없었습니다. 지금 `spot` 관련 회귀 묶음이 도는 동안, 다음 수정 후보를 `spot_data_plane` 예산 갱신 경로와 `spot_sub_recv` 수신 경계 쪽으로 동시에 읽고 있습니다.
+exec
+/bin/bash -lc "sed -n '1,240p' core/src/services/spot/spot_data_plane_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SPOT_DATA_PLANE_INTERNAL_HPP_INCLUDED__
+#define __ZLINK_SPOT_DATA_PLANE_INTERNAL_HPP_INCLUDED__
+
+#include <zlink.h>
+
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace zlink
+{
+class socket_base_t;
+class spot_node_t;
+struct spot_runtime_t;
+
+struct spot_data_plane_protocol_state_t
+{
+exec
+/bin/bash -lc "rg -n \"mesh_pub_budget|refresh_mesh_pub_sndhwm|ready_ack|budget_version|sndhwm|ready_peers|bind_pub|clear_snapshot_sources|peer_ctrl_endpoints\" core/src/services/spot -g '"'!core/src/services/spot/spot_sub_recv.cpp'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/services/spot/spot_sub.hpp:107:    void send_ready_ack_lost_for_endpoint (const char *endpoint_);
+core/src/services/spot/spot_sub.hpp:141:    std::string ready_ack_source_id () const;
+core/src/services/spot/spot_sub.hpp:142:    void release_ready_ack_endpoints (const std::string &raw_filter_,
+core/src/services/spot/spot_sub.hpp:144:    void release_all_ready_ack_endpoints (
+core/src/services/spot/spot_sub.hpp:166:    std::map<std::string, std::set<std::string> > _ready_ack_endpoints;
+core/src/services/spot/spot_node_handles.cpp:86:            copy_option_setting (&_pub_defaults.sndhwm, optval_, optvallen_);
+core/src/services/spot/spot_node_handles.cpp:203:    if (defaults_.sndhwm.enabled
+core/src/services/spot/spot_node_handles.cpp:204:        && pub_->set_option (ZLINK_SPOT_PUB_OPT_SNDHWM, &defaults_.sndhwm.value,
+core/src/services/spot/spot_node_handles.cpp:205:                             defaults_.sndhwm.size)
+core/src/services/spot/spot_data_plane_internal.hpp:21:    std::map<std::string, std::string> peer_ctrl_endpoints;
+core/src/services/spot/spot_data_plane_internal.hpp:44:inline int resolve_mesh_pub_sndhwm_default (const std::string &endpoint_,
+core/src/services/spot/spot_data_plane_internal.hpp:45:                                            unsigned int ready_peers_)
+core/src/services/spot/spot_data_plane_internal.hpp:49:    if (ready_peers_ == 0)
+core/src/services/spot/spot_data_plane_internal.hpp:52:        return ready_peers_ == 1 ? 768 : 64;
+core/src/services/spot/spot_data_plane_internal.hpp:71:    int current_mesh_pub_sndhwm;
+core/src/services/spot/spot_data_plane_internal.hpp:72:    uint64_t last_mesh_pub_budget_version;
+core/src/services/spot/spot_data_plane_internal.hpp:117:    static void clear_snapshot_sources (
+core/src/services/spot/spot_node.hpp:46:        option_setting_t sndhwm;
+core/src/services/spot/spot_node.hpp:117:    void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
+core/src/services/spot/spot_node.hpp:197:    void publish_mesh_pub_budget_hint_locked ();
+exec
+/bin/bash -lc "sed -n '720,940p' core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '160,260p' core/src/services/spot/spot_data_plane_runtime.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    runtime_->peer_ctrl_sub = NULL;
+    runtime_->local_pub_ingress_sub = NULL;
+    runtime_->local_fanout_xpub = NULL;
+}
+
+void spot_data_plane_t::reset_mesh_pub_budget_state (
+  spot_runtime_t *runtime_)
+{
+    if (!runtime_)
+        return;
+
+    runtime_->mesh_pub_ready_peer_count.store (0,
+                                               std::memory_order_release);
+    runtime_->mesh_pub_budget_version.fetch_add (1,
+                                                 std::memory_order_acq_rel);
+}
+
+int spot_data_plane_t::resolve_mesh_pub_sndhwm_default (
+  const spot_runtime_t *runtime_)
+{
+ succeeded in 0ms:
+    if (verb == "terminate") {
+        if (send_ok_reply (ctrl_) != 0)
+            return -1;
+        *running_out_ = false;
+        return 0;
+    }
+
+    if (verb == "bind_pub") {
+        std::string cert;
+        std::string key;
+        {
+            scoped_lock_t lock (node_->_sync);
+            cert = node_->_tls_cert;
+            key = node_->_tls_key;
+        }
+
+        std::string ctrl_bind_endpoint;
+        if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+              arg, runtime_->node_id, &ctrl_bind_endpoint)) {
+            if (send_errno_reply (ctrl_, EINVAL) != 0)
+exec
+/bin/bash -lc "sed -n '540,840p' core/src/services/spot/spot_node_control.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+            return;
+        }
+        queue_all_subscription_ready_filters ();
+    }
+}
+
+std::string spot_node_t::first_connected_peer_endpoint () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    if (_connected_peer_endpoints.empty ())
+        return std::string ();
+    return *_connected_peer_endpoints.begin ();
+}
+
+uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
+{
+    uint32_t max_ready_count = 0;
+    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+           _pub_delivery_ready_sources.begin ();
+         it != _pub_delivery_ready_sources.end (); ++it) {
+codex
+`test_multi_spot_benchmark_process`가 길게 도는 것은 예상 범위입니다. 테스트가 끝나는 동안 budget 버전 갱신이 실제로 언제 발생하는지와 `bind_pub/unbind_pub` 시 초기값이 어떻게 덮이는지를 따라가고 있습니다.
+exec
+/bin/bash -lc "sed -n '1,220p' core/tests/unittest/unittest_spot_data_plane_budget.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../testutil_unity.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+
+namespace
+{
+void test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 0));
+    TEST_ASSERT_EQUAL_INT (
+      768, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 1));
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("tcp://127.0.0.1:9000", 2));
+
+    TEST_ASSERT_EQUAL_INT (
+      64, zlink::resolve_mesh_pub_sndhwm_default ("ws://127.0.0.1:9000", 0));
+    TEST_ASSERT_EQUAL_INT (
+exec
+/bin/bash -lc "sed -n '1,260p' core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "testutil.hpp"
+#include "testutil_unity.hpp"
+
+#ifndef _WIN32
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <csignal>
+#include <climits>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <thread>
+exec
+/bin/bash -lc "sed -n '1,260p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/perf_common.hpp"
+#include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_metric_header.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <new>
+#include <string>
+#include <thread>
+#include <vector>
+
+codex
+`test_multi_spot_benchmark_process`는 현재 51초대 통과로 확보됐습니다. 즉 지금 남은 문제는 correctness red가 아니라 문서 메모 그대로 secure transport 성능 편차 쪽입니다.
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/services/spot/spot_node_lifecycle.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_sub.hpp"
+
+#include "services/control/service_control_runtime.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+#include "utils/clock.hpp"
+
+namespace zlink
+{
+namespace
+{
+static void preserve_first_error_local (int rc_, int *first_error_)
+{
+    if (rc_ == 0 || !first_error_ || *first_error_ != 0)
+exec
+/bin/bash -lc "sed -n '1,240p' core/src/services/spot/spot_sub_subject_state.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_sub.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_node.hpp"
+#include "sockets/socket_base.hpp"
+
+#include <stdio.h>
+#include <string.h>
+
+namespace zlink
+{
+namespace
+{
+static std::string routing_id_to_hex (const zlink_routing_id_t &rid_)
+{
+    static const char hex[] = "0123456789abcdef";
+codex
+다음 단계는 재현을 다시 크게 넓히는 것이 아니라 문서 규칙대로 targeted owner를 좁히는 것입니다. 현재 코드 흐름상 `ready_ack`로 계산한 secure peer count가 실제 `mesh_pub` HWM 적용 시점보다 늦어서 초기 구간 carryover를 만들 가능성이 가장 강합니다.
+ succeeded in 1m 36s:
+1/3 Test   #7: test_multi_spot_benchmark_process ....   Passed   51.26 sec
+    Start  11: test_single_spot_benchmark_process
+2/3 Test  #11: test_single_spot_benchmark_process ...   Passed   45.03 sec
+    Start 129: unittest_spot_data_plane_budget
+3/3 Test #129: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+integration      =  96.29 sec*proc (2 tests)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           =  96.29 sec*proc (2 tests)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  96.30 sec
+exec
+/bin/bash -lc "sed -n '1,180p' core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+#include "utils/err.hpp"
+
+#include <errno.h>
+#include <map>
+#include <set>
+#include <stdarg.h>
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/services/spot/spot_data_plane.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "core/socket_poller.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+
+namespace zlink
+{
+void spot_data_plane_t::thread_entry (void *arg_)
+{
+    run (static_cast<spot_node_t *> (arg_));
+exec
+/bin/bash -lc "sed -n '1,160p' core/src/services/spot/spot_runtime.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
+#define __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
+
+#include "core/thread.hpp"
+#include "utils/atomic_counter.hpp"
+#include "utils/mutex.hpp"
+#include "utils/stdint.hpp"
+
+#include <atomic>
+#include <map>
+#include <set>
+#include <string>
+
+namespace zlink
+{
+class socket_base_t;
+class spot_node_t;
+
+codex
+팀장님, 문서 불일치나 5장 누락 항목은 현재 찾지 못했습니다. `5.7`의 latest owner만 남아 있으므로 지금부터는 secure tuple targeted recheck와 그 결과를 기준으로 `spot` 내부 owner를 더 좁히겠습니다.
+Plan update
+5.0 표와 마스터 플랜 대조 결과 첫 미완료는 5.7 perf loop이며, 현재 문서 누락/불일치는 보이지 않습니다. 최근 변경은 빌드와 핵심 회귀 3종을 통과해 correctness green을 확인했습니다.
+  ✓ 실행 가이드와 마스터 플랜의 현재 진행 상태를 읽고 첫 미완료 항목 및 문서 불일치 확인
+  ✓ 필요 시 실행 가이드 문서부터 정합성 있게 갱신
+  → 첫 미완료 작업 묶음의 core 코드 및 regression test 구현
+  → core/build 기반 빌드·테스트·필요 시 gate 수행
+  • 문서 상태표/체크리스트/증거 갱신 후 phase 범위 검토
+exec
+/bin/bash -lc 'core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag residual-reentry-20260325f' in /home/hep7/project/kairos/zlinkcodex
+재현은 문서 규칙대로 full이 아니라 targeted secure tuple만 다시 보는 중입니다. 이번 런으로 현재 코드에서 `tls/wss`가 실제로 어느 size에서 흔들리는지 최신 기준을 다시 고정한 뒤, 그 size 전환과 budget refresh 타이밍을 직접 맞춰보겠습니다.
+exec
+/bin/bash -lc 'rg -n "mesh_pub_ready_peer_count|publish_mesh_pub_budget_hint_locked|ready_count|_pub_delivery_ready_sources|emit_delivery_ready_changed_event|dispatch_send_ready|connected_peer_endpoints|active_peer_endpoints" core/src/services/spot/spot_node*.cpp core/src/services/spot/spot_node*.hpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/services/spot/spot_node.hpp:179:    void refresh_connected_peer_endpoints ();
+core/src/services/spot/spot_node.hpp:196:    uint32_t max_pub_delivery_ready_count_locked () const;
+core/src/services/spot/spot_node.hpp:197:    void publish_mesh_pub_budget_hint_locked ();
+core/src/services/spot/spot_node.hpp:199:                                                  uint32_t ready_count_);
+core/src/services/spot/spot_node.hpp:232:    std::set<std::string> _active_peer_endpoints;
+core/src/services/spot/spot_node.hpp:233:    std::set<std::string> _connected_peer_endpoints;
+core/src/services/spot/spot_node.hpp:236:    std::map<std::string, std::set<std::string> > _pub_delivery_ready_sources;
+core/src/services/spot/spot_node.hpp:237:    std::map<std::string, uint32_t> _pending_pub_delivery_ready_counts;
+core/src/services/spot/spot_node_lifecycle.cpp:94:        had_active_peers = !_active_peer_endpoints.empty ();
+core/src/services/spot/spot_node_lifecycle.cpp:101:        if (_active_peer_endpoints.count (peer_pub_endpoint_) == 0)
+core/src/services/spot/spot_node_lifecycle.cpp:117:        if (_active_peer_endpoints.insert (peer_pub_endpoint_).second)
+core/src/services/spot/spot_node_lifecycle.cpp:122:        has_active_peers = !_active_peer_endpoints.empty ();
+core/src/services/spot/spot_node_lifecycle.cpp:159:        had_active_peers = !_active_peer_endpoints.empty ();
+core/src/services/spot/spot_node_lifecycle.cpp:165:            && _active_peer_endpoints.count (peer_pub_endpoint_) != 0) {
+core/src/services/spot/spot_node_lifecycle.cpp:167:            disconnecting_last_active_peer = _active_peer_endpoints.size () == 1;
+core/src/services/spot/spot_node_lifecycle.cpp:190:            if (_active_peer_endpoints.erase (peer_pub_endpoint_) != 0)
+core/src/services/spot/spot_node_lifecycle.cpp:196:            has_active_peers = !_active_peer_endpoints.empty ();
+core/src/services/spot/spot_node_lifecycle.cpp:204:                _connected_peer_endpoints.clear ();
+core/src/services/spot/spot_node_lifecycle.cpp:212:                       _pub_delivery_ready_sources.begin ();
+core/src/services/spot/spot_node_lifecycle.cpp:213:                     it != _pub_delivery_ready_sources.end (); ++it) {
+exec
+/bin/bash -lc "sed -n '240,340p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '418,520p' core/src/services/spot/spot_node_control.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+{
+    if (slot_count == 0)
+        return 0;
+
+    const size_t configured = static_cast<size_t>(
+      resolve_multi_int_env("PERF_MULTI_SPOT_RECV_WORKERS", 0, 0));
+    if (configured > 0)
+        return std::min(slot_count, configured);
+
+    return std::min(slot_count, size_t(4));
+}
+
+int resolve_spot_phase_quorum_percent(const std::string &transport)
+{
+    int default_percent = 90;
+    if (transport == "wss")
+        default_percent = 75;
+    else if (transport == "ws")
+        default_percent = 85;
+
+ succeeded in 0ms:
+void spot_node_t::refresh_connected_peer_endpoints ()
+{
+    if (is_shutting_down ())
+        return;
+
+    std::set<std::string> connected;
+    spot_runtime_t *runtime = NULL;
+    uint64_t connected_peer_version = 0;
+    {
+        scoped_lock_t lock (_sync);
+        runtime = _runtime;
+        if (!runtime)
+            return;
+        connected_peer_version =
+          runtime->connected_peer_version.load (std::memory_order_acquire);
+        if (connected_peer_version == _connected_peer_version_seen)
+            return;
+        _connected_peer_version_seen = connected_peer_version;
+    }
+    snapshot_connected_mesh_peer_endpoints (runtime, &connected);
+codex
+지금 런에서도 `tls`는 이미 꽤 높은 수치가 나오는데 `wss 64B`는 다시 크게 낮게 시작합니다. 즉 최신 owner는 여전히 secure 전반이 아니라 `wss` 쪽 전환/steady-state가 더 강하고, `tls`는 그 영향을 부분적으로만 받는 패턴입니다.
+exec
+/bin/bash -lc "sed -n '520,760p' core/src/services/spot/spot_sub_recv.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+                     != 0) {
+                for (size_t j = 0; j <= i; ++j)
+                    zlink_msg_close (&payload[j]);
+                free (payload);
+                zlink_msg_close (&topic_frame);
+                close_recv_frame_buffer (&frames);
+                errno = EFAULT;
+                return -1;
+            }
+        }
+
+        zlink_msg_close (&topic_frame);
+        close_recv_frame_buffer (&frames);
+        if (source_rid_out_)
+            socket->copy_last_recv_source_rid (source_rid_out_);
+        *parts_ = payload;
+        *part_count_ = payload_count;
+        return 0;
+    }
+}
+exec
+/bin/bash -lc "rg -n \"set_all_pipes_nodelay|CLIENT_READY|phase_active|expected_msg_size|wait_msg_size_start|collect_active|required_slot_count|slot barrier\" core/perf/multi/src/perf_multi_spot_client.cpp core/src/services/spot -g '"'!core/src/services/spot/spot_sub_recv.cpp'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/perf/multi/src/perf_multi_spot_client.cpp:59:        expected_msg_size(0),
+core/perf/multi/src/perf_multi_spot_client.cpp:60:        collect_active(false),
+core/perf/multi/src/perf_multi_spot_client.cpp:67:        required_slot_count(0)
+core/perf/multi/src/perf_multi_spot_client.cpp:79:    std::atomic<size_t> expected_msg_size;
+core/perf/multi/src/perf_multi_spot_client.cpp:80:    std::atomic<bool> collect_active;
+core/perf/multi/src/perf_multi_spot_client.cpp:87:    size_t required_slot_count;
+core/perf/multi/src/perf_multi_spot_client.cpp:265:size_t resolve_required_slot_count(size_t slot_count,
+core/perf/multi/src/perf_multi_spot_client.cpp:449:    const size_t expected_msg_size =
+core/perf/multi/src/perf_multi_spot_client.cpp:450:      state->expected_msg_size.load(std::memory_order_acquire);
+core/perf/multi/src/perf_multi_spot_client.cpp:451:    if (expected_msg_size != 0 && header.msg_size != expected_msg_size)
+core/perf/multi/src/perf_multi_spot_client.cpp:502:    const bool collect_active =
+core/perf/multi/src/perf_multi_spot_client.cpp:503:      state->collect_active.load(std::memory_order_acquire);
+core/perf/multi/src/perf_multi_spot_client.cpp:511:    if (collect_active
+core/perf/multi/src/perf_multi_spot_client.cpp:515:             == static_cast<uint32_t> (perf_multi_metric::phase_active)
+core/perf/multi/src/perf_multi_spot_client.cpp:517:             == state->expected_msg_size.load(std::memory_order_acquire)) {
+core/perf/multi/src/perf_multi_spot_client.cpp:801:    state->required_slot_count =
+core/perf/multi/src/perf_multi_spot_client.cpp:803:        ? resolve_required_slot_count(slots_out->size(), transport)
+core/perf/multi/src/perf_multi_spot_client.cpp:850:    state->expected_msg_size.store(msg_size, std::memory_order_release);
+core/perf/multi/src/perf_multi_spot_client.cpp:851:    state->collect_active.store(false, std::memory_order_release);
+core/perf/multi/src/perf_multi_spot_client.cpp:855:bool wait_msg_size_start(spot_client_state_t *state,
+ succeeded in 48.24s:
+      | 64B      |  1214.899 Kmsg/s |     77.754 MB/s |    73.939 ms |   174.384 ms |   308.556 ms | 13.209 |   48.281 |         0 |         0 |         0 |
+      | 256B     |  1356.796 Kmsg/s |    347.340 MB/s |    93.868 ms |   216.763 ms |   232.528 ms | 11.322 |   56.250 |         0 |         0 |         0 |
+      | 65536B   |    15.494 Kmsg/s |   1015.415 MB/s |    32.901 ms |    89.232 ms |   176.514 ms |  9.242 |  333.285 |         0 |         0 |         0 |
+      | 262144B  |     3.750 Kmsg/s |    983.040 MB/s |   252.819 ms |   359.365 ms |   371.314 ms |  8.520 |  708.012 |         0 |         0 |         0 |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing wss | 64B,256B,65536B,262144B:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|
+      | 64B      |   432.187 Kmsg/s |     27.660 MB/s |    36.718 ms |    69.246 ms |    72.313 ms |  6.498 |   54.258 |         0 |         0 |         0 |
+      | 256B     |  1039.294 Kmsg/s |    266.059 MB/s |    31.781 ms |   120.415 ms |   143.122 ms |  6.017 |   59.590 |         0 |         0 |         0 |
+      | 65536B   |    14.362 Kmsg/s |    941.228 MB/s |    34.420 ms |    68.043 ms |   155.867 ms |  5.150 |  332.449 |         0 |         0 |         0 |
+      | 262144B  |     3.483 Kmsg/s |    913.048 MB/s |    95.746 ms |   262.073 ms |   284.926 ms |  4.706 |  665.074 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls,wss
+exec
+/bin/bash -lc "sed -n '450,520p' core/src/services/spot/spot_node_control.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+             it != connected.end (); ++it) {
+            if (_connected_peer_endpoints.count (*it) == 0) {
+                peer_observation_t &obs = _peer_observations[*it];
+                obs.last_changed_ms = now_ms;
+                if (obs.connected_since_ms == 0)
+                    obs.connected_since_ms = now_ms;
+            }
+        }
+        for (std::set<std::string>::const_iterator it =
+               _connected_peer_endpoints.begin ();
+             it != _connected_peer_endpoints.end (); ++it) {
+            if (connected.count (*it) == 0) {
+                peer_observation_t &obs = _peer_observations[*it];
+                obs.last_changed_ms = now_ms;
+                obs.connected_since_ms = 0;
+            }
+        }
+        const size_t previous_connected_count = _connected_peer_endpoints.size ();
+        _connected_peer_endpoints.swap (connected);
+        changed = true;
+exec
+/bin/bash -lc 'rg -n "RESULT,current,MULTI_SPOT,(tls|wss),(64|256|65536|262144),throughput" doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt:112:RESULT,current,MULTI_SPOT,tls,64,throughput,1214899.000
+core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt:122:RESULT,current,MULTI_SPOT,tls,256,throughput,1356796.000
+core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt:132:RESULT,current,MULTI_SPOT,tls,65536,throughput,15494.000
+core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt:142:RESULT,current,MULTI_SPOT,tls,262144,throughput,3750.000
+core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt:152:RESULT,current,MULTI_SPOT,wss,64,throughput,432187.000
+core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt:162:RESULT,current,MULTI_SPOT,wss,256,throughput,1039294.000
+core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt:172:RESULT,current,MULTI_SPOT,wss,65536,throughput,14362.000
+core/perf/results/multi/report/perf_linux_recv_20260325_032522_residual-reentry-20260325f.txt:182:RESULT,current,MULTI_SPOT,wss,262144,throughput,3483.000
+doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt:1684:RESULT,current,MULTI_SPOT,tls,64,throughput,1340655.800
+doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt:1694:RESULT,current,MULTI_SPOT,tls,256,throughput,2041648.600
+doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt:1714:RESULT,current,MULTI_SPOT,tls,65536,throughput,30937.400
+doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt:1734:RESULT,current,MULTI_SPOT,tls,262144,throughput,4171.600
+doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt:1794:RESULT,current,MULTI_SPOT,wss,64,throughput,1949744.000
+doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt:1804:RESULT,current,MULTI_SPOT,wss,256,throughput,1744141.400
+doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt:1824:RESULT,current,MULTI_SPOT,wss,65536,throughput,35561.600
+doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt:1844:RESULT,current,MULTI_SPOT,wss,262144,throughput,13126.800
+exec
+/bin/bash -lc "sed -n '1,80p' core/src/services/spot/spot_node_control.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/spot/spot_node.hpp"
+
+#include "services/control/service_control_runtime.hpp"
+#include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_sub.hpp"
+#include "utils/sleep.hpp"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstdarg>
+#include <vector>
+
+namespace zlink
+{
+namespace
+exec
+/bin/bash -lc "sed -n '1,80p' core/src/services/spot/spot_node.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SPOT_NODE_HPP_INCLUDED__
+#define __ZLINK_SPOT_NODE_HPP_INCLUDED__
+
+#include "core/ctx.hpp"
+#include "core/msg.hpp"
+#include "core/thread.hpp"
+#include "services/common/service_public_api.hpp"
+#include "services/common/service_runtime_base.hpp"
+#include "services/discovery/discovery.hpp"
+#include "services/spot/spot_internal_receiver.hpp"
+#include "utils/atomic_counter.hpp"
+#include "utils/mutex.hpp"
+
+#include <atomic>
+#include <map>
+#include <set>
+#include <string>
+
+codex
+팀장님, 지금 수정은 `mesh_pub` budget 의미 자체를 바꾸는 게 아니라 불필요한 live `setsockopt` churn만 줄이는 쪽입니다. secure endpoint에서 `ready_count`가 1에서 100으로 계속 오르더라도 실제 목표 HWM이 같으면 budget version을 올리지 않도록 좁히겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp
+@@ -7,2 +7,3 @@
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+@@ -578,6 +579,16 @@
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+apply_patch(auto_approved=true) exited 0 in 4ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+ exited 8 in 2.40s:
+1/3 Test   #7: test_multi_spot_benchmark_process ....***Failed    2.54 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:693:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:433:test_multi_spot_process_callback_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:433:test_multi_spot_process_recv_many_clients_tcp_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:433:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:433:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:558:test_multi_spot_process_recv_many_clients_wss_large_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:638:test_multi_spot_process_invalid_mode_is_rejected:FAIL: Expected TRUE Was FALSE
+
+-----------------------
+7 Tests 6 Failures 0 Ignored 
+FAIL
+
+    Start  11: test_single_spot_benchmark_process
+2/3 Test  #11: test_single_spot_benchmark_process ...***Failed    0.00 sec
+/home/hep7/project/kairos/zlink/core/build/bin/test_single_spot_benchmark_process: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short
+
+    Start 129: unittest_spot_data_plane_budget
+3/3 Test #129: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+codex
+빌드와 검증을 동시에 던졌지만, 실제 신뢰 증거는 빌드 완료 뒤 재검증 기준으로만 잡겠습니다. 우선 새 `spot_node_control.cpp`가 정상 링크되는지 확인하고, 그 다음 같은 회귀 묶음을 다시 한 번 깨끗하게 돌리겠습니다.
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+ succeeded in 15.69s:
+[ 51%] Built target objects
+[ 51%] Linking CXX static library ../lib/libzlink.a
+[ 52%] Linking CXX shared library ../lib/libzlink.so
+[ 52%] Built target libzlink-static
+[ 53%] Built target testutil-static
+[ 53%] Linking CXX executable ../../../bin/unittest_mtrie
+[ 53%] Linking CXX executable ../../../bin/unittest_radix_tree
+[ 53%] Linking CXX executable ../../../bin/unittest_ypipe
+[ 54%] Linking CXX executable ../../../bin/unittest_raw_decoder
+[ 53%] Linking CXX executable ../../../bin/unittest_zmp_decoder
+[ 54%] Linking CXX executable ../../../bin/unittest_msg_view
+[ 55%] Linking CXX executable ../../../bin/unittest_poller
+[ 55%] Linking CXX executable ../../../bin/unittest_spot_subject_access
+[ 55%] Linking CXX executable ../../../bin/unittest_service_mode_policy
+[ 56%] Linking CXX executable ../../../bin/unittest_ip_resolver
+[ 57%] Linking CXX executable ../../../bin/unittest_typed_option
+[ 58%] Linking CXX executable ../../../bin/unittest_service_runtime_base
+[ 58%] Linking CXX executable ../../../bin/unittest_spot_data_plane_budget
+[ 58%] Built target unittest_spot_data_plane_budget
+[ 58%] Built target unittest_msg_view
+codex
+빌드 중간에 테스트가 라이브러리를 잡아 `file too short`로 깨진 것입니다. 이 실패는 제품 회귀가 아니라 방금 제가 검증 순서를 겹쳐서 만든 것이고, 빌드 완료 후 동일 묶음을 다시 깨끗하게 재실행하겠습니다.
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+codex
+새 변경은 현재 `mesh_pub` 버전 churn 억제 한 점뿐이라 correctness가 깨지면 바로 원복할 수 있는 상태입니다. 회귀 묶음이 다시 녹색이면 같은 코드에서 secure targeted perf를 한 번 더 찍어 변화가 실제인지 확인하겠습니다.
+exec
+/bin/bash -lc 'git diff -- core/src/services/spot/spot_node_control.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de93..e98a139c 100644
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@ void spot_node_t::publish_mesh_pub_budget_hint_locked ()
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+codex
+`test_multi_spot_benchmark_process`는 새 변경 이후에도 다시 통과했습니다. 즉 live budget refresh 억제 자체가 correctness를 깨뜨리지는 않았고, 이제 남은 판단은 secure perf 편차가 실제로 줄었는지입니다.
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+ succeeded in 1m 37s:
+1/3 Test   #7: test_multi_spot_benchmark_process ....   Passed   52.13 sec
+    Start  11: test_single_spot_benchmark_process
+2/3 Test  #11: test_single_spot_benchmark_process ...   Passed   45.37 sec
+    Start 129: unittest_spot_data_plane_budget
+3/3 Test #129: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+integration      =  97.50 sec*proc (2 tests)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           =  97.50 sec*proc (2 tests)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  97.51 sec
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+exec
+/bin/bash -lc 'core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag residual-reentry-20260325g' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+codex
+이번 런은 같은 조건의 사후 확인입니다. 변화가 의미 있으면 문서 진행 메모에 남기고, 변화가 없으면 이 가설은 폐기하고 다음 owner로 바로 넘어가겠습니다.
+exec
+/bin/bash -lc "sed -n '930,1010p' core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        if (state->cv.wait_until(lock, deadline) == std::cv_status::timeout)
+            break;
+    }
+
+    return !state->fatal.load(std::memory_order_acquire);
+}
+
+bool run_single_size_case(spot_client_state_t *state,
+                          const multi_bench_settings_t &settings,
+                          const std::string &lib_name,
+                          const std::string &transport,
+                          size_t msg_size)
+{
+    const int phase_timeout_ms =
+      resolve_spot_phase_timeout_ms(settings, msg_size);
+
+    std::cout << "CLIENT_READY," << msg_size << std::endl;
+
+    if (bench_transition_debug_enabled()) {
+        std::cerr << "[multi-spot-client] size wait start ts_us="
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+codex
+중간 수치만 보면 이번 변경이 `wss 64/256/65536`에는 확실히 플러스 방향입니다. 최종 `262144B`까지 끝난 뒤 baseline 대비로 정리해 실제 next owner가 `wss 262144` 하나로 좁혀지는지 보겠습니다.
+ succeeded in 48.00s:
+      | 64B      |   323.314 Kmsg/s |     20.692 MB/s |    41.290 ms |    76.850 ms |    78.843 ms | 12.612 |   48.125 |         0 |         0 |         0 |
+      | 256B     |  1576.993 Kmsg/s |    403.710 MB/s |    61.597 ms |   231.009 ms |   274.699 ms | 10.565 |   55.551 |         0 |         0 |         0 |
+      | 65536B   |    15.135 Kmsg/s |    991.887 MB/s |    31.654 ms |    90.940 ms |   159.755 ms |  9.187 |  352.121 |         0 |         0 |         0 |
+      | 262144B  |    10.942 Kmsg/s |   2868.380 MB/s |   131.240 ms |   215.815 ms |   234.043 ms | 12.159 |  480.621 |         0 |         0 |         0 |
+    Testing tls: Done
+    [transport cooldown 3000ms]
+    Testing wss | 64B,256B,65536B,262144B:
+      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+      |----------|--------------------|----------------|---------------|---------------|---------------|---------|----------|-----------|-----------|-----------|
+      | 64B      |  1541.370 Kmsg/s |     98.648 MB/s |    84.290 ms |   251.483 ms |   277.766 ms |  6.696 |   53.844 |         0 |         0 |         0 |
+      | 256B     |  2792.744 Kmsg/s |    714.942 MB/s |    89.587 ms |   367.776 ms |   616.012 ms |  6.940 |   58.920 |         0 |         0 |         0 |
+      | 65536B   |    39.828 Kmsg/s |   2610.168 MB/s |    91.796 ms |   188.470 ms |   233.810 ms |  6.506 |  283.633 |         0 |         0 |         0 |
+      | 262144B  |     4.316 Kmsg/s |   1131.414 MB/s |    92.130 ms |   183.059 ms |   199.224 ms |  5.081 |  723.348 |         0 |         0 |         0 |
+    Testing wss: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls,wss
+file update:
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+codex
+팀장님, 이 변경을 남기려면 성능 추정이 아니라 코드 계약으로 설명 가능해야 합니다. 그래서 같은 budget 계산 규칙을 helper로 올리고, “ready peer count가 바뀌어도 실제 목표 HWM이 같으면 live refresh를 하지 않는다”는 걸 unit test로 고정하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -58,2 +58,10 @@
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+apply_patch(auto_approved=true) exited 0 in 4ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..e98a139c2946f2ac155a9073df5bc6596487451a
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,20 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
++    const int previous_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
++    const int desired_budget =
++      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
++
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (previous_budget != desired_budget) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp
+@@ -580,7 +580,2 @@
+     const std::string bound_endpoint = _runtime->bound_endpoint;
+-    const int previous_budget =
+-      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, previous);
+-    const int desired_budget =
+-      zlink::resolve_mesh_pub_sndhwm_default (bound_endpoint, ready_count);
+-
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+@@ -589,3 +584,4 @@
+     // touch the live mesh_pub socket when the effective budget actually changes.
+-    if (previous_budget != desired_budget) {
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
+         _runtime->mesh_pub_budget_version.fetch_add (1,
+apply_patch(auto_approved=true) exited 0 in 5ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+
+file update
+M /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -39,2 +39,21 @@
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+@@ -46,2 +65,4 @@
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+apply_patch(auto_approved=true) exited 0 in 5ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+ succeeded in 15.84s:
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_forwarding.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_runtime.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_protocol.cpp.o
+[  3%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_node_control.cpp.o
+[ 51%] Built target objects
+[ 51%] Linking CXX static library ../lib/libzlink.a
+[ 52%] Linking CXX shared library ../lib/libzlink.so
+[ 52%] Built target libzlink-static
+[ 53%] Built target testutil-static
+[ 53%] Linking CXX executable ../../../bin/unittest_ypipe
+[ 53%] Linking CXX executable ../../../bin/unittest_radix_tree
+[ 53%] Linking CXX executable ../../../bin/unittest_msg_view
+[ 54%] Linking CXX executable ../../../bin/unittest_raw_decoder
+[ 54%] Linking CXX executable ../../../bin/unittest_zmp_decoder
+[ 54%] Linking CXX executable ../../../bin/unittest_mtrie
+[ 54%] Linking CXX executable ../../../bin/unittest_service_mode_policy
+[ 56%] Linking CXX executable ../../../bin/unittest_poller
+[ 56%] Linking CXX executable ../../../bin/unittest_ip_resolver
+[ 56%] Linking CXX executable ../../../bin/unittest_service_runtime_base
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'"'" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+exec
+/bin/bash -lc "python3 - <<'PY'
+import re
+base='doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt'
+cur='core/perf/results/multi/report/perf_linux_recv_20260325_032903_residual-reentry-20260325g.txt'
+pat=re.compile(r'"'^RESULT,current,MULTI_SPOT,(tls|wss),(64|256|65536|262144),throughput,([0-9.]+)$'"')
+def load(path):
+    d={}
+    with open(path) as f:
+        for line in f:
+            m=pat.match(line.strip())
+            if m:
+                d[(m.group(1),m.group(2))]=float(m.group(3))
+    return d
+b=load(base); c=load(cur)
+for k in sorted(c):
+    rel=(c[k]-b[k])/b[k]*100
+    print(f'{k[0]} {k[1]}: {b[k]:.1f} -> {c[k]:.1f} ({rel:+.2f}%)')
+PY" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+tls 256: 2041648.6 -> 1576993.0 (-22.76%)
+tls 262144: 4171.6 -> 10942.0 (+162.30%)
+tls 64: 1340655.8 -> 323314.0 (-75.88%)
+tls 65536: 30937.4 -> 15135.0 (-51.08%)
+wss 256: 1744141.4 -> 2792744.0 (+60.12%)
+wss 262144: 13126.8 -> 4316.0 (-67.12%)
+wss 64: 1949744.0 -> 1541370.0 (-20.95%)
+wss 65536: 35561.6 -> 39828.0 (+12.00%)
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+codex
+이번 targeted 결과는 가설을 절반만 지지합니다. secure budget refresh churn 억제는 `wss 256/65536`와 `tls 262144`에는 플러스였지만, `tls 64/65536`와 `wss 262144`는 여전히 크게 남아서 다음 owner가 “budget version churn 하나”는 아니라는 점이 더 분명해졌습니다.
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+ succeeded in 1m 36s:
+1/3 Test   #7: test_multi_spot_benchmark_process ....   Passed   51.19 sec
+    Start  11: test_single_spot_benchmark_process
+2/3 Test  #11: test_single_spot_benchmark_process ...   Passed   45.43 sec
+    Start 129: unittest_spot_data_plane_budget
+3/3 Test #129: unittest_spot_data_plane_budget ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+integration      =  96.62 sec*proc (2 tests)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           =  96.62 sec*proc (2 tests)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) =  96.62 sec
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+
+codex
+팀장님, 이번 iteration에서 남길 가치가 있는 건 두 가지입니다. `mesh_pub` live refresh 조건을 구현/테스트로 명시했고, 그 결과 targeted perf에서 무엇이 좋아졌고 무엇이 여전히 남는지까지 문서에 증거로 고정하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -921,2 +921,7 @@
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 next owner는 fail/partial 복구가 아니라 남은 secure throughput regression 중 최악 tuple인 `wss 64B`와 `wss 262144B` steady-state 회복이다.
++- 2026-03-25 추가로 `core/src/services/spot/spot_node_control.cpp`에서 `mesh_pub_ready_peer_count` 변화가 있어도 effective `mesh_pub` budget이 같으면 `mesh_pub_budget_version`을 올리지 않도록 정리했다. 구현 intent를 고정하기 위해 `core/src/services/spot/spot_data_plane_internal.hpp`에 `should_refresh_mesh_pub_budget()` helper를 추가했고, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`에 secure/non-secure transport별 refresh 필요 조건을 직접 검증하는 unit test를 추가했다.
++- 같은 변경 후 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`를 다시 통과했다. 따라서 이번 변경은 correctness surface를 깨지 않고 live `mesh_pub` HWM refresh churn만 줄이는 방향으로 반영됐다.
++- 후속 targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag residual-reentry-20260325g` 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_032903_residual-reentry-20260325g.txt`를 남겼다. baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 시 `wss 256B`는 `1744141.4 -> 2792744.0`(`+60.12%`), `wss 65536B`는 `35561.6 -> 39828.0`(`+12.00%`), `tls 262144B`는 `4171.6 -> 10942.0`(`+162.30%`)로 회복됐다.
++- 반면 같은 run에서 `tls 64B`는 `1340655.8 -> 323314.0`(`-75.88%`), `wss 262144B`는 `13126.8 -> 4316.0`(`-67.12%`), `tls 65536B`는 `30937.4 -> 15135.0`(`-51.08%`), `wss 64B`는 `1949744.0 -> 1541370.0`(`-20.95%`), `tls 256B`는 `2041648.6 -> 1576993.0`(`-22.76%`)로 여전히 baseline 미만이다. 따라서 current authority 기준으로는 `mesh_pub_budget_version` churn 억제만으로 secure tuple 회복이 닫히지 않으며, 다음 owner는 여전히 secure recv/steady-state path, 특히 `tls 64/65536`와 `wss 262144`다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 secure `mesh_pub` budget 값 자체보다 secure transport run 동안 `ready_ack`/recv carryover가 `tls 64/65536`와 `wss 262144`를 왜 지속적으로 흔드는지 `core/src/services/spot/*` owner를 더 좁히는 것이다.
+ 
+apply_patch(auto_approved=true) exited 0 in 8ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 752b172a79bbc4130e6d1e019e3e3ff43e83cf72..0bcc46c347cde9dd538d834ab5a39a17130de015
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -919,6 +919,11 @@
+ - 같은 secure budget 평탄화 수정 후 default targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_2.log`를 다시 수행했고, 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_031855_residual-reentry-20260325e.txt`는 더 이상 partial이 아니라 `status=complete`였다. 즉 immediate blocker였던 `tls 262144B` exit 1은 현재 latest 코드에서 제거됐다.
+ - baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 결과 latest targeted residual은 `wss 64B`(`1949744.0 -> 625078.0`, `-67.94%`), `wss 262144B`(`13126.8 -> 4764.0`, `-63.71%`), `tls 256B`(`2041648.6 -> 1029988.0`, `-49.55%`), `tls 64B`(`1340655.8 -> 736023.0`, `-45.10%`), `tls 65536B`(`30937.4 -> 17738.0`, `-42.66%`), `wss 65536B`(`35561.6 -> 26567.0`, `-25.29%`), `wss 256B`(`1744141.4 -> 1514633.0`, `-13.16%`) 순으로 남았다. `tcp 64/256/65536/262144`는 계속 baseline 이상이며, secure tuple도 현재는 전부 complete로 측정된다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 next owner는 fail/partial 복구가 아니라 남은 secure throughput regression 중 최악 tuple인 `wss 64B`와 `wss 262144B` steady-state 회복이다.
++- 2026-03-25 추가로 `core/src/services/spot/spot_node_control.cpp`에서 `mesh_pub_ready_peer_count` 변화가 있어도 effective `mesh_pub` budget이 같으면 `mesh_pub_budget_version`을 올리지 않도록 정리했다. 구현 intent를 고정하기 위해 `core/src/services/spot/spot_data_plane_internal.hpp`에 `should_refresh_mesh_pub_budget()` helper를 추가했고, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`에 secure/non-secure transport별 refresh 필요 조건을 직접 검증하는 unit test를 추가했다.
++- 같은 변경 후 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`를 다시 통과했다. 따라서 이번 변경은 correctness surface를 깨지 않고 live `mesh_pub` HWM refresh churn만 줄이는 방향으로 반영됐다.
++- 후속 targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag residual-reentry-20260325g` 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_032903_residual-reentry-20260325g.txt`를 남겼다. baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 시 `wss 256B`는 `1744141.4 -> 2792744.0`(`+60.12%`), `wss 65536B`는 `35561.6 -> 39828.0`(`+12.00%`), `tls 262144B`는 `4171.6 -> 10942.0`(`+162.30%`)로 회복됐다.
++- 반면 같은 run에서 `tls 64B`는 `1340655.8 -> 323314.0`(`-75.88%`), `wss 262144B`는 `13126.8 -> 4316.0`(`-67.12%`), `tls 65536B`는 `30937.4 -> 15135.0`(`-51.08%`), `wss 64B`는 `1949744.0 -> 1541370.0`(`-20.95%`), `tls 256B`는 `2041648.6 -> 1576993.0`(`-22.76%`)로 여전히 baseline 미만이다. 따라서 current authority 기준으로는 `mesh_pub_budget_version` churn 억제만으로 secure tuple 회복이 닫히지 않으며, 다음 owner는 여전히 secure recv/steady-state path, 특히 `tls 64/65536`와 `wss 262144`다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 secure `mesh_pub` budget 값 자체보다 secure transport run 동안 `ready_ack`/recv carryover가 `tls 64/65536`와 `wss 262144`를 왜 지속적으로 흔드는지 `core/src/services/spot/*` owner를 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 752b172a79bbc4130e6d1e019e3e3ff43e83cf72..0bcc46c347cde9dd538d834ab5a39a17130de015
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -919,6 +919,11 @@
+ - 같은 secure budget 평탄화 수정 후 default targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_2.log`를 다시 수행했고, 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_031855_residual-reentry-20260325e.txt`는 더 이상 partial이 아니라 `status=complete`였다. 즉 immediate blocker였던 `tls 262144B` exit 1은 현재 latest 코드에서 제거됐다.
+ - baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 결과 latest targeted residual은 `wss 64B`(`1949744.0 -> 625078.0`, `-67.94%`), `wss 262144B`(`13126.8 -> 4764.0`, `-63.71%`), `tls 256B`(`2041648.6 -> 1029988.0`, `-49.55%`), `tls 64B`(`1340655.8 -> 736023.0`, `-45.10%`), `tls 65536B`(`30937.4 -> 17738.0`, `-42.66%`), `wss 65536B`(`35561.6 -> 26567.0`, `-25.29%`), `wss 256B`(`1744141.4 -> 1514633.0`, `-13.16%`) 순으로 남았다. `tcp 64/256/65536/262144`는 계속 baseline 이상이며, secure tuple도 현재는 전부 complete로 측정된다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 next owner는 fail/partial 복구가 아니라 남은 secure throughput regression 중 최악 tuple인 `wss 64B`와 `wss 262144B` steady-state 회복이다.
++- 2026-03-25 추가로 `core/src/services/spot/spot_node_control.cpp`에서 `mesh_pub_ready_peer_count` 변화가 있어도 effective `mesh_pub` budget이 같으면 `mesh_pub_budget_version`을 올리지 않도록 정리했다. 구현 intent를 고정하기 위해 `core/src/services/spot/spot_data_plane_internal.hpp`에 `should_refresh_mesh_pub_budget()` helper를 추가했고, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`에 secure/non-secure transport별 refresh 필요 조건을 직접 검증하는 unit test를 추가했다.
++- 같은 변경 후 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`를 다시 통과했다. 따라서 이번 변경은 correctness surface를 깨지 않고 live `mesh_pub` HWM refresh churn만 줄이는 방향으로 반영됐다.
++- 후속 targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag residual-reentry-20260325g` 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_032903_residual-reentry-20260325g.txt`를 남겼다. baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 시 `wss 256B`는 `1744141.4 -> 2792744.0`(`+60.12%`), `wss 65536B`는 `35561.6 -> 39828.0`(`+12.00%`), `tls 262144B`는 `4171.6 -> 10942.0`(`+162.30%`)로 회복됐다.
++- 반면 같은 run에서 `tls 64B`는 `1340655.8 -> 323314.0`(`-75.88%`), `wss 262144B`는 `13126.8 -> 4316.0`(`-67.12%`), `tls 65536B`는 `30937.4 -> 15135.0`(`-51.08%`), `wss 64B`는 `1949744.0 -> 1541370.0`(`-20.95%`), `tls 256B`는 `2041648.6 -> 1576993.0`(`-22.76%`)로 여전히 baseline 미만이다. 따라서 current authority 기준으로는 `mesh_pub_budget_version` churn 억제만으로 secure tuple 회복이 닫히지 않으며, 다음 owner는 여전히 secure recv/steady-state path, 특히 `tls 64/65536`와 `wss 262144`다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 secure `mesh_pub` budget 값 자체보다 secure transport run 동안 `ready_ack`/recv carryover가 `tls 64/65536`와 `wss 262144`를 왜 지속적으로 흔드는지 `core/src/services/spot/*` owner를 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+exec
+/bin/bash -lc 'git status --short core/src/services/spot/spot_node_control.cpp core/src/services/spot/spot_data_plane_internal.hpp core/tests/unittest/unittest_spot_data_plane_budget.cpp doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+ M core/src/services/spot/spot_data_plane_internal.hpp
+ M core/src/services/spot/spot_node_control.cpp
+ M core/tests/unittest/unittest_spot_data_plane_budget.cpp
+ M doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 752b172a79bbc4130e6d1e019e3e3ff43e83cf72..0bcc46c347cde9dd538d834ab5a39a17130de015
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -919,6 +919,11 @@
+ - 같은 secure budget 평탄화 수정 후 default targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_2.log`를 다시 수행했고, 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_031855_residual-reentry-20260325e.txt`는 더 이상 partial이 아니라 `status=complete`였다. 즉 immediate blocker였던 `tls 262144B` exit 1은 현재 latest 코드에서 제거됐다.
+ - baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 결과 latest targeted residual은 `wss 64B`(`1949744.0 -> 625078.0`, `-67.94%`), `wss 262144B`(`13126.8 -> 4764.0`, `-63.71%`), `tls 256B`(`2041648.6 -> 1029988.0`, `-49.55%`), `tls 64B`(`1340655.8 -> 736023.0`, `-45.10%`), `tls 65536B`(`30937.4 -> 17738.0`, `-42.66%`), `wss 65536B`(`35561.6 -> 26567.0`, `-25.29%`), `wss 256B`(`1744141.4 -> 1514633.0`, `-13.16%`) 순으로 남았다. `tcp 64/256/65536/262144`는 계속 baseline 이상이며, secure tuple도 현재는 전부 complete로 측정된다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 next owner는 fail/partial 복구가 아니라 남은 secure throughput regression 중 최악 tuple인 `wss 64B`와 `wss 262144B` steady-state 회복이다.
++- 2026-03-25 추가로 `core/src/services/spot/spot_node_control.cpp`에서 `mesh_pub_ready_peer_count` 변화가 있어도 effective `mesh_pub` budget이 같으면 `mesh_pub_budget_version`을 올리지 않도록 정리했다. 구현 intent를 고정하기 위해 `core/src/services/spot/spot_data_plane_internal.hpp`에 `should_refresh_mesh_pub_budget()` helper를 추가했고, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`에 secure/non-secure transport별 refresh 필요 조건을 직접 검증하는 unit test를 추가했다.
++- 같은 변경 후 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`를 다시 통과했다. 따라서 이번 변경은 correctness surface를 깨지 않고 live `mesh_pub` HWM refresh churn만 줄이는 방향으로 반영됐다.
++- 후속 targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag residual-reentry-20260325g` 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_032903_residual-reentry-20260325g.txt`를 남겼다. baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 시 `wss 256B`는 `1744141.4 -> 2792744.0`(`+60.12%`), `wss 65536B`는 `35561.6 -> 39828.0`(`+12.00%`), `tls 262144B`는 `4171.6 -> 10942.0`(`+162.30%`)로 회복됐다.
++- 반면 같은 run에서 `tls 64B`는 `1340655.8 -> 323314.0`(`-75.88%`), `wss 262144B`는 `13126.8 -> 4316.0`(`-67.12%`), `tls 65536B`는 `30937.4 -> 15135.0`(`-51.08%`), `wss 64B`는 `1949744.0 -> 1541370.0`(`-20.95%`), `tls 256B`는 `2041648.6 -> 1576993.0`(`-22.76%`)로 여전히 baseline 미만이다. 따라서 current authority 기준으로는 `mesh_pub_budget_version` churn 억제만으로 secure tuple 회복이 닫히지 않으며, 다음 owner는 여전히 secure recv/steady-state path, 특히 `tls 64/65536`와 `wss 262144`다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 secure `mesh_pub` budget 값 자체보다 secure transport run 동안 `ready_ack`/recv carryover가 `tls 64/65536`와 `wss 262144`를 왜 지속적으로 흔드는지 `core/src/services/spot/*` owner를 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+codex
+계속 진행 필요
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_internal.hpp b/core/src/services/spot/spot_data_plane_internal.hpp
+index 26da9428b0cba7812c839c54e60cfa46a9534783..0af273385295a7e98a329ef4d7838c13fd9536c3
+--- a/core/src/services/spot/spot_data_plane_internal.hpp
++++ b/core/src/services/spot/spot_data_plane_internal.hpp
+@@ -56,6 +56,14 @@
+     return 512;
+ }
+ 
++inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
++                                            unsigned int previous_ready_peers_,
++                                            unsigned int next_ready_peers_)
++{
++    return resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_)
++           != resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
++}
++
+ struct spot_data_plane_runtime_state_t
+ {
+     spot_data_plane_runtime_state_t ();
+diff --git a/core/src/services/spot/spot_node_control.cpp b/core/src/services/spot/spot_node_control.cpp
+index 3e00de9320397fffc8bbc25968c313d6a70cdcbc..3872032b66354ded8101b395c40fcdf07f427914
+--- a/core/src/services/spot/spot_node_control.cpp
++++ b/core/src/services/spot/spot_node_control.cpp
+@@ -5,6 +5,7 @@
+ #include "services/spot/spot_node.hpp"
+ 
+ #include "services/control/service_control_runtime.hpp"
++#include "services/spot/spot_data_plane_internal.hpp"
+ #include "services/spot/spot_pub.hpp"
+ #include "services/spot/spot_runtime.hpp"
+ #include "services/spot/spot_sub.hpp"
+@@ -576,10 +577,16 @@
+     if (previous == ready_count)
+         return;
+ 
++    const std::string bound_endpoint = _runtime->bound_endpoint;
+     _runtime->mesh_pub_ready_peer_count.store (ready_count,
+                                                std::memory_order_release);
+-    _runtime->mesh_pub_budget_version.fetch_add (1,
+-                                                 std::memory_order_acq_rel);
++    // Keep the ready-peer count authoritative, but only force the data plane to
++    // touch the live mesh_pub socket when the effective budget actually changes.
++    if (zlink::should_refresh_mesh_pub_budget (bound_endpoint, previous,
++                                               ready_count)) {
++        _runtime->mesh_pub_budget_version.fetch_add (1,
++                                                     std::memory_order_acq_rel);
++    }
+ }
+ 
+ void spot_node_t::schedule_subscription_ready_refresh ()
+diff --git a/core/tests/unittest/unittest_spot_data_plane_budget.cpp b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+index 971c3816b5c8c07117d1c96538874e62bbe40e88..fa35a401a8405e4466c941f8850d98a1983b7e3b
+--- a/core/tests/unittest/unittest_spot_data_plane_budget.cpp
++++ b/core/tests/unittest/unittest_spot_data_plane_budget.cpp
+@@ -37,6 +37,25 @@
+       512,
+       zlink::resolve_mesh_pub_sndhwm_default ("wss://127.0.0.1:9000", 2));
+ }
++
++void test_mesh_pub_budget_refresh_only_when_effective_budget_changes ()
++{
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 1, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 2, 100));
++    TEST_ASSERT_FALSE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 2, 100));
++
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tls://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "wss://127.0.0.1:9000", 0, 2));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 0, 1));
++    TEST_ASSERT_TRUE (zlink::should_refresh_mesh_pub_budget (
++      "tcp://127.0.0.1:9000", 1, 2));
++}
+ }
+ 
+ int main (int argc, char **argv)
+@@ -44,5 +63,7 @@
+     UNITY_BEGIN ();
+     RUN_TEST (
+       test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count);
++    RUN_TEST (
++      test_mesh_pub_budget_refresh_only_when_effective_budget_changes);
+     return UNITY_END ();
+ }
+diff --git a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+index 752b172a79bbc4130e6d1e019e3e3ff43e83cf72..0bcc46c347cde9dd538d834ab5a39a17130de015
+--- a/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
++++ b/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md
+@@ -919,6 +919,11 @@
+ - 같은 secure budget 평탄화 수정 후 default targeted recheck `doc/plan/refactor/2nd/logs/perf_spot_multi_recheck_20260325_2.log`를 다시 수행했고, 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_031855_residual-reentry-20260325e.txt`는 더 이상 partial이 아니라 `status=complete`였다. 즉 immediate blocker였던 `tls 262144B` exit 1은 현재 latest 코드에서 제거됐다.
+ - baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 결과 latest targeted residual은 `wss 64B`(`1949744.0 -> 625078.0`, `-67.94%`), `wss 262144B`(`13126.8 -> 4764.0`, `-63.71%`), `tls 256B`(`2041648.6 -> 1029988.0`, `-49.55%`), `tls 64B`(`1340655.8 -> 736023.0`, `-45.10%`), `tls 65536B`(`30937.4 -> 17738.0`, `-42.66%`), `wss 65536B`(`35561.6 -> 26567.0`, `-25.29%`), `wss 256B`(`1744141.4 -> 1514633.0`, `-13.16%`) 순으로 남았다. `tcp 64/256/65536/262144`는 계속 baseline 이상이며, secure tuple도 현재는 전부 complete로 측정된다.
+ - 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 next owner는 fail/partial 복구가 아니라 남은 secure throughput regression 중 최악 tuple인 `wss 64B`와 `wss 262144B` steady-state 회복이다.
++- 2026-03-25 추가로 `core/src/services/spot/spot_node_control.cpp`에서 `mesh_pub_ready_peer_count` 변화가 있어도 effective `mesh_pub` budget이 같으면 `mesh_pub_budget_version`을 올리지 않도록 정리했다. 구현 intent를 고정하기 위해 `core/src/services/spot/spot_data_plane_internal.hpp`에 `should_refresh_mesh_pub_budget()` helper를 추가했고, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`에 secure/non-secure transport별 refresh 필요 조건을 직접 검증하는 unit test를 추가했다.
++- 같은 변경 후 `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`를 다시 통과했다. 따라서 이번 변경은 correctness surface를 깨지 않고 live `mesh_pub` HWM refresh churn만 줄이는 방향으로 반영됐다.
++- 후속 targeted recheck `core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --pattern SPOT --transports tls,wss --msg-sizes 64,256,65536,262144 --runs 1 --duration 1 --warmup 1 --results-tag residual-reentry-20260325g` 결과 `core/perf/results/multi/report/perf_linux_recv_20260325_032903_residual-reentry-20260325g.txt`를 남겼다. baseline `doc/plan/refactor/2nd/perf_linux_recv_20260323_094627.txt`와 exact tuple 비교 시 `wss 256B`는 `1744141.4 -> 2792744.0`(`+60.12%`), `wss 65536B`는 `35561.6 -> 39828.0`(`+12.00%`), `tls 262144B`는 `4171.6 -> 10942.0`(`+162.30%`)로 회복됐다.
++- 반면 같은 run에서 `tls 64B`는 `1340655.8 -> 323314.0`(`-75.88%`), `wss 262144B`는 `13126.8 -> 4316.0`(`-67.12%`), `tls 65536B`는 `30937.4 -> 15135.0`(`-51.08%`), `wss 64B`는 `1949744.0 -> 1541370.0`(`-20.95%`), `tls 256B`는 `2041648.6 -> 1576993.0`(`-22.76%`)로 여전히 baseline 미만이다. 따라서 current authority 기준으로는 `mesh_pub_budget_version` churn 억제만으로 secure tuple 회복이 닫히지 않으며, 다음 owner는 여전히 secure recv/steady-state path, 특히 `tls 64/65536`와 `wss 262144`다.
++- 이번 작업 묶음 종료 시점에도 마스터 플랜 `Phase 1~6`, `8.1`, `8.2`, `9`를 다시 확인했고, `core/`와 `core/tests/` 범위에서 실행 가이드 `5.0` 표 밖의 새 구현 항목은 추가로 발견하지 못했다. 현재 immediate next step은 secure `mesh_pub` budget 값 자체보다 secure transport run 동안 `ready_ack`/recv carryover가 `tls 64/65536`와 `wss 262144`를 왜 지속적으로 흔드는지 `core/src/services/spot/*` owner를 더 좁히는 것이다.
+ 
+ 닫힘 기준:
+ 
+
+tokens used
+367,411
+계속 진행 필요

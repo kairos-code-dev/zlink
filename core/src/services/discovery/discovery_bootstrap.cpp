@@ -200,7 +200,11 @@ int discovery_t::routing_id (zlink_routing_id_t *out_) const
 
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
     *out_ = _routing_id;
-    return out_->size > 0 ? 0 : -1;
+    if (out_->size > 0)
+        return 0;
+
+    errno = EAGAIN;
+    return -1;
 }
 
 int discovery_t::set_option (int option_,

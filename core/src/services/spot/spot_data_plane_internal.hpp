@@ -52,10 +52,69 @@ inline int resolve_mesh_pub_sndhwm_default (const std::string &endpoint_,
     if (ready_peers_ == 1)
         return 768;
     if (wss)
-        return 384;
+        return 256;
     if (!secure)
         return 64;
     return 768;
+}
+
+inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
+                                            unsigned int previous_ready_peers_,
+                                            unsigned int next_ready_peers_)
+{
+    const int previous_budget =
+      resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_);
+    const int next_budget =
+      resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
+    return previous_budget != next_budget;
+}
+
+inline bool sync_monitor_ready_endpoint (
+  std::set<std::string> *endpoints_, const zlink_monitor_event_t &raw_)
+{
+    if (!endpoints_ || raw_.remote_addr[0] == '\0')
+        return false;
+    if (raw_.event != ZLINK_EVENT_CONNECTION_READY_CHANGED)
+        return endpoints_->erase (raw_.remote_addr) != 0;
+    if (raw_.value <= 0)
+        return endpoints_->erase (raw_.remote_addr) != 0;
+    return endpoints_->insert (raw_.remote_addr).second;
+}
+
+inline bool sync_monitor_connected_endpoint (
+  std::set<std::string> *endpoints_, const zlink_monitor_event_t &raw_)
+{
+    if (!endpoints_ || raw_.remote_addr[0] == '\0')
+        return false;
+    if (raw_.event == ZLINK_EVENT_DISCONNECTED)
+        return endpoints_->erase (raw_.remote_addr) != 0;
+    if (raw_.event == ZLINK_EVENT_CONNECTED)
+        return endpoints_->insert (raw_.remote_addr).second;
+    if (raw_.event == ZLINK_EVENT_CONNECTION_READY_CHANGED && raw_.value > 0)
+        return endpoints_->insert (raw_.remote_addr).second;
+    return false;
+}
+
+inline bool apply_monitor_ready_peer_count (uint32_t *ready_peer_count_out_,
+                                            const zlink_monitor_event_t &raw_)
+{
+    if (!ready_peer_count_out_
+        || raw_.event != ZLINK_EVENT_CONNECTION_READY_CHANGED)
+        return false;
+
+    const uint32_t next_ready_count =
+      raw_.value > 0 ? static_cast<uint32_t> (raw_.value) : 0u;
+    if (*ready_peer_count_out_ == next_ready_count)
+        return false;
+    *ready_peer_count_out_ = next_ready_count;
+    return true;
+}
+
+inline uint32_t clamp_ready_peer_count (uint32_t ready_count_,
+                                        uint32_t connected_peer_count_)
+{
+    return ready_count_ < connected_peer_count_ ? ready_count_
+                                                : connected_peer_count_;
 }
 
 struct spot_data_plane_runtime_state_t
@@ -112,9 +171,7 @@ struct spot_data_plane_protocol_t
       const spot_runtime_t *runtime_,
       bool bootstrap_ready_);
     static void sync_mesh_xsub_connected_endpoint (
-      spot_runtime_t *runtime_,
-      const zlink_monitor_event_t &raw_,
-      bool connected_);
+      spot_runtime_t *runtime_, const zlink_monitor_event_t &raw_);
     static void clear_mesh_xsub_connected_endpoints (spot_runtime_t *runtime_);
     static void clear_snapshot_sources (
       spot_node_t *node_, spot_data_plane_protocol_state_t *state_);

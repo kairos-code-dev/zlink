@@ -81,6 +81,7 @@ static bool is_ready_probe_message (const char *topic_,
     }
     return true;
 }
+
 }
 
 int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
@@ -169,7 +170,6 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
 
         std::vector<zlink_msg_t> frames;
         frames.reserve (2);
-
         int rc = 0;
         zlink_msg_t topic_frame;
         zlink_msg_init (&topic_frame);
@@ -178,6 +178,7 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
             zlink_msg_close (&topic_frame);
             return -1;
         }
+
         frames.push_back (topic_frame);
 
         if (spot_frame_has_more (topic_frame)) {
@@ -186,14 +187,14 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
             rc = socket->recv (reinterpret_cast<msg_t *> (&first_payload_frame), 0);
             if (rc != 0) {
                 zlink_msg_close (&first_payload_frame);
-                close_msgv (&frames);
+                zlink_msg_close (&topic_frame);
                 return -1;
             }
 
             if (!spot_frame_has_more (first_payload_frame)) {
                 const char *topic_data = static_cast<const char *> (
-                  zlink_msg_data (&frames[0]));
-                const size_t topic_size = zlink_msg_size (&frames[0]);
+                  zlink_msg_data (&topic_frame));
+                const size_t topic_size = zlink_msg_size (&topic_frame);
 
                 if (topic_len_) {
                     const size_t capacity = *topic_len_;
@@ -265,17 +266,13 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
             }
         }
 
-        if (rc != 0)
-            return -1;
-        if (frames.empty ()) {
-            errno = EPROTO;
+        if (rc != 0) {
             return -1;
         }
 
-        zlink_msg_t &topic = frames[0];
         const char *topic_data =
-          static_cast<const char *> (zlink_msg_data (&topic));
-        const size_t topic_size = zlink_msg_size (&topic);
+          static_cast<const char *> (zlink_msg_data (&frames[0]));
+        const size_t topic_size = zlink_msg_size (&frames[0]);
 
         if (may_be_ready_probe_topic (topic_data, topic_size)) {
             std::string raw_filter;

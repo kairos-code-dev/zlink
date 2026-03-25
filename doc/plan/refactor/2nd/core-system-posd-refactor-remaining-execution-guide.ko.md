@@ -765,6 +765,7 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - 최종 로그: `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log`
 - exitcode: `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log.exitcode`
 - ABI 확인: `git diff -- core/include/zlink.h core/src/libzlink.vers` 빈 출력
+- push된 completion commit: `75220e2a`
 - 마스터 플랜/갭 리뷰 재점검: Phase 1~6, 8.1, 8.2, 9와 `core-system-posd-refactor-gap-review.ko.md`를 다시 훑은 결과, 실행 가이드 5장에 추가해야 할 미반영 구현 항목은 발견하지 못했다.
 
 닫힘 기준:

@@ -1,0 +1,5 @@
+status=success
+started_at=2026-03-25 16:29:39 +0900
+completed_at=2026-03-25 16:31:06 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/discovery_service_gate_20260325_162939.log
+stress_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/discovery_service_gate_20260325_162939.log.exitcode

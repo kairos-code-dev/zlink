@@ -244,17 +244,17 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 
 각 iteration은 아래 순서를 따른다.
 
-1. 이 문서 전체를 다시 읽고 `8. 작업 레지스터`의 첫 미완료 항목을 찾는다.
-2. 그 항목이 여전히 가장 큰 복잡도 원인인지 코드로 재검토한다.
+1. 이 문서 전체를 다시 읽고 현재 세션 로그의 작업 레지스터에서 첫 미완료 항목을 찾는다.
+2. 그 항목이 여전히 가장 큰 복잡도 원인인지 현재 코드로 재검토한다.
 3. 대표 변경 시나리오와 현재 change amplification을 한 번 적어 본다.
-4. 더 큰 허브가 새로 보이면 먼저 문서의 우선순위를 갱신한다.
+4. 더 큰 허브가 새로 보이면 먼저 현재 세션 로그 작업 레지스터의 우선순위를 갱신한다.
 5. 한 번에 하나의 bounded slice만 구현한다.
 6. 새 경계가 깊은 모듈인지, 단순 wrapper인지 먼저 판정한다.
 7. 그 slice에서 더 이상 쓰이지 않는 코드와 파일까지 함께 정리한다.
 8. 구조 변경에 맞는 `core/tests/` 회귀를 추가하거나 보강한다.
 9. 빌드와 관련 테스트를 실행한다.
 10. 더 이상 진행할 리팩토링이 없다고 판단한 마지막 단계에서만 성능 게이트를 실행한다.
-11. 문서의 상태/증거/다음 후보를 갱신한다.
+11. 현재 세션 로그의 상태/증거/다음 후보를 갱신한다.
 12. 아직 남은 구조 항목이 있으면 다음 iteration으로 간다.
 
 한 iteration에서 해야 할 일은 "코드 수정 + 검증 + 문서 갱신"까지다.
@@ -265,12 +265,12 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 큰 기능 변경 직후 이 문서를 다시 호출할 때는 아래 순서를 먼저 수행한다.
 
 1. 최근 기능 변경이 만든 새 책임/새 허브/새 hot path를 먼저 식별한다.
-2. `8. 작업 레지스터`의 기존 항목이 여전히 우선순위가 맞는지 재평가한다.
-3. 새 기능 때문에 생긴 허브가 더 크면 그 항목을 표의 최상단으로 올린다.
+2. 이전 세션 로그의 항목과 메모를 참고하되, 완료 여부와 우선순위는 현재 코드 기준으로 다시 판정한다.
+3. 새 기능 때문에 생긴 허브가 더 크면 그 항목을 현재 세션 로그 표의 최상단으로 올린다.
 4. 기존 `완료` 항목도 새 기능으로 인해 다시 허브화됐으면 `진행중` 또는 `미착수`로 되돌린다.
 5. 성능 baseline은 "현재 기능 변경 직후 상태"를 새 기준선으로 다시 잡는다.
 
-즉 재호출 시에는 예전 표를 이어서 쓰되,
+즉 재호출 시에는 예전 세션 로그 표를 참고하되,
 우선순위와 baseline은 현재 기능 변경 이후 상태로 다시 잡는다.
 
 ## 5. 성능 게이트 규칙
@@ -337,7 +337,7 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 
 - 가능하면 같은 branch의 직전 commit 또는 작업 직전 로그를 baseline으로 쓴다.
 - baseline이 없다면 먼저 baseline 측정부터 수행한 뒤 구조 변경을 시작한다.
-- baseline 로그와 변경 후 로그 경로를 모두 `8. 작업 레지스터`의 `검증 증거` 칸에 적는다.
+- baseline 로그와 변경 후 로그 경로를 모두 현재 세션 로그의 작업 레지스터 `검증 증거` 칸에 적는다.
 - focused perf 없이 닫는 경우에도 왜 실제 focused perf 실행 없이 종료 판단이 가능한지 `메모` 칸에 적는다.
 
 큰 기능 변경 뒤 재호출하는 경우 baseline 해석은 아래처럼 고정한다.
@@ -480,7 +480,7 @@ ctest --test-dir core/build --output-on-failure
 
 루프는 아래 조건을 모두 만족할 때만 종료할 수 있다.
 
-1. `8. 작업 레지스터`의 모든 항목이 `완료` 또는 `보류-정당화됨` 상태다.
+1. 현재 세션 로그의 작업 레지스터 항목이 모두 `완료` 또는 `보류-정당화됨` 상태다.
 2. 남은 후보가 있더라도 성능 리스크가 구조 이익보다 커서 지금 당장 손대지 않는 이유가 문서에 적혀 있다.
 3. 새 기능 추가 시 반복 수정이 필요한 구조 허브가 더 이상 명확한 우선순위로 남아 있지 않다.
 4. 최근 iteration에서 문서 갱신 없이 바로 손댈 만한 POSD 후보를 더 제시하기 어렵다.
@@ -527,6 +527,26 @@ ctest --test-dir core/build --output-on-failure
 
 ## 8. 작업 레지스터
 
+이 섹션은 본문에 특정 실행 회차의 상태표를 오래 유지하기 위한 공간이 아니다.
+가이드 본문은 재호출 가능한 authority를 유지하고,
+실제 `완료/진행중/미착수`와 검증 증거는 각 실행 세션 로그 파일에 둔다.
+
+기본 위치:
+
+```text
+doc/plan/refactor/3nd/logs/
+```
+
+권장 방식:
+
+- 실행을 시작할 때 해당 호출 전용 세션 로그 파일을 하나 만든다.
+- 현재 iteration들이 읽고 갱신하는 authority는 그 호출에서 처음 정한 단 하나의 세션 로그 파일이다.
+- 실행 중 다른 로그 파일이 추가로 생겨도, 현재 호출의 작업 레지스터 authority를 중간에 바꾸지 않는다.
+- 현재 회차의 우선순위, 상태, 검증 증거, 메모는 그 세션 로그 안에서만 갱신한다.
+- 가이드 본문에는 특정 회차의 완료/착수 상태를 고정해서 남기지 않는다.
+- 다음 큰 기능 변경 후 재호출할 때는 예전 세션 로그를 참고하되, 새 세션 로그에서 우선순위를 다시 잡는다.
+- 예전 세션 로그의 `완료` 표시는 참고 자료일 뿐이며, 실제 완료 여부의 authority는 현재 코드다.
+
 상태 값은 아래만 사용한다.
 
 - `미착수`
@@ -542,20 +562,21 @@ ctest --test-dir core/build --output-on-failure
 - `완료`에는 반드시 검증 증거를 적는다.
 - 최종 종료 전의 `완료` 항목은 perf 미실행일 수 있으며, 이 경우 `검증 증거` 또는 `메모` 칸에 "final perf gate 이전 단계라서 미실행" 사유를 적는다.
 - 큰 기능 변경 뒤 재호출했다면 `메모` 칸에 어떤 기능 변경 이후 재평가인지 적는다.
-- 예전 세션의 `완료` 항목이라도 새 기능으로 다시 복잡도가 커졌으면 상태를 되돌린다.
-- 표의 우선순위는 고정 번호가 아니라 현재 시점 우선순위다. 재호출 시 재정렬을 허용한다.
+- 예전 세션의 `완료` 항목이라도 현재 코드에서 다시 허브화됐으면 상태를 되돌린다.
+- 세션 로그 표의 우선순위는 고정 번호가 아니라 현재 시점 우선순위다. 재호출 시 재정렬을 허용한다.
+
+세션 로그에 넣을 표 템플릿:
 
 | 우선순위 | 상태 | 영역 | 목표 | 성능 주의점 | 관련 파일 | 검증 증거 | 메모 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 완료 | service API handle dispatch 허브 | discovery/registry/spot/spot-node handle 판정을 한 내부 해석 경계로 모아 option/monitor/poller/handler API의 중복 소유권 분기를 줄인다. | `core/src/api/` control path만 수정하고 `5.2` hot path 디렉터리는 건드리지 않는다. | `core/src/api/service_api.cpp`, `core/src/api/service_option_api.cpp`, `core/src/api/monitor_service_open_api.cpp`, `core/src/api/service_poller_api.cpp`, `core/src/api/service_handler_api.cpp`, `core/src/api/service_spot_api.cpp`, `core/tests/unittest/unittest_typed_option.cpp` | `doc/plan/refactor/3nd/logs/20260326_service_handle_dispatch.md` (`ctest --test-dir core/build --output-on-failure -L unittest -j"$(nproc)"` 14/14 pass, targeted service API regressions pass, final perf gate 이전 단계라서 미실행) | `feat: finish gateway removal metadata migration` 이후 service API 표면에서 handle-type 판정이 다시 퍼진 것을 정리했다. 실행 가이드와 구현 메모를 다시 대조한 결과, 이 slice 범위에서는 dead branch 없이 기존 분기를 helper로 흡수했다. |
-| 2 | 진행중 | discovery bootstrap/uplink runtime-state 허브 | bootstrap, uplink, registry endpoint state, TLS/bootstrap socket option 누적이 `discovery_bootstrap.cpp`에 과도하게 몰린 구조를 재검토해 runtime/state 경계를 더 깊게 만든다. | steady-state registry/discovery 경로와 reconnect semantics를 흐리지 않도록 bootstrap path만 분리하고 data/control hot path 비용을 늘리지 않는다. | `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_runtime_internal.hpp`, `core/src/services/discovery/discovery_registry_client.cpp`, `core/tests/` | `doc/plan/refactor/3nd/logs/20260326_discovery_socket_config_split.md` (`cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`, `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_typed_option|test_spot_service_introspection|test_spot_service_introspection_monitors|test_spot_service_introspection_snapshots|test_spot_service_introspection_metadata_local)$' -j1`) | 첫 bounded slice로 `routing-id lock + socket option 저장/적용 + TLS client option materialization`을 `discovery_bootstrap_socket_config_t`로 분리했다. 마스터 플랜의 socket-option/routing-id ownership intent는 더 잘 반영됐지만, bootstrap dealer state와 uplink adoption/retry 책임은 아직 남아 있어 이 row는 계속 `진행중`이다. |
-| 3 | 미착수 | spot node control/runtime 상태 허브 | registration, readiness, control tick, summary wakeup 정책이 `spot_node_control.cpp`와 인접 owner에 다시 몰리는지 재평가하고 control-path 책임을 줄인다. | 제어면 분리 때문에 send/recv steady-state 비용이나 wakeup contention이 증가하면 보류한다. | `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_node_summary.cpp`, `core/src/services/spot/spot_runtime.cpp`, `core/tests/` |  | 성능 우선 원칙상 discovery bootstrap보다 후순위다. control path 후보지만 wakeup/ready 경계에 숨어 있는 비용이 있어 먼저 discovery 허브를 본 뒤 착수한다. |
+| 1 | 미착수 | <현재 가장 큰 허브 영역> | <이번 호출에서 줄이려는 복잡도 한 문장> | <성능상 특히 조심할 점> | <현재 관련 파일/디렉터리> |  | <어떤 큰 기능 변경 이후 재평가인지 또는 선정 이유> |
+| 2 | 미착수 | <다음 우선 후보> | <변경 증폭 또는 숨은 결합 설명> | <성능상 경계> | <관련 파일/디렉터리> |  | <보류/후순위 이유 포함 가능> |
 
 ## 9. 각 iteration의 체크리스트
 
 각 iteration에서 아래를 순서대로 수행한다.
 
-1. 현재 작업 레지스터의 첫 미완료 행을 읽는다.
+1. 현재 세션 로그의 작업 레지스터에서 첫 미완료 행을 읽는다.
 2. 해당 영역의 핵심 허브 파일을 읽고 POSD 냄새를 한 문장으로 다시 적는다.
 3. 대표 변경 시나리오와 수정 지점 수를 적어 change amplification 기준선을 만든다.
 4. 구현 범위를 한 번의 patch 세트로 닫을 수 있을 만큼만 자른다.
@@ -567,13 +588,13 @@ ctest --test-dir core/build --output-on-failure
 10. 관련 테스트를 추가/보강한다.
 11. 빌드와 targeted 검증을 실행한다.
 12. 더 이상 진행할 리팩토링이 없다고 판단한 경우에만 성능 게이트를 실행한다.
-13. 문서 표를 갱신한다.
+13. 현재 세션 로그의 작업 레지스터를 갱신한다.
 14. 더 남아 있으면 `계속 진행 필요`, 없으면 `미적용 사항이 없습니다.`를 출력한다.
 
 재호출 세션의 첫 iteration에서는 아래 두 단계를 먼저 앞에 추가한다.
 
 1. 최근 큰 기능 변경이 무엇이었는지 `메모` 또는 새 행으로 적는다.
-2. 기존 표의 우선순위와 상태를 현재 코드 기준으로 다시 정렬한다.
+2. 기존 세션 로그 표의 우선순위와 상태를 현재 코드 기준으로 다시 정렬한다.
 
 ## 10. 구현 방향 메모
 

@@ -741,7 +741,7 @@ core/tools/refactor/logs/
    - 현재 코드 기준으로 `spot_node.cpp` 상단의 stale helper/control-path duplicate static policy는 제거됐고, `discovery_t`의 local value/metadata/metadata-max-size owner는 `discovery_local_state_t`로, provider snapshot/update-seq/observer coordination state owner는 `discovery_service_state_t`로 이동했다. `set_option/get_option`, `set_value/get_value`, `set_metadata/get_metadata`, member-query wrapper는 state owner TU로, provider update/observer sequencing은 `discovery_update.cpp`가 아니라 private state owner로 더 좁혔다. 이 축은 representative gate 재실행과 push commit `756e54b4`까지 완료됐고, 다음 첫 미완료 항목은 8번 engine/transport large-file owner 리뷰와 그 뒤 최종 gate다.
 8. engine/transport large-file owner 리뷰
    - `asio_engine.cpp`, `asio_ws_engine.cpp`와 실제 large file 중 owner 설명이 약한 축만 선별해 정리한다.
-   - 현재 코드 기준으로 `asio_engine_t`는 backend-common async runtime, handshake, timer, stream fast-path tuning owner이고 `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution owner다. representative smoke `test_stream_fastpath`, `test_spot_pubsub_scenario_peer_wss`와 ABI 무변경 확인 기준으로 새 구조 phase를 열 giant owner로는 승격하지 않았다. 최신 final lane gate도 다시 green이며, 현재 코드/가이드/마스터 플랜 재대조 기준으로 추가 구현 미완료 항목은 남아 있지 않다.
+   - 현재 코드 기준으로 `asio_engine_t`는 backend-common async runtime, handshake, timer, stream fast-path tuning owner이고 `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution owner다. representative smoke `test_stream_fastpath`, `test_spot_pubsub_scenario_peer_wss`와 ABI 무변경 확인 기준으로 새 구조 phase를 열 giant owner로는 승격하지 않았다. 최신 final lane gate도 다시 green이며, push commit `a4cac5b0` 기준으로 현재 코드/가이드/마스터 플랜 재대조 결과 추가 구현 미완료 항목은 남아 있지 않다.
 
 적용 규칙:
 

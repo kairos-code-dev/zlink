@@ -1,0 +1,260 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
+
+#include <algorithm>
+#include <cstring>
+
+namespace zlink
+{
+namespace
+{
+static bool provider_equal_local (const provider_info_t &lhs_,
+                                  const provider_info_t &rhs_)
+{
+    if (lhs_.endpoint != rhs_.endpoint)
+        return false;
+    if (lhs_.service_role != rhs_.service_role)
+        return false;
+    if (lhs_.routing_id.size != rhs_.routing_id.size)
+        return false;
+    if (lhs_.routing_id.size > 0
+        && memcmp (lhs_.routing_id.data, rhs_.routing_id.data,
+                   lhs_.routing_id.size)
+             != 0) {
+        return false;
+    }
+    return lhs_.value == rhs_.value && lhs_.metadata == rhs_.metadata;
+}
+
+static bool providers_equal_local (const std::vector<provider_info_t> &lhs_,
+                                   const std::vector<provider_info_t> &rhs_)
+{
+    if (lhs_.size () != rhs_.size ())
+        return false;
+    for (size_t i = 0; i < lhs_.size (); ++i) {
+        if (!provider_equal_local (lhs_[i], rhs_[i]))
+            return false;
+    }
+    return true;
+}
+
+static bool provider_less_local (const provider_info_t &lhs_,
+                                 const provider_info_t &rhs_)
+{
+    if (lhs_.service_role != rhs_.service_role)
+        return lhs_.service_role < rhs_.service_role;
+    return lhs_.endpoint < rhs_.endpoint;
+}
+
+static void copy_text_field_local (char *dst_,
+                                   size_t dst_size_,
+                                   const std::string &src_)
+{
+    if (!dst_ || dst_size_ == 0)
+        return;
+    dst_[0] = '\0';
+    if (src_.empty ())
+        return;
+    strncpy (dst_, src_.c_str (), dst_size_ - 1);
+    dst_[dst_size_ - 1] = '\0';
+}
+}
+
+discovery_service_change_t::discovery_service_change_t () : changed (false)
+{
+    memset (&event, 0, sizeof (event));
+}
+
+discovery_service_state_t::discovery_service_state_t () :
+    _observer_callbacks_inflight (0),
+    _update_seq (0),
+    _service_seq (0)
+{
+}
+
+int discovery_service_state_t::add_observer (discovery_observer_t *observer_)
+{
+    if (!observer_)
+        return 0;
+    _observers.insert (observer_);
+    return 0;
+}
+
+int discovery_service_state_t::remove_observer (discovery_observer_t *observer_)
+{
+    if (!observer_)
+        return 0;
+    if (_observer_callbacks_inflight > 0) {
+        errno = EBUSY;
+        return -1;
+    }
+    _observers.erase (observer_);
+    return 0;
+}
+
+bool discovery_service_state_t::has_inflight_observer_callbacks () const
+{
+    return _observer_callbacks_inflight > 0;
+}
+
+void discovery_service_state_t::begin_observer_notification (
+  const std::string &service_name_,
+  const std::set<std::string> &services_,
+  std::vector<discovery_observer_t *> *observers_out_)
+{
+    if (!observers_out_)
+        return;
+    observers_out_->clear ();
+    if (services_.find (service_name_) == services_.end () || _observers.empty ())
+        return;
+    observers_out_->assign (_observers.begin (), _observers.end ());
+    _observer_callbacks_inflight += observers_out_->size ();
+}
+
+void discovery_service_state_t::finish_observer_notification (
+  size_t observer_count_)
+{
+    if (observer_count_ > _observer_callbacks_inflight)
+        _observer_callbacks_inflight = 0;
+    else
+        _observer_callbacks_inflight -= observer_count_;
+}
+
+void discovery_service_state_t::take_shutdown_observers (
+  std::vector<discovery_observer_t *> *observers_out_)
+{
+    if (!observers_out_)
+        return;
+    observers_out_->assign (_observers.begin (), _observers.end ());
+    _observers.clear ();
+    _observer_callbacks_inflight = 0;
+}
+
+void discovery_service_state_t::snapshot_providers (
+  std::vector<provider_info_t> *out_) const
+{
+    if (!out_)
+        return;
+    *out_ = _providers;
+}
+
+void discovery_service_state_t::snapshot_member_peers (
+  zlink_service_type_t public_service_type_,
+  const std::set<discovery_member_key_t> &local_members_,
+  std::vector<zlink_member_peer_entry_t> *out_) const
+{
+    if (!out_)
+        return;
+    out_->clear ();
+
+    std::vector<provider_info_t> providers = _providers;
+    std::sort (providers.begin (), providers.end (), provider_less_local);
+
+    for (size_t i = 0; i < providers.size (); ++i) {
+        const discovery_member_key_t key (providers[i].service_role,
+                                          providers[i].endpoint);
+        if (local_members_.count (key) != 0)
+            continue;
+
+        zlink_member_peer_entry_t entry;
+        memset (&entry, 0, sizeof (entry));
+        entry.service_type = public_service_type_;
+        entry.service_role = providers[i].service_role;
+        copy_text_field_local (entry.service_name, sizeof (entry.service_name),
+                               providers[i].service_name);
+        copy_text_field_local (entry.endpoint, sizeof (entry.endpoint),
+                               providers[i].endpoint);
+        entry.routing_id = providers[i].routing_id;
+        entry.value = providers[i].value;
+        out_->push_back (entry);
+    }
+}
+
+bool discovery_service_state_t::copy_member_peer_metadata (
+  const std::set<discovery_member_key_t> &local_members_,
+  uint16_t service_role_,
+  const char *endpoint_,
+  std::vector<unsigned char> *metadata_out_) const
+{
+    if (!endpoint_ || !metadata_out_)
+        return false;
+
+    metadata_out_->clear ();
+    if (local_members_.count (
+          discovery_member_key_t (service_role_, endpoint_))
+        != 0) {
+        return false;
+    }
+
+    for (size_t i = 0; i < _providers.size (); ++i) {
+        const provider_info_t &provider = _providers[i];
+        if (provider.service_role != service_role_
+            || provider.endpoint != endpoint_) {
+            continue;
+        }
+        *metadata_out_ = provider.metadata;
+        return true;
+    }
+    return false;
+}
+
+uint64_t discovery_service_state_t::update_seq () const
+{
+    return _update_seq;
+}
+
+uint64_t discovery_service_state_t::service_update_seq () const
+{
+    return _service_seq;
+}
+
+void discovery_service_state_t::apply_provider_snapshot (
+  uint32_t registry_id_,
+  uint64_t list_seq_,
+  const std::vector<provider_info_t> &updated_,
+  const std::string &service_name_,
+  const zlink_routing_id_t &routing_id_,
+  discovery_service_change_t *change_out_)
+{
+    if (change_out_)
+        *change_out_ = discovery_service_change_t ();
+
+    std::map<uint32_t, uint64_t>::iterator it = _registry_seq.find (registry_id_);
+    if (it != _registry_seq.end () && list_seq_ <= it->second)
+        return;
+    _registry_seq[registry_id_] = list_seq_;
+
+    if (providers_equal_local (_providers, updated_)) {
+        _providers = updated_;
+        return;
+    }
+
+    const bool had_providers = !_providers.empty ();
+    _service_seq = _update_seq + 1;
+    _providers = updated_;
+    ++_update_seq;
+
+    if (!change_out_)
+        return;
+
+    change_out_->changed = true;
+    change_out_->event.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
+    change_out_->event.detail_flags =
+      ZLINK_EVENT_DETAIL_SERVICE_NAME | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+    change_out_->event.routing_id = routing_id_;
+    strncpy (change_out_->event.service_name, service_name_.c_str (),
+             sizeof (change_out_->event.service_name) - 1);
+    change_out_->event.value = static_cast<uint32_t> (_providers.size ());
+    if (!had_providers)
+        change_out_->event.event_type = ZLINK_DISCOVERY_SERVICE_UP;
+    else if (_providers.empty ())
+        change_out_->event.event_type = ZLINK_DISCOVERY_SERVICE_DOWN;
+    else
+        change_out_->event.event_type = ZLINK_DISCOVERY_PROVIDERS_CHANGED;
+}
+}

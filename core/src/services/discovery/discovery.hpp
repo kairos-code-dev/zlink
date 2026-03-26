@@ -7,8 +7,8 @@
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
 #include "services/common/service_monitor.hpp"
+#include "services/discovery/discovery_runtime_internal.hpp"
 #include "utils/atomic_counter.hpp"
-#include "utils/condition_variable.hpp"
 #include "utils/mutex.hpp"
 
 #include <map>
@@ -22,25 +22,11 @@ class socket_base_t;
 class discovery_t;
 class spot_node_t;
 class service_control_runtime_t;
-class discovery_bootstrap_runtime_t;
-class discovery_bootstrap_socket_config_t;
-class discovery_uplink_runtime_t;
 struct discovery_access_t;
 
 enum discovery_socket_role_t
 {
     discovery_socket_sub = 1
-};
-
-struct provider_info_t
-{
-    std::string service_name;
-    std::string endpoint;
-    zlink_routing_id_t routing_id;
-    uint16_t service_role;
-    int64_t value;
-    std::vector<unsigned char> metadata;
-    uint64_t registered_at;
 };
 
 class discovery_observer_t
@@ -130,11 +116,6 @@ class discovery_t
     friend class discovery_bootstrap_runtime_t;
     friend class discovery_bootstrap_socket_config_t;
     friend class discovery_uplink_runtime_t;
-
-    struct service_state_t
-    {
-        std::vector<provider_info_t> providers;
-    };
 
     static void control_task (void *arg_);
     void tick ();
@@ -240,22 +221,13 @@ class discovery_t
     mutex_t _uplink_sync;
     discovery_bootstrap_runtime_t *_bootstrap_runtime;
     discovery_uplink_runtime_t *_uplink_runtime;
-    service_state_t _service_state;
-    std::map<uint32_t, uint64_t> _registry_seq;
-    std::set<discovery_observer_t *> _observers;
-    condition_variable_t _observer_cv;
-    size_t _observer_callbacks_inflight;
-    bool _destroying;
-    uint64_t _update_seq;
+    discovery_service_state_t _service_state;
     uint32_t _monitor_ready_count;
-    uint64_t _service_seq;
     uint16_t _service_type;
     std::string _service_name;
     bool _discovery_summary_enabled;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
-    int64_t _local_value;
-    std::vector<unsigned char> _local_metadata;
-    size_t _metadata_max_size;
+    discovery_local_state_t _local_state;
     std::map<topology_key_t, topology_summary_t> _summary_store;
     service_monitor_hub_t _monitor;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)

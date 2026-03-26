@@ -27,16 +27,10 @@ discovery_t::discovery_t (ctx_t *ctx_,
     _sub_socket (NULL),
     _bootstrap_runtime (new discovery_bootstrap_runtime_t ()),
     _uplink_runtime (new discovery_uplink_runtime_t ()),
-    _update_seq (0),
-    _observer_callbacks_inflight (0),
-    _destroying (false),
     _monitor_ready_count (0),
-    _service_seq (0),
     _service_type (service_type_),
-    _discovery_summary_enabled (true),
     _service_name (service_name_),
-    _local_value (0),
-    _metadata_max_size (4096),
+    _discovery_summary_enabled (true),
     _monitor (ctx_)
 {
     zlink_assert (_ctx);

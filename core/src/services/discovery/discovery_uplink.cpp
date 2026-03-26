@@ -432,4 +432,9 @@ void discovery_t::refresh_registered_service_heartbeats (uint64_t now_ms_)
 {
     _uplink_runtime->refresh_registered_service_heartbeats (this, now_ms_);
 }
+
+bool discovery_t::latest_registry_uplink (std::string *out_)
+{
+    return _uplink_runtime->latest_registry_uplink (this, out_);
+}
 }

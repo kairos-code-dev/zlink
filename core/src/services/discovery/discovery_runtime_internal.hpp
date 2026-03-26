@@ -14,7 +14,94 @@
 namespace zlink
 {
 class discovery_t;
+class discovery_observer_t;
 class socket_base_t;
+
+struct provider_info_t
+{
+    std::string service_name;
+    std::string endpoint;
+    zlink_routing_id_t routing_id;
+    uint16_t service_role;
+    int64_t value;
+    std::vector<unsigned char> metadata;
+    uint64_t registered_at;
+};
+
+typedef std::pair<uint16_t, std::string> discovery_member_key_t;
+
+class discovery_local_state_t
+{
+  public:
+    discovery_local_state_t ();
+
+    int set_metadata_max_size (size_t value_);
+    int get_metadata_max_size (void *optval_, size_t *optvallen_) const;
+    void set_value (int64_t value_);
+    int get_value (int64_t *value_out_) const;
+    int set_metadata (const void *data_, size_t size_);
+    int get_metadata (zlink_msg_t *metadata_out_) const;
+    void snapshot_registration (int64_t *value_out_,
+                                std::vector<unsigned char> *metadata_out_) const;
+
+  private:
+    int64_t _value;
+    std::vector<unsigned char> _metadata;
+    size_t _metadata_max_size;
+};
+
+struct discovery_service_change_t
+{
+    discovery_service_change_t ();
+
+    bool changed;
+    zlink_service_event_t event;
+};
+
+class discovery_service_state_t
+{
+  public:
+    discovery_service_state_t ();
+
+    int add_observer (discovery_observer_t *observer_);
+    int remove_observer (discovery_observer_t *observer_);
+    bool has_inflight_observer_callbacks () const;
+    void begin_observer_notification (
+      const std::string &service_name_,
+      const std::set<std::string> &services_,
+      std::vector<discovery_observer_t *> *observers_out_);
+    void finish_observer_notification (size_t observer_count_);
+    void take_shutdown_observers (
+      std::vector<discovery_observer_t *> *observers_out_);
+
+    void snapshot_providers (std::vector<provider_info_t> *out_) const;
+    void snapshot_member_peers (
+      zlink_service_type_t public_service_type_,
+      const std::set<discovery_member_key_t> &local_members_,
+      std::vector<zlink_member_peer_entry_t> *out_) const;
+    bool copy_member_peer_metadata (
+      const std::set<discovery_member_key_t> &local_members_,
+      uint16_t service_role_,
+      const char *endpoint_,
+      std::vector<unsigned char> *metadata_out_) const;
+
+    uint64_t update_seq () const;
+    uint64_t service_update_seq () const;
+    void apply_provider_snapshot (uint32_t registry_id_,
+                                  uint64_t list_seq_,
+                                  const std::vector<provider_info_t> &updated_,
+                                  const std::string &service_name_,
+                                  const zlink_routing_id_t &routing_id_,
+                                  discovery_service_change_t *change_out_);
+
+  private:
+    std::vector<provider_info_t> _providers;
+    std::map<uint32_t, uint64_t> _registry_seq;
+    std::set<discovery_observer_t *> _observers;
+    size_t _observer_callbacks_inflight;
+    uint64_t _update_seq;
+    uint64_t _service_seq;
+};
 
 class discovery_bootstrap_socket_config_t
 {

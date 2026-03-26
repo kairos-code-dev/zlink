@@ -1815,3 +1815,4 @@ if(ENABLE_NO_EXPORT)
   message(STATUS "Building with empty ZLINK_EXPORT macro")
   add_definitions(-DZLINK_NO_EXPORT)
 endif()
+    src/services/discovery/discovery_service_state.cpp

@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
 
 #include "services/control/service_control_runtime.hpp"
@@ -13,12 +14,120 @@ namespace zlink
 {
 namespace
 {
+static int init_msg_from_blob_local (const std::vector<unsigned char> &blob_,
+                                     zlink_msg_t *metadata_out_)
+{
+    if (!metadata_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (zlink_msg_init_size (metadata_out_, blob_.size ()) != 0)
+        return -1;
+    if (!blob_.empty ())
+        memcpy (zlink_msg_data (metadata_out_), &blob_[0], blob_.size ());
+    return 0;
+}
+
 static std::string topology_routing_key_local (const zlink_routing_id_t &rid_)
 {
     if (rid_.size == 0)
         return std::string ();
     return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
 }
+
+static zlink_service_type_t public_service_type_local (uint16_t service_type_)
+{
+    return service_type_ == discovery_protocol::service_type_spot_node
+             ? ZLINK_SERVICE_TYPE_SPOT
+             : ZLINK_SERVICE_TYPE_SOCKET;
+}
+}
+
+discovery_local_state_t::discovery_local_state_t () :
+    _value (0),
+    _metadata_max_size (4096)
+{
+}
+
+int discovery_local_state_t::set_metadata_max_size (size_t value_)
+{
+    if (value_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    _metadata_max_size = value_;
+    return 0;
+}
+
+int discovery_local_state_t::get_metadata_max_size (void *optval_,
+                                                    size_t *optvallen_) const
+{
+    if (!optvallen_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!optval_) {
+        *optvallen_ = sizeof (size_t);
+        return 0;
+    }
+    if (*optvallen_ < sizeof (size_t)) {
+        *optvallen_ = sizeof (size_t);
+        errno = ENOBUFS;
+        return -1;
+    }
+    *static_cast<size_t *> (optval_) = _metadata_max_size;
+    *optvallen_ = sizeof (size_t);
+    return 0;
+}
+
+void discovery_local_state_t::set_value (int64_t value_)
+{
+    _value = value_;
+}
+
+int discovery_local_state_t::get_value (int64_t *value_out_) const
+{
+    if (!value_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    *value_out_ = _value;
+    return 0;
+}
+
+int discovery_local_state_t::set_metadata (const void *data_, size_t size_)
+{
+    if (size_ > _metadata_max_size) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+    if (size_ != 0 && !data_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _metadata.clear ();
+    if (size_ != 0) {
+        const unsigned char *begin =
+          static_cast<const unsigned char *> (data_);
+        _metadata.assign (begin, begin + size_);
+    }
+    return 0;
+}
+
+int discovery_local_state_t::get_metadata (zlink_msg_t *metadata_out_) const
+{
+    return init_msg_from_blob_local (_metadata, metadata_out_);
+}
+
+void discovery_local_state_t::snapshot_registration (
+  int64_t *value_out_,
+  std::vector<unsigned char> *metadata_out_) const
+{
+    if (value_out_)
+        *value_out_ = _value;
+    if (metadata_out_)
+        *metadata_out_ = _metadata;
 }
 
 int discovery_t::add_observer (discovery_observer_t *observer_)
@@ -26,11 +135,242 @@ int discovery_t::add_observer (discovery_observer_t *observer_)
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    if (!observer_)
+    scoped_lock_t lock (_sync);
+    return _service_state.add_observer (observer_);
+}
+
+int discovery_t::set_option (int option_,
+                             const void *optval_,
+                             size_t optvallen_)
+{
+    if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
+        service_public_api_scope_t admission (_public_api);
+        if (!admission.acquired ())
+            return -1;
+        if (!optval_ || optvallen_ != sizeof (size_t)) {
+            errno = EINVAL;
+            return -1;
+        }
+        const size_t value = *static_cast<const size_t *> (optval_);
+        scoped_lock_t lock (_sync);
+        return _local_state.set_metadata_max_size (value);
+    }
+    return _bootstrap_runtime->set_option (this, option_, optval_, optvallen_);
+}
+
+int discovery_t::get_option (int option_, void *optval_, size_t *optvallen_) const
+{
+    if (option_ != ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
+
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _local_state.get_metadata_max_size (optval_, optvallen_);
+}
+
+int discovery_t::set_value (int64_t value_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    std::vector<registered_service_t> services;
+    std::vector<unsigned char> metadata;
+    {
+        scoped_lock_t lock (_sync);
+        _local_state.set_value (value_);
+        _local_state.snapshot_registration (NULL, &metadata);
+        for (std::map<registered_service_key_t, registered_service_t>::const_iterator
+               it = _registered_services.begin ();
+             it != _registered_services.end (); ++it)
+            services.push_back (it->second);
+    }
+
+    for (size_t i = 0; i < services.size (); ++i) {
+        if (update_service_attributes (services[i].service_type,
+                                       services[i].service_name.c_str (),
+                                       services[i].endpoint.c_str (), value_,
+                                       &metadata, services[i].service_role)
+            != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int discovery_t::get_value (int64_t *value_out_) const
+{
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _local_state.get_value (value_out_);
+}
+
+int discovery_t::set_metadata (const void *data_, size_t size_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    std::vector<registered_service_t> services;
+    std::vector<unsigned char> metadata;
+    int64_t value = 0;
+    {
+        scoped_lock_t lock (_sync);
+        if (_local_state.set_metadata (data_, size_) != 0)
+            return -1;
+        _local_state.snapshot_registration (&value, &metadata);
+        for (std::map<registered_service_key_t, registered_service_t>::const_iterator
+               it = _registered_services.begin ();
+             it != _registered_services.end (); ++it)
+            services.push_back (it->second);
+    }
+
+    for (size_t i = 0; i < services.size (); ++i) {
+        if (update_service_attributes (services[i].service_type,
+                                       services[i].service_name.c_str (),
+                                       services[i].endpoint.c_str (), value,
+                                       &metadata, services[i].service_role)
+            != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int discovery_t::get_metadata (zlink_msg_t *metadata_out_) const
+{
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _local_state.get_metadata (metadata_out_);
+}
+
+void discovery_t::snapshot_providers (const std::string &service_name_,
+                                      std::vector<provider_info_t> *out_)
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    if (service_name_ != _service_name)
+        return;
+    scoped_lock_t lock (_sync);
+    _service_state.snapshot_providers (out_);
+}
+
+void discovery_t::snapshot_member_peers (
+  std::vector<zlink_member_peer_entry_t> *out_) const
+{
+    if (!out_)
+        return;
+    out_->clear ();
+
+    std::vector<provider_info_t> providers;
+    std::set<discovery_member_key_t> local_members;
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        for (std::map<registered_service_key_t, registered_service_t>::const_iterator
+               it = _registered_services.begin ();
+             it != _registered_services.end (); ++it) {
+            if (it->second.service_type == _service_type
+                && it->second.service_name == _service_name) {
+                local_members.insert (
+                  discovery_member_key_t (it->second.service_role,
+                                          it->second.endpoint));
+            }
+        }
+        _service_state.snapshot_member_peers (
+          public_service_type_local (_service_type), local_members, out_);
+    }
+}
+
+int discovery_t::member_peers (zlink_member_peer_entry_t *entries_,
+                               size_t *count_) const
+{
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<zlink_member_peer_entry_t> remote;
+    snapshot_member_peers (&remote);
+    if (!entries_) {
+        *count_ = remote.size ();
+        return 0;
+    }
+    if (*count_ < remote.size ()) {
+        *count_ = remote.size ();
+        errno = ENOBUFS;
+        return -1;
+    }
+    for (size_t i = 0; i < remote.size (); ++i)
+        entries_[i] = remote[i];
+    *count_ = remote.size ();
+    return 0;
+}
+
+int discovery_t::member_peer_metadata (uint16_t service_role_,
+                                       const char *endpoint_,
+                                       zlink_msg_t *metadata_out_) const
+{
+    service_public_api_scope_t admission (
+      const_cast<service_public_api_guard_t &> (_public_api));
+    if (!admission.acquired ())
+        return -1;
+    if (!endpoint_ || endpoint_[0] == '\0' || !metadata_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<unsigned char> metadata;
+    {
+        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        std::set<discovery_member_key_t> local_members;
+        for (std::map<registered_service_key_t, registered_service_t>::const_iterator
+               it = _registered_services.begin ();
+             it != _registered_services.end (); ++it) {
+            if (it->second.service_type == _service_type
+                && it->second.service_name == _service_name) {
+                local_members.insert (
+                  discovery_member_key_t (it->second.service_role,
+                                          it->second.endpoint));
+            }
+        }
+        if (!_service_state.copy_member_peer_metadata (
+              local_members, service_role_, endpoint_, &metadata)) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+    return init_msg_from_blob_local (metadata, metadata_out_);
+}
+
+uint64_t discovery_t::update_seq ()
+{
+    scoped_lock_t lock (_sync);
+    return _service_state.update_seq ();
+}
+
+uint64_t discovery_t::service_update_seq (const std::string &service_name_)
+{
+    if (service_name_ != _service_name)
         return 0;
     scoped_lock_t lock (_sync);
-    _observers.insert (observer_);
-    return 0;
+    return _service_state.service_update_seq ();
 }
 
 int discovery_t::remove_observer (discovery_observer_t *observer_)
@@ -38,15 +378,8 @@ int discovery_t::remove_observer (discovery_observer_t *observer_)
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    if (!observer_)
-        return 0;
     scoped_lock_t lock (_sync);
-    if (_observer_callbacks_inflight > 0) {
-        errno = EBUSY;
-        return -1;
-    }
-    _observers.erase (observer_);
-    return 0;
+    return _service_state.remove_observer (observer_);
 }
 
 void discovery_t::upsert_service_summary (
@@ -119,12 +452,11 @@ int discovery_t::destroy ()
         return -1;
     {
         scoped_lock_t lock (_sync);
-        if (_observer_callbacks_inflight > 0) {
+        if (_service_state.has_inflight_observer_callbacks ()) {
             _public_api.cancel_close ();
             errno = EBUSY;
             return -1;
         }
-        _destroying = true;
     }
     _stop.set (1);
     emit_ready_changed (0);
@@ -151,9 +483,7 @@ int discovery_t::destroy ()
         connected_endpoints = _connected_endpoints;
         _sub_socket = NULL;
         _connected_endpoints.clear ();
-        observers.assign (_observers.begin (), _observers.end ());
-        _observers.clear ();
-        _observer_callbacks_inflight = 0;
+        _service_state.take_shutdown_observers (&observers);
         _registered_services.clear ();
         _summary_store.clear ();
     }

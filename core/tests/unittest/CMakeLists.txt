@@ -85,3 +85,4 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
     message(AUTHOR_WARNING "Test '${TESTNAME}' is not known to CTest.")
   endif()
 endforeach()
+    unittest_discovery_service_state

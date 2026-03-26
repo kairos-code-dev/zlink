@@ -113,31 +113,22 @@ void discovery_t::tick ()
 
 void discovery_t::notify_observers (const std::set<std::string> &services_)
 {
-    if (services_.find (_service_name) == services_.end ())
-        return;
     std::vector<discovery_observer_t *> observers;
     {
         scoped_lock_t lock (_sync);
-        observers.assign (_observers.begin (), _observers.end ());
+        _service_state.begin_observer_notification (_service_name, services_,
+                                                    &observers);
     }
     if (observers.empty ())
         return;
     for (size_t i = 0; i < observers.size (); ++i) {
         if (!observers[i])
             continue;
-        {
-            scoped_lock_t lock (_sync);
-            if (_observers.find (observers[i]) == _observers.end ())
-                continue;
-            ++_observer_callbacks_inflight;
-        }
         observers[i]->on_service_update (_service_name);
-        {
-            scoped_lock_t lock (_sync);
-            if (_observer_callbacks_inflight > 0)
-                --_observer_callbacks_inflight;
-            _observer_cv.broadcast ();
-        }
+    }
+    {
+        scoped_lock_t lock (_sync);
+        _service_state.finish_observer_notification (observers.size ());
     }
 }
 
@@ -162,7 +153,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         return;
     }
 
-    service_state_t updated;
+    std::vector<provider_info_t> updated;
 
     size_t index = 4;
     for (uint32_t i = 0; i < service_count && index < frames_.size (); ++i) {
@@ -177,7 +168,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         if (!discovery_protocol::read_u32 (frames_[index++], &receiver_count))
             break;
 
-        service_state_t state;
+        std::vector<provider_info_t> service_providers;
         for (uint32_t p = 0; p < receiver_count && index + 4 < frames_.size ();
              ++p) {
             provider_info_t info;
@@ -200,76 +191,27 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             ++index;
             info.registered_at = 0;
             if (service_type == _service_type)
-                state.providers.push_back (info);
+                service_providers.push_back (info);
         }
 
         if (service_type != _service_type || service_name != _service_name)
             continue;
-        updated.providers.insert (updated.providers.end (),
-                                  state.providers.begin (),
-                                  state.providers.end ());
+        updated.insert (updated.end (), service_providers.begin (),
+                        service_providers.end ());
     }
 
     std::set<std::string> changed;
     std::vector<zlink_service_event_t> events;
     {
         scoped_lock_t lock (_sync);
-        std::map<uint32_t, uint64_t>::iterator sit =
-          _registry_seq.find (registry_id);
-        if (sit != _registry_seq.end () && list_seq <= sit->second)
-            return;
-        _registry_seq[registry_id] = list_seq;
-
-        const auto provider_equal =
-          [] (const provider_info_t &a_, const provider_info_t &b_) {
-              if (a_.endpoint != b_.endpoint)
-                  return false;
-              if (a_.service_role != b_.service_role)
-                  return false;
-              if (a_.routing_id.size != b_.routing_id.size)
-                  return false;
-              if (a_.routing_id.size > 0
-                  && memcmp (a_.routing_id.data, b_.routing_id.data,
-                             a_.routing_id.size)
-                       != 0)
-                  return false;
-              return a_.value == b_.value && a_.metadata == b_.metadata;
-          };
-        const auto providers_equal =
-          [&] (const service_state_t &a_, const service_state_t &b_) {
-              if (a_.providers.size () != b_.providers.size ())
-                  return false;
-              for (size_t i = 0; i < a_.providers.size (); ++i) {
-                  if (!provider_equal (a_.providers[i], b_.providers[i]))
-                      return false;
-              }
-              return true;
-          };
-
-        if (!providers_equal (_service_state, updated)) {
-            _service_seq = _update_seq + 1;
+        discovery_service_change_t service_change;
+        _service_state.apply_provider_snapshot (
+          registry_id, list_seq, updated, _service_name,
+          _bootstrap_runtime->routing_id_value (), &service_change);
+        if (service_change.changed) {
             changed.insert (_service_name);
-
-            zlink_service_event_t ev;
-            memset (&ev, 0, sizeof (ev));
-            ev.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
-            ev.detail_flags =
-              ZLINK_EVENT_DETAIL_SERVICE_NAME | ZLINK_EVENT_DETAIL_SUBJECT_RID;
-            ev.routing_id = _bootstrap_runtime->routing_id_value ();
-            strncpy (ev.service_name, _service_name.c_str (),
-                     sizeof (ev.service_name) - 1);
-            ev.value = static_cast<uint32_t> (updated.providers.size ());
-            if (_service_state.providers.empty ())
-                ev.event_type = ZLINK_DISCOVERY_SERVICE_UP;
-            else if (updated.providers.empty ())
-                ev.event_type = ZLINK_DISCOVERY_SERVICE_DOWN;
-            else
-                ev.event_type = ZLINK_DISCOVERY_PROVIDERS_CHANGED;
-            events.push_back (ev);
+            events.push_back (service_change.event);
         }
-        _service_state = updated;
-        if (!changed.empty ())
-            _update_seq++;
     }
 
     if (!changed.empty ())

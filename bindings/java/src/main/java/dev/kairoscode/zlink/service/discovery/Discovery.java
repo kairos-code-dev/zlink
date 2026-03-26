@@ -3,179 +3,190 @@
 package dev.kairoscode.zlink.service.discovery;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.MemberPeerEntry;
+import dev.kairoscode.zlink.ServiceRole;
 import dev.kairoscode.zlink.ServiceType;
-import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
-import dev.kairoscode.zlink.options.SocketOptionKey;
-import dev.kairoscode.zlink.options.SocketOptionValueType;
-import dev.kairoscode.zlink.service.receiver.ReceiverInfo;
+import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Fixed-service discovery view.
+ *
+ * <p>One instance tracks exactly one {@link ServiceType}/{@code serviceName}
+ * pair and exposes discovery metadata, member peer snapshots, and
+ * service-monitor access for that view.
+ */
 public final class Discovery implements AutoCloseable {
-    private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_EAGAIN = 11;
-    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
-    private static final long RETRY_TIMEOUT_NS = 10_000_000_000L;
-    private static final long RETRY_SLEEP_MS = 20L;
+    private final String serviceName;
+    private final ServiceType serviceType;
     private MemorySegment handle;
 
-    public Discovery(Context ctx, ServiceType serviceType) {
-        this.handle = Native.discoveryNew(ctx.handle(), (short) serviceType.getValue());
+    /** Opens a discovery handle for one service type and name. */
+    public Discovery(Context ctx, ServiceType serviceType, String serviceName) {
+        Objects.requireNonNull(ctx, "ctx");
+        this.serviceType = Objects.requireNonNull(serviceType, "serviceType");
+        this.serviceName = Objects.requireNonNull(serviceName, "serviceName");
+        try (Arena arena = Arena.ofConfined()) {
+            this.handle = Native.discoveryNewFixed(ctx.handle(),
+              (short) serviceType.getValue(),
+              NativeHelpers.toCString(arena, serviceName));
+        }
         if (handle == null || handle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_discovery_new_typed");
+            throw ZlinkException.fromLastError("zlink_discovery_new");
     }
 
+    /** Returns the native discovery handle. */
     public MemorySegment handle() {
         return handle;
     }
 
+    /** Returns the fixed service type of this discovery view. */
+    public ServiceType serviceType() {
+        return serviceType;
+    }
+
+    /** Returns the fixed service name of this discovery view. */
+    public String serviceName() {
+        return serviceName;
+    }
+
+    /** Connects the discovery view to a registry router endpoint. */
     public void connectRegistry(String registryEndpoint) {
-        retryTransient("zlink_discovery_connect_registry", () -> {
-            try (Arena arena = Arena.ofConfined()) {
-                int rc = Native.discoveryConnectRegistry(handle,
-                    NativeHelpers.toCString(arena, registryEndpoint));
-                if (rc != 0)
-                    throw ZlinkException.fromLastError(
-                        "zlink_discovery_connect_registry");
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.discoveryConnectRegistry(handle,
+              NativeHelpers.toCString(arena, registryEndpoint));
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_discovery_connect_registry");
             }
-        });
-    }
-
-    public void setSockOpt(SocketOption option, byte[] value) {
-        Objects.requireNonNull(option, "option");
-        Objects.requireNonNull(value, "value");
-        throwSocketOptionNotSupported(option.toString());
-    }
-
-    public void setSockOpt(SocketOption option, int value) {
-        Objects.requireNonNull(option, "option");
-        throwSocketOptionNotSupported(option.toString());
-    }
-
-    public void setSockOpt(DiscoverySocketRole role, SocketOption option,
-                           byte[] value) {
-        validateRole(role);
-        setSockOpt(option, value);
-    }
-
-    public void setSockOpt(DiscoverySocketRole role, SocketOption option,
-                           int value) {
-        validateRole(role);
-        setSockOpt(option, value);
-    }
-
-    public void setOption(SocketOptionKey<Integer> option, int value) {
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.INT32);
-        option.requireWritable();
-        throwSocketOptionNotSupported(option.name());
-    }
-
-    public void setOption(SocketOptionKey<Long> option, long value) {
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.INT64);
-        option.requireWritable();
-        throwSocketOptionNotSupported(option.name());
-    }
-
-    public void setOption(SocketOptionKey<String> option, String value) {
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.STRING);
-        option.requireWritable();
-        Objects.requireNonNull(value, "value");
-        throwSocketOptionNotSupported(option.name());
-    }
-
-    public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.BYTES);
-        option.requireWritable();
-        Objects.requireNonNull(value, "value");
-        throwSocketOptionNotSupported(option.name());
-    }
-
-    public void setOption(DiscoverySocketRole role,
-                          SocketOptionKey<Integer> option,
-                          int value) {
-        validateRole(role);
-        setOption(option, value);
-    }
-
-    public void setOption(DiscoverySocketRole role,
-                          SocketOptionKey<Long> option,
-                          long value) {
-        validateRole(role);
-        setOption(option, value);
-    }
-
-    public void setOption(DiscoverySocketRole role,
-                          SocketOptionKey<String> option,
-                          String value) {
-        validateRole(role);
-        setOption(option, value);
-    }
-
-    public void setOption(DiscoverySocketRole role,
-                          SocketOptionKey<byte[]> option,
-                          byte[] value) {
-        validateRole(role);
-        setOption(option, value);
-    }
-
-    public int receiverCount(String serviceName) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoveryProviderCount(handle,
-                NativeHelpers.toCString(arena, serviceName));
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_discovery_receiver_count");
-            return rc;
         }
     }
 
-    public boolean serviceAvailable(String serviceName) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.discoveryServiceAvailable(handle,
-                NativeHelpers.toCString(arena, serviceName));
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_discovery_service_available");
-            return rc != 0;
-        }
+    /** Sets the service-local discovery value. */
+    public void setValue(long value) {
+        int rc = Native.discoverySetValue(handle, value);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_discovery_set_value");
     }
 
-    public List<ReceiverInfo> getReceivers(String serviceName) {
-        int count = receiverCount(serviceName);
-        if (count <= 0)
-            return Collections.emptyList();
+    /** Returns the current service-local discovery value. */
+    public long getValue() {
+        return value();
+    }
+
+    public long value() {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment arr = arena.allocate(NativeLayouts.PROVIDER_INFO_LAYOUT, count);
-            MemorySegment cnt = arena.allocate(ValueLayout.JAVA_LONG);
-            cnt.set(ValueLayout.JAVA_LONG, 0, count);
-            int rc = Native.discoveryGetProviders(handle,
-                NativeHelpers.toCString(arena, serviceName), arr, cnt);
+            MemorySegment out = arena.allocate(ValueLayout.JAVA_LONG);
+            int rc = Native.discoveryGetValue(handle, out);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_get_receivers");
-            long actualLong = cnt.get(ValueLayout.JAVA_LONG, 0);
-            if (actualLong < 0)
-                actualLong = 0;
-            if (actualLong > count)
-                actualLong = count;
-            int actual = (int) actualLong;
-            ArrayList<ReceiverInfo> out = new ArrayList<>(actual);
-            long stride = NativeLayouts.PROVIDER_INFO_LAYOUT.byteSize();
-            for (int i = 0; i < actual; i++) {
-                MemorySegment item = arr.asSlice((long) i * stride, stride);
-                out.add(ReceiverInfo.from(item));
+                throw ZlinkException.fromLastError("zlink_discovery_get_value");
+            return out.get(ValueLayout.JAVA_LONG, 0);
+        }
+    }
+
+    /** Sets the service-local metadata blob. */
+    public void setMetadata(byte[] metadata) {
+        Objects.requireNonNull(metadata, "metadata");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment data = metadata.length == 0
+              ? MemorySegment.NULL
+              : arena.allocate(metadata.length);
+            if (metadata.length > 0) {
+                MemorySegment.copy(MemorySegment.ofArray(metadata), 0, data, 0,
+                  metadata.length);
             }
-            return out;
+            int rc = Native.discoverySetMetadata(handle, data, metadata.length);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_discovery_set_metadata");
+            }
+        }
+    }
+
+    /** Returns the current service-local metadata blob. */
+    public byte[] getMetadata() {
+        return metadata();
+    }
+
+    public byte[] metadata() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment metadata = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            initMessage(metadata);
+            try {
+                int rc = Native.discoveryGetMetadata(handle, metadata);
+                if (rc != 0) {
+                    throw ZlinkException.fromLastError(
+                      "zlink_discovery_get_metadata");
+                }
+                return readMessageBytes(metadata);
+            } finally {
+                NativeMsg.msgClose(metadata);
+            }
+        }
+    }
+
+    /** Opens a service monitor for this discovery handle. */
+    public dev.kairoscode.zlink.ServiceMonitor monitorOpen(int events) {
+        MemorySegment monitor = Native.serviceMonitorOpen(handle, events);
+        if (monitor == null || monitor.address() == 0) {
+            throw ZlinkException.fromLastError("zlink_service_monitor_open");
+        }
+        return new dev.kairoscode.zlink.ServiceMonitor(monitor);
+    }
+
+    /** Returns the current discovery member peers snapshot. */
+    public List<MemberPeerEntry> memberPeers() {
+        int count = memberPeerCount();
+        if (count == 0)
+            return List.of();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment entries = arena.allocate(
+              NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT, count);
+            MemorySegment countOut = arena.allocate(ValueLayout.JAVA_LONG);
+            countOut.set(ValueLayout.JAVA_LONG, 0, count);
+            int rc = Native.discoveryMemberPeers(handle, entries, countOut);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_discovery_member_peers");
+            int actual = boundedCount(countOut.get(ValueLayout.JAVA_LONG, 0),
+              count);
+            long stride = NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT.byteSize();
+            ArrayList<MemberPeerEntry> out = new ArrayList<>(actual);
+            for (int i = 0; i < actual; i++) {
+                out.add(MemberPeerEntry.fromNative(entries.asSlice(
+                  (long) i * stride, stride)));
+            }
+            return List.copyOf(out);
+        }
+    }
+
+    /** Returns the metadata blob for one discovered member peer. */
+    public byte[] memberPeerMetadata(ServiceRole serviceRole, String endpoint) {
+        Objects.requireNonNull(serviceRole, "serviceRole");
+        Objects.requireNonNull(endpoint, "endpoint");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment metadata = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            initMessage(metadata);
+            try {
+            int rc = Native.discoveryMemberPeerMetadata(handle,
+              (short) serviceRole.getValue(),
+              NativeHelpers.toCString(arena, endpoint), metadata);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_discovery_member_peer_metadata");
+            }
+            return readMessageBytes(metadata);
+            } finally {
+                NativeMsg.msgClose(metadata);
+            }
         }
     }
 
@@ -187,59 +198,39 @@ public final class Discovery implements AutoCloseable {
         handle = MemorySegment.NULL;
     }
 
-    private static void validateOptionType(SocketOptionKey<?> option,
-                                           SocketOptionValueType expected) {
-        if (option.valueType() != expected) {
-            throw new IllegalArgumentException(
-              option.name() + " expects " + option.valueType()
-                + ", not " + expected);
+    private int memberPeerCount() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            int rc = Native.discoveryMemberPeers(handle, MemorySegment.NULL,
+              count);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_discovery_member_peers");
+            return boundedCount(count.get(ValueLayout.JAVA_LONG, 0),
+              Integer.MAX_VALUE);
         }
     }
 
-    private static void validateRole(DiscoverySocketRole role) {
-        Objects.requireNonNull(role, "role");
-        if (role != DiscoverySocketRole.SUB) {
-            throw new IllegalArgumentException(
-              "unsupported Discovery socket role: " + role);
+    private static int boundedCount(long value, int max) {
+        if (value <= 0)
+            return 0;
+        if (value > max)
+            return max;
+        return (int) value;
+    }
+
+    private static void initMessage(MemorySegment message) {
+        int rc = NativeMsg.msgInit(message);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_msg_init");
+    }
+
+    private static byte[] readMessageBytes(MemorySegment message) {
+        int size = Math.toIntExact(NativeMsg.msgSize(message));
+        byte[] bytes = new byte[size];
+        if (size > 0) {
+            MemorySegment.copy(NativeMsg.msgData(message).reinterpret(size), 0,
+              MemorySegment.ofArray(bytes), 0, size);
         }
-    }
-
-    private void throwSocketOptionNotSupported(String optionName) {
-        throw new UnsupportedOperationException(
-          "Discovery socket option '" + optionName
-            + "' is not supported by the current core API.");
-    }
-
-    private static void retryTransient(String operation, Runnable action) {
-        ZlinkException last = null;
-        long deadlineNs = System.nanoTime() + RETRY_TIMEOUT_NS;
-        while (System.nanoTime() < deadlineNs) {
-            try {
-                action.run();
-                return;
-            } catch (ZlinkException ex) {
-                if (!isTransient(ex.errno()))
-                    throw ex;
-                last = ex;
-            }
-            sleepRetry();
-        }
-
-        if (last != null)
-            throw last;
-        throw new IllegalStateException(operation + " timed out");
-    }
-
-    private static boolean isTransient(int errno) {
-        return errno == ERRNO_EINTR || errno == ERRNO_EAGAIN
-               || errno == ERRNO_EWOULDBLOCK_WIN;
-    }
-
-    private static void sleepRetry() {
-        try {
-            Thread.sleep(RETRY_SLEEP_MS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        }
+        return bytes;
     }
 }

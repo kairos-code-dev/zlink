@@ -28,7 +28,8 @@ public sealed class test_system
         using var ctx = new Context();
         using var socket = new Socket(ctx, SocketType.Pair);
 
-        Assert.NotEqual(System.IntPtr.Zero, socket.Handle);
+        Assert.Throws<ZlinkException>(() =>
+            socket.Receive(out Message _, ReceiveFlags.DontWait));
         Assert.True(Runtime.Has("tcp") || !Runtime.Has("tcp"));
     }
 
@@ -40,6 +41,37 @@ public sealed class test_system
 
         Runtime.SleepSeconds(0);
         Runtime.Sleep(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public void atomic_counter_basic_contract()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var counter = new AtomicCounter();
+        counter.Set(3);
+
+        Assert.Equal(3, counter.Value);
+        _ = counter.Increment();
+        Assert.Equal(4, counter.Value);
+        _ = counter.Decrement();
+        Assert.Equal(3, counter.Value);
+    }
+
+    [Fact]
+    public void stopwatch_basic_contract()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var watch = new ZlinkStopwatch();
+
+        ulong intermediate = watch.Intermediate();
+        ulong elapsed = watch.Stop();
+
+        Assert.True(elapsed >= intermediate);
+        Assert.Throws<ObjectDisposedException>(() => watch.Intermediate());
     }
 
     [Fact]

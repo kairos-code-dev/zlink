@@ -3,32 +3,26 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.PeerInfo;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketOption;
+import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ZlinkException;
-import dev.kairoscode.zlink.options.SocketOptionKey;
-import dev.kairoscode.zlink.options.SocketOptionValueType;
-import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
+import dev.kairoscode.zlink.service.discovery.Discovery;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+/** Lifecycle and topology facade for the current unified spot node model. */
 public final class SpotNode implements AutoCloseable {
     private MemorySegment handle;
-    private Arena sockOptArena = Arena.ofShared();
-    private MemorySegment sockOptScratch = MemorySegment.NULL;
-    private int sockOptScratchCapacity = 16;
 
+    /** Creates a spot node owned by the supplied context. */
     public SpotNode(Context ctx) {
+        Objects.requireNonNull(ctx, "ctx");
         this.handle = Native.spotNodeNew(ctx.handle());
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError("zlink_spot_node_new");
@@ -38,222 +32,123 @@ public final class SpotNode implements AutoCloseable {
         return handle;
     }
 
+    /** Binds the local spot node endpoint. */
     public void bind(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeBind(handle, NativeHelpers.toCString(arena, endpoint));
+            int rc = Native.spotNodeBind(handle, NativeHelpers.toCString(arena,
+              endpoint));
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_spot_node_bind");
         }
     }
 
-    public void connectPeerPub(String peerPubEndpoint) {
+    /** Connects one peer spot node endpoint. */
+    public void connectPeer(String peerEndpoint) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeConnectPeer(handle, NativeHelpers.toCString(arena, peerPubEndpoint));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_connect_peer_pub");
-        }
-    }
-
-    public void disconnectPeerPub(String peerPubEndpoint) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeDisconnectPeer(handle, NativeHelpers.toCString(arena, peerPubEndpoint));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_disconnect_peer_pub");
-        }
-    }
-
-    public void register(String serviceName, String advertiseEndpoint) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeRegister(handle,
-                NativeHelpers.toCString(arena, serviceName),
-                NativeHelpers.toCString(arena, advertiseEndpoint));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_register");
-        }
-    }
-
-    public void unregister(String serviceName) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeUnregister(handle, NativeHelpers.toCString(arena, serviceName));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_unregister");
-        }
-    }
-
-    public void setDiscovery(Discovery discovery, String serviceName) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeSetDiscovery(handle, discovery.handle(),
-                NativeHelpers.toCString(arena, serviceName));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_set_discovery");
-        }
-    }
-
-    public void setTlsServer(String cert, String key) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeSetTlsServer(handle,
-                NativeHelpers.toCString(arena, cert),
-                NativeHelpers.toCString(arena, key));
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_set_tls_server");
-        }
-    }
-
-    public void setTlsClient(String caCert, String hostname, int trustSystem) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeSetTlsClient(handle,
-                NativeHelpers.toCString(arena, caCert),
-                NativeHelpers.toCString(arena, hostname), trustSystem);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_set_tls_client");
-        }
-    }
-
-    public void setSockOpt(SpotNodeSocketRole role, SocketOption option, byte[] value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        Objects.requireNonNull(value, "value");
-        setSockOptBytes(role.getValue(), option.getValue(), value, 0,
-            value.length);
-    }
-
-    public void setSockOpt(SpotNodeSocketRole role, SocketOption option, int value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        setSockOptInt(role.getValue(), option.getValue(), value);
-    }
-
-    public void setSockOpt(SpotNodeOption option, int value) {
-        Objects.requireNonNull(option, "option");
-        setSockOptPubInt(option.getValue(), value);
-    }
-
-    public void setOption(SpotNodeSocketRole role,
-                          SocketOptionKey<Integer> option,
-                          int value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.INT32);
-        option.requireWritable();
-        setSockOptInt(role.getValue(), option.optionId(), value);
-    }
-
-    public void setOption(SpotNodeSocketRole role,
-                          SocketOptionKey<Long> option,
-                          long value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.INT64);
-        option.requireWritable();
-        setSockOptLong(role.getValue(), option.optionId(), value);
-    }
-
-    public void setOption(SpotNodeSocketRole role,
-                          SocketOptionKey<String> option,
-                          String value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.STRING);
-        option.requireWritable();
-        byte[] utf8 = Objects.requireNonNull(value, "value").getBytes(
-          StandardCharsets.UTF_8);
-        setSockOptBytes(role.getValue(), option.optionId(), utf8, 0,
-            utf8.length);
-    }
-
-    public void setOption(SpotNodeSocketRole role,
-                          SocketOptionKey<byte[]> option,
-                          byte[] value) {
-        Objects.requireNonNull(role, "role");
-        Objects.requireNonNull(option, "option");
-        validateOptionType(option, SocketOptionValueType.BYTES);
-        option.requireWritable();
-        Objects.requireNonNull(value, "value");
-        setSockOptBytes(role.getValue(), option.optionId(), value, 0,
-            value.length);
-    }
-
-    public Socket pubSocket() {
-        MemorySegment sock = Native.spotNodeDefaultPub(handle);
-        if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_default_pub");
-        return Socket.adopt(sock, false);
-    }
-
-    public Socket subSocket() {
-        MemorySegment sock = Native.spotNodeDefaultSub(handle);
-        if (sock == null || sock.address() == 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_default_sub");
-        return Socket.adopt(sock, false);
-    }
-
-    public List<PeerInfo> pubPeers() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            count.set(ValueLayout.JAVA_LONG, 0, 0L);
-            MemorySegment pub = Native.spotNodeDefaultPub(handle);
-            int rc = Native.spotPubPeers(pub, MemorySegment.NULL, count);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_pub_peers");
-            long available = count.get(ValueLayout.JAVA_LONG, 0);
-            if (available <= 0)
-                return Collections.emptyList();
-
-            MemorySegment peersMem = arena.allocate(NativeLayouts.PEER_INFO_LAYOUT,
-              available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotPubPeers(pub, peersMem, count);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_pub_peers");
-
-            long actualLong = count.get(ValueLayout.JAVA_LONG, 0);
-            if (actualLong < 0)
-                actualLong = 0;
-            if (actualLong > available)
-                actualLong = available;
-            int actual = (int) actualLong;
-            long stride = NativeLayouts.PEER_INFO_LAYOUT.byteSize();
-            ArrayList<PeerInfo> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(PeerInfo.fromNative(peersMem.asSlice((long) i * stride,
-                  stride)));
+            int rc = Native.spotNodeConnectPeer(handle,
+              NativeHelpers.toCString(arena, peerEndpoint));
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_connect_peer");
             }
-            return out;
         }
     }
 
-    public List<PeerInfo> subPeers() {
+    /** Disconnects one peer spot node endpoint. */
+    public void disconnectPeer(String peerEndpoint) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            count.set(ValueLayout.JAVA_LONG, 0, 0L);
-            MemorySegment sub = Native.spotNodeDefaultSub(handle);
-            int rc = Native.spotSubPeers(sub, MemorySegment.NULL, count);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_sub_peers");
-            long available = count.get(ValueLayout.JAVA_LONG, 0);
-            if (available <= 0)
-                return Collections.emptyList();
-
-            MemorySegment peersMem = arena.allocate(NativeLayouts.PEER_INFO_LAYOUT,
-              available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotSubPeers(sub, peersMem, count);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_sub_peers");
-
-            long actualLong = count.get(ValueLayout.JAVA_LONG, 0);
-            if (actualLong < 0)
-                actualLong = 0;
-            if (actualLong > available)
-                actualLong = available;
-            int actual = (int) actualLong;
-            long stride = NativeLayouts.PEER_INFO_LAYOUT.byteSize();
-            ArrayList<PeerInfo> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(PeerInfo.fromNative(peersMem.asSlice((long) i * stride,
-                  stride)));
+            int rc = Native.spotNodeDisconnectPeer(handle,
+              NativeHelpers.toCString(arena, peerEndpoint));
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_disconnect_peer");
             }
-            return out;
+        }
+    }
+
+    /** Attaches a fixed-service discovery view to the node. */
+    public void attachDiscovery(Discovery discovery) {
+        Objects.requireNonNull(discovery, "discovery");
+        int rc = Native.spotNodeAttachDiscovery(handle, discovery.handle());
+        if (rc != 0) {
+            throw ZlinkException.fromLastError(
+              "zlink_spot_node_attach_discovery");
+        }
+    }
+
+    /** Opens a service monitor for the spot node handle. */
+    public ServiceMonitor monitorOpen(int events) {
+        MemorySegment monitor = Native.serviceMonitorOpen(handle, events);
+        if (monitor == null || monitor.address() == 0) {
+            throw ZlinkException.fromLastError("zlink_service_monitor_open");
+        }
+        return new ServiceMonitor(monitor);
+    }
+
+    /** Returns the current node status snapshot. */
+    public SpotNodeStatus statusSnapshot() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(NativeLayouts.SPOT_NODE_STATUS_LAYOUT);
+            int rc = Native.spotNodeStatusSnapshot(handle, out);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_status_snapshot");
+            }
+            return SpotNodeStatus.fromNative(out);
+        }
+    }
+
+    /** Returns the current peer snapshot. */
+    public List<SpotNodePeerEntry> peersSnapshot() {
+        return readPeerEntries(null);
+    }
+
+    /** Returns peer entries matching the supplied filter. */
+    public List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter) {
+        Objects.requireNonNull(filter, "filter");
+        return readPeerEntries(filter);
+    }
+
+    /** Returns the current subject snapshot. */
+    public List<SpotNodeSubjectEntry> subjectsSnapshot() {
+        return subjectsSnapshot(null);
+    }
+
+    /** Returns subject entries matching the supplied filter. */
+    public List<SpotNodeSubjectEntry> subjectsSnapshot(
+      SpotNodeSubjectFilter filter) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
+              : filter.toNative(arena);
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            int rc = Native.spotNodeSubjectsSnapshot(handle, nativeFilter,
+              MemorySegment.NULL, count);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_subjects_snapshot");
+            }
+            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            if (available == 0)
+                return List.of();
+            MemorySegment entries = arena.allocate(
+              NativeLayouts.SPOT_NODE_SUBJECT_ENTRY_LAYOUT, available);
+            count.set(ValueLayout.JAVA_LONG, 0, available);
+            rc = Native.spotNodeSubjectsSnapshot(handle, nativeFilter, entries,
+              count);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_subjects_snapshot");
+            }
+            int actual = Math.min(available, boundedCount(
+              count.get(ValueLayout.JAVA_LONG, 0)));
+            long stride =
+              NativeLayouts.SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteSize();
+            ArrayList<SpotNodeSubjectEntry> out = new ArrayList<>(actual);
+            for (int i = 0; i < actual; i++) {
+                out.add(SpotNodeSubjectEntry.fromNative(entries.asSlice(
+                  (long) i * stride, stride)));
+            }
+            return List.copyOf(out);
         }
     }
 
@@ -263,113 +158,53 @@ public final class SpotNode implements AutoCloseable {
             return;
         Native.spotNodeDestroy(handle);
         handle = MemorySegment.NULL;
-        closeArena(sockOptArena);
-        sockOptArena = null;
-        sockOptScratch = MemorySegment.NULL;
-        sockOptScratchCapacity = 0;
     }
 
-    private MemorySegment ensureSockOptScratch(int length) {
-        if (length <= 0)
-            return MemorySegment.NULL;
-        if (sockOptScratch.address() == 0 || sockOptScratchCapacity < length) {
-            closeArena(sockOptArena);
-            sockOptArena = Arena.ofShared();
-            sockOptScratch = sockOptArena.allocate(length);
-            sockOptScratchCapacity = length;
+    private List<SpotNodePeerEntry> readPeerEntries(SpotNodePeerFilter filter) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
+              : filter.toNative(arena);
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            int rc = filter == null
+              ? Native.spotNodePeersSnapshot(handle, MemorySegment.NULL, count)
+              : Native.spotNodePeersQuery(handle, nativeFilter,
+                MemorySegment.NULL, count);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(filter == null
+                  ? "zlink_spot_node_peers_snapshot"
+                  : "zlink_spot_node_peers_query");
+            }
+            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            if (available == 0)
+                return List.of();
+            MemorySegment entries = arena.allocate(
+              NativeLayouts.SPOT_NODE_PEER_ENTRY_LAYOUT, available);
+            count.set(ValueLayout.JAVA_LONG, 0, available);
+            rc = filter == null
+              ? Native.spotNodePeersSnapshot(handle, entries, count)
+              : Native.spotNodePeersQuery(handle, nativeFilter, entries, count);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(filter == null
+                  ? "zlink_spot_node_peers_snapshot"
+                  : "zlink_spot_node_peers_query");
+            }
+            int actual = Math.min(available, boundedCount(
+              count.get(ValueLayout.JAVA_LONG, 0)));
+            long stride = NativeLayouts.SPOT_NODE_PEER_ENTRY_LAYOUT.byteSize();
+            ArrayList<SpotNodePeerEntry> out = new ArrayList<>(actual);
+            for (int i = 0; i < actual; i++) {
+                out.add(SpotNodePeerEntry.fromNative(entries.asSlice(
+                  (long) i * stride, stride)));
+            }
+            return List.copyOf(out);
         }
-        return sockOptScratch.asSlice(0, length);
     }
 
-    private static void validateOptionType(SocketOptionKey<?> option,
-                                           SocketOptionValueType expected) {
-        if (option.valueType() != expected) {
-            throw new IllegalArgumentException(
-              option.name() + " expects " + option.valueType()
-                + ", not " + expected);
-        }
-    }
-
-    private void setSockOptRaw(int role, int optionId, MemorySegment value,
-                               long len) {
-        int rc;
-        if (role == SpotNodeSocketRole.PUB.getValue()) {
-            rc = Native.spotNodeSetPubOption(handle, mapPubOption(optionId),
-              value, len);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_set_pub_option");
-            return;
-        }
-        if (role == SpotNodeSocketRole.SUB.getValue()) {
-            rc = Native.spotNodeSetSubOption(handle, mapSubOption(optionId),
-              value, len);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_set_sub_option");
-            return;
-        }
-        throw new UnsupportedOperationException(
-          "Node-level generic socket options are not supported.");
-    }
-
-    private void setSockOptBytes(int role, int optionId, byte[] value,
-                                 int offset, int length) {
-        MemorySegment buf = length == 0 ? MemorySegment.NULL
-            : ensureSockOptScratch(length);
-        if (length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0,
-                length);
-        }
-        setSockOptRaw(role, optionId, buf, length);
-    }
-
-    private void setSockOptInt(int role, int optionId, int value) {
-        MemorySegment buf = ensureSockOptScratch(Integer.BYTES);
-        buf.set(ValueLayout.JAVA_INT, 0, value);
-        setSockOptRaw(role, optionId, buf, Integer.BYTES);
-    }
-
-    private void setSockOptLong(int role, int optionId, long value) {
-        MemorySegment buf = ensureSockOptScratch(Long.BYTES);
-        buf.set(ValueLayout.JAVA_LONG, 0, value);
-        setSockOptRaw(role, optionId, buf, Long.BYTES);
-    }
-
-    private void setSockOptPubInt(int optionId, int value) {
-        MemorySegment buf = ensureSockOptScratch(Integer.BYTES);
-        buf.set(ValueLayout.JAVA_INT, 0, value);
-        int rc = Native.spotNodeSetPubOption(handle, optionId, buf,
-          Integer.BYTES);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_set_pub_option");
-    }
-
-    private static void closeArena(Arena arena) {
-        if (arena != null && arena.scope().isAlive())
-            arena.close();
-    }
-
-    private static int mapPubOption(int optionId) {
-        return switch (optionId) {
-            case 23 -> 1;
-            case 28 -> 2;
-            case 17 -> 3;
-            case 69 -> 4;
-            case 11 -> 8;
-            case 12 -> 9;
-            default -> throw new IllegalArgumentException(
-              "unsupported Spot PUB socket option: " + optionId);
-        };
-    }
-
-    private static int mapSubOption(int optionId) {
-        return switch (optionId) {
-            case 24 -> 1;
-            case 27 -> 2;
-            case 17 -> 3;
-            case 11 -> 6;
-            case 12 -> 7;
-            default -> throw new IllegalArgumentException(
-              "unsupported Spot SUB socket option: " + optionId);
-        };
+    private static int boundedCount(long value) {
+        if (value <= 0)
+            return 0;
+        if (value > Integer.MAX_VALUE)
+            return Integer.MAX_VALUE;
+        return (int) value;
     }
 }

@@ -6,14 +6,14 @@ namespace Zlink;
 
 public enum SocketType
 {
-    Pair = 0,
-    Pub = 1,
-    Sub = 2,
-    Dealer = 5,
-    Router = 6,
-    XPub = 9,
-    XSub = 10,
-    Stream = 11
+    Pair = 0x1001,
+    Pub = 0x1002,
+    Sub = 0x1003,
+    Dealer = 0x1004,
+    Router = 0x1005,
+    XPub = 0x1006,
+    XSub = 0x1007,
+    Stream = 0x1008
 }
 
 public enum ContextOption
@@ -27,76 +27,78 @@ public enum ContextOption
     MsgTSize = 6,
     ThreadAffinityCpuAdd = 7,
     ThreadAffinityCpuRemove = 8,
-    ThreadNamePrefix = 9
+    ThreadNamePrefix = 9,
+    Blocky = 10
 }
 
 public enum SocketOption
 {
-    Affinity = 4,
-    RoutingId = 5,
-    Subscribe = 6,
-    Unsubscribe = 7,
-    Rate = 8,
-    RecoveryIvl = 9,
-    SndBuf = 11,
-    RcvBuf = 12,
-    RcvMore = 13,
-    Fd = 14,
-    Events = 15,
-    Type = 16,
-    Linger = 17,
-    ReconnectIvl = 18,
-    Backlog = 19,
-    ReconnectIvlMax = 21,
-    MaxMsgSize = 22,
-    SndHwm = 23,
-    RcvHwm = 24,
-    MulticastHops = 25,
-    RcvTimeo = 27,
-    SndTimeo = 28,
-    LastEndpoint = 32,
-    RouterMandatory = 33,
-    TcpKeepalive = 34,
-    TcpKeepaliveCnt = 35,
-    TcpKeepaliveIdle = 36,
-    TcpKeepaliveIntvl = 37,
-    TcpNoDelay = 118,
-    Immediate = 39,
-    XPubVerbose = 40,
-    Ipv6 = 42,
-    ProbeRouter = 51,
-    Conflate = 54,
-    RouterHandover = 56,
-    Tos = 57,
-    ConnectRoutingId = 61,
-    HandshakeIvl = 66,
-    XPubNoDrop = 69,
-    Blocky = 70,
-    XPubManual = 71,
-    XPubWelcomeMsg = 72,
-    StreamNotify = 73,
-    InvertMatching = 74,
-    HeartbeatIvl = 75,
-    HeartbeatTtl = 76,
-    HeartbeatTimeout = 77,
-    XPubVerboser = 78,
-    ConnectTimeout = 79,
-    TcpMaxRt = 80,
-    MulticastMaxTpdu = 84,
-    UseFd = 89,
-    BindToDevice = 92,
-    TlsCert = 95,
-    TlsKey = 96,
-    TlsCa = 97,
-    TlsVerify = 98,
-    TlsRequireClientCert = 99,
-    TlsHostname = 100,
-    TlsTrustSystem = 101,
-    TlsPassword = 102,
-    XPubManualLastValue = 98,
-    OnlyFirstSubscribe = 108,
-    TopicsCount = 116,
-    ZmpMetadata = 117
+    RoutingId = 0x7F000001,
+    Subscribe = 0x7F000002,
+    Unsubscribe = 0x7F000003,
+    Affinity = 0x3001,
+    Rate = 0x3003,
+    RecoveryIvl = 0x3004,
+    SndBuf = 0x3005,
+    RcvBuf = 0x3006,
+    RcvMore = 0x7F000004,
+    Fd = 0x3007,
+    Events = 0x3008,
+    Type = 0x3009,
+    Linger = 0x300A,
+    ReconnectIvl = 0x300B,
+    Backlog = 0x300C,
+    ReconnectIvlMax = 0x300D,
+    MaxMsgSize = 0x300E,
+    SndHwm = 0x300F,
+    RcvHwm = 0x3010,
+    MulticastHops = 0x3011,
+    RcvTimeo = 0x3012,
+    SndTimeo = 0x3013,
+    LastEndpoint = 0x3014,
+    TcpKeepalive = 0x3015,
+    TcpKeepaliveCnt = 0x3016,
+    TcpKeepaliveIdle = 0x3017,
+    TcpKeepaliveIntvl = 0x3018,
+    Immediate = 0x3019,
+    Ipv6 = 0x301A,
+    Conflate = 0x301B,
+    Tos = 0x301C,
+    HandshakeIvl = 0x301D,
+    Blocky = 0x301E,
+    InvertMatching = 0x3020,
+    HeartbeatIvl = 0x3021,
+    HeartbeatTtl = 0x3022,
+    HeartbeatTimeout = 0x3023,
+    ConnectTimeout = 0x3024,
+    TcpMaxRt = 0x3025,
+    MulticastMaxTpdu = 0x3026,
+    BindToDevice = 0x3027,
+    TlsCert = 0x3028,
+    TlsKey = 0x3029,
+    TlsCa = 0x302A,
+    TlsVerify = 0x302B,
+    TlsRequireClientCert = 0x302C,
+    TlsHostname = 0x302D,
+    TlsTrustSystem = 0x302E,
+    TlsPassword = 0x302F,
+    ZmpMetadata = 0x3030,
+    TcpNoDelay = 0x3031,
+    RouterMandatory = 0x3101,
+    RouterHandover = 0x3102,
+    ProbeRouter = 0x3103,
+    ConnectRoutingId = 0x3104,
+    XPubVerbose = 0x3301,
+    XPubVerboser = 0x3302,
+    XPubManual = 0x3303,
+    XPubManualLastValue = 0x3304,
+    XPubNoDrop = 0x3305,
+    XPubWelcomeMsg = 0x3306,
+    TopicsCount = 0x3307,
+    StreamNotify = 0x3501
+    ,
+    UseFd = 0x7F000005,
+    OnlyFirstSubscribe = 0x7F000006
 }
 
 [Flags]
@@ -119,6 +121,7 @@ public enum ErrorCode
     None = 0,
     Unknown = -1,
 
+    EBusy = 16,
     EIntr = 4,
     EAgain = 11,
     EBadf = 9,
@@ -144,6 +147,7 @@ public enum ErrorCode
     EConnRefused = 111,
     EHostUnreach = 113,
     EInProgress = 115,
+    EShutdown = 108,
 
     Efsm = 156384763,
     EnoCompatProto = 156384764,
@@ -185,6 +189,32 @@ public enum DisconnectReason
     CtxTerm = 5
 }
 
+public enum MonitorSourceKind
+{
+    Socket = 1,
+    SpotPub = 3,
+    SpotSub = 4
+}
+
+[Flags]
+public enum MonitorState
+{
+    None = 0,
+    Ready = 1 << 0,
+    BoundReady = 1 << 1,
+    SendReady = 1 << 2,
+    Closed = 1 << 3
+}
+
+[Flags]
+public enum MonitorSnapshotDetail
+{
+    None = 0,
+    ReadyCount = 1 << 0,
+    SendPendingMessages = 1 << 1,
+    ReceivePendingMessages = 1 << 2
+}
+
 [Flags]
 public enum PollEvents
 {
@@ -200,17 +230,6 @@ public enum RegistrySocketRole
     Pub = 1,
     Router = 2,
     PeerSub = 3
-}
-
-public enum DiscoverySocketRole
-{
-    Sub = 1
-}
-
-public enum ReceiverSocketRole
-{
-    Router = 1,
-    Dealer = 2
 }
 
 public enum SpotNodeSocketRole

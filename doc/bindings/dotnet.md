@@ -4,9 +4,11 @@
 
 ## 1. Overview
 
-- **LibraryImport** (.NET 8+, source-generated P/Invoke)
-- Resource management based on SafeHandle
-- Span<byte> support
+- .NET 8+ binding
+- Aligned to the current `core/include/zlink.h` public contract
+- Raw sockets use `Message`-centric `Send` / `Receive` overloads
+- Socket and service monitors are split
+- Service APIs are centered on `Registry`, `Discovery`, `SpotNode`, and `Spot`
 
 ## 2. Main Classes
 
@@ -14,59 +16,91 @@
 |-------|-------------|
 | `Context` | Context (IDisposable) |
 | `Socket` | Socket (IDisposable) |
-| `Message` | Message |
+| `Message` | Payload convenience and ownership boundary |
 | `Poller` | Event poller |
-| `Monitor` | Monitoring |
-| `ServiceDiscovery` | Service discovery |
-| `Spot` | SPOT PUB/SUB |
+| `SocketMonitor` | Raw socket monitor |
+| `Registry` | Registry bind and topology query |
+| `Discovery` | Service view, metadata, and member peer query |
+| `ServiceMonitor` | Discovery / SPOT monitor |
+| `SpotNode` | Topology and discovery attach |
+| `Spot` | Unified SPOT publish / subscribe facade |
 
 ## 3. Basic Example
 
 ```csharp
 using var ctx = new Context();
 using var server = new Socket(ctx, SocketType.Pair);
-server.Bind("tcp://*:5555");
-
 using var client = new Socket(ctx, SocketType.Pair);
-client.Connect("tcp://127.0.0.1:5555");
 
-client.Send(Encoding.UTF8.GetBytes("Hello"));
+server.Bind("inproc://pair-example");
+client.Connect("inproc://pair-example");
 
-byte[] reply = server.Recv();
-Console.WriteLine(Encoding.UTF8.GetString(reply));
+using var request = Message.FromString("hello");
+client.Send(request);
+
+server.Receive(out Message received);
+using (received)
+{
+    Console.WriteLine(received.GetString());
+}
 ```
 
-## 4. NuGet Package
+## 4. Samples
 
-Platform-specific native libraries in the `runtimes/` directory:
-- `runtimes/linux-x64/native/libzlink.so`
-- `runtimes/osx-arm64/native/libzlink.dylib`
-- `runtimes/win-x64/native/zlink.dll`
+- Sample solution: `bindings/dotnet/samples/Zlink.Samples.sln`
+- Run-all scripts:
+  - `bindings/dotnet/samples/run_samples.sh`
+  - `bindings/dotnet/samples/run_samples.ps1`
+- Representative samples:
+  - `PairRecv`, `PairCallback`
+  - `PubSubRecv`, `PubSubCallback`
+  - `DealerRouterRecv`, `DealerRouterCallback`
+  - `StreamRecv`, `StreamCallback`
+  - `SpotRecv`, `SpotCallback`
+  - `RegistryDiscoveryMonitor`
 
-## 5. Testing
+## 5. STREAM API
 
-Uses the xUnit framework: `bindings/dotnet/tests/`
+STREAM-specific public names were removed. The current contract is:
 
-## 6. STREAM Callback API
+- direct recv:
+  - `Receive(out string routingId, out Message message)`
+- callback mode:
+  - `AttachStreamRaw(StreamPacketHandler handler)`
+  - `DetachStream()`
+- directed send:
+  - `Send(string routingId, Message message, SendFlags flags = SendFlags.None)`
 
-`Socket` provides STREAM callback helpers:
-- `AttachStream(StreamPacketsHandler handler, StreamDispatchMode mode = StreamDispatchMode.None)`
-- `DetachStream()`
-- `StreamPeerRoutingId(int index = 0)`
-- `StreamSend(ReadOnlySpan<byte> routingId, ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)`
-
-Mode rules:
-- While attached, consume STREAM payloads in the callback.
-- Do not mix `Receive()`/`TryReceive()` for STREAM payload consumption while attached.
-- After `DetachStream()`, you can return to normal receive calls.
+Do not mix callback mode with direct STREAM receive consumption.
 
 ```csharp
 using var stream = new Socket(ctx, SocketType.Stream);
 
-stream.AttachStream((rid, payload) =>
+stream.AttachStreamRaw((routingId, payload) =>
 {
-    var copy = payload.ToArray();   // explicit copy before echo
-    stream.StreamSend(rid, copy, SendFlags.None);
+    stream.Send(routingId, payload, SendFlags.None);
     return 0;
-}, StreamDispatchMode.Len32Be);
+});
 ```
+
+## 6. Testing
+
+- Contract tests: `bindings/dotnet/tests/Zlink.Tests/`
+- Full run:
+  - `dotnet test /home/hep7/project/kairos/zlink/bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj`
+
+## 7. Migration Notes
+
+Breaking changes summary:
+
+1. `Receiver`, `Timers`, and `AttachStreamLen32Be` were removed.
+2. Raw socket send/recv now converge on `Message`-centric `Send` /
+   `Receive` overloads instead of byte-array helpers.
+3. Topic paths are expressed as `Publish` / `Subscribe` /
+   `SubscribeHandler`.
+4. Monitoring is split into `SocketMonitor` and `ServiceMonitor`.
+5. After discovery attach, the discovery instance owns the socket lifecycle.
+   Manual `Connect` / `Disconnect` / `Unbind` / close operations fail while
+   attached.
+
+NuGet packages include native runtimes under `runtimes/`.

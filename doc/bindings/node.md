@@ -22,16 +22,16 @@ The appropriate prebuild is automatically selected. Platforms without a prebuild
 const zlink = require('zlink');
 
 const ctx = new zlink.Context();
-const server = ctx.socket(zlink.PAIR);
+const server = new zlink.Socket(ctx, zlink.SocketType.PAIR);
 server.bind('tcp://*:5555');
 
-const client = ctx.socket(zlink.PAIR);
+const client = new zlink.Socket(ctx, zlink.SocketType.PAIR);
 client.connect('tcp://127.0.0.1:5555');
 
-client.send(Buffer.from('Hello'));
+client.send(zlink.Message.copyOf('Hello'));
 
-const reply = server.recv();
-console.log(reply.toString());
+const received = server.recv();
+console.log(received.parts[0].toString());
 
 client.close();
 server.close();
@@ -41,40 +41,69 @@ ctx.close();
 ## 4. TypeScript
 
 ```typescript
-import { Context, PAIR } from 'zlink';
+import { Context, Message, Socket, SocketType } from 'zlink';
 
 const ctx = new Context();
-const socket = ctx.socket(PAIR);
+const socket = new Socket(ctx, SocketType.PAIR);
+socket.send(Message.copyOf('ping'));
 ```
 
 Type definitions: `src/index.d.ts`
 
-## 5. Discovery/Gateway/Spot
+## 5. Canonical Raw Socket Surface
 
 ```javascript
-const discovery = new zlink.Discovery(ctx);
-discovery.connectRegistry('tcp://registry:5550');
-discovery.subscribe('payment-service');
+const received = socket.recv();
+for (const part of received.parts) {
+  console.log(part);
+}
 
-const gateway = new zlink.Gateway(ctx, discovery);
+const scratch = Buffer.alloc(1024);
+const bytes = socket.recvInto(scratch);
+console.log(bytes);
 ```
 
-## 6. Prebuilds
+`Socket` canonical methods:
+- `send(message, flags?)`
+- `sendParts(parts, flags?)`
+- `recv(flags?)`
+- `recvInto(buffer, flags?)`
+
+`Message.copyOf()` and `Message.wrap()` make the copy/borrow boundary explicit.
+
+## 6. Service Surface
+
+Aligned service entry points:
+- `new Discovery(ctx, serviceType, serviceName)`
+- `Registry.bind(pubEndpoint, routerEndpoint)`
+- `new RegistryQueryClient(ctx)`
+- `new Spot(ctx)`
+- `new SpotNode(ctx)`
+
+`Receiver` is removed from the aligned public API.
+`Discovery` requires a non-empty `serviceName`.
+`Registry.bind()` maps directly to the native bind lifecycle and replaces legacy
+`setEndpoints()` / `start()`.
+`Registry.setSockOpt()` and `SpotNode.setDiscovery()` are compatibility leftovers
+that are intentionally rejected on the aligned public API.
+
+## 7. Prebuilds
 
 Platform-specific binaries in the `prebuilds/` directory:
 - `linux-x64/`, `linux-arm64/`
 - `darwin-x64/`, `darwin-arm64/`
 - `win32-x64/`
 
-## 7. Testing
+## 8. Testing
 
 ```bash
 cd bindings/node && npm test
+cd bindings/node && node --test tests/*.test.js
 ```
 
 Uses the node:test framework.
 
-## 8. STREAM Callback API
+## 9. STREAM Callback API
 
 `Socket` STREAM helpers:
 - `streamAttach((routingId, packets) => { ... }, mode?)`
@@ -82,20 +111,7 @@ Uses the node:test framework.
 - `streamPeerRoutingId(index?)`
 - `streamSend(routingId, payload, flags?)`
 - Legacy `streamEchoStart/Stop` and `streamSinkStart/Stop` APIs were removed.
-
-`mode` uses `StreamDispatchMode.NONE` or `StreamDispatchMode.LEN32BE`.
-
-Mode rules:
-- While attached, consume STREAM payloads in the callback.
-- Do not mix `recv()` for STREAM payload consumption while attached.
-- After `streamDetach()`, normal `recv()` use is available again.
-
-```javascript
-stream.streamAttach((routingId, packets) => {
-  for (const packet of packets) {
-    const copy = Buffer.from(packet);   // explicit copy before echo
-    stream.streamSend(routingId, copy, zlink.SendFlag.NONE);
-  }
-  return 0;
-}, zlink.StreamDispatchMode.LEN32BE);
-```
+- The aligned surface keeps these names, but the native lifecycle rework is still
+  in progress and unsupported paths currently throw.
+- `streamDetach()` is a safe no-op cleanup boundary even when `streamAttach()`
+  throws.

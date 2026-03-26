@@ -143,14 +143,17 @@ public final class LibraryLoader {
             buildDir = "darwin-x64";
 
         Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath();
-        Path[] roots = new Path[] {cwd, cwd.getParent(), cwd.getParent() != null ? cwd.getParent().getParent() : null};
-        for (Path root : roots) {
-            if (root == null)
-                continue;
-            Path candidate = root.resolve("core").resolve("build")
-                .resolve(buildDir).resolve("lib").resolve(libFile).normalize();
-            if (Files.exists(candidate))
-                return candidate;
+        for (Path root = cwd; root != null; root = root.getParent()) {
+            Path[] candidates = new Path[] {
+                    root.resolve("core").resolve("build").resolve("lib")
+                        .resolve(libFile).normalize(),
+                    root.resolve("core").resolve("build").resolve(buildDir)
+                        .resolve("lib").resolve(libFile).normalize()
+            };
+            for (Path candidate : candidates) {
+                if (Files.exists(candidate))
+                    return candidate;
+            }
         }
         return null;
     }

@@ -7,14 +7,14 @@ class EnumValueTests(unittest.TestCase):
     """Verify enum values match C header #define constants."""
 
     def test_socket_type_values(self):
-        self.assertEqual(int(zlink.SocketType.PAIR), 0)
-        self.assertEqual(int(zlink.SocketType.PUB), 1)
-        self.assertEqual(int(zlink.SocketType.SUB), 2)
-        self.assertEqual(int(zlink.SocketType.DEALER), 5)
-        self.assertEqual(int(zlink.SocketType.ROUTER), 6)
-        self.assertEqual(int(zlink.SocketType.XPUB), 9)
-        self.assertEqual(int(zlink.SocketType.XSUB), 10)
-        self.assertEqual(int(zlink.SocketType.STREAM), 11)
+        self.assertEqual(int(zlink.SocketType.PAIR), 0x1001)
+        self.assertEqual(int(zlink.SocketType.PUB), 0x1002)
+        self.assertEqual(int(zlink.SocketType.SUB), 0x1003)
+        self.assertEqual(int(zlink.SocketType.DEALER), 0x1004)
+        self.assertEqual(int(zlink.SocketType.ROUTER), 0x1005)
+        self.assertEqual(int(zlink.SocketType.XPUB), 0x1006)
+        self.assertEqual(int(zlink.SocketType.XSUB), 0x1007)
+        self.assertEqual(int(zlink.SocketType.STREAM), 0x1008)
 
     def test_context_option_values(self):
         self.assertEqual(int(zlink.ContextOption.IO_THREADS), 1)
@@ -23,13 +23,17 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ContextOption.THREAD_NAME_PREFIX), 9)
 
     def test_socket_option_values(self):
-        self.assertEqual(int(zlink.SocketOption.LINGER), 17)
-        self.assertEqual(int(zlink.SocketOption.SNDHWM), 23)
-        self.assertEqual(int(zlink.SocketOption.RCVHWM), 24)
+        self.assertEqual(int(zlink.SocketOption.LINGER), 0x300A)
+        self.assertEqual(int(zlink.SocketOption.SNDHWM), 0x300F)
+        self.assertEqual(int(zlink.SocketOption.RCVHWM), 0x3010)
+        self.assertEqual(int(zlink.SocketOption.TLS_CERT), 0x3028)
+        self.assertEqual(int(zlink.SocketOption.TLS_PASSWORD), 0x302F)
+        self.assertEqual(int(zlink.SocketOption.ZMP_METADATA), 0x3030)
+
+    def test_legacy_socket_option_aliases(self):
+        self.assertEqual(int(zlink.SocketOption.ROUTING_ID), 5)
         self.assertEqual(int(zlink.SocketOption.SUBSCRIBE), 6)
-        self.assertEqual(int(zlink.SocketOption.TLS_CERT), 95)
-        self.assertEqual(int(zlink.SocketOption.TLS_PASSWORD), 102)
-        self.assertEqual(int(zlink.SocketOption.ZMP_METADATA), 117)
+        self.assertEqual(int(zlink.SocketOption.UNSUBSCRIBE), 7)
 
     def test_send_flag_values(self):
         self.assertEqual(int(zlink.SendFlag.NONE), 0)
@@ -67,16 +71,13 @@ class EnumValueTests(unittest.TestCase):
         )
 
     def test_service_type_values(self):
-        self.assertEqual(int(zlink.ServiceType.SPOT), 2)
+        self.assertEqual(int(zlink.ServiceType.SPOT), 0x3002)
+        self.assertEqual(int(zlink.ServiceType.SOCKET), 0x3003)
 
     def test_registry_socket_role_values(self):
         self.assertEqual(int(zlink.RegistrySocketRole.PUB), 1)
         self.assertEqual(int(zlink.RegistrySocketRole.ROUTER), 2)
         self.assertEqual(int(zlink.RegistrySocketRole.PEER_SUB), 3)
-
-    def test_receiver_socket_role_values(self):
-        self.assertEqual(int(zlink.ReceiverSocketRole.ROUTER), 1)
-        self.assertEqual(int(zlink.ReceiverSocketRole.DEALER), 2)
 
     def test_spot_node_socket_role_values(self):
         self.assertEqual(int(zlink.SpotNodeSocketRole.NODE), 0)
@@ -133,13 +134,13 @@ class BackwardCompatTests(unittest.TestCase):
     """Verify backward-compatible aliases work."""
 
     def test_service_type_aliases(self):
-        self.assertEqual(zlink.SERVICE_TYPE_SPOT, 2)
+        self.assertEqual(zlink.SERVICE_TYPE_SPOT, 0x3002)
         self.assertEqual(zlink.SERVICE_TYPE_SPOT, zlink.ServiceType.SPOT)
 
     def test_enum_usable_as_int_parameter(self):
         """IntEnum values can be passed wherever int is expected."""
-        self.assertEqual(zlink.SocketType.PAIR + 1, 1)
-        self.assertEqual(zlink.SocketOption.LINGER * 2, 34)
+        self.assertEqual(zlink.SocketType.PAIR + 1, 0x1002)
+        self.assertEqual(zlink.SocketOption.LINGER * 2, 0x6014)
 
 
 class SocketCreationTests(unittest.TestCase):

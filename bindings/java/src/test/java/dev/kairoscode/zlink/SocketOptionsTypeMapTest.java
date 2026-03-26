@@ -15,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 public class SocketOptionsTypeMapTest {
+    private static final Set<Integer> COMPATIBILITY_ONLY_OPTION_IDS = Set.of(
+      SocketOption.SUBSCRIBE.getValue(),
+      SocketOption.UNSUBSCRIBE.getValue(),
+      SocketOption.RCVMORE.getValue()
+    );
+
     @Test
     public void catalogCoversSocketOptionEnum() {
         List<SocketOptionKey<?>> keys = SocketOptions.all();
@@ -33,6 +39,8 @@ public class SocketOptionsTypeMapTest {
         }
 
         for (SocketOption option : SocketOption.values()) {
+            if (COMPATIBILITY_ONLY_OPTION_IDS.contains(option.getValue()))
+                continue;
             assertTrue(idCounts.containsKey(option.getValue()),
                 "missing mapping for enum option: " + option.name());
         }
@@ -66,11 +74,6 @@ public class SocketOptionsTypeMapTest {
             SocketOptions.CONNECT_ROUTING_ID_BYTES.valueClass());
         assertEquals(SocketOptions.CONNECT_ROUTING_ID.optionId(),
             SocketOptions.CONNECT_ROUTING_ID_BYTES.optionId());
-
-        assertEquals(String.class, SocketOptions.SUBSCRIBE.valueClass());
-        assertEquals(byte[].class, SocketOptions.SUBSCRIBE_BYTES.valueClass());
-        assertEquals(SocketOptions.SUBSCRIBE.optionId(),
-            SocketOptions.SUBSCRIBE_BYTES.optionId());
     }
 
     private static boolean isStringBytesTwin(Set<String> mapped) {

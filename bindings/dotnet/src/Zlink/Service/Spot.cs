@@ -4,6 +4,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using Zlink;
 using Zlink.Native;
@@ -18,7 +19,7 @@ public sealed class SpotNode : IDisposable
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
-        _handle = NativeMethods.zlink_spot_node_new(context.Handle, null);
+        _handle = NativeMethods.zlink_spot_node_new(context.Handle);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
     }
@@ -33,275 +34,95 @@ public sealed class SpotNode : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void ConnectPeerPub(string peerPubEndpoint)
+    public void ConnectPeer(string peerEndpoint)
     {
-        ValidateNotEmpty(peerPubEndpoint, nameof(peerPubEndpoint));
+        ValidateNotEmpty(peerEndpoint, nameof(peerEndpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_connect_peer_pub(_handle,
-            peerPubEndpoint);
+        int rc = NativeMethods.zlink_spot_node_connect_peer(_handle,
+            peerEndpoint);
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void DisconnectPeerPub(string peerPubEndpoint)
+    public void DisconnectPeer(string peerEndpoint)
     {
-        ValidateNotEmpty(peerPubEndpoint, nameof(peerPubEndpoint));
+        ValidateNotEmpty(peerEndpoint, nameof(peerEndpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_disconnect_peer_pub(_handle,
-            peerPubEndpoint);
+        int rc = NativeMethods.zlink_spot_node_disconnect_peer(_handle,
+            peerEndpoint);
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void Register(string serviceName, string advertiseEndpoint)
+    /// <summary>
+    /// Attaches this SPOT node to a discovery-owned service lifecycle.
+    /// </summary>
+    /// <remarks>
+    /// Once attached, the discovery instance becomes the lifecycle owner for
+    /// the node and is responsible for coordinated shutdown.
+    /// </remarks>
+    public void AttachDiscovery(Discovery discovery)
     {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
-        ValidateNotEmpty(advertiseEndpoint, nameof(advertiseEndpoint));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_register(_handle, serviceName,
-            advertiseEndpoint);
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    public void Unregister(string serviceName)
-    {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_unregister(_handle, serviceName);
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    public void SetDiscovery(Discovery discovery, string serviceName)
-    {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
         if (discovery == null)
             throw new ArgumentNullException(nameof(discovery));
-        int rc = NativeMethods.zlink_spot_node_set_discovery(_handle,
-            discovery.Handle, serviceName);
+        int rc = NativeMethods.zlink_spot_node_attach_discovery(_handle,
+            discovery.Handle);
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void SetTlsServer(string cert, string key)
+    public SpotNodeStatus Snapshot()
     {
-        ValidateNotEmpty(cert, nameof(cert));
-        ValidateNotEmpty(key, nameof(key));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_set_tls_server(_handle, cert,
-            key);
+        int rc = NativeMethods.zlink_spot_node_status_snapshot(_handle,
+            out var native);
         ZlinkException.ThrowIfError(rc);
+        return SpotNodeStatus.FromNative(ref native);
     }
 
-    public void SetTlsClient(string caCert, string hostname, bool trustSystem)
-    {
-        ValidateNotEmpty(caCert, nameof(caCert));
-        ValidateNotEmpty(hostname, nameof(hostname));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_set_tls_client(_handle, caCert,
-            hostname, trustSystem ? 1 : 0);
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    public void SetOption(SpotNodeSocketRole role, SocketOptionKey<int> option,
-        int value)
+    public SpotNodePeerEntry[] Peers(string? peerEndpoint = null, int? source = null,
+        int? state = null)
     {
         EnsureNotDisposed();
-        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
-        SetOptionInt32(role, option.Option, value);
-    }
-
-    public void SetOption(SpotNodeSocketRole role, SocketOptionKey<long> option,
-        long value)
-    {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
-        SetOptionInt64(role, option.Option, value);
-    }
-
-    public void SetOption(SpotNodeSocketRole role, SocketOptionKey<ulong> option,
-        ulong value)
-    {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
-        SetOptionUInt64(role, option.Option, value);
-    }
-
-    public void SetOption(SpotNodeSocketRole role, SocketOptionKey<byte[]> option,
-        byte[] value)
-    {
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
-        SetOption(role, option, value.AsSpan());
-    }
-
-    public void SetOption(SpotNodeSocketRole role, SocketOptionKey<byte[]> option,
-        ReadOnlySpan<byte> value)
-    {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
-        SetOptionBytes(role, option.Option, value);
-    }
-
-    public void SetOption(SpotNodeSocketRole role, SocketOptionKey<string> option,
-        string value)
-    {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
-        SetOptionString(role, option.Option, value);
-    }
-
-    public unsafe void SetOption(SpotNodeOption option, int value)
-    {
-        EnsureNotDisposed();
-        int tmp = value;
-        int rc = NativeMethods.zlink_spot_node_set_pub_option(_handle,
-            (int)option, (IntPtr)(&tmp),
-            (nuint)sizeof(int));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionInt32(SpotNodeSocketRole role,
-        SocketOption option, int value)
-    {
-        var native = MapSpotOption(role, option);
-        int tmp = value;
-        int rc = SetSpotOption(native, (IntPtr)(&tmp), (nuint)sizeof(int));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionInt64(SpotNodeSocketRole role,
-        SocketOption option, long value)
-    {
-        var native = MapSpotOption(role, option);
-        long tmp = value;
-        int rc = SetSpotOption(native, (IntPtr)(&tmp), (nuint)sizeof(long));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionUInt64(SpotNodeSocketRole role,
-        SocketOption option, ulong value)
-    {
-        var native = MapSpotOption(role, option);
-        ulong tmp = value;
-        int rc = SetSpotOption(native, (IntPtr)(&tmp), (nuint)sizeof(ulong));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionBytes(SpotNodeSocketRole role,
-        SocketOption option, ReadOnlySpan<byte> value)
-    {
-        var native = MapSpotOption(role, option);
-        fixed (byte* ptr = value)
+        unsafe
         {
-            int rc = SetSpotOption(native, (IntPtr)ptr, (nuint)value.Length);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkSpotNodePeerFilter filter = default;
+            IntPtr filterPtr = IntPtr.Zero;
+            if (!string.IsNullOrEmpty(peerEndpoint) || source.HasValue
+                || state.HasValue)
+            {
+                filter.Source = source ?? 0;
+                filter.State = state ?? 0;
+                if (!string.IsNullOrEmpty(peerEndpoint))
+                {
+                    WriteFixedString(peerEndpoint, filter.PeerEndpoint, 256);
+                }
+                filterPtr = (IntPtr)(&filter);
+            }
+
+            return ReadPeerEntries(filterPtr);
         }
     }
 
-    private void SetOptionString(SpotNodeSocketRole role, SocketOption option,
-        string value)
-    {
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
-
-        int maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
-        if (maxByteCount <= 512)
-        {
-            Span<byte> buffer = stackalloc byte[maxByteCount];
-            int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
-            SetOptionBytes(role, option, buffer.Slice(0, byteCount));
-            return;
-        }
-
-        byte[] rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
-        try
-        {
-            int byteCount = Encoding.UTF8.GetBytes(value, rented);
-            SetOptionBytes(role, option, rented.AsSpan(0, byteCount));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(rented);
-        }
-    }
-
-    public Socket GetPubSocket()
+    public SpotNodeSubjectEntry[] Subjects(int? role = null, string? subject = null,
+        uint? subjectKind = null)
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_default_pub(_handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
-    }
-
-    public Socket GetSubSocket()
-    {
-        EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_default_sub(_handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
-    }
-
-    public PeerRecord[] GetPubPeers()
-    {
-        EnsureNotDisposed();
-        IntPtr pub = NativeMethods.zlink_spot_node_default_pub(_handle);
-        if (pub == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        nuint count = 0;
-        int rc = NativeMethods.zlink_spot_pub_peers(pub, IntPtr.Zero,
-            ref count);
-        ZlinkException.ThrowIfError(rc);
-        if (count == 0)
-            return Array.Empty<PeerRecord>();
-
-        ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared.Rent((int)count);
-        try
+        unsafe
         {
-            nuint actual = count;
-            rc = NativeMethods.zlink_spot_pub_peers(pub, native,
-                ref actual);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkSpotNodeSubjectFilter filter = default;
+            IntPtr filterPtr = IntPtr.Zero;
+            if (role.HasValue || !string.IsNullOrEmpty(subject)
+                || subjectKind.HasValue)
+            {
+                filter.Role = role ?? 0;
+                filter.SubjectKind = subjectKind ?? 0;
+                if (!string.IsNullOrEmpty(subject))
+                {
+                    WriteFixedString(subject, filter.Subject, 256);
+                }
+                filterPtr = (IntPtr)(&filter);
+            }
 
-            PeerRecord[] peers = new PeerRecord[(int)actual];
-            for (int i = 0; i < peers.Length; i++)
-                peers[i] = PeerRecord.FromNative(ref native[i]);
-            return peers;
-        }
-        finally
-        {
-            ArrayPool<ZlinkPeerInfo>.Shared.Return(native);
-        }
-    }
-
-    public PeerRecord[] GetSubPeers()
-    {
-        EnsureNotDisposed();
-        IntPtr sub = NativeMethods.zlink_spot_node_default_sub(_handle);
-        if (sub == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        nuint count = 0;
-        int rc = NativeMethods.zlink_spot_sub_peers(sub, IntPtr.Zero,
-            ref count);
-        ZlinkException.ThrowIfError(rc);
-        if (count == 0)
-            return Array.Empty<PeerRecord>();
-
-        ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared.Rent((int)count);
-        try
-        {
-            nuint actual = count;
-            rc = NativeMethods.zlink_spot_sub_peers(sub, native,
-                ref actual);
-            ZlinkException.ThrowIfError(rc);
-
-            PeerRecord[] peers = new PeerRecord[(int)actual];
-            for (int i = 0; i < peers.Length; i++)
-                peers[i] = PeerRecord.FromNative(ref native[i]);
-            return peers;
-        }
-        finally
-        {
-            ArrayPool<ZlinkPeerInfo>.Shared.Return(native);
+            return ReadSubjectEntries(filterPtr);
         }
     }
 
@@ -333,138 +154,289 @@ public sealed class SpotNode : IDisposable
             throw new ArgumentException("Value must not be empty.", paramName);
     }
 
-    private int SetSpotOption((bool IsPub, int Option) native, IntPtr value,
-        nuint length)
+    private SpotNodePeerEntry[] ReadPeerEntries(IntPtr filterPtr)
     {
-        return native.IsPub
-            ? NativeMethods.zlink_spot_node_set_pub_option(_handle,
-                native.Option, value, length)
-            : NativeMethods.zlink_spot_node_set_sub_option(_handle,
-                native.Option, value, length);
+        nuint count = 0;
+        int rc = filterPtr == IntPtr.Zero
+            ? NativeMethods.zlink_spot_node_peers_snapshot(_handle, IntPtr.Zero,
+                ref count)
+            : NativeMethods.zlink_spot_node_peers_query(_handle, filterPtr,
+                IntPtr.Zero, ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<SpotNodePeerEntry>();
+
+        int entrySize = Marshal.SizeOf<ZlinkSpotNodePeerEntry>();
+        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        try
+        {
+            nuint actual = count;
+            rc = filterPtr == IntPtr.Zero
+                ? NativeMethods.zlink_spot_node_peers_snapshot(_handle, entries,
+                    ref actual)
+                : NativeMethods.zlink_spot_node_peers_query(_handle, filterPtr,
+                    entries, ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            SpotNodePeerEntry[] result = new SpotNodePeerEntry[(int)actual];
+            for (int i = 0; i < result.Length; i++)
+            {
+                IntPtr current = IntPtr.Add(entries, i * entrySize);
+                ZlinkSpotNodePeerEntry native =
+                    Marshal.PtrToStructure<ZlinkSpotNodePeerEntry>(current);
+                result[i] = SpotNodePeerEntry.FromNative(ref native);
+            }
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(entries);
+        }
     }
 
-    private static (bool IsPub, int Option) MapSpotOption(SpotNodeSocketRole role,
-        SocketOption option)
+    private SpotNodeSubjectEntry[] ReadSubjectEntries(IntPtr filterPtr)
     {
-        return role switch
+        nuint count = 0;
+        int rc = NativeMethods.zlink_spot_node_subjects_snapshot(_handle,
+            filterPtr, IntPtr.Zero, ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<SpotNodeSubjectEntry>();
+
+        int entrySize = Marshal.SizeOf<ZlinkSpotNodeSubjectEntry>();
+        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        try
         {
-            SpotNodeSocketRole.Pub => (true, MapSpotPubOption(option)),
-            SpotNodeSocketRole.Sub => (false, MapSpotSubOption(option)),
-            SpotNodeSocketRole.Node => throw new ZlinkException(
-                (int)ErrorCode.ENotSup,
-                "Node-level generic socket options are not supported."),
-            _ => throw new ArgumentException($"Unsupported spot socket role '{role}'.",
-                nameof(role))
-        };
+            nuint actual = count;
+            rc = NativeMethods.zlink_spot_node_subjects_snapshot(_handle,
+                filterPtr, entries, ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            SpotNodeSubjectEntry[] result = new SpotNodeSubjectEntry[(int)actual];
+            for (int i = 0; i < result.Length; i++)
+            {
+                IntPtr current = IntPtr.Add(entries, i * entrySize);
+                ZlinkSpotNodeSubjectEntry native =
+                    Marshal.PtrToStructure<ZlinkSpotNodeSubjectEntry>(current);
+                result[i] = SpotNodeSubjectEntry.FromNative(ref native);
+            }
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(entries);
+        }
     }
 
-    private static int MapSpotPubOption(SocketOption option)
+    private static unsafe void WriteFixedString(string value, byte* destination,
+        int capacity)
     {
-        return option switch
+        byte[] encoded = Encoding.UTF8.GetBytes(value);
+        if (encoded.Length >= capacity)
         {
-            SocketOption.SndHwm => 1,
-            SocketOption.SndTimeo => 2,
-            SocketOption.Linger => 3,
-            SocketOption.XPubNoDrop => 4,
-            SocketOption.SndBuf => 8,
-            SocketOption.RcvBuf => 9,
-            _ => throw new ArgumentException(
-                $"Socket option '{option}' is not supported by Spot PUB.",
-                nameof(option))
-        };
+            throw new ArgumentOutOfRangeException(nameof(value),
+                "UTF-8 value exceeds native fixed buffer capacity.");
+        }
+
+        for (int i = 0; i < capacity; i++)
+            destination[i] = 0;
+        for (int i = 0; i < encoded.Length; i++)
+            destination[i] = encoded[i];
     }
 
-    private static int MapSpotSubOption(SocketOption option)
-    {
-        return option switch
-        {
-            SocketOption.RcvHwm => 1,
-            SocketOption.RcvTimeo => 2,
-            SocketOption.Linger => 3,
-            SocketOption.SndBuf => 6,
-            SocketOption.RcvBuf => 7,
-            _ => throw new ArgumentException(
-                $"Socket option '{option}' is not supported by Spot SUB.",
-                nameof(option))
-        };
-    }
 }
 
 public sealed class Spot : IDisposable
 {
+    private const uint DefaultMonitorEvents =
+        (1u << 0) | (1u << 4) | (1u << 13) | (1u << 14) | (1u << 17)
+        | (1u << 19);
     private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
     private const int TopicCacheLimit = 1024;
-    private IntPtr _pubHandle;
-    private IntPtr _subHandle;
-    private SpotSubHandler? _subHandler;
-    private SpotSubPacketHandler? _subPacketHandler;
-    private NativeMethods.ZlinkSpotSubHandlerDelegate? _subHandlerNative;
+    private IntPtr _handle;
+    private SpotSubHandler? _subscribeHandler;
+    private Action? _sendReadyHandler;
+    private NativeMethods.ZlinkSubscribeHandlerDelegate? _subscribeHandlerNative;
+    private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
     private readonly ConcurrentDictionary<string, byte[]> _topicCache =
         new(StringComparer.Ordinal);
 
-    internal IntPtr PubHandle => _pubHandle;
-    internal IntPtr SubHandle => _subHandle;
+    internal IntPtr Handle => _handle;
 
-    public Spot(SpotNode node)
+    public Spot(Context context)
     {
-        if (node == null)
-            throw new ArgumentNullException(nameof(node));
-        _pubHandle = NativeMethods.zlink_spot_pub_new(node.Handle);
-        _subHandle = NativeMethods.zlink_spot_sub_new(node.Handle);
-        if (_pubHandle == IntPtr.Zero || _subHandle == IntPtr.Zero)
-        {
-            if (_pubHandle != IntPtr.Zero)
-                NativeMethods.zlink_spot_pub_destroy(ref _pubHandle);
-            if (_subHandle != IntPtr.Zero)
-                NativeMethods.zlink_spot_sub_destroy(ref _subHandle);
+        if (context == null)
+            throw new ArgumentNullException(nameof(context));
+        _handle = NativeMethods.zlink_spot_new(context.Handle);
+        if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
+    }
+
+    public void Publish(string topic, Message message,
+        SendFlags flags = SendFlags.None)
+    {
+        ValidateTopicId(topic, nameof(topic));
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        EnsureNotDisposed();
+        PublishSingleCore(topic, message, flags);
+    }
+
+    public void Publish(string topic, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        EnsureNotDisposed();
+        ValidateTopicId(topic, nameof(topic));
+        if (parts.Count == 0)
+            throw new ArgumentException("Parts must not be empty.", nameof(parts));
+
+        if (parts is Message[] array)
+        {
+            PublishCore(topic, array.AsSpan(), flags, nameof(parts));
+            return;
+        }
+
+        if (parts is List<Message> list)
+        {
+            PublishCore(topic, CollectionsMarshal.AsSpan(list), flags,
+                nameof(parts));
+            return;
+        }
+
+        Message[] copied = new Message[parts.Count];
+        for (int i = 0; i < copied.Length; i++)
+            copied[i] = parts[i];
+        PublishCore(topic, copied.AsSpan(), flags, nameof(parts));
+    }
+
+    public void SetSubscription(string topicOrPattern)
+    {
+        ValidateTopicId(topicOrPattern, nameof(topicOrPattern));
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_set_subscription(_handle, topicOrPattern);
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    public void UnsetSubscription(string topicOrPattern)
+    {
+        ValidateTopicId(topicOrPattern, nameof(topicOrPattern));
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_unset_subscription(_handle,
+            topicOrPattern);
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    public void Subscribe(out string topic, out Message message,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        Subscribe(out topic, out Message[] parts, flags);
+        if (parts.Length != 1)
+        {
+            foreach (Message part in parts)
+                part.Dispose();
+            throw new InvalidOperationException(
+                "Expected a single-part message.");
+        }
+
+        message = parts[0];
+    }
+
+    public void Subscribe(out string topic, out Message[] parts,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        try
+        {
+            nuint topicLength = TopicBufferSize;
+            int rc = NativeMethods.zlink_subscribe(_handle, IntPtr.Zero,
+                out IntPtr nativeParts, out nuint partCount, topicBuffer,
+                ref topicLength, (int)flags);
+            ZlinkException.ThrowIfError(rc);
+
+            int boundedLength = topicLength > TopicBufferSize - 1
+                ? TopicBufferSize - 1
+                : (int)topicLength;
+            topic = boundedLength == 0
+                ? string.Empty
+                : Encoding.UTF8.GetString(topicBuffer, 0, boundedLength);
+            parts = Message.FromNativeVector(nativeParts, partCount);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(topicBuffer);
         }
     }
 
-    /// <summary>
-    /// Publishes multipart message and consumes ownership of all parts.
-    /// </summary>
-    public void Publish(string topicId, Message[] parts,
-        SendFlags flags = SendFlags.None)
+    public unsafe void SubscribeHandler(SpotSubHandler handler)
     {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        Publish(topicId, parts.AsSpan(), flags);
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        EnsureNotDisposed();
+
+        var native = new NativeMethods.ZlinkSubscribeHandlerDelegate(
+            OnNativeSubscribe);
+        int rc = NativeMethods.zlink_subscribe_handler(_handle, native,
+            IntPtr.Zero);
+        ZlinkException.ThrowIfError(rc);
+        _subscribeHandler = handler;
+        _subscribeHandlerNative = native;
     }
 
-    public void Publish(PreparedTopic topic, Message[] parts,
-        SendFlags flags = SendFlags.None)
+    public void SendReadyHandler(Action handler)
     {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        Publish(topic, parts.AsSpan(), flags);
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        EnsureNotDisposed();
+
+        var native = new NativeMethods.ZlinkSendReadyHandlerDelegate(
+            OnNativeSendReady);
+        int rc = NativeMethods.zlink_send_ready_handler(_handle, native,
+            IntPtr.Zero);
+        ZlinkException.ThrowIfError(rc);
+        _sendReadyHandler = handler;
+        _sendReadyHandlerNative = native;
     }
 
-    public unsafe void Publish(string topicId, ReadOnlySpan<Message> parts,
-        SendFlags flags = SendFlags.None)
+    public ServiceMonitor OpenMonitor(uint events = DefaultMonitorEvents)
     {
         EnsureNotDisposed();
-        ValidateTopicId(topicId, nameof(topicId));
-        if (parts.Length == 0)
-            throw new ArgumentException("Parts must not be empty.", nameof(parts));
-        byte[] topicUtf8 = GetTopicUtf8(topicId);
-        PublishCore(topicUtf8, parts, flags);
+        var options = new ZlinkServiceMonitorOpenOptions
+        {
+            Events = events
+        };
+        IntPtr monitor = NativeMethods.zlink_service_monitor_open(_handle,
+            in options);
+        if (monitor == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
+        return new ServiceMonitor(monitor);
     }
 
-    public unsafe void Publish(PreparedTopic topic, ReadOnlySpan<Message> parts,
-        SendFlags flags = SendFlags.None)
+    public void Dispose()
     {
-        EnsureNotDisposed();
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
-        if (parts.Length == 0)
-            throw new ArgumentException("Parts must not be empty.", nameof(parts));
-        PublishCore(topic.Utf8, parts, flags);
+        if (_handle != IntPtr.Zero)
+        {
+            NativeMethods.zlink_spot_destroy(ref _handle);
+            _handle = IntPtr.Zero;
+        }
+
+        _subscribeHandler = null;
+        _sendReadyHandler = null;
+        _subscribeHandlerNative = null;
+        _sendReadyHandlerNative = null;
+        GC.SuppressFinalize(this);
     }
 
-    private unsafe void PublishCore(byte[] topicUtf8, ReadOnlySpan<Message> parts,
-        SendFlags flags)
+    ~Spot()
+    {
+        Dispose();
+    }
+
+    private unsafe void PublishCore(string topic, ReadOnlySpan<Message> parts,
+        SendFlags flags, string paramName)
     {
         ZlinkMsg[]? rented = null;
         Span<ZlinkMsg> nativeParts = parts.Length <= StackPublishPartLimit
@@ -473,14 +445,15 @@ public sealed class Spot : IDisposable
         nativeParts = nativeParts.Slice(0, parts.Length);
 
         int built = 0;
-        int rc = 0;
         try
         {
             for (int i = 0; i < parts.Length; i++)
             {
                 if (parts[i] == null)
+                {
                     throw new ArgumentException(
-                        "Parts must not contain null messages.", nameof(parts));
+                        "Parts must not contain null messages.", paramName);
+                }
             }
 
             for (int i = 0; i < parts.Length; i++)
@@ -489,11 +462,16 @@ public sealed class Spot : IDisposable
                 built++;
             }
 
-            fixed (byte* topicPtr = topicUtf8)
-            fixed (ZlinkMsg* ptr = nativeParts)
+            fixed (ZlinkMsg* nativePtr = nativeParts)
             {
-                rc = NativeMethods.zlink_spot_pub_publish(_pubHandle, topicPtr,
-                    ptr, (nuint)nativeParts.Length, (int)flags);
+                int rc = NativeMethods.zlink_publish(_handle, topic,
+                    (IntPtr)nativePtr, (nuint)parts.Length, (int)flags);
+                if (rc < 0)
+                {
+                    for (int i = 0; i < built; i++)
+                        NativeMethods.zlink_msg_close(ref nativeParts[i]);
+                }
+                ZlinkException.ThrowIfError(rc);
             }
         }
         catch
@@ -507,295 +485,94 @@ public sealed class Spot : IDisposable
             if (rented != null)
                 ArrayPool<ZlinkMsg>.Shared.Return(rented);
         }
-
-        if (rc < 0)
-        {
-            for (int i = 0; i < built; i++)
-                NativeMethods.zlink_msg_close(ref nativeParts[i]);
-        }
-        ZlinkException.ThrowIfError(rc);
     }
 
-    public unsafe void Publish(string topicId, ReadOnlySpan<byte> payload,
-        SendFlags flags = SendFlags.None)
-    {
-        EnsureNotDisposed();
-        ValidateTopicId(topicId, nameof(topicId));
-        PublishCore(GetTopicUtf8(topicId), payload, flags);
-    }
-
-    public unsafe void Publish(PreparedTopic topic, ReadOnlySpan<byte> payload,
-        SendFlags flags = SendFlags.None)
-    {
-        EnsureNotDisposed();
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
-        PublishCore(topic.Utf8, payload, flags);
-    }
-
-    private unsafe void PublishCore(byte[] topicUtf8, ReadOnlySpan<byte> payload,
+    private unsafe void PublishSingleCore(string topic, Message message,
         SendFlags flags)
     {
-        int rc;
-        fixed (byte* topicPtr = topicUtf8)
-        fixed (byte* payloadPtr = payload)
-        {
-            rc = NativeMethods.zlink_spot_pub_publish_bytes(_pubHandle, topicPtr,
-                payloadPtr, (nuint)payload.Length, (int)flags);
-        }
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    public PreparedTopic PrepareTopic(string topicId)
-    {
-        ValidateTopicId(topicId, nameof(topicId));
-        EnsureNotDisposed();
-        return new PreparedTopic(topicId, GetTopicUtf8(topicId));
-    }
-
-    public void Subscribe(string topicId)
-    {
-        ValidateTopicId(topicId, nameof(topicId));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_sub_subscribe(_subHandle, topicId);
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    public void SubscribePattern(string pattern)
-    {
-        ValidateTopicId(pattern, nameof(pattern));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_sub_subscribe_pattern(_subHandle, pattern);
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    public void Unsubscribe(string topicIdOrPattern)
-    {
-        ValidateTopicId(topicIdOrPattern, nameof(topicIdOrPattern));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_sub_unsubscribe(_subHandle,
-            topicIdOrPattern);
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    public unsafe void SetHandler(SpotSubHandler? handler)
-    {
-        EnsureNotDisposed();
-        if (handler == null)
-        {
-            int clearRc = NativeMethods.zlink_spot_sub_set_handler(_subHandle,
-                null, IntPtr.Zero);
-            ZlinkException.ThrowIfError(clearRc);
-            _subHandler = null;
-            _subPacketHandler = null;
-            _subHandlerNative = null;
-            return;
-        }
-
-        SpotSubHandler? previousHandler = _subHandler;
-        SpotSubPacketHandler? previousPacketHandler = _subPacketHandler;
-        NativeMethods.ZlinkSpotSubHandlerDelegate? previousNative =
-            _subHandlerNative;
-        NativeMethods.ZlinkSpotSubHandlerDelegate nextNative =
-            OnNativeSubMessage;
-        _subHandler = handler;
-        _subPacketHandler = null;
-        _subHandlerNative = nextNative;
-        int rc = NativeMethods.zlink_spot_sub_set_handler(_subHandle,
-            nextNative, IntPtr.Zero);
-        if (rc != 0)
-        {
-            _subHandler = previousHandler;
-            _subPacketHandler = previousPacketHandler;
-            _subHandlerNative = previousNative;
-            throw ZlinkException.FromLastError();
-        }
-    }
-
-    public unsafe void SetPacketHandler(SpotSubPacketHandler? handler)
-    {
-        EnsureNotDisposed();
-        if (handler == null)
-        {
-            int clearRc = NativeMethods.zlink_spot_sub_set_handler(_subHandle,
-                null, IntPtr.Zero);
-            ZlinkException.ThrowIfError(clearRc);
-            _subHandler = null;
-            _subPacketHandler = null;
-            _subHandlerNative = null;
-            return;
-        }
-
-        SpotSubHandler? previousHandler = _subHandler;
-        SpotSubPacketHandler? previousPacketHandler = _subPacketHandler;
-        NativeMethods.ZlinkSpotSubHandlerDelegate? previousNative =
-            _subHandlerNative;
-        NativeMethods.ZlinkSpotSubHandlerDelegate nextNative =
-            OnNativeSubMessage;
-        _subHandler = null;
-        _subPacketHandler = handler;
-        _subHandlerNative = nextNative;
-        int rc = NativeMethods.zlink_spot_sub_set_handler(_subHandle,
-            nextNative, IntPtr.Zero);
-        if (rc != 0)
-        {
-            _subHandler = previousHandler;
-            _subPacketHandler = previousPacketHandler;
-            _subHandlerNative = previousNative;
-            throw ZlinkException.FromLastError();
-        }
-    }
-
-    /// <summary>
-    /// Receives a topic message.
-    /// Message ownership is transferred to the caller.
-    /// Caller must dispose each part exactly once.
-    /// </summary>
-    public SpotMessage Receive(ReceiveFlags flags = ReceiveFlags.None)
-    {
-        EnsureNotDisposed();
-        unsafe
-        {
-            byte* topicBuf = stackalloc byte[TopicBufferSize];
-            nuint topicLen = TopicBufferSize;
-            int rc = NativeMethods.zlink_spot_sub_recv(_subHandle, out var parts,
-                out var count, (int)flags, topicBuf, ref topicLen);
-            if (rc != 0)
-                throw ZlinkException.FromLastError();
-            // C API may return actual topic length even when output buffer is
-            // fixed-size and truncated.
-            int topicReadLen = topicLen > TopicBufferSize
-                ? TopicBufferSize
-                : (int)topicLen;
-            string topic = NativeHelpers.ReadString(topicBuf, topicReadLen);
-            Message[] messages = Message.FromNativeVector(parts, count);
-            return new SpotMessage(topic, messages);
-        }
-    }
-
-    public unsafe int ReceiveSinglePayload(Span<byte> payloadBuffer,
-        ReceiveFlags flags = ReceiveFlags.None)
-    {
-        EnsureNotDisposed();
-        byte* topicBuf = stackalloc byte[TopicBufferSize];
-        nuint topicLen = TopicBufferSize;
-        int rc = NativeMethods.zlink_spot_sub_recv(_subHandle, out var parts,
-            out var count, (int)flags, topicBuf, ref topicLen);
-        if (rc != 0)
-            throw ZlinkException.FromLastError();
+        ZlinkMsg nativePart = default;
+        bool moved = false;
         try
         {
-            return Message.CopySinglePartPayload(parts, count, payloadBuffer);
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero && count > 0)
-                NativeMethods.zlink_multipart_close(parts, count);
-        }
-    }
-
-    public void Dispose()
-    {
-        if (_pubHandle != IntPtr.Zero)
-        {
-            NativeMethods.zlink_spot_pub_destroy(ref _pubHandle);
-            _pubHandle = IntPtr.Zero;
-        }
-        if (_subHandle != IntPtr.Zero)
-        {
-            if (_subHandlerNative != null)
+            message.MoveTo(ref nativePart);
+            moved = true;
+            int rc = NativeMethods.zlink_publish(_handle, topic,
+                (IntPtr)(&nativePart), 1, (int)flags);
+            if (rc < 0)
             {
-                try
-                {
-                    NativeMethods.zlink_spot_sub_set_handler(_subHandle, null,
-                        IntPtr.Zero);
-                }
-                catch
-                {
-                }
-                _subHandler = null;
-                _subPacketHandler = null;
-                _subHandlerNative = null;
+                message.RestoreFrom(ref nativePart);
+                moved = false;
             }
-            NativeMethods.zlink_spot_sub_destroy(ref _subHandle);
-            _subHandle = IntPtr.Zero;
+            ZlinkException.ThrowIfError(rc);
         }
-        GC.SuppressFinalize(this);
-    }
-
-    ~Spot()
-    {
-        Dispose();
+        catch
+        {
+            if (moved)
+                message.RestoreFrom(ref nativePart);
+            throw;
+        }
     }
 
     private void EnsureNotDisposed()
     {
-        if (_pubHandle == IntPtr.Zero || _subHandle == IntPtr.Zero)
+        if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Spot));
     }
 
-    private unsafe void OnNativeSubMessage(byte* topic, nuint topicLen,
-        IntPtr parts, nuint partCount, IntPtr userData)
+    private unsafe void OnNativeSubscribe(IntPtr sourceRoutingId, byte* topic,
+        nuint topicLen, IntPtr parts, nuint partCount, IntPtr userData)
     {
-        SpotSubPacketHandler? packetHandler = _subPacketHandler;
-        if (packetHandler != null)
+        SpotSubHandler? handler = _subscribeHandler;
+        if (handler == null)
         {
-            if (partCount > int.MaxValue || (parts == IntPtr.Zero && partCount > 0))
-                return;
-
-            SpotPacketView[]? rented = null;
-            int count = (int)partCount;
-            Span<SpotPacketView> partViews = count <= 32
-                ? stackalloc SpotPacketView[count]
-                : (rented = ArrayPool<SpotPacketView>.Shared.Rent(count));
-            try
-            {
-                ReadOnlySpan<byte> topicUtf8 = topic == null || topicLen == 0
-                    ? ReadOnlySpan<byte>.Empty
-                    : new ReadOnlySpan<byte>(topic, checked((int)topicLen));
-                ZlinkMsg* msgv = (ZlinkMsg*)parts;
-                for (int i = 0; i < count; i++)
-                {
-                    IntPtr payloadPtr = NativeMethods.zlink_msg_data(ref msgv[i]);
-                    int payloadSize = checked((int)NativeMethods.zlink_msg_size(
-                        ref msgv[i]));
-                    partViews[i] = new SpotPacketView(payloadPtr, payloadSize);
-                }
-                packetHandler(topicUtf8, partViews.Slice(0, count));
-            }
-            catch (Exception ex)
-            {
-                Runtime.ReportUnhandledCallbackException(ex);
-            }
-            finally
-            {
-                if (rented != null)
-                    ArrayPool<SpotPacketView>.Shared.Return(rented);
-            }
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
             return;
         }
 
-        SpotSubHandler? handler = _subHandler;
-        if (handler == null)
-            return;
-
         Message[]? managedParts = null;
+        bool delivered = false;
         try
         {
             string topicId = topic == null || topicLen == 0
                 ? string.Empty
                 : Encoding.UTF8.GetString(
                     new ReadOnlySpan<byte>(topic, checked((int)topicLen)));
-            managedParts = Message.CopyFromNativeReadOnlyVector(parts, partCount);
+            managedParts = Message.FromNativeVector(parts, partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+            delivered = true;
             handler(topicId, managedParts);
         }
         catch (Exception ex)
         {
             Runtime.ReportUnhandledCallbackException(ex);
-            if (managedParts == null)
-                return;
-            foreach (Message? part in managedParts)
-                part?.Dispose();
+            if (!delivered && managedParts != null)
+            {
+                foreach (Message? part in managedParts)
+                    part?.Dispose();
+            }
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+        }
+    }
+
+    private void OnNativeSendReady(IntPtr subject, IntPtr userData)
+    {
+        Action? handler = _sendReadyHandler;
+        if (handler == null)
+            return;
+
+        try
+        {
+            handler();
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
         }
     }
 
@@ -836,68 +613,9 @@ public sealed class Spot : IDisposable
     }
 }
 
-public sealed class PreparedTopic
-{
-    private readonly byte[] _utf8;
-
-    internal PreparedTopic(string topicId, byte[] utf8)
-    {
-        TopicId = topicId ?? throw new ArgumentNullException(nameof(topicId));
-        _utf8 = utf8 ?? throw new ArgumentNullException(nameof(utf8));
-    }
-
-    public string TopicId { get; }
-
-    internal byte[] Utf8 => _utf8;
-}
-
 /// <summary>
 /// Managed subscribe callback.
 /// Message payload is copied to managed <see cref="Message"/> instances.
 /// The callback owns those managed messages and must dispose each part exactly once.
 /// </summary>
 public delegate void SpotSubHandler(string topicId, Message[] parts);
-
-/// <summary>
-/// Zero-copy subscribe callback. topic/payload spans are only valid
-/// during the callback invocation.
-/// </summary>
-public delegate void SpotSubPacketHandler(ReadOnlySpan<byte> topicUtf8,
-    ReadOnlySpan<SpotPacketView> parts);
-
-public readonly struct SpotPacketView
-{
-    private readonly IntPtr _payload;
-
-    internal SpotPacketView(IntPtr payload, int length)
-    {
-        _payload = payload;
-        Length = length;
-    }
-
-    public int Length { get; }
-
-    public unsafe ReadOnlySpan<byte> AsReadOnlySpan()
-    {
-        if (Length <= 0 || _payload == IntPtr.Zero)
-            return ReadOnlySpan<byte>.Empty;
-        return new ReadOnlySpan<byte>((void*)_payload, Length);
-    }
-}
-
-public readonly struct SpotMessage
-{
-    /// <summary>
-    /// Spot receive result.
-    /// Message ownership is transferred to the caller.
-    /// Caller must dispose each part exactly once.
-    /// </summary>
-    public SpotMessage(string topicId, Message[] parts)
-    {
-        TopicId = topicId;
-        Parts = parts;
-    }
-
-    public string TopicId { get; }
-    public Message[] Parts { get; }
-}

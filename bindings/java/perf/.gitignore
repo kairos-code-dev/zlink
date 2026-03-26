@@ -1,4 +1,0 @@
-build/
-results/**/*.txt
-results/**/*.log
-!results/**/.gitkeep

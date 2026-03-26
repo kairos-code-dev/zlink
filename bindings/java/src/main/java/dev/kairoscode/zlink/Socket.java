@@ -3,11 +3,13 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.options.SocketOptionKey;
 import dev.kairoscode.zlink.options.SocketOptions;
 import dev.kairoscode.zlink.options.SocketOptionValueType;
+import dev.kairoscode.zlink.service.discovery.Discovery;
 import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -20,10 +22,19 @@ import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Canonical raw socket surface for zlink.
+ *
+ * <p>{@code Socket} owns transport behavior such as bind/connect, raw
+ * multipart send/recv, topic publish/subscribe helpers, callback attachment,
+ * and discovery attach. Payload conversion stays on {@link Message}; recv
+ * results are surfaced as {@link Received}.
+ */
 public final class Socket implements AutoCloseable {
     private static final int DEFAULT_IO_BUFFER_SIZE = 8192;
     private static final int ERRNO_EINTR = 4;
@@ -31,6 +42,7 @@ public final class Socket implements AutoCloseable {
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private static final int STREAM_ROUTING_ID_SIZE = 4;
     private static final int STREAM_ROUTING_ID_LAYOUT_SIZE = 256;
+    private static final int TOPIC_CAPACITY = 256;
     private static final long STREAM_ROUTING_ID_MAX = 0xFFFF_FFFFL;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_STREAM_CALLBACK =
@@ -39,6 +51,16 @@ public final class Socket implements AutoCloseable {
     private static final FunctionDescriptor FD_STREAM_CALLBACK_RAW =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+    private static final FunctionDescriptor FD_RECV_CALLBACK =
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+    private static final FunctionDescriptor FD_SUBSCRIBE_CALLBACK =
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.ADDRESS);
+    private static final FunctionDescriptor FD_SEND_READY_CALLBACK =
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+    private static final byte[] EMPTY_BYTES = new byte[0];
 
     private MemorySegment handle;
     private final boolean own;
@@ -59,6 +81,60 @@ public final class Socket implements AutoCloseable {
         () -> Arena.ofAuto().allocate(STREAM_ROUTING_ID_LAYOUT_SIZE));
     private final ThreadLocal<Message> recvFrameScratch =
       ThreadLocal.withInitial(Message::new);
+    private final ThreadLocal<LegacyReceiveState> legacyReceiveState =
+      ThreadLocal.withInitial(LegacyReceiveState::new);
+    private SocketMessageHandler receiveHandler;
+    private SubscribeHandler subscribeHandler;
+    private SendReadyHandler sendReadyHandler;
+    private Arena receiveCallbackArena;
+    private Arena subscribeCallbackArena;
+    private Arena sendReadyCallbackArena;
+    private MemorySegment receiveCallbackStub = MemorySegment.NULL;
+    private MemorySegment subscribeCallbackStub = MemorySegment.NULL;
+    private MemorySegment sendReadyCallbackStub = MemorySegment.NULL;
+    private volatile RuntimeException callbackFailure;
+
+    private static final class LegacyReceiveState {
+        private Message[] frames = new Message[0];
+        private int index;
+
+        boolean hasPending() {
+            return index < frames.length;
+        }
+
+        int pendingCount() {
+            return frames.length - index;
+        }
+
+        Message poll() {
+            Message frame = frames[index++];
+            frame.setMore(index < frames.length);
+            if (!hasPending()) {
+                frames = new Message[0];
+                index = 0;
+            }
+            return frame;
+        }
+
+        void replace(Message[] nextFrames) {
+            closeRemaining();
+            frames = nextFrames;
+            index = 0;
+        }
+
+        void closeRemaining() {
+            for (int i = index; i < frames.length; i++) {
+                if (frames[i] != null) {
+                    try {
+                        frames[i].close();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+            frames = new Message[0];
+            index = 0;
+        }
+    }
 
     public Socket(Context ctx, SocketType type) {
         this.handle = Native.socket(ctx.handle(), type.getValue());
@@ -80,6 +156,7 @@ public final class Socket implements AutoCloseable {
         return new Socket(handle, own, null);
     }
 
+    /** Binds the socket to the endpoint. */
     public void bind(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
@@ -89,6 +166,7 @@ public final class Socket implements AutoCloseable {
         }
     }
 
+    /** Connects the socket to the endpoint. */
     public void connect(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
@@ -98,6 +176,7 @@ public final class Socket implements AutoCloseable {
         }
     }
 
+    /** Unbinds the socket from the endpoint. */
     public void unbind(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
@@ -107,6 +186,7 @@ public final class Socket implements AutoCloseable {
         }
     }
 
+    /** Disconnects the socket from the endpoint. */
     public void disconnect(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
@@ -114,6 +194,14 @@ public final class Socket implements AutoCloseable {
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_disconnect");
         }
+    }
+
+    /** Attaches a fixed-service discovery view to the socket. */
+    public void attachDiscovery(Discovery discovery) {
+        Objects.requireNonNull(discovery, "discovery");
+        int rc = Native.socketAttachDiscovery(handle, discovery.handle());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_socket_attach_discovery");
     }
 
     public void setSockOpt(SocketOption option, byte[] value) {
@@ -180,7 +268,7 @@ public final class Socket implements AutoCloseable {
         option.requireWritable();
         byte[] utf8 = Objects.requireNonNull(value, "value").getBytes(
           StandardCharsets.UTF_8);
-        setSockOptBytes(option.optionId(), utf8, 0, utf8.length);
+        setTypedBytesOption(option.optionId(), utf8, 0, utf8.length);
     }
 
     public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
@@ -189,7 +277,7 @@ public final class Socket implements AutoCloseable {
         validateOptionType(option, SocketOptionValueType.BYTES);
         option.requireWritable();
         Objects.requireNonNull(value, "value");
-        setSockOptBytes(option.optionId(), value, 0, value.length);
+        setTypedBytesOption(option.optionId(), value, 0, value.length);
     }
 
     @SuppressWarnings("unchecked")
@@ -200,10 +288,8 @@ public final class Socket implements AutoCloseable {
         return switch (option.valueType()) {
             case INT32 -> (T) Integer.valueOf(getSockOptInt(option.optionId()));
             case INT64 -> (T) Long.valueOf(getSockOptLong(option.optionId()));
-            case STRING -> (T) decodeCString(
-              getSockOptBytes(option.optionId(), option.maxReadLength()));
-            case BYTES -> (T) getSockOptBytes(option.optionId(),
-              option.maxReadLength());
+            case STRING -> (T) getTypedStringOption(option);
+            case BYTES -> (T) getTypedBytesOption(option);
         };
     }
 
@@ -214,22 +300,279 @@ public final class Socket implements AutoCloseable {
         return new MonitorSocket(Socket.adopt(sock, true));
     }
 
-    public int send(byte[] data, SendFlag flag) {
+    public void send(Message part) {
+        send(part, SendFlag.NONE);
+    }
+
+    public void send(Message part, SendFlag flags) {
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(flags, "flags");
+        sendParts(null, List.of(part), flags, false);
+    }
+
+    public void send(List<Message> parts) {
+        send(parts, SendFlag.NONE);
+    }
+
+    public void send(List<Message> parts, SendFlag flags) {
+        Objects.requireNonNull(parts, "parts");
+        Objects.requireNonNull(flags, "flags");
+        sendParts(null, parts, flags, false);
+    }
+
+    public void send(RoutingId rid, Message part) {
+        send(rid, part, SendFlag.NONE);
+    }
+
+    public void send(RoutingId rid, Message part, SendFlag flags) {
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(flags, "flags");
+        sendParts(rid, List.of(part), flags, false);
+    }
+
+    public void send(RoutingId rid, List<Message> parts) {
+        send(rid, parts, SendFlag.NONE);
+    }
+
+    public void send(RoutingId rid, List<Message> parts, SendFlag flags) {
+        Objects.requireNonNull(parts, "parts");
+        Objects.requireNonNull(flags, "flags");
+        sendParts(rid, parts, flags, false);
+    }
+
+    /** Publishes a single payload part to a topic-aware socket. */
+    public void publish(String topicId, Message part) {
+        publish(topicId, part, SendFlag.NONE);
+    }
+
+    /** Publishes a single payload part with explicit send flags. */
+    public void publish(String topicId, Message part, SendFlag flags) {
+        Objects.requireNonNull(part, "part");
+        publish(topicId, List.of(part), flags);
+    }
+
+    /** Publishes a multipart payload to a topic-aware socket. */
+    public void publish(String topicId, List<Message> parts) {
+        publish(topicId, parts, SendFlag.NONE);
+    }
+
+    /** Publishes a multipart payload with explicit send flags. */
+    public void publish(String topicId, List<Message> parts, SendFlag flags) {
+        Objects.requireNonNull(topicId, "topicId");
+        Objects.requireNonNull(parts, "parts");
+        Objects.requireNonNull(flags, "flags");
+        publishParts(topicId, parts, flags, false);
+    }
+
+    public Received recv() {
+        return recv(ReceiveFlag.NONE);
+    }
+
+    public Received recv(ReceiveFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        while (true) {
+            Native.MultipartReceive received = Native.recvMultipart(handle,
+                flags.getValue());
+            if (received != null) {
+                RoutingId rid = toRoutingId(received.routingId());
+                Message[] parts = Message.fromMsgVector(received.parts(),
+                    received.partCount());
+                return new Received(rid, parts);
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throw ZlinkException.fromLastError("zlink_recv");
+        }
+    }
+
+    /** Receives a topic-aware delivery from a SUB/XSUB-style socket. */
+    public TopicMessage subscribe() {
+        return subscribe(ReceiveFlag.NONE);
+    }
+
+    /** Receives a topic-aware delivery with explicit receive flags. */
+    public TopicMessage subscribe(ReceiveFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+                (byte) 0);
+            MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
+            MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+            topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+
+            int rc = Native.subscribe(handle, rid, partsOut, partCountOut,
+                topicOut, topicLenOut, flags.getValue());
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_subscribe");
+
+            byte[] routingId = decodeRoutingId(rid);
+            long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
+            MemorySegment partsAddr = partsOut.get(ValueLayout.ADDRESS, 0);
+            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
+            int topicLength = normalizeTopicLength(topicOut, TOPIC_CAPACITY,
+                topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+            String topicId = topicLength == 0
+                ? ""
+                : new String(topicOut.asSlice(0, topicLength).toArray(
+                    ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+            return new TopicMessage(toRoutingId(routingId), topicId, parts);
+        }
+    }
+
+    public void setRoutingId(RoutingId rid) {
+        Objects.requireNonNull(rid, "rid");
+        byte[] value = rid.toByteArray();
+        setRoutingIdBytes(value, 0, value.length);
+    }
+
+    public RoutingId routingId() {
+        return RoutingId.copyOf(getRoutingIdBytes());
+    }
+
+    public void setSubscription(String filter) {
+        Objects.requireNonNull(filter, "filter");
+        byte[] bytes = filter.getBytes(StandardCharsets.UTF_8);
+        setSubscriptionBytes(bytes, 0, bytes.length, true);
+    }
+
+    public void setSubscription(byte[] filter) {
+        Objects.requireNonNull(filter, "filter");
+        setSubscriptionBytes(filter, 0, filter.length, true);
+    }
+
+    public void unsetSubscription(String filter) {
+        Objects.requireNonNull(filter, "filter");
+        byte[] bytes = filter.getBytes(StandardCharsets.UTF_8);
+        setSubscriptionBytes(bytes, 0, bytes.length, false);
+    }
+
+    public void unsetSubscription(byte[] filter) {
+        Objects.requireNonNull(filter, "filter");
+        setSubscriptionBytes(filter, 0, filter.length, false);
+    }
+
+    public List<SubscriptionEntry> subscriptions() {
+        ensureOpen();
+        ArrayList<SubscriptionEntry> out = new ArrayList<>();
+        int capacity = 64;
+        try (Arena arena = Arena.ofConfined()) {
+            for (long index = 0;; index++) {
+                MemorySegment lenInOut = arena.allocate(ValueLayout.JAVA_LONG);
+                MemorySegment isPatternOut = arena.allocate(ValueLayout.JAVA_INT);
+                byte[] filter = subscriptionAt(index, lenInOut, isPatternOut,
+                    capacity);
+                if (filter == null)
+                    break;
+                capacity = Math.max(capacity, filter.length);
+                out.add(new SubscriptionEntry(filter,
+                    isPatternOut.get(ValueLayout.JAVA_INT, 0) != 0));
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    public void onReceive(SocketMessageHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        ensureOpen();
+        ensureNoCallbackFailure();
+        Arena arena = Arena.ofShared();
+        MemorySegment stub = LINKER.upcallStub(callbackHandle("handleReceiveCallback",
+            MethodType.methodType(void.class, MemorySegment.class,
+                MemorySegment.class, long.class, MemorySegment.class)),
+            FD_RECV_CALLBACK, arena);
+        boolean success = false;
+        try {
+            int rc = Native.recvHandler(handle, stub, MemorySegment.NULL);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_recv_handler");
+            success = true;
+            closeArena(receiveCallbackArena);
+            receiveCallbackArena = arena;
+            receiveCallbackStub = stub;
+            receiveHandler = handler;
+        } finally {
+            if (!success)
+                closeArena(arena);
+        }
+    }
+
+    public void onSubscribe(SubscribeHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        ensureOpen();
+        ensureNoCallbackFailure();
+        Arena arena = Arena.ofShared();
+        MemorySegment stub = LINKER.upcallStub(callbackHandle(
+            "handleSubscribeCallback", MethodType.methodType(void.class,
+                MemorySegment.class, MemorySegment.class, long.class,
+                MemorySegment.class, long.class, MemorySegment.class)),
+            FD_SUBSCRIBE_CALLBACK, arena);
+        boolean success = false;
+        try {
+            int rc = Native.subscribeHandler(handle, stub, MemorySegment.NULL);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_subscribe_handler");
+            success = true;
+            closeArena(subscribeCallbackArena);
+            subscribeCallbackArena = arena;
+            subscribeCallbackStub = stub;
+            subscribeHandler = handler;
+        } finally {
+            if (!success)
+                closeArena(arena);
+        }
+    }
+
+    public void onSendReady(SendReadyHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        ensureOpen();
+        ensureNoCallbackFailure();
+        Arena arena = Arena.ofShared();
+        MemorySegment stub = LINKER.upcallStub(callbackHandle(
+            "handleSendReadyCallback", MethodType.methodType(void.class,
+                MemorySegment.class, MemorySegment.class)),
+            FD_SEND_READY_CALLBACK, arena);
+        boolean success = false;
+        try {
+            int rc = Native.sendReadyHandler(handle, stub, MemorySegment.NULL);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_send_ready_handler");
+            success = true;
+            closeArena(sendReadyCallbackArena);
+            sendReadyCallbackArena = arena;
+            sendReadyCallbackStub = stub;
+            sendReadyHandler = handler;
+        } finally {
+            if (!success)
+                closeArena(arena);
+        }
+    }
+
+    @Deprecated(forRemoval = false)
+    int send(byte[] data, SendFlag flag) {
         Objects.requireNonNull(flag, "flag");
         return send(data, 0, data.length, flag.getValue());
     }
 
-    public boolean trySend(byte[] data, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    boolean trySend(byte[] data, SendFlag flag) {
         Objects.requireNonNull(flag, "flag");
         return trySend(data, 0, data.length, flag.getValue());
     }
 
-    public boolean trySend(byte[] data, int offset, int length, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    boolean trySend(byte[] data, int offset, int length, SendFlag flag) {
         Objects.requireNonNull(flag, "flag");
         return trySend(data, offset, length, flag.getValue());
     }
 
-    public int send(byte[] data, int offset, int length, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    int send(byte[] data, int offset, int length, SendFlag flag) {
         Objects.requireNonNull(flag, "flag");
         return send(data, offset, length, flag.getValue());
     }
@@ -237,50 +580,28 @@ public final class Socket implements AutoCloseable {
     private int send(byte[] data, int offset, int length, int sendFlags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
-        MemorySegment seg = length == 0 ? MemorySegment.NULL
-            : ensureSendScratch(length);
-        if (length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(data), offset, seg, 0,
-                length);
+        try (Message msg = Message.fromBytes(data, offset, length)) {
+            sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
+            return length;
         }
-        int rc = Native.send(handle, seg, length, sendFlags);
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_send");
-        return rc;
     }
 
     private boolean trySend(byte[] data, int offset, int length, int sendFlags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
-        MemorySegment seg = length == 0 ? MemorySegment.NULL
-            : ensureSendScratch(length);
-        if (length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(data), offset, seg, 0,
-                length);
-        }
-        while (true) {
-            int rc = Native.send(handle, seg, length, sendFlags);
-            if (rc >= 0) {
-                return true;
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw ZlinkException.fromLastError("zlink_send");
+        try (Message msg = Message.fromBytes(data, offset, length)) {
+            return trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
         }
     }
 
-    public int send(ByteBuffer buffer, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    int send(ByteBuffer buffer, SendFlag flag) {
         Objects.requireNonNull(flag, "flag");
         return send(buffer, flag.getValue());
     }
 
-    public boolean trySend(ByteBuffer buffer, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    boolean trySend(ByteBuffer buffer, SendFlag flag) {
         Objects.requireNonNull(flag, "flag");
         return trySend(buffer, flag.getValue());
     }
@@ -288,100 +609,61 @@ public final class Socket implements AutoCloseable {
     private int send(ByteBuffer buffer, int sendFlags) {
         Objects.requireNonNull(buffer, "buffer");
         int length = buffer.remaining();
-        if (length == 0) {
-            int rc = Native.send(handle, MemorySegment.NULL, 0, sendFlags);
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send");
-            return rc;
+        ByteBuffer slice = buffer.slice();
+        try (Message msg = buffer.isDirect()
+            ? Message.fromDirectByteBuffer(slice)
+            : Message.fromByteBuffer(slice)) {
+            sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
+            buffer.position(buffer.position() + length);
+            return length;
         }
-        MemorySegment srcSeg = MemorySegment.ofBuffer(buffer);
-        MemorySegment seg;
-        if (buffer.isDirect()) {
-            seg = srcSeg;
-        } else {
-            seg = ensureSendScratch(length);
-            MemorySegment.copy(srcSeg, 0, seg, 0, length);
-        }
-        int rc = Native.send(handle, seg, length, sendFlags);
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_send");
-        buffer.position(buffer.position() + rc);
-        return rc;
     }
 
     private boolean trySend(ByteBuffer buffer, int sendFlags) {
         Objects.requireNonNull(buffer, "buffer");
         int length = buffer.remaining();
-        if (length == 0) {
-            while (true) {
-                int rc = Native.send(handle, MemorySegment.NULL, 0, sendFlags);
-                if (rc >= 0) {
-                    return true;
-                }
-
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR) {
-                    continue;
-                }
-                if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                    return false;
-                }
-                throw ZlinkException.fromLastError("zlink_send");
+        ByteBuffer slice = buffer.slice();
+        try (Message msg = buffer.isDirect()
+            ? Message.fromDirectByteBuffer(slice)
+            : Message.fromByteBuffer(slice)) {
+            boolean sent = trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
+            if (sent) {
+                buffer.position(buffer.position() + length);
             }
-        }
-
-        MemorySegment srcSeg = MemorySegment.ofBuffer(buffer);
-        MemorySegment seg;
-        if (buffer.isDirect()) {
-            seg = srcSeg;
-        } else {
-            seg = ensureSendScratch(length);
-            MemorySegment.copy(srcSeg, 0, seg, 0, length);
-        }
-
-        while (true) {
-            int rc = Native.send(handle, seg, length, sendFlags);
-            if (rc >= 0) {
-                buffer.position(buffer.position() + rc);
-                return true;
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw ZlinkException.fromLastError("zlink_send");
+            return sent;
         }
     }
 
-    public int send(ByteSpan span, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    int send(ByteSpan span, SendFlag flag) {
         Objects.requireNonNull(span, "span");
         Objects.requireNonNull(flag, "flag");
         return send(span.segment(), 0, span.length(), flag.getValue());
     }
 
-    public int send(MemorySegment segment, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    int send(MemorySegment segment, SendFlag flag) {
         Objects.requireNonNull(segment, "segment");
         Objects.requireNonNull(flag, "flag");
         return send(segment, 0, segment.byteSize(), flag.getValue());
     }
 
-    public boolean trySend(MemorySegment segment, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    boolean trySend(MemorySegment segment, SendFlag flag) {
         Objects.requireNonNull(segment, "segment");
         Objects.requireNonNull(flag, "flag");
         return trySend(segment, 0, segment.byteSize(), flag.getValue());
     }
 
-    public boolean trySend(MemorySegment segment, long offset, long length,
+    @Deprecated(forRemoval = false)
+    boolean trySend(MemorySegment segment, long offset, long length,
                            SendFlag flag) {
         Objects.requireNonNull(flag, "flag");
         return trySend(segment, offset, length, flag.getValue());
     }
 
-    public int send(MemorySegment segment, long offset, long length,
+    @Deprecated(forRemoval = false)
+    int send(MemorySegment segment, long offset, long length,
                     SendFlag flag) {
         Objects.requireNonNull(flag, "flag");
         return send(segment, offset, length, flag.getValue());
@@ -391,60 +673,34 @@ public final class Socket implements AutoCloseable {
                      int sendFlags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
-        MemorySegment slice;
-        if (length == 0) {
-            slice = MemorySegment.NULL;
-        } else if (segment.isNative()) {
-            slice = segment.asSlice(offset, length);
-        } else {
-            int intLength = toIntLength(length);
-            slice = ensureSendScratch(intLength);
-            MemorySegment.copy(segment, offset, slice, 0, length);
+        try (Message msg = segment.isNative()
+            ? Message.fromNativeData(segment, offset, length)
+            : Message.fromMemorySegment(segment, offset, length)) {
+            sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
+            return (int) length;
         }
-        int rc = Native.send(handle, slice, length, sendFlags);
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_send");
-        return rc;
     }
 
     private boolean trySend(MemorySegment segment, long offset, long length,
                             int sendFlags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
-        MemorySegment slice;
-        if (length == 0) {
-            slice = MemorySegment.NULL;
-        } else if (segment.isNative()) {
-            slice = segment.asSlice(offset, length);
-        } else {
-            int intLength = toIntLength(length);
-            slice = ensureSendScratch(intLength);
-            MemorySegment.copy(segment, offset, slice, 0, length);
-        }
-        while (true) {
-            int rc = Native.send(handle, slice, length, sendFlags);
-            if (rc >= 0) {
-                return true;
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw ZlinkException.fromLastError("zlink_send");
+        try (Message msg = segment.isNative()
+            ? Message.fromNativeData(segment, offset, length)
+            : Message.fromMemorySegment(segment, offset, length)) {
+            return trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
         }
     }
 
-    public int send(ByteBuf buf, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    int send(ByteBuf buf, SendFlag flag) {
         Objects.requireNonNull(buf, "buf");
         Objects.requireNonNull(flag, "flag");
         return send(buf, flag.getValue());
     }
 
-    public boolean trySend(ByteBuf buf, SendFlag flag) {
+    @Deprecated(forRemoval = false)
+    boolean trySend(ByteBuf buf, SendFlag flag) {
         Objects.requireNonNull(buf, "buf");
         Objects.requireNonNull(flag, "flag");
         return trySend(buf, flag.getValue());
@@ -454,10 +710,10 @@ public final class Socket implements AutoCloseable {
         Objects.requireNonNull(buf, "buf");
         int len = buf.readableBytes();
         if (len <= 0) {
-            int rc = Native.send(handle, MemorySegment.NULL, 0, sendFlags);
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send");
-            return rc;
+            try (Message msg = Message.fromBytes(EMPTY_BYTES)) {
+                sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
+                return 0;
+            }
         }
 
         int readerIndex = buf.readerIndex();
@@ -484,19 +740,8 @@ public final class Socket implements AutoCloseable {
         Objects.requireNonNull(buf, "buf");
         int len = buf.readableBytes();
         if (len <= 0) {
-            while (true) {
-                int rc = Native.send(handle, MemorySegment.NULL, 0, sendFlags);
-                if (rc >= 0) {
-                    return true;
-                }
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR) {
-                    continue;
-                }
-                if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                    return false;
-                }
-                throw ZlinkException.fromLastError("zlink_send");
+            try (Message msg = Message.fromBytes(EMPTY_BYTES)) {
+                return trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
             }
         }
 
@@ -521,121 +766,41 @@ public final class Socket implements AutoCloseable {
         }
     }
 
+    private static UnsupportedOperationException unsupportedLegacySocketApi(
+      String api) {
+        return new UnsupportedOperationException(
+          "Legacy socket API '" + api
+            + "' is not part of the canonical Java binding surface.");
+    }
+
     public void attachStream(StreamPacketHandler handler,
                              StreamDispatchMode mode) {
-        Objects.requireNonNull(handler, "handler");
-        Objects.requireNonNull(mode, "mode");
-        if (mode != StreamDispatchMode.NONE) {
-            throw new IllegalArgumentException(
-              "LEN32BE requires attachStreamLen32be(StreamPacketBatchHandler)");
-        }
-        attachStreamRaw(handler);
+        throw unsupportedLegacySocketApi("attachStream(StreamPacketHandler, StreamDispatchMode)");
     }
 
     public void attachStream(StreamPacketBatchHandler handler,
                              StreamDispatchMode mode) {
-        Objects.requireNonNull(handler, "handler");
-        Objects.requireNonNull(mode, "mode");
-        if (mode != StreamDispatchMode.LEN32BE) {
-            throw new IllegalArgumentException(
-              "raw STREAM requires attachStreamRaw(StreamPacketHandler)");
-        }
-        attachStreamLen32be(handler);
+        throw unsupportedLegacySocketApi("attachStream(StreamPacketBatchHandler, StreamDispatchMode)");
     }
 
     public void attachStream(StreamPacketHandler handler) {
-        attachStream(handler, StreamDispatchMode.NONE);
+        throw unsupportedLegacySocketApi("attachStream(StreamPacketHandler)");
     }
 
     public void attachStreamRaw(StreamPacketHandler handler) {
-        Objects.requireNonNull(handler, "handler");
-        if (streamAttached)
-            throw new IllegalStateException("STREAM callback already attached");
-
-        try {
-            MethodHandle cb = MethodHandles.lookup().findVirtual(
-              Socket.class,
-              "onStreamRaw",
-              MethodType.methodType(int.class, MemorySegment.class,
-                MemorySegment.class)).bindTo(this);
-            streamCallbackArena = Arena.ofShared();
-            streamCallbackStub =
-              LINKER.upcallStub(cb, FD_STREAM_CALLBACK_RAW, streamCallbackArena);
-        } catch (NoSuchMethodException | IllegalAccessException ex) {
-            throw new RuntimeException("stream callback binding failed", ex);
-        }
-
-        int rc = Native.streamAttachRaw(handle, streamCallbackStub);
-        if (rc != 0) {
-            closeArena(streamCallbackArena);
-            streamCallbackArena = null;
-            streamCallbackStub = MemorySegment.NULL;
-            throw ZlinkException.fromLastError("zlink_stream_attach_raw");
-        }
-        streamRawHandler = handler;
-        streamBatchHandler = null;
-        streamAttached = true;
+        throw unsupportedLegacySocketApi("attachStreamRaw");
     }
 
     public void attachStreamLen32be(StreamPacketBatchHandler handler) {
-        Objects.requireNonNull(handler, "handler");
-        if (streamAttached)
-            throw new IllegalStateException("STREAM callback already attached");
-
-        try {
-            MethodHandle cb = MethodHandles.lookup().findVirtual(
-              Socket.class,
-              "onStreamPackets",
-              MethodType.methodType(int.class, MemorySegment.class,
-                MemorySegment.class, long.class)).bindTo(this);
-            streamCallbackArena = Arena.ofShared();
-            streamCallbackStub =
-              LINKER.upcallStub(cb, FD_STREAM_CALLBACK, streamCallbackArena);
-        } catch (NoSuchMethodException | IllegalAccessException ex) {
-            throw new RuntimeException("stream callback binding failed", ex);
-        }
-
-        int rc = Native.streamAttachLen32be(handle, streamCallbackStub);
-        if (rc != 0) {
-            closeArena(streamCallbackArena);
-            streamCallbackArena = null;
-            streamCallbackStub = MemorySegment.NULL;
-            throw ZlinkException.fromLastError("zlink_stream_attach_len32be");
-        }
-        streamRawHandler = null;
-        streamBatchHandler = handler;
-        streamAttached = true;
+        throw unsupportedLegacySocketApi("attachStreamLen32be");
     }
 
     public void detachStream() {
-        if (!streamAttached)
-            return;
-        int rc = Native.streamDetach(handle);
-        streamAttached = false;
-        streamRawHandler = null;
-        streamBatchHandler = null;
-        closeArena(streamCallbackArena);
-        streamCallbackArena = null;
-        streamCallbackStub = MemorySegment.NULL;
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_stream_detach");
+        throw unsupportedLegacySocketApi("detachStream");
     }
 
     public byte[] streamPeerRoutingIdBytes(int index) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rid = arena.allocate(STREAM_ROUTING_ID_LAYOUT_SIZE);
-            rid.set(ValueLayout.JAVA_BYTE, 0, (byte) 0);
-            int rc = Native.socketPeerRoutingId(handle, index, rid);
-            if (rc != 0)
-                return null;
-            int ridLen = rid.get(ValueLayout.JAVA_BYTE, 0) & 0xFF;
-            if (ridLen <= 0)
-                return null;
-            byte[] out = new byte[ridLen];
-            MemorySegment.copy(rid.asSlice(1, ridLen), 0,
-              MemorySegment.ofArray(out), 0, ridLen);
-            return out;
-        }
+        throw unsupportedLegacySocketApi("streamPeerRoutingIdBytes");
     }
 
     public byte[] streamPeerRoutingIdBytes() {
@@ -643,71 +808,15 @@ public final class Socket implements AutoCloseable {
     }
 
     public Long streamPeerRoutingId(int index) {
-        byte[] rid = streamPeerRoutingIdBytes(index);
-        if (rid == null)
-            return null;
-        return decodeStreamRoutingId(rid);
+        throw unsupportedLegacySocketApi("streamPeerRoutingId");
     }
 
     public Long streamPeerRoutingId() {
         return streamPeerRoutingId(0);
     }
 
-    public List<PeerInfo> peers() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            count.set(ValueLayout.JAVA_LONG, 0, 0L);
-            int rc = Native.socketPeers(handle, MemorySegment.NULL, count);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_socket_peers");
-            long available = count.get(ValueLayout.JAVA_LONG, 0);
-            if (available <= 0)
-                return Collections.emptyList();
-
-            MemorySegment peersMem = arena.allocate(NativeLayouts.PEER_INFO_LAYOUT,
-              available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.socketPeers(handle, peersMem, count);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_socket_peers");
-
-            long actualLong = count.get(ValueLayout.JAVA_LONG, 0);
-            if (actualLong < 0)
-                actualLong = 0;
-            if (actualLong > available)
-                actualLong = available;
-            int actual = (int) actualLong;
-            long stride = NativeLayouts.PEER_INFO_LAYOUT.byteSize();
-            ArrayList<PeerInfo> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(PeerInfo.fromNative(peersMem.asSlice((long) i * stride,
-                  stride)));
-            }
-            return out;
-        }
-    }
-
     public int streamSend(long routingId, byte[] payload, SendFlag flags) {
-        Objects.requireNonNull(payload, "payload");
-        Objects.requireNonNull(flags, "flags");
-        validateStreamRoutingId(routingId);
-
-        MemorySegment payloadSlice;
-        if (payload.length == 0) {
-            payloadSlice = MemorySegment.NULL;
-        } else {
-            payloadSlice = ensureSendScratch(payload.length);
-            MemorySegment.copy(MemorySegment.ofArray(payload), 0, payloadSlice, 0,
-              payload.length);
-        }
-
-        MemorySegment ridLayout = streamRoutingIdScratch.get();
-        writeStreamRoutingId(ridLayout, routingId);
-        int rc = Native.streamSend(handle, ridLayout, payloadSlice,
-          payload.length, flags.getValue());
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_stream_send");
-        return rc;
+        throw unsupportedLegacySocketApi("streamSend(long, byte[], SendFlag)");
     }
 
     public int streamSend(long routingId, byte[] payload) {
@@ -716,17 +825,7 @@ public final class Socket implements AutoCloseable {
 
     public int streamSend(long routingId, MemorySegment payload,
                           SendFlag flags) {
-        Objects.requireNonNull(payload, "payload");
-        Objects.requireNonNull(flags, "flags");
-        validateStreamRoutingId(routingId);
-
-        MemorySegment ridLayout = streamRoutingIdScratch.get();
-        writeStreamRoutingId(ridLayout, routingId);
-        int rc = streamSend(ridLayout, 1, STREAM_ROUTING_ID_SIZE, payload, 0,
-          payload.byteSize(), flags);
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_stream_send");
-        return rc;
+        throw unsupportedLegacySocketApi("streamSend(long, MemorySegment, SendFlag)");
     }
 
     public int streamSend(long routingId, MemorySegment payload) {
@@ -734,21 +833,7 @@ public final class Socket implements AutoCloseable {
     }
 
     public int streamSend(long routingId, Message payload, SendFlag flags) {
-        Objects.requireNonNull(payload, "payload");
-        Objects.requireNonNull(flags, "flags");
-        validateStreamRoutingId(routingId);
-
-        MemorySegment ridLayout = streamRoutingIdScratch.get();
-        writeStreamRoutingId(ridLayout, routingId);
-        try {
-            int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
-              flags.getValue());
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_stream_send_msg");
-            return rc;
-        } finally {
-            payload.close();
-        }
+        throw unsupportedLegacySocketApi("streamSend(long, Message, SendFlag)");
     }
 
     public int streamSend(long routingId, Message payload) {
@@ -756,10 +841,7 @@ public final class Socket implements AutoCloseable {
     }
 
     public int streamSend(byte[] routingId, byte[] payload, SendFlag flags) {
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(payload, "payload");
-        return streamSend(routingId, 0, routingId.length,
-          payload, 0, payload.length, flags);
+        throw unsupportedLegacySocketApi("streamSend(byte[], byte[], SendFlag)");
     }
 
     public int streamSend(byte[] routingId, byte[] payload) {
@@ -768,18 +850,7 @@ public final class Socket implements AutoCloseable {
 
     public int streamSend(ByteBuffer routingId, ByteBuffer payload,
                           SendFlag flags) {
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(payload, "payload");
-        int ridLength = routingId.remaining();
-        int payloadLength = payload.remaining();
-        MemorySegment ridSeg = ridLength == 0
-          ? MemorySegment.NULL
-          : MemorySegment.ofBuffer(routingId);
-        MemorySegment bodySeg = payloadLength == 0
-          ? MemorySegment.NULL
-          : MemorySegment.ofBuffer(payload);
-        return streamSend(ridSeg, 0, ridLength, bodySeg, 0, payloadLength,
-          flags);
+        throw unsupportedLegacySocketApi("streamSend(ByteBuffer, ByteBuffer, SendFlag)");
     }
 
     public int streamSend(ByteBuffer routingId, ByteBuffer payload) {
@@ -788,10 +859,7 @@ public final class Socket implements AutoCloseable {
 
     public int streamSend(ByteSpan routingId, ByteSpan payload,
                           SendFlag flags) {
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(payload, "payload");
-        return streamSend(routingId.segment(), 0, routingId.length(),
-          payload.segment(), 0, payload.length(), flags);
+        throw unsupportedLegacySocketApi("streamSend(ByteSpan, ByteSpan, SendFlag)");
     }
 
     public int streamSend(ByteSpan routingId, ByteSpan payload) {
@@ -800,10 +868,7 @@ public final class Socket implements AutoCloseable {
 
     public int streamSend(MemorySegment routingId, MemorySegment payload,
                           SendFlag flags) {
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(payload, "payload");
-        return streamSend(routingId, 0, routingId.byteSize(),
-          payload, 0, payload.byteSize(), flags);
+        throw unsupportedLegacySocketApi("streamSend(MemorySegment, MemorySegment, SendFlag)");
     }
 
     public int streamSend(MemorySegment routingId, MemorySegment payload) {
@@ -811,230 +876,179 @@ public final class Socket implements AutoCloseable {
     }
 
     public int streamSend(byte[] routingId, Message payload, SendFlag flags) {
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(payload, "payload");
-        Objects.requireNonNull(flags, "flags");
-        if (routingId.length != STREAM_ROUTING_ID_SIZE) {
-            throw new IllegalArgumentException(
-              "STREAM routingId must be exactly 4 bytes");
-        }
-        MemorySegment ridLayout = streamRoutingIdScratch.get();
-        ridLayout.set(ValueLayout.JAVA_BYTE, 0, (byte) routingId.length);
-        MemorySegment.copy(MemorySegment.ofArray(routingId), 0,
-          ridLayout.asSlice(1, routingId.length), 0, routingId.length);
-        try {
-            int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
-              flags.getValue());
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_stream_send_msg");
-            return rc;
-        } finally {
-            payload.close();
-        }
+        throw unsupportedLegacySocketApi("streamSend(byte[], Message, SendFlag)");
     }
 
     public int streamSend(byte[] routingId, Message payload) {
         return streamSend(routingId, payload, SendFlag.NONE);
     }
 
-    public byte[] recv(int size, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    byte[] recv(int size, ReceiveFlag flags) {
         if (size < 0)
             throw new IllegalArgumentException("size must be >= 0");
         if (size == 0)
             return new byte[0];
-        MemorySegment seg = ensureRecvScratch(size);
-        int rc = Native.recv(handle, seg, size, flags.getValue());
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_recv");
-        byte[] out = new byte[rc];
-        if (rc > 0)
-            MemorySegment.copy(seg, 0, MemorySegment.ofArray(out), 0, rc);
-        return out;
+        try (Message frame = takeRecvFrame(flags, false)) {
+            int rc = Math.min(size, frame.size());
+            byte[] out = new byte[rc];
+            if (rc > 0) {
+                MemorySegment.copy(frame.dataSegment(), 0,
+                  MemorySegment.ofArray(out), 0, rc);
+            }
+            return out;
+        }
     }
 
-    public int recv(byte[] data, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int recv(byte[] data, ReceiveFlag flags) {
         Objects.requireNonNull(data, "data");
         return recv(data, 0, data.length, flags);
     }
 
-    public int tryRecv(byte[] data, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int tryRecv(byte[] data, ReceiveFlag flags) {
         Objects.requireNonNull(data, "data");
         return tryRecv(data, 0, data.length, flags);
     }
 
-    public int tryRecv(byte[] data, int offset, int length, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int tryRecv(byte[] data, int offset, int length, ReceiveFlag flags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
         if (length == 0)
             return 0;
-        MemorySegment seg = ensureRecvScratch(length);
-        while (true) {
-            int rc = Native.recv(handle, seg, length, flags.getValue());
-            if (rc >= 0) {
-                if (rc > 0) {
-                    MemorySegment.copy(seg, 0, MemorySegment.ofArray(data),
-                        offset, rc);
-                }
-                return rc;
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+        try (Message frame = takeRecvFrame(flags, true)) {
+            if (frame == null)
                 return -1;
-            }
-            throw ZlinkException.fromLastError("zlink_recv");
-        }
-    }
-
-    public int recv(byte[] data, int offset, int length, ReceiveFlag flags) {
-        Objects.requireNonNull(data, "data");
-        validateRange(data.length, offset, length, "data");
-        if (length == 0)
-            return 0;
-        MemorySegment seg = ensureRecvScratch(length);
-        int rc = Native.recv(handle, seg, length, flags.getValue());
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_recv");
-        if (rc > 0) {
-            MemorySegment.copy(seg, 0, MemorySegment.ofArray(data), offset, rc);
-        }
-        return rc;
-    }
-
-    public int recv(ByteBuffer buffer, ReceiveFlag flags) {
-        Objects.requireNonNull(buffer, "buffer");
-        int writable = buffer.remaining();
-        if (writable <= 0)
-            return 0;
-        MemorySegment dstSeg = MemorySegment.ofBuffer(buffer);
-        int rc;
-        if (buffer.isDirect()) {
-            rc = Native.recv(handle, dstSeg, writable, flags.getValue());
-        } else {
-            MemorySegment seg = ensureRecvScratch(writable);
-            rc = Native.recv(handle, seg, writable, flags.getValue());
+            int rc = Math.min(length, frame.size());
             if (rc > 0) {
-                MemorySegment.copy(seg, 0, dstSeg, 0, rc);
+                MemorySegment.copy(frame.dataSegment(), 0,
+                  MemorySegment.ofArray(data), offset, rc);
             }
+            return rc;
         }
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_recv");
-        buffer.position(buffer.position() + rc);
-        return rc;
     }
 
-    public int tryRecv(ByteBuffer buffer, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int recv(byte[] data, int offset, int length, ReceiveFlag flags) {
+        Objects.requireNonNull(data, "data");
+        validateRange(data.length, offset, length, "data");
+        if (length == 0)
+            return 0;
+        try (Message frame = takeRecvFrame(flags, false)) {
+            int rc = Math.min(length, frame.size());
+            if (rc > 0) {
+                MemorySegment.copy(frame.dataSegment(), 0,
+                  MemorySegment.ofArray(data), offset, rc);
+            }
+            return rc;
+        }
+    }
+
+    @Deprecated(forRemoval = false)
+    int recv(ByteBuffer buffer, ReceiveFlag flags) {
         Objects.requireNonNull(buffer, "buffer");
         int writable = buffer.remaining();
         if (writable <= 0)
             return 0;
-
-        MemorySegment dstSeg = MemorySegment.ofBuffer(buffer);
-        MemorySegment seg = buffer.isDirect() ? dstSeg : ensureRecvScratch(writable);
-        while (true) {
-            int rc = Native.recv(handle, seg, writable, flags.getValue());
-            if (rc >= 0) {
-                if (!buffer.isDirect() && rc > 0) {
-                    MemorySegment.copy(seg, 0, dstSeg, 0, rc);
-                }
-                buffer.position(buffer.position() + rc);
-                return rc;
+        try (Message frame = takeRecvFrame(flags, false)) {
+            int rc = Math.min(writable, frame.size());
+            if (rc > 0) {
+                ByteBuffer dst = buffer.slice();
+                dst.limit(rc);
+                MemorySegment.copy(frame.dataSegment(), 0,
+                  MemorySegment.ofBuffer(dst), 0, rc);
             }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return -1;
-            }
-            throw ZlinkException.fromLastError("zlink_recv");
+            buffer.position(buffer.position() + rc);
+            return rc;
         }
     }
 
-    public int recv(ByteSpan span, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int tryRecv(ByteBuffer buffer, ReceiveFlag flags) {
+        Objects.requireNonNull(buffer, "buffer");
+        int writable = buffer.remaining();
+        if (writable <= 0)
+            return 0;
+        try (Message frame = takeRecvFrame(flags, true)) {
+            if (frame == null)
+                return -1;
+            int rc = Math.min(writable, frame.size());
+            if (rc > 0) {
+                ByteBuffer dst = buffer.slice();
+                dst.limit(rc);
+                MemorySegment.copy(frame.dataSegment(), 0,
+                  MemorySegment.ofBuffer(dst), 0, rc);
+            }
+            buffer.position(buffer.position() + rc);
+            return rc;
+        }
+    }
+
+    @Deprecated(forRemoval = false)
+    int recv(ByteSpan span, ReceiveFlag flags) {
         Objects.requireNonNull(span, "span");
         return recv(span.segment(), 0, span.length(), flags);
     }
 
-    public int recv(MemorySegment segment, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int recv(MemorySegment segment, ReceiveFlag flags) {
         Objects.requireNonNull(segment, "segment");
         return recv(segment, 0, segment.byteSize(), flags);
     }
 
-    public int tryRecv(MemorySegment segment, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int tryRecv(MemorySegment segment, ReceiveFlag flags) {
         Objects.requireNonNull(segment, "segment");
         return tryRecv(segment, 0, segment.byteSize(), flags);
     }
 
-    public boolean recvFrameHasMore(ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    boolean recvFrameHasMore(ReceiveFlag flags) {
         Objects.requireNonNull(flags, "flags");
 
         Message msg = recvFrameScratch.get();
         msg.resetForReuse();
-        msg.recv(this, flags);
+        recvMessageFrame(msg, flags);
         return msg.more();
     }
 
-    public int recv(MemorySegment segment, long offset, long length, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int recv(MemorySegment segment, long offset, long length, ReceiveFlag flags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
         if (length == 0)
             return 0;
-        MemorySegment slice;
-        int rc;
-        if (segment.isNative()) {
-            slice = segment.asSlice(offset, length);
-            rc = Native.recv(handle, slice, length, flags.getValue());
-        } else {
-            int intLength = toIntLength(length);
-            slice = ensureRecvScratch(intLength);
-            rc = Native.recv(handle, slice, length, flags.getValue());
+        try (Message frame = takeRecvFrame(flags, false)) {
+            int rc = Math.min(toIntLength(length), frame.size());
             if (rc > 0) {
-                MemorySegment.copy(slice, 0, segment, offset, rc);
+                MemorySegment.copy(frame.dataSegment(), 0, segment, offset, rc);
             }
+            return rc;
         }
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_recv");
-        return rc;
     }
 
-    public int tryRecv(MemorySegment segment, long offset, long length,
+    @Deprecated(forRemoval = false)
+    int tryRecv(MemorySegment segment, long offset, long length,
                        ReceiveFlag flags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
         if (length == 0)
             return 0;
-        MemorySegment slice;
-        if (segment.isNative()) {
-            slice = segment.asSlice(offset, length);
-        } else {
-            slice = ensureRecvScratch(toIntLength(length));
-        }
-        while (true) {
-            int rc = Native.recv(handle, slice, length, flags.getValue());
-            if (rc >= 0) {
-                if (!segment.isNative() && rc > 0) {
-                    MemorySegment.copy(slice, 0, segment, offset, rc);
-                }
-                return rc;
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+        try (Message frame = takeRecvFrame(flags, true)) {
+            if (frame == null)
                 return -1;
+            int rc = Math.min(toIntLength(length), frame.size());
+            if (rc > 0) {
+                MemorySegment.copy(frame.dataSegment(), 0, segment, offset, rc);
             }
-            throw ZlinkException.fromLastError("zlink_recv");
+            return rc;
         }
     }
 
-    public int recv(ByteBuf buf, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int recv(ByteBuf buf, ReceiveFlag flags) {
         Objects.requireNonNull(buf, "buf");
         Objects.requireNonNull(flags, "flags");
         int writable = buf.writableBytes();
@@ -1060,7 +1074,8 @@ public final class Socket implements AutoCloseable {
         }
     }
 
-    public int tryRecv(ByteBuf buf, ReceiveFlag flags) {
+    @Deprecated(forRemoval = false)
+    int tryRecv(ByteBuf buf, ReceiveFlag flags) {
         Objects.requireNonNull(buf, "buf");
         Objects.requireNonNull(flags, "flags");
         int writable = buf.writableBytes();
@@ -1248,6 +1263,19 @@ public final class Socket implements AutoCloseable {
     }
 
     public void close() {
+        receiveHandler = null;
+        subscribeHandler = null;
+        sendReadyHandler = null;
+        callbackFailure = null;
+        closeArena(receiveCallbackArena);
+        closeArena(subscribeCallbackArena);
+        closeArena(sendReadyCallbackArena);
+        receiveCallbackArena = null;
+        subscribeCallbackArena = null;
+        sendReadyCallbackArena = null;
+        receiveCallbackStub = MemorySegment.NULL;
+        subscribeCallbackStub = MemorySegment.NULL;
+        sendReadyCallbackStub = MemorySegment.NULL;
         if (streamAttached) {
             try {
                 Native.streamDetach(handle);
@@ -1325,7 +1353,8 @@ public final class Socket implements AutoCloseable {
     }
 
     private void setSockOptRaw(int optionId, MemorySegment value, long len) {
-        int rc = Native.setSockOpt(handle, optionId, value, len);
+        int rc = Native.setSockOpt(handle, translateLegacyCommonOptionId(optionId),
+          value, len);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_setsockopt");
     }
@@ -1339,6 +1368,88 @@ public final class Socket implements AutoCloseable {
                 length);
         }
         setSockOptRaw(optionId, buf, length);
+    }
+
+    private void setTypedBytesOption(int optionId, byte[] value, int offset,
+                                     int length) {
+        if (optionId == SocketOption.ROUTING_ID.getValue()) {
+            setRoutingIdBytes(value, offset, length);
+            return;
+        }
+        if (optionId == SocketOption.SUBSCRIBE.getValue()) {
+            setSubscriptionBytes(value, offset, length, true);
+            return;
+        }
+        if (optionId == SocketOption.UNSUBSCRIBE.getValue()) {
+            setSubscriptionBytes(value, offset, length, false);
+            return;
+        }
+        setSockOptBytes(optionId, value, offset, length);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T getTypedStringOption(SocketOptionKey<T> option) {
+        if (option.optionId() == SocketOption.ROUTING_ID.getValue()) {
+            return (T) new String(getRoutingIdBytes(), StandardCharsets.UTF_8);
+        }
+        return (T) decodeCString(
+          getSockOptBytes(option.optionId(), option.maxReadLength()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T getTypedBytesOption(SocketOptionKey<T> option) {
+        if (option.optionId() == SocketOption.ROUTING_ID.getValue()) {
+            return (T) getRoutingIdBytes();
+        }
+        return (T) getSockOptBytes(option.optionId(), option.maxReadLength());
+    }
+
+    private void setRoutingIdBytes(byte[] value, int offset, int length) {
+        MemorySegment buf = length == 0 ? MemorySegment.NULL
+          : ensureSendScratch(length);
+        if (length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0,
+              length);
+        }
+        int rc = Native.setRoutingId(handle, buf, length);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_set_routing_id");
+    }
+
+    private byte[] getRoutingIdBytes() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            int rc = Native.getRoutingId(handle, outRid);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_get_routing_id");
+            int size = outRid.get(ValueLayout.JAVA_BYTE,
+              NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+            byte[] out = new byte[size];
+            if (size > 0) {
+                MemorySegment.copy(outRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+                  MemorySegment.ofArray(out), 0, size);
+            }
+            return out;
+        }
+    }
+
+    private void setSubscriptionBytes(byte[] value, int offset, int length,
+                                      boolean subscribe) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment filter = length == 0 ? arena.allocate(1)
+              : arena.allocate(length + 1L);
+            if (length > 0) {
+                MemorySegment.copy(MemorySegment.ofArray(value), offset, filter,
+                  0, length);
+            }
+            filter.set(ValueLayout.JAVA_BYTE, length, (byte) 0);
+            int rc = subscribe ? Native.setSubscription(handle, filter)
+              : Native.unsetSubscription(handle, filter);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(subscribe
+                  ? "zlink_set_subscription" : "zlink_unset_subscription");
+            }
+        }
     }
 
     private void setSockOptInt(int optionId, int value) {
@@ -1361,7 +1472,8 @@ public final class Socket implements AutoCloseable {
                 : arena.allocate(maxLen);
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, maxLen);
-            int rc = Native.getSockOpt(handle, optionId, buf, len);
+            int rc = Native.getSockOpt(handle,
+                translateLegacyCommonOptionId(optionId), buf, len);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_getsockopt");
             long actualLong = len.get(ValueLayout.JAVA_LONG, 0);
@@ -1379,14 +1491,346 @@ public final class Socket implements AutoCloseable {
     }
 
     private int getSockOptInt(int optionId) {
+        if (optionId == SocketOption.RCVMORE.getValue()) {
+            return legacyReceiveState.get().pendingCount() > 0 ? 1 : 0;
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = Native.getSockOpt(handle, optionId, buf, len);
+            int rc = Native.getSockOpt(handle,
+                translateLegacyCommonOptionId(optionId), buf, len);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_getsockopt");
             return buf.get(ValueLayout.JAVA_INT, 0);
+        }
+    }
+
+    void sendMessageFrame(Message message, SendFlag flag) {
+        Objects.requireNonNull(message, "message");
+        Objects.requireNonNull(flag, "flag");
+        withNativeSendFrame(message, nativeMsg -> {
+            int rc = Native.sendMultipart(handle, nativeMsg, 1, flag.getValue());
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_send");
+            return null;
+        });
+    }
+
+    boolean trySendMessageFrame(Message message, SendFlag flag) {
+        Objects.requireNonNull(message, "message");
+        Objects.requireNonNull(flag, "flag");
+        while (true) {
+            Integer rc = withNativeSendFrame(message,
+              nativeMsg -> Native.sendMultipart(handle, nativeMsg, 1,
+                flag.getValue()));
+            if (rc >= 0) {
+                return true;
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+                return false;
+            }
+            throw ZlinkException.fromLastError("zlink_send");
+        }
+    }
+
+    private <T> T withNativeSendFrame(Message message,
+                                      NativeFrameAction<T> action) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            Object anchor = message.transferTo(nativeMsg);
+            boolean success = false;
+            try {
+                T result = action.run(nativeMsg);
+                success = true;
+                return result;
+            } finally {
+                if (!success) {
+                    message.restoreFromNative(nativeMsg, false, anchor);
+                    try {
+                        NativeMsg.msgClose(nativeMsg);
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface NativeFrameAction<T> {
+        T run(MemorySegment nativeMsg);
+    }
+
+    void recvMessageFrame(Message message, ReceiveFlag flag) {
+        Message frame = takeRecvFrame(flag, false);
+        try {
+            frame.moveInto(message, frame.more());
+        } finally {
+            frame.close();
+        }
+    }
+
+    int tryRecvMessageFrame(Message message, ReceiveFlag flag) {
+        Message frame = takeRecvFrame(flag, true);
+        if (frame == null)
+            return -1;
+        try {
+            return frame.moveInto(message, frame.more());
+        } finally {
+            frame.close();
+        }
+    }
+
+    private Message takeRecvFrame(ReceiveFlag flags, boolean nonBlocking) {
+        Objects.requireNonNull(flags, "flags");
+        LegacyReceiveState state = legacyReceiveState.get();
+        while (true) {
+            if (state.hasPending()) {
+                return state.poll();
+            }
+
+            Native.MultipartReceive received = Native.recvMultipart(handle,
+              flags.getValue());
+            if (received != null) {
+                state.replace(materializeFrames(received));
+                continue;
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            if (nonBlocking
+                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                return null;
+            }
+            throw ZlinkException.fromLastError("zlink_recv");
+        }
+    }
+
+    private static Message[] materializeFrames(Native.MultipartReceive received) {
+        byte[] routingId = received.routingId();
+        Message[] payload = Message.fromMsgVector(received.parts(),
+          received.partCount());
+        int prefix = routingId == null || routingId.length == 0 ? 0 : 1;
+        if (payload.length == 0 && prefix == 0) {
+            return new Message[] {Message.fromBytes(EMPTY_BYTES)};
+        }
+        if (prefix == 0) {
+            return payload;
+        }
+        Message[] frames = new Message[payload.length + 1];
+        frames[0] = Message.fromBytes(routingId);
+        System.arraycopy(payload, 0, frames, 1, payload.length);
+        return frames;
+    }
+
+    private void sendParts(RoutingId routingId, List<Message> parts,
+                           SendFlag flags, boolean nonBlocking) {
+        ensureOpen();
+        validateParts(parts);
+        while (true) {
+            if (trySendPartsOnce(routingId, parts, flags))
+                return;
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            if (nonBlocking
+                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                return;
+            }
+            throw ZlinkException.fromLastError(
+                routingId == null ? "zlink_send" : "zlink_send_rid");
+        }
+    }
+
+    private boolean trySendPartsOnce(RoutingId routingId, List<Message> parts,
+                                     SendFlag flags) {
+        try (Arena arena = Arena.ofConfined()) {
+            int count = parts.size();
+            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+            MemorySegment nativeParts = arena.allocate(msgSize * count,
+                NativeLayouts.MSG_LAYOUT.byteAlignment());
+            Object[] anchors = new Object[count];
+            boolean success = false;
+            try {
+                for (int i = 0; i < count; i++) {
+                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
+                        msgSize);
+                    anchors[i] = parts.get(i).transferTo(nativeMsg);
+                }
+                int rc = routingId == null
+                    ? Native.sendMultipart(handle, nativeParts, count,
+                        flags.getValue())
+                    : Native.sendMultipart(handle, nativeRoutingId(arena, routingId),
+                        nativeParts, count, flags.getValue());
+                if (rc >= 0) {
+                    success = true;
+                    return true;
+                }
+                return false;
+            } finally {
+                if (!success) {
+                    restoreParts(parts, nativeParts, anchors);
+                }
+            }
+        }
+    }
+
+    private void publishParts(String topicId, List<Message> parts,
+                              SendFlag flags, boolean nonBlocking) {
+        ensureOpen();
+        validateParts(parts);
+        while (true) {
+            if (tryPublishPartsOnce(topicId, parts, flags))
+                return;
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            if (nonBlocking
+                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                return;
+            }
+            throw ZlinkException.fromLastError("zlink_publish");
+        }
+    }
+
+    private boolean tryPublishPartsOnce(String topicId, List<Message> parts,
+                                        SendFlag flags) {
+        try (Arena arena = Arena.ofConfined()) {
+            int count = parts.size();
+            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+            MemorySegment nativeTopic = arena.allocateFrom(topicId,
+                StandardCharsets.UTF_8);
+            MemorySegment nativeParts = arena.allocate(msgSize * count,
+                NativeLayouts.MSG_LAYOUT.byteAlignment());
+            Object[] anchors = new Object[count];
+            boolean success = false;
+            try {
+                for (int i = 0; i < count; i++) {
+                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
+                        msgSize);
+                    anchors[i] = parts.get(i).transferTo(nativeMsg);
+                }
+                int rc = Native.publish(handle, nativeTopic, nativeParts, count,
+                    flags.getValue());
+                if (rc >= 0) {
+                    success = true;
+                    return true;
+                }
+                return false;
+            } finally {
+                if (!success) {
+                    restoreParts(parts, nativeParts, anchors);
+                }
+            }
+        }
+    }
+
+    private static void restoreParts(List<Message> parts,
+                                     MemorySegment nativeParts,
+                                     Object[] anchors) {
+        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+        for (int i = 0; i < parts.size(); i++) {
+            MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
+                msgSize);
+            try {
+                parts.get(i).restoreFromNative(nativeMsg, i + 1 < parts.size(),
+                    anchors[i]);
+            } catch (RuntimeException ignored) {
+                try {
+                    NativeMsg.msgClose(nativeMsg);
+                } catch (RuntimeException ignoredClose) {
+                }
+            }
+        }
+    }
+
+    private static void validateParts(List<Message> parts) {
+        if (parts.isEmpty())
+            throw new IllegalArgumentException("parts must not be empty");
+        for (int i = 0; i < parts.size(); i++) {
+            if (parts.get(i) == null)
+                throw new IllegalArgumentException("parts[" + i + "] is null");
+        }
+    }
+
+    private static RoutingId toRoutingId(byte[] value) {
+        if (value == null || value.length == 0)
+            return null;
+        return RoutingId.copyOf(value);
+    }
+
+    private static byte[] decodeRoutingId(MemorySegment nativeRid) {
+        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size == 0)
+            return null;
+        byte[] value = new byte[size];
+        MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+            MemorySegment.ofArray(value), 0, size);
+        return value;
+    }
+
+    private static int normalizeTopicLength(MemorySegment topic, int capacity,
+                                            long reportedLength) {
+        long len = reportedLength;
+        if (len < 0)
+            len = 0;
+        if (len > capacity)
+            len = capacity;
+        int bounded = (int) len;
+        if (bounded > 0 && topic.get(ValueLayout.JAVA_BYTE, bounded - 1) == 0)
+            bounded--;
+        return bounded;
+    }
+
+    private static MemorySegment nativeRoutingId(Arena arena, RoutingId routingId) {
+        byte[] value = routingId.toByteArray();
+        MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+            (byte) value.length);
+        if (value.length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
+                NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
+        }
+        return nativeRid;
+    }
+
+    private byte[] subscriptionAt(long index, MemorySegment lenInOut,
+                                  MemorySegment isPatternOut, int initialCapacity) {
+        int capacity = Math.max(initialCapacity, 0);
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment filterOut = capacity == 0 ? MemorySegment.NULL
+                    : arena.allocate(capacity);
+                lenInOut.set(ValueLayout.JAVA_LONG, 0, capacity);
+                isPatternOut.set(ValueLayout.JAVA_INT, 0, 0);
+                int rc = Native.subscriptionAt(handle, index, filterOut, lenInOut,
+                    isPatternOut);
+                if (rc == 0) {
+                    int actual = toIntLength(lenInOut.get(ValueLayout.JAVA_LONG, 0));
+                    if (actual == 0)
+                        return new byte[0];
+                    byte[] out = new byte[actual];
+                    MemorySegment.copy(filterOut, 0, MemorySegment.ofArray(out), 0,
+                        actual);
+                    return out;
+                }
+                int errno = Native.errno();
+                if (errno == 2)
+                    return null;
+                if (errno == 22) {
+                    capacity = toIntLength(lenInOut.get(ValueLayout.JAVA_LONG, 0));
+                    continue;
+                }
+                throw ZlinkException.fromLastError("zlink_subscription_at");
+            }
         }
     }
 
@@ -1395,11 +1839,65 @@ public final class Socket implements AutoCloseable {
             MemorySegment buf = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_LONG.byteSize());
-            int rc = Native.getSockOpt(handle, optionId, buf, len);
+            int rc = Native.getSockOpt(handle,
+                translateLegacyCommonOptionId(optionId), buf, len);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_getsockopt");
             return buf.get(ValueLayout.JAVA_LONG, 0);
         }
+    }
+
+    private static int translateLegacyCommonOptionId(int optionId) {
+        return switch (optionId) {
+            case 4 -> 0x3001;
+            case 8 -> 0x3003;
+            case 9 -> 0x3004;
+            case 11 -> 0x3005;
+            case 12 -> 0x3006;
+            case 14 -> 0x3007;
+            case 15 -> 0x3008;
+            case 16 -> 0x3009;
+            case 17 -> 0x300A;
+            case 18 -> 0x300B;
+            case 19 -> 0x300C;
+            case 21 -> 0x300D;
+            case 22 -> 0x300E;
+            case 23 -> 0x300F;
+            case 24 -> 0x3010;
+            case 25 -> 0x3011;
+            case 27 -> 0x3012;
+            case 28 -> 0x3013;
+            case 32 -> 0x3014;
+            case 34 -> 0x3015;
+            case 35 -> 0x3016;
+            case 36 -> 0x3017;
+            case 37 -> 0x3018;
+            case 39 -> 0x3019;
+            case 42 -> 0x301A;
+            case 54 -> 0x301B;
+            case 57 -> 0x301C;
+            case 66 -> 0x301D;
+            case 70 -> 0x301E;
+            case 74 -> 0x3020;
+            case 75 -> 0x3021;
+            case 76 -> 0x3022;
+            case 77 -> 0x3023;
+            case 79 -> 0x3024;
+            case 80 -> 0x3025;
+            case 84 -> 0x3026;
+            case 92 -> 0x3027;
+            case 95 -> 0x3028;
+            case 96 -> 0x3029;
+            case 97 -> 0x302A;
+            case 98 -> 0x302B;
+            case 99 -> 0x302C;
+            case 100 -> 0x302D;
+            case 101 -> 0x302E;
+            case 102 -> 0x302F;
+            case 117 -> 0x3030;
+            case 118 -> 0x3031;
+            default -> optionId;
+        };
     }
 
     private static String decodeCString(byte[] raw) {
@@ -1483,18 +1981,136 @@ public final class Socket implements AutoCloseable {
         return (int) length;
     }
 
+    private void ensureOpen() {
+        if (handle == null || handle.address() == 0)
+            throw new IllegalStateException("socket is closed");
+        ensureNoCallbackFailure();
+    }
+
+    private void ensureNoCallbackFailure() {
+        RuntimeException failure = callbackFailure;
+        if (failure != null)
+            throw failure;
+    }
+
+    private MethodHandle callbackHandle(String name, MethodType type) {
+        try {
+            return MethodHandles.lookup().findVirtual(Socket.class, name, type)
+              .bindTo(this);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("failed to bind callback " + name,
+              ex);
+        }
+    }
+
+    private void handleReceiveCallback(MemorySegment sourceRid,
+                                       MemorySegment parts,
+                                       long partCount,
+                                       MemorySegment userdata) {
+        SocketMessageHandler handler = receiveHandler;
+        if (handler == null)
+            return;
+        try (Received received = receivedFromCallback(sourceRid, parts,
+               partCount)) {
+            handler.onMessage(received);
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        }
+    }
+
+    private void handleSubscribeCallback(MemorySegment sourceRid,
+                                         MemorySegment topic,
+                                         long topicLen,
+                                         MemorySegment parts,
+                                         long partCount,
+                                         MemorySegment userdata) {
+        SubscribeHandler handler = subscribeHandler;
+        if (handler == null)
+            return;
+        try (Received received = receivedFromCallback(sourceRid, parts,
+               partCount)) {
+            handler.onMessage(readRoutingId(sourceRid), decodeTopic(topic,
+                topicLen), received);
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        }
+    }
+
+    private void handleSendReadyCallback(MemorySegment subject,
+                                         MemorySegment userdata) {
+        SendReadyHandler handler = sendReadyHandler;
+        if (handler == null)
+            return;
+        try {
+            handler.onReady();
+        } catch (RuntimeException ex) {
+            recordCallbackFailure(ex);
+        }
+    }
+
+    private Received receivedFromCallback(MemorySegment sourceRid,
+                                          MemorySegment parts,
+                                          long partCount) {
+        Message[] frames = Message.fromOwnedMsgVector(parts, partCount);
+        boolean closed = false;
+        try {
+            NativeMsg.multipartClose(parts, partCount);
+            closed = true;
+            return new Received(readRoutingId(sourceRid), frames);
+        } finally {
+            if (!closed)
+                Message.closeAll(frames);
+        }
+    }
+
+    private static RoutingId readRoutingId(MemorySegment sourceRid) {
+        if (sourceRid == null || sourceRid.address() == 0)
+            return null;
+        MemorySegment routingId = sourceRid.reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int size = routingId.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size == 0)
+            return null;
+        byte[] value = new byte[size];
+        MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+            MemorySegment.ofArray(value), 0, size);
+        return RoutingId.copyOf(value);
+    }
+
+    private static String decodeTopic(MemorySegment topic, long topicLen) {
+        int length = toIntLength(topicLen);
+        if (length == 0)
+            return "";
+        MemorySegment topicBytes = topic.reinterpret(length);
+        if (length > 0
+          && topicBytes.get(ValueLayout.JAVA_BYTE, length - 1) == 0) {
+            length--;
+        }
+        if (length == 0)
+            return "";
+        return new String(topicBytes.asSlice(0, length).toArray(
+            ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+    }
+
+    private void recordCallbackFailure(RuntimeException failure) {
+        callbackFailure = failure;
+        Thread current = Thread.currentThread();
+        Thread.UncaughtExceptionHandler uncaught = current.getUncaughtExceptionHandler();
+        if (uncaught != null) {
+            uncaught.uncaughtException(current, failure);
+        }
+    }
+
     private int sendNettyFallback(ByteBuf buf,
                                   int readerIndex,
                                   int length,
                                   int sendFlags) {
-        MemorySegment seg = ensureSendScratch(length);
-        ByteBuffer dst = seg.asSlice(0, length).asByteBuffer();
-        buf.getBytes(readerIndex, dst);
-        int rc = Native.send(handle, seg, length, sendFlags);
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_send");
+        byte[] tmp = new byte[length];
+        buf.getBytes(readerIndex, tmp);
+        int rc = send(tmp, 0, length, sendFlags);
         if (rc > 0)
-        buf.readerIndex(readerIndex + rc);
+            buf.readerIndex(readerIndex + rc);
         return rc;
     }
 
@@ -1502,65 +2118,43 @@ public final class Socket implements AutoCloseable {
                                          int readerIndex,
                                          int length,
                                          int sendFlags) {
-        MemorySegment seg = ensureSendScratch(length);
-        ByteBuffer dst = seg.asSlice(0, length).asByteBuffer();
-        buf.getBytes(readerIndex, dst);
-        while (true) {
-            int rc = Native.send(handle, seg, length, sendFlags);
-            if (rc >= 0) {
-                buf.readerIndex(readerIndex + rc);
-                return true;
-            }
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw ZlinkException.fromLastError("zlink_send");
-        }
+        byte[] tmp = new byte[length];
+        buf.getBytes(readerIndex, tmp);
+        boolean sent = trySend(tmp, 0, length, sendFlags);
+        if (sent)
+            buf.readerIndex(readerIndex + length);
+        return sent;
     }
 
     private int recvNettyFallback(ByteBuf buf,
                                   int writerIndex,
                                   int writable,
                                   ReceiveFlag flags) {
-        MemorySegment seg = ensureRecvScratch(writable);
-        int rc = Native.recv(handle, seg, writable, flags.getValue());
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_recv");
-        if (rc > 0) {
-            ByteBuffer src = seg.asSlice(0, rc).asByteBuffer();
-            buf.setBytes(writerIndex, src);
-            buf.writerIndex(writerIndex + rc);
+        try (Message frame = takeRecvFrame(flags, false)) {
+            int rc = Math.min(writable, frame.size());
+            if (rc > 0) {
+                ByteBuffer src = frame.dataSegment().asSlice(0, rc).asByteBuffer();
+                buf.setBytes(writerIndex, src);
+                buf.writerIndex(writerIndex + rc);
+            }
+            return rc;
         }
-        return rc;
     }
 
     private int tryRecvNettyFallback(ByteBuf buf,
                                      int writerIndex,
                                      int writable,
                                      ReceiveFlag flags) {
-        MemorySegment seg = ensureRecvScratch(writable);
-        while (true) {
-            int rc = Native.recv(handle, seg, writable, flags.getValue());
-            if (rc >= 0) {
-                if (rc > 0) {
-                    ByteBuffer src = seg.asSlice(0, rc).asByteBuffer();
-                    buf.setBytes(writerIndex, src);
-                    buf.writerIndex(writerIndex + rc);
-                }
-                return rc;
-            }
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+        try (Message frame = takeRecvFrame(flags, true)) {
+            if (frame == null)
                 return -1;
+            int rc = Math.min(writable, frame.size());
+            if (rc > 0) {
+                ByteBuffer src = frame.dataSegment().asSlice(0, rc).asByteBuffer();
+                buf.setBytes(writerIndex, src);
+                buf.writerIndex(writerIndex + rc);
             }
-            throw ZlinkException.fromLastError("zlink_recv");
+            return rc;
         }
     }
 

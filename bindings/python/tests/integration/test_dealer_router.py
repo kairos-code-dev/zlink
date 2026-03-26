@@ -1,4 +1,3 @@
-import time
 import unittest
 
 import zlink
@@ -7,11 +6,9 @@ from .helpers import (
     transports,
     endpoint_for,
     try_transport,
-    recv_with_timeout,
-    send_with_retry,
+    wait_for_socket_event,
     ZLINK_DEALER,
     ZLINK_ROUTER,
-    ZLINK_SNDMORE,
 )
 
 
@@ -25,15 +22,23 @@ class DealerRouterScenarioTest(unittest.TestCase):
                 ep = endpoint_for(name, endpoint, "-dr")
                 router.bind(ep)
                 dealer.connect(ep)
-                time.sleep(0.05)
-                send_with_retry(dealer, b"hello", 0, 2000)
-                rid = recv_with_timeout(router, 256, 2000)
-                payload = recv_with_timeout(router, 256, 2000)
-                self.assertEqual(payload.strip(b"\0"), b"hello")
-                send_with_retry(router, rid, ZLINK_SNDMORE, 2000)
-                send_with_retry(router, b"world", 0, 2000)
-                resp = recv_with_timeout(dealer, 64, 2000)
-                self.assertEqual(resp.strip(b"\0"), b"world")
+                self.assertTrue(
+                    wait_for_socket_event(dealer, zlink.PollEvent.POLLOUT, 2000)
+                )
+                dealer.send(b"hello")
+                self.assertTrue(
+                    wait_for_socket_event(router, zlink.PollEvent.POLLIN, 2000)
+                )
+                with router.recv_message() as received:
+                    self.assertEqual(received.to_bytes(), b"hello")
+                    self.assertIsNotNone(received.routing_id)
+                    router.send(received.routing_id, zlink.SendFlag.SNDMORE)
+                router.send(b"world")
+                self.assertTrue(
+                    wait_for_socket_event(dealer, zlink.PollEvent.POLLIN, 2000)
+                )
+                with dealer.recv_message() as response:
+                    self.assertEqual(response.to_bytes(), b"world")
                 router.close()
                 dealer.close()
             try_transport(name, run)

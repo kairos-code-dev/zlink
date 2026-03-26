@@ -4,13 +4,6 @@ namespace Zlink.Tests;
 
 public sealed class test_ctx_options
 {
-    private const ContextOption CtxThreadSchedPolicy = (ContextOption)4;
-    private const ContextOption CtxThreadAffinityCpuAdd = (ContextOption)7;
-    private const ContextOption CtxThreadAffinityCpuRemove = (ContextOption)8;
-    private const ContextOption CtxThreadNamePrefix = (ContextOption)9;
-    private const ContextOption CtxIpv6 = (ContextOption)42;
-    private const ContextOption CtxBlocky = (ContextOption)70;
-
     [Fact]
     public void can_set_and_get_context_options()
     {
@@ -36,21 +29,18 @@ public sealed class test_ctx_options
         Assert.True(ctx.GetOption(ContextOption.SocketLimit) > 0);
         Assert.True(ctx.GetOption(ContextOption.IoThreads) > 0);
         Assert.True(ctx.GetOption(ContextOption.MsgTSize) > 0);
-        Assert.Equal(0, ctx.GetOption(CtxIpv6));
     }
 
     [Fact]
-    public void context_ipv6_option_propagates_to_new_sockets()
+    public void context_blocky_can_be_configured()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = new Context();
-        ctx.SetOption(CtxIpv6, 1);
-        Assert.Equal(1, ctx.GetOption(CtxIpv6));
-
-        using var router = new Socket(ctx, SocketType.Router);
-        Assert.Equal(1, router.GetOption(SocketOptions.Ipv6));
+        Assert.Equal(1, ctx.GetOption(ContextOption.Blocky));
+        ctx.SetOption(ContextOption.Blocky, 0);
+        Assert.Equal(0, ctx.GetOption(ContextOption.Blocky));
     }
 
     [Fact]
@@ -60,14 +50,14 @@ public sealed class test_ctx_options
             return;
 
         using var ctx = new Context();
-        ctx.SetOption(CtxThreadSchedPolicy, 0);
-        Assert.Equal(0, ctx.GetOption(CtxThreadSchedPolicy));
+        ctx.SetOption(ContextOption.ThreadSchedPolicy, 0);
+        Assert.Equal(0, ctx.GetOption(ContextOption.ThreadSchedPolicy));
 
-        ctx.SetOption(CtxThreadAffinityCpuAdd, 0);
-        ctx.SetOption(CtxThreadAffinityCpuRemove, 0);
+        ctx.SetOption(ContextOption.ThreadAffinityCpuAdd, 0);
+        ctx.SetOption(ContextOption.ThreadAffinityCpuRemove, 0);
 
-        ctx.SetOption(CtxThreadNamePrefix, 1234);
-        Assert.Equal(1234, ctx.GetOption(CtxThreadNamePrefix));
+        ctx.SetOption(ContextOption.ThreadNamePrefix, 1234);
+        Assert.Equal(1234, ctx.GetOption(ContextOption.ThreadNamePrefix));
     }
 
     [Fact]
@@ -82,8 +72,8 @@ public sealed class test_ctx_options
             Assert.Equal(-1, preRouter.GetOption(SocketOptions.Linger));
         }
 
-        ctx.SetOption(CtxBlocky, 0);
-        Assert.Equal(0, ctx.GetOption(CtxBlocky));
+        ctx.SetOption(ContextOption.Blocky, 0);
+        Assert.Equal(0, ctx.GetOption(ContextOption.Blocky));
 
         using var router = new Socket(ctx, SocketType.Router);
         Assert.Equal(0, router.GetOption(SocketOptions.Linger));

@@ -1,7 +1,3 @@
 rootProject.name = 'zlink-java'
-
-include ':perf-single'
-project(':perf-single').projectDir = file('perf/single/Zlink.PerfBench')
-
-include ':perf-multi'
-project(':perf-multi').projectDir = file('perf/multi/Zlink.PerfBench')
+include ':samples'
+project(':samples').projectDir = file('samples/Zlink.Samples')

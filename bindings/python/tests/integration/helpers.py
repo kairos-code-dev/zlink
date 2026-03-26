@@ -11,8 +11,6 @@ ZLINK_ROUTER = 6
 ZLINK_XPUB = 9
 ZLINK_XSUB = 10
 
-ZLINK_SUBSCRIBE = 6
-ZLINK_XPUB_VERBOSE = 40
 ZLINK_DONTWAIT = 1
 ZLINK_SNDMORE = 2
 
@@ -44,56 +42,13 @@ def try_transport(name, fn):
     fn()
 
 
-def recv_with_timeout(sock, size, timeout_ms):
-    deadline = time.time() + (timeout_ms / 1000.0)
-    last = None
-    while time.time() < deadline:
+def wait_for_socket_event(sock, events, timeout_ms):
+    with zlink.Poller() as poller:
+        poller.add_socket(sock, events)
         try:
-            return sock.recv(size, ZLINK_DONTWAIT)
+            ready = poller.poll(timeout_ms)
         except zlink.ZlinkError as exc:
-            last = exc
-            time.sleep(0.01)
-    if last:
-        raise last
-    raise RuntimeError("timeout")
-
-
-def send_with_retry(sock, data, flags, timeout_ms):
-    deadline = time.time() + (timeout_ms / 1000.0)
-    last = None
-    while time.time() < deadline:
-        try:
-            sock.send(data, flags)
-            return
-        except zlink.ZlinkError as exc:
-            last = exc
-            time.sleep(0.01)
-    if last:
-        raise last
-    raise RuntimeError("timeout")
-
-
-def wait_until(fn, timeout_ms, interval_ms=10):
-    deadline = time.time() + (timeout_ms / 1000.0)
-    while time.time() < deadline:
-        try:
-            if fn():
-                return True
-        except zlink.ZlinkError:
-            pass
-        time.sleep(interval_ms / 1000.0)
-    return False
-
-
-def spot_recv_with_timeout(spot, timeout_ms):
-    deadline = time.time() + (timeout_ms / 1000.0)
-    last = None
-    while time.time() < deadline:
-        try:
-            return spot.recv(ZLINK_DONTWAIT)
-        except zlink.ZlinkError as exc:
-            last = exc
-            time.sleep(0.01)
-    if last:
-        raise last
-    raise RuntimeError("timeout")
+            if exc.errno == 11:
+                return False
+            raise
+    return bool(ready)

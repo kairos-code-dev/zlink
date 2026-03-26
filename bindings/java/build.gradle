@@ -39,7 +39,7 @@ tasks.register('integrationTest', Test) {
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     filter {
-        includeTestsMatching 'dev.kairoscode.zlink.integration.*'
+        includeTestsMatching 'dev.kairoscode.zlink.integration.contract.*'
     }
 }
 

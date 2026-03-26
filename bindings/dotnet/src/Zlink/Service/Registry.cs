@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Text;
 using Zlink;
 using Zlink.Native;
@@ -23,13 +23,13 @@ public sealed class Registry : IDisposable
 
     internal IntPtr Handle => _handle;
 
-    public void SetEndpoints(string pubEndpoint, string routerEndpoint)
+    public void Bind(string pubEndpoint, string routerEndpoint)
     {
         ValidateNotEmpty(pubEndpoint, nameof(pubEndpoint));
         ValidateNotEmpty(routerEndpoint, nameof(routerEndpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_set_endpoints(_handle,
-            pubEndpoint, routerEndpoint);
+        int rc = NativeMethods.zlink_registry_bind(_handle, pubEndpoint,
+            routerEndpoint);
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -65,124 +65,132 @@ public sealed class Registry : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void SetOption(RegistrySocketRole role, SocketOptionKey<int> option,
-        int value)
+    public RegistryStatus Snapshot()
     {
         EnsureNotDisposed();
-        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
-        SetOptionInt32(role, option.Option, value);
-    }
-
-    public void SetOption(RegistrySocketRole role, SocketOptionKey<long> option,
-        long value)
-    {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
-        SetOptionInt64(role, option.Option, value);
-    }
-
-    public void SetOption(RegistrySocketRole role, SocketOptionKey<ulong> option,
-        ulong value)
-    {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
-        SetOptionUInt64(role, option.Option, value);
-    }
-
-    public void SetOption(RegistrySocketRole role, SocketOptionKey<byte[]> option,
-        byte[] value)
-    {
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
-        SetOption(role, option, value.AsSpan());
-    }
-
-    public void SetOption(RegistrySocketRole role, SocketOptionKey<byte[]> option,
-        ReadOnlySpan<byte> value)
-    {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
-        SetOptionBytes(role, option.Option, value);
-    }
-
-    public void SetOption(RegistrySocketRole role, SocketOptionKey<string> option,
-        string value)
-    {
-        EnsureNotDisposed();
-        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
-        SetOptionString(role, option.Option, value);
-    }
-
-    private unsafe void SetOptionInt32(RegistrySocketRole role,
-        SocketOption option, int value)
-    {
-        int tmp = value;
-        int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        int rc = NativeMethods.zlink_registry_status_snapshot(_handle,
+            out var native);
         ZlinkException.ThrowIfError(rc);
+        return RegistryStatus.FromNative(ref native);
     }
 
-    private unsafe void SetOptionInt64(RegistrySocketRole role,
-        SocketOption option, long value)
+    public RegistryServiceSummaryEntry[] ServiceSummary(
+        ServiceKind? serviceKind = null, ushort? serviceRole = null,
+        string? serviceName = null)
     {
-        long tmp = value;
-        int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(long));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionUInt64(RegistrySocketRole role,
-        SocketOption option, ulong value)
-    {
-        ulong tmp = value;
-        int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(ulong));
-        ZlinkException.ThrowIfError(rc);
-    }
-
-    private unsafe void SetOptionBytes(RegistrySocketRole role,
-        SocketOption option, ReadOnlySpan<byte> value)
-    {
-        fixed (byte* ptr = value)
+        EnsureNotDisposed();
+        unsafe
         {
-            int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
-                (int)option, (IntPtr)ptr, (nuint)value.Length);
-            ZlinkException.ThrowIfError(rc);
+            ZlinkRegistryServiceSummaryFilter filter = default;
+            IntPtr filterPtr = IntPtr.Zero;
+            if (serviceKind.HasValue || serviceRole.HasValue
+                || !string.IsNullOrEmpty(serviceName))
+            {
+                filter.ServiceKind = (int)serviceKind.GetValueOrDefault();
+                filter.ServiceRole = serviceRole ?? 0;
+                if (!string.IsNullOrEmpty(serviceName))
+                {
+                    WriteFixedString(serviceName, filter.ServiceName, 256);
+                }
+                filterPtr = (IntPtr)(&filter);
+            }
+
+            return ReadSummaryEntries(filterPtr);
         }
     }
 
-    private void SetOptionString(RegistrySocketRole role, SocketOption option,
-        string value)
+    public RegistryTopologyEntry[] TopologySnapshot()
     {
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
+        EnsureNotDisposed();
+        return ReadTopologyEntries(IntPtr.Zero, true);
+    }
 
-        int maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
-        if (maxByteCount <= 512)
+    public RegistryTopologyEntry[] TopologyQuery(ServiceKind? serviceKind = null,
+        ushort? serviceRole = null, string? serviceName = null,
+        string? routingId = null, int? state = null, int? source = null)
+    {
+        EnsureNotDisposed();
+        unsafe
         {
-            Span<byte> buffer = stackalloc byte[maxByteCount];
-            int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
-            SetOptionBytes(role, option, buffer.Slice(0, byteCount));
-            return;
-        }
+            ZlinkRegistryTopologyFilter filter = default;
+            IntPtr filterPtr = IntPtr.Zero;
+            if (serviceKind.HasValue || serviceRole.HasValue
+                || !string.IsNullOrEmpty(serviceName)
+                || !string.IsNullOrEmpty(routingId) || state.HasValue
+                || source.HasValue)
+            {
+                filter.ServiceKind = (int)serviceKind.GetValueOrDefault();
+                filter.ServiceRole = serviceRole ?? 0;
+                filter.State = state ?? 0;
+                filter.Source = source ?? 0;
+                if (!string.IsNullOrEmpty(serviceName))
+                {
+                    WriteFixedString(serviceName, filter.ServiceName, 256);
+                }
+                if (!string.IsNullOrEmpty(routingId))
+                {
+                    filter.RoutingId = NativeHelpers.WriteRoutingId(
+                        RoutingIdCodec.FromPublicString(routingId,
+                            nameof(routingId)));
+                }
+                filterPtr = (IntPtr)(&filter);
+            }
 
-        byte[] rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
+            return ReadTopologyEntries(filterPtr, false);
+        }
+    }
+
+    public MemberPeerEntry[] MemberPeers(ServiceType serviceType,
+        string serviceName)
+    {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
+        EnsureNotDisposed();
+
+        nuint count = 0;
+        int rc = NativeMethods.zlink_registry_member_peers(_handle,
+            (int)serviceType, serviceName, IntPtr.Zero, ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<MemberPeerEntry>();
+
+        int entrySize = Marshal.SizeOf<ZlinkMemberPeerEntry>();
+        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
         try
         {
-            int byteCount = Encoding.UTF8.GetBytes(value, rented);
-            SetOptionBytes(role, option, rented.AsSpan(0, byteCount));
+            nuint actual = count;
+            rc = NativeMethods.zlink_registry_member_peers(_handle,
+                (int)serviceType, serviceName, entries, ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            MemberPeerEntry[] result = new MemberPeerEntry[(int)actual];
+            for (int i = 0; i < result.Length; i++)
+            {
+                IntPtr current = IntPtr.Add(entries, i * entrySize);
+                ZlinkMemberPeerEntry native =
+                    Marshal.PtrToStructure<ZlinkMemberPeerEntry>(current);
+                result[i] = MemberPeerEntry.FromNative(ref native);
+            }
+            return result;
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(rented);
+            Marshal.FreeHGlobal(entries);
         }
     }
 
-    public void Start()
+    public Message GetMemberPeerMetadata(ServiceType serviceType,
+        string serviceName, ushort serviceRole, string endpoint)
     {
+        ValidateNotEmpty(serviceName, nameof(serviceName));
+        ValidateNotEmpty(endpoint, nameof(endpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_start(_handle);
+
+        using var metadata = new Message();
+        int rc = NativeMethods.zlink_registry_member_peer_metadata(_handle,
+            (int)serviceType, serviceName, serviceRole, endpoint,
+            ref metadata.Handle);
         ZlinkException.ThrowIfError(rc);
+        return metadata.Move();
     }
 
     public void Dispose()
@@ -211,5 +219,97 @@ public sealed class Registry : IDisposable
             throw new ArgumentNullException(paramName);
         if (value.Length == 0)
             throw new ArgumentException("Value must not be empty.", paramName);
+    }
+
+    private RegistryServiceSummaryEntry[] ReadSummaryEntries(IntPtr filterPtr)
+    {
+        nuint count = 0;
+        int rc = NativeMethods.zlink_registry_service_summary_snapshot(_handle,
+            filterPtr, IntPtr.Zero, ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<RegistryServiceSummaryEntry>();
+
+        int entrySize = Marshal.SizeOf<ZlinkRegistryServiceSummaryEntry>();
+        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        try
+        {
+            nuint actual = count;
+            rc = NativeMethods.zlink_registry_service_summary_snapshot(_handle,
+                filterPtr, entries, ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            RegistryServiceSummaryEntry[] result =
+                new RegistryServiceSummaryEntry[(int)actual];
+            for (int i = 0; i < result.Length; i++)
+            {
+                IntPtr current = IntPtr.Add(entries, i * entrySize);
+                ZlinkRegistryServiceSummaryEntry native =
+                    Marshal.PtrToStructure<ZlinkRegistryServiceSummaryEntry>(current);
+                result[i] = RegistryServiceSummaryEntry.FromNative(ref native);
+            }
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(entries);
+        }
+    }
+
+    private RegistryTopologyEntry[] ReadTopologyEntries(IntPtr filterPtr,
+        bool snapshot)
+    {
+        nuint count = 0;
+        int rc = snapshot
+            ? NativeMethods.zlink_registry_topology_snapshot(_handle,
+                IntPtr.Zero, ref count)
+            : NativeMethods.zlink_registry_topology_query(_handle, filterPtr,
+                IntPtr.Zero, ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<RegistryTopologyEntry>();
+
+        int entrySize = Marshal.SizeOf<ZlinkRegistryTopologyEntry>();
+        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
+        try
+        {
+            nuint actual = count;
+            rc = snapshot
+                ? NativeMethods.zlink_registry_topology_snapshot(_handle,
+                    entries, ref actual)
+                : NativeMethods.zlink_registry_topology_query(_handle, filterPtr,
+                    entries, ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            RegistryTopologyEntry[] result = new RegistryTopologyEntry[(int)actual];
+            for (int i = 0; i < result.Length; i++)
+            {
+                IntPtr current = IntPtr.Add(entries, i * entrySize);
+                ZlinkRegistryTopologyEntry native =
+                    Marshal.PtrToStructure<ZlinkRegistryTopologyEntry>(current);
+                result[i] = RegistryTopologyEntry.FromNative(ref native);
+            }
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(entries);
+        }
+    }
+
+    private static unsafe void WriteFixedString(string value, byte* destination,
+        int capacity)
+    {
+        byte[] encoded = Encoding.UTF8.GetBytes(value);
+        if (encoded.Length >= capacity)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value),
+                "UTF-8 value exceeds native fixed buffer capacity.");
+        }
+
+        for (int i = 0; i < capacity; i++)
+            destination[i] = 0;
+        for (int i = 0; i < encoded.Length; i++)
+            destination[i] = encoded[i];
     }
 }

@@ -6,6 +6,113 @@ import os
 import pathlib
 
 
+class ZlinkMsg(ctypes.Structure):
+    _fields_ = [("_", ctypes.c_ubyte * 64)]
+
+
+class ZlinkRoutingId(ctypes.Structure):
+    _fields_ = [("size", ctypes.c_uint8), ("data", ctypes.c_uint8 * 255)]
+
+
+class ZlinkMonitorEvent(ctypes.Structure):
+    _fields_ = [
+        ("event", ctypes.c_uint64),
+        ("value", ctypes.c_uint64),
+        ("routing_id", ZlinkRoutingId),
+        ("local_addr", ctypes.c_char * 256),
+        ("remote_addr", ctypes.c_char * 256),
+    ]
+
+
+class ZlinkSocketMonitorOpenOptions(ctypes.Structure):
+    _fields_ = [("events", ctypes.c_uint64)]
+
+
+class ZlinkMonitorSnapshot(ctypes.Structure):
+    _fields_ = [
+        ("source_kind", ctypes.c_uint32),
+        ("state_flags", ctypes.c_uint32),
+        ("detail_flags", ctypes.c_uint32),
+        ("ready_count", ctypes.c_uint32),
+        ("snd_pending_msgs", ctypes.c_uint64),
+        ("rcv_pending_msgs", ctypes.c_uint64),
+    ]
+
+
+class ZlinkServiceEvent(ctypes.Structure):
+    _fields_ = [
+        ("service_kind", ctypes.c_uint32),
+        ("event_type", ctypes.c_uint32),
+        ("status", ctypes.c_int32),
+        ("error_code", ctypes.c_int32),
+        ("value", ctypes.c_uint32),
+        ("detail_flags", ctypes.c_uint32),
+        ("service_name", ctypes.c_char * 256),
+        ("endpoint", ctypes.c_char * 256),
+        ("routing_id", ZlinkRoutingId),
+        ("subject", ctypes.c_char * 256),
+        ("subject_kind", ctypes.c_uint32),
+    ]
+
+
+class ZlinkServiceMonitorOpenOptions(ctypes.Structure):
+    _fields_ = [("events", ctypes.c_uint32)]
+
+
+class ZlinkMemberPeerEntry(ctypes.Structure):
+    _fields_ = [
+        ("service_type", ctypes.c_uint16),
+        ("service_role", ctypes.c_uint16),
+        ("service_name", ctypes.c_char * 256),
+        ("endpoint", ctypes.c_char * 256),
+        ("routing_id", ZlinkRoutingId),
+        ("value", ctypes.c_int64),
+    ]
+
+
+class ZlinkRegistryTopologyEntry(ctypes.Structure):
+    _fields_ = [
+        ("routing_id", ZlinkRoutingId),
+        ("service_kind", ctypes.c_uint32),
+        ("service_role", ctypes.c_uint32),
+        ("service_name", ctypes.c_char * 256),
+        ("endpoint", ctypes.c_char * 256),
+        ("source", ctypes.c_uint32),
+        ("state", ctypes.c_uint32),
+        ("desired_count", ctypes.c_uint32),
+        ("ready_count", ctypes.c_uint32),
+        ("error_code", ctypes.c_uint32),
+        ("last_reported_ms", ctypes.c_uint64),
+    ]
+
+
+if os.name == "nt":
+    if ctypes.sizeof(ctypes.c_void_p) == 8:
+        ZlinkFD = ctypes.c_ulonglong
+    else:
+        ZlinkFD = ctypes.c_uint
+else:
+    ZlinkFD = ctypes.c_int
+
+
+class ZlinkPollItem(ctypes.Structure):
+    _fields_ = [
+        ("socket", ctypes.c_void_p),
+        ("fd", ZlinkFD),
+        ("events", ctypes.c_short),
+        ("revents", ctypes.c_short),
+    ]
+
+
+class ZlinkPollerEvent(ctypes.Structure):
+    _fields_ = [
+        ("socket", ctypes.c_void_p),
+        ("fd", ZlinkFD),
+        ("user_data", ctypes.c_void_p),
+        ("events", ctypes.c_short),
+    ]
+
+
 class _Lib:
     def __init__(self):
         path = os.environ.get("ZLINK_LIBRARY_PATH")
@@ -22,216 +129,530 @@ class _Lib:
         self.lib = ctypes.CDLL(path)
         self._bind()
 
+    def _require(self, name, argtypes, restype):
+        func = getattr(self.lib, name)
+        func.argtypes = argtypes
+        func.restype = restype
+        return func
+
     def _bind(self):
-        L = self.lib
-        L.zlink_version.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
-        L.zlink_version.restype = None
+        self._require(
+            "zlink_version",
+            [
+                ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_int),
+            ],
+            None,
+        )
+        self._require("zlink_errno", [], ctypes.c_int)
+        self._require("zlink_strerror", [ctypes.c_int], ctypes.c_char_p)
 
-        L.zlink_ctx_new.argtypes = []
-        L.zlink_ctx_new.restype = ctypes.c_void_p
-        L.zlink_ctx_term.argtypes = [ctypes.c_void_p]
-        L.zlink_ctx_term.restype = ctypes.c_int
-        L.zlink_ctx_shutdown.argtypes = [ctypes.c_void_p]
-        L.zlink_ctx_shutdown.restype = ctypes.c_int
-        L.zlink_ctx_set.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
-        L.zlink_ctx_set.restype = ctypes.c_int
-        L.zlink_ctx_get.argtypes = [ctypes.c_void_p, ctypes.c_int]
-        L.zlink_ctx_get.restype = ctypes.c_int
-
-        L.zlink_socket.argtypes = [ctypes.c_void_p, ctypes.c_int]
-        L.zlink_socket.restype = ctypes.c_void_p
-        L.zlink_close.argtypes = [ctypes.c_void_p]
-        L.zlink_close.restype = ctypes.c_int
-        L.zlink_bind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_bind.restype = ctypes.c_int
-        L.zlink_connect.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_connect.restype = ctypes.c_int
-        L.zlink_unbind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_unbind.restype = ctypes.c_int
-        L.zlink_disconnect.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_disconnect.restype = ctypes.c_int
-        L.zlink_send.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        L.zlink_send.restype = ctypes.c_int
-        L.zlink_recv.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        L.zlink_recv.restype = ctypes.c_int
-        L.zlink_stream_attach_raw.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        L.zlink_stream_attach_raw.restype = ctypes.c_int
-        L.zlink_stream_attach_len32be.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        L.zlink_stream_attach_len32be.restype = ctypes.c_int
-        L.zlink_stream_attach.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
-        L.zlink_stream_attach.restype = ctypes.c_int
-        L.zlink_stream_detach.argtypes = [ctypes.c_void_p]
-        L.zlink_stream_detach.restype = ctypes.c_int
-        L.zlink_stream_send.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        L.zlink_stream_send.restype = ctypes.c_int
-        L.zlink_socket_peer_routing_id.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
-        L.zlink_socket_peer_routing_id.restype = ctypes.c_int
-        L.zlink_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t]
-        L.zlink_setsockopt.restype = ctypes.c_int
-        L.zlink_getsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
-        L.zlink_getsockopt.restype = ctypes.c_int
-
-        L.zlink_msg_init.argtypes = [ctypes.c_void_p]
-        L.zlink_msg_init.restype = ctypes.c_int
-        L.zlink_msg_init_size.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
-        L.zlink_msg_init_size.restype = ctypes.c_int
-        L.zlink_msg_send.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
-        L.zlink_msg_send.restype = ctypes.c_int
-        L.zlink_msg_recv.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
-        L.zlink_msg_recv.restype = ctypes.c_int
-        L.zlink_msg_close.argtypes = [ctypes.c_void_p]
-        L.zlink_msg_close.restype = ctypes.c_int
-        L.zlink_msg_move.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        L.zlink_msg_move.restype = ctypes.c_int
-        L.zlink_msg_copy.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        L.zlink_msg_copy.restype = ctypes.c_int
-        L.zlink_msg_data.argtypes = [ctypes.c_void_p]
-        L.zlink_msg_data.restype = ctypes.c_void_p
-        L.zlink_msg_size.argtypes = [ctypes.c_void_p]
-        L.zlink_msg_size.restype = ctypes.c_size_t
-        L.zlink_msg_more.argtypes = [ctypes.c_void_p]
-        L.zlink_msg_more.restype = ctypes.c_int
-
-        L.zlink_poll.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_long]
-        L.zlink_poll.restype = ctypes.c_int
-
-        L.zlink_socket_monitor.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
-        L.zlink_socket_monitor.restype = ctypes.c_int
-        L.zlink_socket_monitor_open.argtypes = [ctypes.c_void_p, ctypes.c_int]
-        L.zlink_socket_monitor_open.restype = ctypes.c_void_p
-        L.zlink_monitor_recv.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
-        L.zlink_monitor_recv.restype = ctypes.c_int
-
-        L.zlink_multipart_close.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
-        L.zlink_multipart_close.restype = None
-
-        L.zlink_registry_new.argtypes = [ctypes.c_void_p]
-        L.zlink_registry_new.restype = ctypes.c_void_p
-        L.zlink_registry_set_endpoints.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
-        L.zlink_registry_set_endpoints.restype = ctypes.c_int
-        L.zlink_registry_set_id.argtypes = [ctypes.c_void_p, ctypes.c_uint]
-        L.zlink_registry_set_id.restype = ctypes.c_int
-        L.zlink_registry_add_peer.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_registry_add_peer.restype = ctypes.c_int
-        L.zlink_registry_set_heartbeat.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
-        L.zlink_registry_set_heartbeat.restype = ctypes.c_int
-        L.zlink_registry_set_broadcast_interval.argtypes = [ctypes.c_void_p, ctypes.c_uint]
-        L.zlink_registry_set_broadcast_interval.restype = ctypes.c_int
-        L.zlink_registry_start.argtypes = [ctypes.c_void_p]
-        L.zlink_registry_start.restype = ctypes.c_int
-        L.zlink_registry_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-        L.zlink_registry_destroy.restype = ctypes.c_int
-
-        L.zlink_discovery_new_typed.argtypes = [ctypes.c_void_p, ctypes.c_uint16]
-        L.zlink_discovery_new_typed.restype = ctypes.c_void_p
-        L.zlink_discovery_connect_registry.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_discovery_connect_registry.restype = ctypes.c_int
-        L.zlink_discovery_get_receivers.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
-        L.zlink_discovery_get_receivers.restype = ctypes.c_int
-        L.zlink_discovery_receiver_count.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_discovery_receiver_count.restype = ctypes.c_int
-        L.zlink_discovery_service_available.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_discovery_service_available.restype = ctypes.c_int
-        L.zlink_discovery_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-        L.zlink_discovery_destroy.restype = ctypes.c_int
-
-        L.zlink_receiver_new.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_receiver_new.restype = ctypes.c_void_p
-        L.zlink_receiver_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int,
-                                                ctypes.c_int, ctypes.c_void_p,
-                                                ctypes.c_size_t]
-        L.zlink_receiver_setsockopt.restype = ctypes.c_int
-        L.zlink_registry_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int,
-                                                ctypes.c_int, ctypes.c_void_p,
-                                                ctypes.c_size_t]
-        L.zlink_registry_setsockopt.restype = ctypes.c_int
-        L.zlink_discovery_set_tls_client.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_char_p,
+        self._require("zlink_ctx_new", [], ctypes.c_void_p)
+        self._require("zlink_ctx_term", [ctypes.c_void_p], ctypes.c_int)
+        self._require("zlink_ctx_shutdown", [ctypes.c_void_p], ctypes.c_int)
+        self._require(
+            "zlink_ctx_set",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_int],
             ctypes.c_int,
-        ]
-        L.zlink_discovery_set_tls_client.restype = ctypes.c_int
-        L.zlink_receiver_bind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_receiver_bind.restype = ctypes.c_int
-        L.zlink_receiver_connect_registry.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_receiver_connect_registry.restype = ctypes.c_int
-        L.zlink_receiver_register.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
-        L.zlink_receiver_register.restype = ctypes.c_int
-        L.zlink_receiver_update_weight.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint]
-        L.zlink_receiver_update_weight.restype = ctypes.c_int
-        L.zlink_receiver_unregister.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_receiver_unregister.restype = ctypes.c_int
-        L.zlink_receiver_register_result.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_char_p, ctypes.c_char_p]
-        L.zlink_receiver_register_result.restype = ctypes.c_int
-        L.zlink_receiver_set_tls_server.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
-        L.zlink_receiver_set_tls_server.restype = ctypes.c_int
-        L.zlink_receiver_router_socket_unsafe.argtypes = [ctypes.c_void_p]
-        L.zlink_receiver_router_socket_unsafe.restype = ctypes.c_void_p
-        L.zlink_receiver_router_peers.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
-        L.zlink_receiver_router_peers.restype = ctypes.c_int
-        L.zlink_receiver_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-        L.zlink_receiver_destroy.restype = ctypes.c_int
+        )
+        self._require(
+            "zlink_ctx_get",
+            [ctypes.c_void_p, ctypes.c_int],
+            ctypes.c_int,
+        )
 
-        L.zlink_spot_node_new.argtypes = [ctypes.c_void_p]
-        L.zlink_spot_node_new.restype = ctypes.c_void_p
-        L.zlink_spot_node_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-        L.zlink_spot_node_destroy.restype = ctypes.c_int
-        L.zlink_spot_node_bind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_node_bind.restype = ctypes.c_int
-        L.zlink_spot_node_connect_peer_pub.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_node_connect_peer_pub.restype = ctypes.c_int
-        L.zlink_spot_node_disconnect_peer_pub.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_node_disconnect_peer_pub.restype = ctypes.c_int
-        L.zlink_spot_node_register.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
-        L.zlink_spot_node_register.restype = ctypes.c_int
-        L.zlink_spot_node_unregister.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_node_unregister.restype = ctypes.c_int
-        L.zlink_spot_node_set_discovery.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_node_set_discovery.restype = ctypes.c_int
-        L.zlink_spot_node_set_tls_server.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
-        L.zlink_spot_node_set_tls_server.restype = ctypes.c_int
-        L.zlink_spot_node_set_tls_client.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
-        L.zlink_spot_node_set_tls_client.restype = ctypes.c_int
-        L.zlink_spot_node_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t]
-        L.zlink_spot_node_setsockopt.restype = ctypes.c_int
-        L.zlink_spot_node_pub_socket_unsafe.argtypes = [ctypes.c_void_p]
-        L.zlink_spot_node_pub_socket_unsafe.restype = ctypes.c_void_p
-        L.zlink_spot_node_sub_socket_unsafe.argtypes = [ctypes.c_void_p]
-        L.zlink_spot_node_sub_socket_unsafe.restype = ctypes.c_void_p
-        L.zlink_spot_node_pub_peers.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
-        L.zlink_spot_node_pub_peers.restype = ctypes.c_int
-        L.zlink_spot_node_sub_peers.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
-        L.zlink_spot_node_sub_peers.restype = ctypes.c_int
+        self._require("zlink_msg_init", [ctypes.POINTER(ZlinkMsg)], ctypes.c_int)
+        self._require(
+            "zlink_msg_init_size",
+            [ctypes.POINTER(ZlinkMsg), ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_msg_init_data",
+            [
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            ],
+            ctypes.c_int,
+        )
+        self._require("zlink_msg_close", [ctypes.POINTER(ZlinkMsg)], ctypes.c_int)
+        self._require(
+            "zlink_msg_move",
+            [ctypes.POINTER(ZlinkMsg), ctypes.POINTER(ZlinkMsg)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_msg_copy",
+            [ctypes.POINTER(ZlinkMsg), ctypes.POINTER(ZlinkMsg)],
+            ctypes.c_int,
+        )
+        self._require("zlink_msg_data", [ctypes.POINTER(ZlinkMsg)], ctypes.c_void_p)
+        self._require(
+            "zlink_msg_size",
+            [ctypes.POINTER(ZlinkMsg)],
+            ctypes.c_size_t,
+        )
+        self._require(
+            "zlink_msg_refcnt",
+            [ctypes.POINTER(ZlinkMsg)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_msg_gets",
+            [ctypes.POINTER(ZlinkMsg), ctypes.c_char_p],
+            ctypes.c_char_p,
+        )
 
-        L.zlink_spot_pub_new.argtypes = [ctypes.c_void_p]
-        L.zlink_spot_pub_new.restype = ctypes.c_void_p
-        L.zlink_spot_pub_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-        L.zlink_spot_pub_destroy.restype = ctypes.c_int
-        L.zlink_spot_pub_publish.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        L.zlink_spot_pub_publish.restype = ctypes.c_int
-        L.zlink_spot_pub_publish_bytes.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        L.zlink_spot_pub_publish_bytes.restype = ctypes.c_int
+        self._require("zlink_socket", [ctypes.c_void_p, ctypes.c_int], ctypes.c_void_p)
+        self._require("zlink_close", [ctypes.c_void_p], ctypes.c_int)
+        self._require(
+            "zlink_recv_handler",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_subscribe_handler",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_send_ready_handler",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_set_option",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_get_option",
+            [
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_set_router_option",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_get_router_option",
+            [
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_set_dealer_option",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_set_stream_option",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_get_stream_option",
+            [
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_set_pub_option",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_get_pub_option",
+            [
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_set_sub_option",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_get_sub_option",
+            [
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_set_routing_id",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_get_routing_id",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkRoutingId)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_set_subscription",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_unset_subscription",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require("zlink_bind", [ctypes.c_void_p, ctypes.c_char_p], ctypes.c_int)
+        self._require(
+            "zlink_connect",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_unbind",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_disconnect",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_socket_attach_discovery",
+            [ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_send",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkMsg), ctypes.c_size_t, ctypes.c_uint32],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_send_rid",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_recv",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
+                ctypes.POINTER(ctypes.c_size_t),
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_publish",
+            [
+                ctypes.c_void_p,
+                ctypes.c_char_p,
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_subscribe",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
+                ctypes.POINTER(ctypes.c_size_t),
+                ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_size_t),
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_subscription_event",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ctypes.c_int),
+                ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_size_t),
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
 
-        L.zlink_spot_sub_new.argtypes = [ctypes.c_void_p]
-        L.zlink_spot_sub_new.restype = ctypes.c_void_p
-        L.zlink_spot_sub_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-        L.zlink_spot_sub_destroy.restype = ctypes.c_int
-        L.zlink_spot_sub_subscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_sub_subscribe.restype = ctypes.c_int
-        L.zlink_spot_sub_subscribe_pattern.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_sub_subscribe_pattern.restype = ctypes.c_int
-        L.zlink_spot_sub_unsubscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_sub_unsubscribe.restype = ctypes.c_int
-        L.zlink_spot_sub_set_handler.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-        L.zlink_spot_sub_set_handler.restype = ctypes.c_int
-        L.zlink_spot_sub_recv.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t), ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)]
-        L.zlink_spot_sub_recv.restype = ctypes.c_int
+        self._require(
+            "zlink_socket_monitor_open",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkSocketMonitorOpenOptions)],
+            ctypes.c_void_p,
+        )
+        self._require(
+            "zlink_socket_monitor_handler",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_socket_monitor_recv",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkMonitorEvent)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_monitor_snapshot",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkMonitorSnapshot)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_monitor_close",
+            [ctypes.POINTER(ctypes.c_void_p)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_multipart_close",
+            [ctypes.POINTER(ZlinkMsg), ctypes.c_size_t],
+            None,
+        )
 
-        L.zlink_errno.argtypes = []
-        L.zlink_errno.restype = ctypes.c_int
-        L.zlink_strerror.argtypes = [ctypes.c_int]
-        L.zlink_strerror.restype = ctypes.c_char_p
+        self._require("zlink_registry_new", [ctypes.c_void_p], ctypes.c_void_p)
+        self._require(
+            "zlink_registry_bind",
+            [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_set_id",
+            [ctypes.c_void_p, ctypes.c_uint32],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_add_peer",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_set_heartbeat",
+            [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_set_broadcast_interval",
+            [ctypes.c_void_p, ctypes.c_uint32],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_destroy",
+            [ctypes.POINTER(ctypes.c_void_p)],
+            ctypes.c_int,
+        )
+
+        self._require(
+            "zlink_discovery_new",
+            [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_char_p],
+            ctypes.c_void_p,
+        )
+        self._require(
+            "zlink_discovery_connect_registry",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_discovery_set_value",
+            [ctypes.c_void_p, ctypes.c_int64],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_discovery_get_value",
+            [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_discovery_set_metadata",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_discovery_get_metadata",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkMsg)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_discovery_destroy",
+            [ctypes.POINTER(ctypes.c_void_p)],
+            ctypes.c_int,
+        )
+
+        self._require("zlink_spot_new", [ctypes.c_void_p], ctypes.c_void_p)
+        self._require(
+            "zlink_spot_destroy",
+            [ctypes.POINTER(ctypes.c_void_p)],
+            ctypes.c_int,
+        )
+        self._require("zlink_spot_node_new", [ctypes.c_void_p], ctypes.c_void_p)
+        self._require(
+            "zlink_spot_node_destroy",
+            [ctypes.POINTER(ctypes.c_void_p)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_bind",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_connect_peer",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_disconnect_peer",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_attach_discovery",
+            [ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+
+        self._require(
+            "zlink_service_monitor_open",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkServiceMonitorOpenOptions)],
+            ctypes.c_void_p,
+        )
+        self._require(
+            "zlink_service_monitor_handler",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_service_monitor_recv",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkServiceEvent)],
+            ctypes.c_int,
+        )
+
+        self._require(
+            "zlink_discovery_member_peers",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkMemberPeerEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_discovery_member_peer_metadata",
+            [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_char_p, ctypes.POINTER(ZlinkMsg)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_topology_snapshot",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRegistryTopologyEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_query_client_new",
+            [ctypes.c_void_p],
+            ctypes.c_void_p,
+        )
+        self._require(
+            "zlink_registry_query_client_connect",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_query_destroy",
+            [ctypes.POINTER(ctypes.c_void_p)],
+            ctypes.c_int,
+        )
+
+        self._require(
+            "zlink_poll",
+            [ctypes.POINTER(ZlinkPollItem), ctypes.c_int, ctypes.c_long],
+            ctypes.c_int,
+        )
+        self._require("zlink_poller_new", [], ctypes.c_void_p)
+        self._require(
+            "zlink_poller_destroy",
+            [ctypes.POINTER(ctypes.c_void_p)],
+            ctypes.c_int,
+        )
+        self._require("zlink_poller_size", [ctypes.c_void_p], ctypes.c_int)
+        self._require(
+            "zlink_poller_add",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_short],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_poller_modify",
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_short],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_poller_remove",
+            [ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_poller_add_fd",
+            [ctypes.c_void_p, ZlinkFD, ctypes.c_void_p, ctypes.c_short],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_poller_modify_fd",
+            [ctypes.c_void_p, ZlinkFD, ctypes.c_short],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_poller_remove_fd",
+            [ctypes.c_void_p, ZlinkFD],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_poller_wait",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkPollerEvent), ctypes.c_long],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_poller_wait_all",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkPollerEvent),
+                ctypes.c_int,
+                ctypes.c_long,
+            ],
+            ctypes.c_int,
+        )
 
 
 _lib = None
@@ -248,15 +669,27 @@ def _find_bundled_library():
     base = pathlib.Path(__file__).resolve().parent
     os_name = os.name
     if os_name == "nt":
-        os_dir = "windows-x86_64" if "64" in os.environ.get("PROCESSOR_ARCHITECTURE", "") else "windows-x86"
+        os_dir = (
+            "windows-x86_64"
+            if "64" in os.environ.get("PROCESSOR_ARCHITECTURE", "")
+            else "windows-x86"
+        )
         name = "zlink.dll"
     else:
         uname = os.uname().sysname.lower()
         if "darwin" in uname or "mac" in uname:
-            os_dir = "darwin-aarch64" if os.uname().machine in ("arm64", "aarch64") else "darwin-x86_64"
+            os_dir = (
+                "darwin-aarch64"
+                if os.uname().machine in ("arm64", "aarch64")
+                else "darwin-x86_64"
+            )
             name = "libzlink.dylib"
         else:
-            os_dir = "linux-aarch64" if os.uname().machine in ("arm64", "aarch64") else "linux-x86_64"
+            os_dir = (
+                "linux-aarch64"
+                if os.uname().machine in ("arm64", "aarch64")
+                else "linux-x86_64"
+            )
             name = "libzlink.so"
     candidate = base / "native" / os_dir / name
     if candidate.exists():
@@ -269,22 +702,28 @@ def _find_dev_library():
     repo = base.parents[4]
     candidates = []
     if os.name == "nt":
-        candidates.extend([
-            repo / "core" / "build" / "lib" / "zlink.dll",
-            repo / "core" / "build" / "windows-x64" / "lib" / "zlink.dll",
-        ])
+        candidates.extend(
+            [
+                repo / "core" / "build" / "lib" / "zlink.dll",
+                repo / "core" / "build" / "windows-x64" / "lib" / "zlink.dll",
+            ]
+        )
     else:
         uname = os.uname().sysname.lower()
         if "darwin" in uname or "mac" in uname:
-            candidates.extend([
-                repo / "core" / "build" / "lib" / "libzlink.dylib",
-                repo / "core" / "build" / "darwin-x64" / "lib" / "libzlink.dylib",
-            ])
+            candidates.extend(
+                [
+                    repo / "core" / "build" / "lib" / "libzlink.dylib",
+                    repo / "core" / "build" / "darwin-x64" / "lib" / "libzlink.dylib",
+                ]
+            )
         else:
-            candidates.extend([
-                repo / "core" / "build" / "lib" / "libzlink.so",
-                repo / "core" / "build" / "linux-x64" / "lib" / "libzlink.so",
-            ])
+            candidates.extend(
+                [
+                    repo / "core" / "build" / "lib" / "libzlink.so",
+                    repo / "core" / "build" / "linux-x64" / "lib" / "libzlink.so",
+                ]
+            )
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
@@ -299,36 +738,33 @@ def _prepare_windows_runtime(lib_path):
     search_dirs.append(lib_dir)
 
     for env_key in ("ZLINK_OPENSSL_BIN", "OPENSSL_BIN"):
-        v = os.environ.get(env_key)
-        if v:
-            search_dirs.append(pathlib.Path(v))
+        value = os.environ.get(env_key)
+        if value:
+            search_dirs.append(pathlib.Path(value))
 
     for entry in os.environ.get("PATH", "").split(";"):
         if entry:
             search_dirs.append(pathlib.Path(entry))
 
-    search_dirs.extend([
-        pathlib.Path(r"C:\Program Files\OpenSSL-Win64\bin"),
-        pathlib.Path(r"C:\Program Files\Git\mingw64\bin"),
-        pathlib.Path(
-            r"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\mingw64\bin"
-        ),
-    ])
+    search_dirs.extend(
+        [
+            pathlib.Path(r"C:\Program Files\OpenSSL-Win64\bin"),
+            pathlib.Path(r"C:\Program Files\Git\mingw64\bin"),
+            pathlib.Path(
+                r"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\mingw64\bin"
+            ),
+        ]
+    )
 
     seen = set()
-    for d in search_dirs:
-        s = str(d)
-        if s in seen:
+    for directory in search_dirs:
+        text = str(directory)
+        if not text or text in seen or not directory.exists():
             continue
-        seen.add(s)
-        if not d.exists():
-            continue
-        try:
-            os.add_dll_directory(s)
-        except (AttributeError, OSError):
-            pass
-        for dep in dep_names:
-            dep_path = d / dep
+        seen.add(text)
+        os.add_dll_directory(text)
+        for dep_name in dep_names:
+            dep_path = directory / dep_name
             if dep_path.exists():
                 try:
                     ctypes.CDLL(str(dep_path))

@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-from ._ffi import lib
+import sys
+import types
+import warnings
+
+from ._ffi import ZlinkMsg, ZlinkRoutingId, lib
 
 
 class ZlinkError(RuntimeError):
@@ -42,44 +46,177 @@ def _send_buffer(data):
     if isinstance(data, bytes):
         size = len(data)
         if size == 0:
-            return None, 0, None
-        return data, size, None
+            return None, 0, data
+        return ctypes.c_char_p(data), size, data
+
     view = _as_bytes_view(data)
     size = view.nbytes
     if size == 0:
-        return None, 0, None
+        return None, 0, view
     if view.readonly:
-        # bytes are accepted directly for c_void_p parameters.
         raw = view.tobytes()
-        return raw, size, None
-    return (ctypes.c_char * size).from_buffer(view), size, view
+        return ctypes.c_char_p(raw), size, raw
+    return ctypes.addressof((ctypes.c_char * size).from_buffer(view)), size, view
 
 
-_STREAM_MSG_SIZE = 64
-_STREAM_DISPATCH_LEN32BE = 0x0001
-
-
-class _ZlinkRoutingId(ctypes.Structure):
-    _fields_ = [
-        ("size", ctypes.c_ubyte),
-        ("data", ctypes.c_ubyte * 255),
-    ]
-
-
-_STREAM_PACKETS_CB_T = ctypes.CFUNCTYPE(
-    ctypes.c_int,
-    ctypes.c_void_p,
-    ctypes.c_void_p,
+_ZlinkRoutingId = ZlinkRoutingId
+_SOCKET_RECV_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.POINTER(ZlinkMsg),
     ctypes.c_size_t,
     ctypes.c_void_p,
 )
-
-_STREAM_RAW_CB_T = ctypes.CFUNCTYPE(
-    ctypes.c_int,
+_SOCKET_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.c_char_p,
+    ctypes.c_size_t,
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
     ctypes.c_void_p,
+)
+_SOCKET_SEND_READY_HANDLER = ctypes.CFUNCTYPE(
+    None,
     ctypes.c_void_p,
     ctypes.c_void_p,
 )
+_LEGACY_SOCKET_TYPE_MAP = {
+    0: 0x1001,
+    1: 0x1002,
+    2: 0x1003,
+    5: 0x1004,
+    6: 0x1005,
+    9: 0x1006,
+    10: 0x1007,
+    11: 0x1008,
+}
+
+
+def _copy_routing_id(routing_id):
+    view = _as_bytes_view(routing_id)
+    size = view.nbytes
+    if size <= 0 or size > 255:
+        raise ValueError("routing_id length must be between 1 and 255")
+    native = ZlinkRoutingId()
+    native.size = size
+    for index in range(size):
+        native.data[index] = view[index]
+    return native
+
+
+def _msg_data_ptr(msg):
+    return lib().zlink_msg_data(ctypes.byref(msg))
+
+
+def _msg_size(msg):
+    return int(lib().zlink_msg_size(ctypes.byref(msg)))
+
+
+def _msg_to_bytes(msg):
+    size = _msg_size(msg)
+    if size <= 0:
+        return b""
+    ptr = _msg_data_ptr(msg)
+    if not ptr:
+        return b""
+    return ctypes.string_at(ptr, size)
+
+
+def _init_msg_from_buffer(msg, data, *, borrow):
+    ptr, size, keepalive = _send_buffer(data)
+    if borrow:
+        data_ptr = ctypes.c_void_p(ptr if isinstance(ptr, int) else ctypes.cast(ptr, ctypes.c_void_p).value or 0)
+        rc = lib().zlink_msg_init_data(ctypes.byref(msg), data_ptr, size, None, None)
+    else:
+        rc = lib().zlink_msg_init_size(ctypes.byref(msg), size)
+        if rc == 0 and size:
+            ctypes.memmove(_msg_data_ptr(msg), ptr, size)
+    if rc != 0:
+        _raise_last_error()
+    return keepalive
+
+
+def _clone_native_msg(src):
+    dst = ZlinkMsg()
+    rc = lib().zlink_msg_init(ctypes.byref(dst))
+    if rc != 0:
+        _raise_last_error()
+    rc = lib().zlink_msg_copy(ctypes.byref(dst), ctypes.byref(src))
+    if rc != 0:
+        lib().zlink_msg_close(ctypes.byref(dst))
+        _raise_last_error()
+    return dst
+
+
+def _close_multipart(parts_ptr, part_count):
+    if parts_ptr and part_count:
+        lib().zlink_multipart_close(parts_ptr, part_count)
+
+
+def _routing_id_bytes(routing_id):
+    return bytes(routing_id.data[: routing_id.size]) or None
+
+
+def _report_unhandled_callback_exception(handler):
+    exc_type, exc_value, exc_traceback = sys.exc_info()
+    if exc_type is None:
+        return
+    sys.unraisablehook(
+        types.SimpleNamespace(
+            exc_type=exc_type,
+            exc_value=exc_value,
+            exc_traceback=exc_traceback,
+            err_msg="Unhandled zlink callback exception",
+            object=handler,
+        )
+    )
+
+
+class _ReceivedPartsOwner:
+    def __init__(self, parts_ptr, part_count):
+        self._parts_ptr = parts_ptr
+        self._part_count = part_count
+        self._closed = False
+        self._open_parts = [True] * part_count
+
+    def msg(self, index):
+        if self._closed or not self._open_parts[index]:
+            raise RuntimeError("received message is closed")
+        return self._parts_ptr[index]
+
+    def close_part(self, index):
+        if self._closed or not self._open_parts[index]:
+            return
+        self._open_parts[index] = False
+        if not any(self._open_parts):
+            self.close()
+
+    def close(self):
+        if self._closed:
+            return
+        _close_multipart(self._parts_ptr, self._part_count)
+        self._parts_ptr = None
+        self._open_parts = [False] * self._part_count
+        self._closed = True
+
+
+def _recv_native_parts(handle, flags):
+    routing_id = ZlinkRoutingId()
+    parts = ctypes.POINTER(ZlinkMsg)()
+    part_count = ctypes.c_size_t()
+    rc = lib().zlink_recv(
+        handle,
+        ctypes.byref(routing_id),
+        ctypes.byref(parts),
+        ctypes.byref(part_count),
+        int(flags),
+    )
+    if rc != 0:
+        _raise_last_error()
+    return _routing_id_bytes(routing_id), _ReceivedPartsOwner(
+        parts, int(part_count.value)
+    )
 
 
 class Context:
@@ -106,28 +243,151 @@ class Context:
 
     def close(self):
         if self._handle:
-            lib().zlink_ctx_term(self._handle)
+            rc = lib().zlink_ctx_term(self._handle)
             self._handle = None
+            if rc != 0:
+                _raise_last_error()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+
+class ReceivedMessage:
+    def __init__(self, msg=None, routing_id=None, *, owner=None, index=None):
+        self._msg = msg
+        self._owner = owner
+        self._index = index
+        self._closed = False
+        self.routing_id = routing_id
+
+    @classmethod
+    def _from_owner(cls, owner, index, routing_id=None):
+        return cls(routing_id=routing_id, owner=owner, index=index)
+
+    def _native_msg(self):
+        if self._owner is not None:
+            return self._owner.msg(self._index)
+        if self._closed:
+            raise RuntimeError("received message is closed")
+        return self._msg
+
+    def __len__(self):
+        return _msg_size(self._native_msg())
+
+    def to_bytes(self):
+        return _msg_to_bytes(self._native_msg())
+
+    def view(self):
+        native = self._native_msg()
+        ptr = _msg_data_ptr(native)
+        size = _msg_size(native)
+        if not ptr or size <= 0:
+            return memoryview(b"")
+        return memoryview((ctypes.c_ubyte * size).from_address(ptr))
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        if self._owner is not None:
+            self._owner.close_part(self._index)
+            return
+        rc = lib().zlink_msg_close(ctypes.byref(self._msg))
+        if rc != 0:
+            _raise_last_error()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+
+class ReceivedMultipart:
+    def __init__(self, owner, routing_id=None):
+        self._owner = owner
+        self.messages = [
+            ReceivedMessage._from_owner(owner, index)
+            for index in range(owner._part_count)
+        ]
+        self.routing_id = routing_id
+
+    def __iter__(self):
+        return iter(self.messages)
+
+    def __len__(self):
+        return len(self.messages)
+
+    def to_bytes_list(self):
+        return [message.to_bytes() for message in self.messages]
+
+    def close(self):
+        self._owner.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+
+class ReceivedTopicMessage:
+    def __init__(self, topic, owner, routing_id=None):
+        self.topic = topic
+        self._owner = owner
+        self.messages = [
+            ReceivedMessage._from_owner(owner, index)
+            for index in range(owner._part_count)
+        ]
+        self.routing_id = routing_id
+
+    def to_bytes_list(self):
+        return [message.to_bytes() for message in self.messages]
+
+    def close(self):
+        self._owner.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
 
 
 class Socket:
     def __init__(self, context, sock_type):
-        self._handle = lib().zlink_socket(context._handle, int(sock_type), None)
+        native_type = _LEGACY_SOCKET_TYPE_MAP.get(int(sock_type), int(sock_type))
+        self._handle = lib().zlink_socket(context._handle, native_type)
         if not self._handle:
             _raise_last_error()
         self._own = True
-        self._stream_handler = None
-        self._stream_callback = None
-        self._stream_attached = False
+        self._socket_type = native_type
+        self._pending_send_parts = []
+        self._legacy_recv_queue = []
+        self._recv_handler = None
+        self._recv_handler_cb = None
+        self._subscribe_handler = None
+        self._subscribe_handler_cb = None
+        self._send_ready_handler = None
+        self._send_ready_handler_cb = None
 
     @classmethod
     def _from_handle(cls, handle, own=False):
         obj = cls.__new__(cls)
         obj._handle = handle
         obj._own = own
-        obj._stream_handler = None
-        obj._stream_callback = None
-        obj._stream_attached = False
+        obj._socket_type = None
+        obj._pending_send_parts = []
+        obj._legacy_recv_queue = []
+        obj._recv_handler = None
+        obj._recv_handler_cb = None
+        obj._subscribe_handler = None
+        obj._subscribe_handler_cb = None
+        obj._send_ready_handler = None
+        obj._send_ready_handler_cb = None
         return obj
 
     def bind(self, endpoint: str):
@@ -150,229 +410,451 @@ class Socket:
         if rc != 0:
             _raise_last_error()
 
-    def send(self, data: bytes, flags: int = 0):
-        buf, size, keepalive = _send_buffer(data)
-        rc = lib().zlink_send(self._handle, buf, size, flags)
-        if rc < 0:
+    def attach_discovery(self, discovery):
+        rc = lib().zlink_socket_attach_discovery(self._handle, discovery._handle)
+        if rc != 0:
             _raise_last_error()
-        # Keep the backing object alive until native call returns.
-        _ = keepalive
+
+    def _send_native_parts(self, native_parts, flags):
+        part_count = len(native_parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native in enumerate(native_parts):
+            parts_array[index] = native
+        rc = lib().zlink_send(self._handle, parts_array, part_count, int(flags))
+        if rc < 0:
+            for index in range(part_count):
+                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
+            _raise_last_error()
         return rc
 
-    def recv(self, size: int, flags: int = 0) -> bytes:
-        buf = ctypes.create_string_buffer(size)
-        rc = lib().zlink_recv(self._handle, buf, size, flags)
+    def _send_native_parts_to_routing_id(self, routing_id, native_parts, flags):
+        part_count = len(native_parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native in enumerate(native_parts):
+            parts_array[index] = native
+        target = _copy_routing_id(routing_id)
+        rc = lib().zlink_send_rid(
+            self._handle, ctypes.byref(target), parts_array, part_count, int(flags)
+        )
         if rc < 0:
+            for index in range(part_count):
+                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
             _raise_last_error()
-        return buf.raw[:rc]
+        return rc
+
+    def _set_raw_option(self, setter, option, value):
+        ptr, size, keepalive = _send_buffer(value)
+        rc = setter(
+            self._handle,
+            int(option),
+            ctypes.c_void_p(
+                ptr if isinstance(ptr, int) else ctypes.cast(ptr, ctypes.c_void_p).value or 0
+            ),
+            size,
+        )
+        _ = keepalive
+        if rc != 0:
+            _raise_last_error()
+
+    def _get_raw_option(self, getter, option, size):
+        buf = ctypes.create_string_buffer(size)
+        out_size = ctypes.c_size_t(size)
+        rc = getter(self._handle, int(option), buf, ctypes.byref(out_size))
+        if rc != 0:
+            _raise_last_error()
+        return buf.raw[: out_size.value]
+
+    def send(self, data, flags: int = 0):
+        if int(flags) & 0x2:
+            self._pending_send_parts.append(data)
+            return len(bytes(_as_bytes_view(data)))
+
+        if self._pending_send_parts:
+            parts = self._pending_send_parts + [data]
+            self._pending_send_parts = []
+            if self._socket_type == 0x1005 and parts:
+                routing_id = parts[0]
+                payload_parts = parts[1:] or [b""]
+                native_parts = []
+                for part in payload_parts:
+                    if isinstance(part, Message):
+                        native_parts.append(_clone_native_msg(part._msg))
+                    else:
+                        native = ZlinkMsg()
+                        _keepalive = _init_msg_from_buffer(native, part, borrow=False)
+                        _ = _keepalive
+                        native_parts.append(native)
+                return self._send_native_parts_to_routing_id(
+                    routing_id, native_parts, 0
+                )
+            return self.send_multipart(parts, flags=0)
+
+        if isinstance(data, Message):
+            native = _clone_native_msg(data._msg)
+            return self._send_native_parts([native], flags)
+
+        native = ZlinkMsg()
+        _keepalive = _init_msg_from_buffer(native, data, borrow=False)
+        _ = _keepalive
+        return self._send_native_parts([native], flags)
+
+    def send_multipart(self, parts, flags: int = 0):
+        native_parts = []
+        for part in parts:
+            if isinstance(part, Message):
+                native_parts.append(_clone_native_msg(part._msg))
+                continue
+            native = ZlinkMsg()
+            _keepalive = _init_msg_from_buffer(native, part, borrow=False)
+            _ = _keepalive
+            native_parts.append(native)
+        self._send_native_parts(native_parts, flags)
+
+    def recv_message(self, flags: int = 0):
+        routing, owner = _recv_native_parts(self._handle, flags)
+        if owner._part_count != 1:
+            count = owner._part_count
+            owner.close()
+            raise ValueError(f"expected single-part message, got {count} parts")
+        return ReceivedMessage._from_owner(owner, 0, routing)
+
+    def recv_multipart(self, flags: int = 0):
+        routing, owner = _recv_native_parts(self._handle, flags)
+        return ReceivedMultipart(owner, routing)
 
     def recv_into(self, buffer, flags: int = 0):
         view = _as_bytes_view(buffer)
         if view.readonly:
             raise TypeError("buffer must be writable")
-        size = view.nbytes
-        if size <= 0:
+        if view.nbytes <= 0:
             raise ValueError("buffer must not be empty")
-        buf = (ctypes.c_char * size).from_buffer(view)
-        rc = lib().zlink_recv(self._handle, buf, size, flags)
-        if rc < 0:
-            _raise_last_error()
-        return rc
+        with self.recv_message(flags=flags) as received:
+            payload = received.view()
+            payload_size = len(payload)
+            if payload_size > view.nbytes:
+                raise ValueError("buffer too small for received message")
+            if payload_size:
+                native = received._native_msg()
+                ctypes.memmove(
+                    ctypes.addressof((ctypes.c_ubyte * view.nbytes).from_buffer(view)),
+                    _msg_data_ptr(native),
+                    payload_size,
+                )
+            return payload_size
 
-    def stream_attach(self, handler, mode: int = 0):
-        if handler is None or not callable(handler):
-            raise TypeError("handler must be callable")
-        if self._stream_attached:
-            raise RuntimeError("STREAM callback already attached")
-
-        mode = int(mode)
-        if mode == _STREAM_DISPATCH_LEN32BE:
-            callback = self._build_stream_packets_callback(handler)
-            rc = lib().zlink_stream_attach_len32be(self._handle, callback)
-        elif mode == 0:
-            callback = self._build_stream_raw_callback(handler)
-            rc = lib().zlink_stream_attach_raw(self._handle, callback, None)
+    def publish(self, topic, payload, flags: int = 0):
+        topic_bytes = bytes(_as_bytes_view(topic))
+        if isinstance(payload, (list, tuple)):
+            parts = payload
         else:
-            raise ValueError("mode must be 0 (raw) or 1 (len32be)")
-        if rc != 0:
-            _raise_last_error()
+            parts = [payload]
+        native_parts = []
+        for part in parts:
+            if isinstance(part, Message):
+                native_parts.append(_clone_native_msg(part._msg))
+            else:
+                native = ZlinkMsg()
+                _keepalive = _init_msg_from_buffer(native, part, borrow=False)
+                _ = _keepalive
+                native_parts.append(native)
 
-        self._stream_handler = handler
-        self._stream_callback = callback
-        self._stream_attached = True
-
-    def stream_attach_raw(self, handler):
-        self.stream_attach(handler, 0)
-
-    def stream_attach_len32be(self, handler):
-        self.stream_attach(handler, _STREAM_DISPATCH_LEN32BE)
-
-    def stream_detach(self):
-        if not self._stream_attached:
-            return
-        rc = lib().zlink_stream_detach(self._handle)
-        self._stream_attached = False
-        self._stream_handler = None
-        self._stream_callback = None
-        if rc != 0:
-            _raise_last_error()
-
-    def stream_peer_routing_id(self, index: int = 0):
-        rid = _ZlinkRoutingId()
-        rc = lib().zlink_socket_peer_routing_id(
-            self._handle, int(index), ctypes.byref(rid)
+        part_count = len(native_parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native in enumerate(native_parts):
+            parts_array[index] = native
+        rc = lib().zlink_publish(
+            self._handle, topic_bytes, parts_array, part_count, int(flags)
         )
-        if rc != 0 or rid.size == 0:
-            return None
-        return bytes(rid.data[: rid.size])
-
-    def stream_send(self, routing_id, payload, flags: int = 0):
-        rid_view = _as_bytes_view(routing_id)
-        rid_len = rid_view.nbytes
-        if rid_len <= 0 or rid_len > 255:
-            raise ValueError("routing_id length must be between 1 and 255")
-
-        payload_buf, payload_size, keepalive = _send_buffer(payload)
-
-        rid = _ZlinkRoutingId()
-        rid.size = rid_len
-        for i in range(rid_len):
-            rid.data[i] = rid_view[i]
-
-        rc = lib().zlink_stream_send(self._handle, ctypes.byref(rid),
-                                     payload_buf, payload_size, int(flags))
         if rc < 0:
+            for index in range(part_count):
+                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
             _raise_last_error()
-        _ = keepalive
         return rc
 
-    def setsockopt(self, option: int, value: bytes):
-        buf = ctypes.create_string_buffer(value)
-        rc = lib().zlink_setsockopt(self._handle, option, buf, len(value))
+    def recv_topic_message(self, flags: int = 0):
+        routing_id = ZlinkRoutingId()
+        parts = ctypes.POINTER(ZlinkMsg)()
+        part_count = ctypes.c_size_t()
+        topic_buf = ctypes.create_string_buffer(256)
+        topic_len = ctypes.c_size_t(len(topic_buf))
+        rc = lib().zlink_subscribe(
+            self._handle,
+            ctypes.byref(routing_id),
+            ctypes.byref(parts),
+            ctypes.byref(part_count),
+            topic_buf,
+            ctypes.byref(topic_len),
+            int(flags),
+        )
         if rc != 0:
             _raise_last_error()
 
-    def getsockopt(self, option: int, size: int = 256) -> bytes:
-        buf = ctypes.create_string_buffer(size)
-        sz = ctypes.c_size_t(size)
-        rc = lib().zlink_getsockopt(self._handle, option, buf, ctypes.byref(sz))
+        owner = _ReceivedPartsOwner(parts, int(part_count.value))
+        topic = topic_buf.raw[: topic_len.value]
+        routing = _routing_id_bytes(routing_id)
+        return ReceivedTopicMessage(topic, owner, routing)
+
+    def subscription_event(self, flags: int = 0):
+        routing_id = ZlinkRoutingId()
+        subscribed = ctypes.c_int()
+        topic_buf = ctypes.create_string_buffer(256)
+        topic_len = ctypes.c_size_t(len(topic_buf))
+        rc = lib().zlink_subscription_event(
+            self._handle,
+            ctypes.byref(routing_id),
+            ctypes.byref(subscribed),
+            topic_buf,
+            ctypes.byref(topic_len),
+            int(flags),
+        )
         if rc != 0:
             _raise_last_error()
-        return buf.raw[: sz.value]
+        return {
+            "routing_id": bytes(routing_id.data[: routing_id.size]) or None,
+            "subscribed": bool(subscribed.value),
+            "topic": topic_buf.raw[: topic_len.value],
+        }
 
-    @staticmethod
-    def _stream_callback_result(value):
-        if not value:
-            return 0
-        try:
-            return int(value)
-        except Exception:
-            return 1
+    def set_recv_handler(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
 
-    @staticmethod
-    def _routing_id_view(rid_ptr):
-        rid = ctypes.cast(rid_ptr, ctypes.POINTER(_ZlinkRoutingId)).contents
-        rid_size = int(rid.size)
-        if rid_size < 0:
-            rid_size = 0
-        if rid_size > 255:
-            rid_size = 255
-        return memoryview(bytes(rid.data[:rid_size]))
-
-    def _build_stream_packets_callback(self, handler):
-        @_STREAM_PACKETS_CB_T
-        def _on_packets(rid_ptr, msgs_ptr, msg_count, userdata_):
-            if rid_ptr is None or msgs_ptr is None:
-                return 0
-
-            rid_view = self._routing_id_view(rid_ptr)
-
-            msg_count_int = int(msg_count)
-            for i in range(msg_count_int):
-                msg_addr = msgs_ptr + i * _STREAM_MSG_SIZE
-                msg_ptr = ctypes.c_void_p(msg_addr)
-                stop_rc = 0
-                try:
-                    payload_ptr = lib().zlink_msg_data(msg_ptr)
-                    payload_size = int(lib().zlink_msg_size(msg_ptr))
-                    if payload_ptr and payload_size > 0:
-                        payload_view = memoryview(
-                            (ctypes.c_ubyte * payload_size).from_address(payload_ptr)
-                        )
-                    else:
-                        payload_view = memoryview(b"")
-
-                    try:
-                        rc = handler(rid_view, payload_view)
-                    except Exception:
-                        stop_rc = 1
-                    else:
-                        stop_rc = self._stream_callback_result(rc)
-                finally:
-                    lib().zlink_msg_close(msg_ptr)
-
-                if stop_rc:
-                    for j in range(i + 1, msg_count_int):
-                        rem_addr = msgs_ptr + j * _STREAM_MSG_SIZE
-                        lib().zlink_msg_close(ctypes.c_void_p(rem_addr))
-                    return stop_rc
-
-            return 0
-
-        return _on_packets
-
-    def _build_stream_raw_callback(self, handler):
-        @_STREAM_RAW_CB_T
-        def _on_raw(rid_ptr, msg_ptr, userdata_):
-            if rid_ptr is None or msg_ptr is None:
-                return 0
-
-            rid_view = self._routing_id_view(rid_ptr)
-            msg_handle = ctypes.c_void_p(msg_ptr)
-            stop_rc = 0
+        def _callback(routing_id_ptr, parts_ptr, part_count, _):
+            routing_id = None
+            if routing_id_ptr:
+                routing_id = _routing_id_bytes(routing_id_ptr.contents)
+            received = ReceivedMultipart(
+                _ReceivedPartsOwner(parts_ptr, int(part_count)),
+                routing_id,
+            )
             try:
-                payload_ptr = lib().zlink_msg_data(msg_handle)
-                payload_size = int(lib().zlink_msg_size(msg_handle))
-                if payload_ptr and payload_size > 0:
-                    payload_view = memoryview(
-                        (ctypes.c_ubyte * payload_size).from_address(payload_ptr)
-                    )
-                else:
-                    payload_view = memoryview(b"")
-
+                handler(received)
+            except Exception:
                 try:
-                    rc = handler(rid_view, payload_view)
-                except Exception:
-                    stop_rc = 1
-                else:
-                    stop_rc = self._stream_callback_result(rc)
-            finally:
-                lib().zlink_msg_close(msg_handle)
-            return stop_rc
+                    received.close()
+                finally:
+                    _report_unhandled_callback_exception(handler)
+            else:
+                received.close()
 
-        return _on_raw
+        callback = _SOCKET_RECV_HANDLER(_callback)
+        rc = lib().zlink_recv_handler(self._handle, callback, None)
+        if rc != 0:
+            _raise_last_error()
+        self._recv_handler = handler
+        self._recv_handler_cb = callback
+
+    def set_subscribe_handler(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+
+        def _callback(routing_id_ptr, topic_ptr, topic_len, parts_ptr, part_count, _):
+            routing_id = None
+            if routing_id_ptr:
+                routing_id = _routing_id_bytes(routing_id_ptr.contents)
+            topic = b""
+            if topic_ptr and topic_len:
+                topic = ctypes.string_at(topic_ptr, topic_len)
+            received = ReceivedTopicMessage(
+                topic,
+                _ReceivedPartsOwner(parts_ptr, int(part_count)),
+                routing_id,
+            )
+            try:
+                handler(received)
+            except Exception:
+                try:
+                    received.close()
+                finally:
+                    _report_unhandled_callback_exception(handler)
+            else:
+                received.close()
+
+        callback = _SOCKET_SUBSCRIBE_HANDLER(_callback)
+        rc = lib().zlink_subscribe_handler(self._handle, callback, None)
+        if rc != 0:
+            _raise_last_error()
+        self._subscribe_handler = handler
+        self._subscribe_handler_cb = callback
+
+    def set_send_ready_handler(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+
+        def _callback(_, __):
+            try:
+                handler(self)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+
+        callback = _SOCKET_SEND_READY_HANDLER(_callback)
+        rc = lib().zlink_send_ready_handler(self._handle, callback, None)
+        if rc != 0:
+            _raise_last_error()
+        self._send_ready_handler = handler
+        self._send_ready_handler_cb = callback
+
+    def recv(self, size: int, flags: int = 0) -> bytes:
+        warnings.warn(
+            "Socket.recv(size) is legacy; use recv_message() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if self._legacy_recv_queue:
+            data = self._legacy_recv_queue.pop(0)
+            if len(data) > size:
+                raise ValueError("received message larger than requested legacy size")
+            return data
+
+        routing_id, owner = _recv_native_parts(self._handle, flags)
+        if routing_id:
+            self._legacy_recv_queue.append(routing_id)
+        self._legacy_recv_queue.extend(
+            _msg_to_bytes(owner.msg(index))
+            for index in range(owner._part_count)
+        )
+        owner.close()
+        data = self._legacy_recv_queue.pop(0)
+        if len(data) > size:
+            raise ValueError("received message larger than requested legacy size")
+        return data
+
+    def set_router_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_router_option, option, value)
+
+    def get_router_option(self, option, size: int = 256):
+        return self._get_raw_option(lib().zlink_get_router_option, option, size)
+
+    def set_dealer_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_dealer_option, option, value)
+
+    def set_pub_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_pub_option, option, value)
+
+    def get_pub_option(self, option, size: int = 256):
+        return self._get_raw_option(lib().zlink_get_pub_option, option, size)
+
+    def set_sub_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_sub_option, option, value)
+
+    def get_sub_option(self, option, size: int = 256):
+        return self._get_raw_option(lib().zlink_get_sub_option, option, size)
+
+    def set_stream_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_stream_option, option, value)
+
+    def get_stream_option(self, option, size: int = 256):
+        return self._get_raw_option(lib().zlink_get_stream_option, option, size)
+
+    def set_option(self, option: int, value):
+        if int(option) == 5:
+            topic_bytes = bytes(_as_bytes_view(value))
+            rc = lib().zlink_set_routing_id(
+                self._handle,
+                ctypes.c_char_p(topic_bytes),
+                len(topic_bytes),
+            )
+        elif int(option) == 6:
+            rc = lib().zlink_set_subscription(
+                self._handle, bytes(_as_bytes_view(value))
+            )
+        elif int(option) == 7:
+            rc = lib().zlink_unset_subscription(
+                self._handle, bytes(_as_bytes_view(value))
+            )
+        elif int(option) == 40:
+            self.set_pub_option(0x3301, value)
+            return
+        elif 0x3100 <= int(option) < 0x3200:
+            self.set_router_option(option, value)
+            return
+        elif 0x3200 <= int(option) < 0x3300:
+            self.set_dealer_option(option, value)
+            return
+        elif 0x3300 <= int(option) < 0x3400:
+            self.set_pub_option(option, value)
+            return
+        elif 0x3400 <= int(option) < 0x3500:
+            self.set_sub_option(option, value)
+            return
+        elif 0x3500 <= int(option) < 0x3600:
+            self.set_stream_option(option, value)
+            return
+        else:
+            self._set_raw_option(lib().zlink_set_option, option, value)
+            return
+        if rc != 0:
+            _raise_last_error()
+
+    def get_option(self, option: int, size: int = 256):
+        if int(option) == 5:
+            rid = ZlinkRoutingId()
+            rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(rid))
+            if rc != 0:
+                _raise_last_error()
+            return bytes(rid.data[: rid.size])
+        if 0x3100 <= int(option) < 0x3200:
+            return self.get_router_option(option, size)
+        if 0x3300 <= int(option) < 0x3400:
+            return self.get_pub_option(option, size)
+        if 0x3400 <= int(option) < 0x3500:
+            return self.get_sub_option(option, size)
+        if 0x3500 <= int(option) < 0x3600:
+            return self.get_stream_option(option, size)
+        return self._get_raw_option(lib().zlink_get_option, option, size)
+
+    def set_routing_id(self, routing_id):
+        self.set_option(5, routing_id)
+
+    def get_routing_id(self) -> bytes:
+        return self.get_option(5)
+
+    def subscribe(self, topic):
+        topic_bytes = bytes(_as_bytes_view(topic))
+        rc = lib().zlink_set_subscription(self._handle, topic_bytes)
+        if rc != 0:
+            _raise_last_error()
+
+    def unsubscribe(self, topic):
+        topic_bytes = bytes(_as_bytes_view(topic))
+        rc = lib().zlink_unset_subscription(self._handle, topic_bytes)
+        if rc != 0:
+            _raise_last_error()
+
+    def open_monitor(self, events=0xFFFF):
+        from ._monitor import open_socket_monitor
+
+        return open_socket_monitor(self, events)
 
     def close(self):
-        if self._handle and self._stream_attached:
-            try:
-                lib().zlink_stream_detach(self._handle)
-            except Exception:
-                pass
-            self._stream_attached = False
-            self._stream_handler = None
-            self._stream_callback = None
+        self._pending_send_parts = []
+        self._legacy_recv_queue = []
+        self._recv_handler = None
+        self._recv_handler_cb = None
+        self._subscribe_handler = None
+        self._subscribe_handler_cb = None
+        self._send_ready_handler = None
+        self._send_ready_handler_cb = None
         if self._handle and self._own:
-            lib().zlink_close(self._handle)
+            rc = lib().zlink_close(self._handle)
+            self._handle = None
+            if rc != 0:
+                _raise_last_error()
+            return
         self._handle = None
 
+    def __enter__(self):
+        return self
 
-class ZlinkMsg(ctypes.Structure):
-    _fields_ = [("data", ctypes.c_ubyte * 64)]
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
 
 
 class Message:
     def __init__(self, size: int | None = None):
         self._msg = ZlinkMsg()
+        self._valid = False
+        self._keepalive = None
         if size is None:
             rc = lib().zlink_msg_init(ctypes.byref(self._msg))
         else:
@@ -381,37 +863,58 @@ class Message:
             _raise_last_error()
         self._valid = True
 
-    @staticmethod
-    def from_bytes(data: bytes):
-        msg = Message(len(data))
-        ptr = lib().zlink_msg_data(ctypes.byref(msg._msg))
-        if ptr and data:
-            ctypes.memmove(ptr, data, len(data))
+    @classmethod
+    def copy_from(cls, data):
+        msg = cls.__new__(cls)
+        msg._msg = ZlinkMsg()
+        msg._valid = False
+        msg._keepalive = _init_msg_from_buffer(msg._msg, data, borrow=False)
+        msg._valid = True
         return msg
 
+    @classmethod
+    def wrap_buffer(cls, data):
+        msg = cls.__new__(cls)
+        msg._msg = ZlinkMsg()
+        msg._valid = False
+        msg._keepalive = _init_msg_from_buffer(msg._msg, data, borrow=True)
+        msg._valid = True
+        return msg
+
+    @staticmethod
+    def from_bytes(data: bytes):
+        return Message.copy_from(data)
+
     def size(self):
-        return lib().zlink_msg_size(ctypes.byref(self._msg))
+        return _msg_size(self._msg)
 
     def data(self):
-        ptr = lib().zlink_msg_data(ctypes.byref(self._msg))
+        return self.to_bytes()
+
+    def to_bytes(self):
+        return _msg_to_bytes(self._msg)
+
+    def view(self):
+        ptr = _msg_data_ptr(self._msg)
         size = self.size()
-        if not ptr or size == 0:
-            return b""
-        return ctypes.string_at(ptr, size)
+        if not ptr or size <= 0:
+            return memoryview(b"")
+        return memoryview((ctypes.c_ubyte * size).from_address(ptr))
 
     def send(self, socket, flags: int = 0):
-        rc = lib().zlink_msg_send(ctypes.byref(self._msg), socket._handle, flags)
-        if rc < 0:
-            _raise_last_error()
-        self._valid = False
-
-    def recv(self, socket, flags: int = 0):
-        rc = lib().zlink_msg_recv(ctypes.byref(self._msg), socket._handle, flags)
-        if rc < 0:
-            _raise_last_error()
-        self._valid = True
+        socket.send(self, flags=flags)
 
     def close(self):
-        if self._valid:
-            lib().zlink_msg_close(ctypes.byref(self._msg))
-            self._valid = False
+        if not self._valid:
+            return
+        rc = lib().zlink_msg_close(ctypes.byref(self._msg))
+        self._valid = False
+        self._keepalive = None
+        if rc != 0:
+            _raise_last_error()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()

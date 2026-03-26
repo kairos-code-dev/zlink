@@ -2,127 +2,161 @@
 
 # Java Binding
 
-## 1. Overview
+## Overview
 
-- **FFM API** (Foreign Function & Memory API, Java 22+)
-- Direct native library calls without JNI
-- Memory management based on Arena/MemorySegment
+The Java binding targets Java 22+ and uses the FFM API. The canonical surface
+is aligned to the current `core/include/zlink.h` contract:
 
-## 2. Main Classes
+- `Socket` owns raw send/recv behavior
+- `Message` owns payload conversion and copy/borrow boundaries
+- `Received` aggregates recv results and message ownership
+- `Discovery`, `Registry`, `SpotNode`, and `Spot` expose the current service model
 
-| Class | Description |
-|-------|-------------|
-| `Context` | Context |
-| `Socket` | Socket (send/recv/bind/connect) |
-| `Message` | Message |
-| `Poller` | Event poller |
-| `Monitor` | Monitoring |
-| `Discovery` | Service discovery |
-| `Gateway` | Gateway |
-| `Receiver` | Receiver |
-| `SpotNode` / `Spot` | SPOT PUB/SUB |
-
-## 3. Basic Example
+## Core API
 
 ```java
 try (var ctx = new Context();
      var server = new Socket(ctx, SocketType.PAIR);
-     var client = new Socket(ctx, SocketType.PAIR)) {
-    ctx.setOption(ContextOption.IO_THREADS, 4);
-    server.bind("tcp://*:5555");
-    client.connect("tcp://127.0.0.1:5555");
+     var client = new Socket(ctx, SocketType.PAIR);
+     var outbound = Message.copyOfUtf8("hello")) {
+    server.bind("inproc://pair-example");
+    client.connect("inproc://pair-example");
 
-    client.send("Hello".getBytes(), SendFlag.NONE);
-    byte[] reply = server.recv(256, ReceiveFlag.NONE);
-    System.out.println(new String(reply));
+    client.send(outbound);
+
+    try (Received received = server.recv()) {
+        System.out.println(received.singlePartOrThrow().toUtf8String());
+    }
 }
 ```
 
-## 4. Performance APIs
+Canonical raw socket surface:
 
-- Span interface
-  - `ByteSpan.of(byte[] / ByteBuffer / MemorySegment)`
-  - `send(ByteSpan span, SendFlag flags)`
-  - `recv(ByteSpan span, ReceiveFlag flags)`
-- Span-style array path (no temporary slice allocation)
-  - `send(byte[] data, int offset, int length, SendFlag flags)`
-  - `recv(byte[] data, int offset, int length, ReceiveFlag flags)`
-- Direct `ByteBuffer` path
-  - `send(ByteBuffer buffer, SendFlag flags)`
-  - `recv(ByteBuffer buffer, ReceiveFlag flags)`
-- Netty `ByteBuf` path
-  - `send(io.netty.buffer.ByteBuf buf, SendFlag flags)`
-  - `recv(io.netty.buffer.ByteBuf buf, ReceiveFlag flags)`
-- Context tuning
-  - `ctx.setOption(ContextOption.IO_THREADS, n)`
-- Zero-copy message view
-  - `Message.fromNativeData(MemorySegment data[, offset, length])`
-  - `Message.fromDirectByteBuffer(ByteBuffer direct)`
-  - `MemorySegment dataSegment()`
-  - `ByteBuffer dataBuffer()`
-  - `copyTo(byte[]/ByteBuffer)`
-- Gateway/SPOT low-copy path
-  - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
-  - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
-  - `Gateway.sendTo(..., String routingId, ...)` (Java-friendly routing id path)
-  - `Gateway.createSendContext()` + `send/sendMove(PreparedService, ..., SendContext)` (reused send vector)
-  - `Gateway.send/sendMove(PreparedService, Message part, SendFlag, SendContext)` (single-part fast path)
-  - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
-  - `Gateway.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Gateway.GatewayRawMessage`)
-  - `Gateway.createRecvContext()` + `recvRawBorrowed(ReceiveFlag, RecvContext)` (`Gateway.GatewayRawBorrowed`, reused object)
-  - `Gateway.GatewayRawBorrowed.serviceNameBuffer()` + `serviceNameLength()` (slice-free ID access)
-  - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
-  - `Spot.prepareTopic(String topic)` + `publish/publishMove(PreparedTopic, ...)`
-  - `Spot.createPublishContext()` + `publish/publishMove(PreparedTopic, ..., PublishContext)` (reused publish vector)
-  - `Spot.publish/publishMove(PreparedTopic, Message part, SendFlag, PublishContext)` (single-part fast path)
-  - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
-  - `Spot.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Spot.SpotRawMessage`)
-  - `Spot.createRecvContext()` + `recvRawBorrowed(ReceiveFlag, RecvContext)` (`Spot.SpotRawBorrowed`, reused object)
-  - `Spot.SpotRawBorrowed.topicIdBuffer()` + `topicIdLength()` (slice-free ID access)
-  - `recvRaw` reuses internal `Message[]` instances in the `RecvContext`; do not close returned parts directly
-  - `recvRawBorrowed` also reuses the wrapper object itself; consume values before the next recv call
-  - `sendMove/publishMove` transfer message ownership (do not reuse moved `Message` instances)
+- `send(Message)` / `send(List<Message>)`
+- `send(RoutingId, Message)` / `send(RoutingId, List<Message>)`
+- `recv()` / `recv(ReceiveFlag)`
+- `publish(String topic, Message|List<Message>)`
+- `subscribe()` / `subscribe(ReceiveFlag)` returning `TopicMessage`
+- `setRoutingId(...)`, `routingId()`
+- `setSubscription(...)`, `unsetSubscription(...)`, `subscriptions()`
+- `onReceive(...)`, `onSubscribe(...)`, `onSendReady(...)`
+- `monitorOpen(...)`, `attachDiscovery(...)`
 
-## 5. STREAM Callback API
+## Message API
 
-`Socket` STREAM helpers:
-- `attachStreamRaw(StreamPacketHandler handler)` (`onPacket(int routingIdU32, Message payload)`)
-- `attachStreamLen32be(StreamPacketBatchHandler handler)` (`onPackets(int routingIdU32, List<Message> packets)`)
-- `detachStream()`
-- `streamPeerRoutingId(int index)`
-- `streamPeerRoutingIdU32(int index)` (STREAM uint32 routing id view)
-- `streamSend(byte[]/ByteBuffer/ByteSpan/MemorySegment routingId, ... payload, SendFlag flags)`
-- `streamSend(long routingIdU32, byte[]/Message payload, SendFlag flags)`
+Copy path:
 
-Mode rules:
-- While attached, receive STREAM payloads in the callback.
-- Do not mix `recv(...)` for STREAM payload consumption while attached.
-- After `detachStream()`, normal `recv(...)` use is available again.
-- Callback payload ownership is transferred to Java callback handlers.
-- `StreamPacketHandler` must close each `Message` unless ownership is moved by `streamSend(..., Message, ...)`.
-- `StreamPacketBatchHandler` also receives owned `Message` instances and must close each message it keeps.
+- `Message.copyOf(byte[])`
+- `Message.copyOfUtf8(String)`
+- `Message.copyOf(ByteBuffer)`
+- `Message.copyOf(io.netty.buffer.ByteBuf)`
+- `Message.copyOf(ByteSpan)`
 
-```java
-try (var stream = new Socket(ctx, SocketType.STREAM)) {
-    stream.attachStreamRaw((ridU32, payload) -> {
-        try (payload) {
-            stream.streamSend(ridU32, payload, SendFlag.NONE);
-        }
-        return 0;
-    });
-}
-```
+Borrow / zero-copy path:
 
-## 6. Build
+- `Message.wrapDirect(ByteBuffer)`
+- `Message.wrapNative(MemorySegment)`
+- `Message.wrapDirect(io.netty.buffer.ByteBuf)`
+- `Message.wrap(ByteSpan)`
+
+Read path:
+
+- `toByteArray()`
+- `toUtf8String()`
+- `dataSegment()`
+- `dataBuffer()`
+- `copyTo(...)`
+- `size()`, `empty()`, `valid()`, `refCount()`, `property(...)`
+
+`copyOf*` always copies. `wrap*` is reserved for borrowed/native-backed input.
+
+Topic-aware receive path:
+
+- `TopicMessage.topicId()`
+- `TopicMessage.parts()`
+- `TopicMessage.singlePartOrThrow()`
+- `TopicMessage.close()`
+
+## Service API
+
+Discovery:
+
+- `new Discovery(ctx, serviceType, serviceName)`
+- `connectRegistry(...)`
+- `setValue(...)`, `getValue()`
+- `setMetadata(...)`, `getMetadata()`
+- `memberPeers()`, `memberPeerMetadata(...)`
+- `monitorOpen(...)`
+
+Registry:
+
+- `bind(pubEndpoint, routerEndpoint)`
+- `statusSnapshot()`
+- `serviceSummarySnapshot(...)`
+- `topologySnapshot()`, `topologyQuery(...)`
+- `memberPeers(...)`, `memberPeerMetadata(...)`
+- `RegistryQueryClient`
+
+Spot:
+
+- `publish(topic, Message|List<Message>)`
+- `subscribe(...)`, `unsubscribe(...)`
+- `recv()`
+- `onSubscribe(...)`, `onSendReady(...)`
+- `monitorOpen(...)`
+
+SpotNode:
+
+- `bind(...)`, `connectPeer(...)`, `disconnectPeer(...)`
+- `attachDiscovery(...)`
+- `statusSnapshot()`
+- `peersSnapshot()`, `peersQuery(...)`
+- `subjectsSnapshot(...)`
+- `monitorOpen(...)`
+
+## Samples
+
+The runnable samples live in `bindings/java/samples/Zlink.Samples`.
+
+Tasks:
+
+- `./gradlew :samples:runPairRecv`
+- `./gradlew :samples:runPairCallback`
+- `./gradlew :samples:runPubSubRecv`
+- `./gradlew :samples:runPubSubCallback`
+- `./gradlew :samples:runDealerRouterRecv`
+- `./gradlew :samples:runDealerRouterCallback`
+- `./gradlew :samples:runStreamRecv`
+- `./gradlew :samples:runStreamCallback`
+- `./gradlew :samples:runSpotRecv`
+- `./gradlew :samples:runSpotCallback`
+
+Notes:
+
+- `PairRecvSample` demonstrates the explicit copy path with
+  `Message.copyOfUtf8(...)`.
+- `PairCallbackSample` demonstrates the borrow path with
+  `Message.wrapDirect(...)` via `SampleSupport.wrapUtf8(...)`.
+- `StreamRecvSample` and `StreamCallbackSample` follow the core STREAM contract:
+  the zlink side is server-only and the client side is a raw TCP socket.
+
+## Migration Notes
+
+- `Receiver` was removed. Use `Socket` plus `Discovery`, then connect them with
+  `socket.attachDiscovery(discovery)`.
+- Split `spot_pub` / `spot_sub` style APIs are replaced by unified `Spot`.
+- `Registry.setEndpoints()` / `start()` is replaced by `Registry.bind(pub, router)`.
+- Prefer `Socket.send/recv` over legacy `Message.send/recv`.
+- Prefer dedicated helpers and typed `SocketOptionKey` values over old
+  `setSockOpt/getSockOpt` usage.
+
+## Build
 
 ```groovy
-// build.gradle
 dependencies {
-    implementation files('path/to/zlink.jar')
-    compileOnly 'io.netty:netty-buffer:4.1.100.Final' // optional
+    implementation files("path/to/zlink.jar")
+    compileOnly "io.netty:netty-buffer:4.1.100.Final" // optional
 }
 ```
 
-## 7. Native Library Loading
-
-Platform-specific libraries are automatically loaded from the `src/main/resources/native/` directory.
+The binding auto-loads platform libraries from `src/main/resources/native/`.

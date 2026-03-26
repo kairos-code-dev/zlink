@@ -1,4 +1,3 @@
-import time
 import unittest
 
 import zlink
@@ -7,10 +6,8 @@ from .helpers import (
     transports,
     endpoint_for,
     try_transport,
-    recv_with_timeout,
-    send_with_retry,
+    wait_for_socket_event,
     ZLINK_PAIR,
-    ZLINK_SNDMORE,
 )
 
 
@@ -24,13 +21,15 @@ class MultipartScenarioTest(unittest.TestCase):
                 ep = endpoint_for(name, endpoint, "-mp")
                 a.bind(ep)
                 b.connect(ep)
-                time.sleep(0.05)
-                send_with_retry(b, b"a", ZLINK_SNDMORE, 2000)
-                send_with_retry(b, b"b", 0, 2000)
-                part1 = recv_with_timeout(a, 16, 2000)
-                part2 = recv_with_timeout(a, 16, 2000)
-                self.assertEqual(part1.strip(b"\0"), b"a")
-                self.assertEqual(part2.strip(b"\0"), b"b")
+                self.assertTrue(
+                    wait_for_socket_event(b, zlink.PollEvent.POLLOUT, 2000)
+                )
+                b.send_multipart([b"a", b"b"])
+                self.assertTrue(
+                    wait_for_socket_event(a, zlink.PollEvent.POLLIN, 2000)
+                )
+                with a.recv_multipart() as received:
+                    self.assertEqual(received.to_bytes_list(), [b"a", b"b"])
                 a.close()
                 b.close()
             try_transport(name, run)

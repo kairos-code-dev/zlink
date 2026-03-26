@@ -1,7 +1,5 @@
 import unittest
 
-import time
-
 import zlink
 
 
@@ -20,25 +18,16 @@ class VersionTests(unittest.TestCase):
             ctx = zlink.Context()
         except OSError:
             self.skipTest("zlink native library not found")
-        s1 = zlink.Socket(ctx, zlink.SocketType.PAIR)
-        s2 = zlink.Socket(ctx, zlink.SocketType.PAIR)
-        endpoint = b"inproc://py-pair"
-        s1.bind(endpoint.decode())
-        s2.connect(endpoint.decode())
-        payload = b"ping"
-        for _ in range(50):
-            try:
-                s1.send(payload)
-                break
-            except zlink.ZlinkError as exc:
-                if exc.errno != 11:
-                    raise
-                time.sleep(0.01)
-        data = s2.recv(16)
-        self.assertEqual(data, payload)
-        s1.close()
-        s2.close()
-        ctx.close()
+        with ctx:
+            with zlink.Socket(ctx, zlink.SocketType.PAIR) as s1:
+                with zlink.Socket(ctx, zlink.SocketType.PAIR) as s2:
+                    endpoint = "inproc://py-pair"
+                    s1.bind(endpoint)
+                    s2.connect(endpoint)
+                    payload = b"ping"
+                    s1.send(payload)
+                    with s2.recv_message() as received:
+                        self.assertEqual(received.to_bytes(), payload)
 
 if __name__ == "__main__":
     unittest.main()

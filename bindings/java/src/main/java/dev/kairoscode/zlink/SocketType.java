@@ -3,8 +3,8 @@
 package dev.kairoscode.zlink;
 
 public enum SocketType {
-    PAIR(0), PUB(1), SUB(2), DEALER(5), ROUTER(6),
-    XPUB(9), XSUB(10), STREAM(11);
+    PAIR(0x1001), PUB(0x1002), SUB(0x1003), DEALER(0x1004),
+    ROUTER(0x1005), XPUB(0x1006), XSUB(0x1007), STREAM(0x1008);
 
     private final int value;
     SocketType(int v) { this.value = v; }

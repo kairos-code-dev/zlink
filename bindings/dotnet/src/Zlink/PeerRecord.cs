@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Buffers.Binary;
-using Zlink.Native;
-
 namespace Zlink;
 
 public readonly struct PeerRecord
@@ -30,22 +27,4 @@ public readonly struct PeerRecord
     public ulong MsgsReceived { get; }
     public ulong SndPendingMsgs { get; }
     public ulong RcvPendingMsgs { get; }
-
-    internal static unsafe PeerRecord FromNative(ref ZlinkPeerInfo info)
-    {
-        byte[] routing = NativeHelpers.ReadRoutingId(ref info.RoutingId);
-        string routingId = RoutingIdCodec.ToPublicString(routing);
-        uint? streamRoutingId = routing.Length == sizeof(uint)
-            ? BinaryPrimitives.ReadUInt32BigEndian(routing)
-            : null;
-        string remote;
-        fixed (byte* ptr = info.RemoteAddr)
-        {
-            remote = NativeHelpers.ReadString(ptr, 256);
-        }
-        return new PeerRecord(routingId, streamRoutingId, remote,
-            info.ConnectedTime,
-            info.MsgsSent, info.MsgsReceived, info.SndPendingMsgs,
-            info.RcvPendingMsgs);
-    }
 }

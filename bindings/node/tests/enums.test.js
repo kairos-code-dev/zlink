@@ -1,130 +1,25 @@
 'use strict';
 
 const test = require('node:test');
-const assert = require('node:assert');
-const zlink = require('../src/index');
+const assert = require('node:assert/strict');
+const zlink = require('../src');
 
-test('SocketType values match C defines', () => {
-  assert.strictEqual(zlink.SocketType.PAIR, 0);
-  assert.strictEqual(zlink.SocketType.PUB, 1);
-  assert.strictEqual(zlink.SocketType.SUB, 2);
-  assert.strictEqual(zlink.SocketType.DEALER, 5);
-  assert.strictEqual(zlink.SocketType.ROUTER, 6);
-  assert.strictEqual(zlink.SocketType.XPUB, 9);
-  assert.strictEqual(zlink.SocketType.XSUB, 10);
-  assert.strictEqual(zlink.SocketType.STREAM, 11);
+test('socket and service constants match aligned header values', () => {
+  assert.equal(zlink.SocketType.PAIR, 0x1001);
+  assert.equal(zlink.SocketType.STREAM, 0x1008);
+  assert.equal(zlink.ServiceType.SPOT, 0x3002);
+  assert.equal(zlink.ServiceType.SOCKET, 0x3003);
+  assert.equal(zlink.ContextOption.BLOCKY, 10);
+  assert.equal(zlink.SocketOption.LINGER, 0x300A);
+  assert.equal(zlink.SocketOption.TLS_PASSWORD, 0x302F);
+  assert.equal(zlink.SocketOption.XPUB_VERBOSE, 0x3301);
+  assert.equal(zlink.SocketOption.ROUTER_MANDATORY, 0x3101);
 });
 
-test('ContextOption values match C defines', () => {
-  assert.strictEqual(zlink.ContextOption.IO_THREADS, 1);
-  assert.strictEqual(zlink.ContextOption.MAX_SOCKETS, 2);
-  assert.strictEqual(zlink.ContextOption.THREAD_NAME_PREFIX, 9);
-});
-
-test('SocketOption values match C defines', () => {
-  assert.strictEqual(zlink.SocketOption.LINGER, 17);
-  assert.strictEqual(zlink.SocketOption.SNDHWM, 23);
-  assert.strictEqual(zlink.SocketOption.RCVHWM, 24);
-  assert.strictEqual(zlink.SocketOption.TLS_CERT, 95);
-  assert.strictEqual(zlink.SocketOption.TLS_PASSWORD, 102);
-  assert.strictEqual(zlink.SocketOption.ZMP_METADATA, 117);
-});
-
-test('SendFlag values match C defines', () => {
-  assert.strictEqual(zlink.SendFlag.NONE, 0);
-  assert.strictEqual(zlink.SendFlag.DONTWAIT, 1);
-  assert.strictEqual(zlink.SendFlag.SNDMORE, 2);
-});
-
-test('ReceiveFlag values match C defines', () => {
-  assert.strictEqual(zlink.ReceiveFlag.NONE, 0);
-  assert.strictEqual(zlink.ReceiveFlag.DONTWAIT, 1);
-});
-
-test('MonitorEvent values match C defines', () => {
-  assert.strictEqual(zlink.MonitorEvent.CONNECTED, 0x0001);
-  assert.strictEqual(zlink.MonitorEvent.DISCONNECTED, 0x0200);
-  assert.strictEqual(zlink.MonitorEvent.ALL, 0xFFFF);
-});
-
-test('DisconnectReason values match C defines', () => {
-  assert.strictEqual(zlink.DisconnectReason.UNKNOWN, 0);
-  assert.strictEqual(zlink.DisconnectReason.CTX_TERM, 5);
-});
-
-test('PollEvent values match C defines', () => {
-  assert.strictEqual(zlink.PollEvent.POLLIN, 1);
-  assert.strictEqual(zlink.PollEvent.POLLOUT, 2);
-  assert.strictEqual(zlink.PollEvent.POLLERR, 4);
-  assert.strictEqual(zlink.PollEvent.POLLPRI, 8);
-});
-
-test('ErrorCode values match C defines', () => {
-  assert.strictEqual(zlink.ErrorCode.EFSM, 156384763);
-  assert.strictEqual(zlink.ErrorCode.ENOCOMPATPROTO, 156384764);
-  assert.strictEqual(zlink.ErrorCode.ETERM, 156384765);
-  assert.strictEqual(zlink.ErrorCode.EMTHREAD, 156384766);
-});
-
-test('ProtocolError values match C defines', () => {
-  assert.strictEqual(zlink.ProtocolError.ZMP_MALFORMED_COMMAND_HELLO, 0x10000013);
-});
-
-test('ServiceType values match C defines', () => {
-  assert.strictEqual(zlink.ServiceType.SPOT, 2);
-});
-
-test('socket role values match C defines', () => {
-  assert.strictEqual(zlink.RegistrySocketRole.PUB, 1);
-  assert.strictEqual(zlink.RegistrySocketRole.ROUTER, 2);
-  assert.strictEqual(zlink.RegistrySocketRole.PEER_SUB, 3);
-  assert.strictEqual(zlink.DiscoverySocketRole.SUB, 1);
-  assert.strictEqual(zlink.ReceiverSocketRole.ROUTER, 1);
-  assert.strictEqual(zlink.ReceiverSocketRole.DEALER, 2);
-  assert.strictEqual(zlink.SpotNodeSocketRole.NODE, 0);
-  assert.strictEqual(zlink.SpotNodeSocketRole.PUB, 1);
-  assert.strictEqual(zlink.SpotNodeSocketRole.SUB, 2);
-  assert.strictEqual(zlink.SpotNodeSocketRole.DEALER, 3);
-  assert.strictEqual(zlink.SpotNodeOption.PUB_MODE, 1);
-  assert.strictEqual(zlink.SpotNodeOption.PUB_QUEUE_HWM, 2);
-  assert.strictEqual(zlink.SpotNodeOption.PUB_QUEUE_FULL_POLICY, 3);
-  assert.strictEqual(zlink.SpotNodePubMode.SYNC, 0);
-  assert.strictEqual(zlink.SpotNodePubMode.ASYNC, 1);
-  assert.strictEqual(zlink.SpotNodePubQueueFullPolicy.EAGAIN, 0);
-  assert.strictEqual(zlink.SpotNodePubQueueFullPolicy.DROP, 1);
-  assert.strictEqual(zlink.SpotSocketRole.PUB, 1);
-  assert.strictEqual(zlink.SpotSocketRole.SUB, 2);
-});
-
-test('constant objects are frozen', () => {
-  assert.ok(Object.isFrozen(zlink.SocketType));
-  assert.ok(Object.isFrozen(zlink.SocketOption));
-  assert.ok(Object.isFrozen(zlink.SendFlag));
+test('monitor and topology constants stay frozen', () => {
   assert.ok(Object.isFrozen(zlink.MonitorEvent));
-  assert.ok(Object.isFrozen(zlink.PollEvent));
-  assert.ok(Object.isFrozen(zlink.ServiceType));
-  assert.ok(Object.isFrozen(zlink.RegistrySocketRole));
-  assert.ok(Object.isFrozen(zlink.DisconnectReason));
-  assert.ok(Object.isFrozen(zlink.ContextOption));
-  assert.ok(Object.isFrozen(zlink.ReceiveFlag));
-  assert.ok(Object.isFrozen(zlink.ErrorCode));
-  assert.ok(Object.isFrozen(zlink.ProtocolError));
-  assert.ok(Object.isFrozen(zlink.DiscoverySocketRole));
-  assert.ok(Object.isFrozen(zlink.ReceiverSocketRole));
-  assert.ok(Object.isFrozen(zlink.SpotNodeSocketRole));
-  assert.ok(Object.isFrozen(zlink.SpotNodeOption));
-  assert.ok(Object.isFrozen(zlink.SpotNodePubMode));
-  assert.ok(Object.isFrozen(zlink.SpotNodePubQueueFullPolicy));
-  assert.ok(Object.isFrozen(zlink.SpotSocketRole));
-});
-
-test('flag bitwise OR works', () => {
-  const flags = zlink.SendFlag.DONTWAIT | zlink.SendFlag.SNDMORE;
-  assert.strictEqual(flags, 3);
-
-  const events = zlink.MonitorEvent.CONNECTED | zlink.MonitorEvent.DISCONNECTED;
-  assert.strictEqual(events, 0x0201);
-
-  const poll = zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT;
-  assert.strictEqual(poll, 3);
+  assert.ok(Object.isFrozen(zlink.ServiceMonitorEvent));
+  assert.ok(Object.isFrozen(zlink.MonitorSnapshotDetail));
+  assert.ok(Object.isFrozen(zlink.TopologySource));
+  assert.ok(Object.isFrozen(zlink.TopologyState));
 });

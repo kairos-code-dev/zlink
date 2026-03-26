@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using Xunit;
 
 namespace Zlink.Tests;
@@ -50,5 +51,34 @@ public sealed class test_message
         {
             _ = source.Move();
         });
+    }
+
+    [Fact]
+    public void message_copy_increments_ref_count_for_shared_storage()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        byte[] payload = new byte[512];
+        new Random(1234).NextBytes(payload);
+        using var source = Message.FromBytes(payload);
+        using Message copy = source.Copy();
+
+        Assert.True(source.RefCount >= 2);
+        Assert.True(copy.RefCount >= 2);
+        Assert.True(copy.AsReadOnlySpan().SequenceEqual(source.AsReadOnlySpan()));
+    }
+
+    [Fact]
+    public void message_string_helpers_round_trip_utf8_payload()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        const string payload = "dotnet-메시지";
+        using Message message = Message.FromString(payload, Encoding.UTF8);
+
+        Assert.Equal(payload, message.GetString());
+        Assert.True(message.AsReadOnlySpan().SequenceEqual(Encoding.UTF8.GetBytes(payload)));
     }
 }

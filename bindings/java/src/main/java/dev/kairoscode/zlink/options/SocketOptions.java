@@ -22,20 +22,6 @@ public final class SocketOptions {
       SocketOptionKey.bytes("ROUTING_ID_BYTES", SocketOption.ROUTING_ID,
         true, true, MAX_ROUTING_ID_BYTES);
 
-    public static final SocketOptionKey<String> SUBSCRIBE =
-      SocketOptionKey.string("SUBSCRIBE", SocketOption.SUBSCRIBE,
-        false, true, 0);
-    public static final SocketOptionKey<byte[]> SUBSCRIBE_BYTES =
-      SocketOptionKey.bytes("SUBSCRIBE_BYTES", SocketOption.SUBSCRIBE,
-        false, true, 0);
-
-    public static final SocketOptionKey<String> UNSUBSCRIBE =
-      SocketOptionKey.string("UNSUBSCRIBE", SocketOption.UNSUBSCRIBE,
-        false, true, 0);
-    public static final SocketOptionKey<byte[]> UNSUBSCRIBE_BYTES =
-      SocketOptionKey.bytes("UNSUBSCRIBE_BYTES", SocketOption.UNSUBSCRIBE,
-        false, true, 0);
-
     public static final SocketOptionKey<Integer> RATE =
       SocketOptionKey.int32("RATE", SocketOption.RATE, true, true);
     public static final SocketOptionKey<Integer> RECOVERY_IVL =
@@ -45,9 +31,6 @@ public final class SocketOptions {
       SocketOptionKey.int32("SNDBUF", SocketOption.SNDBUF, true, true);
     public static final SocketOptionKey<Integer> RCVBUF =
       SocketOptionKey.int32("RCVBUF", SocketOption.RCVBUF, true, true);
-    public static final SocketOptionKey<Integer> RCVMORE =
-      SocketOptionKey.int32("RCVMORE", SocketOption.RCVMORE,
-        true, false);
     public static final SocketOptionKey<Integer> FD =
       SocketOptionKey.int32("FD", SocketOption.FD, true, false);
     public static final SocketOptionKey<Integer> EVENTS =
@@ -234,9 +217,7 @@ public final class SocketOptions {
       Collections.unmodifiableList(Arrays.asList(
         AFFINITY,
         ROUTING_ID, ROUTING_ID_BYTES,
-        SUBSCRIBE, SUBSCRIBE_BYTES,
-        UNSUBSCRIBE, UNSUBSCRIBE_BYTES,
-        RATE, RECOVERY_IVL, SNDBUF, RCVBUF, RCVMORE, FD, EVENTS, TYPE,
+        RATE, RECOVERY_IVL, SNDBUF, RCVBUF, FD, EVENTS, TYPE,
         LINGER, RECONNECT_IVL, BACKLOG, RECONNECT_IVL_MAX, MAXMSGSIZE,
         SNDHWM, RCVHWM, MULTICAST_HOPS, RCVTIMEO, SNDTIMEO,
         LAST_ENDPOINT, ROUTER_MANDATORY, TCP_KEEPALIVE,

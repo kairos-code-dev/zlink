@@ -1,0 +1,148 @@
+using System;
+using System.Runtime.InteropServices;
+
+namespace Zlink.Native;
+
+internal static partial class NativeMethods
+{
+    internal static ReadOnlySpan<string> RequiredExports => new[]
+    {
+        "zlink_version",
+        "zlink_ctx_new",
+        "zlink_ctx_term",
+        "zlink_ctx_shutdown",
+        "zlink_ctx_set",
+        "zlink_ctx_get",
+        "zlink_socket",
+        "zlink_close",
+        "zlink_errno",
+        "zlink_strerror",
+        "zlink_msg_init",
+        "zlink_msg_init_size",
+        "zlink_msg_init_data",
+        "zlink_msg_close",
+        "zlink_msg_move",
+        "zlink_msg_copy",
+        "zlink_msg_data",
+        "zlink_msg_size",
+        "zlink_msg_refcnt",
+        "zlink_msg_gets",
+        "zlink_multipart_close",
+        "zlink_atomic_counter_new",
+        "zlink_atomic_counter_set",
+        "zlink_atomic_counter_inc",
+        "zlink_atomic_counter_dec",
+        "zlink_atomic_counter_value",
+        "zlink_atomic_counter_destroy",
+        "zlink_stopwatch_start",
+        "zlink_stopwatch_intermediate",
+        "zlink_stopwatch_stop",
+    };
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void zlink_version(out int major, out int minor,
+        out int patch);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_ctx_new();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_ctx_term(IntPtr context);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_ctx_shutdown(IntPtr context);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_ctx_set(IntPtr context, int option,
+        int optval);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_ctx_get(IntPtr context, int option);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_close(IntPtr socket);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_errno();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_strerror(int errnum);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_init(ref ZlinkMsg msg);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_init_size(ref ZlinkMsg msg,
+        nuint size);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_init_data(ref ZlinkMsg msg,
+        IntPtr data, nuint size, IntPtr freeFn, IntPtr hint);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_close(ref ZlinkMsg msg);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_msg_close",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_close(IntPtr msg);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_move(ref ZlinkMsg dest,
+        ref ZlinkMsg src);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_copy(ref ZlinkMsg dest,
+        ref ZlinkMsg src);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_msg_data(ref ZlinkMsg msg);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_msg_data",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_msg_data(IntPtr msg);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nuint zlink_msg_size(ref ZlinkMsg msg);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_msg_size",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nuint zlink_msg_size(IntPtr msg);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_refcnt(ref ZlinkMsg msg);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_msg_gets(ref ZlinkMsg msg,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string property);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void zlink_multipart_close(IntPtr parts, nuint count);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_atomic_counter_new();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void zlink_atomic_counter_set(IntPtr counter,
+        int value);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_atomic_counter_inc(IntPtr counter);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_atomic_counter_dec(IntPtr counter);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_atomic_counter_value(IntPtr counter);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void zlink_atomic_counter_destroy(ref IntPtr counter);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_stopwatch_start();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern ulong zlink_stopwatch_intermediate(IntPtr watch);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern ulong zlink_stopwatch_stop(IntPtr watch);
+}

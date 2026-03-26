@@ -22,16 +22,16 @@ prebuild가 자동 선택됨. 없는 플랫폼은 node-gyp 빌드.
 const zlink = require('zlink');
 
 const ctx = new zlink.Context();
-const server = ctx.socket(zlink.PAIR);
+const server = new zlink.Socket(ctx, zlink.SocketType.PAIR);
 server.bind('tcp://*:5555');
 
-const client = ctx.socket(zlink.PAIR);
+const client = new zlink.Socket(ctx, zlink.SocketType.PAIR);
 client.connect('tcp://127.0.0.1:5555');
 
-client.send(Buffer.from('Hello'));
+client.send(zlink.Message.copyOf('Hello'));
 
-const reply = server.recv();
-console.log(reply.toString());
+const received = server.recv();
+console.log(received.parts[0].toString());
 
 client.close();
 server.close();
@@ -41,40 +41,69 @@ ctx.close();
 ## 4. TypeScript
 
 ```typescript
-import { Context, PAIR } from 'zlink';
+import { Context, Message, Socket, SocketType } from 'zlink';
 
 const ctx = new Context();
-const socket = ctx.socket(PAIR);
+const socket = new Socket(ctx, SocketType.PAIR);
+socket.send(Message.copyOf('ping'));
 ```
 
 타입 정의: `src/index.d.ts`
 
-## 5. Discovery/Gateway/Spot
+## 5. canonical raw socket surface
 
 ```javascript
-const discovery = new zlink.Discovery(ctx);
-discovery.connectRegistry('tcp://registry:5550');
-discovery.subscribe('payment-service');
+const received = socket.recv();
+for (const part of received.parts) {
+  console.log(part);
+}
 
-const gateway = new zlink.Gateway(ctx, discovery);
+const scratch = Buffer.alloc(1024);
+const bytes = socket.recvInto(scratch);
+console.log(bytes);
 ```
 
-## 6. Prebuilds
+`Socket` canonical 메서드:
+- `send(message, flags?)`
+- `sendParts(parts, flags?)`
+- `recv(flags?)`
+- `recvInto(buffer, flags?)`
+
+`Message.copyOf()` / `Message.wrap()`로 copy/borrow 경계를 명시합니다.
+
+## 6. service surface
+
+정렬된 service 진입점:
+- `new Discovery(ctx, serviceType, serviceName)`
+- `Registry.bind(pubEndpoint, routerEndpoint)`
+- `new RegistryQueryClient(ctx)`
+- `new Spot(ctx)`
+- `new SpotNode(ctx)`
+
+`Receiver`는 aligned public API에서 제거되었습니다.
+`Discovery`는 비어 있지 않은 `serviceName`이 필요합니다.
+`Registry.bind()`가 native bind lifecycle에 직접 매핑되며 기존
+`setEndpoints()` / `start()`를 대체합니다.
+`Registry.setSockOpt()`와 `SpotNode.setDiscovery()`는 aligned canonical surface에
+포함되지 않으며 호환 경계에서 명시적으로 거부됩니다.
+
+## 7. Prebuilds
 
 `prebuilds/` 디렉토리에 플랫폼별 바이너리:
 - `linux-x64/`, `linux-arm64/`
 - `darwin-x64/`, `darwin-arm64/`
 - `win32-x64/`
 
-## 7. 테스트
+## 8. 테스트
 
 ```bash
 cd bindings/node && npm test
+cd bindings/node && node --test tests/*.test.js
 ```
 
 node:test 프레임워크 사용.
 
-## 8. STREAM 콜백 API
+## 9. STREAM 콜백 API
 
 `Socket` STREAM 헬퍼:
 - `streamAttach((routingId, packets) => { ... }, mode?)`
@@ -82,20 +111,7 @@ node:test 프레임워크 사용.
 - `streamPeerRoutingId(index?)`
 - `streamSend(routingId, payload, flags?)`
 - 기존 `streamEchoStart/Stop`, `streamSinkStart/Stop` API는 제거되었습니다.
-
-`mode`는 `StreamDispatchMode.NONE` 또는 `StreamDispatchMode.LEN32BE`를 사용합니다.
-
-모드 규칙:
-- attach 상태에서는 콜백에서 STREAM 페이로드를 소비합니다.
-- attach 상태에서 STREAM 페이로드 수신에 `recv()`를 혼용하지 않습니다.
-- `streamDetach()` 이후에는 기존 `recv()` 경로를 다시 사용할 수 있습니다.
-
-```javascript
-stream.streamAttach((routingId, packets) => {
-  for (const packet of packets) {
-    const copy = Buffer.from(packet);   // echo 전 명시적 복사
-    stream.streamSend(routingId, copy, zlink.SendFlag.NONE);
-  }
-  return 0;
-}, zlink.StreamDispatchMode.LEN32BE);
-```
+- aligned surface에서는 이름만 유지하며, native lifecycle 재정렬이 끝나기 전까지는
+  unsupported 경로에서 예외를 던질 수 있습니다.
+- `streamDetach()`는 `streamAttach()`가 예외를 던진 뒤에도 안전한 no-op cleanup
+  경계로 유지됩니다.

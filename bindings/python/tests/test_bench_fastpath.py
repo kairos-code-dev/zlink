@@ -18,6 +18,13 @@ except ModuleNotFoundError:
 
 
 class BenchFastpathTests(unittest.TestCase):
+    @staticmethod
+    def _wait_for_socket_event(sock, events, timeout_ms):
+        with zlink.Poller() as poller:
+            poller.add_socket(sock, events)
+            ready = poller.poll(timeout_ms)
+        return bool(ready)
+
     @classmethod
     def setUpClass(cls):
         if bench_common is None:
@@ -34,7 +41,7 @@ class BenchFastpathTests(unittest.TestCase):
         endpoint = f"inproc://py-fastpath-off-{int(time.time() * 1000)}"
         a.bind(endpoint)
         b.connect(endpoint)
-        time.sleep(0.05)
+        self.assertTrue(self._wait_for_socket_event(b, zlink.PollEvent.POLLOUT, 3000))
 
         saved = bench_common.FASTPATH_CEXT
         bench_common.FASTPATH_CEXT = None
@@ -79,7 +86,7 @@ class BenchFastpathTests(unittest.TestCase):
         endpoint = f"inproc://py-fastpath-pair-{int(time.time() * 1000)}"
         a.bind(endpoint)
         b.connect(endpoint)
-        time.sleep(0.05)
+        self.assertTrue(self._wait_for_socket_event(b, zlink.PollEvent.POLLOUT, 3000))
 
         payload = b"fastpath"
         recv_buf = bytearray(64)
@@ -111,10 +118,12 @@ class BenchFastpathTests(unittest.TestCase):
         dealer = zlink.Socket(ctx, zlink.SocketType.DEALER)
         endpoint = f"inproc://py-fastpath-drain-{int(time.time() * 1000)}"
 
-        dealer.setsockopt(int(zlink.SocketOption.ROUTING_ID), b"CLIENT")
+        dealer.set_routing_id(b"CLIENT")
         router.bind(endpoint)
         dealer.connect(endpoint)
-        time.sleep(0.05)
+        self.assertTrue(
+            self._wait_for_socket_event(dealer, zlink.PollEvent.POLLOUT, 3000)
+        )
 
         payload = b"x" * 16
         rid_buf = bytearray(256)
@@ -127,18 +136,8 @@ class BenchFastpathTests(unittest.TestCase):
         count = 96
         send_none = int(zlink.SendFlag.NONE)
         self.assertEqual(send_many(count, send_none), count)
-
-        received = 0
-        deadline = time.time() + 3.0
-        while received < count and time.time() < deadline:
-            if not bench_common.wait_for_input(router, 100):
-                continue
-            drained = recv_drain(count - received)
-            if drained <= 0:
-                continue
-            received += drained
-
-        self.assertEqual(received, count)
+        self.assertTrue(self._wait_for_socket_event(router, zlink.PollEvent.POLLIN, 3000))
+        self.assertEqual(recv_drain(count), count)
         self.assertEqual(bytes(data_buf[: len(payload)]), payload)
 
         router.close()
@@ -167,11 +166,10 @@ class BenchFastpathTests(unittest.TestCase):
             node_sub = zlink.SpotNode(ctx)
             spot_ep = f"inproc://py-fastpath-spot-{suffix}"
             node_pub.bind(spot_ep)
-            node_sub.connect_peer_pub(spot_ep)
-            spot_pub = zlink.Spot(node_pub)
-            spot_sub = zlink.Spot(node_sub)
+            node_sub.connect_peer(spot_ep)
+            spot_pub = zlink.Spot(ctx)
+            spot_sub = zlink.Spot(ctx)
             spot_sub.subscribe("bench")
-            time.sleep(0.2)
 
             spot_payload = b"spot-fastpath"
             spot_publish_many = bench_common.make_cext_spot_publish_many_const(
@@ -185,9 +183,12 @@ class BenchFastpathTests(unittest.TestCase):
             self.assertEqual(spot_recv_many(count, recv_none), count)
 
             spot_pub.publish("bench", [spot_payload], send_none)
-            topic, parts = spot_sub.recv(recv_none)
-            self.assertEqual(topic, "bench")
-            self.assertEqual(parts, [spot_payload])
+            self.assertTrue(
+                self._wait_for_socket_event(spot_sub, zlink.PollEvent.POLLIN, 3000)
+            )
+            with spot_sub.recv(recv_none) as received:
+                self.assertEqual(received.topic, b"bench")
+                self.assertEqual(received.to_bytes_list(), [spot_payload])
         finally:
             if spot_sub is not None:
                 spot_sub.close()

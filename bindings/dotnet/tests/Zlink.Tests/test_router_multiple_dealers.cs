@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Xunit;
 
@@ -40,25 +41,28 @@ public sealed class test_router_multiple_dealers
         var received = new Dictionary<string, string>();
         for (int i = 0; i < 2; i++)
         {
-            string id = CoreTestSupport.ReceiveUtf8WithTimeout(router, 2000);
-            string payload = CoreTestSupport.ReceiveUtf8WithTimeout(router, 2000);
+            (string id, string payload) =
+                CoreTestSupport.ReceiveRoutedUtf8WithTimeout(router, 2000);
             received[id] = payload;
         }
 
-        Assert.Equal("from_dealer1", received["D1"]);
-        Assert.Equal("from_dealer2", received["D2"]);
+        Assert.Equal(2, received.Count);
+        Assert.Contains("from_dealer1", received.Values);
+        Assert.Contains("from_dealer2", received.Values);
 
-        CoreTestSupport.SendWithRetry(router, "D1"u8, SendFlags.SendMore, 2000);
-        CoreTestSupport.SendWithRetry(router, "reply_to_d1"u8, SendFlags.None,
-            2000);
+        string dealer1RoutingId = received.First(kvp => kvp.Value == "from_dealer1").Key;
+        string dealer2RoutingId = received.First(kvp => kvp.Value == "from_dealer2").Key;
 
-        CoreTestSupport.SendWithRetry(router, "D2"u8, SendFlags.SendMore, 2000);
-        CoreTestSupport.SendWithRetry(router, "reply_to_d2"u8, SendFlags.None,
-            2000);
+        using Message reply1 = Message.FromString("reply_to_d1");
+        router.Send(dealer1RoutingId, reply1);
+
+        using Message reply2 = Message.FromString("reply_to_d2");
+        router.Send(dealer2RoutingId, reply2);
 
         Assert.Equal("reply_to_d1", CoreTestSupport.ReceiveUtf8WithTimeout(dealer1,
             2000));
         Assert.Equal("reply_to_d2", CoreTestSupport.ReceiveUtf8WithTimeout(dealer2,
             2000));
     }
+
 }

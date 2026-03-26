@@ -1,14 +1,26 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-from ._ffi import lib
-from ._core import _raise_last_error, Message, ZlinkMsg, _send_buffer
-from ._discovery import _parts_to_bytes, _build_msg_array, _close_msg_array, _query_peers
+
+from ._ffi import ZlinkMsg, ZlinkRoutingId, lib
+from ._core import (
+    Message,
+    ReceivedTopicMessage,
+    _SOCKET_SEND_READY_HANDLER,
+    _ReceivedPartsOwner,
+    _as_bytes_view,
+    _clone_native_msg,
+    _init_msg_from_buffer,
+    _report_unhandled_callback_exception,
+    _raise_last_error,
+    _routing_id_bytes,
+)
 
 
-_SPOT_SUB_HANDLER = ctypes.CFUNCTYPE(
+_SPOT_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
     None,
-    ctypes.c_void_p,
+    ctypes.POINTER(ZlinkRoutingId),
+    ctypes.c_char_p,
     ctypes.c_size_t,
     ctypes.POINTER(ZlinkMsg),
     ctypes.c_size_t,
@@ -17,223 +29,307 @@ _SPOT_SUB_HANDLER = ctypes.CFUNCTYPE(
 
 
 class SpotNode:
-    def __init__(self, ctx, service_name=None):
-        service = service_name.encode() if service_name else None
-        self._handle = lib().zlink_spot_node_new(ctx._handle, service)
+    def __init__(self, ctx):
+        self._handle = lib().zlink_spot_node_new(ctx._handle)
         if not self._handle:
             _raise_last_error()
 
-    def bind(self, endpoint):
+    def bind(self, endpoint: str):
         rc = lib().zlink_spot_node_bind(self._handle, endpoint.encode())
         if rc != 0:
             _raise_last_error()
 
-    def connect_peer_pub(self, endpoint):
-        rc = lib().zlink_spot_node_connect_peer_pub(self._handle, endpoint.encode())
+    def connect_peer(self, endpoint: str):
+        rc = lib().zlink_spot_node_connect_peer(self._handle, endpoint.encode())
         if rc != 0:
             _raise_last_error()
 
-    def disconnect_peer_pub(self, endpoint):
-        rc = lib().zlink_spot_node_disconnect_peer_pub(self._handle, endpoint.encode())
+    def disconnect_peer(self, endpoint: str):
+        rc = lib().zlink_spot_node_disconnect_peer(self._handle, endpoint.encode())
         if rc != 0:
             _raise_last_error()
 
-    def register(self, service_name, advertise_endpoint):
-        rc = lib().zlink_spot_node_register(self._handle, service_name.encode(), advertise_endpoint.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def unregister(self, service_name):
-        rc = lib().zlink_spot_node_unregister(self._handle, service_name.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def set_discovery(self, discovery, service_name):
-        rc = lib().zlink_spot_node_set_discovery(self._handle, discovery._handle, service_name.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def set_tls_server(self, cert, key):
-        rc = lib().zlink_spot_node_set_tls_server(self._handle, cert.encode(), key.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def set_tls_client(self, ca_cert, hostname, trust_system=0):
-        rc = lib().zlink_spot_node_set_tls_client(self._handle, ca_cert.encode(), hostname.encode(), trust_system)
-        if rc != 0:
-            _raise_last_error()
-
-    def set_sockopt(self, role, option, value):
-        if isinstance(value, int):
-            ivalue = ctypes.c_int(value)
-            rc = lib().zlink_spot_node_setsockopt(
-                self._handle,
-                int(role),
-                int(option),
-                ctypes.byref(ivalue),
-                ctypes.sizeof(ivalue),
-            )
-            if rc != 0:
-                _raise_last_error()
-            return
-
-        if isinstance(value, str):
-            raw = value.encode()
-        else:
-            raw = bytes(value)
-        buf = ctypes.create_string_buffer(raw)
-        rc = lib().zlink_spot_node_setsockopt(
-            self._handle,
-            int(role),
-            int(option),
-            buf,
-            len(raw),
+    def attach_discovery(self, discovery):
+        rc = lib().zlink_spot_node_attach_discovery(
+            self._handle, discovery._handle
         )
         if rc != 0:
             _raise_last_error()
 
-    def set_option(self, option, value: int):
-        # Node-level options use socket role 0 (ZLINK_SPOT_NODE_SOCKET_NODE).
-        self.set_sockopt(0, option, int(value))
-
-    def pub_socket(self):
-        handle = lib().zlink_spot_node_pub_socket_unsafe(self._handle)
-        if not handle:
+    def set_option(self, option: int, value):
+        if int(option) == 5:
+            self.set_routing_id(value)
+            return
+        view = _as_bytes_view(value)
+        if view.nbytes == 0:
+            rc = lib().zlink_set_option(self._handle, int(option), None, 0)
+        elif view.readonly:
+            raw = view.tobytes()
+            rc = lib().zlink_set_option(
+                self._handle, int(option), ctypes.c_char_p(raw), len(raw)
+            )
+        else:
+            rc = lib().zlink_set_option(
+                self._handle,
+                int(option),
+                ctypes.c_void_p(
+                    ctypes.addressof(
+                        (ctypes.c_ubyte * view.nbytes).from_buffer(view)
+                    )
+                ),
+                view.nbytes,
+            )
+        if rc != 0:
             _raise_last_error()
-        from ._core import Socket
-        return Socket._from_handle(handle, own=False)
 
-    def sub_socket(self):
-        handle = lib().zlink_spot_node_sub_socket_unsafe(self._handle)
-        if not handle:
+    def set_routing_id(self, routing_id):
+        raw = bytes(_as_bytes_view(routing_id))
+        rc = lib().zlink_set_routing_id(
+            self._handle, ctypes.c_char_p(raw), len(raw)
+        )
+        if rc != 0:
             _raise_last_error()
-        from ._core import Socket
-        return Socket._from_handle(handle, own=False)
 
-    def pub_peers(self):
-        return _query_peers(self._handle, lib().zlink_spot_node_pub_peers)
+    def get_routing_id(self) -> bytes:
+        routing_id = ZlinkRoutingId()
+        rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(routing_id))
+        if rc != 0:
+            _raise_last_error()
+        return bytes(routing_id.data[: routing_id.size])
 
-    def sub_peers(self):
-        return _query_peers(self._handle, lib().zlink_spot_node_sub_peers)
+    def set_tls_server(self, cert: str, key: str, require_client_cert: bool = False):
+        rc = lib().zlink_set_tls_server(
+            self._handle, cert.encode(), key.encode(), int(require_client_cert)
+        )
+        if rc != 0:
+            _raise_last_error()
+
+    def set_tls_client(
+        self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
+    ):
+        ca_value = None if ca_cert is None else ca_cert.encode()
+        host_value = None if hostname is None else hostname.encode()
+        rc = lib().zlink_set_tls_client(
+            self._handle, ca_value, host_value, int(trust_system)
+        )
+        if rc != 0:
+            _raise_last_error()
+
+    def open_monitor(self, events):
+        from ._monitor import open_service_monitor
+
+        return open_service_monitor(self, events)
 
     def close(self):
-        if self._handle:
-            handle = ctypes.c_void_p(self._handle)
-            lib().zlink_spot_node_destroy(ctypes.byref(handle))
-            self._handle = None
+        if not self._handle:
+            return
+        handle = ctypes.c_void_p(self._handle)
+        rc = lib().zlink_spot_node_destroy(ctypes.byref(handle))
+        self._handle = None
+        if rc != 0:
+            _raise_last_error()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
 
 
 class Spot:
-    def __init__(self, node):
-        self._pub_handle = lib().zlink_spot_pub_new(node._handle)
-        self._sub_handle = lib().zlink_spot_sub_new(node._handle)
-        self._handler_py = None
+    def __init__(self, ctx_or_node):
+        self._own = not isinstance(ctx_or_node, SpotNode)
+        self._handler = None
         self._handler_cb = None
-        if not self._pub_handle or not self._sub_handle:
-            if self._pub_handle:
-                h = ctypes.c_void_p(self._pub_handle)
-                lib().zlink_spot_pub_destroy(ctypes.byref(h))
-            if self._sub_handle:
-                h = ctypes.c_void_p(self._sub_handle)
-                lib().zlink_spot_sub_destroy(ctypes.byref(h))
-            self._pub_handle = None
-            self._sub_handle = None
+        self._send_ready_handler = None
+        self._send_ready_handler_cb = None
+        if self._own:
+            self._handle = lib().zlink_spot_new(ctx_or_node._handle)
+        else:
+            self._handle = ctx_or_node._handle
+        if not self._handle:
             _raise_last_error()
 
-    def publish(self, topic_id, payload_or_parts, flags=0):
-        if isinstance(payload_or_parts, (list, tuple)):
-            arr, built = _build_msg_array(payload_or_parts)
-            rc = lib().zlink_spot_pub_publish(
-                self._pub_handle,
-                topic_id.encode(),
-                ctypes.byref(arr),
-                len(payload_or_parts),
-                flags,
-            )
-            if rc != 0:
-                _close_msg_array(arr, built)
-                _raise_last_error()
-            return
+    def publish(self, topic, payload, flags: int = 0):
+        topic_bytes = bytes(_as_bytes_view(topic))
+        if isinstance(payload, (list, tuple)):
+            parts = payload
+        else:
+            parts = [payload]
 
-        payload = payload_or_parts.encode() if isinstance(payload_or_parts, str) else payload_or_parts
-        payload_buf, payload_size, keepalive = _send_buffer(payload)
-        rc = lib().zlink_spot_pub_publish_bytes(
-            self._pub_handle, topic_id.encode(), payload_buf, payload_size, flags
+        native_parts = []
+        for part in parts:
+            if isinstance(part, Message):
+                native_parts.append(_clone_native_msg(part._msg))
+                continue
+            native = ZlinkMsg()
+            _ = _init_msg_from_buffer(native, part, borrow=False)
+            native_parts.append(native)
+
+        part_count = len(native_parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native in enumerate(native_parts):
+            parts_array[index] = native
+        rc = lib().zlink_publish(
+            self._handle, topic_bytes, parts_array, part_count, int(flags)
+        )
+        if rc != 0:
+            for index in range(part_count):
+                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
+            _raise_last_error()
+
+    def recv(self, flags: int = 0):
+        routing_id = ZlinkRoutingId()
+        parts = ctypes.POINTER(ZlinkMsg)()
+        part_count = ctypes.c_size_t()
+        topic_buf = ctypes.create_string_buffer(256)
+        topic_len = ctypes.c_size_t(len(topic_buf))
+        rc = lib().zlink_subscribe(
+            self._handle,
+            ctypes.byref(routing_id),
+            ctypes.byref(parts),
+            ctypes.byref(part_count),
+            topic_buf,
+            ctypes.byref(topic_len),
+            int(flags),
         )
         if rc != 0:
             _raise_last_error()
-        _ = keepalive
+        owner = _ReceivedPartsOwner(parts, int(part_count.value))
+        return ReceivedTopicMessage(
+            topic_buf.raw[: topic_len.value],
+            owner,
+            _routing_id_bytes(routing_id),
+        )
 
-    def subscribe(self, topic_id):
-        rc = lib().zlink_spot_sub_subscribe(self._sub_handle, topic_id.encode())
+    def subscribe(self, topic):
+        rc = lib().zlink_set_subscription(self._handle, bytes(_as_bytes_view(topic)))
         if rc != 0:
             _raise_last_error()
 
-    def subscribe_pattern(self, pattern):
-        rc = lib().zlink_spot_sub_subscribe_pattern(self._sub_handle, pattern.encode())
+    def unsubscribe(self, topic):
+        rc = lib().zlink_unset_subscription(self._handle, bytes(_as_bytes_view(topic)))
         if rc != 0:
             _raise_last_error()
 
-    def unsubscribe(self, topic_id_or_pattern):
-        rc = lib().zlink_spot_sub_unsubscribe(self._sub_handle, topic_id_or_pattern.encode())
+    def set_pub_option(self, option, value):
+        view = _as_bytes_view(value)
+        if view.nbytes == 0:
+            rc = lib().zlink_set_pub_option(self._handle, int(option), None, 0)
+        elif view.readonly:
+            raw = view.tobytes()
+            rc = lib().zlink_set_pub_option(
+                self._handle, int(option), ctypes.c_char_p(raw), len(raw)
+            )
+        else:
+            rc = lib().zlink_set_pub_option(
+                self._handle,
+                int(option),
+                ctypes.c_void_p(
+                    ctypes.addressof(
+                        (ctypes.c_ubyte * view.nbytes).from_buffer(view)
+                    )
+                ),
+                view.nbytes,
+            )
+        if rc != 0:
+            _raise_last_error()
+
+    def set_sub_option(self, option, value):
+        view = _as_bytes_view(value)
+        if view.nbytes == 0:
+            rc = lib().zlink_set_sub_option(self._handle, int(option), None, 0)
+        elif view.readonly:
+            raw = view.tobytes()
+            rc = lib().zlink_set_sub_option(
+                self._handle, int(option), ctypes.c_char_p(raw), len(raw)
+            )
+        else:
+            rc = lib().zlink_set_sub_option(
+                self._handle,
+                int(option),
+                ctypes.c_void_p(
+                    ctypes.addressof(
+                        (ctypes.c_ubyte * view.nbytes).from_buffer(view)
+                    )
+                ),
+                view.nbytes,
+            )
         if rc != 0:
             _raise_last_error()
 
     def set_handler(self, handler):
         if handler is None:
-            rc = lib().zlink_spot_sub_set_handler(self._sub_handle, None, None)
-            if rc != 0:
-                _raise_last_error()
-            self._handler_py = None
-            self._handler_cb = None
-            return
+            raise ValueError("handler must not be None")
+        if self._handler_cb is not None:
+            raise RuntimeError("subscribe handler is already attached")
 
-        def _callback(topic_ptr, topic_len, parts_ptr, part_count, _userdata):
+        def _callback(routing_id_ptr, topic_ptr, topic_len, parts_ptr, part_count, _):
+            routing_id = None
+            if routing_id_ptr:
+                routing_id = _routing_id_bytes(routing_id_ptr.contents)
+            topic = b""
+            if topic_ptr and topic_len:
+                topic = ctypes.string_at(topic_ptr, topic_len)
+            owner = _ReceivedPartsOwner(parts_ptr, int(part_count))
+            message = ReceivedTopicMessage(topic, owner, routing_id)
             try:
-                topic_bytes = ctypes.string_at(topic_ptr, topic_len) if topic_ptr else b""
-                topic = topic_bytes.decode("utf-8", errors="replace")
-                messages = []
-                if parts_ptr and part_count:
-                    for i in range(part_count):
-                        msg = parts_ptr[i]
-                        size = lib().zlink_msg_size(ctypes.byref(msg))
-                        ptr = lib().zlink_msg_data(ctypes.byref(msg))
-                        messages.append(ctypes.string_at(ptr, size) if ptr and size else b"")
-                handler(topic, messages)
+                handler(message)
             except Exception:
-                # Native callback path must not raise into C.
-                return
+                try:
+                    message.close()
+                finally:
+                    _report_unhandled_callback_exception(handler)
+            else:
+                message.close()
 
-        cb = _SPOT_SUB_HANDLER(_callback)
-        rc = lib().zlink_spot_sub_set_handler(self._sub_handle, cb, None)
+        callback = _SPOT_SUBSCRIBE_HANDLER(_callback)
+        rc = lib().zlink_subscribe_handler(self._handle, callback, None)
         if rc != 0:
             _raise_last_error()
-        self._handler_py = handler
-        self._handler_cb = cb
+        self._handler = handler
+        self._handler_cb = callback
 
-    def recv(self, flags=0):
-        parts = ctypes.c_void_p()
-        count = ctypes.c_size_t()
-        topic_buf = ctypes.create_string_buffer(256)
-        topic_len = ctypes.c_size_t(256)
-        rc = lib().zlink_spot_sub_recv(self._sub_handle, ctypes.byref(parts), ctypes.byref(count), flags, topic_buf, ctypes.byref(topic_len))
+    def set_send_ready_handler(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+
+        def _callback(_, __):
+            try:
+                handler(self)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+
+        callback = _SOCKET_SEND_READY_HANDLER(_callback)
+        rc = lib().zlink_send_ready_handler(self._handle, callback, None)
         if rc != 0:
             _raise_last_error()
-        topic = topic_buf.value.decode()
-        messages = _parts_to_bytes(parts, count.value)
-        return topic, messages
+        self._send_ready_handler = handler
+        self._send_ready_handler_cb = callback
+
+    def open_monitor(self, events):
+        from ._monitor import open_service_monitor
+
+        return open_service_monitor(self, events)
 
     def close(self):
-        if self._sub_handle and self._handler_cb is not None:
-            try:
-                self.set_handler(None)
-            except Exception:
-                pass
-        if self._pub_handle:
-            handle = ctypes.c_void_p(self._pub_handle)
-            lib().zlink_spot_pub_destroy(ctypes.byref(handle))
-            self._pub_handle = None
-        if self._sub_handle:
-            handle = ctypes.c_void_p(self._sub_handle)
-            lib().zlink_spot_sub_destroy(ctypes.byref(handle))
-            self._sub_handle = None
+        if not self._handle:
+            return
+        self._handler = None
+        self._handler_cb = None
+        self._send_ready_handler = None
+        self._send_ready_handler_cb = None
+        if self._own:
+            handle = ctypes.c_void_p(self._handle)
+            rc = lib().zlink_spot_destroy(ctypes.byref(handle))
+            self._handle = None
+            if rc != 0:
+                _raise_last_error()
+            return
+        self._handle = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Text;
 using System.Runtime.InteropServices;
 using Zlink.Native;
 
@@ -54,12 +55,12 @@ public sealed class Message : IDisposable
         }
     }
 
-    public bool More
+    public int RefCount
     {
         get
         {
             EnsureValid();
-            return NativeMethods.zlink_msg_more(ref _msg) != 0;
+            return NativeMethods.zlink_msg_refcnt(ref _msg);
         }
     }
 
@@ -125,17 +126,30 @@ public sealed class Message : IDisposable
         return new Message(data);
     }
 
-    public int GetProperty(int property)
+    public static Message FromString(string value)
     {
-        EnsureValid();
-        return NativeMethods.zlink_msg_get(ref _msg, property);
+        return FromString(value, Encoding.UTF8);
     }
 
-    public void SetProperty(int property, int value)
+    public static Message FromString(string value, Encoding encoding)
     {
-        EnsureValid();
-        int rc = NativeMethods.zlink_msg_set(ref _msg, property, value);
-        ZlinkException.ThrowIfError(rc);
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        if (encoding == null)
+            throw new ArgumentNullException(nameof(encoding));
+        return new Message(encoding.GetBytes(value));
+    }
+
+    public string GetString()
+    {
+        return GetString(Encoding.UTF8);
+    }
+
+    public string GetString(Encoding encoding)
+    {
+        if (encoding == null)
+            throw new ArgumentNullException(nameof(encoding));
+        return encoding.GetString(AsReadOnlySpan());
     }
 
     public string? GetPropertyString(string property)
@@ -144,7 +158,7 @@ public sealed class Message : IDisposable
         IntPtr ptr = NativeMethods.zlink_msg_gets(ref _msg, property);
         if (ptr == IntPtr.Zero)
             return null;
-        return Marshal.PtrToStringAnsi(ptr);
+        return Marshal.PtrToStringUTF8(ptr);
     }
 
     public void Dispose()
@@ -188,6 +202,15 @@ public sealed class Message : IDisposable
         return moved;
     }
 
+    public Message Copy()
+    {
+        EnsureValid();
+        var copy = new Message(false);
+        CopyTo(ref copy._msg);
+        copy._valid = true;
+        return copy;
+    }
+
     internal void MoveTo(ref ZlinkMsg dest)
     {
         EnsureValid();
@@ -206,6 +229,35 @@ public sealed class Message : IDisposable
             try
             {
                 NativeMethods.zlink_msg_close(ref dest);
+            }
+            catch
+            {
+            }
+            throw;
+        }
+    }
+
+    internal void RestoreFrom(ref ZlinkMsg src)
+    {
+        if (_valid)
+            throw new InvalidOperationException(
+                "RestoreFrom requires an invalid message state.");
+
+        int rc = NativeMethods.zlink_msg_init(ref _msg);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        try
+        {
+            rc = NativeMethods.zlink_msg_move(ref _msg, ref src);
+            if (rc != 0)
+                throw ZlinkException.FromLastError();
+            _valid = true;
+        }
+        catch
+        {
+            try
+            {
+                NativeMethods.zlink_msg_close(ref _msg);
             }
             catch
             {
@@ -370,6 +422,30 @@ public sealed class Message : IDisposable
             result.Dispose();
             throw;
         }
+    }
+
+    internal static unsafe Message CopyFromNativeSingle(IntPtr message)
+    {
+        if (message == IntPtr.Zero)
+            throw new ArgumentNullException(nameof(message));
+
+        ZlinkMsg* src = (ZlinkMsg*)message;
+        int size = checked((int)NativeMethods.zlink_msg_size(ref *src));
+        if (size <= 0)
+            return new Message(0);
+
+        IntPtr payloadPtr = NativeMethods.zlink_msg_data(ref *src);
+        if (payloadPtr == IntPtr.Zero)
+            return new Message(0);
+
+        ReadOnlySpan<byte> payload = new ReadOnlySpan<byte>((void*)payloadPtr, size);
+        return new Message(payload);
+    }
+
+    internal void DetachAfterSend()
+    {
+        EnsureValid();
+        _valid = false;
     }
 
     private void Close()

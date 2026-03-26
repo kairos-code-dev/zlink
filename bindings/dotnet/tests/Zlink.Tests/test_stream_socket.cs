@@ -59,32 +59,49 @@ public sealed class test_stream_socket
         return len == 0 ? Array.Empty<byte>() : ReceiveExact(stream, len);
     }
 
-    private static bool WaitMonitorEvent(MonitorSocket monitor,
-        SocketEvent expectedEvent, int timeoutMs, out uint routingId)
+    private static string StreamRoutingIdToPublicString(uint routingId)
     {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
+        return $"hex:{routingId:X8}";
+    }
+
+    private static void SendLen32Be(Socket stream, string routingId,
+        Message message, SendFlags flags = SendFlags.None)
+    {
+        using Message framed = Message.FromBytes(
+            BuildLen32BeFrame(message.AsReadOnlySpan()));
+        stream.Send(routingId, framed, flags);
+    }
+
+    private static void AttachLen32Be(Socket stream,
+        Func<string, Message[], int> handler)
+    {
+        var accumulators = new Dictionary<string, Len32BeAccumulator>(
+            StringComparer.Ordinal);
+        stream.AttachStreamRaw((routingId, payload) =>
         {
+            Message[] frames = Array.Empty<Message>();
             try
             {
-                MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
-                if (evt.Event == expectedEvent)
+                if (!accumulators.TryGetValue(routingId, out Len32BeAccumulator? state))
                 {
-                    if (evt.StreamRoutingId.HasValue)
-                    {
-                        routingId = evt.StreamRoutingId.Value;
-                        return true;
-                    }
+                    state = new Len32BeAccumulator();
+                    accumulators.Add(routingId, state);
                 }
-            }
-            catch (ZlinkException)
-            {
-                Thread.Sleep(10);
-            }
-        }
 
-        routingId = 0;
-        return false;
+                frames = state.AppendAndDrain(payload.AsReadOnlySpan());
+                payload.Dispose();
+                if (frames.Length == 0)
+                    return 0;
+                return handler(routingId, frames);
+            }
+            catch
+            {
+                foreach (Message frame in frames)
+                    frame.Dispose();
+                payload.Dispose();
+                throw;
+            }
+        });
     }
 
     private static bool TryDrainOneMultipart(Socket streamSocket)
@@ -105,6 +122,80 @@ public sealed class test_stream_socket
         throw new FileNotFoundException($"{relativePath} not found.");
     }
 
+    private sealed class Len32BeAccumulator
+    {
+        private byte[] _buffer = Array.Empty<byte>();
+        private int _count;
+
+        public Message[] AppendAndDrain(ReadOnlySpan<byte> payload)
+        {
+            if (!payload.IsEmpty)
+            {
+                EnsureCapacity(_count + payload.Length);
+                payload.CopyTo(_buffer.AsSpan(_count));
+                _count += payload.Length;
+            }
+
+            int frameCount = CountReadyFrames();
+            if (frameCount == 0)
+                return Array.Empty<Message>();
+
+            Message[] frames = new Message[frameCount];
+            int produced = 0;
+            int offset = 0;
+            while (_count - offset >= sizeof(uint))
+            {
+                int frameSize = checked((int)BinaryPrimitives.ReadUInt32BigEndian(
+                    _buffer.AsSpan(offset, sizeof(uint))));
+                int totalSize = sizeof(uint) + frameSize;
+                if (_count - offset < totalSize)
+                    break;
+
+                frames[produced++] = Message.FromBytes(
+                    _buffer.AsSpan(offset + sizeof(uint), frameSize));
+                offset += totalSize;
+            }
+
+            if (offset > 0)
+            {
+                Buffer.BlockCopy(_buffer, offset, _buffer, 0, _count - offset);
+                _count -= offset;
+            }
+
+            return frames;
+        }
+
+        private int CountReadyFrames()
+        {
+            int count = 0;
+            int offset = 0;
+            while (_count - offset >= sizeof(uint))
+            {
+                int frameSize = checked((int)BinaryPrimitives.ReadUInt32BigEndian(
+                    _buffer.AsSpan(offset, sizeof(uint))));
+                int totalSize = sizeof(uint) + frameSize;
+                if (_count - offset < totalSize)
+                    break;
+
+                count++;
+                offset += totalSize;
+            }
+
+            return count;
+        }
+
+        private void EnsureCapacity(int required)
+        {
+            if (_buffer.Length >= required)
+                return;
+
+            int nextSize = _buffer.Length == 0 ? 256 : _buffer.Length;
+            while (nextSize < required)
+                nextSize *= 2;
+            Array.Resize(ref _buffer, nextSize);
+        }
+    }
+
     private static void RunLen32BeEchoCase(byte[] payload, int? splitPoint)
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -118,13 +209,13 @@ public sealed class test_stream_socket
 
         int packets = 0;
         int callbacks = 0;
-        stream.AttachStreamLen32Be((rid, messages) =>
+        AttachLen32Be(stream, (rid, messages) =>
         {
             Interlocked.Increment(ref callbacks);
             foreach (Message message in messages)
             {
                 Interlocked.Increment(ref packets);
-                stream.StreamSend(rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message, SendFlags.None);
             }
             return 0;
         });
@@ -162,10 +253,10 @@ public sealed class test_stream_socket
         Assert.Throws<InvalidOperationException>(() =>
             stream.AttachStreamRaw((_, _) => 0));
         Assert.Throws<InvalidOperationException>(() =>
-            stream.AttachStreamLen32Be((_, _) => 0));
+            AttachLen32Be(stream, (_, _) => 0));
         stream.DetachStream();
 
-        stream.AttachStreamLen32Be((_, _) => 0);
+        AttachLen32Be(stream, (_, _) => 0);
         stream.DetachStream();
     }
 
@@ -224,20 +315,19 @@ public sealed class test_stream_socket
         using var ctx = new Context();
         using var stream = new Socket(ctx, SocketType.Stream);
 
-        byte[] probe = new byte[16];
         var idleEx = Assert.Throws<ZlinkException>(() =>
-            stream.Receive(probe, ReceiveFlags.DontWait));
+            stream.Receive(out Message _, ReceiveFlags.DontWait));
         Assert.Equal(ErrorCode.EAgain, ZlinkException.MapErrorCode(idleEx.Errno));
 
         stream.AttachStreamRaw((_, _) => 0);
         var busyEx = Assert.Throws<ZlinkException>(() =>
-            stream.Receive(probe, ReceiveFlags.DontWait));
+            stream.Receive(out Message _, ReceiveFlags.DontWait));
         Assert.NotEqual(0, busyEx.Errno);
         stream.DetachStream();
     }
 
     [Fact]
-    public void stream_dispatch_start_rejects_stream_notify()
+    public void stream_dispatch_start_allows_stream_notify()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -246,15 +336,12 @@ public sealed class test_stream_socket
         using var stream = new Socket(ctx, SocketType.Stream);
 
         stream.SetOption(SocketOptions.StreamNotify, 1);
-        Assert.Throws<ZlinkException>(() => stream.AttachStreamRaw((_, _) => 0));
-
-        stream.SetOption(SocketOptions.StreamNotify, 0);
         stream.AttachStreamRaw((_, _) => 0);
         stream.DetachStream();
     }
 
     [Fact]
-    public void stream_send_message_failure_consumes_ownership()
+    public void stream_send_message_failure_preserves_ownership()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -264,14 +351,11 @@ public sealed class test_stream_socket
         using var msg = Message.FromBytes("x"u8);
 
         Assert.Throws<ZlinkException>(() => sub.Send(msg, SendFlags.DontWait));
-        Assert.Throws<ObjectDisposedException>(() =>
-        {
-            _ = msg.Size;
-        });
+        Assert.Equal(1, msg.Size);
     }
 
     [Fact]
-    public void stream_streamsend_message_failure_consumes_ownership()
+    public void stream_streamsend_message_failure_preserves_ownership()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -282,11 +366,9 @@ public sealed class test_stream_socket
 
         const uint rid = 1;
         Assert.Throws<ZlinkException>(() =>
-            dealer.StreamSend(rid, msg, SendFlags.DontWait));
-        Assert.Throws<ObjectDisposedException>(() =>
-        {
-            _ = msg.Size;
-        });
+            dealer.Send(StreamRoutingIdToPublicString(rid), msg,
+                SendFlags.DontWait));
+        Assert.Equal(1, msg.Size);
     }
 
     [Fact]
@@ -308,7 +390,7 @@ public sealed class test_stream_socket
         {
             if (payload.AsReadOnlySpan().SequenceEqual(expected))
                 Interlocked.Increment(ref matched);
-            stream.StreamSend(rid, payload, SendFlags.None);
+            stream.Send(rid, payload, SendFlags.None);
             return 0;
         });
 
@@ -384,13 +466,13 @@ public sealed class test_stream_socket
 
         int matched = 0;
         byte[] payload = "stream-callback-len32be"u8.ToArray();
-        stream.AttachStreamLen32Be((rid, messages) =>
+        AttachLen32Be(stream, (rid, messages) =>
         {
             foreach (Message message in messages)
             {
                 if (message.AsReadOnlySpan().SequenceEqual(payload))
                     Interlocked.Increment(ref matched);
-                stream.StreamSend(rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message, SendFlags.None);
             }
             return 0;
         });
@@ -424,7 +506,7 @@ public sealed class test_stream_socket
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
         byte[] payload = "stream-len32be-owned-payload"u8.ToArray();
-        stream.AttachStreamLen32Be((_, messages) =>
+        AttachLen32Be(stream, (_, messages) =>
         {
             for (int i = 0; i < messages.Length; i++)
             {
@@ -478,7 +560,7 @@ public sealed class test_stream_socket
             ReadOnlySpan<byte> payload = msg.AsReadOnlySpan();
             if (payload.Length == 1 && payload[0] == 0)
                 Interlocked.Increment(ref matched);
-            stream.StreamSend(rid, msg, SendFlags.None);
+            stream.Send(rid, msg, SendFlags.None);
             return 0;
         });
 
@@ -534,13 +616,13 @@ public sealed class test_stream_socket
 
         int packets = 0;
         int callbacks = 0;
-        stream.AttachStreamLen32Be((rid, messages) =>
+        AttachLen32Be(stream, (rid, messages) =>
         {
             Interlocked.Increment(ref callbacks);
             foreach (Message message in messages)
             {
                 Interlocked.Increment(ref packets);
-                stream.StreamSend(rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message, SendFlags.None);
             }
             return 0;
         });
@@ -572,11 +654,11 @@ public sealed class test_stream_socket
         stream.Bind(endpoint);
 
         int callbacks = 0;
-        stream.AttachStreamLen32Be((rid, messages) =>
+        AttachLen32Be(stream, (rid, messages) =>
         {
             Interlocked.Increment(ref callbacks);
             foreach (Message message in messages)
-                stream.StreamSend(rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message, SendFlags.None);
             return 0;
         });
 
@@ -617,13 +699,13 @@ public sealed class test_stream_socket
 
         int callbackCount = 0;
         int packetCount = 0;
-        stream.AttachStreamLen32Be((rid, parts) =>
+        AttachLen32Be(stream, (rid, parts) =>
         {
             Interlocked.Increment(ref callbackCount);
             for (int i = 0; i < parts.Length; i++)
             {
                 Interlocked.Increment(ref packetCount);
-                stream.StreamSend(rid, parts[i], SendFlags.None);
+                SendLen32Be(stream, rid, parts[i], SendFlags.None);
             }
             return 0;
         });
@@ -660,28 +742,18 @@ public sealed class test_stream_socket
         client.NoDelay = true;
         client.Connect(IPAddress.Loopback, port);
 
-        Assert.True(CoreTestSupport.WaitUntil(() => stream.PeerCount() > 0,
-            3000));
-
-        uint? peerRoutingId = stream.GetPeerRoutingId();
-        Assert.NotNull(peerRoutingId);
-        Assert.True(stream.TryGetPeerRoutingId(out uint peerRoutingIdValue));
-        Assert.Equal(peerRoutingId!.Value, peerRoutingIdValue);
-
         byte[] incoming = "hello"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        using Message ridMessage = CoreTestSupport.ReceiveMessageWithTimeout(stream,
-            3000);
-        using Message payloadMessage = CoreTestSupport.ReceiveMessageWithTimeout(
-            stream, 3000);
-
-        Assert.Equal(peerRoutingIdValue,
-            BinaryPrimitives.ReadUInt32BigEndian(ridMessage.AsReadOnlySpan()));
-        Assert.Equal("hello", CoreTestSupport.Utf8(payloadMessage));
+        stream.Receive(out string routingId, out Message payloadMessage);
+        using (payloadMessage)
+        {
+            Assert.False(string.IsNullOrEmpty(routingId));
+            Assert.Equal("hello", CoreTestSupport.Utf8(payloadMessage));
+        }
 
         using var reply = Message.FromBytes("world"u8);
-        stream.StreamSend(peerRoutingIdValue, reply, SendFlags.None);
+        stream.Send(routingId, reply, SendFlags.None);
         Assert.Throws<ObjectDisposedException>(() =>
         {
             _ = reply.Size;
@@ -695,7 +767,7 @@ public sealed class test_stream_socket
     }
 
     [Fact]
-    public void stream_peer_info_and_peers_enumeration()
+    public void stream_receive_surfaces_public_routing_id()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -711,19 +783,15 @@ public sealed class test_stream_socket
         client.NoDelay = true;
         client.Connect(IPAddress.Loopback, port);
 
-        Assert.True(CoreTestSupport.WaitUntil(() => stream.PeerCount() > 0,
-            3000));
+        byte[] incoming = "routing-id-check"u8.ToArray();
+        client.GetStream().Write(incoming, 0, incoming.Length);
 
-        uint? rid = stream.GetPeerRoutingId();
-        Assert.NotNull(rid);
-        Assert.True(rid > 0);
-
-        PeerRecord info = stream.GetPeerInfo(rid!.Value);
-        Assert.Equal(rid, info.StreamRoutingId);
-
-        PeerRecord[] peers = stream.GetPeers();
-        Assert.NotEmpty(peers);
-        Assert.Contains(peers, p => p.StreamRoutingId == rid);
+        stream.Receive(out string routingId, out Message message);
+        using (message)
+        {
+            Assert.False(string.IsNullOrEmpty(routingId));
+            Assert.Equal("routing-id-check", CoreTestSupport.Utf8(message));
+        }
     }
 
     [Fact]
@@ -738,8 +806,10 @@ public sealed class test_stream_socket
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
 
-        using MonitorSocket monitor = stream.MonitorOpen(
+        using var monitorEvents = new CallbackEventQueue<SocketMonitorEvent>();
+        using SocketMonitor monitor = stream.OpenMonitor(
             SocketEvent.ConnectionReady | SocketEvent.Disconnected);
+        monitor.AttachHandler(monitorEvents.Enqueue);
 
         const int clients = 4;
         for (int i = 0; i < clients; i++)
@@ -747,22 +817,31 @@ public sealed class test_stream_socket
             using var client = ConnectRawClient(port);
             NetworkStream ns = client.GetStream();
             SendAll(ns, "probe"u8);
-            using Message _ = CoreTestSupport.ReceiveMessageWithTimeout(stream,
-                3000);
-            using Message __ = CoreTestSupport.ReceiveMessageWithTimeout(stream,
-                3000);
+            stream.Receive(out string routingId, out Message payload);
+            using (payload)
+            {
+                Assert.False(string.IsNullOrEmpty(routingId));
+                Assert.Equal("probe", CoreTestSupport.Utf8(payload));
+            }
         }
 
         int ready = 0;
         int disconnected = 0;
         Assert.True(CoreTestSupport.WaitUntil(() =>
         {
-            if (WaitMonitorEvent(monitor, SocketEvent.ConnectionReady, 50,
-                    out _))
-                ready++;
-            if (WaitMonitorEvent(monitor, SocketEvent.Disconnected, 50,
-                    out _))
-                disconnected++;
+            while (monitorEvents.TryDequeue(50, out SocketMonitorEvent evt))
+            {
+                if (evt.Event == SocketEvent.ConnectionReady
+                    && evt.StreamRoutingId.HasValue)
+                {
+                    ready++;
+                }
+                else if (evt.Event == SocketEvent.Disconnected
+                    && evt.StreamRoutingId.HasValue)
+                {
+                    disconnected++;
+                }
+            }
             return ready >= clients && disconnected >= clients;
         }, 6000, 10));
     }
@@ -781,7 +860,7 @@ public sealed class test_stream_socket
 
         stream.AttachStreamRaw((rid, payload) =>
         {
-            stream.StreamSend(rid, payload, SendFlags.None);
+            stream.Send(rid, payload, SendFlags.None);
             return 0;
         });
 
@@ -830,10 +909,10 @@ public sealed class test_stream_socket
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
 
-        stream.AttachStreamLen32Be((rid, messages) =>
+        AttachLen32Be(stream, (rid, messages) =>
         {
             foreach (Message message in messages)
-                stream.StreamSend(rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message, SendFlags.None);
             return 0;
         });
 
@@ -881,33 +960,35 @@ public sealed class test_stream_socket
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
 
-        using MonitorSocket monitor = stream.MonitorOpen(
+        using var monitorEvents = new CallbackEventQueue<SocketMonitorEvent>();
+        using SocketMonitor monitor = stream.OpenMonitor(
             SocketEvent.ConnectionReady | SocketEvent.Disconnected);
+        monitor.AttachHandler(monitorEvents.Enqueue);
 
         using var client = ConnectRawClient(port);
         NetworkStream ns = client.GetStream();
         SendAll(ns, "ok"u8);
 
-        using Message serverRidMessage = CoreTestSupport.ReceiveMessageWithTimeout(
-            stream, 3000);
-        using Message _ = CoreTestSupport.ReceiveMessageWithTimeout(stream, 3000);
-        ReadOnlySpan<byte> serverRid = serverRidMessage.AsReadOnlySpan();
-        Assert.True(serverRid.Length > 0);
+        stream.Receive(out string serverRoutingId, out Message payload);
+        using (payload)
+        {
+            Assert.Equal("ok", CoreTestSupport.Utf8(payload));
+        }
+        Assert.False(string.IsNullOrEmpty(serverRoutingId));
 
-        Assert.True(WaitMonitorEvent(monitor, SocketEvent.ConnectionReady, 3000,
-            out uint connectRid));
-        Assert.Equal(BinaryPrimitives.ReadUInt32BigEndian(serverRid), connectRid);
+        Assert.True(TryReadMonitorEvent(monitorEvents, SocketEvent.ConnectionReady,
+            3000, out uint connectRid));
+        Assert.True(connectRid > 0);
 
         byte[] oversized = new byte[1024];
         Array.Fill(oversized, (byte)'A');
         SendAll(ns, oversized);
 
-        bool monitorDisconnected = WaitMonitorEvent(monitor, SocketEvent.Disconnected,
-            4000, out uint disconnectRid);
+        bool monitorDisconnected = TryReadMonitorEvent(monitorEvents,
+            SocketEvent.Disconnected, 4000, out uint disconnectRid);
         if (monitorDisconnected)
         {
-            Assert.Equal(BinaryPrimitives.ReadUInt32BigEndian(serverRid),
-                disconnectRid);
+            Assert.Equal(connectRid, disconnectRid);
         }
     }
 
@@ -963,5 +1044,28 @@ public sealed class test_stream_socket
         stream.SetOption(SocketOptions.TlsKey, key);
         string endpoint = CoreTestSupport.NewEndpoint("wss", "stream-wss");
         stream.Bind(endpoint);
+    }
+
+    private static bool TryReadMonitorEvent(
+        CallbackEventQueue<SocketMonitorEvent> events, SocketEvent expectedEvent,
+        int timeoutMs, out uint routingId)
+    {
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            int remainingMs = (int)Math.Max(1,
+                (deadline - DateTime.UtcNow).TotalMilliseconds);
+            if (!events.TryDequeue(remainingMs, out SocketMonitorEvent evt))
+                break;
+
+            if (evt.Event != expectedEvent || !evt.StreamRoutingId.HasValue)
+                continue;
+
+            routingId = evt.StreamRoutingId.Value;
+            return true;
+        }
+
+        routingId = 0;
+        return false;
     }
 }

@@ -1,38 +1,26 @@
 'use strict';
 
 const test = require('node:test');
-const assert = require('node:assert');
-const {
-  zlink,
-  transports,
-  endpointFor,
-  tryTransport,
-  recvWithTimeout,
-  sendWithRetry,
-  ZLINK_PAIR,
-  ZLINK_SNDMORE,
-} = require('./helpers');
+const assert = require('node:assert/strict');
+const zlink = require('../src');
 
-test('multipart: pair across transports', async () => {
+test('pair sockets send and receive multipart through canonical api', () => {
   const ctx = new zlink.Context();
-  const cases = await transports('multipart');
-  for (const tc of cases) {
-    await tryTransport(tc.name, async () => {
-      const a = new zlink.Socket(ctx, ZLINK_PAIR);
-      const b = new zlink.Socket(ctx, ZLINK_PAIR);
-      const ep = await endpointFor(tc.name, tc.endpoint, '-mp');
-      a.bind(ep);
-      b.connect(ep);
-      await new Promise(r => setTimeout(r, 50));
-      await sendWithRetry(b, Buffer.from('a'), ZLINK_SNDMORE, 2000);
-      await sendWithRetry(b, Buffer.from('b'), 0, 2000);
-      const p1 = await recvWithTimeout(a, 16, 2000);
-      const p2 = await recvWithTimeout(a, 16, 2000);
-      assert.strictEqual(p1.toString().trim(), 'a');
-      assert.strictEqual(p2.toString().trim(), 'b');
-      a.close();
-      b.close();
-    });
-  }
+  const left = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+  const right = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+
+  left.bind('inproc://multipart-contract');
+  right.connect('inproc://multipart-contract');
+  right.sendParts([
+    zlink.Message.copyOf('a'),
+    zlink.Message.wrap(Buffer.from('b'))
+  ]);
+
+  const received = left.recv();
+  assert.deepEqual(received.parts.map((part) => part.toString()), ['a', 'b']);
+  assert.equal(received.hasMore, false);
+
+  right.close();
+  left.close();
   ctx.close();
 });

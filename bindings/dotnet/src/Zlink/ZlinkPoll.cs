@@ -25,7 +25,7 @@ public static class ZlinkPoll
             revents, timeoutMs);
     }
 
-    public static int Poll(IReadOnlyList<MonitorSocket> monitors,
+    public static int Poll(IReadOnlyList<SocketMonitor> monitors,
         IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
         int timeoutMs)
     {
@@ -65,7 +65,7 @@ public static class ZlinkPoll
                 items[i].Revents = 0;
             }
 
-            rc = NativeMethods.zlink_poll_windows(items, count, boundedTimeoutMs);
+            rc = NativeMethods.zlink_poll(items, count, boundedTimeoutMs);
             ZlinkException.ThrowIfError(rc);
             for (int i = 0; i < count; i++)
                 revents[i] = (PollEvents)items[i].Revents;
@@ -81,7 +81,7 @@ public static class ZlinkPoll
             unixItems[i].Revents = 0;
         }
 
-        rc = NativeMethods.zlink_poll_unix(unixItems, count, boundedTimeoutMs);
+        rc = NativeMethods.zlink_poll(unixItems, count, boundedTimeoutMs);
         ZlinkException.ThrowIfError(rc);
         for (int i = 0; i < count; i++)
             revents[i] = (PollEvents)unixItems[i].Revents;

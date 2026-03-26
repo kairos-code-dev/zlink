@@ -4,14 +4,14 @@ from enum import IntEnum, IntFlag
 
 
 class SocketType(IntEnum):
-    PAIR = 0
-    PUB = 1
-    SUB = 2
-    DEALER = 5
-    ROUTER = 6
-    XPUB = 9
-    XSUB = 10
-    STREAM = 11
+    PAIR = 0x1001
+    PUB = 0x1002
+    SUB = 0x1003
+    DEALER = 0x1004
+    ROUTER = 0x1005
+    XPUB = 0x1006
+    XSUB = 0x1007
+    STREAM = 0x1008
 
 
 class ContextOption(IntEnum):
@@ -28,69 +28,58 @@ class ContextOption(IntEnum):
 
 
 class SocketOption(IntEnum):
-    AFFINITY = 4
+    AFFINITY = 0x3001
+    RATE = 0x3003
+    RECOVERY_IVL = 0x3004
+    SNDBUF = 0x3005
+    RCVBUF = 0x3006
+    FD = 0x3007
+    EVENTS = 0x3008
+    TYPE = 0x3009
+    LINGER = 0x300A
+    RECONNECT_IVL = 0x300B
+    BACKLOG = 0x300C
+    RECONNECT_IVL_MAX = 0x300D
+    MAXMSGSIZE = 0x300E
+    SNDHWM = 0x300F
+    RCVHWM = 0x3010
+    MULTICAST_HOPS = 0x3011
+    RCVTIMEO = 0x3012
+    SNDTIMEO = 0x3013
+    LAST_ENDPOINT = 0x3014
+    TCP_KEEPALIVE = 0x3015
+    TCP_KEEPALIVE_CNT = 0x3016
+    TCP_KEEPALIVE_IDLE = 0x3017
+    TCP_KEEPALIVE_INTVL = 0x3018
+    IMMEDIATE = 0x3019
+    IPV6 = 0x301A
+    CONFLATE = 0x301B
+    TOS = 0x301C
+    HANDSHAKE_IVL = 0x301D
+    BLOCKY = 0x301E
+    INVERT_MATCHING = 0x3020
+    HEARTBEAT_IVL = 0x3021
+    HEARTBEAT_TTL = 0x3022
+    HEARTBEAT_TIMEOUT = 0x3023
+    CONNECT_TIMEOUT = 0x3024
+    TCP_MAXRT = 0x3025
+    MULTICAST_MAXTPDU = 0x3026
+    BINDTODEVICE = 0x3027
+    TLS_CERT = 0x3028
+    TLS_KEY = 0x3029
+    TLS_CA = 0x302A
+    TLS_VERIFY = 0x302B
+    TLS_REQUIRE_CLIENT_CERT = 0x302C
+    TLS_HOSTNAME = 0x302D
+    TLS_TRUST_SYSTEM = 0x302E
+    TLS_PASSWORD = 0x302F
+    ZMP_METADATA = 0x3030
+    DISCOVERY_METADATA_MAX_SIZE = 0x3032
+
+    # Legacy compatibility aliases. Canonical surface uses dedicated helpers.
     ROUTING_ID = 5
     SUBSCRIBE = 6
     UNSUBSCRIBE = 7
-    RATE = 8
-    RECOVERY_IVL = 9
-    SNDBUF = 11
-    RCVBUF = 12
-    RCVMORE = 13
-    FD = 14
-    EVENTS = 15
-    TYPE = 16
-    LINGER = 17
-    RECONNECT_IVL = 18
-    BACKLOG = 19
-    RECONNECT_IVL_MAX = 21
-    MAXMSGSIZE = 22
-    SNDHWM = 23
-    RCVHWM = 24
-    MULTICAST_HOPS = 25
-    RCVTIMEO = 27
-    SNDTIMEO = 28
-    LAST_ENDPOINT = 32
-    ROUTER_MANDATORY = 33
-    TCP_KEEPALIVE = 34
-    TCP_KEEPALIVE_CNT = 35
-    TCP_KEEPALIVE_IDLE = 36
-    TCP_KEEPALIVE_INTVL = 37
-    IMMEDIATE = 39
-    XPUB_VERBOSE = 40
-    IPV6 = 42
-    PROBE_ROUTER = 51
-    CONFLATE = 54
-    ROUTER_HANDOVER = 56
-    TOS = 57
-    CONNECT_ROUTING_ID = 61
-    HANDSHAKE_IVL = 66
-    XPUB_NODROP = 69
-    BLOCKY = 70
-    XPUB_MANUAL = 71
-    XPUB_WELCOME_MSG = 72
-    INVERT_MATCHING = 74
-    HEARTBEAT_IVL = 75
-    HEARTBEAT_TTL = 76
-    HEARTBEAT_TIMEOUT = 77
-    XPUB_VERBOSER = 78
-    CONNECT_TIMEOUT = 79
-    TCP_MAXRT = 80
-    MULTICAST_MAXTPDU = 84
-    USE_FD = 89
-    BINDTODEVICE = 92
-    TLS_CERT = 95
-    TLS_KEY = 96
-    TLS_CA = 97
-    TLS_VERIFY = 98
-    TLS_REQUIRE_CLIENT_CERT = 99
-    TLS_HOSTNAME = 100
-    TLS_TRUST_SYSTEM = 101
-    TLS_PASSWORD = 102
-    XPUB_MANUAL_LAST_VALUE = 98
-    ONLY_FIRST_SUBSCRIBE = 108
-    TOPICS_COUNT = 116
-    ZMP_METADATA = 117
 
 
 class SendFlag(IntFlag):
@@ -154,7 +143,8 @@ class PollEvent(IntFlag):
 
 
 class ServiceType(IntEnum):
-    SPOT = 2
+    SPOT = 0x3002
+    SOCKET = 0x3003
 
 
 class RegistrySocketRole(IntEnum):
@@ -165,11 +155,6 @@ class RegistrySocketRole(IntEnum):
 
 class DiscoverySocketRole(IntEnum):
     SUB = 1
-
-
-class ReceiverSocketRole(IntEnum):
-    ROUTER = 1
-    DEALER = 2
 
 
 class SpotNodeSocketRole(IntEnum):

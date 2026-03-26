@@ -1,27 +1,27 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Buffers;
+using System.Runtime.InteropServices;
 using Zlink;
 using Zlink.Native;
 
 namespace Zlink.Service;
 
-public enum DiscoveryServiceType : ushort
-{
-    Spot = 2
-}
-
 public sealed class Discovery : IDisposable
 {
+    private const uint DefaultMonitorEvents =
+        (1u << 0) | (1u << 4) | (1u << 5) | (1u << 6) | (1u << 7)
+        | (1u << 17);
     private IntPtr _handle;
 
-    public Discovery(Context context, DiscoveryServiceType serviceType)
+    public Discovery(Context context, ServiceType serviceType, string serviceName)
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
-        _handle = NativeMethods.zlink_discovery_new_typed(context.Handle,
-            (ushort)serviceType);
+        if (serviceName == null)
+            throw new ArgumentNullException(nameof(serviceName));
+        _handle = NativeMethods.zlink_discovery_new(context.Handle,
+            (int)serviceType, serviceName);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
     }
@@ -37,135 +37,100 @@ public sealed class Discovery : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void SetOption(SocketOptionKey<int> option, int value)
+    public void SetValue(long value)
     {
-        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
-        ThrowSocketOptionNotSupported(option.Option);
-    }
-
-    public void SetOption(SocketOptionKey<long> option, long value)
-    {
-        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
-        ThrowSocketOptionNotSupported(option.Option);
-    }
-
-    public void SetOption(SocketOptionKey<ulong> option, ulong value)
-    {
-        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
-        ThrowSocketOptionNotSupported(option.Option);
-    }
-
-    public void SetOption(SocketOptionKey<byte[]> option, byte[] value)
-    {
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
-        SetOption(option, value.AsSpan());
-    }
-
-    public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
-    {
-        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
-        ThrowSocketOptionNotSupported(option.Option);
-    }
-
-    public void SetOption(SocketOptionKey<string> option, string value)
-    {
-        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
-        if (value == null)
-            throw new ArgumentNullException(nameof(value));
-        ThrowSocketOptionNotSupported(option.Option);
-    }
-
-    public void SetOption(DiscoverySocketRole role, SocketOptionKey<int> option,
-        int value)
-    {
-        ValidateRole(role);
-        SetOption(option, value);
-    }
-
-    public void SetOption(DiscoverySocketRole role, SocketOptionKey<long> option,
-        long value)
-    {
-        ValidateRole(role);
-        SetOption(option, value);
-    }
-
-    public void SetOption(DiscoverySocketRole role, SocketOptionKey<ulong> option,
-        ulong value)
-    {
-        ValidateRole(role);
-        SetOption(option, value);
-    }
-
-    public void SetOption(DiscoverySocketRole role, SocketOptionKey<byte[]> option,
-        byte[] value)
-    {
-        ValidateRole(role);
-        SetOption(option, value);
-    }
-
-    public void SetOption(DiscoverySocketRole role, SocketOptionKey<byte[]> option,
-        ReadOnlySpan<byte> value)
-    {
-        ValidateRole(role);
-        SetOption(option, value);
-    }
-
-    public void SetOption(DiscoverySocketRole role, SocketOptionKey<string> option,
-        string value)
-    {
-        ValidateRole(role);
-        SetOption(option, value);
-    }
-
-    public int ReceiverCount(string serviceName)
-    {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
-        int count = NativeMethods.zlink_discovery_receiver_count(_handle,
-            serviceName);
-        if (count < 0)
-            throw ZlinkException.FromLastError();
-        return count;
+        int rc = NativeMethods.zlink_discovery_set_value(_handle, value);
+        ZlinkException.ThrowIfError(rc);
     }
 
-    public bool ServiceAvailable(string serviceName)
+    public long GetValue()
     {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_service_available(_handle,
-            serviceName);
-        if (rc < 0)
-            throw ZlinkException.FromLastError();
-        return rc != 0;
+        int rc = NativeMethods.zlink_discovery_get_value(_handle, out long value);
+        ZlinkException.ThrowIfError(rc);
+        return value;
     }
 
-    public ReceiverInfoRecord[] GetReceivers(string serviceName)
+    public void SetMetadata(Message metadata)
     {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
+        if (metadata == null)
+            throw new ArgumentNullException(nameof(metadata));
         EnsureNotDisposed();
-        int count = ReceiverCount(serviceName);
+        int rc = NativeMethods.zlink_discovery_set_metadata(_handle,
+            NativeMethods.zlink_msg_data(ref metadata.Handle),
+            (nuint)metadata.Size);
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    public Message GetMetadata()
+    {
+        EnsureNotDisposed();
+        using var metadata = new Message();
+        int rc = NativeMethods.zlink_discovery_get_metadata(_handle,
+            ref metadata.Handle);
+        ZlinkException.ThrowIfError(rc);
+        return metadata.Move();
+    }
+
+    public MemberPeerEntry[] MemberPeers()
+    {
+        EnsureNotDisposed();
+        nuint count = 0;
+        int rc = NativeMethods.zlink_discovery_member_peers(_handle,
+            IntPtr.Zero, ref count);
+        ZlinkException.ThrowIfError(rc);
         if (count == 0)
-            return Array.Empty<ReceiverInfoRecord>();
-        ZlinkProviderInfo[] providers = ArrayPool<ZlinkProviderInfo>.Shared
-            .Rent(count);
+            return Array.Empty<MemberPeerEntry>();
+
+        int entrySize = Marshal.SizeOf<ZlinkMemberPeerEntry>();
+        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
         try
         {
-            nuint size = (nuint)count;
-            int rc = NativeMethods.zlink_discovery_get_receivers(_handle,
-                serviceName, providers, ref size);
+            nuint actual = count;
+            rc = NativeMethods.zlink_discovery_member_peers(_handle, entries,
+                ref actual);
             ZlinkException.ThrowIfError(rc);
 
-            int actual = (int)size;
-            ReceiverInfoRecord[] result = new ReceiverInfoRecord[actual];
-            for (int i = 0; i < actual; i++)
-                result[i] = ReceiverInfoRecord.FromNative(ref providers[i]);
+            MemberPeerEntry[] result = new MemberPeerEntry[(int)actual];
+            for (int i = 0; i < result.Length; i++)
+            {
+                IntPtr current = IntPtr.Add(entries, i * entrySize);
+                ZlinkMemberPeerEntry native =
+                    Marshal.PtrToStructure<ZlinkMemberPeerEntry>(current);
+                result[i] = MemberPeerEntry.FromNative(ref native);
+            }
             return result;
         }
         finally
         {
-            ArrayPool<ZlinkProviderInfo>.Shared.Return(providers);
+            Marshal.FreeHGlobal(entries);
         }
+    }
+
+    public Message GetMemberPeerMetadata(ushort serviceRole, string endpoint)
+    {
+        ValidateNotEmpty(endpoint, nameof(endpoint));
+        EnsureNotDisposed();
+        using var metadata = new Message();
+        int rc = NativeMethods.zlink_discovery_member_peer_metadata(_handle,
+            serviceRole, endpoint, ref metadata.Handle);
+        ZlinkException.ThrowIfError(rc);
+        return metadata.Move();
+    }
+
+    public ServiceMonitor OpenMonitor(uint events = DefaultMonitorEvents)
+    {
+        EnsureNotDisposed();
+        var options = new ZlinkServiceMonitorOpenOptions
+        {
+            Events = events
+        };
+        IntPtr monitor = NativeMethods.zlink_service_monitor_open(_handle,
+            in options);
+        if (monitor == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
+        return new ServiceMonitor(monitor);
     }
 
     public void Dispose()
@@ -196,49 +161,4 @@ public sealed class Discovery : IDisposable
             throw new ArgumentException("Value must not be empty.", paramName);
     }
 
-    private static void ValidateRole(DiscoverySocketRole role)
-    {
-        if (role != DiscoverySocketRole.Sub)
-        {
-            throw new ArgumentException(
-                $"Unsupported discovery socket role '{role}'.", nameof(role));
-        }
-    }
-
-    private void ThrowSocketOptionNotSupported(SocketOption option)
-    {
-        EnsureNotDisposed();
-        throw new ZlinkException((int)ErrorCode.ENotSup,
-            $"Discovery socket option '{option}' is not supported.");
-    }
-}
-
-public readonly struct ReceiverInfoRecord
-{
-    public ReceiverInfoRecord(string serviceName, string endpoint,
-        string routingId,
-        uint weight, ulong registeredAt)
-    {
-        ServiceName = serviceName;
-        Endpoint = endpoint;
-        RoutingId = routingId;
-        Weight = weight;
-        RegisteredAt = registeredAt;
-    }
-
-    public string ServiceName { get; }
-    public string Endpoint { get; }
-    public string RoutingId { get; }
-    public uint Weight { get; }
-    public ulong RegisteredAt { get; }
-
-    internal static ReceiverInfoRecord FromNative(ref ZlinkProviderInfo info)
-    {
-        string service = NativeHelpers.ReadFixedString(ref info, true);
-        string endpoint = NativeHelpers.ReadFixedString(ref info, false);
-        byte[] routing = NativeHelpers.ReadRoutingId(ref info.RoutingId);
-        string routingId = RoutingIdCodec.ToPublicString(routing);
-        return new ReceiverInfoRecord(service, endpoint, routingId, info.Weight,
-            info.RegisteredAt);
-    }
 }

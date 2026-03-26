@@ -4,6 +4,7 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.options.SocketOptionKey;
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 
 public final class MonitorSocket implements AutoCloseable {
@@ -11,6 +12,10 @@ public final class MonitorSocket implements AutoCloseable {
 
     MonitorSocket(Socket socket) {
         this.socket = socket;
+    }
+
+    public MonitorEvent recv() {
+        return recv(ReceiveFlag.NONE);
     }
 
     public MonitorEvent recv(ReceiveFlag flag) {
@@ -21,6 +26,17 @@ public final class MonitorSocket implements AutoCloseable {
 
     public void setOption(SocketOptionKey<Integer> option, int value) {
         socket.setOption(option, value);
+    }
+
+    public MonitorSnapshot snapshot() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(
+              dev.kairoscode.zlink.internal.NativeLayouts.MONITOR_SNAPSHOT_LAYOUT);
+            int rc = Native.monitorSnapshot(socket.handle(), out);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_monitor_snapshot");
+            return MonitorSnapshot.fromNative(out);
+        }
     }
 
     public Socket socket() {

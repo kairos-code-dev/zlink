@@ -1,0 +1,13 @@
+$root = "/home/hep7/project/kairos/zlink/bindings/dotnet/samples"
+
+dotnet run --project "$root/PairRecv/PairRecv.csproj"
+dotnet run --project "$root/PairCallback/PairCallback.csproj"
+dotnet run --project "$root/PubSubRecv/PubSubRecv.csproj"
+dotnet run --project "$root/PubSubCallback/PubSubCallback.csproj"
+dotnet run --project "$root/DealerRouterRecv/DealerRouterRecv.csproj"
+dotnet run --project "$root/DealerRouterCallback/DealerRouterCallback.csproj"
+dotnet run --project "$root/StreamRecv/StreamRecv.csproj"
+dotnet run --project "$root/StreamCallback/StreamCallback.csproj"
+dotnet run --project "$root/SpotRecv/SpotRecv.csproj"
+dotnet run --project "$root/SpotCallback/SpotCallback.csproj"
+dotnet run --project "$root/RegistryDiscoveryMonitor/RegistryDiscoveryMonitor.csproj"

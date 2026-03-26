@@ -1,70 +1,39 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-from ._ffi import lib
-from ._core import _raise_last_error, ZlinkMsg, Message, _ZlinkRoutingId, _as_bytes_view, _send_buffer
+
+from ._ffi import ZlinkMemberPeerEntry, ZlinkMsg, lib
+from ._core import _raise_last_error, _msg_to_bytes, _routing_id_bytes
 
 
-class ReceiverInfo(ctypes.Structure):
-    _fields_ = [
-        ("service_name", ctypes.c_char * 256),
-        ("endpoint", ctypes.c_char * 256),
-        ("routing_id", ctypes.c_ubyte * 256),
-        ("weight", ctypes.c_uint),
-        ("registered_at", ctypes.c_uint64),
-    ]
+def _decode_fixed(buf):
+    return bytes(buf).split(b"\0", 1)[0].decode("utf-8", errors="replace")
 
 
-class PeerInfo(ctypes.Structure):
-    _fields_ = [
-        ("routing_id", _ZlinkRoutingId),
-        ("remote_addr", ctypes.c_char * 256),
-        ("connected_time", ctypes.c_uint64),
-        ("msgs_sent", ctypes.c_uint64),
-        ("msgs_received", ctypes.c_uint64),
-        ("snd_pending_msgs", ctypes.c_uint64),
-        ("rcv_pending_msgs", ctypes.c_uint64),
-    ]
-
-
-def _to_routing_id_struct(routing_id):
-    rid_view = _as_bytes_view(routing_id)
-    rid_len = rid_view.nbytes
-    if rid_len <= 0 or rid_len > 255:
-        raise ValueError("routing_id length must be between 1 and 255")
-    rid = _ZlinkRoutingId()
-    rid.size = rid_len
-    for i in range(rid_len):
-        rid.data[i] = rid_view[i]
-    return rid
-
-
-def _peer_to_dict(peer):
+def _member_peer_to_dict(entry):
     return {
-        "routing_id": bytes(peer.routing_id.data[: peer.routing_id.size]),
-        "remote_addr": peer.remote_addr.split(b"\0", 1)[0].decode(),
-        "connected_time": int(peer.connected_time),
-        "msgs_sent": int(peer.msgs_sent),
-        "msgs_received": int(peer.msgs_received),
-        "snd_pending_msgs": int(peer.snd_pending_msgs),
-        "rcv_pending_msgs": int(peer.rcv_pending_msgs),
+        "service_type": int(entry.service_type),
+        "service_role": int(entry.service_role),
+        "service_name": _decode_fixed(entry.service_name),
+        "endpoint": _decode_fixed(entry.endpoint),
+        "routing_id": _routing_id_bytes(entry.routing_id),
+        "value": int(entry.value),
     }
 
 
-def _query_peers(handle, fn):
+def _query_member_peers(handle, fn, *args):
     count = ctypes.c_size_t(0)
-    rc = fn(handle, None, ctypes.byref(count))
+    rc = fn(handle, *args, None, ctypes.byref(count))
     if rc != 0:
         _raise_last_error()
     if count.value == 0:
         return []
 
-    arr = (PeerInfo * count.value)()
-    rc = fn(handle, ctypes.cast(arr, ctypes.c_void_p), ctypes.byref(count))
+    entries = (ZlinkMemberPeerEntry * count.value)()
+    rc = fn(handle, *args, entries, ctypes.byref(count))
     if rc != 0:
         _raise_last_error()
-
-    return [_peer_to_dict(arr[i]) for i in range(count.value)]
+    return [_member_peer_to_dict(entries[index]) for index in range(count.value)]
 
 
 class Registry:
@@ -73,227 +42,138 @@ class Registry:
         if not self._handle:
             _raise_last_error()
 
-    def set_endpoints(self, pub_ep, router_ep):
-        rc = lib().zlink_registry_set_endpoints(self._handle, pub_ep.encode(), router_ep.encode())
+    def bind(self, pub_endpoint: str, router_endpoint: str):
+        rc = lib().zlink_registry_bind(
+            self._handle, pub_endpoint.encode(), router_endpoint.encode()
+        )
         if rc != 0:
             _raise_last_error()
 
-    def set_id(self, rid: int):
-        rc = lib().zlink_registry_set_id(self._handle, rid)
+    def set_id(self, registry_id: int):
+        rc = lib().zlink_registry_set_id(self._handle, int(registry_id))
         if rc != 0:
             _raise_last_error()
 
-    def add_peer(self, pub_ep):
-        rc = lib().zlink_registry_add_peer(self._handle, pub_ep.encode())
+    def add_peer(self, peer_pub_endpoint: str):
+        rc = lib().zlink_registry_add_peer(self._handle, peer_pub_endpoint.encode())
         if rc != 0:
             _raise_last_error()
 
-    def set_heartbeat(self, interval_ms, timeout_ms):
-        rc = lib().zlink_registry_set_heartbeat(self._handle, interval_ms, timeout_ms)
+    def set_heartbeat(self, interval_ms: int, timeout_ms: int):
+        rc = lib().zlink_registry_set_heartbeat(
+            self._handle, int(interval_ms), int(timeout_ms)
+        )
         if rc != 0:
             _raise_last_error()
 
-    def set_broadcast_interval(self, interval_ms):
-        rc = lib().zlink_registry_set_broadcast_interval(self._handle, interval_ms)
-        if rc != 0:
-            _raise_last_error()
-
-    def start(self):
-        rc = lib().zlink_registry_start(self._handle)
-        if rc != 0:
-            _raise_last_error()
-
-    def set_sockopt(self, role, option, value: bytes):
-        buf = ctypes.create_string_buffer(value)
-        rc = lib().zlink_registry_setsockopt(self._handle, role, option, buf, len(value))
-        if rc != 0:
-            _raise_last_error()
-
-    def close(self):
-        if self._handle:
-            handle = ctypes.c_void_p(self._handle)
-            lib().zlink_registry_destroy(ctypes.byref(handle))
-            self._handle = None
-
-
-class Discovery:
-    def __init__(self, ctx, service_type):
-        self._handle = lib().zlink_discovery_new_typed(ctx._handle, service_type)
-        if not self._handle:
-            _raise_last_error()
-
-    def connect_registry(self, registry_pub):
-        rc = lib().zlink_discovery_connect_registry(self._handle, registry_pub.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def receiver_count(self, service):
-        rc = lib().zlink_discovery_receiver_count(self._handle, service.encode())
-        if rc < 0:
-            _raise_last_error()
-        return rc
-
-    def service_available(self, service):
-        rc = lib().zlink_discovery_service_available(self._handle, service.encode())
-        if rc < 0:
-            _raise_last_error()
-        return rc != 0
-
-    def get_receivers(self, service):
-        count = self.receiver_count(service)
-        if count <= 0:
-            return []
-        arr = (ReceiverInfo * count)()
-        sz = ctypes.c_size_t(count)
-        rc = lib().zlink_discovery_get_receivers(self._handle, service.encode(), ctypes.byref(arr), ctypes.byref(sz))
-        if rc != 0:
-            _raise_last_error()
-        result = []
-        for i in range(sz.value):
-            info = arr[i]
-            result.append({
-                "service_name": info.service_name.split(b"\0", 1)[0].decode(),
-                "endpoint": info.endpoint.split(b"\0", 1)[0].decode(),
-                "weight": info.weight,
-                "registered_at": info.registered_at,
-            })
-        return result
-
-    def set_tls_client(self, ca_cert: str, hostname: str, trust_system: int = 0):
-        ca_buf = ca_cert.encode() if ca_cert is not None else None
-        hostname_buf = hostname.encode() if hostname is not None else None
-        rc = lib().zlink_discovery_set_tls_client(
-            self._handle, ca_buf, hostname_buf, int(trust_system)
+    def set_broadcast_interval(self, interval_ms: int):
+        rc = lib().zlink_registry_set_broadcast_interval(
+            self._handle, int(interval_ms)
         )
         if rc != 0:
             _raise_last_error()
 
     def close(self):
-        if self._handle:
-            handle = ctypes.c_void_p(self._handle)
-            lib().zlink_discovery_destroy(ctypes.byref(handle))
-            self._handle = None
+        if not self._handle:
+            return
+        handle = ctypes.c_void_p(self._handle)
+        rc = lib().zlink_registry_destroy(ctypes.byref(handle))
+        self._handle = None
+        if rc != 0:
+            _raise_last_error()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
 
 
-class Receiver:
-    def __init__(self, ctx, routing_id=None):
-        rid = routing_id.encode() if routing_id else None
-        self._handle = lib().zlink_receiver_new(ctx._handle, rid)
+class Discovery:
+    def __init__(self, ctx, service_type, service_name: str):
+        self._handle = lib().zlink_discovery_new(
+            ctx._handle, int(service_type), service_name.encode()
+        )
         if not self._handle:
             _raise_last_error()
 
-    def bind(self, endpoint):
-        rc = lib().zlink_receiver_bind(self._handle, endpoint.encode())
+    def connect_registry(self, registry_endpoint: str):
+        rc = lib().zlink_discovery_connect_registry(
+            self._handle, registry_endpoint.encode()
+        )
         if rc != 0:
             _raise_last_error()
 
-    def connect_registry(self, endpoint):
-        rc = lib().zlink_receiver_connect_registry(self._handle, endpoint.encode())
+    def set_value(self, value: int):
+        rc = lib().zlink_discovery_set_value(self._handle, int(value))
         if rc != 0:
             _raise_last_error()
 
-    def register(self, service, advertise_endpoint, weight=1):
-        rc = lib().zlink_receiver_register(self._handle, service.encode(), advertise_endpoint.encode(), weight)
+    def get_value(self) -> int:
+        value = ctypes.c_int64()
+        rc = lib().zlink_discovery_get_value(self._handle, ctypes.byref(value))
+        if rc != 0:
+            _raise_last_error()
+        return int(value.value)
+
+    def set_metadata(self, data):
+        if not data:
+            rc = lib().zlink_discovery_set_metadata(self._handle, None, 0)
+        else:
+            raw = memoryview(data).tobytes()
+            rc = lib().zlink_discovery_set_metadata(
+                self._handle, ctypes.c_char_p(raw), len(raw)
+            )
         if rc != 0:
             _raise_last_error()
 
-    def update_weight(self, service, weight):
-        rc = lib().zlink_receiver_update_weight(self._handle, service.encode(), weight)
+    def get_metadata(self) -> bytes:
+        msg = ZlinkMsg()
+        rc = lib().zlink_msg_init(ctypes.byref(msg))
         if rc != 0:
             _raise_last_error()
+        try:
+            rc = lib().zlink_discovery_get_metadata(self._handle, ctypes.byref(msg))
+            if rc != 0:
+                _raise_last_error()
+            return _msg_to_bytes(msg)
+        finally:
+            lib().zlink_msg_close(ctypes.byref(msg))
 
-    def unregister(self, service):
-        rc = lib().zlink_receiver_unregister(self._handle, service.encode())
+    def member_peers(self):
+        return _query_member_peers(self._handle, lib().zlink_discovery_member_peers)
+
+    def member_peer_metadata(self, service_role: int, endpoint: str) -> bytes:
+        msg = ZlinkMsg()
+        rc = lib().zlink_msg_init(ctypes.byref(msg))
         if rc != 0:
             _raise_last_error()
+        try:
+            rc = lib().zlink_discovery_member_peer_metadata(
+                self._handle, int(service_role), endpoint.encode(), ctypes.byref(msg)
+            )
+            if rc != 0:
+                _raise_last_error()
+            return _msg_to_bytes(msg)
+        finally:
+            lib().zlink_msg_close(ctypes.byref(msg))
 
-    def register_result(self, service):
-        status = ctypes.c_int()
-        endpoint = ctypes.create_string_buffer(256)
-        error = ctypes.create_string_buffer(256)
-        rc = lib().zlink_receiver_register_result(self._handle, service.encode(), ctypes.byref(status), endpoint, error)
-        if rc != 0:
-            _raise_last_error()
-        return status.value, endpoint.value.decode(), error.value.decode()
+    def open_monitor(self, events):
+        from ._monitor import open_service_monitor
 
-    def set_tls_server(self, cert, key):
-        rc = lib().zlink_receiver_set_tls_server(self._handle, cert.encode(), key.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def set_sockopt(self, role, option, value: bytes):
-        buf = ctypes.create_string_buffer(value)
-        rc = lib().zlink_receiver_setsockopt(self._handle, role, option, buf, len(value))
-        if rc != 0:
-            _raise_last_error()
-
-    def router_socket(self):
-        handle = lib().zlink_receiver_router_socket_unsafe(self._handle)
-        if not handle:
-            _raise_last_error()
-        from ._core import Socket
-        return Socket._from_handle(handle, own=False)
-
-    def router_peers(self):
-        return _query_peers(self._handle, lib().zlink_receiver_router_peers)
+        return open_service_monitor(self, events)
 
     def close(self):
-        if self._handle:
-            handle = ctypes.c_void_p(self._handle)
-            lib().zlink_receiver_destroy(ctypes.byref(handle))
-            self._handle = None
+        if not self._handle:
+            return
+        handle = ctypes.c_void_p(self._handle)
+        rc = lib().zlink_discovery_destroy(ctypes.byref(handle))
+        self._handle = None
+        if rc != 0:
+            _raise_last_error()
 
+    def __enter__(self):
+        return self
 
-def _init_msg_from_bytes(data: bytes) -> ZlinkMsg:
-    msg = ZlinkMsg()
-    rc = lib().zlink_msg_init_size(ctypes.byref(msg), len(data))
-    if rc != 0:
-        _raise_last_error()
-    if data:
-        ptr = lib().zlink_msg_data(ctypes.byref(msg))
-        ctypes.memmove(ptr, data, len(data))
-    return msg
-
-
-def _clone_msg(src: Message) -> ZlinkMsg:
-    msg = ZlinkMsg()
-    rc = lib().zlink_msg_init(ctypes.byref(msg))
-    if rc != 0:
-        _raise_last_error()
-    rc = lib().zlink_msg_copy(ctypes.byref(msg), ctypes.byref(src._msg))
-    if rc != 0:
-        _raise_last_error()
-    return msg
-
-
-def _build_msg_array(parts):
-    if not parts:
-        raise ValueError("parts required")
-    arr = (ZlinkMsg * len(parts))()
-    built = 0
-    for i, msg in enumerate(parts):
-        if isinstance(msg, Message):
-            arr[i] = _clone_msg(msg)
-        else:
-            arr[i] = _init_msg_from_bytes(bytes(msg))
-        built += 1
-    return arr, built
-
-
-def _close_msg_array(arr, count: int):
-    for i in range(count):
-        lib().zlink_msg_close(ctypes.byref(arr[i]))
-
-
-def _parts_to_bytes(parts_ptr, count):
-    if not parts_ptr or count == 0:
-        return []
-    arr = ctypes.cast(parts_ptr, ctypes.POINTER(ZlinkMsg * count)).contents
-    out = []
-    for i in range(count):
-        msg = arr[i]
-        size = lib().zlink_msg_size(ctypes.byref(msg))
-        data_ptr = lib().zlink_msg_data(ctypes.byref(msg))
-        out.append(ctypes.string_at(data_ptr, size))
-    lib().zlink_multipart_close(parts_ptr, count)
-    return out
+    def __exit__(self, exc_type, exc, tb):
+        self.close()

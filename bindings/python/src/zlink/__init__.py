@@ -3,13 +3,20 @@
 import ctypes
 
 from ._ffi import lib
-from ._core import Context, Socket, Message, ZlinkError
+from ._core import (
+    Context,
+    Message,
+    ReceivedMessage,
+    ReceivedMultipart,
+    ReceivedTopicMessage,
+    Socket,
+    ZlinkError,
+)
 from ._poller import Poller
-from ._monitor import MonitorSocket, MonitorEvent as _MonitorEventStruct
+from ._monitor import MonitorSocket, ServiceMonitor
 from ._discovery import (
     Registry,
     Discovery,
-    Receiver,
 )
 from ._spot import SpotNode, Spot
 from ._enums import (
@@ -27,7 +34,6 @@ from ._enums import (
     ServiceType,
     RegistrySocketRole,
     DiscoverySocketRole,
-    ReceiverSocketRole,
     SpotNodeSocketRole,
     SpotNodeOption,
     SpotNodePubMode,
@@ -52,11 +58,14 @@ __all__ = [
     "Context",
     "Socket",
     "Message",
+    "ReceivedMessage",
+    "ReceivedMultipart",
+    "ReceivedTopicMessage",
     "Poller",
     "MonitorSocket",
+    "ServiceMonitor",
     "Registry",
     "Discovery",
-    "Receiver",
     "SERVICE_TYPE_SPOT",
     "SpotNode",
     "Spot",
@@ -75,7 +84,6 @@ __all__ = [
     "ServiceType",
     "RegistrySocketRole",
     "DiscoverySocketRole",
-    "ReceiverSocketRole",
     "SpotNodeSocketRole",
     "SpotNodeOption",
     "SpotNodePubMode",

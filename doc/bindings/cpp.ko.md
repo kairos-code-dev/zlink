@@ -4,21 +4,26 @@
 
 ## 1. 개요
 
-- **Header-only**: `include/zlink.hpp` 하나로 사용
-- **RAII 패턴**: 생성자/소멸자로 자원 관리
-- **요구사항**: C++11 이상
+- `include/zlink.hpp` 하나로 쓰는 header-only 래퍼다.
+- `message_t`, `socket_t`, `registry_t`, `discovery_t`, `spot_t`는 move-only
+  RAII 핸들이다.
+- 최소 요구사항은 C++11이다.
 
 ## 2. 주요 클래스
 
 | 클래스 | C API 대응 | 설명 |
 |--------|-----------|------|
-| `context_t` | `zlink_ctx_*` | 컨텍스트 |
-| `socket_t` | `zlink_socket/close/bind/connect/send/recv` | 소켓 |
-| `message_t` | `zlink_msg_*` | 메시지 |
-| `poller_t` | `zlink_poll` | 이벤트 폴러 |
-| `monitor_t` | `zlink_socket_monitor_*` | 모니터 |
+| `context_t` | `zlink_ctx_*` | context option, shutdown, term |
+| `message_t` | `zlink_msg_*` | bytes/string 변환과 RAII 소유권 |
+| `socket_t` | `zlink_socket`, `zlink_send`, `zlink_recv` | raw multipart socket wrapper |
+| `monitor_handle_t` | `zlink_socket_monitor_*`, `zlink_monitor_snapshot` | socket monitor |
+| `service_monitor_handle_t` | `zlink_service_monitor_*`, `zlink_monitor_snapshot` | discovery/spot monitor |
+| `registry_t` | `zlink_registry_*` | bind/snapshot/query 지원 registry wrapper |
+| `registry_query_client_t` | `zlink_registry_query_*` | topology query client |
+| `discovery_t` | `zlink_discovery_*` | fixed service-view discovery wrapper |
+| `spot_node_t`, `spot_t` | `zlink_spot_node_*`, `zlink_spot_*` | unified spot 모델 |
 
-## 3. 기본 예제
+## 3. 기본 raw socket 예제
 
 ```cpp
 #include <zlink.hpp>
@@ -27,51 +32,62 @@
 int main() {
     zlink::context_t ctx;
 
-    // PAIR 서버
-    zlink::socket_t server(ctx, ZLINK_PAIR);
+    zlink::socket_t server(ctx, zlink::socket_type::pair);
     server.bind("tcp://*:5555");
 
-    // PAIR 클라이언트
-    zlink::socket_t client(ctx, ZLINK_PAIR);
+    zlink::socket_t client(ctx, zlink::socket_type::pair);
     client.connect("tcp://127.0.0.1:5555");
 
-    // 전송
-    zlink::message_t msg("Hello", 5);
+    zlink::message_t msg = zlink::message_t::from_string("Hello");
     client.send(msg);
 
-    // 수신
-    zlink::message_t reply;
-    server.recv(reply);
-    std::cout << std::string((char*)reply.data(), reply.size()) << std::endl;
+    zlink::message_t inbound;
+    server.recv(inbound);
+    std::cout << inbound.to_string() << std::endl;
 
     return 0;
 }
 ```
 
-## 4. DEALER/ROUTER 예제
+`socket_t`는 `void*`/`std::string` 기반 send/recv convenience를 제공하지 않는다.
+payload 변환은 `message_t::from_bytes()`, `from_string()`, `to_bytes()`,
+`to_string()`로만 한다.
+
+## 4. DEALER/ROUTER multipart 예제
 
 ```cpp
 zlink::context_t ctx;
-zlink::socket_t router(ctx, ZLINK_ROUTER);
+zlink::socket_t router(ctx, zlink::socket_type::router);
 router.bind("tcp://*:5555");
 
-zlink::socket_t dealer(ctx, ZLINK_DEALER);
+zlink::socket_t dealer(ctx, zlink::socket_type::dealer);
 dealer.connect("tcp://127.0.0.1:5555");
 
-// 전송
-dealer.send(zlink::message_t("request", 7));
+zlink::message_t request = zlink::message_t::from_string("request");
+dealer.send(request);
 
-// 수신 (routing_id + data)
-zlink::message_t id, body;
-router.recv(id);
-router.recv(body);
+zlink_routing_id_t rid;
+zlink::message_t body;
+router.recv(rid, body);
 
-// 응답
-router.send(id, ZLINK_SNDMORE);
-router.send(zlink::message_t("reply", 5));
+zlink::message_t reply = zlink::message_t::from_string("reply");
+router.send(rid, reply);
 ```
 
-## 5. 빌드
+## 5. 서비스 계층 요약
+
+서비스 래퍼는 다음 표면만 노출한다.
+
+- `registry_t`
+- `registry_query_client_t`
+- `discovery_t`
+- `spot_node_t`
+- `spot_t`
+
+이 문서는 구형 `receiver_t`, `spot_pub_t`, `spot_sub_t`, STREAM 전용
+`stream_attach*`/`stream_send*` API를 더 이상 설명하지 않는다.
+
+## 6. 빌드와 검증
 
 ```cmake
 # CMakeLists.txt
@@ -80,7 +96,21 @@ target_link_libraries(myapp ${ZLINK_LIB})
 target_include_directories(myapp PRIVATE path/to/zlink.hpp)
 ```
 
-## 6. 네이티브 라이브러리
+```bash
+./bindings/cpp/build.sh ON ON
+ctest --test-dir core/build --output-on-failure -L contract
+ctest --test-dir core/build --output-on-failure -L sample-smoke -j1
+```
+
+샘플 smoke 대상:
+
+- `pair_recv`, `pair_callback`
+- `pubsub_recv`, `pubsub_callback`
+- `dealer_router_recv`, `dealer_router_callback`
+- `stream_recv`, `stream_callback`
+- `spot_recv`, `spot_callback`
+
+## 7. 네이티브 라이브러리
 
 `bindings/cpp/native/` 디렉토리에 플랫폼별 바이너리 제공:
 - `linux-x86_64/libzlink.so`
@@ -89,30 +119,3 @@ target_include_directories(myapp PRIVATE path/to/zlink.hpp)
 - `darwin-aarch64/libzlink.dylib`
 - `windows-x86_64/zlink.dll`
 - `windows-aarch64/zlink.dll`
-
-## 7. STREAM 콜백 API
-
-`socket_t` STREAM 헬퍼:
-- `stream_attach(zlink_stream_on_packets_fn, int flags)`
-- `stream_attach(zlink_stream_on_packets_fn, stream_dispatch_mode mode)`
-- `stream_detach()`
-- `stream_send(...)`
-
-모드 규칙:
-- attach 상태에서는 콜백에서 STREAM 페이로드를 소비합니다.
-- attach 상태에서 STREAM 페이로드 수신에 `recv()`를 혼용하지 않습니다.
-- `stream_detach()` 이후에는 기존 `recv()` 경로를 다시 사용할 수 있습니다.
-
-```cpp
-int on_packets(const zlink_routing_id_t *rid, zlink_msg_t *msgs, size_t count) {
-    for (size_t i = 0; i < count; ++i) {
-        const void *data = zlink_msg_data(&msgs[i]);
-        size_t size = zlink_msg_size(&msgs[i]);
-        stream.stream_send(*rid, data, size, zlink::send_flag::none);
-        zlink_msg_close(&msgs[i]);
-    }
-    return 0;
-}
-
-stream.stream_attach(on_packets, zlink::stream_dispatch_mode::len32be);
-```

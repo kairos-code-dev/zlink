@@ -5,13 +5,23 @@ package dev.kairoscode.zlink;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
+import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
+/**
+ * Owns one native zlink frame and exposes the canonical copy and borrow
+ * factories for Java payload inputs.
+ *
+ * <p>{@code copyOf*} always copies into message-owned storage. {@code wrap*}
+ * is reserved for direct or native-backed buffers and keeps the caller-owned
+ * backing alive through the message lifetime.
+ */
 public final class Message implements AutoCloseable {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
@@ -26,14 +36,16 @@ public final class Message implements AutoCloseable {
     private boolean valid;
     private boolean closed;
     private boolean recvArmed;
+    private boolean more;
     private Object zeroCopyAnchor;
 
     private Message(boolean raw) {
         this.arena = Arena.ofConfined();
-        this.msg = arena.allocate(64);
+        this.msg = arena.allocate(NativeLayouts.MSG_LAYOUT);
         this.valid = false;
         this.closed = false;
         this.recvArmed = false;
+        this.more = false;
         this.zeroCopyAnchor = null;
     }
 
@@ -47,6 +59,7 @@ public final class Message implements AutoCloseable {
         }
         valid = true;
         recvArmed = true;
+        more = false;
     }
 
     public Message(int size) {
@@ -59,13 +72,16 @@ public final class Message implements AutoCloseable {
         }
         valid = true;
         recvArmed = false;
+        more = false;
     }
 
-    public static Message fromBytes(byte[] data) {
-        return fromBytes(data, 0, data.length);
+    /** Copies the full byte array into a new message-owned frame. */
+    public static Message copyOf(byte[] data) {
+        return copyOf(data, 0, data.length);
     }
 
-    public static Message fromBytes(byte[] data, int offset, int length) {
+    /** Copies the selected byte array range into a new message-owned frame. */
+    public static Message copyOf(byte[] data, int offset, int length) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
         Message msg = new Message(length);
@@ -76,7 +92,14 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
-    public static Message fromByteBuffer(ByteBuffer data) {
+    /** Encodes the string as UTF-8 and copies it into a new frame. */
+    public static Message copyOfUtf8(String value) {
+        Objects.requireNonNull(value, "value");
+        return copyOf(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Copies the remaining bytes from the buffer without mutating its cursor. */
+    public static Message copyOf(ByteBuffer data) {
         Objects.requireNonNull(data, "data");
         int length = data.remaining();
         Message msg = new Message(length);
@@ -84,17 +107,53 @@ public final class Message implements AutoCloseable {
             ByteBuffer src = data.slice();
             MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
             MemorySegment.copy(MemorySegment.ofBuffer(src), 0, dst, 0, length);
-            data.position(data.position() + length);
         }
         return msg;
     }
 
-    public static Message fromMemorySegment(MemorySegment data) {
-        Objects.requireNonNull(data, "data");
-        return fromMemorySegment(data, 0, data.byteSize());
+    /** Copies the readable bytes from the {@code ByteBuf} without advancing it. */
+    public static Message copyOf(ByteBuf buf) {
+        Objects.requireNonNull(buf, "buf");
+        int length = buf.readableBytes();
+        Message msg = new Message(length);
+        if (length <= 0)
+            return msg;
+        int readerIndex = buf.readerIndex();
+        MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(length);
+        if (buf.hasMemoryAddress()) {
+            MemorySegment src = MemorySegment.ofAddress(buf.memoryAddress() + readerIndex)
+                .reinterpret(length);
+            MemorySegment.copy(src, 0, dst, 0, length);
+            return msg;
+        }
+        try {
+            ByteBuffer src = buf.nioBufferCount() == 1
+                ? buf.internalNioBuffer(readerIndex, length)
+                : buf.nioBuffer(readerIndex, length);
+            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, dst, 0, length);
+            return msg;
+        } catch (UnsupportedOperationException ex) {
+            byte[] tmp = new byte[length];
+            buf.getBytes(readerIndex, tmp);
+            MemorySegment.copy(MemorySegment.ofArray(tmp), 0, dst, 0, length);
+            return msg;
+        }
     }
 
-    public static Message fromMemorySegment(MemorySegment data, long offset, long length) {
+    /** Copies the bytes described by the span into a new frame. */
+    public static Message copyOf(ByteSpan span) {
+        Objects.requireNonNull(span, "span");
+        return copyOf(span.segment(), 0, span.length());
+    }
+
+    /** Copies the full memory segment into a new message-owned frame. */
+    public static Message copyOf(MemorySegment data) {
+        Objects.requireNonNull(data, "data");
+        return copyOf(data, 0, data.byteSize());
+    }
+
+    /** Copies the selected memory segment range into a new message-owned frame. */
+    public static Message copyOf(MemorySegment data, long offset, long length) {
         Objects.requireNonNull(data, "data");
         validateRange(data.byteSize(), offset, length, "data");
         if (length > Integer.MAX_VALUE)
@@ -107,19 +166,17 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
-    public static Message fromNativeData(MemorySegment data) {
+    /** Borrows the remaining bytes from a direct {@link ByteBuffer}. */
+    public static Message wrapDirect(ByteBuffer data) {
         Objects.requireNonNull(data, "data");
-        return fromNativeData(data, 0, data.byteSize());
-    }
-
-    public static Message fromNativeData(MemorySegment data, long offset, long length) {
-        Objects.requireNonNull(data, "data");
-        validateRange(data.byteSize(), offset, length, "data");
-        if (length > 0 && !data.isNative())
-            throw new IllegalArgumentException("fromNativeData requires a native MemorySegment");
+        if (!data.isDirect())
+            throw new IllegalArgumentException("wrapDirect requires a direct ByteBuffer");
+        int length = data.remaining();
         Message msg = new Message(true);
-        MemorySegment slice = length == 0 ? MemorySegment.NULL : data.asSlice(offset, length);
-        int rc = NativeMsg.msgInitData(msg.msg, slice, length, MemorySegment.NULL, MemorySegment.NULL);
+        MemorySegment seg = length == 0 ? MemorySegment.NULL
+            : MemorySegment.ofBuffer(data.slice());
+        int rc = NativeMsg.msgInitData(msg.msg, seg, length, MemorySegment.NULL,
+            MemorySegment.NULL);
         if (rc != 0) {
             msg.arena.close();
             msg.closed = true;
@@ -127,18 +184,27 @@ public final class Message implements AutoCloseable {
         }
         msg.valid = true;
         msg.recvArmed = false;
+        msg.more = false;
         msg.zeroCopyAnchor = data;
         return msg;
     }
 
-    public static Message fromDirectByteBuffer(ByteBuffer data) {
+    /** Borrows the full native memory segment without copying. */
+    public static Message wrapNative(MemorySegment data) {
         Objects.requireNonNull(data, "data");
-        if (!data.isDirect())
-            throw new IllegalArgumentException("fromDirectByteBuffer requires a direct ByteBuffer");
-        int length = data.remaining();
+        return wrapNative(data, 0, data.byteSize());
+    }
+
+    /** Borrows the selected native memory segment range without copying. */
+    public static Message wrapNative(MemorySegment data, long offset, long length) {
+        Objects.requireNonNull(data, "data");
+        validateRange(data.byteSize(), offset, length, "data");
+        if (length > 0 && !data.isNative())
+            throw new IllegalArgumentException("wrapNative requires a native MemorySegment");
         Message msg = new Message(true);
-        MemorySegment seg = length == 0 ? MemorySegment.NULL : MemorySegment.ofBuffer(data.slice());
-        int rc = NativeMsg.msgInitData(msg.msg, seg, length, MemorySegment.NULL, MemorySegment.NULL);
+        MemorySegment slice = length == 0 ? MemorySegment.NULL : data.asSlice(offset, length);
+        int rc = NativeMsg.msgInitData(msg.msg, slice, length, MemorySegment.NULL,
+            MemorySegment.NULL);
         if (rc != 0) {
             msg.arena.close();
             msg.closed = true;
@@ -146,86 +212,151 @@ public final class Message implements AutoCloseable {
         }
         msg.valid = true;
         msg.recvArmed = false;
+        msg.more = false;
         msg.zeroCopyAnchor = data;
+        return msg;
+    }
+
+    /** Borrows the readable bytes from a direct {@code ByteBuf}. */
+    public static Message wrapDirect(ByteBuf buf) {
+        Objects.requireNonNull(buf, "buf");
+        int length = buf.readableBytes();
+        if (length == 0)
+            return wrapNative(MemorySegment.NULL, 0, 0);
+        int readerIndex = buf.readerIndex();
+        if (buf.hasMemoryAddress()) {
+            MemorySegment seg = MemorySegment.ofAddress(buf.memoryAddress() + readerIndex)
+                .reinterpret(length);
+            Message msg = new Message(true);
+            int rc = NativeMsg.msgInitData(msg.msg, seg, length, MemorySegment.NULL,
+                MemorySegment.NULL);
+            if (rc != 0) {
+                msg.arena.close();
+                msg.closed = true;
+                throw ZlinkException.fromLastError("zlink_msg_init_data");
+            }
+            msg.valid = true;
+            msg.recvArmed = false;
+            msg.more = false;
+            msg.zeroCopyAnchor = buf;
+            return msg;
+        }
+        ByteBuffer nio = buf.nioBufferCount() == 1
+            ? buf.internalNioBuffer(readerIndex, length)
+            : buf.nioBuffer(readerIndex, length);
+        if (!nio.isDirect())
+            throw new IllegalArgumentException("wrapDirect requires a direct ByteBuf backing");
+        Message msg = new Message(true);
+        int rc = NativeMsg.msgInitData(msg.msg, MemorySegment.ofBuffer(nio), length,
+            MemorySegment.NULL, MemorySegment.NULL);
+        if (rc != 0) {
+            msg.arena.close();
+            msg.closed = true;
+            throw ZlinkException.fromLastError("zlink_msg_init_data");
+        }
+        msg.valid = true;
+        msg.recvArmed = false;
+        msg.more = false;
+        msg.zeroCopyAnchor = buf;
+        return msg;
+    }
+
+    public static Message wrap(ByteSpan span) {
+        Objects.requireNonNull(span, "span");
+        MemorySegment segment = span.segment();
+        if (span.length() > 0 && !segment.isNative())
+            throw new IllegalArgumentException("wrap(ByteSpan) requires native-backed span");
+        return wrapNative(segment, 0, span.length());
+    }
+
+    @Deprecated(forRemoval = false)
+    static Message fromBytes(byte[] data) {
+        return copyOf(data);
+    }
+
+    @Deprecated(forRemoval = false)
+    static Message fromBytes(byte[] data, int offset, int length) {
+        return copyOf(data, offset, length);
+    }
+
+    @Deprecated(forRemoval = false)
+    static Message fromByteBuffer(ByteBuffer data) {
+        Objects.requireNonNull(data, "data");
+        int length = data.remaining();
+        Message msg = copyOf(data);
         data.position(data.position() + length);
         return msg;
     }
 
-    public void send(Socket socket, SendFlag flag) {
-        Objects.requireNonNull(flag, "flag");
-        int rc = NativeMsg.msgSend(msg, socket.handle(), flag.getValue());
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_msg_send");
-        valid = false;
-        recvArmed = false;
-        zeroCopyAnchor = null;
+    @Deprecated(forRemoval = false)
+    static Message fromMemorySegment(MemorySegment data) {
+        return copyOf(data);
     }
 
-    public boolean trySend(Socket socket, SendFlag flag) {
-        Objects.requireNonNull(socket, "socket");
-        Objects.requireNonNull(flag, "flag");
-        while (true) {
-            int rc = NativeMsg.msgSend(msg, socket.handle(), flag.getValue());
-            if (rc >= 0) {
-                valid = false;
-                recvArmed = false;
-                zeroCopyAnchor = null;
-                return true;
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw ZlinkException.fromLastError("zlink_msg_send");
-        }
+    @Deprecated(forRemoval = false)
+    static Message fromMemorySegment(MemorySegment data, long offset, long length) {
+        return copyOf(data, offset, length);
     }
 
-    public void recv(Socket socket, ReceiveFlag flag) {
-        Objects.requireNonNull(socket, "socket");
-        Objects.requireNonNull(flag, "flag");
-        prepareForReceive();
-        int rc = NativeMsg.msgRecv(msg, socket.handle(), flag.getValue());
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_msg_recv");
-        valid = true;
-        recvArmed = false;
-        zeroCopyAnchor = null;
+    @Deprecated(forRemoval = false)
+    static Message fromNativeData(MemorySegment data) {
+        return wrapNative(data);
     }
 
-    public int tryRecv(Socket socket, ReceiveFlag flag) {
+    @Deprecated(forRemoval = false)
+    static Message fromNativeData(MemorySegment data, long offset, long length) {
+        return wrapNative(data, offset, length);
+    }
+
+    @Deprecated(forRemoval = false)
+    static Message fromDirectByteBuffer(ByteBuffer data) {
+        Objects.requireNonNull(data, "data");
+        if (!data.isDirect())
+            throw new IllegalArgumentException("fromDirectByteBuffer requires a direct ByteBuffer");
+        int length = data.remaining();
+        Message msg = wrapDirect(data);
+        data.position(data.position() + length);
+        return msg;
+    }
+
+    @Deprecated(forRemoval = false)
+    void send(Socket socket, SendFlag flag) {
         Objects.requireNonNull(socket, "socket");
         Objects.requireNonNull(flag, "flag");
-        prepareForReceive();
-        while (true) {
-            int rc = NativeMsg.msgRecv(msg, socket.handle(), flag.getValue());
-            if (rc >= 0) {
-                valid = true;
-                recvArmed = false;
-                zeroCopyAnchor = null;
-                return rc;
-            }
+        socket.sendMessageFrame(this, flag);
+    }
 
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return -1;
-            }
-            throw ZlinkException.fromLastError("zlink_msg_recv");
-        }
+    boolean trySend(Socket socket, SendFlag flag) {
+        Objects.requireNonNull(socket, "socket");
+        Objects.requireNonNull(flag, "flag");
+        return socket.trySendMessageFrame(this, flag);
+    }
+
+    @Deprecated(forRemoval = false)
+    void recv(Socket socket, ReceiveFlag flag) {
+        Objects.requireNonNull(socket, "socket");
+        Objects.requireNonNull(flag, "flag");
+        socket.recvMessageFrame(this, flag);
+    }
+
+    @Deprecated(forRemoval = false)
+    int tryRecv(Socket socket, ReceiveFlag flag) {
+        Objects.requireNonNull(socket, "socket");
+        Objects.requireNonNull(flag, "flag");
+        return socket.tryRecvMessageFrame(this, flag);
     }
 
     public int size() {
         return (int) NativeMsg.msgSize(msg);
     }
 
-    public boolean more() {
-        return NativeMsg.msgMore(msg) != 0;
+    @Deprecated(forRemoval = false)
+    boolean more() {
+        return more;
+    }
+
+    public int refCount() {
+        return NativeMsg.msgRefCnt(msg);
     }
 
     public MemorySegment dataSegment() {
@@ -256,8 +387,24 @@ public final class Message implements AutoCloseable {
     public ByteBuffer dataBuffer() {
         MemorySegment seg = dataSegment();
         if (seg.address() == 0)
-            return ByteBuffer.allocate(0);
-        return seg.asByteBuffer();
+            return ByteBuffer.allocate(0).asReadOnlyBuffer();
+        return seg.asByteBuffer().asReadOnlyBuffer();
+    }
+
+    public byte[] toByteArray() {
+        return data();
+    }
+
+    public String toUtf8String() {
+        return new String(data(), StandardCharsets.UTF_8);
+    }
+
+    public boolean empty() {
+        return size() == 0;
+    }
+
+    public boolean valid() {
+        return valid && !closed;
     }
 
     public byte[] data() {
@@ -298,6 +445,18 @@ public final class Message implements AutoCloseable {
         return size;
     }
 
+    public int copyTo(ByteBuf destination) {
+        Objects.requireNonNull(destination, "destination");
+        int size = size();
+        if (destination.writableBytes() < size)
+            throw new IllegalArgumentException("destination buffer too small");
+        if (size == 0)
+            return 0;
+        destination.setBytes(destination.writerIndex(), dataSegment().asByteBuffer());
+        destination.writerIndex(destination.writerIndex() + size);
+        return size;
+    }
+
     public boolean tryCopyTo(ByteBuffer destination) {
         Objects.requireNonNull(destination, "destination");
         int size = size();
@@ -322,6 +481,35 @@ public final class Message implements AutoCloseable {
         zeroCopyAnchor = null;
     }
 
+    Object transferTo(MemorySegment destination) {
+        int rc = NativeMsg.msgInit(destination);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_msg_init");
+        rc = NativeMsg.msgMove(destination, msg);
+        if (rc != 0) {
+            NativeMsg.msgClose(destination);
+            throw ZlinkException.fromLastError("zlink_msg_move");
+        }
+        Object anchor = zeroCopyAnchor;
+        valid = false;
+        recvArmed = false;
+        more = false;
+        zeroCopyAnchor = null;
+        return anchor;
+    }
+
+    void restoreFromNative(MemorySegment source, boolean moreFlag,
+                           Object anchor) {
+        prepareForReceive();
+        int rc = NativeMsg.msgMove(msg, source);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_msg_move");
+        valid = true;
+        recvArmed = false;
+        more = moreFlag;
+        zeroCopyAnchor = anchor;
+    }
+
     void resetForReuse() {
         if (closed || !arena.scope().isAlive())
             throw new IllegalStateException("message is closed");
@@ -336,6 +524,7 @@ public final class Message implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_msg_init");
         valid = true;
         recvArmed = true;
+        more = false;
         zeroCopyAnchor = null;
     }
 
@@ -352,12 +541,12 @@ public final class Message implements AutoCloseable {
         return moveFromMsgVector(partsAddr, count, reusable, true);
     }
 
-    static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count) {
+    public static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count) {
         return fromOwnedMsgVector(partsAddr, count, null);
     }
 
-    static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count,
-                                        Message[] reusable) {
+    public static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count,
+                                               Message[] reusable) {
         return moveFromMsgVector(partsAddr, count, reusable, false);
     }
 
@@ -401,6 +590,7 @@ public final class Message implements AutoCloseable {
                 }
                 msg.valid = true;
                 msg.recvArmed = false;
+                msg.more = i + 1 < count;
                 msg.zeroCopyAnchor = null;
                 built++;
             }
@@ -444,6 +634,7 @@ public final class Message implements AutoCloseable {
                 throw ZlinkException.fromLastError("zlink_msg_move");
             out.valid = true;
             out.recvArmed = false;
+            out.more = false;
             rc = NativeMsg.msgClose(nativeMsg);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_msg_close");
@@ -490,8 +681,47 @@ public final class Message implements AutoCloseable {
         }
     }
 
+    public String property(String key) {
+        Objects.requireNonNull(key, "key");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeKey = arena.allocateFrom(key, StandardCharsets.UTF_8);
+            MemorySegment nativeValue = NativeMsg.msgGets(msg, nativeKey);
+            if (nativeValue == null || nativeValue.address() == 0)
+                return null;
+            return nativeValue.reinterpret(Long.MAX_VALUE).getString(0);
+        }
+    }
+
     MemorySegment handle() {
         return msg;
+    }
+
+    int moveInto(Message target, boolean moreFlag) {
+        Objects.requireNonNull(target, "target");
+        target.prepareForReceive();
+        int rc = NativeMsg.msgMove(target.msg, msg);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_msg_move");
+        target.valid = true;
+        target.recvArmed = false;
+        target.more = moreFlag;
+        target.zeroCopyAnchor = zeroCopyAnchor;
+        valid = false;
+        recvArmed = false;
+        more = false;
+        zeroCopyAnchor = null;
+        return target.size();
+    }
+
+    void markTransferred() {
+        valid = false;
+        recvArmed = false;
+        more = false;
+        zeroCopyAnchor = null;
+    }
+
+    void setMore(boolean moreFlag) {
+        more = moreFlag;
     }
 
     @Override
@@ -503,6 +733,7 @@ public final class Message implements AutoCloseable {
             valid = false;
         }
         recvArmed = false;
+        more = false;
         zeroCopyAnchor = null;
         if (arena.scope().isAlive())
             arena.close();

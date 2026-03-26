@@ -11,6 +11,7 @@ internal static class NativeLibraryLoader
     private static readonly object Sync = new();
     private static IntPtr _handle = IntPtr.Zero;
     private static bool _resolverInstalled;
+    private static bool _exportsValidated;
 
     internal static void EnsureLoaded()
     {
@@ -24,11 +25,20 @@ internal static class NativeLibraryLoader
                 return;
 
             if (TryLoadConfiguredPath(out _handle))
+            {
+                ValidateRequiredExports();
                 return;
+            }
             if (TryLoadPackagedCandidates(out _handle))
+            {
+                ValidateRequiredExports();
                 return;
+            }
             if (TryLoadWellKnownNames(out _handle))
+            {
+                ValidateRequiredExports();
                 return;
+            }
         }
     }
 
@@ -105,6 +115,23 @@ internal static class NativeLibraryLoader
         EnsureLoaded();
         return _handle != IntPtr.Zero
             && NativeLibrary.TryGetExport(_handle, symbol, out _);
+    }
+
+    private static void ValidateRequiredExports()
+    {
+        if (_exportsValidated || _handle == IntPtr.Zero)
+            return;
+
+        foreach (string export in NativeMethods.RequiredExports)
+        {
+            if (NativeLibrary.TryGetExport(_handle, export, out _))
+                continue;
+
+            throw new DllNotFoundException(
+                $"Loaded zlink library is missing required export '{export}'.");
+        }
+
+        _exportsValidated = true;
     }
 
     private static bool TryLoad(string nameOrPath, out IntPtr handle)

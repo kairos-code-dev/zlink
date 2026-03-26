@@ -60,6 +60,7 @@ public sealed class ZlinkException : Exception
         return errno switch
         {
             0 => ErrorCode.None,
+            (int)ErrorCode.EBusy => ErrorCode.EBusy,
             (int)ErrorCode.EIntr => ErrorCode.EIntr,
             (int)ErrorCode.EAgain or 35 => ErrorCode.EAgain,
             (int)ErrorCode.EBadf => ErrorCode.EBadf,
@@ -101,6 +102,7 @@ public sealed class ZlinkException : Exception
                 ErrorCode.EConnRefused,
             (int)ErrorCode.EHostUnreach or 65 or EhostUnreachFallback =>
                 ErrorCode.EHostUnreach,
+            (int)ErrorCode.EShutdown => ErrorCode.EShutdown,
             (int)ErrorCode.EInProgress or 36 or EinProgressFallback =>
                 ErrorCode.EInProgress,
             EfsmNative => ErrorCode.Efsm,

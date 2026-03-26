@@ -1,142 +1,183 @@
 export function version(): [number, number, number];
 
 export declare const SocketType: {
-  readonly PAIR: 0; readonly PUB: 1; readonly SUB: 2;
-  readonly DEALER: 5; readonly ROUTER: 6; readonly XPUB: 9;
-  readonly XSUB: 10; readonly STREAM: 11;
+  readonly PAIR: 0x1001; readonly PUB: 0x1002; readonly SUB: 0x1003;
+  readonly DEALER: 0x1004; readonly ROUTER: 0x1005; readonly XPUB: 0x1006;
+  readonly XSUB: 0x1007; readonly STREAM: 0x1008;
 };
 
 export declare const ContextOption: {
-  readonly IO_THREADS: 1; readonly MAX_SOCKETS: 2;
-  readonly SOCKET_LIMIT: 3; readonly THREAD_PRIORITY: 3;
-  readonly THREAD_SCHED_POLICY: 4; readonly MAX_MSGSZ: 5;
-  readonly MSG_T_SIZE: 6; readonly THREAD_AFFINITY_CPU_ADD: 7;
-  readonly THREAD_AFFINITY_CPU_REMOVE: 8; readonly THREAD_NAME_PREFIX: 9;
+  readonly IO_THREADS: 1; readonly MAX_SOCKETS: 2; readonly SOCKET_LIMIT: 3;
+  readonly THREAD_PRIORITY: 3; readonly THREAD_SCHED_POLICY: 4;
+  readonly MAX_MSGSZ: 5; readonly MSG_T_SIZE: 6;
+  readonly THREAD_AFFINITY_CPU_ADD: 7; readonly THREAD_AFFINITY_CPU_REMOVE: 8;
+  readonly THREAD_NAME_PREFIX: 9; readonly BLOCKY: 10;
 };
 
-export declare const SocketOption: {
-  readonly AFFINITY: 4; readonly ROUTING_ID: 5;
-  readonly SUBSCRIBE: 6; readonly UNSUBSCRIBE: 7;
-  readonly RATE: 8; readonly RECOVERY_IVL: 9;
-  readonly SNDBUF: 11; readonly RCVBUF: 12;
-  readonly RCVMORE: 13; readonly FD: 14;
-  readonly EVENTS: 15; readonly TYPE: 16;
-  readonly LINGER: 17; readonly RECONNECT_IVL: 18;
-  readonly BACKLOG: 19; readonly RECONNECT_IVL_MAX: 21;
-  readonly MAXMSGSIZE: 22; readonly SNDHWM: 23;
-  readonly RCVHWM: 24; readonly MULTICAST_HOPS: 25;
-  readonly RCVTIMEO: 27; readonly SNDTIMEO: 28;
-  readonly LAST_ENDPOINT: 32; readonly ROUTER_MANDATORY: 33;
-  readonly TCP_KEEPALIVE: 34; readonly TCP_KEEPALIVE_CNT: 35;
-  readonly TCP_KEEPALIVE_IDLE: 36; readonly TCP_KEEPALIVE_INTVL: 37;
-  readonly IMMEDIATE: 39; readonly XPUB_VERBOSE: 40;
-  readonly IPV6: 42; readonly PROBE_ROUTER: 51;
-  readonly CONFLATE: 54; readonly ROUTER_HANDOVER: 56;
-  readonly TOS: 57; readonly CONNECT_ROUTING_ID: 61;
-  readonly HANDSHAKE_IVL: 66; readonly XPUB_NODROP: 69;
-  readonly BLOCKY: 70; readonly XPUB_MANUAL: 71;
-  readonly XPUB_WELCOME_MSG: 72; readonly INVERT_MATCHING: 74;
-  readonly HEARTBEAT_IVL: 75; readonly HEARTBEAT_TTL: 76;
-  readonly HEARTBEAT_TIMEOUT: 77; readonly XPUB_VERBOSER: 78;
-  readonly CONNECT_TIMEOUT: 79; readonly TCP_MAXRT: 80;
-  readonly MULTICAST_MAXTPDU: 84; readonly USE_FD: 89;
-  readonly BINDTODEVICE: 92; readonly TLS_CERT: 95;
-  readonly TLS_KEY: 96; readonly TLS_CA: 97;
-  readonly TLS_VERIFY: 98; readonly TLS_REQUIRE_CLIENT_CERT: 99;
-  readonly TLS_HOSTNAME: 100; readonly TLS_TRUST_SYSTEM: 101;
-  readonly TLS_PASSWORD: 102; readonly XPUB_MANUAL_LAST_VALUE: 98;
-  readonly ONLY_FIRST_SUBSCRIBE: 108; readonly TOPICS_COUNT: 116;
-  readonly ZMP_METADATA: 117;
-};
+export declare const SocketOption: Readonly<Record<string, number>>;
+export declare const SendFlag: { readonly NONE: 0; readonly DONTWAIT: 0x0001; readonly SNDMORE: 0x0002; };
+export declare const ReceiveFlag: { readonly NONE: 0; readonly DONTWAIT: 0x0001; };
+export declare const StreamDispatchMode: { readonly NONE: 0; readonly LEN32BE: 1; };
+export declare const ErrorCode: Readonly<Record<string, number>>;
+export declare const ProtocolError: { readonly ZMP_MALFORMED_COMMAND_HELLO: 0x10000013; };
+export declare const MonitorEvent: Readonly<Record<string, number>>;
+export declare const DisconnectReason: { readonly UNKNOWN: 0; readonly HANDSHAKE_FAILED: 3; readonly TRANSPORT_ERROR: 4; readonly CTX_TERM: 5; };
+export declare const PollEvent: { readonly POLLIN: 1; readonly POLLOUT: 2; readonly POLLERR: 4; readonly POLLPRI: 8; };
+export declare const ServiceType: { readonly SPOT: 0x3002; readonly SOCKET: 0x3003; };
+export declare const SERVICE_TYPE_SPOT: 0x3002;
+export declare const SERVICE_TYPE_SOCKET: 0x3003;
+export declare const ServiceRole: Readonly<Record<string, number>>;
+export declare const ServiceKind: Readonly<Record<string, number>>;
+export declare const RegistrySocketRole: Readonly<Record<string, number>>;
+export declare const DiscoverySocketRole: Readonly<Record<string, number>>;
+export declare const SpotNodeSocketRole: Readonly<Record<string, number>>;
+export declare const SpotNodeOption: Readonly<Record<string, number>>;
+export declare const SpotNodePubMode: Readonly<Record<string, number>>;
+export declare const SpotNodePubQueueFullPolicy: Readonly<Record<string, number>>;
+export declare const SpotSocketRole: Readonly<Record<string, number>>;
+export declare const MonitorSourceKind: Readonly<Record<string, number>>;
+export declare const MonitorState: Readonly<Record<string, number>>;
+export declare const MonitorSnapshotDetail: Readonly<Record<string, number>>;
+export declare const ServiceMonitorEvent: Readonly<Record<string, number>>;
+export declare const TopologySource: Readonly<Record<string, number>>;
+export declare const TopologyState: Readonly<Record<string, number>>;
 
-export declare const SendFlag: {
-  readonly NONE: 0; readonly DONTWAIT: 1; readonly SNDMORE: 2;
-};
+export type BufferLike = Buffer | Uint8Array;
 
-export declare const ReceiveFlag: {
-  readonly NONE: 0; readonly DONTWAIT: 1;
-};
+export interface MonitorSnapshot {
+  sourceKind: number;
+  stateFlags: number;
+  detailFlags: number;
+  readyCount: number;
+  sndPendingMsgs: number;
+  rcvPendingMsgs: number;
+}
 
-export declare const StreamDispatchMode: {
-  readonly NONE: 0; readonly LEN32BE: 1;
-};
+export interface SocketMonitorEventValue {
+  event: number;
+  value: number;
+  local: string;
+  remote: string;
+}
 
-export declare const ErrorCode: {
-  readonly EFSM: 156384763;
-  readonly ENOCOMPATPROTO: 156384764;
-  readonly ETERM: 156384765;
-  readonly EMTHREAD: 156384766;
-};
+export interface ServiceEventValue {
+  serviceKind: number;
+  eventType: number;
+  status: number;
+  errorCode: number;
+  value: number;
+  detailFlags: number;
+  serviceName: string;
+  endpoint: string;
+  routingId: Buffer | null;
+  subject: string;
+  subjectKind: number;
+}
 
-export declare const ProtocolError: {
-  readonly ZMP_MALFORMED_COMMAND_HELLO: 0x10000013;
-};
+export interface MemberPeerEntry {
+  serviceType: number;
+  serviceRole: number;
+  serviceName: string;
+  endpoint: string;
+  routingId: Buffer | null;
+  value: number;
+}
 
-export declare const MonitorEvent: {
-  readonly CONNECTED: 0x0001; readonly CONNECT_DELAYED: 0x0002;
-  readonly CONNECT_RETRIED: 0x0004; readonly LISTENING: 0x0008;
-  readonly BIND_FAILED: 0x0010; readonly ACCEPTED: 0x0020;
-  readonly ACCEPT_FAILED: 0x0040; readonly CLOSED: 0x0080;
-  readonly CLOSE_FAILED: 0x0100; readonly DISCONNECTED: 0x0200;
-  readonly MONITOR_STOPPED: 0x0400;
-  readonly HANDSHAKE_FAILED_NO_DETAIL: 0x0800;
-  readonly CONNECTION_READY: 0x1000;
-  readonly HANDSHAKE_FAILED_PROTOCOL: 0x2000;
-  readonly HANDSHAKE_FAILED_AUTH: 0x4000;
-  readonly ALL: 0xFFFF;
-};
+export interface RegistryStatus {
+  registryId: number;
+  bindEndpoint: string;
+  state: number;
+  topologyEntryCount: number;
+  peerRegistryCount: number;
+  connectedPeerRegistryCount: number;
+  listSeq: number;
+  lastError: number;
+  lastChangedMs: number;
+}
 
-export declare const DisconnectReason: {
-  readonly UNKNOWN: 0;
-  readonly HANDSHAKE_FAILED: 3; readonly TRANSPORT_ERROR: 4;
-  readonly CTX_TERM: 5;
-};
+export interface RegistryTopologyEntry {
+  routingId: Buffer | null;
+  serviceKind: number;
+  serviceRole: number;
+  serviceName: string;
+  endpoint: string;
+  source: number;
+  state: number;
+  desiredCount: number;
+  readyCount: number;
+  errorCode: number;
+  lastReportedMs: number;
+}
 
-export declare const PollEvent: {
-  readonly POLLIN: 1; readonly POLLOUT: 2;
-  readonly POLLERR: 4; readonly POLLPRI: 8;
-};
+export interface RegistryServiceSummaryEntry {
+  serviceKind: number;
+  serviceRole: number;
+  serviceName: string;
+  totalCount: number;
+  connectingCount: number;
+  readyCount: number;
+  errorCount: number;
+  stoppedCount: number;
+  lastReportedMs: number;
+}
 
-export declare const ServiceType: {
-  readonly SPOT: 2;
-};
+export interface RegistryTopologyFilter {
+  serviceKind?: number;
+  serviceRole?: number;
+  serviceName?: string;
+  source?: number;
+  state?: number;
+}
 
-export declare const SERVICE_TYPE_SPOT: 2;
+export interface SpotNodeStatus {
+  serviceName: string;
+  localEndpoint: string;
+  nodeRoutingId: Buffer | null;
+  state: number;
+  configuredPeerCount: number;
+  activePeerCount: number;
+  connectedPeerCount: number;
+  subjectCount: number;
+  readySubjectCount: number;
+  lastError: number;
+  lastChangedMs: number;
+}
 
-export declare const RegistrySocketRole: {
-  readonly PUB: 1; readonly ROUTER: 2; readonly PEER_SUB: 3;
-};
+export interface SpotNodePeerEntry {
+  serviceName: string;
+  localEndpoint: string;
+  peerEndpoint: string;
+  source: number;
+  state: number;
+  connectedSinceMs: number;
+  lastChangedMs: number;
+}
 
-export declare const DiscoverySocketRole: {
-  readonly SUB: 1;
-};
-
-export declare const ReceiverSocketRole: {
-  readonly ROUTER: 1; readonly DEALER: 2;
-};
-
-export declare const SpotNodeSocketRole: {
-  readonly NODE: 0; readonly PUB: 1; readonly SUB: 2; readonly DEALER: 3;
-};
-
-export declare const SpotNodeOption: {
-  readonly PUB_MODE: 1; readonly PUB_QUEUE_HWM: 2;
-  readonly PUB_QUEUE_FULL_POLICY: 3;
-};
-
-export declare const SpotNodePubMode: {
-  readonly SYNC: 0; readonly ASYNC: 1;
-};
-
-export declare const SpotNodePubQueueFullPolicy: {
-  readonly EAGAIN: 0; readonly DROP: 1;
-};
-
-export declare const SpotSocketRole: {
-  readonly PUB: 1; readonly SUB: 2;
-};
+export interface SpotNodeSubjectEntry {
+  role: number;
+  subject: string;
+  subjectKind: number;
+  readyPeerCount: number;
+  activePeerCount: number;
+  lastChangedMs: number;
+}
 
 export class Context {
+  close(): void;
+}
+
+export class Message {
+  static copyOf(data: BufferLike | string, encoding?: BufferEncoding): Message;
+  static wrap(buffer: BufferLike): Message;
+  static empty(): Message;
+  toBuffer(): Buffer;
+  byteLength(): number;
+}
+
+export class Received {
+  readonly parts: readonly Buffer[];
+  readonly routingId: Buffer | null;
+  readonly hasMore: boolean;
   close(): void;
 }
 
@@ -144,36 +185,36 @@ export class Socket {
   constructor(ctx: Context, type: number);
   bind(endpoint: string): void;
   connect(endpoint: string): void;
-  send(buf: Buffer | Uint8Array | string, flags?: number): number;
-  sendFrom(buffer: Buffer | Uint8Array, length: number, flags?: number): number;
-  recv(size: number, flags?: number): Buffer;
-  recvInto(buffer: Buffer | Uint8Array, flags?: number): number;
-  recvMsgInto(buffer: Buffer | Uint8Array, flags?: number): number;
-  setSockOpt(option: number, value: Buffer | Uint8Array | string): void;
-  getSockOpt(option: number): Buffer;
+  send(message: Message | BufferLike | string, flags?: number): number;
+  sendParts(parts: readonly (Message | BufferLike | string)[], flags?: number): number;
+  sendFrom(buffer: BufferLike, length: number, flags?: number): number;
+  recv(flags?: number): Received;
+  recv(size: number, flags: number): Buffer;
+  recvInto(buffer: BufferLike, flags?: number): number;
+  recvMsgInto(buffer: BufferLike, flags?: number): number;
+  setOption(option: number, value: BufferLike | string): void;
+  getOption(option: number): Buffer;
+  setRoutingId(routingId: BufferLike): void;
+  getRoutingId(): Buffer;
+  subscribe(filter: BufferLike | string): void;
+  unsubscribe(filter: BufferLike | string): void;
   monitorOpen(events: number): MonitorSocket;
-  streamAttach(
-    handler: (routingId: Buffer, packets: Buffer[]) => number | void,
-    mode?: number
-  ): void;
-  streamAttachRaw(
-    handler: (routingId: Buffer, packets: Buffer[]) => number | void
-  ): void;
-  streamAttachLen32be(
-    handler: (routingId: Buffer, packets: Buffer[]) => number | void
-  ): void;
+  streamAttach(handler: (routingId: Buffer, packets: Buffer[]) => number | void, mode?: number): void;
   streamDetach(): void;
   streamPeerRoutingId(index?: number): Buffer | null;
-  streamSend(
-    routingId: Buffer | Uint8Array,
-    payload: Buffer | Uint8Array,
-    flags?: number
-  ): number;
+  streamSend(routingId: BufferLike, payload: BufferLike, flags?: number): number;
   close(): void;
 }
 
 export class MonitorSocket {
-  recv(flags?: number): { event: number; value: number; local: string; remote: string };
+  recv(): SocketMonitorEventValue;
+  snapshot(): MonitorSnapshot;
+  close(): void;
+}
+
+export class ServiceMonitor {
+  recv(): ServiceEventValue;
+  snapshot(): MonitorSnapshot;
   close(): void;
 }
 
@@ -184,40 +225,40 @@ export class Poller {
 
 export class Registry {
   constructor(ctx: Context);
-  setEndpoints(pub: string, router: string): void;
+  bind(pub: string, router: string): void;
   setId(id: number): void;
   addPeer(pub: string): void;
   setHeartbeat(intervalMs: number, timeoutMs: number): void;
   setBroadcastInterval(intervalMs: number): void;
-  start(): void;
-  setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
+  statusSnapshot(): RegistryStatus;
+  serviceSummarySnapshot(): RegistryServiceSummaryEntry[];
+  topologySnapshot(): RegistryTopologyEntry[];
+  topologyQuery(filter?: RegistryTopologyFilter): RegistryTopologyEntry[];
+  memberPeers(serviceType: number, serviceName?: string): MemberPeerEntry[];
+  close(): void;
+}
+
+export class RegistryQueryClient {
+  constructor(ctx: Context);
+  connect(endpoint: string): void;
+  snapshot(filter?: RegistryTopologyFilter): RegistryTopologyEntry[];
   close(): void;
 }
 
 export class Discovery {
-  constructor(ctx: Context, serviceType: number);
-  connectRegistry(pub: string): void;
-  subscribe(service: string): void;
-  unsubscribe(service: string): void;
-  receiverCount(service: string): number;
-  getReceivers(service: string): Array<{ serviceName: string; endpoint: string; weight: number; registeredAt: number }>;
-  serviceAvailable(service: string): boolean;
-  setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
-  close(): void;
-}
-
-export class Receiver {
-  constructor(ctx: Context, routingId?: string | null);
-  bind(endpoint: string): void;
+  constructor(ctx: Context, serviceType: number, serviceName: string);
+  readonly serviceType: number;
+  readonly serviceName: string;
   connectRegistry(endpoint: string): void;
-  register(service: string, endpoint: string, weight: number): void;
-  updateWeight(service: string, weight: number): void;
-  unregister(service: string): void;
-  registerResult(service: string): { status: number; resolvedEndpoint: string; errorMessage: string };
-  setTlsServer(cert: string, key: string): void;
-  setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
-  routerSocket(): Socket;
-  routerPeers(): PeerInfo[];
+  receiverCount(): number;
+  setValue(value: number): void;
+  value(): number;
+  setMetadata(metadata: BufferLike | string): void;
+  metadata(): Buffer;
+  memberPeers(): MemberPeerEntry[];
+  serviceAvailable(): boolean;
+  openMonitor(events?: number): ServiceMonitor;
+  setTlsClient(caCert: string, hostname: string, trustSystem?: number): void;
   close(): void;
 }
 
@@ -226,39 +267,25 @@ export class SpotNode {
   bind(endpoint: string): void;
   connectPeerPub(endpoint: string): void;
   disconnectPeerPub(endpoint: string): void;
-  register(service: string, endpoint: string): void;
-  unregister(service: string): void;
-  setDiscovery(discovery: Discovery, service: string): void;
-  setTlsServer(cert: string, key: string): void;
-  setTlsClient(ca: string, host: string, trust: number): void;
-  setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
-  pubSocket(): Socket;
-  subSocket(): Socket;
-  pubPeers(): PeerInfo[];
-  subPeers(): PeerInfo[];
+  attachDiscovery(discovery: Discovery): void;
+  register(): never;
+  unregister(): never;
+  setTlsServer(cert: string, key: string, requireClient?: number): void;
+  setTlsClient(ca: string, host: string, trust?: number): void;
+  statusSnapshot(): SpotNodeStatus;
+  peersSnapshot(): SpotNodePeerEntry[];
+  subjectsSnapshot(): SpotNodeSubjectEntry[];
+  openMonitor(events?: number): ServiceMonitor;
   close(): void;
 }
 
 export class Spot {
-  constructor(node: SpotNode);
-  publish(
-    topic: string,
-    payloadOrParts: Buffer | Uint8Array | string | Buffer[],
-    flags?: number
-  ): void;
+  constructor(ctx: Context);
+  publish(topic: string, payloadOrParts: Message | BufferLike | string | readonly (Message | BufferLike | string)[], flags?: number): void;
   subscribe(topic: string): void;
   subscribePattern(pattern: string): void;
   unsubscribe(topicOrPattern: string): void;
   recv(flags?: number): { topic: string; parts: Buffer[] };
+  openMonitor(events?: number): ServiceMonitor;
   close(): void;
-}
-
-export interface PeerInfo {
-  routingId: Buffer;
-  remoteAddr: string;
-  connectedTime: number;
-  msgsSent: number;
-  msgsReceived: number;
-  sndPendingMsgs: number;
-  rcvPendingMsgs: number;
 }

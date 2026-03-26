@@ -6,9 +6,8 @@ namespace Zlink.Tests;
 
 public sealed class test_xpub_verbose
 {
-    private static readonly byte[] SubscribeA = { 1, (byte)'A' };
-    private static readonly byte[] SubscribeB = { 1, (byte)'B' };
-    private static readonly byte[] UnsubscribeA = { 0, (byte)'A' };
+    private static readonly byte[] TopicA = { (byte)'A' };
+    private static readonly byte[] TopicB = { (byte)'B' };
 
     [Fact]
     public void xpub_verbose_one_subscriber_duplicate_subscription_visible()
@@ -24,28 +23,40 @@ public sealed class test_xpub_verbose
         xpub.Bind(endpoint);
         sub.Connect(endpoint);
 
-        sub.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA0, 2000));
+        Assert.True(subscribedA0);
 
-        sub.SetOption(SocketOptions.Subscribe, "B");
-        Assert.Equal(SubscribeB,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub.SetSubscription("B");
+        Assert.Equal(TopicB,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedB0, 2000));
+        Assert.True(subscribedB0);
 
-        sub.SetOption(SocketOptions.Subscribe, "A");
+        sub.SetSubscription("A");
         Thread.Sleep(30);
-        Assert.True(CoreTestSupport.ExpectNoMessage(xpub, 150));
+        Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 150));
 
         xpub.SetOption(SocketOptions.XPubVerbose, 1);
-        sub.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA1, 2000));
+        Assert.True(subscribedA1);
 
-        CoreTestSupport.SendWithRetry(xpub, "A"u8, SendFlags.None, 2000);
-        CoreTestSupport.SendWithRetry(xpub, "B"u8, SendFlags.None, 2000);
+        CoreTestSupport.PublishWithRetry(xpub, "A", ReadOnlySpan<byte>.Empty,
+            SendFlags.None, 2000);
+        CoreTestSupport.PublishWithRetry(xpub, "B", ReadOnlySpan<byte>.Empty,
+            SendFlags.None, 2000);
 
-        Assert.Equal("A", CoreTestSupport.ReceiveUtf8WithTimeout(sub, 2000));
-        Assert.Equal("B", CoreTestSupport.ReceiveUtf8WithTimeout(sub, 2000));
+        Assert.Equal(string.Empty, CoreTestSupport.SubscribeUtf8WithTimeout(sub,
+            out string topicA, 2000));
+        Assert.Equal("A", topicA);
+        Assert.Equal(string.Empty, CoreTestSupport.SubscribeUtf8WithTimeout(sub,
+            out string topicB, 2000));
+        Assert.Equal("B", topicB);
     }
 
     [Fact]
@@ -64,28 +75,42 @@ public sealed class test_xpub_verbose
         sub0.Connect(endpoint);
         sub1.Connect(endpoint);
 
-        sub0.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub0.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA0, 2000));
+        Assert.True(subscribedA0);
 
-        sub1.SetOption(SocketOptions.Subscribe, "A");
-        Assert.True(CoreTestSupport.ExpectNoMessage(xpub, 150));
+        sub1.SetSubscription("A");
+        Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 150));
 
-        sub0.SetOption(SocketOptions.Subscribe, "B");
-        Assert.Equal(SubscribeB,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub0.SetSubscription("B");
+        Assert.Equal(TopicB,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedB0, 2000));
+        Assert.True(subscribedB0);
 
         xpub.SetOption(SocketOptions.XPubVerbose, 1);
-        sub1.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub1.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA1, 2000));
+        Assert.True(subscribedA1);
 
-        CoreTestSupport.SendWithRetry(xpub, "A"u8, SendFlags.None, 2000);
-        CoreTestSupport.SendWithRetry(xpub, "B"u8, SendFlags.None, 2000);
+        CoreTestSupport.PublishWithRetry(xpub, "A", ReadOnlySpan<byte>.Empty,
+            SendFlags.None, 2000);
+        CoreTestSupport.PublishWithRetry(xpub, "B", ReadOnlySpan<byte>.Empty,
+            SendFlags.None, 2000);
 
-        Assert.Equal("A", CoreTestSupport.ReceiveUtf8WithTimeout(sub0, 2000));
-        Assert.Equal("A", CoreTestSupport.ReceiveUtf8WithTimeout(sub1, 2000));
-        Assert.Equal("B", CoreTestSupport.ReceiveUtf8WithTimeout(sub0, 2000));
+        Assert.Equal(string.Empty, CoreTestSupport.SubscribeUtf8WithTimeout(sub0,
+            out string topicA0, 2000));
+        Assert.Equal("A", topicA0);
+        Assert.Equal(string.Empty, CoreTestSupport.SubscribeUtf8WithTimeout(sub1,
+            out string topicA1, 2000));
+        Assert.Equal("A", topicA1);
+        Assert.Equal(string.Empty, CoreTestSupport.SubscribeUtf8WithTimeout(sub0,
+            out string topicB0, 2000));
+        Assert.Equal("B", topicB0);
     }
 
     [Fact]
@@ -102,30 +127,38 @@ public sealed class test_xpub_verbose
         xpub.Bind(endpoint);
         sub.Connect(endpoint);
 
-        sub.SetOption(SocketOptions.Unsubscribe, "A");
-        Assert.True(CoreTestSupport.ExpectNoMessage(xpub, 100));
+        sub.UnsetSubscription("A");
+        Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 100));
 
-        sub.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA0, 2000));
+        Assert.True(subscribedA0);
 
-        sub.SetOption(SocketOptions.Subscribe, "A");
-        Assert.True(CoreTestSupport.ExpectNoMessage(xpub, 100));
+        sub.SetSubscription("A");
+        Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 100));
 
-        sub.SetOption(SocketOptions.Unsubscribe, "A");
-        sub.SetOption(SocketOptions.Unsubscribe, "A");
-        Assert.Equal(UnsubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
-        Assert.True(CoreTestSupport.ExpectNoMessage(xpub, 100));
+        sub.UnsetSubscription("A");
+        sub.UnsetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA1, 2000));
+        Assert.False(subscribedA1);
+        Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 100));
 
         xpub.SetOption(SocketOptions.XPubVerboser, 1);
-        sub.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA2, 2000));
+        Assert.True(subscribedA2);
 
-        sub.SetOption(SocketOptions.Unsubscribe, "A");
-        Assert.Equal(UnsubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub.UnsetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA3, 2000));
+        Assert.False(subscribedA3);
     }
 
     [Fact]
@@ -144,34 +177,46 @@ public sealed class test_xpub_verbose
         sub0.Connect(endpoint);
         sub1.Connect(endpoint);
 
-        sub0.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub0.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA0, 2000));
+        Assert.True(subscribedA0);
 
-        sub1.SetOption(SocketOptions.Subscribe, "A");
-        Assert.True(CoreTestSupport.ExpectNoMessage(xpub, 150));
+        sub1.SetSubscription("A");
+        Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 150));
 
-        sub0.SetOption(SocketOptions.Unsubscribe, "A");
-        Assert.True(CoreTestSupport.ExpectNoMessage(xpub, 150));
+        sub0.UnsetSubscription("A");
+        Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 150));
 
-        sub1.SetOption(SocketOptions.Unsubscribe, "A");
-        Assert.Equal(UnsubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
-        Assert.True(CoreTestSupport.ExpectNoMessage(xpub, 100));
+        sub1.UnsetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA1, 2000));
+        Assert.False(subscribedA1);
+        Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 100));
 
         xpub.SetOption(SocketOptions.XPubVerboser, 1);
-        sub0.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
-        sub1.SetOption(SocketOptions.Subscribe, "A");
-        Assert.Equal(SubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub0.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA2, 2000));
+        Assert.True(subscribedA2);
+        sub1.SetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA3, 2000));
+        Assert.True(subscribedA3);
 
-        sub1.SetOption(SocketOptions.Unsubscribe, "A");
-        Assert.Equal(UnsubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
-        sub0.SetOption(SocketOptions.Unsubscribe, "A");
-        Assert.Equal(UnsubscribeA,
-            CoreTestSupport.ReceiveBytesWithTimeout(xpub, 16, 2000));
+        sub1.UnsetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA4, 2000));
+        Assert.False(subscribedA4);
+        sub0.UnsetSubscription("A");
+        Assert.Equal(TopicA,
+            CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
+                out bool subscribedA5, 2000));
+        Assert.False(subscribedA5);
     }
 }

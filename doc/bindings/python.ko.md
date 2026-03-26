@@ -14,27 +14,20 @@
 pip install zlink
 ```
 
-## 3. 기본 예제
+## 3. canonical 예제
 
 ```python
 import zlink
 
-ctx = zlink.Context()
+with zlink.Context() as ctx:
+    with zlink.Socket(ctx, zlink.SocketType.PAIR) as server:
+        with zlink.Socket(ctx, zlink.SocketType.PAIR) as client:
+            server.bind("inproc://example-pair")
+            client.connect("inproc://example-pair")
 
-server = ctx.socket(zlink.PAIR)
-server.bind("tcp://*:5555")
-
-client = ctx.socket(zlink.PAIR)
-client.connect("tcp://127.0.0.1:5555")
-
-client.send(b"Hello")
-
-reply = server.recv()
-print(reply.decode())
-
-client.close()
-server.close()
-ctx.close()
+            client.send(b"hello")
+            with server.recv_message() as received:
+                print(received.to_bytes().decode("utf-8"))
 ```
 
 ## 4. 주요 모듈
@@ -43,24 +36,65 @@ ctx.close()
 |------|------|
 | `_core.py` | Context, Socket, Message |
 | `_poller.py` | Poller |
-| `_monitor.py` | Monitor |
-| `_discovery.py` | Discovery, Gateway, Receiver |
+| `_monitor.py` | socket/service monitor wrapper |
+| `_discovery.py` | Registry, Discovery |
 | `_spot.py` | SpotNode, Spot |
 | `_ffi.py` | FFI 바인딩 정의 |
 | `_native.py` | 네이티브 라이브러리 로더 |
 
-## 5. Discovery/Gateway 예시
+## 5. 현재 표면
 
 ```python
-discovery = zlink.Discovery(ctx)
-# registry bootstrap/control endpoint
-discovery.connect_registry("tcp://registry:5550")
-discovery.subscribe("payment-service")
+with zlink.Registry(ctx) as registry:
+    registry.bind("tcp://127.0.0.1:5550", "tcp://127.0.0.1:5551")
 
-gateway = zlink.Gateway(ctx, discovery)
-gateway.send("payment-service", b"request data")
-reply = gateway.recv()
+with zlink.Discovery(ctx, zlink.ServiceType.SOCKET, "orders") as discovery:
+    discovery.connect_registry("tcp://127.0.0.1:5551")
+
+with zlink.SpotNode(ctx) as node:
+    node.bind("tcp://127.0.0.1:6000")
+
+with zlink.Spot(node) as spot:
+    spot.subscribe(b"room:lobby")
 ```
+
+canonical 수신 API:
+
+- `Socket.recv_message()`
+- `Socket.recv_multipart()`
+- `Socket.recv_into()`
+- `Socket.recv_topic_message()`
+- `Spot.recv()`
+
+canonical callback API:
+
+- `Socket.set_recv_handler()`
+- `Socket.set_subscribe_handler()`
+- `Socket.set_send_ready_handler()`
+- `Spot.set_handler()`
+- `Spot.set_send_ready_handler()`
+
+canonical 송신/설정 API:
+
+- `Socket.send()` / `send_multipart()` / `publish()`
+- `Socket.set_option()`과 family helper (`set_pub_option()`, `set_sub_option()`, ...)
+- `Socket.set_routing_id()`, `subscribe()`, `unsubscribe()`
+- `Registry.bind()`
+- `Discovery(ctx, service_type, service_name)`
+- `Spot(node_or_ctx)`
+
+예제는 `bindings/python/examples/` 아래에 둡니다.
+
+- `pair_recv.py`
+- `pair_callback.py`
+- `pubsub_recv.py`
+- `pubsub_callback.py`
+- `dealer_router_recv.py`
+- `dealer_router_callback.py`
+- `stream_recv.py`
+- `stream_callback.py`
+- `spot_recv.py`
+- `spot_callback.py`
 
 ## 6. 네이티브 라이브러리
 
@@ -69,10 +103,10 @@ reply = gateway.recv()
 ## 7. 테스트
 
 ```bash
-cd bindings/python && python -m pytest tests/
+cd bindings/python && python -m pytest -q
+cd bindings/python && python -m pytest -q tests/integration
+cd bindings/python && python -m pytest -q tests/test_bench_fastpath.py
 ```
-
-unittest 프레임워크 사용.
 
 ## 8. 벤치마크 Fast Path
 
@@ -89,24 +123,16 @@ cd bindings/python/perf/single
 python3 setup_fastpath.py build_ext --inplace
 ```
 
-## 9. STREAM 콜백 API
+## 9. 마이그레이션 메모
 
-`Socket` STREAM 헬퍼:
-- `stream_attach(handler, mode=StreamDispatchMode.NONE)`
-- `stream_detach()`
-- `stream_peer_routing_id(index=0)`
-- `stream_send(routing_id, payload, flags=0)`
-
-모드 규칙:
-- attach 상태에서는 콜백에서 STREAM 페이로드를 소비합니다.
-- attach 상태에서 STREAM 페이로드 수신에 `recv()`를 혼용하지 않습니다.
-- `stream_detach()` 이후에는 기존 `recv()` 경로를 다시 사용할 수 있습니다.
-
-```python
-def on_packets(routing_id, payload):
-    copy = bytes(payload)            # echo 전 명시적 복사
-    stream.stream_send(routing_id, copy)
-    return 0
-
-stream.stream_attach(on_packets, zlink.StreamDispatchMode.LEN32BE)
-```
+- `Socket.recv(size)`는 레거시입니다. `recv_message()`, `recv_multipart()`,
+  `recv_into()`를 사용합니다.
+- `Socket.setsockopt()` / `getsockopt()`는 제거됐습니다. `set_option()`,
+  `get_option()`, `set_routing_id()`, `subscribe()`, option-family helper를
+  사용합니다.
+- direct callback mode는 명시적으로 사용합니다.
+  `set_recv_handler()` / `set_subscribe_handler()` /
+  `set_send_ready_handler()`를 쓰고, 같은 handle에서 같은 방향의 `recv_*()` 또는
+  data-plane poller 등록과 섞지 않습니다.
+- `Receiver`와 split SPOT child handle은 현재 Python public surface에 포함되지
+  않습니다.

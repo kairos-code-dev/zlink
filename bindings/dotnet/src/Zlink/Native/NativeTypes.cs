@@ -28,28 +28,6 @@ internal unsafe struct ZlinkMonitorEvent
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct ZlinkProviderInfo
-{
-    public fixed byte ServiceName[256];
-    public fixed byte Endpoint[256];
-    public ZlinkRoutingId RoutingId;
-    public uint Weight;
-    public ulong RegisteredAt;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal unsafe struct ZlinkPeerInfo
-{
-    public ZlinkRoutingId RoutingId;
-    public fixed byte RemoteAddr[256];
-    public ulong ConnectedTime;
-    public ulong MsgsSent;
-    public ulong MsgsReceived;
-    public ulong SndPendingMsgs;
-    public ulong RcvPendingMsgs;
-}
-
-[StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkPollItemUnix
 {
     public IntPtr Socket;
@@ -116,18 +94,29 @@ internal static class NativeHelpers
         return rid;
     }
 
-    public static unsafe string ReadFixedString(ref ZlinkProviderInfo info, bool service)
+    public static unsafe string ReadFixedString(byte* buffer, int maxLen)
     {
-        if (service)
+        return ReadString(buffer, maxLen);
+    }
+
+    public static unsafe void WriteFixedString(ReadOnlySpan<char> value,
+        byte* destination, int capacity)
+    {
+        if (destination == null)
+            throw new ArgumentNullException(nameof(destination));
+        if (capacity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(capacity));
+
+        Span<byte> bytes = new Span<byte>(destination, capacity);
+        bytes.Clear();
+        if (value.Length == 0)
+            return;
+
+        int written = Encoding.UTF8.GetBytes(value, bytes);
+        if (written >= capacity)
         {
-            fixed (byte* ptr = info.ServiceName)
-            {
-                return ReadString(ptr, 256);
-            }
-        }
-        fixed (byte* ptr = info.Endpoint)
-        {
-            return ReadString(ptr, 256);
+            throw new ArgumentOutOfRangeException(nameof(value),
+                "UTF-8 value exceeds native fixed buffer capacity.");
         }
     }
 }

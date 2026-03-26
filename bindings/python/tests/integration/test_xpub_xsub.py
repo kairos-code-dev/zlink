@@ -1,5 +1,3 @@
-import struct
-import time
 import unittest
 
 import zlink
@@ -8,12 +6,11 @@ from .helpers import (
     transports,
     endpoint_for,
     try_transport,
-    recv_with_timeout,
-    send_with_retry,
     ZLINK_XPUB,
     ZLINK_XSUB,
-    ZLINK_XPUB_VERBOSE,
 )
+
+ZLINK_PUB_OPT_VERBOSE = 0x3301
 
 
 class XpubXsubScenarioTest(unittest.TestCase):
@@ -23,15 +20,14 @@ class XpubXsubScenarioTest(unittest.TestCase):
             def run():
                 xpub = zlink.Socket(ctx, ZLINK_XPUB)
                 xsub = zlink.Socket(ctx, ZLINK_XSUB)
-                xpub.setsockopt(ZLINK_XPUB_VERBOSE, struct.pack("i", 1))
+                xpub.set_pub_option(ZLINK_PUB_OPT_VERBOSE, (1).to_bytes(4, "little"))
                 ep = endpoint_for(name, endpoint, "-xpub")
                 xpub.bind(ep)
                 xsub.connect(ep)
-                time.sleep(0.05)
-                sub = bytes([1, ord("t"), ord("o"), ord("p"), ord("i"), ord("c")])
-                send_with_retry(xsub, sub, 0, 2000)
-                msg = recv_with_timeout(xpub, 64, 2000)
-                self.assertEqual(msg[0], 1)
+                xsub.subscribe(b"topic")
+                event = xpub.subscription_event()
+                self.assertTrue(event["subscribed"])
+                self.assertEqual(event["topic"], b"topic")
                 xpub.close()
                 xsub.close()
             try_transport(name, run)

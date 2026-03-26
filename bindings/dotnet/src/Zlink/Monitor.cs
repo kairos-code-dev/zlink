@@ -6,40 +6,112 @@ using Zlink.Native;
 
 namespace Zlink;
 
-public sealed class MonitorSocket : IDisposable
+public sealed class SocketMonitor : IDisposable
 {
-    private readonly Socket _socket;
+    private IntPtr _handle;
+    private NativeMethods.ZlinkMonitorHandlerDelegate? _handlerDelegate;
+    private Action<SocketMonitorEvent>? _handler;
 
-    internal MonitorSocket(Socket socket)
+    internal SocketMonitor(IntPtr handle)
     {
-        _socket = socket;
+        if (handle == IntPtr.Zero)
+            throw new ArgumentException("Invalid monitor handle.", nameof(handle));
+        _handle = handle;
     }
 
-    public MonitorEvent Receive(ReceiveFlags flags = ReceiveFlags.None)
+    internal IntPtr Handle => _handle;
+
+    public void AttachHandler(Action<SocketMonitorEvent> handler)
     {
-        int rc = NativeMethods.zlink_monitor_recv(_socket.Handle, out var evt,
-            (int)flags);
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        EnsureNotDisposed();
+
+        _handler = handler;
+        _handlerDelegate = OnNativeEvent;
+        int rc = NativeMethods.zlink_socket_monitor_handler(_handle,
+            _handlerDelegate, IntPtr.Zero);
         ZlinkException.ThrowIfError(rc);
-        return MonitorEvent.FromNative(ref evt);
     }
 
-    public IntPtr Handle => _socket.Handle;
+    public SocketMonitorEvent Receive()
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native);
+        ZlinkException.ThrowIfError(rc);
+        return SocketMonitorEvent.FromNative(ref native);
+    }
+
+    public MonitorSnapshot Snapshot()
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_monitor_snapshot(_handle, out var native);
+        ZlinkException.ThrowIfError(rc);
+        return MonitorSnapshot.FromNative(ref native);
+    }
+
+    public void Close()
+    {
+        if (_handle == IntPtr.Zero)
+            return;
+        int rc = NativeMethods.zlink_monitor_close(ref _handle);
+        ZlinkException.ThrowIfError(rc);
+        _handler = null;
+        _handlerDelegate = null;
+    }
 
     public void Dispose()
     {
-        _socket.Dispose();
-        GC.SuppressFinalize(this);
+        if (_handle == IntPtr.Zero)
+            return;
+        try
+        {
+            Close();
+        }
+        finally
+        {
+            GC.SuppressFinalize(this);
+        }
     }
 
-    ~MonitorSocket()
+    ~SocketMonitor()
     {
-        Dispose();
+        try
+        {
+            Close();
+        }
+        catch
+        {
+        }
+    }
+
+    private void EnsureNotDisposed()
+    {
+        if (_handle == IntPtr.Zero)
+            throw new ObjectDisposedException(nameof(SocketMonitor));
+    }
+
+    private void OnNativeEvent(ref ZlinkMonitorEvent native, IntPtr userData)
+    {
+        Action<SocketMonitorEvent>? handler = _handler;
+        if (handler == null)
+            return;
+
+        try
+        {
+            handler(SocketMonitorEvent.FromNative(ref native));
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+        }
     }
 }
 
-public readonly struct MonitorEvent
+public readonly struct SocketMonitorEvent
 {
-    public MonitorEvent(SocketEvent @event, ulong value, string routingId,
+    public SocketMonitorEvent(SocketEvent @event, ulong value,
+        string routingId,
         uint? streamRoutingId,
         string localAddress, string remoteAddress, ulong rawEvent)
     {
@@ -60,7 +132,7 @@ public readonly struct MonitorEvent
     public string RemoteAddress { get; }
     public ulong RawEvent { get; }
 
-    internal static MonitorEvent FromNative(ref ZlinkMonitorEvent evt)
+    internal static SocketMonitorEvent FromNative(ref ZlinkMonitorEvent evt)
     {
         byte[] routing = NativeHelpers.ReadRoutingId(ref evt.RoutingId);
         string routingId = RoutingIdCodec.ToPublicString(routing);
@@ -79,7 +151,37 @@ public readonly struct MonitorEvent
             }
         }
         SocketEvent @event = (SocketEvent)(evt.Event & 0xFFFFFFFFuL);
-        return new MonitorEvent(@event, evt.Value, routingId, streamRoutingId,
-            local, remote, evt.Event);
+        return new SocketMonitorEvent(@event, evt.Value, routingId,
+            streamRoutingId, local, remote, evt.Event);
+    }
+}
+
+public readonly struct MonitorSnapshot
+{
+    public MonitorSnapshot(MonitorSourceKind sourceKind, MonitorState stateFlags,
+        MonitorSnapshotDetail detailFlags, uint readyCount,
+        ulong sendPendingMessages, ulong receivePendingMessages)
+    {
+        SourceKind = sourceKind;
+        StateFlags = stateFlags;
+        DetailFlags = detailFlags;
+        ReadyCount = readyCount;
+        SendPendingMessages = sendPendingMessages;
+        ReceivePendingMessages = receivePendingMessages;
+    }
+
+    public MonitorSourceKind SourceKind { get; }
+    public MonitorState StateFlags { get; }
+    public MonitorSnapshotDetail DetailFlags { get; }
+    public uint ReadyCount { get; }
+    public ulong SendPendingMessages { get; }
+    public ulong ReceivePendingMessages { get; }
+
+    internal static MonitorSnapshot FromNative(ref ZlinkMonitorSnapshot native)
+    {
+        return new MonitorSnapshot((MonitorSourceKind)native.SourceKind,
+            (MonitorState)native.StateFlags,
+            (MonitorSnapshotDetail)native.DetailFlags, native.ReadyCount,
+            native.SndPendingMsgs, native.RcvPendingMsgs);
     }
 }

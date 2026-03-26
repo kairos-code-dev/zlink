@@ -14,10 +14,12 @@ int zlink_service_set_common_option (void *handle_,
                                      const void *optval_,
                                      size_t optvallen_)
 {
-    if (zlink::discovery_t *discovery =
-          zlink::discovery_access_t::from_handle (handle_))
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+
+    if (resolved.kind == zlink::service_handle_discovery)
         return zlink::discovery_access_t::set_option (
-          discovery, socket_option_, optval_, optvallen_);
+          resolved.discovery, socket_option_, optval_, optvallen_);
     if (zlink_service_spot_set_common_option_internal (
           handle_, option_, socket_option_, optval_, optvallen_)
         == 0)
@@ -35,10 +37,12 @@ int zlink_service_get_common_option (void *handle_,
                                      void *optval_,
                                      size_t *optvallen_)
 {
-    if (zlink::discovery_t *discovery =
-          zlink::discovery_access_t::from_handle (handle_))
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+
+    if (resolved.kind == zlink::service_handle_discovery)
         return zlink::discovery_access_t::get_option (
-          discovery, socket_option_, optval_, optvallen_);
+          resolved.discovery, socket_option_, optval_, optvallen_);
     errno = 0;
     if (zlink_service_spot_get_common_option_internal (
           handle_, option_, socket_option_, optval_, optvallen_)
@@ -55,10 +59,12 @@ int zlink_service_set_routing_id (void *handle_,
                                   const void *data_,
                                   size_t size_)
 {
-    if (zlink::discovery_t *discovery =
-          zlink::discovery_access_t::from_handle (handle_))
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+
+    if (resolved.kind == zlink::service_handle_discovery)
         return zlink::discovery_access_t::set_routing_id (
-          discovery, data_, size_);
+          resolved.discovery, data_, size_);
     if (zlink_service_spot_set_routing_id_internal (handle_, data_, size_) == 0)
         return 0;
     if (errno != EFAULT)
@@ -70,9 +76,11 @@ int zlink_service_set_routing_id (void *handle_,
 
 int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_)
 {
-    if (zlink::discovery_t *discovery =
-          zlink::discovery_access_t::from_handle (handle_))
-        return zlink::discovery_access_t::routing_id (discovery, out_);
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+
+    if (resolved.kind == zlink::service_handle_discovery)
+        return zlink::discovery_access_t::routing_id (resolved.discovery, out_);
     if (zlink_service_spot_get_routing_id_internal (handle_, out_) == 0)
         return 0;
     if (errno != EFAULT)
@@ -87,15 +95,18 @@ int zlink_service_set_tls_server (void *handle_,
                                   const char *key_,
                                   int require_client_cert_)
 {
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+
     if (zlink_service_spot_set_tls_server_internal (
           handle_, cert_, key_, require_client_cert_)
         == 0)
         return 0;
     if (errno != EFAULT)
         return -1;
-    if (zlink::registry_t *registry = zlink::registry_access_t::from_handle (handle_))
+    if (resolved.kind == zlink::service_handle_registry)
         return zlink::registry_access_t::set_tls_server (
-          registry, cert_, key_, require_client_cert_);
+          resolved.registry, cert_, key_, require_client_cert_);
 
     errno = EFAULT;
     return -1;
@@ -106,19 +117,21 @@ int zlink_service_set_tls_client (void *handle_,
                                   const char *hostname_,
                                   int trust_system_)
 {
-    if (zlink::discovery_t *discovery =
-          zlink::discovery_access_t::from_handle (handle_))
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+
+    if (resolved.kind == zlink::service_handle_discovery)
         return zlink::discovery_access_t::set_tls_client (
-          discovery, ca_cert_, hostname_, trust_system_);
+          resolved.discovery, ca_cert_, hostname_, trust_system_);
     if (zlink_service_spot_set_tls_client_internal (
           handle_, ca_cert_, hostname_, trust_system_)
         == 0)
         return 0;
     if (errno != EFAULT)
         return -1;
-    if (zlink::registry_t *registry = zlink::registry_access_t::from_handle (handle_))
+    if (resolved.kind == zlink::service_handle_registry)
         return zlink::registry_access_t::set_tls_client (
-          registry, ca_cert_, hostname_, trust_system_);
+          resolved.registry, ca_cert_, hostname_, trust_system_);
 
     errno = EFAULT;
     return -1;

@@ -23,6 +23,7 @@ class discovery_t;
 class spot_node_t;
 class service_control_runtime_t;
 class discovery_bootstrap_runtime_t;
+class discovery_bootstrap_socket_config_t;
 class discovery_uplink_runtime_t;
 struct discovery_access_t;
 
@@ -127,6 +128,7 @@ class discovery_t
     friend class spot_node_t;
     friend struct discovery_access_t;
     friend class discovery_bootstrap_runtime_t;
+    friend class discovery_bootstrap_socket_config_t;
     friend class discovery_uplink_runtime_t;
 
     struct service_state_t

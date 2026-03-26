@@ -327,27 +327,31 @@ void discovery_uplink_runtime_t::refresh_registered_service_heartbeats (
     }
 }
 
-void discovery_uplink_runtime_t::remember_bootstrap_success (
+void discovery_uplink_runtime_t::remember_registry_uplink (
+  discovery_t *owner_, const std::string &uplink_endpoint_)
+{
+    scoped_lock_t lock (owner_->_sync);
+    _registry_uplink_endpoints.insert (uplink_endpoint_);
+    _latest_registry_uplink_endpoint = uplink_endpoint_;
+}
+
+void discovery_uplink_runtime_t::adopt_report_dealer (
   discovery_t *owner_,
-  const std::string &registry_endpoint_,
   const std::string &uplink_endpoint_,
   socket_base_t *bootstrap_dealer_)
 {
-    socket_base_t *orphaned_dealer = NULL;
-    (void) registry_endpoint_;
+    if (!bootstrap_dealer_)
+        return;
 
+    socket_base_t *orphaned_dealer = NULL;
     {
         scoped_lock_t lock (owner_->_sync);
-        _registry_uplink_endpoints.insert (uplink_endpoint_);
-        _latest_registry_uplink_endpoint = uplink_endpoint_;
-        if (bootstrap_dealer_) {
-            std::map<std::string, socket_base_t *>::iterator it =
-              _report_dealers.find (uplink_endpoint_);
-            if (it == _report_dealers.end () || !it->second)
-                _report_dealers[uplink_endpoint_] = bootstrap_dealer_;
-            else
-                orphaned_dealer = bootstrap_dealer_;
-        }
+        std::map<std::string, socket_base_t *>::iterator it =
+          _report_dealers.find (uplink_endpoint_);
+        if (it == _report_dealers.end () || !it->second)
+            _report_dealers[uplink_endpoint_] = bootstrap_dealer_;
+        else
+            orphaned_dealer = bootstrap_dealer_;
     }
 
     if (orphaned_dealer)

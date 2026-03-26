@@ -219,7 +219,6 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _tag (spot_node_tag_value),
     _lifecycle (ctx_),
     _runtime (NULL),
-    _connected_peer_version_seen (0),
     _discovery (NULL),
     _discovery_seq (0),
     _registered (false),

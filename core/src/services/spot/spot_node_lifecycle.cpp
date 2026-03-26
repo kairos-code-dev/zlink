@@ -530,10 +530,10 @@ int spot_node_t::destroy ()
                               static_cast<void *> (this));
 
     service_control_runtime_t *runtime = _ctx->service_control_runtime ();
-    if (runtime && _runtime && _runtime->task_id != 0)
-        runtime->remove_task (_runtime->task_id);
-    if (_runtime)
-        _runtime->task_id = 0;
+    const uint64_t control_task_id =
+      _runtime ? _runtime->clear_control_task_id () : 0;
+    if (runtime && control_task_id != 0)
+        runtime->remove_task (control_task_id);
     spot_shutdown_logf_local (false, "step=task_removed node=%p",
                               static_cast<void *> (this));
 

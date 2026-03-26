@@ -177,7 +177,7 @@ int spot_node_t::ensure_control_task_running ()
 
     {
         scoped_lock_t lock (_sync);
-        if (_runtime->task_id != 0)
+        if (_runtime->control_task_id () != 0)
             return 0;
     }
 
@@ -192,16 +192,7 @@ int spot_node_t::ensure_control_task_running ()
     if (task_id == 0)
         return -1;
 
-    bool remove_duplicate = false;
-    {
-        scoped_lock_t lock (_sync);
-        if (_runtime->task_id == 0)
-            _runtime->task_id = task_id;
-        else
-            remove_duplicate = true;
-    }
-
-    if (remove_duplicate)
+    if (!_runtime->try_set_control_task_id (task_id))
         (void) runtime->remove_task (task_id);
     return 0;
 }
@@ -217,11 +208,7 @@ void spot_node_t::wake_control_task ()
     if (ensure_control_task_running () != 0)
         return;
 
-    uint64_t task_id = 0;
-    {
-        scoped_lock_t lock (_sync);
-        task_id = _runtime ? _runtime->task_id : 0;
-    }
+    const uint64_t task_id = _runtime->control_task_id ();
     if (task_id != 0)
         runtime->wakeup_task (task_id);
 }
@@ -239,7 +226,7 @@ bool spot_node_t::can_suspend_control_task () const
     if (!_runtime)
         return false;
     return mesh_peer_version (&_runtime->mesh_peer_state)
-           == _connected_peer_version_seen;
+           == _runtime->connected_peer_version_seen ();
 }
 
 void spot_node_t::control_tick ()
@@ -256,7 +243,8 @@ void spot_node_t::control_tick ()
         const uint64_t connected_peer_version =
           mesh_peer_version (&_runtime->mesh_peer_state);
         skip_extra = _discovery == NULL
-                     && connected_peer_version == _connected_peer_version_seen
+                     && connected_peer_version
+                          == _runtime->connected_peer_version_seen ()
                      && !_peer_state.subscription_replay_pending
                      && !_peer_state.subscription_ready_refresh_pending
                      && !_peer_state.pub_delivery_ready_refresh_pending;
@@ -268,14 +256,11 @@ void spot_node_t::control_tick ()
         emit_pending_pub_delivery_ready_events ();
     }
 
-    uint64_t task_id = 0;
-    {
-        scoped_lock_t lock (_sync);
-        if (_runtime && _runtime->task_id != 0 && can_suspend_control_task ()) {
-            task_id = _runtime->task_id;
-            _runtime->task_id = 0;
-        }
-    }
+    spot_runtime_t *runtime_state = _runtime;
+    const uint64_t task_id =
+      runtime_state && can_suspend_control_task ()
+        ? runtime_state->clear_control_task_id ()
+        : 0;
 
     if (task_id != 0) {
         service_control_runtime_t *runtime = _ctx->service_control_runtime ();
@@ -465,10 +450,9 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         if (!runtime)
             return;
         connected_peer_version = mesh_peer_version (&runtime->mesh_peer_state);
-        if (connected_peer_version == _connected_peer_version_seen)
-            return;
-        _connected_peer_version_seen = connected_peer_version;
     }
+    if (!runtime->note_connected_peer_version (connected_peer_version))
+        return;
     snapshot_connected_mesh_peer_endpoints (&runtime->mesh_peer_state,
                                             &connected);
 

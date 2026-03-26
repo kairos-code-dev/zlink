@@ -185,30 +185,31 @@ void *zlink_service_monitor_open (
         return NULL;
     }
 
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (target_);
-    if (discovery) {
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (target_);
+
+    if (resolved.kind == zlink::service_handle_discovery) {
         return open_discovery_service_monitor_internal (
-          discovery,
+          target_,
           static_cast<zlink_discovery_monitor_event_mask_t> (options_->events),
           NULL, NULL);
     }
 
-    if (as_spot_pub_side_handle (target_)) {
+    if (resolved.kind == zlink::service_handle_spot_pub_side) {
         return open_spot_service_monitor_internal (
           target_, ZLINK_SPOT_ROLE_PUB,
           static_cast<zlink_spot_monitor_event_mask_t> (options_->events),
           NULL, NULL);
     }
 
-    if (as_spot_sub_side_handle (target_)) {
+    if (resolved.kind == zlink::service_handle_spot_sub_side) {
         return open_spot_service_monitor_internal (
           target_, ZLINK_SPOT_ROLE_SUB,
           static_cast<zlink_spot_monitor_event_mask_t> (options_->events),
           NULL, NULL);
     }
 
-    if (is_registered_spot_handle (target_)) {
+    if (resolved.kind == zlink::service_handle_spot) {
         const int role = infer_spot_monitor_role (target_, options_->events);
         if (role < 0)
             return NULL;
@@ -218,7 +219,7 @@ void *zlink_service_monitor_open (
           NULL, NULL);
     }
 
-    if (is_registered_spot_node_handle (target_)) {
+    if (resolved.kind == zlink::service_handle_spot_node) {
         const int role = infer_spot_monitor_role (target_, options_->events);
         if (role < 0)
             return NULL;

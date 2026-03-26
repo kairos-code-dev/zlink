@@ -12,6 +12,7 @@ POLL_SECONDS=30
 GATE_LABEL="phase2_thread_safe_stress"
 STRESS_COUNT=1
 MODEL_ARG=()
+CURRENT_JOB_PID=""
 CODEX_ARGS=(
   exec
   --dangerously-bypass-approvals-and-sandbox
@@ -49,6 +50,60 @@ Termination contract:
   - If the Codex final message is exactly '계속 진행 필요' the loop continues.
 EOF
 }
+
+terminate_process_tree() {
+  local pid="$1"
+  local child_pid
+  local attempt
+  local child_pids=()
+
+  if [[ -z "${pid}" ]] || ! kill -0 "${pid}" 2>/dev/null; then
+    return 0
+  fi
+
+  mapfile -t child_pids < <(pgrep -P "${pid}" || true)
+  for child_pid in "${child_pids[@]}"; do
+    terminate_process_tree "${child_pid}"
+  done
+
+  kill -CONT "${pid}" 2>/dev/null || true
+  kill "${pid}" 2>/dev/null || true
+  for attempt in 1 2 3 4 5; do
+    if ! kill -0 "${pid}" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  kill -KILL "${pid}" 2>/dev/null || true
+}
+
+cleanup() {
+  local exit_rc="${1:-$?}"
+
+  trap - EXIT INT TERM HUP QUIT TSTP
+
+  if [[ -n "${CURRENT_JOB_PID}" ]] && kill -0 "${CURRENT_JOB_PID}" 2>/dev/null; then
+    terminate_process_tree "${CURRENT_JOB_PID}"
+    wait "${CURRENT_JOB_PID}" 2>/dev/null || true
+  fi
+
+  exit "${exit_rc}"
+}
+
+handle_signal() {
+  local signal_name="$1"
+  local signal_rc="$2"
+
+  echo "=== Codex execution guide loop interrupted by ${signal_name}; cleaning up ===" >&2
+  cleanup "${signal_rc}"
+}
+
+trap cleanup EXIT
+trap 'handle_signal INT 130' INT
+trap 'handle_signal TERM 143' TERM
+trap 'handle_signal HUP 129' HUP
+trap 'handle_signal QUIT 131' QUIT
+trap 'handle_signal TSTP 148' TSTP
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -240,8 +295,11 @@ EOF
   set +e
   codex "${CODEX_ARGS[@]}" "${MODEL_ARG[@]}" \
     -o "${last_message}" \
-    - < "${prompt_file}" 2>&1 | tee "${run_log}"
-  codex_rc=${PIPESTATUS[0]}
+    - < "${prompt_file}" 2>&1 | tee "${run_log}" &
+  CURRENT_JOB_PID=$!
+  wait "${CURRENT_JOB_PID}"
+  codex_rc=$?
+  CURRENT_JOB_PID=""
   set -e
 
   if [[ "${codex_rc}" -ne 0 ]]; then

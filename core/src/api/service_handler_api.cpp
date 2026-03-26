@@ -24,12 +24,15 @@ int zlink_service_send_ready_handler_internal (
         return -1;
     }
 
-    if (is_registered_spot_handle (handle_)) {
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+
+    if (resolved.kind == zlink::service_handle_spot) {
         return spot_install_send_ready_handler (
           static_cast<spot_handle_t *> (handle_), handler_, userdata_);
     }
 
-    if (is_registered_spot_node_handle (handle_)) {
+    if (resolved.kind == zlink::service_handle_spot_node) {
         errno = ENOTSUP;
         return -1;
     }

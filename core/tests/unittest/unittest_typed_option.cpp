@@ -60,6 +60,12 @@ static void close_ctx (void *ctx_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx_));
 }
 
+static void close_monitor_if_open (void **monitor_p_)
+{
+    if (monitor_p_ && *monitor_p_)
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (monitor_p_));
+}
+
 void test_typed_raw_socket_options ()
 {
     void *ctx = new_ctx ();
@@ -213,6 +219,91 @@ void test_typed_spot_node_unified_options ()
     close_ctx (ctx);
 }
 
+void test_typed_service_handle_dispatch_domains ()
+{
+    void *ctx = new_ctx ();
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "svc-alpha");
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    size_t metadata_limit = 91;
+    size_t size = sizeof (metadata_limit);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
+                        &metadata_limit, sizeof (metadata_limit)));
+    metadata_limit = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
+                        &metadata_limit, &size));
+    TEST_ASSERT_EQUAL_UINT (91, (unsigned int) metadata_limit);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (discovery, &rid));
+    TEST_ASSERT_EQUAL_UINT8 (4, rid.size);
+    TEST_ASSERT_EQUAL_MEMORY ("disc", rid.data, 4);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_client (discovery, "ca.pem", "disc-host", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_server (registry, "srv-cert.pem", "srv-key.pem", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_client (registry, "ca.pem", "registry-host", 0));
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_set_routing_id (registry, "rid", 3));
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
+
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED;
+    void *monitor = zlink_service_monitor_open (discovery, &opts);
+    TEST_ASSERT_NOT_NULL (monitor);
+    close_monitor_if_open (&monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    close_ctx (ctx);
+}
+
+void test_discovery_routing_id_locks_after_registry_connect ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = new_ctx ();
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "svc-lock");
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_bind (registry, ENDPOINT_0, ENDPOINT_1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, ENDPOINT_1));
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_set_routing_id (discovery, "next", 4));
+    TEST_ASSERT_EQUAL_INT (EFSM, errno);
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (discovery, &rid));
+    TEST_ASSERT_EQUAL_UINT8 (4, rid.size);
+    TEST_ASSERT_EQUAL_MEMORY ("disc", rid.data, 4);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    close_ctx (ctx);
+}
+
 void test_option_owner_map_matches_domains ()
 {
     TEST_ASSERT_EQUAL_INT (
@@ -270,6 +361,8 @@ int main (void)
     UNITY_BEGIN ();
     RUN_TEST (test_typed_raw_socket_options);
     RUN_TEST (test_typed_spot_node_unified_options);
+    RUN_TEST (test_typed_service_handle_dispatch_domains);
+    RUN_TEST (test_discovery_routing_id_locks_after_registry_connect);
     RUN_TEST (test_option_owner_map_matches_domains);
     return UNITY_END ();
 }

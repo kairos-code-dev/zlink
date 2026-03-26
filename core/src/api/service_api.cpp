@@ -5,12 +5,63 @@
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 
+#include "services/discovery/discovery_access.hpp"
+#include "services/discovery/registry_access.hpp"
 #include "services/spot/spot_dispatch_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
 
 namespace zlink
 {
+service_handle_resolution_t::service_handle_resolution_t () :
+    kind (service_handle_unknown),
+    discovery (NULL),
+    registry (NULL)
+{
+}
+
+service_handle_resolution_t resolve_service_handle (void *handle_)
+{
+    service_handle_resolution_t resolved;
+
+    if (!handle_)
+        return resolved;
+
+    discovery_t *discovery = discovery_access_t::from_handle (handle_);
+    if (discovery) {
+        resolved.kind = service_handle_discovery;
+        resolved.discovery = discovery;
+        return resolved;
+    }
+
+    registry_t *registry = registry_access_t::from_handle (handle_);
+    if (registry) {
+        resolved.kind = service_handle_registry;
+        resolved.registry = registry;
+        return resolved;
+    }
+
+    if (as_spot_pub_side_handle (handle_)) {
+        resolved.kind = service_handle_spot_pub_side;
+        return resolved;
+    }
+
+    if (as_spot_sub_side_handle (handle_)) {
+        resolved.kind = service_handle_spot_sub_side;
+        return resolved;
+    }
+
+    if (is_registered_spot_handle (handle_)) {
+        resolved.kind = service_handle_spot;
+        return resolved;
+    }
+
+    if (is_registered_spot_node_handle (handle_))
+        resolved.kind = service_handle_spot_node;
+
+    return resolved;
+}
+
 service_public_api_guard_t *spot_public_api_guard_for_testing (void *spot_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);

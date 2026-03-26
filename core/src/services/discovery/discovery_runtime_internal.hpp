@@ -16,6 +16,48 @@ namespace zlink
 class discovery_t;
 class socket_base_t;
 
+class discovery_bootstrap_socket_config_t
+{
+  public:
+    discovery_bootstrap_socket_config_t ();
+
+    void lock_routing_id (discovery_t *owner_);
+    int set_routing_id (discovery_t *owner_, const void *data_, size_t size_);
+    int routing_id (discovery_t *owner_, zlink_routing_id_t *out_) const;
+    int set_option (discovery_t *owner_,
+                    int option_,
+                    const void *optval_,
+                    size_t optvallen_);
+    int set_tls_client (discovery_t *owner_,
+                        const char *ca_cert_,
+                        const char *hostname_,
+                        int trust_system_);
+    void apply_socket_options (socket_base_t *socket_) const;
+    void apply_socket_option_to_existing (discovery_t *owner_,
+                                          int option_,
+                                          const void *optval_,
+                                          size_t optvallen_) const;
+    bool ensure_socket_routing_id (socket_base_t *socket_);
+
+    const zlink_routing_id_t &routing_id_value () const { return _routing_id; }
+
+  private:
+    struct socket_opt_t
+    {
+        int option;
+        std::vector<unsigned char> value;
+    };
+
+    void upsert_socket_option (int option_,
+                               const void *optval_,
+                               size_t optvallen_);
+
+    std::vector<socket_opt_t> _socket_options;
+    zlink_routing_id_t _routing_id;
+    std::string _routing_id_override;
+    bool _routing_id_locked;
+};
+
 class discovery_bootstrap_runtime_t
 {
   public:
@@ -42,6 +84,26 @@ class discovery_bootstrap_runtime_t
     int ensure_bootstrap_dealer (discovery_t *owner_,
                                  const std::string &registry_endpoint_,
                                  socket_base_t **dealer_out_);
+    bool has_bootstrap_activity_locked () const;
+    void apply_socket_option_to_bootstrap_dealers (
+      discovery_t *owner_, int option_, const void *optval_, size_t optvallen_)
+      const;
+    void remember_bootstrap_endpoint (discovery_t *owner_,
+                                      const char *registry_endpoint_);
+    bool bootstrap_completed (discovery_t *owner_,
+                              const char *registry_endpoint_) const;
+    void begin_bootstrap_request (discovery_t *owner_,
+                                  const std::string &registry_endpoint_);
+    bool reset_bootstrap_request_if_timed_out (
+      discovery_t *owner_,
+      const std::string &registry_endpoint_,
+      uint64_t now_ms_);
+    void commit_bootstrap_success (discovery_t *owner_,
+                                   const std::string &registry_endpoint_,
+                                   const std::string &pub_endpoint_,
+                                   const std::string &uplink_endpoint_,
+                                   uint32_t heartbeat_interval_ms_,
+                                   socket_base_t **adopted_report_dealer_out_);
     void collect_pending_bootstrap_endpoints (
       discovery_t *owner_, std::vector<std::string> *out_) const;
     void collect_registry_pub_endpoints (
@@ -50,15 +112,14 @@ class discovery_bootstrap_runtime_t
       discovery_t *owner_,
       std::vector<std::pair<std::string, socket_base_t *> > *bootstrap_dealers);
 
-    const zlink_routing_id_t &routing_id_value () const { return _routing_id; }
+    const zlink_routing_id_t &routing_id_value () const
+    {
+        return _socket_config.routing_id_value ();
+    }
     uint32_t heartbeat_interval_ms () const { return _heartbeat_interval_ms; }
 
   private:
-    struct socket_opt_t
-    {
-        int option;
-        std::vector<unsigned char> value;
-    };
+    friend class discovery_bootstrap_socket_config_t;
 
     struct bootstrap_state_t
     {
@@ -69,14 +130,11 @@ class discovery_bootstrap_runtime_t
         bootstrap_state_t ();
     };
 
-    std::vector<socket_opt_t> _socket_options;
+    discovery_bootstrap_socket_config_t _socket_config;
     std::set<std::string> _registry_bootstrap_endpoints;
     std::set<std::string> _bootstrapped_registry_endpoints;
     std::map<std::string, bootstrap_state_t> _bootstrap_states;
     std::set<std::string> _registry_pub_endpoints;
-    zlink_routing_id_t _routing_id;
-    std::string _routing_id_override;
-    bool _routing_id_locked;
     uint32_t _heartbeat_interval_ms;
 };
 
@@ -99,10 +157,11 @@ class discovery_uplink_runtime_t
     void flush_topology_reports (discovery_t *owner_);
     void refresh_registered_service_heartbeats (discovery_t *owner_,
                                                 uint64_t now_ms_);
-    void remember_bootstrap_success (discovery_t *owner_,
-                                     const std::string &registry_endpoint_,
-                                     const std::string &uplink_endpoint_,
-                                     socket_base_t *bootstrap_dealer_);
+    void remember_registry_uplink (discovery_t *owner_,
+                                   const std::string &uplink_endpoint_);
+    void adopt_report_dealer (discovery_t *owner_,
+                              const std::string &uplink_endpoint_,
+                              socket_base_t *bootstrap_dealer_);
     void collect_uplink_endpoints (discovery_t *owner_,
                                    std::vector<std::string> *out_) const;
     bool latest_registry_uplink (discovery_t *owner_, std::string *out_) const;

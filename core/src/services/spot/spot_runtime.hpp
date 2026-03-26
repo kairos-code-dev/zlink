@@ -38,6 +38,18 @@ struct spot_attachment_t
     std::string endpoint;
 };
 
+struct spot_control_runtime_state_t
+{
+    spot_control_runtime_state_t () :
+        task_id (0),
+        connected_peer_version_seen (0)
+    {
+    }
+
+    uint64_t task_id;
+    uint64_t connected_peer_version_seen;
+};
+
 struct spot_runtime_t
 {
     explicit spot_runtime_t (spot_node_t *owner_);
@@ -56,6 +68,11 @@ struct spot_runtime_t
     int close_runtime_socket_async (socket_base_t *&socket_, int timeout_ms_);
     int send_command (const char *verb_, const char *arg_) const;
     void mark_fault (int err_);
+    bool try_set_control_task_id (uint64_t task_id_);
+    uint64_t control_task_id () const;
+    uint64_t clear_control_task_id ();
+    bool note_connected_peer_version (uint64_t connected_peer_version_);
+    uint64_t connected_peer_version_seen () const;
     int stop_and_join ();
     int abortive_stop ();
     size_t live_socket_slot_count () const;
@@ -63,6 +80,7 @@ struct spot_runtime_t
 
     spot_node_t *owner;
     mutable mutex_t ctrl_sync;
+    mutable mutex_t control_state_sync;
     socket_base_t *data_ctrl_front;
     socket_base_t *data_ctrl_back;
     socket_base_t *mesh_pub;
@@ -73,7 +91,6 @@ struct spot_runtime_t
     socket_base_t *local_fanout_xpub;
     thread_t data_plane_thread;
     atomic_counter_t stop;
-    uint64_t task_id;
     uint32_t node_id;
     std::string bound_endpoint;
     std::string pub_ingress_endpoint;
@@ -84,6 +101,7 @@ struct spot_runtime_t
     int fault_errno;
     bool abortive_shutdown;
     mutable mutex_t attachment_sync;
+    spot_control_runtime_state_t control_state;
     spot_mesh_peer_state_t mesh_peer_state;
     uint64_t next_attachment_id;
     std::map<uint64_t, spot_attachment_t> attachments;

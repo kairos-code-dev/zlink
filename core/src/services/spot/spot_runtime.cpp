@@ -61,7 +61,6 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     local_pub_ingress_sub (NULL),
     local_fanout_xpub (NULL),
     stop (0),
-    task_id (0),
     node_id (generate_random ()),
     faulted (false),
     fault_errno (0),
@@ -434,6 +433,48 @@ void spot_runtime_t::mark_fault (int err_)
 {
     faulted = true;
     fault_errno = err_ != 0 ? err_ : EIO;
+}
+
+bool spot_runtime_t::try_set_control_task_id (uint64_t task_id_)
+{
+    if (task_id_ == 0)
+        return false;
+
+    scoped_lock_t lock (control_state_sync);
+    if (control_state.task_id != 0)
+        return false;
+    control_state.task_id = task_id_;
+    return true;
+}
+
+uint64_t spot_runtime_t::control_task_id () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (control_state_sync));
+    return control_state.task_id;
+}
+
+uint64_t spot_runtime_t::clear_control_task_id ()
+{
+    scoped_lock_t lock (control_state_sync);
+    const uint64_t task_id = control_state.task_id;
+    control_state.task_id = 0;
+    return task_id;
+}
+
+bool spot_runtime_t::note_connected_peer_version (
+  uint64_t connected_peer_version_)
+{
+    scoped_lock_t lock (control_state_sync);
+    if (control_state.connected_peer_version_seen == connected_peer_version_)
+        return false;
+    control_state.connected_peer_version_seen = connected_peer_version_;
+    return true;
+}
+
+uint64_t spot_runtime_t::connected_peer_version_seen () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (control_state_sync));
+    return control_state.connected_peer_version_seen;
 }
 
 int spot_runtime_t::stop_and_join ()

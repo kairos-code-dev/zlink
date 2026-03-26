@@ -1,5 +1,0 @@
-status=success
-started_at=2026-03-26 10:10:51 +0900
-completed_at=2026-03-26 10:17:26 +0900
-stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/3nd/logs/posd_perf_first_gate_20260326_101051.log
-stress_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/3nd/logs/posd_perf_first_gate_20260326_101051.log.exitcode

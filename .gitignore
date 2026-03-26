@@ -216,5 +216,8 @@ core/bench/**/results/
 bindings/*/benchwithzlink/results/
 core/tests/scenario/**/result/
 
+# Refactor execution logs
+core/tools/refactor/logs/
+
 # Clangd cache
 core/.cache/

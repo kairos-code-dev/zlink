@@ -395,12 +395,12 @@ void spot_sub_t::mark_subject_subscription_ready (
         || subject_.subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_NONE)
         return;
 
-    emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
-                                   subject_.subject_kind, 1);
-    mark_subject_ready (subject_, endpoint_);
-
-    if (!endpoint_ || endpoint_[0] == '\0' || !_node)
+    if (!endpoint_ || endpoint_[0] == '\0' || !_node) {
+        mark_subject_ready (subject_, endpoint_);
+        emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
+                                       subject_.subject_kind, 1);
         return;
+    }
 
     std::string raw_filter = subject_.subject;
     if (subject_.subject_kind == ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
@@ -420,8 +420,12 @@ void spot_sub_t::mark_subject_subscription_ready (
           it != _ready_ack_endpoints.end ()
           && it->second.count (endpoint_) != 0;
     }
-    if (already_acked)
+    if (already_acked) {
+        mark_subject_ready (subject_, endpoint_);
+        emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
+                                       subject_.subject_kind, 1);
         return;
+    }
 
     if (_node->send_ready_ack_update (endpoint_, raw_filter,
                                       ready_ack_source_id (), true)
@@ -432,6 +436,10 @@ void spot_sub_t::mark_subject_subscription_ready (
         scoped_lock_t lock (_sync);
         _ready_ack_endpoints[raw_filter].insert (endpoint_);
     }
+
+    mark_subject_ready (subject_, endpoint_);
+    emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
+                                   subject_.subject_kind, 1);
 }
 
 std::string spot_sub_t::first_ready_peer_endpoint () const

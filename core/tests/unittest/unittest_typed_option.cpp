@@ -335,6 +335,59 @@ void test_option_owner_map_matches_domains ()
     TEST_ASSERT_EQUAL_INT (
       zlink::options_owner_service_specific,
       zlink::option_owner_of (ZLINK_INTERNAL_OPT_LAST_ENDPOINT));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_unknown,
+      zlink::option_owner_of (ZLINK_INTERNAL_OPT_BLOCKY));
+
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_core_socket,
+      zlink::common_option_owner_of (ZLINK_OPT_SNDHWM));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_transport_network,
+      zlink::common_option_owner_of (ZLINK_OPT_TCP_NODELAY));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_protocol_metadata,
+      zlink::common_option_owner_of (ZLINK_OPT_HEARTBEAT_TTL));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_service_specific,
+      zlink::common_option_owner_of (ZLINK_OPT_LAST_ENDPOINT));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_unknown,
+      zlink::common_option_owner_of (ZLINK_OPT_BLOCKY));
+
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_service_specific,
+      zlink::router_option_owner_of (ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_service_specific,
+      zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_PROBE));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_core_socket,
+      zlink::stream_option_owner_of (ZLINK_STREAM_OPT_NOTIFY));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_service_specific,
+      zlink::pub_option_owner_of (ZLINK_PUB_OPT_MANUAL_LAST_VALUE));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_service_specific,
+      zlink::sub_option_owner_of (ZLINK_SUB_OPT_TOPICS_COUNT));
+
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_core_socket,
+      zlink::option_owner_of_bag_field (
+        zlink::options_bag_field_monitor_event_version));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_protocol_metadata,
+      zlink::option_owner_of_bag_field (zlink::options_bag_field_hello_msg));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_protocol_metadata,
+      zlink::option_owner_of_bag_field (
+        zlink::options_bag_field_disconnect_msg));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_protocol_metadata,
+      zlink::option_owner_of_bag_field (zlink::options_bag_field_hiccup_msg));
+    TEST_ASSERT_EQUAL_INT (
+      zlink::options_owner_transport_network,
+      zlink::option_owner_of_bag_field (zlink::options_bag_field_busy_poll));
 
     TEST_ASSERT_EQUAL_STRING (
       "core-socket",

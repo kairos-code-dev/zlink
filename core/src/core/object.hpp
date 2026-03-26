@@ -13,7 +13,6 @@ namespace zlink
 {
 struct i_engine;
 struct endpoint_t;
-struct pending_connection_t;
 struct command_t;
 class ctx_t;
 class pipe_t;

@@ -33,6 +33,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_socket_null
   ${INTEGRATION_TEST_ROOT}/test_heartbeats
   ${INTEGRATION_TEST_ROOT}/test_multi_socket_contract_regressions
+  ${INTEGRATION_TEST_ROOT}/test_public_inproc_multipart_send
   ${INTEGRATION_TEST_ROOT}/test_reconnect_ivl
   ${INTEGRATION_TEST_ROOT}/test_reconnect_options
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
@@ -313,6 +314,7 @@ if(TARGET test_spot_pubsub_scenario)
     test_spot_pubsub_scenario
     PRIVATE
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_shared.cpp
+      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_delivery_ready_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_peer_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_callback_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_node_cases.cpp
@@ -512,6 +514,7 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_publish_rollback_preserves_next_topic_boundary
     test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_unified_spot_basic
+    test_spot_unified_spot_callback_self_delivery
     test_spot_node_snapshot_status_peers_subjects
     test_discovery_local_value_metadata_contract
     test_registry_and_discovery_member_peer_queries)
@@ -527,6 +530,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_publish_rollback=test_spot_publish_rollback_preserves_next_topic_boundary
     test_spot_service_introspection_default_handle_owner=test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
+    test_spot_service_introspection_unified_spot_callback_self_delivery=test_spot_unified_spot_callback_self_delivery
     test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects
     test_spot_service_introspection_metadata_local=test_discovery_local_value_metadata_contract
     test_spot_service_introspection_member_peers=test_registry_and_discovery_member_peer_queries)
@@ -537,6 +541,7 @@ set(SPOT_PUBSUB_CASES
     test_spot_peer_ws
     test_spot_peer_tls
     test_spot_peer_wss
+    test_spot_sub_delivery_ready_immediate_first_publish
     test_spot_unified_wss_subscription_ready_first_delivery
     test_spot_multi_publisher
     test_spot_same_handle_concurrent_publish
@@ -559,6 +564,7 @@ set(SPOT_PUBSUB_PEER_TEST_SPECS
     test_spot_pubsub_scenario_peer_ws=test_spot_peer_ws
     test_spot_pubsub_scenario_peer_tls=test_spot_peer_tls
     test_spot_pubsub_scenario_peer_wss=test_spot_peer_wss
+    test_spot_pubsub_scenario_delivery_ready_first_publish=test_spot_sub_delivery_ready_immediate_first_publish
     test_spot_pubsub_scenario_unified_wss_ready_delivery=test_spot_unified_wss_subscription_ready_first_delivery)
 
 set(SPOT_PUBSUB_LOCAL_TEST_SPECS

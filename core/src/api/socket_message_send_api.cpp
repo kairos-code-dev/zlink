@@ -6,6 +6,7 @@
 
 #include "api/service_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
+#include "api/socket_message_api_internal.hpp"
 #include "core/msg.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "utils/err.hpp"
@@ -13,6 +14,16 @@
 
 namespace
 {
+int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)
+{
+    if ((!parts_ && part_count_ > 0) || part_count_ == 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return 0;
+}
+
 int s_sendmsg (socket_handle_t handle_,
                zlink_msg_t *msg_,
                zlink_send_flags_t flags_)
@@ -146,11 +157,10 @@ int send_stream_message (socket_handle_t handle_,
     return stream_payload_result (payload_size);
 }
 
-int send_socket_parts (socket_handle_t handle_,
-                       const zlink_routing_id_t *target_rid_,
-                       zlink_msg_t *parts_,
-                       size_t part_count_,
-                       zlink_send_flags_t flags_)
+int validate_socket_send_request (socket_handle_t handle_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_,
+                                  zlink_send_flags_t flags_)
 {
     if (!handle_.socket) {
         errno = EFAULT;
@@ -158,37 +168,15 @@ int send_socket_parts (socket_handle_t handle_,
     }
     if (validate_send_flags (flags_) != 0)
         return -1;
-    if ((!parts_ && part_count_ > 0) || part_count_ == 0) {
-        errno = EFAULT;
-        return -1;
-    }
+    return validate_send_parts (parts_, part_count_);
+}
 
+int send_socket_unrouted_parts (socket_handle_t handle_,
+                                zlink_msg_t *parts_,
+                                size_t part_count_,
+                                zlink_send_flags_t flags_)
+{
     const int type = socket_type (handle_);
-
-    if (target_rid_) {
-        if (type == ZLINK_CORE_SOCKET_STREAM) {
-            if (part_count_ != 1) {
-                errno = ENOTSUP;
-                return -1;
-            }
-            const int rc =
-              send_stream_message (handle_, target_rid_, &parts_[0], flags_);
-            if (rc < 0)
-                return -1;
-            errno = 0;
-            return 0;
-        }
-
-        if (type != ZLINK_CORE_SOCKET_ROUTER) {
-            errno = ENOTSUP;
-            return -1;
-        }
-
-        return zlink::logical_multipart_send_routed (handle_.socket,
-                                                     target_rid_, parts_,
-                                                     part_count_, flags_);
-    }
-
     if (type == ZLINK_CORE_SOCKET_PUB || type == ZLINK_CORE_SOCKET_SUB
         || type == ZLINK_CORE_SOCKET_XSUB || type == ZLINK_CORE_SOCKET_XPUB) {
         errno = ENOTSUP;
@@ -199,41 +187,156 @@ int send_socket_parts (socket_handle_t handle_,
                                           flags_);
 }
 
+int send_socket_routed_parts (socket_handle_t handle_,
+                              const zlink_routing_id_t *target_rid_,
+                              zlink_msg_t *parts_,
+                              size_t part_count_,
+                              zlink_send_flags_t flags_)
+{
+    const int type = socket_type (handle_);
+    if (type == ZLINK_CORE_SOCKET_STREAM) {
+        if (part_count_ != 1) {
+            errno = ENOTSUP;
+            return -1;
+        }
+
+        const int rc =
+          send_stream_message (handle_, target_rid_, &parts_[0], flags_);
+        if (rc < 0)
+            return -1;
+        errno = 0;
+        return 0;
+    }
+
+    if (type != ZLINK_CORE_SOCKET_ROUTER) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    return zlink::logical_multipart_send_routed (handle_.socket, target_rid_,
+                                                 parts_, part_count_, flags_);
+}
+
+int send_socket_parts (socket_handle_t handle_,
+                       const zlink_routing_id_t *target_rid_,
+                       zlink_msg_t *parts_,
+                       size_t part_count_,
+                       zlink_send_flags_t flags_)
+{
+    if (validate_socket_send_request (handle_, parts_, part_count_, flags_) != 0)
+        return -1;
+
+    if (!target_rid_)
+        return send_socket_unrouted_parts (handle_, parts_, part_count_, flags_);
+
+    return send_socket_routed_parts (handle_, target_rid_, parts_, part_count_,
+                                     flags_);
+}
+
 int publish_socket_parts (socket_handle_t handle_,
                           const char *topic_id_,
                           zlink_msg_t *parts_,
                           size_t part_count_,
-                          zlink_send_flags_t flags_)
+                          zlink_send_flags_t flags_,
+                          bool fallback_on_missing_sndtimeo_)
 {
-    if (!handle_.socket) {
-        errno = EFAULT;
+    if (validate_socket_send_request (handle_, parts_, part_count_, flags_) != 0)
         return -1;
-    }
-    if (validate_send_flags (flags_) != 0)
-        return -1;
-    if ((!parts_ && part_count_ > 0) || part_count_ == 0) {
-        errno = EFAULT;
-        return -1;
-    }
 
     const int type = socket_type (handle_);
     if (type != ZLINK_CORE_SOCKET_PUB && type != ZLINK_CORE_SOCKET_XPUB) {
         errno = ENOTSUP;
         return -1;
     }
-    return zlink::logical_multipart_publish (handle_.socket, topic_id_, parts_,
-                                             part_count_, flags_);
+
+    return zlink::logical_multipart_publish (
+      handle_.socket, topic_id_, parts_, part_count_, flags_,
+      fallback_on_missing_sndtimeo_);
 }
 
-int publish_socket_parts_blocking (socket_handle_t handle_,
+int send_service_or_fault (void *handle_,
+                           zlink_msg_t *parts_,
+                           size_t part_count_,
+                           zlink_send_flags_t flags_)
+{
+    const int service_rc =
+      zlink_service_send_internal (handle_, parts_, part_count_, flags_);
+    if (service_rc == 0 || errno != EFAULT)
+        return service_rc;
+
+    errno = EFAULT;
+    return -1;
+}
+
+int send_rid_service_or_fault (void *handle_,
+                               const zlink_routing_id_t *target_rid_,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
+                               zlink_send_flags_t flags_)
+{
+    const int service_rc = zlink_service_send_rid_internal (
+      handle_, target_rid_, parts_, part_count_, flags_);
+    if (service_rc == 0 || errno != EFAULT)
+        return service_rc;
+
+    errno = EFAULT;
+    return -1;
+}
+
+int publish_service_or_fault (void *subject_,
+                              const char *topic_id_,
+                              zlink_msg_t *parts_,
+                              size_t part_count_,
+                              zlink_send_flags_t flags_)
+{
+    const int service_rc = zlink_service_publish_internal (
+      subject_, topic_id_, parts_, part_count_, flags_);
+    if (service_rc == 0 || errno != EFAULT)
+        return service_rc;
+
+    errno = EFAULT;
+    return -1;
+}
+}
+
+int zlink_socket_send_internal (void *socket_,
+                                zlink_msg_t *parts_,
+                                size_t part_count_,
+                                zlink_send_flags_t flags_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+
+    return send_socket_parts (handle, NULL, parts_, part_count_, flags_);
+}
+
+int zlink_socket_send_rid_internal (void *socket_,
+                                    const zlink_routing_id_t *target_rid_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    zlink_send_flags_t flags_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+
+    return send_socket_parts (handle, target_rid_, parts_, part_count_, flags_);
+}
+
+int zlink_socket_publish_internal (void *socket_,
                                    const char *topic_id_,
                                    zlink_msg_t *parts_,
                                    size_t part_count_,
                                    zlink_send_flags_t flags_)
 {
-    return zlink::logical_multipart_publish (handle_.socket, topic_id_, parts_,
-                                             part_count_, flags_, true);
-}
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+
+    return publish_socket_parts (
+      handle, topic_id_, parts_, part_count_, flags_,
+      (flags_ & ZLINK_DONTWAIT) == 0);
 }
 
 int zlink_send (void *s_,
@@ -246,19 +349,10 @@ int zlink_send (void *s_,
         return -1;
     }
 
-    if (zlink::socket_base_t *socket = try_as_socket (s_)) {
-        socket_handle_t handle;
-        handle.socket = socket;
-        return send_socket_parts (handle, NULL, parts_, part_count_, flags_);
-    }
+    if (try_as_socket (s_))
+        return zlink_socket_send_internal (s_, parts_, part_count_, flags_);
 
-    const int service_rc =
-      zlink_service_send_internal (s_, parts_, part_count_, flags_);
-    if (service_rc == 0 || errno != EFAULT)
-        return service_rc;
-
-    errno = EFAULT;
-    return -1;
+    return send_service_or_fault (s_, parts_, part_count_, flags_);
 }
 
 int zlink_publish (void *subject_,
@@ -272,23 +366,12 @@ int zlink_publish (void *subject_,
         return -1;
     }
 
-    if (zlink::socket_base_t *socket = try_as_socket (subject_)) {
-        socket_handle_t handle;
-        handle.socket = socket;
-        if ((flags_ & ZLINK_DONTWAIT) != 0)
-            return publish_socket_parts (handle, topic_id_, parts_, part_count_,
-                                         flags_);
-        return publish_socket_parts_blocking (handle, topic_id_, parts_,
+    if (try_as_socket (subject_))
+        return zlink_socket_publish_internal (subject_, topic_id_, parts_,
                                               part_count_, flags_);
-    }
 
-    const int service_rc = zlink_service_publish_internal (
-      subject_, topic_id_, parts_, part_count_, flags_);
-    if (service_rc == 0 || errno != EFAULT)
-        return service_rc;
-
-    errno = EFAULT;
-    return -1;
+    return publish_service_or_fault (subject_, topic_id_, parts_, part_count_,
+                                     flags_);
 }
 
 int zlink_send_rid (void *s_,
@@ -302,18 +385,10 @@ int zlink_send_rid (void *s_,
         return -1;
     }
 
-    if (zlink::socket_base_t *socket = try_as_socket (s_)) {
-        socket_handle_t handle;
-        handle.socket = socket;
-        return send_socket_parts (handle, target_rid_, parts_, part_count_,
-                                  flags_);
-    }
+    if (try_as_socket (s_))
+        return zlink_socket_send_rid_internal (s_, target_rid_, parts_,
+                                               part_count_, flags_);
 
-    const int service_rc = zlink_service_send_rid_internal (
-      s_, target_rid_, parts_, part_count_, flags_);
-    if (service_rc == 0 || errno != EFAULT)
-        return service_rc;
-
-    errno = EFAULT;
-    return -1;
+    return send_rid_service_or_fault (s_, target_rid_, parts_, part_count_,
+                                      flags_);
 }

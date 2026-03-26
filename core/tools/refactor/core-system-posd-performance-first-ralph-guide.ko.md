@@ -7,34 +7,36 @@
 > 상위 supervisor: `core/tools/run_codex_execution_guide_loop.sh`
 > 우선순위: correctness/API-ABI 유지 > 성능 비퇴행 > POSD 기반 복잡도 감소
 > 목적: 성능이 핵심 계약인 `core`에서, hot path 비용을 늘리지 않는 POSD 리팩토링만 허용하면서 남아 있는 구조 허브를 반복적으로 줄이고, 더 이상 의미 있는 리팩토링 필요가 없을 때까지 자동/반자동 반복을 가능하게 한다.
-> 운영 방식: 이 문서는 일회성 마감 문서가 아니라, `core`에 큰 기능 변경이 들어올 때마다 다시 호출하는 상시 리팩토링 authority다.
-> 현재 운영 모드: 개발 단계. 종료 게이트는 baseline 수치 준수보다 perf/test 무실패와 구조 허브 소거를 우선하며, baseline 비교는 기록용 참고 근거로 취급한다.
+> 운영 방식: 이 문서는 개발 작업이 한 차례 정리된 뒤 주기적으로 실행하는 `core` POSD 리팩토링 가이드다.
+> 현재 운영 모드: 개발 완료 직후 정리 단계. 종료 게이트는 baseline 수치 준수보다 perf/test 무실패와 구조 허브 소거를 우선하며, baseline 비교는 기록용 참고 근거로 취급한다.
 
 ## 1. 이 문서의 역할
 
-이 문서는 `core`에 대한 3차 POSD 리팩토링 실행 authority다.
+이 문서는 `core`에 대한 POSD 리팩토링 실행 가이드다.
 
 이번 루프의 핵심은 단순한 코드 정리가 아니다.
-현재 개발 단계에서는 아래 두 조건을 함께 본다.
+현재 운영 기준에서는 아래 두 조건을 함께 본다.
 
 1. perf/test 실행 surface가 실패 없이 끝난다.
 2. 변경 증폭, 숨은 결합, 허브 객체, 얕은 wrapper를 줄인다.
 
 이 저장소에서 위 두 조건은 서로 경쟁하는 목표가 아니라 하나의 성공 조건이다.
-다만 현재 단계의 종료 판정은 baseline 수치 준수보다 무실패 검증과 구조 정리에 더 무게를 둔다.
+다만 현재 운영 기준의 종료 판정은 baseline 수치 준수보다 무실패 검증과 구조 정리에 더 무게를 둔다.
 즉 성능 저하 징후가 관측되면 우선 "POSD를 했지만 어쩔 수 없는 비용"으로 해석하지 않고
 "slice를 잘못 잡았거나 경계를 잘못 세웠다"는 후속 개선 후보로 기록한다.
+핵심은 구조 개선 때문에 성능을 포기하거나, 성능 때문에 구조 개선을 포기하지 않는 것이다.
+가능한 방향을 다시 찾더라도 최종 목표는 "구조를 더 깊게 만들면서 성능까지 개선하거나 최소한 유지하는 것"으로 둔다.
 
-이 문서는 사람용 계획서이면서, Codex supervisor가 반복 실행할 때 그대로 따를 수 있는 운영 문서다.
+이 문서는 사람용 계획서이면서, Codex supervisor가 주기 실행할 때 그대로 따를 수 있는 운영 가이드다.
 루프는 이 문서만 읽고도 다음 작업, 중단 조건, 종료 판정을 정할 수 있어야 한다.
 
-이 문서는 "3차 리팩토링을 한 번 끝내고 버리는 문서"가 아니다.
-앞으로 `core`에 큰 기능 추가, 큰 동작 변경, 새 서비스/transport/option 계열 확장이 들어올 때마다
-다시 실행하는 운영 문서로 유지한다.
+이 문서는 "특정 회차 리팩토링을 한 번 끝내고 버리는 문서"가 아니다.
+앞으로 개발 작업이 한 차례 마무리될 때마다
+다시 실행하는 운영 가이드로 유지한다.
 
-## 1.1 재호출 전제
+## 1.1 실행 시점
 
-아래 상황이 생기면 이 문서를 다시 호출하는 것을 기본값으로 한다.
+아래 상황이 정리된 뒤에는 이 문서를 다시 실행하는 것을 기본값으로 한다.
 
 - 새 서비스 계층 추가 또는 기존 서비스의 큰 책임 확장
 - 새 transport/protocol/tls 옵션 계열 추가
@@ -43,7 +45,23 @@
 - 기능은 맞지만 수정 범위가 넓어져 다음 변경 비용이 커졌다고 판단되는 경우
 
 즉 이 문서는 "POSD 리팩토링이 더 이상 영원히 필요 없다"는 선언문이 아니라,
-"지금 시점에 추가로 손댈 가치가 큰 구조 허브가 없다"는 상태를 반복적으로 확인하는 문서다.
+"이번 개발 사이클 종료 시점에 추가로 손댈 가치가 큰 구조 허브가 없다"는 상태를 반복적으로 확인하는 문서다.
+
+## 1.2 참고 문서
+
+이 가이드는 실행 순서와 종료 판정 기준 문서다.
+실제 구현 내용과 설계 intent는 아래 문서들을 함께 본다.
+
+- `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
+- `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
+- `doc/plan/refactor/2nd/core-system-posd-refactor-post-residual-review.ko.md`
+
+해석 규칙:
+
+- 현재 실행의 작업 순서는 이 가이드를 따른다.
+- 구현 우선순위와 실제 미완료 범위는 위 세 문서를 함께 확인한다.
+- 위 문서들 중 어느 하나라도 새 미완료 항목을 드러내면, 이 가이드의 체크리스트와 구현 방향 메모를 먼저 갱신한 뒤 코드를 수정한다.
+- 위 문서들과 현재 코드가 어긋나면, 현재 코드 기준으로 세 문서를 다시 읽어 가장 보수적인 미완료 판정을 적용한다.
 
 ## 2. 해석 원칙
 
@@ -53,10 +71,13 @@
 
 1. 공개 계약(`core/include/zlink.h`, `core/src/libzlink.vers`)을 깨지 않는다.
 2. perf/test 실행 surface를 깨뜨리는 구조 변경은 허용하지 않는다.
-3. 성능 비교 근거가 있으면 기록하되, 현재 개발 단계 종료 기준은 perf 무실패와 POSD 관점의 복잡도 감소다.
+3. 성능 비교 근거가 있으면 기록하되, 현재 운영 기준의 종료 조건은 perf 무실패와 POSD 관점의 복잡도 감소다.
 
 즉 "더 예쁜 구조"는 허용 이유가 아니다.
-성능상 불확실성이 크면 POSD 순도를 낮추더라도 구조 변경을 보류할 수 있다.
+또한 리팩토링이 복잡하거나 성능 리스크가 예상된다는 이유만으로 POSD 대상을 회피하지 않는다.
+POSD 위반 대상이 확인되면 수행 자체를 미루는 대신, 더 작은 slice를 고르거나 hot path 바깥으로 정책을 밀어내는 방향으로 설계를 다시 잡아 계속 진행한다.
+규모가 큰 리팩토링 대상이라도 전체 목표를 축소하지 않는다.
+구현은 여러 bounded slice로 나눌 수 있지만, 최종 방향은 구조 개선과 성능 개선을 함께 달성하는 쪽으로 잡는다.
 
 이 저장소에서 성능 검증은 POSD의 바깥에 있는 별도 게이트가 아니다.
 성능이 중요한 라이브러리라는 전제상,
@@ -66,7 +87,7 @@
 
 - hot path 비용이 유지되거나 줄어들면 POSD 경계가 맞을 가능성이 높다.
 - hot path 비용이 늘어 보이면 우선 설계 재검토 후보로 본다.
-- 현재 개발 단계의 성능 게이트는 baseline 승부보다 perf 실행 surface 무실패 확인을 우선한다.
+- 현재 운영 기준의 성능 게이트는 baseline 승부보다 perf 실행 surface 무실패 확인을 우선한다.
 - baseline 미달 징후는 종료 차단의 절대 규칙이 아니라, 후속 성능 안정화 단계에서 다시 조일 항목으로 남긴다.
 
 ### 2.2 POSD 판단 기준
@@ -102,7 +123,7 @@ POSD 후보를 실제 작업으로 올릴 때는 아래 다섯 축을 함께 본
 - 여러 파일에 흩어진 policy 판정을 하나의 내부 해석 경계로 모으는 변경
 - 상위 계층이 직접 하던 lifecycle/ownership 판단을 내부 module이 흡수하는 변경
 - 공개 또는 상위 레벨 helper 수는 줄이면서 내부 구현 자유도는 늘리는 변경
-- 새 기능 추가 시 수정 지점을 한두 군데의 authority로 수렴시키는 변경
+- 새 기능 추가 시 수정 지점을 한두 군데의 내부 해석 경계로 수렴시키는 변경
 
 아래 변화는 기본적으로 경계한다.
 
@@ -170,9 +191,9 @@ POSD 관점에서 좋은 분리는 내부 로직 이동 자체가 아니라
 
 ### 2.6 이번 루프의 기본 결론
 
-이 루프는 특정 시점의 고정 후보 목록을 authority로 삼지 않는다.
+이 루프는 특정 시점의 고정 후보 목록을 유일한 기준으로 삼지 않는다.
 
-각 호출과 각 iteration마다 현재 워크트리를 다시 읽고,
+각 실행과 각 iteration마다 현재 워크트리를 다시 읽고,
 아래 질문에 가장 강하게 걸리는 영역을 우선 후보로 잡는다.
 
 - 변경 하나에 수정 범위가 과도하게 넓어지는가
@@ -237,7 +258,14 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 - `core/include/zlink.h` 또는 `core/src/libzlink.vers` 변경이 필요한데 계약 판단이 불분명한 경우
 - 사용자 변경과 직접 충돌해 임의 진행이 위험한 경우
 - `core/`와 `core/tests/`만으로는 해결할 수 없는 blocker가 확인된 경우
-- 성능 저하 가능성이 크고 로컬 증거만으로는 수용 여부를 판단할 수 없는 경우
+- 로컬에서 확인 가능한 방향을 모두 검토했는데도 공개 계약 또는 실행 환경 제약 때문에 안전한 구현 방향을 정할 수 없는 경우
+
+주의:
+
+- 리팩토링이 크거나 복잡하다는 이유만으로는 멈추지 않는다.
+- 성능 리스크가 있다는 이유만으로는 멈추지 않는다.
+- POSD 위반 대상이 확인되면, 멈추기 전에 slice를 더 작게 자르고 경계를 다시 세우는 쪽을 먼저 시도한다.
+- 즉 난도와 성능 우려는 회피 사유가 아니라 방향 재설계 사유다.
 
 그 외에는 멈추지 않는다.
 
@@ -251,21 +279,22 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 4. 더 큰 허브가 새로 보이면 먼저 현재 세션 로그 작업 레지스터의 우선순위를 갱신한다.
 5. 한 번에 하나의 bounded slice만 구현한다.
 6. 새 경계가 깊은 모듈인지, 단순 wrapper인지 먼저 판정한다.
-7. 그 slice에서 더 이상 쓰이지 않는 코드와 파일까지 함께 정리한다.
-8. 구조 변경에 맞는 `core/tests/` 회귀를 추가하거나 보강한다.
-9. 빌드와 관련 테스트를 실행한다.
-10. 작업 직후 `core/src` 전체를 다시 훑어 방금 닫은 slice보다 더 큰 허브가 생기지 않았는지 재점검한다.
-11. 더 큰 허브가 새로 보이면 현재 세션 로그 작업 레지스터 우선순위를 즉시 갱신하고 다음 iteration으로 넘긴다.
-12. 더 이상 진행할 리팩토링이 없다고 판단한 마지막 단계에서만 성능 게이트를 실행한다.
-13. 현재 세션 로그의 상태/증거/다음 후보를 갱신한다.
-14. 아직 남은 구조 항목이 있으면 다음 iteration으로 간다.
+7. 현재 slice가 최종적으로 구조 개선과 성능 개선을 함께 만드는 전체 방향에 포함되는지 확인한다.
+8. 그 slice에서 더 이상 쓰이지 않는 코드와 파일까지 함께 정리한다.
+9. 구조 변경에 맞는 `core/tests/` 회귀를 추가하거나 보강한다.
+10. 빌드와 관련 테스트를 실행한다.
+11. 작업 직후 `core/src` 전체를 다시 훑어 방금 닫은 slice보다 더 큰 허브가 생기지 않았는지 재점검한다.
+12. 더 큰 허브가 새로 보이면 현재 세션 로그 작업 레지스터 우선순위를 즉시 갱신하고 다음 iteration으로 넘긴다.
+13. 더 이상 진행할 리팩토링이 없다고 판단한 마지막 단계에서만 성능 게이트를 실행한다.
+14. 현재 세션 로그의 상태/증거/다음 후보를 갱신한다.
+15. 아직 남은 구조 항목이 있으면 다음 iteration으로 간다.
 
 한 iteration에서 해야 할 일은 "코드 수정 + 검증 + 문서 갱신"까지다.
 중간 요약만 하고 멈추지 않는다.
 
-## 4.1 큰 기능 변경 이후 재시작 규칙
+## 4.1 개발 완료 이후 재시작 규칙
 
-큰 기능 변경 직후 이 문서를 다시 호출할 때는 아래 순서를 먼저 수행한다.
+개발 작업이 한 차례 끝난 뒤 이 문서를 다시 실행할 때는 아래 순서를 먼저 수행한다.
 
 1. 최근 기능 변경이 만든 새 책임/새 허브/새 hot path를 먼저 식별한다.
 2. 이전 세션 로그의 항목과 메모를 참고하되, 완료 여부와 우선순위는 현재 코드 기준으로 다시 판정한다.
@@ -273,7 +302,7 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 4. 기존 `완료` 항목도 새 기능으로 인해 다시 허브화됐으면 `진행중` 또는 `미착수`로 되돌린다.
 5. 성능 baseline은 "현재 기능 변경 직후 상태"를 새 기준선으로 다시 잡는다.
 
-즉 재호출 시에는 예전 세션 로그 표를 참고하되,
+즉 다음 실행에서는 예전 세션 로그 표를 참고하되,
 우선순위와 baseline은 현재 기능 변경 이후 상태로 다시 잡는다.
 
 ## 4.2 종료 전 반복 리뷰 계약
@@ -304,7 +333,7 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 반복 리뷰 중 새 허브를 찾았을 때의 강제 규칙:
 
 - 크기나 hot path 여부와 무관하게 먼저 세션 로그에 행을 추가한다.
-- 그 뒤 "지금 바로 손댈 가치가 큰가 / 성능 리스크 때문에 보류해야 하는가"를 판정한다.
+- 그 뒤 "어떤 방향으로 먼저 자를지 / 무엇을 hot path 밖으로 밀어낼지 / 어떤 순서로 구현할지"를 판정한다.
 - 즉 세션 로그에 없는 후보를 머릿속 판단만으로 넘기고 종료하는 것을 금지한다.
 
 ## 5. 성능 게이트 규칙
@@ -353,7 +382,7 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 해석은 두 층으로 나눈다.
 
 - focused perf 근거: hot path 성질과 비용 방향을 빠르게 확인하기 위한 선택 근거
-- final full perf gate: 이번 호출에서 `core/` 실코드 변경이 있었을 때 종료 직전에 수행하는 필수 게이트
+- final full perf gate: 이번 실행에서 `core/` 실코드 변경이 있었을 때 종료 직전에 수행하는 필수 게이트
 
 - 기존 perf 로그와 비교 가능한 targeted perf 실행
 - `./core/tests/run_thread_safe_contract_perf.sh --build-dir core/build`
@@ -365,16 +394,16 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 - socket/core/protocol fast path면 `core/perf/run_benchmarks.sh` 또는 `run_benchmarks_multi.sh`를 우선한다.
 - thread-safe 계약 변경이면 `run_thread_safe_contract_perf.sh`를 우선한다.
 - 서비스 local control path 정도의 변경이면 focused perf 없이 targeted integration + 기존 perf reasoning으로 종료 직전 판단을 보강할 수 있다.
-- 단, 이번 호출에서 `core/` 실코드 변경이 있었다면 위 선택과 별개로 `6.1`의 final full perf gate를 마지막에 다시 수행한다.
+- 단, 이번 실행에서 `core/` 실코드 변경이 있었다면 위 선택과 별개로 `6.1`의 final full perf gate를 마지막에 다시 수행한다.
 
 성능 근거를 남길 때는 비교 기준이 있으면 함께 기록한다.
 
 - 가능하면 같은 branch의 직전 commit 또는 작업 직전 로그를 baseline으로 쓴다.
-- baseline이 없으면 현재 단계에서는 perf gate 무실패만으로 진행할 수 있다.
+- baseline이 없으면 현재 운영 기준에서는 perf gate 무실패만으로 진행할 수 있다.
 - baseline 로그가 있다면 변경 후 로그 경로와 함께 현재 세션 로그의 작업 레지스터 `검증 증거` 칸에 적는다.
 - focused perf 없이 닫는 경우에도 왜 실제 focused perf 실행 없이 종료 판단이 가능한지 `메모` 칸에 적는다.
 
-큰 기능 변경 뒤 재호출하는 경우 baseline 해석은 아래처럼 고정한다.
+다음 실행에서 baseline을 다시 잡을 때는 아래처럼 해석한다.
 
 - 예전 리팩토링 세션의 baseline을 그대로 쓰지 않는다.
 - "새 기능이 이미 들어간 현재 HEAD"를 baseline 시작점으로 본다.
@@ -394,17 +423,18 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 - POSD 원칙 자체가 틀린 것이 아니라, slice 경계 또는 추상화 위치가 틀렸을 가능성이 크다.
 - policy/control 분리를 hot path 바깥으로 충분히 밀어내지 못한 것으로 본다.
 - shallow wrapper, 늦은 판단, 불필요한 상태 조회가 runtime cost로 새어 나온 것으로 본다.
+- 따라서 다음 목표는 "리팩토링을 줄이거나 포기하는 것"이 아니라 "같은 POSD 목표를 성능까지 개선하는 다른 경계로 다시 푸는 것"이다.
 
 성능 악화가 보이면:
 
 1. 리팩토링 범위를 더 작게 다시 자른다.
 2. hot path 밖으로 정책/분기를 밀어낸다.
-3. zero-cost 추상화 수준으로 바꿀 수 없으면 해당 설계를 보류한다.
+3. zero-cost 추상화 수준으로 만들기 어려우면 해당 방향을 폐기하고 다른 경계로 다시 설계한다.
 
 즉 이 문서에서 성능 저하는 "복잡도 감소를 위해 받아들이는 일반적 대가"가 아니라,
 대부분의 경우 설계 또는 slice 설정 오류 신호로 다룬다.
 
-다만 현재 개발 단계에서는 baseline 미달 자체를 종료 차단의 절대 규칙으로 쓰지 않는다.
+다만 현재 운영 기준에서는 baseline 미달 자체를 종료 차단의 절대 규칙으로 쓰지 않는다.
 반복 판정 일관성을 위해 아래 기준은 후속 개선 우선순위를 정하는 참고 기준으로 사용한다.
 
 - focused perf 또는 thread-safe perf의 핵심 throughput 지표가 baseline 대비 3% 초과 하락하면 세션 로그 `메모` 또는 `검증 증거`에 남기고 후속 성능 안정화 후보로 올린다.
@@ -456,11 +486,11 @@ ctest --test-dir core/build --output-on-failure
 1. 문서 기준으로 더 진행할 리팩토링 후보가 더 이상 없다고 판단했다.
 2. `7. 종료 판정`의 다른 조건들이 먼저 충족됐다.
 3. 남은 일은 최종 종료 검증뿐이다.
-4. 이번 호출에서 `git diff` 기준 `core/` 실코드 변경이 존재한다.
+4. 이번 실행에서 `git diff` 기준 `core/` 실코드 변경이 존재한다.
 
 즉 `core/perf` 전체 확인은 중간 iteration에서는 돌리지 않고,
 "이제 더 손댈 POSD 리팩토링이 없다"는 판단 직후,
-그리고 이번 호출에서 실제 `core/` 코드 변경이 있었을 때만 최종 게이트로 수행한다.
+그리고 이번 실행에서 실제 `core/` 코드 변경이 있었을 때만 최종 게이트로 수행한다.
 
 최종 perf 게이트 목적은 두 가지다.
 
@@ -481,12 +511,12 @@ ctest --test-dir core/build --output-on-failure
 
 - 여기서 요구하는 것은 우선 "모든 패턴, 모든 사이즈가 실패 없이 동작하는가"다.
 - 중간 iteration에서는 perf를 실행하지 않는다. 최종 종료 직전에만 perf 실행 surface를 확인한다.
-- 이번 호출에서 `git diff -- core/` 기준 실코드 변경이 없으면 full perf gate는 생략할 수 있다.
-- 이때 문서의 `검증 증거` 또는 `메모` 칸에 "이번 호출은 `core/` 코드 변경 없음, full perf gate 생략"을 명시한다.
+- 이번 실행에서 `git diff -- core/` 기준 실코드 변경이 없으면 full perf gate는 생략할 수 있다.
+- 이때 문서의 `검증 증거` 또는 `메모` 칸에 "이번 실행은 `core/` 코드 변경 없음, full perf gate 생략"을 명시한다.
 - full perf 중 하나라도 실패하면 `미적용 사항이 없습니다.` 로 닫지 않는다.
 - full perf 실패가 리팩토링 버그인지, perf harness/환경 문제인지 먼저 구분하고, 리팩토링 원인이라면 수정 후 전체 perf를 재실행한다.
-- 이번 호출에서 `core/` 코드 변경이 있었다면 full perf 무실패 확인 전에는 "더 리팩토링할 항목이 없다"는 구조 판단만으로 종료하지 않는다.
-- baseline 비교 로그가 있더라도 현재 개발 단계에서는 참고 자료로만 남기고, 종료 차단 기준은 full perf 무실패 여부로 둔다.
+- 이번 실행에서 `core/` 코드 변경이 있었다면 full perf 무실패 확인 전에는 "더 리팩토링할 항목이 없다"는 구조 판단만으로 종료하지 않는다.
+- baseline 비교 로그가 있더라도 현재 운영 기준에서는 참고 자료로만 남기고, 종료 차단 기준은 full perf 무실패 여부로 둔다.
 
 서비스 구조 변경 시 최종 단계 권장 추가 검증:
 
@@ -517,15 +547,15 @@ ctest --test-dir core/build --output-on-failure
 
 루프는 아래 조건을 모두 만족할 때만 종료할 수 있다.
 
-1. 현재 세션 로그의 작업 레지스터 항목이 모두 `완료` 또는 `보류-정당화됨` 상태다.
-2. 남은 후보가 있더라도 성능 리스크가 구조 이익보다 커서 지금 당장 손대지 않는 이유가 문서에 적혀 있다.
+1. 현재 세션 로그의 작업 레지스터 항목이 모두 `완료` 또는 진짜 blocker가 있는 `보류-정당화됨` 상태다.
+2. 남은 POSD 후보가 있다면 계약/환경 blocker로만 보류되어 있고, 복잡도나 성능 우려만을 이유로 남겨 둔 항목은 없다.
 3. 새 기능 추가 시 반복 수정이 필요한 구조 허브가 더 이상 명확한 우선순위로 남아 있지 않다.
 4. `4.2 종료 전 반복 리뷰 계약`의 종료 리뷰 패스를 수행했고, 두 번 연속 새 허브가 추가되지 않았다.
 5. 반복 리뷰 과정에서 발견된 후보는 모두 세션 로그에 반영됐고, 세션 로그 밖에 남겨둔 미기록 후보가 없다.
 6. 최근 iteration에서 문서 갱신 없이 바로 손댈 만한 POSD 후보를 더 제시하기 어렵다.
-7. 이번 호출에서 정리 대상 slice에 속한 dead code, dead branch, dead file이 남아 있지 않다.
+7. 이번 실행에서 정리 대상 slice에 속한 dead code, dead branch, dead file이 남아 있지 않다.
 8. 현재 `core/build/` 기준 전체 테스트가 통과한다.
-9. 이번 호출에서 `core/` 코드 변경이 있었다면, 더 이상 진행할 리팩토링이 없다고 판단된 뒤에 수행한 `core/perf` 전체 패턴/전체 사이즈 실행이 실패 없이 완료된다.
+9. 이번 실행에서 `core/` 코드 변경이 있었다면, 더 이상 진행할 리팩토링이 없다고 판단된 뒤에 수행한 `core/perf` 전체 패턴/전체 사이즈 실행이 실패 없이 완료된다.
 
 위 조건들을 만족하면 정확히 아래 한 줄만 출력한다.
 
@@ -542,33 +572,33 @@ ctest --test-dir core/build --output-on-failure
 종료 판정 해석:
 
 - 이번 종료는 "현재 코드 상태에서 즉시 손댈 가치가 큰 POSD 후보가 없다"는 뜻이다.
-- 이후 큰 기능 변경이 들어오면 이 문서를 다시 호출해 종료 판정을 새로 계산한다.
-- 따라서 `미적용 사항이 없습니다.` 는 영구 종료가 아니라, 현재 코드 상태에 대한 일시적 종료다.
+- 이후 다음 개발 사이클이 정리되면 이 문서를 다시 실행해 종료 판정을 새로 계산한다.
+- 따라서 `미적용 사항이 없습니다.` 는 영구 종료가 아니라, 이번 개발 사이클의 현재 코드 상태에 대한 일시적 종료다.
 - 단, 이 종료 해석은 전체 테스트 통과가 확인된 경우에만 유효하다.
 - 그리고 `core/perf` full gate는 마지막 종료 직전에만 수행한다.
-- 다만 이번 호출에서 `core/` 코드 변경이 없으면 full perf gate 없이 종료할 수 있다.
-- 이번 호출에서 `core/` 코드 변경이 있었다면 full perf 무실패 확인 전에는 종료를 확정하지 않는다.
+- 다만 이번 실행에서 `core/` 코드 변경이 없으면 full perf gate 없이 종료할 수 있다.
+- 이번 실행에서 `core/` 코드 변경이 있었다면 full perf 무실패 확인 전에는 종료를 확정하지 않는다.
 - 또한 종료 직전의 반복 리뷰 2회 중 어느 한 번에서라도 새 허브가 보이면 즉시 종료 후보를 취소하고 `계속 진행 필요`로 되돌린다.
 
 ## 7.1 커밋/푸시 규칙
 
-이번 호출에서 커밋과 푸시는 아래 조건이 모두 맞을 때만 수행한다.
+이번 실행에서 커밋과 푸시는 아래 조건이 모두 맞을 때만 수행한다.
 
 1. `7. 종료 판정` 조건이 먼저 충족됐다.
 2. 현재 `core/build/` 기준 전체 테스트가 통과했다.
-3. 이번 호출에서 `core/` 실코드 변경이 있었다면 final perf gate까지 완료됐다.
+3. 이번 실행에서 `core/` 실코드 변경이 있었다면 final perf gate까지 완료됐다.
 
 해석 규칙:
 
 - 중간 iteration에서는 커밋/푸시를 하지 않는다.
 - final perf gate가 남아 있으면 코드와 문서가 좋아 보여도 아직 커밋/푸시 단계가 아니다.
-- 이번 호출에서 `core/` 실코드 변경이 없어서 final perf gate가 생략된 경우에만 전체 테스트 확인 후 커밋/푸시할 수 있다.
+- 이번 실행에서 `core/` 실코드 변경이 없어서 final perf gate가 생략된 경우에만 전체 테스트 확인 후 커밋/푸시할 수 있다.
 - 사용자가 명시적으로 중간 저장용 커밋을 요구한 경우만 예외로 둔다.
 
 ## 8. 작업 레지스터
 
 이 섹션은 본문에 특정 실행 회차의 상태표를 오래 유지하기 위한 공간이 아니다.
-가이드 본문은 재호출 가능한 authority를 유지하고,
+가이드 본문은 주기 실행 가능한 기준 문서를 유지하고,
 실제 `완료/진행중/미착수`와 검증 증거는 각 실행 세션 로그 파일에 둔다.
 
 기본 위치:
@@ -579,13 +609,13 @@ core/tools/refactor/logs/
 
 권장 방식:
 
-- 실행을 시작할 때 해당 호출 전용 세션 로그 파일을 하나 만든다.
-- 현재 iteration들이 읽고 갱신하는 authority는 그 호출에서 처음 정한 단 하나의 세션 로그 파일이다.
-- 실행 중 다른 로그 파일이 추가로 생겨도, 현재 호출의 작업 레지스터 authority를 중간에 바꾸지 않는다.
+- 실행을 시작할 때 해당 실행 전용 세션 로그 파일을 하나 만든다.
+- 현재 iteration들이 읽고 갱신하는 기준 로그는 그 실행에서 처음 정한 단 하나의 세션 로그 파일이다.
+- 실행 중 다른 로그 파일이 추가로 생겨도, 현재 실행의 작업 레지스터 기준 로그를 중간에 바꾸지 않는다.
 - 현재 회차의 우선순위, 상태, 검증 증거, 메모는 그 세션 로그 안에서만 갱신한다.
 - 가이드 본문에는 특정 회차의 완료/착수 상태를 고정해서 남기지 않는다.
-- 다음 큰 기능 변경 후 재호출할 때는 예전 세션 로그를 참고하되, 새 세션 로그에서 우선순위를 다시 잡는다.
-- 예전 세션 로그의 `완료` 표시는 참고 자료일 뿐이며, 실제 완료 여부의 authority는 현재 코드다.
+- 다음 개발 사이클에서 다시 실행할 때는 예전 세션 로그를 참고하되, 새 세션 로그에서 우선순위를 다시 잡는다.
+- 예전 세션 로그의 `완료` 표시는 참고 자료일 뿐이며, 실제 완료 여부의 기준은 현재 코드다.
 
 상태 값은 아래만 사용한다.
 
@@ -598,15 +628,16 @@ core/tools/refactor/logs/
 표 갱신 규칙:
 
 - 새 허브를 찾으면 즉시 행을 추가한다.
-- `보류-정당화됨`은 성능 리스크 또는 계약 리스크가 근거와 함께 기록된 경우에만 쓴다.
+- `보류-정당화됨`은 공개 계약 판단 불분명, 사용자 변경 충돌, 환경 blocker처럼 로컬에서 해소할 수 없는 사유가 근거와 함께 기록된 경우에만 쓴다.
+- 성능 리스크나 구현 복잡도만으로는 `보류-정당화됨`을 쓰지 않는다. 이 경우에는 다음 slice 방향을 적고 계속 진행한다.
 - `완료`에는 반드시 검증 증거를 적는다.
 - 최종 종료 전의 `완료` 항목은 perf 미실행일 수 있으며, 이 경우 `검증 증거` 또는 `메모` 칸에 "final perf gate 이전 단계라서 미실행" 사유를 적는다.
-- 큰 기능 변경 뒤 재호출했다면 `메모` 칸에 어떤 기능 변경 이후 재평가인지 적는다.
+- 개발 완료 후 다시 실행했다면 `메모` 칸에 어떤 기능 변경 이후 재평가인지 적는다.
 - 예전 세션의 `완료` 항목이라도 현재 코드에서 다시 허브화됐으면 상태를 되돌린다.
-- 세션 로그 표의 우선순위는 고정 번호가 아니라 현재 시점 우선순위다. 재호출 시 재정렬을 허용한다.
+- 세션 로그 표의 우선순위는 고정 번호가 아니라 현재 시점 우선순위다. 다음 실행 시 재정렬을 허용한다.
 
 현재 세션 상태표는 이 가이드 본문에 고정하지 않는다.
-실제 상태 authority는 현재 호출의 세션 로그 파일 하나뿐이다.
+실제 상태 기준은 현재 실행의 세션 로그 파일 하나뿐이다.
 
 세션 로그에 넣을 표 형식 템플릿:
 
@@ -635,7 +666,7 @@ core/tools/refactor/logs/
 15. 현재 세션 로그의 작업 레지스터를 갱신한다.
 16. 더 남아 있으면 `계속 진행 필요`, 없으면 `미적용 사항이 없습니다.`를 출력한다.
 
-재호출 세션의 첫 iteration에서는 아래 두 단계를 먼저 앞에 추가한다.
+다음 실행의 첫 iteration에서는 아래 두 단계를 먼저 앞에 추가한다.
 
 1. 최근 큰 기능 변경이 무엇이었는지 `메모` 또는 새 행으로 적는다.
 2. 기존 세션 로그 표의 우선순위와 상태를 현재 코드 기준으로 다시 정렬한다.
@@ -652,13 +683,15 @@ core/tools/refactor/logs/
 - 새 module은 상위가 알아야 할 사실을 줄일 때만 추가한다.
 - 더 적은 수정 지점, 더 짧은 설명, 더 선명한 ownership이 없으면 분리를 재검토한다.
 - 이름이 일반적일수록 책임이 흐려지기 쉽다. 가능한 한 policy, runtime, ownership, dispatch처럼 숨기는 복잡도를 이름에 드러낸다.
+- 규모가 크다는 이유로 목표를 낮추지 않는다. 전체 방향이 맞다면 여러 slice로 나눠서 끝까지 밀어 붙인다.
+- 가능하면 cold/control path를 더 깊게 만들면서 hot path 비용도 같이 줄이는 방향을 먼저 찾는다.
 
 ### 10.1 ownership 허브
 
 - 한 기능을 추가할 때 수정 지점이 여러 switch, 여러 owner map, 여러 wrapper로 퍼져 있으면 먼저 의심한다.
 - 목표는 "새 정책 추가 시 수정 위치 수"를 줄이는 것이다.
 - 좋은 결과는 상위가 handle 종류와 ownership 판정을 덜 알게 되는 것이다.
-- 단, hot path read 비용이나 기본 dispatch 비용을 늘리는 구조면 보류한다.
+- 단, hot path read 비용이나 기본 dispatch 비용을 늘리는 구조면 손대지 않는 것이 아니라 경계를 다시 잘라 hot path 밖으로 밀어내는 방향으로 재설계한다.
 - 새 ownership 경계를 세웠다면 더 이상 필요 없는 옛 owner helper, forwarding path, 분산된 stale 분기는 같은 단계에서 제거한다.
 
 ### 10.2 transport/policy 중복 허브
@@ -677,6 +710,45 @@ core/tools/refactor/logs/
 - 단, fail-fast 의미나 shutdown semantics, steady-state path 비용은 유지해야 한다.
 - 분리 이후 더 이상 도달하지 않는 old runtime path나 obsolete 파일은 같은 단계에서 삭제한다.
 
+### 10.4 잔여 후보 재점검 예시
+
+이 절은 특정 세션의 상태표가 아니며,
+`1.2`의 참고 문서들과 현재 코드를 다시 읽을 때
+빠뜨리기 쉬운 잔여 후보 축을 재점검하기 위한 예시 목록이다.
+
+현재 코드에서 자주 다시 보는 재점검 축:
+
+1. `socket_base_t` residual split
+   - monitor/dispatch/lifecycle/endpoint 상태 중 `socket_base_t`가 직접 쥔 잔여 owner를 더 깊은 runtime owner로 민다.
+   - 현재 코드 기준으로 monitor ready peer, endpoint bookkeeping, recv throttle, send-ready sequencing, deferred close handoff의 async mailbox quiesce/clear-signalers 절차, public API admission scope/lock sequencing, callback depth/deferred close admission, send-ready self-close admission, `monitor queue/thread`와 common monitor worker sequencing까지 runtime owner 쪽으로 이동했다. 이 축은 `socket_base_t`에 semantic facade 밖 direct owner touch가 다시 생겼는지 재점검하는 용도로만 다시 연다.
+2. message API domain dispatch 재편
+   - `socket_message_api.cpp`는 domain dispatch facade만 남기고, 실제 owner는 recv/send 역할별 private entry로 나눈다.
+   - 현재 코드 기준으로 raw recv/xpub owner는 `socket_message_recv_api.cpp`, socket send/publish owner는 `socket_message_send_api.cpp` + `socket_message_api_internal.hpp` private entry로 이동했다. top-level public entry는 socket/service domain dispatch만 남기고, generic service send/send_rid/publish fallback과 stream/router/pub route-specific validation은 send owner 안으로 접었다.
+3. `ctx_t` runtime orchestration 재정리
+   - registry + termination contract owner를 유지하면서 bootstrap/resource sequencing detail을 더 숨긴다.
+   - 현재 코드 기준으로 socket slot bookkeeping과 removal wait owner는 `ctx_socket_registry_t`로, inproc endpoint registry와 pending connection orchestration은 `ctx_inproc_registry_t`로, io-thread vector/selection cursor와 affinity-aware chooser detail은 `ctx_io_thread_registry_t`로, reaper/`service_control_runtime`/io-thread pool의 startup/shutdown/resource sequencing detail은 `ctx_runtime_resources_t`로 이동했다. 이 축은 `ctx_t`/`ctx_bootstrap_t`/`ctx_termination_t`가 semantic facade 밖 raw runtime resource lifecycle detail을 다시 직접 쥐는지 재점검하는 용도로만 다시 연다.
+4. `spot` secure multi-peer current owner 축소
+   - `spot_data_plane_internal.hpp`, `spot_data_plane_runtime.cpp`, `spot_node_control.cpp` 경계에서 `mesh_pub` live budget / secure publish path owner를 더 좁힌다.
+   - 현재 코드 기준으로 transport-sensitive `mesh_pub` budget/HWM policy와 live-socket refresh owner는 `spot_mesh_pub_budget_t`로 이동했고, runtime wiring은 `spot_data_plane_runtime.cpp`, ready-peer hint emission은 `spot_node_control.cpp` facade만 남겼다. multi-peer 기본 budget은 `wss -> 128`, `tls -> 768`, plain `tcp/ws -> 64`로 좁혔고, `ready peer count`는 계속 private runtime owner에 기록하되 live refresh는 `effective budget` 변화가 있을 때만 다시 일어나게 정리했다. 후속 final gate 재검증에서 failure surface는 secure tuple만이 아니라 `test_multi_spot_benchmark_process`의 shortest recv smoke와 large secure subprocess timeout으로 다시 좁혀졌고, 현재 코드에서는 `spot_sub_recv.cpp` recv path frame owner를 move-owner로 정리한 뒤 `test_multi_spot_benchmark_process` 3회 반복, lane preflight, final stress+lane gate(`core/tools/refactor/logs/posd_perf_first_gate_20260326_210806.log`, `core/tools/refactor/logs/posd_perf_first_gate_next_20260326_210806.log`)까지 다시 green이다.
+5. service residual ownership 마감
+   - `spot_data_plane`, `registry`, `spot_subject_access`를 다시 읽고 runtime/policy/query/state owner를 문장 하나로 설명 가능한 수준까지 정리한다.
+   - 현재 코드 기준으로 `spot_data_plane.cpp`의 poller/pass-dispatch loop owner는 `spot_data_plane_loop_t`로, `registry.cpp`의 bind/id/peer/socket-option/status owner와 router ack/bootstrap/topology report control-path owner는 `registry_config.cpp`, `registry_control.cpp`로, `spot_subject_access.cpp`의 handler registry와 callback/send-ready admission owner는 `spot_subject_handler.cpp`로 이동했다. 이 축은 현재 코드 기준으로 반영됐다고 판단하며, 다음 첫 미완료 항목은 6번 `options_t` ownership 축 마감이다.
+6. `options_t` ownership 축 마감
+   - storage bag은 유지하되 validation/apply owner가 central hub처럼 읽히지 않게 더 좁힌다.
+   - 현재 코드 기준으로 shared-bag internal owner map은 `core/src/core/options_owner.cpp`에 남기되, `monitor_event_version`, hello/disconnect/hiccup, `busy_poll` 같은 implicit bag field owner는 `option_owner_of_bag_field()`, public typed option surface owner는 `common_option_owner_of()` / `router_option_owner_of()` / `dealer_option_owner_of()` / `stream_option_owner_of()` / `pub_option_owner_of()` / `sub_option_owner_of()`로 분리해 code/document/test에 모두 명시했다. `XPUB_MANUAL_LAST_VALUE`처럼 internal numeric id가 shared-bag option과 겹치는 경우도 service/socket seam owner로 따로 설명되게 정리했고, 다음 첫 미완료 항목은 7번 top-level service facade 정리다.
+7. top-level service facade 정리
+   - `spot_node_t`, `discovery_t`가 coordinator 이상의 세부 owner를 직접 쥐지 않게 정리한다.
+   - 현재 코드 기준으로 `spot_node.cpp` 상단의 stale helper/control-path duplicate static policy는 제거됐고, `discovery_t`의 local value/metadata/metadata-max-size owner는 `discovery_local_state_t`로, provider snapshot/update-seq/observer coordination state owner는 `discovery_service_state_t`로 이동했다. `set_option/get_option`, `set_value/get_value`, `set_metadata/get_metadata`, member-query wrapper는 state owner TU로, provider update/observer sequencing은 `discovery_update.cpp`가 아니라 private state owner로 더 좁혔다. 이 축은 representative gate 재실행과 push commit `756e54b4`까지 완료됐고, 다음 첫 미완료 항목은 8번 engine/transport large-file owner 리뷰와 그 뒤 최종 gate다.
+8. engine/transport large-file owner 리뷰
+   - `asio_engine.cpp`, `asio_ws_engine.cpp`와 실제 large file 중 owner 설명이 약한 축만 선별해 정리한다.
+   - 현재 코드 기준으로 `asio_engine_t`는 backend-common async runtime, handshake, timer, stream fast-path tuning owner이고 `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution owner다. representative smoke `test_stream_fastpath`, `test_spot_pubsub_scenario_peer_wss`와 ABI 무변경 확인 기준으로 새 구조 phase를 열 giant owner로는 승격하지 않았다. 최신 final lane gate도 다시 green이며, 현재 코드/가이드/마스터 플랜 재대조 기준으로 추가 구현 미완료 항목은 남아 있지 않다.
+
+적용 규칙:
+
+- 위 목록은 예시이며 고정 우선순위도, 완전한 목록도 아니다. 더 큰 허브가 현재 코드에서 새로 보이면 그 항목을 먼저 올린다.
+- 위 항목 중 이미 코드에 반영됐는지 애매하면 테스트 통과만 근거로 완료 처리하지 말고, 상위가 덜 알아도 되는지와 수정 지점 수가 줄었는지를 다시 확인한다.
+- `4.2` 종료 전 반복 리뷰에서도 위 8개 축을 다시 대조해 새 허브가 없는지 확인한다.
+
 ## 11. 로그와 산출물
 
 기본 로그 디렉터리는 아래로 고정한다.
@@ -689,8 +761,8 @@ core/tools/refactor/logs/
 
 - 어떤 허브를 줄였는지
 - 어떤 테스트/게이트로 확인했는지
-- 성능 이유로 무엇을 보류했는지
-- 이번 호출이 어떤 큰 기능 변경 이후에 수행됐는지
+- 성능을 고려해 어떤 방향으로 slice를 잡았는지
+- 이번 실행이 어떤 개발 변경 묶음 이후에 수행됐는지
 
 게이트/성능 로그 규칙:
 
@@ -705,7 +777,7 @@ core/tools/refactor/logs/
 최종 목표는 아래 한 줄이다.
 
 ```text
-성능을 지키는 수준이 아니라, 성능 핵심 경로 비용을 늘리지 않으면서 다음 변경이 더 적은 파일과 더 적은 개념으로 끝나는 core를 만든다.
+성능을 지키는 수준이 아니라, 성능 핵심 경로 비용을 개선하거나 최소한 늘리지 않으면서 다음 변경이 더 적은 파일과 더 적은 개념으로 끝나는 core를 만든다.
 ```
 
 이 문서에서 POSD 성공은 아래처럼 해석한다.
@@ -717,8 +789,8 @@ core/tools/refactor/logs/
 
 위 마지막 조건이 빠지면, 이 저장소에서는 POSD가 "설명상 그럴듯한 리팩토링"에 머문 것으로 본다.
 
-그리고 이 원칙은 반복 호출을 전제로 한다.
+그리고 이 원칙은 개발 완료 후 주기 실행을 전제로 한다.
 
-- 큰 기능 변경이 들어오면 다시 이 문서를 호출한다.
+- 개발 작업이 한 차례 끝나면 다시 이 문서를 실행한다.
 - 그 시점의 baseline과 허브 우선순위를 새로 잡는다.
 - 다시 "지금 시점에 더 손댈 가치가 큰 POSD 후보가 없다"는 상태까지 밀어 붙인다.

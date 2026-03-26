@@ -9,7 +9,6 @@
 namespace
 {
 thread_local zlink::socket_base_t *g_current_socket_msg_dispatch_socket = NULL;
-thread_local zlink::socket_base_t *g_current_send_ready_dispatch_socket = NULL;
 thread_local zlink::pipe_t *g_current_socket_msg_dispatch_pipe = NULL;
 thread_local void *g_current_socket_msg_dispatch_subject = NULL;
 thread_local zlink_routing_id_t g_current_socket_msg_dispatch_source_rid;
@@ -72,22 +71,21 @@ int zlink::socket_base_t::socket_set_msg_handler_ex (
 int zlink::socket_base_t::socket_set_msg_handler_with_userdata (
   zlink_socket_msg_handler_fn handler_, void *subject_, void *userdata_)
 {
-    if (!enter_public_api ())
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
+    socket_public_api_scope_t admission (lifecycle);
+    if (!admission.acquired ())
         return -1;
     if (!handler_) {
-        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
     if (socket_msg_dispatch_active ()) {
-        leave_public_api ();
         errno = EBUSY;
         return -1;
     }
 
     io_thread_t *io_thread = choose_io_thread (options.affinity);
     if (!io_thread) {
-        leave_public_api ();
         errno = EAGAIN;
         return -1;
     }
@@ -105,10 +103,8 @@ int zlink::socket_base_t::socket_set_msg_handler_with_userdata (
           NULL, std::memory_order_release);
         dispatch_runtime ().socket_msg_handler_userdata.store (
           NULL, std::memory_order_release);
-        leave_public_api ();
         return -1;
     }
-    leave_public_api ();
     return 0;
 }
 
@@ -145,15 +141,15 @@ int zlink::socket_base_t::socket_set_spot_handler (
 int zlink::socket_base_t::socket_set_spot_handler_with_userdata (
   zlink_subscribe_handler_fn handler_, void *userdata_)
 {
-    if (!enter_public_api ())
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
+    socket_public_api_scope_t admission (lifecycle);
+    if (!admission.acquired ())
         return -1;
     if (!handler_) {
-        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
     if (sub_dispatch_active ()) {
-        leave_public_api ();
         errno = EBUSY;
         return -1;
     }
@@ -165,7 +161,6 @@ int zlink::socket_base_t::socket_set_spot_handler_with_userdata (
 
     const int rc =
       sub_dispatch_start (&socket_base_t::dispatch_spot_handler_from_io, this);
-    leave_public_api ();
     return rc;
 }
 
@@ -185,29 +180,21 @@ int zlink::socket_base_t::socket_set_send_ready_handler_ex (
 int zlink::socket_base_t::socket_set_send_ready_handler_with_userdata (
   zlink_send_ready_handler_fn handler_, void *subject_, void *userdata_)
 {
-    if (!enter_public_api ())
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
+    socket_public_api_scope_t admission (lifecycle);
+    if (!admission.acquired ())
         return -1;
     if (!handler_) {
-        leave_public_api ();
         errno = EINVAL;
         return -1;
     }
-    if (send_ready_dispatch_in_callback ()) {
-        leave_public_api ();
+    if (socket_send_ready_dispatch_scope_t::dispatching_socket (this)) {
         errno = EDEADLK;
         return -1;
     }
 
     dispatch_bridge_t &dispatch = dispatch_runtime ();
-    scoped_lock_t writer_lock (dispatch.send_ready_writer_sync);
-    dispatch.send_ready_seq.fetch_add (1, std::memory_order_acq_rel);
-    dispatch.send_ready_handler.store (handler_, std::memory_order_release);
-    dispatch.send_ready_handler_subject.store (subject_,
-                                               std::memory_order_release);
-    dispatch.send_ready_handler_userdata.store (userdata_,
-                                                std::memory_order_release);
-    dispatch.send_ready_seq.fetch_add (1, std::memory_order_acq_rel);
-    leave_public_api ();
+    dispatch.store_send_ready_handler (handler_, subject_, userdata_);
     return 0;
 }
 
@@ -234,7 +221,7 @@ zlink::socket_base_t::current_socket_msg_dispatch_socket ()
 zlink::socket_base_t *
 zlink::socket_base_t::current_send_ready_dispatch_socket ()
 {
-    return g_current_send_ready_dispatch_socket;
+    return socket_send_ready_dispatch_scope_t::current_socket ();
 }
 
 zlink::pipe_t *zlink::socket_base_t::current_socket_msg_dispatch_pipe ()
@@ -256,29 +243,21 @@ bool zlink::socket_base_t::current_socket_msg_dispatch_source_rid (
     return true;
 }
 
-bool zlink::socket_base_t::send_ready_dispatch_in_callback () const
-{
-    return g_current_send_ready_dispatch_socket == this;
-}
-
 void zlink::socket_base_t::invoke_send_ready_handler_for_testing ()
 {
     zlink_send_ready_handler_fn handler = NULL;
     void *subject = NULL;
-    if (!send_ready_slot (&handler, &subject))
+    void *userdata = NULL;
+    if (!dispatch_runtime ().load_send_ready_handler (&handler, &subject,
+                                                      &userdata))
         return;
 
-    if (!enter_callback_api ())
+    socket_callback_scope_t callback_scope (this, lifecycle_coordinator ());
+    if (!callback_scope.acquired ())
         return;
 
-    void *userdata =
-      dispatch_runtime ().send_ready_handler_userdata.load (
-        std::memory_order_acquire);
-    socket_base_t *previous = g_current_send_ready_dispatch_socket;
-    g_current_send_ready_dispatch_socket = this;
+    socket_send_ready_dispatch_scope_t dispatch_scope (this);
     handler (subject ? subject : this, userdata);
-    g_current_send_ready_dispatch_socket = previous;
-    leave_callback_api ();
 }
 
 zlink_socket_msg_handler_fn zlink::socket_base_t::socket_msg_handler () const
@@ -297,7 +276,9 @@ zlink::socket_base_t::socket_send_ready_handler () const
 {
     zlink_send_ready_handler_fn handler = NULL;
     void *subject = NULL;
-    if (!send_ready_slot (&handler, &subject))
+    void *userdata = NULL;
+    if (!dispatch_runtime ().load_send_ready_handler (&handler, &subject,
+                                                      &userdata))
         return NULL;
     return handler;
 }
@@ -324,15 +305,22 @@ void *zlink::socket_base_t::socket_send_ready_handler_subject () const
 {
     zlink_send_ready_handler_fn handler = NULL;
     void *subject = NULL;
-    if (!send_ready_slot (&handler, &subject))
+    void *userdata = NULL;
+    if (!dispatch_runtime ().load_send_ready_handler (&handler, &subject,
+                                                      &userdata))
         return NULL;
     return subject;
 }
 
 void *zlink::socket_base_t::socket_send_ready_handler_userdata () const
 {
-    return dispatch_runtime ().send_ready_handler_userdata.load (
-      std::memory_order_acquire);
+    zlink_send_ready_handler_fn handler = NULL;
+    void *subject = NULL;
+    void *userdata = NULL;
+    if (!dispatch_runtime ().load_send_ready_handler (&handler, &subject,
+                                                      &userdata))
+        return NULL;
+    return userdata;
 }
 
 void zlink::socket_base_t::invoke_socket_msg_handler (
@@ -341,7 +329,8 @@ void zlink::socket_base_t::invoke_socket_msg_handler (
   zlink_msg_t *parts_,
   size_t part_count_)
 {
-    if (!enter_callback_api ()) {
+    socket_callback_scope_t callback_scope (this, lifecycle_coordinator ());
+    if (!callback_scope.acquired ()) {
         for (size_t i = 0; i < part_count_; ++i) {
             const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
             errno_assert (rc == 0);
@@ -377,7 +366,6 @@ void zlink::socket_base_t::invoke_socket_msg_handler (
                 sizeof (g_current_socket_msg_dispatch_source_rid));
         g_current_socket_msg_dispatch_source_rid_valid = false;
     }
-    leave_callback_api ();
 }
 
 void zlink::socket_base_t::close_socket_msg_parts (
@@ -427,33 +415,18 @@ void zlink::socket_base_t::store_last_recv_source_rid (pipe_t *pipe_)
 void zlink::socket_base_t::store_last_recv_source_rid (
   const zlink_routing_id_t *source_rid_)
 {
-    if (!source_rid_) {
-        clear_last_recv_source_rid ();
-        return;
-    }
-
-    endpoint_runtime ().last_recv_source_rid = *source_rid_;
-    endpoint_runtime ().last_recv_source_rid_valid = true;
+    endpoint_runtime ().store_last_recv_source_rid (source_rid_);
 }
 
 void zlink::socket_base_t::clear_last_recv_source_rid ()
 {
-    memset (&endpoint_runtime ().last_recv_source_rid, 0,
-            sizeof (endpoint_runtime ().last_recv_source_rid));
-    endpoint_runtime ().last_recv_source_rid_valid = false;
+    endpoint_runtime ().clear_last_recv_source_rid ();
 }
 
 bool zlink::socket_base_t::copy_last_recv_source_rid (
   zlink_routing_id_t *out_) const
 {
-    if (out_)
-        memset (out_, 0, sizeof (*out_));
-
-    if (!endpoint_runtime ().last_recv_source_rid_valid || !out_)
-        return false;
-
-    *out_ = endpoint_runtime ().last_recv_source_rid;
-    return true;
+    return endpoint_runtime ().copy_last_recv_source_rid (out_);
 }
 
 void zlink::socket_base_t::dispatch_spot_handler_from_io (
@@ -482,7 +455,9 @@ void zlink::socket_base_t::dispatch_spot_handler_from_io (
         return;
     }
 
-    if (!self->enter_callback_api ()) {
+    socket_callback_scope_t callback_scope (self,
+                                            self->lifecycle_coordinator ());
+    if (!callback_scope.acquired ()) {
         for (size_t i = 0; i < part_count_; ++i) {
             const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
             errno_assert (rc == 0);
@@ -492,26 +467,19 @@ void zlink::socket_base_t::dispatch_spot_handler_from_io (
 
     handler (source_rid_, topic_, topic_len_, parts_, part_count_,
              self->socket_spot_handler_userdata ());
-    self->leave_callback_api ();
 }
 
 void zlink::socket_base_t::arm_send_ready_notification ()
 {
-    if (socket_send_ready_handler ())
-        dispatch_runtime ().send_ready_armed.store (true,
-                                                    std::memory_order_release);
+    dispatch_runtime ().arm_send_ready_notification ();
 }
 
 void zlink::socket_base_t::notify_send_ready_if_armed ()
 {
-    if (!dispatch_runtime ().send_ready_armed.load (std::memory_order_acquire)
-        || !has_out ())
+    if (!has_out ())
         return;
 
-    bool expected = true;
-    if (!dispatch_runtime ().send_ready_armed.compare_exchange_strong (
-          expected, false, std::memory_order_acq_rel,
-          std::memory_order_acquire))
+    if (!dispatch_runtime ().consume_send_ready_notification ())
         return;
 
     zlink_send_ready_handler_fn handler = socket_send_ready_handler ();

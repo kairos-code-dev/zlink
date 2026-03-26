@@ -117,11 +117,16 @@ int zlink_close (void *s_)
             return 0;
         }
 
+        const bool monitor_dispatch_detached =
+          !monitor_state->socket_handler.load (std::memory_order_acquire)
+          && !monitor_state->service_handler.load (std::memory_order_acquire);
         if (monitor_state->close_requested.load (std::memory_order_acquire)
             || monitor_state->callback_depth.load (std::memory_order_acquire)
                  > 0) {
-            errno = EBUSY;
-            return -1;
+            if (!monitor_dispatch_detached) {
+                errno = EBUSY;
+                return -1;
+            }
         }
     }
 

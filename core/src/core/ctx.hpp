@@ -9,6 +9,9 @@
 #include <stdarg.h>
 
 #include "core/mailbox.hpp"
+#include "core/ctx_inproc_registry.hpp"
+#include "core/ctx_runtime_resources.hpp"
+#include "core/ctx_socket_registry.hpp"
 #include "utils/array.hpp"
 #include "utils/config.hpp"
 #include "utils/mutex.hpp"
@@ -28,15 +31,6 @@ class pipe_t;
 class service_control_runtime_t;
 class ctx_bootstrap_t;
 class ctx_termination_t;
-
-//  Information associated with inproc endpoint. Note that endpoint options
-//  are registered as well so that the peer can access them without a need
-//  for synchronisation, handshaking or similar.
-struct endpoint_t
-{
-    socket_base_t *socket;
-    options_t options;
-};
 
 class thread_ctx_t
 {
@@ -153,25 +147,8 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     bool start ();
     void debug_dump_sockets_locked (const char *phase_) const;
 
-    struct pending_connection_t
-    {
-        endpoint_t endpoint;
-        pipe_t *connect_pipe;
-        pipe_t *bind_pipe;
-    };
-
     //  Used to check whether the object is a context.
     uint32_t _tag;
-
-    //  Sockets belonging to this context. We need the list so that
-    //  we can notify the sockets when zlink_ctx_term() is called.
-    //  The sockets will return ETERM then.
-    typedef array_t<socket_base_t> sockets_t;
-    sockets_t _sockets;
-
-    //  List of unused thread slots.
-    typedef std::vector<uint32_t> empty_slots_t;
-    empty_slots_t _empty_slots;
 
     //  If true, zlink_ctx_new has been called but no socket has been created
     //  yet. Launching of I/O threads is delayed.
@@ -185,33 +162,13 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  access to zombie sockets as such (as opposed to slots) and provides
     //  a memory barrier to ensure that all CPU cores see the same data.
     mutex_t _slot_sync;
-    condition_variable_t _socket_state_cv;
-
-    //  The reaper thread.
-    zlink::reaper_t *_reaper;
-    service_control_runtime_t *_service_control_runtime;
-
-    //  I/O threads.
-    typedef std::vector<zlink::io_thread_t *> io_threads_t;
-    io_threads_t _io_threads;
-
-    //  Array of pointers to mailboxes for both application and I/O threads.
-    std::vector<i_mailbox *> _slots;
+    ctx_socket_registry_t _socket_registry;
 
     //  Mailbox for zlink_ctx_term thread.
     mailbox_t _term_mailbox;
 
-    //  List of inproc endpoints within this context.
-    typedef std::map<std::string, endpoint_t> endpoints_t;
-    endpoints_t _endpoints;
-
-    // List of inproc connection endpoints pending a bind
-    typedef std::multimap<std::string, pending_connection_t>
-      pending_connections_t;
-    pending_connections_t _pending_connections;
-
-    //  Synchronisation of access to the list of inproc endpoints.
-    mutex_t _endpoints_sync;
+    ctx_inproc_registry_t _inproc_registry;
+    ctx_runtime_resources_t _runtime_resources;
 
     //  Maximum socket ID.
     static atomic_counter_t max_socket_id;
@@ -225,13 +182,6 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  Number of I/O threads to launch.
     int _io_thread_count;
 
-    //  Tie-breaker cursor for distributing connections across I/O threads
-    //  when reported load is equal (common in ASIO path).
-    atomic_counter_t _next_io_thread;
-
-    //  Dedicated cursor for STREAM round-robin scheduling.
-    atomic_counter_t _next_stream_io_thread;
-
     //  Does context wait (possibly forever) on termination?
     bool _blocky;
 
@@ -244,18 +194,6 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     // the process that created this context. Used to detect forking.
     pid_t _pid;
 #endif
-    enum side
-    {
-        connect_side,
-        bind_side
-    };
-
-    static void
-    connect_inproc_sockets (zlink::socket_base_t *bind_socket_,
-                            const options_t &bind_options_,
-                            const pending_connection_t &pending_connection_,
-                            side side_);
-
 };
 }
 

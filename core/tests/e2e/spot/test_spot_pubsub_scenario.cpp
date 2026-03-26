@@ -46,6 +46,7 @@ int main (int, char **)
     RUN_SPOT_TEST (test_spot_peer_ws);
     RUN_SPOT_TEST (test_spot_peer_tls);
     RUN_SPOT_TEST (test_spot_peer_wss);
+    RUN_SPOT_TEST (test_spot_sub_delivery_ready_immediate_first_publish);
     RUN_SPOT_TEST (test_spot_unified_wss_subscription_ready_first_delivery);
     RUN_SPOT_TEST (test_spot_multi_publisher);
     RUN_SPOT_TEST (test_spot_same_handle_concurrent_publish);

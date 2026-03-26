@@ -23,8 +23,6 @@
 #include "core/pipe.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "utils/err.hpp"
-#include "utils/clock.hpp"
-#include "core/msg.hpp"
 #include "utils/random.hpp"
 
 #ifdef ZLINK_USE_NSS
@@ -50,26 +48,6 @@ static int clipped_maxsocket (int max_requested_)
 
 namespace
 {
-enum stream_sched_mode_t
-{
-    stream_sched_minload = 0,
-    stream_sched_rr = 1
-};
-
-stream_sched_mode_t parse_stream_session_sched_mode ()
-{
-    const char *env = std::getenv ("ZLINK_ASIO_STREAM_SESSION_SCHED");
-    if (!env || !*env)
-        return stream_sched_rr;
-
-    if (!strcmp (env, "rr") || !strcmp (env, "RR"))
-        return stream_sched_rr;
-    if (!strcmp (env, "minload") || !strcmp (env, "MINLOAD"))
-        return stream_sched_minload;
-
-    return stream_sched_rr;
-}
-
 const char *socket_type_name (int type_)
 {
     switch (type_) {
@@ -100,13 +78,9 @@ zlink::ctx_t::ctx_t () :
     _tag (ZLINK_CTX_TAG_VALUE_GOOD),
     _starting (true),
     _terminating (false),
-    _reaper (NULL),
-    _service_control_runtime (NULL),
     _max_sockets (clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
-    _next_io_thread (0),
-    _next_stream_io_thread (0),
     _blocky (true),
     _ipv6 (false)
 {
@@ -126,7 +100,7 @@ bool zlink::ctx_t::check_tag () const
 zlink::ctx_t::~ctx_t ()
 {
     //  Check that there are no remaining _sockets.
-    zlink_assert (_sockets.empty ());
+    zlink_assert (_socket_registry.empty ());
     ctx_termination_t::teardown_runtime (*this);
 
     //  De-initialise crypto library, if needed.
@@ -151,10 +125,12 @@ void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
     if (!std::getenv ("ZLINK_CTX_DEBUG_SOCKETS"))
         return;
 
-    sockets_t &sockets = const_cast<sockets_t &> (_sockets);
+    std::vector<socket_base_t *> sockets;
+    _socket_registry.collect_sockets (&sockets);
     fprintf (stderr, "[ctx] %s socket_count=%u\n", phase_ ? phase_ : "state",
              static_cast<unsigned> (sockets.size ()));
-    for (sockets_t::size_type i = 0, size = sockets.size (); i != size; ++i) {
+    for (std::vector<socket_base_t *>::size_type i = 0, size = sockets.size ();
+         i != size; ++i) {
         const socket_base_t *socket = sockets[i];
         if (!socket)
             continue;
@@ -177,7 +153,7 @@ int zlink::ctx_t::terminate ()
         if (ctx_termination_t::wait_for_reaper_done (*this) == -1)
             return -1;
         _slot_sync.lock ();
-        zlink_assert (_sockets.empty ());
+        zlink_assert (_socket_registry.empty ());
     }
     _slot_sync.unlock ();
 
@@ -358,14 +334,13 @@ zlink::socket_base_t *zlink::ctx_t::create_socket (int type_)
     }
 
     //  If max_sockets limit was reached, return error.
-    if (_empty_slots.empty ()) {
+    if (!_socket_registry.has_available_socket_slot ()) {
         errno = EMFILE;
         return NULL;
     }
 
     //  Choose a slot for the socket.
-    const uint32_t slot = _empty_slots.back ();
-    _empty_slots.pop_back ();
+    const uint32_t slot = _socket_registry.claim_socket_slot ();
 
     //  Generate new unique socket ID.
     const int sid = (static_cast<int> (max_socket_id.add (1))) + 1;
@@ -373,11 +348,10 @@ zlink::socket_base_t *zlink::ctx_t::create_socket (int type_)
     //  Create the socket and register its mailbox.
     socket_base_t *s = socket_base_t::create (type_, this, slot, sid);
     if (!s) {
-        _empty_slots.push_back (slot);
+        _socket_registry.release_unused_socket_slot (slot);
         return NULL;
     }
-    _sockets.push_back (s);
-    _slots[slot] = s->get_mailbox ();
+    _socket_registry.publish_socket (s);
 
     return s;
 }
@@ -387,19 +361,13 @@ void zlink::ctx_t::destroy_socket (class socket_base_t *socket_)
     scoped_lock_t locker (_slot_sync);
 
     //  Free the associated thread slot.
-    const uint32_t tid = socket_->get_tid ();
-    _empty_slots.push_back (tid);
-    _slots[tid] = NULL;
-
-    //  Remove the socket from the list of sockets.
-    _sockets.erase (socket_);
+    _socket_registry.remove_socket (socket_);
     debug_dump_sockets_locked ("destroy-socket");
-    _socket_state_cv.broadcast ();
 
     //  If zlink_ctx_term() was already called and there are no more socket
     //  we can ask reaper thread to terminate.
-    if (_terminating && _sockets.empty ())
-        _reaper->stop ();
+    if (_terminating && _socket_registry.empty ())
+        _runtime_resources.stop_reaper ();
 }
 
 int zlink::ctx_t::wait_for_socket_removal (const socket_base_t *socket_,
@@ -408,40 +376,9 @@ int zlink::ctx_t::wait_for_socket_removal (const socket_base_t *socket_,
     if (!socket_)
         return 0;
 
-    const uint64_t deadline_ms =
-      timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
     scoped_lock_t locker (_slot_sync);
-    while (true) {
-        bool present = false;
-        sockets_t::size_type i = 0;
-        const sockets_t::size_type size = _sockets.size ();
-        for (; i != size; ++i) {
-            if (_sockets[i] == socket_) {
-                present = true;
-                break;
-            }
-        }
-
-        if (!present)
-            return 0;
-        if (timeout_ms_ == 0) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-        const int wait_ms =
-          timeout_ms_ < 0
-            ? -1
-            : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
-        if (wait_ms <= 0) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-        const int rc = _socket_state_cv.wait (&_slot_sync, wait_ms);
-        if (rc != 0 && errno == EAGAIN) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-    }
+    return _socket_registry.wait_for_socket_removal (&_slot_sync, socket_,
+                                                     timeout_ms_);
 }
 
 int zlink::ctx_t::close_socket_and_wait (socket_base_t *&socket_,
@@ -460,42 +397,21 @@ int zlink::ctx_t::close_socket_and_wait (socket_base_t *&socket_,
 size_t zlink::ctx_t::socket_count () const
 {
     scoped_lock_t locker (const_cast<mutex_t &> (_slot_sync));
-    sockets_t &sockets = const_cast<sockets_t &> (_sockets);
-    return static_cast<size_t> (sockets.size ());
+    return _socket_registry.socket_count ();
 }
 
 int zlink::ctx_t::wait_for_socket_count_at_most (size_t max_count_,
                                                  int timeout_ms_)
 {
-    const uint64_t deadline_ms =
-      timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
     scoped_lock_t locker (_slot_sync);
-    while (true) {
-        if (static_cast<size_t> (_sockets.size ()) <= max_count_)
-            return 0;
-        if (timeout_ms_ == 0) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-        const int wait_ms =
-          timeout_ms_ < 0
-            ? -1
-            : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
-        if (wait_ms <= 0) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-        const int rc = _socket_state_cv.wait (&_slot_sync, wait_ms);
-        if (rc != 0 && errno == EAGAIN) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-    }
+    return _socket_registry.wait_for_socket_count_at_most (&_slot_sync,
+                                                           max_count_,
+                                                           timeout_ms_);
 }
 
 zlink::object_t *zlink::ctx_t::get_reaper () const
 {
-    return _reaper;
+    return _runtime_resources.reaper_object ();
 }
 
 zlink::thread_ctx_t::thread_ctx_t () :
@@ -620,233 +536,52 @@ int zlink::thread_ctx_t::get (int option_,
 
 void zlink::ctx_t::send_command (uint32_t tid_, const command_t &command_)
 {
-    _slots[tid_]->send (command_);
+    _socket_registry.mailbox (tid_)->send (command_);
 }
 
 zlink::io_thread_t *zlink::ctx_t::choose_io_thread (uint64_t affinity_)
 {
-    if (_io_threads.empty ())
-        return NULL;
-
-    const io_threads_t::size_type io_threads_size = _io_threads.size ();
-    const io_threads_t::size_type start_index =
-      io_threads_size == 0
-        ? 0
-        : static_cast<io_threads_t::size_type> (
-            _next_io_thread.add (1) % io_threads_size);
-
-    //  Find the I/O thread with minimum load.
-    int min_load = -1;
-    io_thread_t *selected_io_thread = NULL;
-    for (io_threads_t::size_type n = 0; n != io_threads_size; ++n) {
-        const io_threads_t::size_type i = (start_index + n) % io_threads_size;
-        if (!affinity_ || (affinity_ & (uint64_t (1) << i))) {
-            const int load = _io_threads[i]->get_load ();
-            if (selected_io_thread == NULL || load < min_load) {
-                min_load = load;
-                selected_io_thread = _io_threads[i];
-            }
-        }
-    }
-    return selected_io_thread;
+    return _runtime_resources.choose_io_thread (affinity_);
 }
 
 zlink::io_thread_t *zlink::ctx_t::choose_io_thread_stream (uint64_t affinity_)
 {
-    if (_io_threads.empty ())
-        return NULL;
-
-    static const stream_sched_mode_t mode = parse_stream_session_sched_mode ();
-    if (mode == stream_sched_rr) {
-        const io_threads_t::size_type io_threads_size = _io_threads.size ();
-        const io_threads_t::size_type start_index =
-          io_threads_size == 0
-            ? 0
-            : static_cast<io_threads_t::size_type> (
-                _next_stream_io_thread.add (1) % io_threads_size);
-
-        for (io_threads_t::size_type n = 0; n != io_threads_size; ++n) {
-            const io_threads_t::size_type i = (start_index + n) % io_threads_size;
-            if (!affinity_ || (affinity_ & (uint64_t (1) << i)))
-                return _io_threads[i];
-        }
-
-        return NULL;
-    }
-
-    return choose_io_thread (affinity_);
+    return _runtime_resources.choose_io_thread_stream (affinity_);
 }
 
 int zlink::ctx_t::register_endpoint (const char *addr_,
-                                   const endpoint_t &endpoint_)
+                                     const endpoint_t &endpoint_)
 {
-    scoped_lock_t locker (_endpoints_sync);
-
-    const bool inserted =
-      _endpoints.ZLINK_MAP_INSERT_OR_EMPLACE (std::string (addr_), endpoint_)
-        .second;
-    if (!inserted) {
-        errno = EADDRINUSE;
-        return -1;
-    }
-    return 0;
+    return _inproc_registry.register_endpoint (addr_, endpoint_);
 }
 
 int zlink::ctx_t::unregister_endpoint (const std::string &addr_,
-                                     const socket_base_t *const socket_)
+                                       const socket_base_t *const socket_)
 {
-    scoped_lock_t locker (_endpoints_sync);
-
-    const endpoints_t::iterator it = _endpoints.find (addr_);
-    if (it == _endpoints.end () || it->second.socket != socket_) {
-        errno = ENOENT;
-        return -1;
-    }
-
-    //  Remove endpoint.
-    _endpoints.erase (it);
-
-    return 0;
+    return _inproc_registry.unregister_endpoint (addr_, socket_);
 }
 
 void zlink::ctx_t::unregister_endpoints (const socket_base_t *const socket_)
 {
-    scoped_lock_t locker (_endpoints_sync);
-
-    for (endpoints_t::iterator it = _endpoints.begin (),
-                               end = _endpoints.end ();
-         it != end;) {
-        if (it->second.socket == socket_)
-#if __cplusplus >= 201103L || (defined _MSC_VER && _MSC_VER >= 1700)
-            it = _endpoints.erase (it);
-#else
-            _endpoints.erase (it++);
-#endif
-        else
-            ++it;
-    }
+    _inproc_registry.unregister_endpoints (socket_);
 }
 
 zlink::endpoint_t zlink::ctx_t::find_endpoint (const char *addr_)
 {
-    scoped_lock_t locker (_endpoints_sync);
-
-    endpoints_t::iterator it = _endpoints.find (addr_);
-    if (it == _endpoints.end ()) {
-        errno = ECONNREFUSED;
-        endpoint_t empty = {NULL, options_t ()};
-        return empty;
-    }
-    endpoint_t endpoint = it->second;
-
-    //  Increment the command sequence number of the peer so that it won't
-    //  get deallocated until "bind" command is issued by the caller.
-    //  The subsequent 'bind' has to be called with inc_seqnum parameter
-    //  set to false, so that the seqnum isn't incremented twice.
-    endpoint.socket->inc_seqnum ();
-
-    return endpoint;
+    return _inproc_registry.find_endpoint (addr_);
 }
 
 bool zlink::ctx_t::pend_connection (const std::string &addr_,
-                                  const endpoint_t &endpoint_,
-                                  pipe_t **pipes_)
+                                    const endpoint_t &endpoint_,
+                                    pipe_t **pipes_)
 {
-    scoped_lock_t locker (_endpoints_sync);
-
-    const pending_connection_t pending_connection = {endpoint_, pipes_[0],
-                                                     pipes_[1]};
-
-    const endpoints_t::iterator it = _endpoints.find (addr_);
-    if (it == _endpoints.end ()) {
-        //  Still no bind.
-        endpoint_.socket->inc_seqnum ();
-        _pending_connections.ZLINK_MAP_INSERT_OR_EMPLACE (addr_,
-                                                        pending_connection);
-        return false;
-    } else {
-        //  Bind has happened in the mean time, connect directly
-        connect_inproc_sockets (it->second.socket, it->second.options,
-                                pending_connection, connect_side);
-        return true;
-    }
+    return _inproc_registry.pend_connection (addr_, endpoint_, pipes_);
 }
 
 void zlink::ctx_t::connect_pending (const char *addr_,
-                                  zlink::socket_base_t *bind_socket_)
+                                    zlink::socket_base_t *bind_socket_)
 {
-    scoped_lock_t locker (_endpoints_sync);
-
-    const std::pair<pending_connections_t::iterator,
-                    pending_connections_t::iterator>
-      pending = _pending_connections.equal_range (addr_);
-    for (pending_connections_t::iterator p = pending.first; p != pending.second;
-         ++p)
-        connect_inproc_sockets (bind_socket_, _endpoints[addr_].options,
-                                p->second, bind_side);
-
-    _pending_connections.erase (pending.first, pending.second);
-}
-
-void zlink::ctx_t::connect_inproc_sockets (
-  zlink::socket_base_t *bind_socket_,
-  const options_t &bind_options_,
-  const pending_connection_t &pending_connection_,
-  side side_)
-{
-    bind_socket_->inc_seqnum ();
-    pending_connection_.bind_pipe->set_tid (bind_socket_->get_tid ());
-
-    if (!bind_options_.recv_routing_id) {
-        msg_t msg;
-        const bool ok = pending_connection_.bind_pipe->read (&msg);
-        zlink_assert (ok);
-        const int rc = msg.close ();
-        errno_assert (rc == 0);
-    }
-
-    if (!get_effective_conflate_option (pending_connection_.endpoint.options)) {
-        pending_connection_.connect_pipe->set_hwms_boost (bind_options_.sndhwm,
-                                                          bind_options_.rcvhwm);
-        pending_connection_.bind_pipe->set_hwms_boost (
-          pending_connection_.endpoint.options.sndhwm,
-          pending_connection_.endpoint.options.rcvhwm);
-
-        pending_connection_.connect_pipe->set_hwms (
-          pending_connection_.endpoint.options.rcvhwm,
-          pending_connection_.endpoint.options.sndhwm);
-        pending_connection_.bind_pipe->set_hwms (bind_options_.rcvhwm,
-                                                 bind_options_.sndhwm);
-    } else {
-        pending_connection_.connect_pipe->set_hwms (-1, -1);
-        pending_connection_.bind_pipe->set_hwms (-1, -1);
-    }
-
-    if (side_ == bind_side) {
-        command_t cmd;
-        cmd.type = command_t::bind;
-        cmd.args.bind.pipe = pending_connection_.bind_pipe;
-        bind_socket_->process_command (cmd);
-        bind_socket_->emit_inproc_connection_ready (pending_connection_.bind_pipe);
-        pending_connection_.endpoint.socket->emit_inproc_connection_ready (
-          pending_connection_.connect_pipe);
-        bind_socket_->send_inproc_connected (
-          pending_connection_.endpoint.socket);
-    } else {
-        pending_connection_.connect_pipe->send_bind (
-          bind_socket_, pending_connection_.bind_pipe, false);
-        bind_socket_->emit_inproc_connection_ready (pending_connection_.bind_pipe);
-    }
-
-    // When a ctx is terminated all pending inproc connection will be
-    // connected, but the socket will already be closed and the pipe will be
-    // in waiting_for_delimiter state, which means no more writes can be done
-    // and the routing id write fails and causes an assert. Check if the socket
-    // is open before sending.
-    if (pending_connection_.endpoint.options.recv_routing_id
-        && pending_connection_.endpoint.socket->check_tag ()) {
-        send_routing_id (pending_connection_.bind_pipe, bind_options_);
-    }
+    _inproc_registry.connect_pending (addr_, bind_socket_);
 }
 
 //  The last used socket ID, or 0 if no socket was used so far. Note that this

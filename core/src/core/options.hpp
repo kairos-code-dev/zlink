@@ -194,22 +194,23 @@ struct options_t
     // Use zero copy strategy for storing message content when decoding.
     bool zero_copy;
 
-    // Version of monitor events to emit
+    // Core-socket-owned monitor emission policy.
+    // This stays in the shared bag, but monitor sequencing interprets it.
     int monitor_event_version;
 
-    //  Hello msg
+    // Protocol/metadata-owned handshake payloads.
+    // Session/pipe owners interpret these rather than the central bag.
     std::vector<unsigned char> hello_msg;
     bool can_send_hello_msg;
 
-    //  Disconnect msg
     std::vector<unsigned char> disconnect_msg;
     bool can_recv_disconnect_msg;
 
-    //  Hiccup msg
     std::vector<unsigned char> hiccup_msg;
     bool can_recv_hiccup_msg;
 
-    //  This option removes several delays caused by scheduling, interrupts and context switching.
+    // Transport/network-owned OS socket tuning.
+    // Transport setup applies it; options_t only stores the chosen value.
     int busy_poll;
 
 #ifdef ZLINK_HAVE_TLS

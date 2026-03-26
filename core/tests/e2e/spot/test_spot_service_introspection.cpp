@@ -1004,6 +1004,28 @@ static void test_spot_unified_spot_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_unified_spot_callback_self_delivery ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *spot = zlink_spot_new (ctx);
+    TEST_ASSERT_NOT_NULL (spot);
+    set_linger_zero (spot);
+
+    subscribe_probe_t probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (spot, &subscribe_probe_handler, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (spot, "topic.unified.cb"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      publish_text (spot, "topic.unified.cb", "callback"));
+    TEST_ASSERT_TRUE (wait_for_callback_payload (
+      &probe, "topic.unified.cb", "callback", 3000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 static void test_spot_node_snapshot_status_peers_subjects ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1361,6 +1383,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_publish_rollback_preserves_next_topic_boundary);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_default_handle_owner_keeps_defaults_private);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_callback_self_delivery);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_snapshot_status_peers_subjects);
     RUN_SPOT_INTROSPECTION_TEST (test_discovery_local_value_metadata_contract);
     RUN_SPOT_INTROSPECTION_TEST (test_registry_and_discovery_member_peer_queries);

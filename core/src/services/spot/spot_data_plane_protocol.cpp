@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
@@ -27,19 +28,6 @@ namespace zlink
 namespace
 {
 static const unsigned int mesh_xsub_forward_batch_limit = 16384;
-
-static int resolve_initial_mesh_pub_sndhwm_for_endpoint (
-  const spot_runtime_t *runtime_,
-  const std::string &endpoint_)
-{
-    unsigned int ready_peers = 0;
-    if (runtime_) {
-        ready_peers = mesh_pub_ready_peer_count (&runtime_->mesh_peer_state);
-    }
-    return spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-      "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
-      zlink::resolve_mesh_pub_sndhwm_default (endpoint_, ready_peers));
-}
 
 static void spot_ctrl_debugf (const char *fmt_, ...)
 {
@@ -712,7 +700,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         }
 
         const int mesh_pub_sndhwm =
-          resolve_initial_mesh_pub_sndhwm_for_endpoint (runtime_, arg);
+          spot_mesh_pub_budget_t::resolve_initial_bind_sndhwm (runtime_, arg);
 
         if (mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
                                    &mesh_pub_sndhwm,
@@ -865,7 +853,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
               runtime_->peer_ctrl_endpoint.c_str ());
         runtime_->peer_ctrl_endpoint.clear ();
         runtime_->bound_endpoint.clear ();
-        zlink::reset_mesh_pub_budget_state (&runtime_->mesh_peer_state);
+        spot_mesh_pub_budget_t::reset_runtime_state (runtime_);
         if (mesh_pub_->term_endpoint (arg.c_str ()) != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;

@@ -7,12 +7,14 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include "core/endpoint.hpp"
 #include "core/mailbox.hpp"
 #include "core/own.hpp"
 #include "core/pipe.hpp"
+#include "core/poller.hpp"
 #include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
@@ -23,6 +25,7 @@ namespace zlink
 {
 class io_thread_t;
 class mailbox_t;
+class socket_base_t;
 
 enum
 {
@@ -45,6 +48,8 @@ struct socket_monitor_event_record_t
     zlink_routing_id_t routing_id;
     endpoint_uri_pair_t endpoint_uri_pair;
 };
+
+typedef void (socket_monitor_worker_idle_fn) (void *);
 
 struct socket_endpoint_pipe_t
 {
@@ -78,16 +83,48 @@ class socket_inprocs_t
 
 struct socket_endpoint_runtime_t
 {
+    typedef array_t<pipe_t, 3> attached_pipes_t;
+
     socket_endpoints_t endpoints;
     socket_inprocs_t inprocs;
+    attached_pipes_t attached_pipes;
     zlink_routing_id_t last_recv_source_rid;
     bool last_recv_source_rid_valid;
+    std::string last_endpoint;
 
     socket_endpoint_runtime_t () :
         last_recv_source_rid (),
         last_recv_source_rid_valid (false)
     {
     }
+
+    void attach_pipe (pipe_t *pipe_);
+    void detach_pipe (pipe_t *pipe_);
+    size_t attached_pipe_count () const;
+    bool has_attached_pipes () const;
+    pipe_t *attached_pipe (size_t index_);
+    const pipe_t *attached_pipe (size_t index_) const;
+
+    void store_last_recv_source_rid (const zlink_routing_id_t *source_rid_);
+    void clear_last_recv_source_rid ();
+    bool copy_last_recv_source_rid (zlink_routing_id_t *out_) const;
+    void set_last_endpoint (const std::string &endpoint_);
+    const std::string &last_endpoint_uri () const;
+};
+
+class socket_command_runtime_t
+{
+  public:
+    socket_command_runtime_t () : last_command_tsc (0), recv_ticks (0) {}
+
+    bool should_skip_throttled_command_poll (uint64_t tsc_);
+    bool should_poll_commands_after_recv (int inbound_poll_rate_);
+    void reset_recv_ticks ();
+    bool should_block_on_recv () const;
+
+  private:
+    uint64_t last_command_tsc;
+    int recv_ticks;
 };
 
 struct socket_monitor_runtime_t
@@ -102,6 +139,28 @@ struct socket_monitor_runtime_t
     {
     }
 
+    uint32_t ready_count () const;
+    bool mark_ready_connection (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                const unsigned char *routing_id_,
+                                size_t routing_id_size_,
+                                uint32_t *ready_count_out_);
+    bool erase_ready_connection (
+      const endpoint_uri_pair_t &endpoint_uri_pair_,
+      const unsigned char *routing_id_,
+      size_t routing_id_size_,
+      uint32_t *ready_count_out_);
+    void reset_worker_state ();
+    void start_worker (thread_fn *thread_fn_, void *arg_, const char *name_);
+    bool dequeue_worker_event (socket_monitor_event_record_t *out_,
+                               bool pump_delivery_ready_,
+                               socket_monitor_worker_idle_fn *idle_fn_,
+                               void *idle_arg_);
+    void requeue_worker_event_front (
+      const socket_monitor_event_record_t &record_);
+    void enqueue_worker_event (const socket_monitor_event_record_t &record_,
+                               size_t hwm_);
+    void stop_worker ();
+
     void *socket;
     int64_t events;
     std::atomic<int64_t> events_atomic;
@@ -113,6 +172,7 @@ struct socket_monitor_runtime_t
     bool queue_stop;
     thread_t thread;
     bool thread_started;
+    std::set<std::string> ready_connections;
 };
 
 struct socket_dispatch_bridge_t
@@ -130,6 +190,16 @@ struct socket_dispatch_bridge_t
         send_ready_armed (false)
     {
     }
+
+    bool load_send_ready_handler (
+      zlink_send_ready_handler_fn *handler_out_,
+      void **subject_out_,
+      void **userdata_out_) const;
+    void store_send_ready_handler (zlink_send_ready_handler_fn handler_,
+                                   void *subject_,
+                                   void *userdata_);
+    bool arm_send_ready_notification ();
+    bool consume_send_ready_notification ();
 
     std::atomic<zlink_socket_msg_handler_fn> socket_msg_handler;
     std::atomic<void *> socket_msg_handler_subject;
@@ -155,6 +225,8 @@ class socket_lifecycle_coordinator_t
         close_deferred (false),
         mailbox_refcnt (0),
         destroy_pending (false),
+        reaper_poller_value (NULL),
+        destroyed (false),
         monitor_async_mailbox_owned (false),
         async_mailbox_active (false),
         async_quiesce_pending (false),
@@ -181,12 +253,18 @@ class socket_lifecycle_coordinator_t
     void wait_async_quiesced (int timeout_ms_);
     bool is_async_mailbox_active () const;
     bool is_async_quiesce_pending () const;
+    void complete_deferred_close_handoff (mailbox_t *mailbox_,
+                                          int timeout_ms_);
     void clear_deferred_close ();
     void set_monitor_async_mailbox_owned (bool owned_);
     bool is_monitor_async_mailbox_owned () const;
     void mark_destroy_pending ();
     void clear_destroy_pending ();
     bool is_destroy_pending () const;
+    void set_reaper_poller (poller_t *poller_);
+    poller_t *reaper_poller () const;
+    void mark_destroyed ();
+    bool is_destroyed () const;
     int mailbox_refcount ();
     void inc_mailbox_ref ();
     bool dec_mailbox_ref ();
@@ -197,6 +275,8 @@ class socket_lifecycle_coordinator_t
     std::atomic<bool> close_deferred;
     atomic_counter_t mailbox_refcnt;
     bool destroy_pending;
+    poller_t *reaper_poller_value;
+    bool destroyed;
     bool monitor_async_mailbox_owned;
     std::atomic<bool> async_mailbox_active;
     std::atomic<bool> async_quiesce_pending;
@@ -205,9 +285,83 @@ class socket_lifecycle_coordinator_t
     condition_variable_t async_done_cv;
 };
 
+class socket_callback_scope_t
+{
+  public:
+    socket_callback_scope_t (socket_base_t *socket_,
+                             socket_lifecycle_coordinator_t &coordinator_);
+    ~socket_callback_scope_t ();
+
+    bool acquired () const { return _entered; }
+
+  private:
+    socket_base_t *_socket;
+    socket_lifecycle_coordinator_t *_coordinator;
+    bool _entered;
+};
+
+class socket_public_api_scope_t
+{
+  public:
+    explicit socket_public_api_scope_t (
+      socket_lifecycle_coordinator_t &coordinator_) :
+        _coordinator (&coordinator_),
+        _entered (coordinator_.enter_public_api ())
+    {
+    }
+
+    ~socket_public_api_scope_t ()
+    {
+        if (_entered)
+            _coordinator->leave_public_api ();
+    }
+
+    bool acquired () const { return _entered; }
+
+  private:
+    socket_lifecycle_coordinator_t *_coordinator;
+    bool _entered;
+};
+
+class socket_public_api_lock_scope_t
+{
+  public:
+    explicit socket_public_api_lock_scope_t (
+      socket_lifecycle_coordinator_t &coordinator_) :
+        _coordinator (&coordinator_),
+        _locked (true)
+    {
+        _coordinator->lock_public_api_sync ();
+    }
+
+    ~socket_public_api_lock_scope_t ()
+    {
+        if (_locked)
+            _coordinator->unlock_public_api_sync ();
+    }
+
+  private:
+    socket_lifecycle_coordinator_t *_coordinator;
+    bool _locked;
+};
+
+class socket_send_ready_dispatch_scope_t
+{
+  public:
+    explicit socket_send_ready_dispatch_scope_t (socket_base_t *socket_);
+    ~socket_send_ready_dispatch_scope_t ();
+
+    static socket_base_t *current_socket ();
+    static bool dispatching_socket (const socket_base_t *socket_);
+
+  private:
+    socket_base_t *_previous;
+};
+
 struct socket_runtime_t
 {
     socket_endpoint_runtime_t endpoint_runtime;
+    socket_command_runtime_t command_runtime;
     socket_monitor_runtime_t monitor_runtime;
     socket_dispatch_bridge_t dispatch_bridge;
     socket_lifecycle_coordinator_t lifecycle_coordinator;

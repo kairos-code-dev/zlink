@@ -261,7 +261,7 @@ static int logical_send_with_retry (zlink::socket_base_t *socket_,
     if (!dontwait) {
         sndtimeo_ms = socket_sndtimeo_ms (socket_);
         if (sndtimeo_ms < 0) {
-            if (!fallback_on_missing_sndtimeo_ || errno == 0)
+            if (errno == 0 && !fallback_on_missing_sndtimeo_)
                 return -1;
 
             msg_vec_t frames;

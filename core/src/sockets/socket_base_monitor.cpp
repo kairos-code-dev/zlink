@@ -7,24 +7,6 @@
 #include "utils/sleep.hpp"
 #include "zlink.h"
 
-namespace
-{
-std::string make_monitor_ready_key (
-  const zlink::endpoint_uri_pair_t &endpoint_uri_pair_,
-  const unsigned char *routing_id_,
-  size_t routing_id_size_)
-{
-    std::string key = endpoint_uri_pair_.identifier ();
-    if (key.empty ())
-        key = endpoint_uri_pair_.remote;
-    key.push_back ('\0');
-    if (routing_id_ && routing_id_size_ > 0)
-        key.append (reinterpret_cast<const char *> (routing_id_),
-                    routing_id_size_);
-    return key;
-}
-}
-
 int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
 {
     if (!out_) {
@@ -45,8 +27,9 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
         if (out_->ready_count > 0)
             out_->state_flags |= ZLINK_MONITOR_STATE_READY;
 
-        for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
-            pipe_t *pipe = _pipes[i];
+        for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
+             i != size; ++i) {
+            pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
             out_->snd_pending_msgs += pipe->get_snd_pending_msgs ();
             out_->rcv_pending_msgs += pipe->get_rcv_pending_msgs_approx ();
         }
@@ -57,14 +40,14 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
 
 uint32_t zlink::socket_base_t::monitor_ready_count () const
 {
-    return static_cast<uint32_t> (_ready_connection_keys.size ());
+    return monitor_runtime ().ready_count ();
 }
 
 bool zlink::socket_base_t::has_attached_pipes () const
 {
     scoped_lock_t lock (
       const_cast<socket_base_t *> (this)->monitor_runtime ().sync);
-    return !const_cast<socket_base_t *> (this)->_pipes.empty ();
+    return endpoint_runtime ().has_attached_pipes ();
 }
 
 bool zlink::socket_base_t::monitor_has_attached_pipes () const
@@ -80,9 +63,10 @@ void zlink::socket_base_t::socket_peer_remote_endpoints (
 
     process_commands (0, false);
     out_->clear ();
-    out_->reserve (_pipes.size ());
-    for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
-        pipe_t *pipe = _pipes[i];
+    out_->reserve (endpoint_runtime ().attached_pipe_count ());
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
+         i != size; ++i) {
+        pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
         const std::string &remote = pipe->get_endpoint_pair ().remote;
         if (!remote.empty ())
             out_->push_back (remote);
@@ -156,13 +140,9 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     if (rc == -1)
         stop_monitor (false);
     else {
-        monitor.queue_sync.lock ();
-        monitor.queue.clear ();
-        monitor.queue_stop = false;
-        monitor.queue_sync.unlock ();
-        monitor.thread.start (&socket_base_t::monitor_thread_main, this,
+        monitor.reset_worker_state ();
+        monitor.start_worker (&socket_base_t::monitor_thread_main, this,
                               "sock-monitor");
-        monitor.thread_started = true;
         monitor.events_atomic.store (monitor.events, std::memory_order_release);
     }
     return rc;
@@ -245,13 +225,8 @@ void zlink::socket_base_t::event_disconnected (
     bool changed = false;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
-        changed =
-          _ready_connection_keys.erase (make_monitor_ready_key (
-                                          endpoint_uri_pair_, routing_id_,
-                                          routing_id_size_))
-          != 0;
-        if (changed)
-            ready_count = monitor_ready_count ();
+        changed = monitor_runtime ().erase_ready_connection (
+          endpoint_uri_pair_, routing_id_, routing_id_size_, &ready_count);
     }
     if (changed) {
         uint64_t ready_values[1] = {ready_count};
@@ -293,13 +268,8 @@ void zlink::socket_base_t::event_connection_ready_changed (
     bool changed = false;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
-        changed = _ready_connection_keys.insert (make_monitor_ready_key (
-                                                     endpoint_uri_pair_,
-                                                     routing_id_,
-                                                     routing_id_size_))
-                    .second;
-        if (changed)
-            ready_count = monitor_ready_count ();
+        changed = monitor_runtime ().mark_ready_connection (
+          endpoint_uri_pair_, routing_id_, routing_id_size_, &ready_count);
     }
     if (!changed)
         return;
@@ -359,6 +329,11 @@ void zlink::socket_base_t::monitor_thread_main (void *arg_)
     static_cast<socket_base_t *> (arg_)->monitor_loop ();
 }
 
+void zlink::socket_base_t::monitor_delivery_ready_pump (void *arg_)
+{
+    static_cast<socket_base_t *> (arg_)->process_commands (0, false);
+}
+
 void zlink::socket_base_t::monitor_loop ()
 {
     monitor_runtime_t &monitor = monitor_runtime ();
@@ -374,54 +349,25 @@ void zlink::socket_base_t::monitor_loop ()
        && (monitor.events & ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED) != 0)
       || (supports_pub_delivery_ready
           && (monitor.events & ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED) != 0);
-    monitor.queue_sync.lock ();
-    while (true) {
-        if (monitor.queue_stop)
-            break;
-        if (monitor.queue.empty ()) {
-            if (pump_delivery_ready) {
-                monitor.queue_sync.unlock ();
-                process_commands (0, false);
-                monitor.queue_sync.lock ();
-                if (monitor.queue_stop)
-                    break;
-                if (monitor.queue.empty ())
-                    (void) monitor.queue_cv.wait (&monitor.queue_sync, 10);
-            } else {
-                (void) monitor.queue_cv.wait (&monitor.queue_sync, -1);
-            }
-            continue;
-        }
-
-        monitor_event_record_t record = monitor.queue.front ();
-        monitor.queue.pop_front ();
-        monitor.queue_sync.unlock ();
+    monitor_event_record_t record;
+    while (monitor.dequeue_worker_event (&record, pump_delivery_ready,
+                                         &socket_base_t::monitor_delivery_ready_pump,
+                                         this)) {
         bool delivered = true;
         if (monitor_socket)
             delivered = dispatch_monitor_event (monitor_socket, record);
         if (!delivered && !monitor.lossy) {
-            monitor.queue_sync.lock ();
-            monitor.queue.push_front (record);
-            monitor.queue_sync.unlock ();
+            monitor.requeue_worker_event_front (record);
             zlink::sleep_ms (1);
         }
-        monitor.queue_sync.lock ();
     }
-    monitor.queue_sync.unlock ();
 }
 
 void zlink::socket_base_t::enqueue_monitor_event (
   const monitor_event_record_t &record_)
 {
-    monitor_runtime_t &monitor = monitor_runtime ();
-    monitor.queue_sync.lock ();
-    if (!monitor.queue_stop
-        && (monitor.queue.size () < static_cast<size_t> (monitor_queue_hwm)
-            || !monitor.lossy)) {
-        monitor.queue.push_back (record_);
-        monitor.queue_cv.broadcast ();
-    }
-    monitor.queue_sync.unlock ();
+    monitor_runtime ().enqueue_worker_event (
+      record_, static_cast<size_t> (monitor_queue_hwm));
 }
 
 bool zlink::socket_base_t::build_monitor_event_record (
@@ -513,10 +459,11 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
         if ((monitor.events & ZLINK_EVENT_MONITOR_STOPPED)
             && send_monitor_stopped_event_) {
             monitor_socket->process_commands (0, false);
-            can_emit_monitor_stopped = !monitor_socket->_pipes.empty ();
+            can_emit_monitor_stopped =
+              monitor_socket->endpoint_runtime ().has_attached_pipes ();
         }
 
-        stop_monitor_thread ();
+        monitor.stop_worker ();
 
         if (can_emit_monitor_stopped) {
             uint64_t values[1] = {0};
@@ -535,20 +482,5 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
             wait_async_quiesced (10000);
         }
         lifecycle_coordinator ().set_monitor_async_mailbox_owned (false);
-    }
-}
-
-void zlink::socket_base_t::stop_monitor_thread ()
-{
-    monitor_runtime_t &monitor = monitor_runtime ();
-    monitor.queue_sync.lock ();
-    monitor.queue_stop = true;
-    monitor.queue.clear ();
-    monitor.queue_cv.broadcast ();
-    monitor.queue_sync.unlock ();
-
-    if (monitor.thread_started) {
-        monitor.thread.stop ();
-        monitor.thread_started = false;
     }
 }

@@ -21,14 +21,6 @@ class spot_data_plane_t
     static void thread_entry (void *arg_);
     static void close_socket_ptr (spot_node_t *node_, socket_base_t *&socket_);
     static void clear_runtime_socket_refs (spot_runtime_t *runtime_);
-    static void reset_mesh_pub_budget_state (spot_runtime_t *runtime_);
-    static int resolve_mesh_pub_sndhwm_default (const spot_runtime_t *runtime_);
-    static void refresh_mesh_pub_sndhwm (
-      spot_runtime_t *runtime_,
-      socket_base_t *mesh_pub_,
-      int *current_hwm_,
-      uint64_t *last_budget_version_,
-      std::string *last_bound_endpoint_);
     static int initialize_runtime (spot_node_t *node_,
                                    spot_runtime_t *runtime_,
                                    spot_data_plane_runtime_state_t *state_out_);

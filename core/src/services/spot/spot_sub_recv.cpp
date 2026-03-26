@@ -29,13 +29,45 @@ static void close_parts (zlink_msg_t *parts_, size_t part_count_)
         zlink_msg_close (&parts_[i]);
 }
 
-static void close_msgv (std::vector<zlink_msg_t> *parts_)
+static void close_msgv (std::vector<zlink_msg_t *> *parts_)
 {
     if (!parts_)
         return;
     for (size_t i = 0; i < parts_->size (); ++i)
-        zlink_msg_close (&(*parts_)[i]);
+        if ((*parts_)[i]) {
+            zlink_msg_close ((*parts_)[i]);
+            free ((*parts_)[i]);
+        }
     parts_->clear ();
+}
+
+static bool append_frame_move (std::vector<zlink_msg_t *> *frames_,
+                               zlink_msg_t *frame_)
+{
+    if (!frames_ || !frame_)
+        return false;
+
+    zlink_msg_t *stored =
+      static_cast<zlink_msg_t *> (malloc (sizeof (zlink_msg_t)));
+    if (!stored)
+        return false;
+    memset (stored, 0, sizeof (*stored));
+
+    msg_t *dst = reinterpret_cast<msg_t *> (stored);
+    if (dst->init () != 0
+        || dst->move (*reinterpret_cast<msg_t *> (frame_)) != 0) {
+        zlink_msg_close (stored);
+        free (stored);
+        return false;
+    }
+
+    frames_->push_back (stored);
+    if (reinterpret_cast<msg_t *> (frame_)->init () != 0) {
+        close_msgv (frames_);
+        return false;
+    }
+
+    return true;
 }
 
 static bool may_be_ready_probe_topic (const char *topic_, size_t topic_len_)
@@ -168,7 +200,7 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
         *parts_ = NULL;
         *part_count_ = 0;
 
-        std::vector<zlink_msg_t> frames;
+        std::vector<zlink_msg_t *> frames;
         frames.reserve (2);
         int rc = 0;
         zlink_msg_t topic_frame;
@@ -179,9 +211,13 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
             return -1;
         }
 
-        frames.push_back (topic_frame);
+        if (!append_frame_move (&frames, &topic_frame)) {
+            zlink_msg_close (&topic_frame);
+            errno = EFAULT;
+            return -1;
+        }
 
-        if (spot_frame_has_more (topic_frame)) {
+        if (spot_frame_has_more (*frames[0])) {
             zlink_msg_t first_payload_frame;
             zlink_msg_init (&first_payload_frame);
             rc = socket->recv (reinterpret_cast<msg_t *> (&first_payload_frame), 0);
@@ -193,8 +229,8 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
 
             if (!spot_frame_has_more (first_payload_frame)) {
                 const char *topic_data = static_cast<const char *> (
-                  zlink_msg_data (&topic_frame));
-                const size_t topic_size = zlink_msg_size (&topic_frame);
+                  zlink_msg_data (frames[0]));
+                const size_t topic_size = zlink_msg_size (frames[0]);
 
                 if (topic_len_) {
                     const size_t capacity = *topic_len_;
@@ -241,7 +277,9 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
                     return -1;
                 }
 
-                zlink_msg_close (&frames[0]);
+                zlink_msg_close (frames[0]);
+                free (frames[0]);
+                frames[0] = NULL;
                 zlink_msg_close (&first_payload_frame);
                 if (source_rid_out_)
                     socket->copy_last_recv_source_rid (source_rid_out_);
@@ -250,7 +288,11 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
                 return 0;
             }
 
-            frames.push_back (first_payload_frame);
+            if (!append_frame_move (&frames, &first_payload_frame)) {
+                zlink_msg_close (&first_payload_frame);
+                errno = EFAULT;
+                return -1;
+            }
             while (true) {
                 zlink_msg_t frame;
                 zlink_msg_init (&frame);
@@ -260,8 +302,13 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
                     close_msgv (&frames);
                     return -1;
                 }
-                frames.push_back (frame);
-                if (!spot_frame_has_more (frame))
+                if (!append_frame_move (&frames, &frame)) {
+                    zlink_msg_close (&frame);
+                    errno = EFAULT;
+                    close_msgv (&frames);
+                    return -1;
+                }
+                if (!spot_frame_has_more (*frames.back ()))
                     break;
             }
         }
@@ -271,15 +318,15 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
         }
 
         const char *topic_data =
-          static_cast<const char *> (zlink_msg_data (&frames[0]));
-        const size_t topic_size = zlink_msg_size (&frames[0]);
+          static_cast<const char *> (zlink_msg_data (frames[0]));
+        const size_t topic_size = zlink_msg_size (frames[0]);
 
         if (may_be_ready_probe_topic (topic_data, topic_size)) {
             std::string raw_filter;
             std::string peer_endpoint;
             if (is_ready_probe_message (topic_data,
                                         topic_size,
-                                        frames.size () > 1 ? &frames[1] : NULL,
+                                        frames.size () > 1 ? frames[1] : NULL,
                                         frames.size () - 1,
                                         &raw_filter,
                                         &peer_endpoint)) {
@@ -328,7 +375,7 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
         for (size_t i = 0; i < payload_count; ++i) {
             msg_t *dst = reinterpret_cast<msg_t *> (&payload[i]);
             if (dst->init () != 0
-                || dst->move (*reinterpret_cast<msg_t *> (&frames[i + 1])) != 0) {
+                || dst->move (*reinterpret_cast<msg_t *> (frames[i + 1])) != 0) {
                 for (size_t j = 0; j <= i; ++j)
                     zlink_msg_close (&payload[j]);
                 free (payload);
@@ -338,7 +385,9 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
             }
         }
 
-        zlink_msg_close (&frames[0]);
+        zlink_msg_close (frames[0]);
+        free (frames[0]);
+        frames[0] = NULL;
         if (source_rid_out_)
             socket->copy_last_recv_source_rid (source_rid_out_);
         *parts_ = payload;

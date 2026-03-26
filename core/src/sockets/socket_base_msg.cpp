@@ -8,26 +8,24 @@
 
 int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 {
-    if (!enter_public_api ())
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
+    socket_public_api_scope_t admission (lifecycle);
+    if (!admission.acquired ())
         return -1;
 
     if (unlikely (_ctx_terminated)) {
-        leave_public_api ();
         errno = ETERM;
         return -1;
     }
 
     if (unlikely (!msg_ || !msg_->check ())) {
-        leave_public_api ();
         errno = EFAULT;
         return -1;
     }
 
     int rc = process_commands (0, true);
-    if (unlikely (rc != 0)) {
-        leave_public_api ();
+    if (unlikely (rc != 0))
         return -1;
-    }
 
     msg_->reset_flags (msg_t::more);
     if (flags_ & ZLINK_SNDMORE)
@@ -35,21 +33,17 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     msg_->reset_metadata ();
 
     {
-        lock_public_api_sync ();
+        socket_public_api_lock_scope_t guard (lifecycle);
         rc = xsend (msg_);
-        unlock_public_api_sync ();
     }
-    if (rc == 0) {
-        leave_public_api ();
+    if (rc == 0)
         return 0;
-    }
     if (unlikely (rc == -2)) {
         if (!((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0)) {
             rc = msg_->close ();
             errno_assert (rc == 0);
             rc = msg_->init ();
             errno_assert (rc == 0);
-            leave_public_api ();
             return 0;
         }
     }
@@ -60,13 +54,11 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
                 arm_send_ready_notification ();
             }
         }
-        leave_public_api ();
         return -1;
     }
 
     if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
         arm_send_ready_notification ();
-        leave_public_api ();
         return -1;
     }
 
@@ -75,32 +67,25 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 
     while (true) {
         rc = process_commands (timeout, false);
-        if (unlikely (rc != 0)) {
-            leave_public_api ();
+        if (unlikely (rc != 0))
             return -1;
-        }
         {
-            lock_public_api_sync ();
+            socket_public_api_lock_scope_t guard (lifecycle);
             rc = xsend (msg_);
-            unlock_public_api_sync ();
         }
         if (rc == 0)
             break;
-        if (unlikely (errno != EAGAIN)) {
-            leave_public_api ();
+        if (unlikely (errno != EAGAIN))
             return -1;
-        }
         if (timeout > 0) {
             timeout = static_cast<int> (end - _clock.now_ms ());
             if (timeout <= 0) {
                 errno = EAGAIN;
-                leave_public_api ();
                 return -1;
             }
         }
     }
 
-    leave_public_api ();
     return 0;
 }
 
@@ -108,26 +93,24 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
                                        msg_t *msg_,
                                        int flags_)
 {
-    if (!enter_public_api ())
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
+    socket_public_api_scope_t admission (lifecycle);
+    if (!admission.acquired ())
         return -1;
 
     if (unlikely (_ctx_terminated)) {
-        leave_public_api ();
         errno = ETERM;
         return -1;
     }
 
     if (unlikely (!target_rid_ || !msg_ || !msg_->check ())) {
-        leave_public_api ();
         errno = EFAULT;
         return -1;
     }
 
     int rc = process_commands (0, true);
-    if (unlikely (rc != 0)) {
-        leave_public_api ();
+    if (unlikely (rc != 0))
         return -1;
-    }
 
     msg_->reset_flags (msg_t::more);
     if (flags_ & ZLINK_SNDMORE)
@@ -135,21 +118,17 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
     msg_->reset_metadata ();
 
     {
-        lock_public_api_sync ();
+        socket_public_api_lock_scope_t guard (lifecycle);
         rc = xsend_routed (target_rid_, msg_);
-        unlock_public_api_sync ();
     }
-    if (rc == 0) {
-        leave_public_api ();
+    if (rc == 0)
         return 0;
-    }
     if (unlikely (rc == -2)) {
         if (!((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0)) {
             rc = msg_->close ();
             errno_assert (rc == 0);
             rc = msg_->init ();
             errno_assert (rc == 0);
-            leave_public_api ();
             return 0;
         }
     }
@@ -160,13 +139,11 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
                 arm_send_ready_notification ();
             }
         }
-        leave_public_api ();
         return -1;
     }
 
     if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
         arm_send_ready_notification ();
-        leave_public_api ();
         return -1;
     }
 
@@ -175,50 +152,42 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
 
     while (true) {
         rc = process_commands (timeout, false);
-        if (unlikely (rc != 0)) {
-            leave_public_api ();
+        if (unlikely (rc != 0))
             return -1;
-        }
         {
-            lock_public_api_sync ();
+            socket_public_api_lock_scope_t guard (lifecycle);
             rc = xsend_routed (target_rid_, msg_);
-            unlock_public_api_sync ();
         }
         if (rc == 0)
             break;
-        if (unlikely (errno != EAGAIN)) {
-            leave_public_api ();
+        if (unlikely (errno != EAGAIN))
             return -1;
-        }
         if (timeout > 0) {
             timeout = static_cast<int> (end - _clock.now_ms ());
             if (timeout <= 0) {
                 errno = EAGAIN;
-                leave_public_api ();
                 return -1;
             }
         }
     }
 
-    leave_public_api ();
     return 0;
 }
 
 int zlink::socket_base_t::rollback ()
 {
-    if (!enter_public_api ())
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
+    socket_public_api_scope_t admission (lifecycle);
+    if (!admission.acquired ())
         return -1;
 
     if (unlikely (_ctx_terminated)) {
-        leave_public_api ();
         errno = ETERM;
         return -1;
     }
 
-    lock_public_api_sync ();
+    socket_public_api_lock_scope_t guard (lifecycle);
     const int rc = xrollback ();
-    unlock_public_api_sync ();
-    leave_public_api ();
     return rc;
 }
 
@@ -234,10 +203,11 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
         return -1;
     }
 
-    if (++_ticks == inbound_poll_rate) {
+    if (command_runtime ().should_poll_commands_after_recv (
+          inbound_poll_rate)) {
         if (unlikely (process_commands (0, false) != 0))
             return -1;
-        _ticks = 0;
+        command_runtime ().reset_recv_ticks ();
     }
 
     int rc = xrecv (msg_);
@@ -252,7 +222,7 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     if ((flags_ & ZLINK_DONTWAIT) || options.rcvtimeo == 0) {
         if (unlikely (process_commands (0, false) != 0))
             return -1;
-        _ticks = 0;
+        command_runtime ().reset_recv_ticks ();
 
         rc = xrecv (msg_);
         if (rc < 0)
@@ -264,13 +234,13 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     int timeout = options.rcvtimeo;
     const uint64_t end = timeout < 0 ? 0 : (_clock.now_ms () + timeout);
 
-    bool block = (_ticks != 0);
+    bool block = command_runtime ().should_block_on_recv ();
     while (true) {
         if (unlikely (process_commands (block ? timeout : 0, false) != 0))
             return -1;
         rc = xrecv (msg_);
         if (rc == 0) {
-            _ticks = 0;
+            command_runtime ().reset_recv_ticks ();
             break;
         }
         if (unlikely (errno != EAGAIN))
@@ -306,11 +276,12 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_,
         return -1;
     }
 
-    if (++_ticks == inbound_poll_rate) {
+    if (command_runtime ().should_poll_commands_after_recv (
+          inbound_poll_rate)) {
         if (unlikely (process_commands (0, false) != 0)) {
             return -1;
         }
-        _ticks = 0;
+        command_runtime ().reset_recv_ticks ();
     }
 
     int rc = xrecv_routed (msg_, source_rid_out_);
@@ -325,7 +296,7 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_,
     if ((flags_ & ZLINK_DONTWAIT) || options.rcvtimeo == 0) {
         if (unlikely (process_commands (0, false) != 0))
             return -1;
-        _ticks = 0;
+        command_runtime ().reset_recv_ticks ();
 
         rc = xrecv_routed (msg_, source_rid_out_);
         if (rc < 0)
@@ -337,13 +308,13 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_,
     int timeout = options.rcvtimeo;
     const uint64_t end = timeout < 0 ? 0 : (_clock.now_ms () + timeout);
 
-    bool block = (_ticks != 0);
+    bool block = command_runtime ().should_block_on_recv ();
     while (true) {
         if (unlikely (process_commands (block ? timeout : 0, false) != 0))
             return -1;
         rc = xrecv_routed (msg_, source_rid_out_);
         if (rc == 0) {
-            _ticks = 0;
+            command_runtime ().reset_recv_ticks ();
             break;
         }
         if (unlikely (errno != EAGAIN))
@@ -366,6 +337,4 @@ void zlink::socket_base_t::extract_flags (const msg_t *msg_)
 {
     if (unlikely (msg_->flags () & msg_t::routing_id))
         zlink_assert (options.recv_routing_id);
-
-    _rcvmore = (msg_->flags () & msg_t::more) != 0;
 }

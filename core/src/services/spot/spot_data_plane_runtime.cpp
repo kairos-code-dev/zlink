@@ -5,6 +5,7 @@
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -19,7 +20,7 @@ namespace zlink
 {
 namespace
 {
-static const size_t spot_sub_queue_hwm_default = 64;
+static const size_t spot_sub_queue_hwm_default = 16;
 static const int spot_internal_ingress_rcvhwm_default = 8192;
 static const int spot_internal_mesh_xsub_rcvhwm_default = 8192;
 static const int spot_internal_peer_ctrl_rcvhwm_default = 1024;
@@ -64,7 +65,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     const int mesh_pub_sndhwm =
       spot_data_plane_forwarder_t::resolve_internal_hwm_override (
         "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
-        zlink::resolve_mesh_pub_sndhwm_default (std::string (), 0));
+        spot_mesh_pub_budget_t::resolve_default (std::string (), 0));
     const int peer_ctrl_rcvhwm =
       spot_data_plane_forwarder_t::resolve_internal_hwm_override (
         "ZLINK_SPOT_INTERNAL_PEER_CTRL_RCVHWM",
@@ -160,63 +161,6 @@ void spot_data_plane_t::clear_runtime_socket_refs (
     runtime_->peer_ctrl_sub = NULL;
     runtime_->local_pub_ingress_sub = NULL;
     runtime_->local_fanout_xpub = NULL;
-}
-
-void spot_data_plane_t::reset_mesh_pub_budget_state (
-  spot_runtime_t *runtime_)
-{
-    if (!runtime_)
-        return;
-
-    zlink::reset_mesh_pub_budget_state (&runtime_->mesh_peer_state);
-}
-
-int spot_data_plane_t::resolve_mesh_pub_sndhwm_default (
-  const spot_runtime_t *runtime_)
-{
-    if (!runtime_)
-        return zlink::resolve_mesh_pub_sndhwm_default (std::string (), 0);
-
-    const uint32_t ready_peers =
-      mesh_pub_ready_peer_count (&runtime_->mesh_peer_state);
-    return zlink::resolve_mesh_pub_sndhwm_default (runtime_->bound_endpoint,
-                                                   ready_peers);
-}
-
-void spot_data_plane_t::refresh_mesh_pub_sndhwm (
-  spot_runtime_t *runtime_,
-  socket_base_t *mesh_pub_,
-  int *current_hwm_,
-  uint64_t *last_budget_version_,
-  std::string *last_bound_endpoint_)
-{
-    if (!runtime_ || !mesh_pub_ || !current_hwm_ || !last_budget_version_
-        || !last_bound_endpoint_) {
-        return;
-    }
-
-    const uint64_t budget_version =
-      mesh_pub_budget_version (&runtime_->mesh_peer_state);
-    const std::string bound_endpoint = runtime_->bound_endpoint;
-    if (budget_version == *last_budget_version_
-        && bound_endpoint == *last_bound_endpoint_) {
-        return;
-    }
-
-    *last_budget_version_ = budget_version;
-    *last_bound_endpoint_ = bound_endpoint;
-
-    const int desired = spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-      "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
-      resolve_mesh_pub_sndhwm_default (runtime_));
-    if (desired == *current_hwm_)
-        return;
-
-    if (mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &desired,
-                               sizeof (desired))
-        == 0) {
-        *current_hwm_ = desired;
-    }
 }
 
 int spot_data_plane_t::initialize_runtime (
@@ -374,7 +318,7 @@ void spot_data_plane_t::teardown_runtime (
         runtime_->peer_ctrl_endpoint.clear ();
         runtime_->bound_endpoint.clear ();
     }
-    spot_data_plane_t::reset_mesh_pub_budget_state (runtime_);
+    spot_mesh_pub_budget_t::reset_runtime_state (runtime_);
     spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (runtime_);
 }
 }

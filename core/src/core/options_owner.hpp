@@ -3,6 +3,8 @@
 #ifndef __ZLINK_OPTIONS_OWNER_HPP_INCLUDED__
 #define __ZLINK_OPTIONS_OWNER_HPP_INCLUDED__
 
+#include "zlink.h"
+
 namespace zlink
 {
 // Owner map for the shared options_t storage bag.
@@ -18,7 +20,34 @@ enum options_owner_t
     options_owner_service_specific
 };
 
+// Shared-bag fields that are not exposed as direct getsockopt/setsockopt
+// numbers still need an explicit owner so later additions do not silently
+// turn options_t back into a central interpretation hub.
+enum options_bag_field_t
+{
+    options_bag_field_monitor_event_version = 0,
+    options_bag_field_hello_msg,
+    options_bag_field_disconnect_msg,
+    options_bag_field_hiccup_msg,
+    options_bag_field_busy_poll
+};
+
+// Internal owner lookup for options that are still routed through the shared
+// options_t bag. Options handled by ctx/runtime or service/socket seams before
+// reaching options_t are intentionally outside this lookup.
 options_owner_t option_owner_of (int option_);
+options_owner_t option_owner_of_bag_field (options_bag_field_t field_);
+
+// Public option-surface owner helpers. These keep service/socket seam options
+// explicit even when their internal numeric ids overlap with shared-bag
+// options (for example XPUB manual last value and TLS verify).
+options_owner_t common_option_owner_of (zlink_option_t option_);
+options_owner_t router_option_owner_of (zlink_router_option_t option_);
+options_owner_t dealer_option_owner_of (zlink_dealer_option_t option_);
+options_owner_t stream_option_owner_of (zlink_stream_option_t option_);
+options_owner_t pub_option_owner_of (int option_);
+options_owner_t sub_option_owner_of (int option_);
+
 const char *option_owner_name (options_owner_t owner_);
 }
 

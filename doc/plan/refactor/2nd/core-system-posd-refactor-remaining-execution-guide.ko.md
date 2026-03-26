@@ -1,6 +1,6 @@
 # POSD 2차 리팩토링 잔여 작업 실행 가이드
 
-> 상태: complete
+> 상태: active
 > 기준 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
 > 재평가 문서: `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
 > residual 실행 스펙: `doc/plan/refactor/2nd/core-system-posd-refactor-residual-execution-spec.ko.md`
@@ -330,9 +330,9 @@ archive로만 남긴다.
 | Post-residual 기준 `spot` secure multi-peer 구조 잔여 마감 | 완료 | 5.7A | `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_data_plane_protocol.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_node.cpp`, `core/src/services/spot/spot_node_control.cpp`, `core/src/services/spot/spot_runtime.cpp`, `core/src/services/spot/spot_runtime.hpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/unittest/unittest_spot_data_plane_protocol.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_single_spot_benchmark_process|test_multi_spot_benchmark_process)$'`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_owner_gate_20260325_110639.log`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_owner_gate_20260325_110639.log.exitcode`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_pubsub_scenario|test_spot_service_introspection)$'`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_service_gate_20260325_110850.log`, `doc/plan/refactor/2nd/logs/phase5_7A_spot_service_gate_20260325_110850.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: 73ffa1b5` |
 | Post-residual 기준 `socket_message_api.cpp` / `options_t` ownership 재정리 | 완료 | 5.7B | `core/src/api/socket_message_api.cpp`, `core/src/api/socket_message_send_api.cpp`, `core/src/api/socket_message_handler_api.cpp`, `core/src/core/options.hpp`, `core/src/core/options_owner.cpp`, `core/src/core/options_dispatch.cpp`, `core/CMakeLists.txt` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_typed_option|test_stream_threadsafe|test_gateway_with_handler|test_service_discovery|test_spot_service_introspection)$'`, `doc/plan/refactor/2nd/logs/phase5_7B_message_option_gate_20260325_112021.log`, `doc/plan/refactor/2nd/logs/phase5_7B_message_option_gate_20260325_112021.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`, `commit: d8dabbaf` |
 | Post-residual 기준 `spot_node_t` handle/defaults/facade 구조 마감 | 완료 | 5.7C | `core/src/services/spot/spot_node.hpp`, `core/src/services/spot/spot_node_handles.cpp`, `core/src/services/spot/spot_node_lifecycle.cpp`, `core/src/services/spot/spot_internal_receiver.*`, `core/tests/e2e/spot/test_spot_service_introspection.cpp` | `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_service_introspection|test_spot_pubsub_scenario|test_spot_service_introspection_handler_monitor_close)$'`, `doc/plan/refactor/2nd/logs/phase5_7C_spot_node_gate_20260325_113854.log`, `doc/plan/refactor/2nd/logs/phase5_7C_spot_node_gate_20260325_113854.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; owner 문장: `spot_node_t`는 semantic facade이고 default handle lifecycle/option defaults는 `spot_node_default_handles_t`가 소유; `commit: 6c3b2812` |
-| Post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감 | 완료 | 5.7D | `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/discovery_runtime_internal.hpp`, `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_state.cpp`, `core/src/services/discovery/discovery_update.cpp`, `core/src/services/discovery/discovery_registry_client.cpp` | 실제 수정 파일: `discovery.hpp`, `discovery_runtime_internal.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_state.cpp`, `discovery_update.cpp`, `discovery_registry_client.cpp`; gate: `cmake --build core/build -j\"$(nproc)\"`, `ctest --test-dir core/build --output-on-failure -R '^(test_service_discovery|test_service_introspection|test_service_introspection_discovery_self_close|test_service_introspection_discovery_control_path|test_monitor_service_contract)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; 최종 문장: `discovery_t`는 discovery semantic facade이고 registry bootstrap/socket-option/routing-id/uplink dealer detail은 `discovery_bootstrap_runtime_t`와 `discovery_uplink_runtime_t`가 소유한다; `commit: 95b44aea` |
-| Post-residual 기준 engine / transport owner 재판정 | 완료 | 5.7E | `core/src/engine/asio/asio_engine.cpp`, `core/src/transports/ws/asio_ws_engine.cpp` | owner 재평가 근거: `core-system-posd-refactor-post-residual-review.ko.md`; 구조 판정: `asio_engine_t`는 backend-common async runtime/stream fast-path owner이고 `asio_ws_engine_t`는 ws/wss transport-local wire/channel execution owner라서 현재 active 구조 row와 직접 연결되는 giant owner로 승격하지 않음; gate: `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^test_stream_fastpath$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_ws|test_gateway_wss|test_service_introspection_transport_ws|test_service_introspection_registry_peer_mixed_ws|test_spot_pubsub_scenario_peer_wss)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; 로그: `doc/plan/refactor/2nd/logs/phase5_7E_transport_smoke_20260325_120318.log`, `doc/plan/refactor/2nd/logs/phase5_7E_transport_smoke_20260325_120318.log.exitcode` |
-| Final lane gate 및 master plan 8.1/8.2/9 완료 판정 | 완료 | 5.8, 6.3 | `core/tests/run_test_lanes.sh`, `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md` | preflight: `ctest --test-dir core/build -N -L '^unittest$'`, `ctest --test-dir core/build -N -L '^integration$'`, `ctest --test-dir core/build -N -L '^e2e$'`; gate: `cmake --build core/build -j"$(nproc)"`, `./core/tests/run_test_lanes.sh --include-e2e`, `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log`, `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log.exitcode`, `git diff -- core/include/zlink.h core/src/libzlink.vers`; 재점검: master plan Phase 1~6, 8.1, 8.2, 9와 gap review 재대조 결과 추가 미적용 구현 항목 없음 |
+| Post-residual 기준 `discovery_t` bootstrap/uplink/facade 구조 마감 | 완료 | 5.7D | `core/src/services/discovery/discovery.hpp`, `core/src/services/discovery/discovery_runtime_internal.hpp`, `core/src/services/discovery/discovery_service_state.cpp`, `core/src/services/discovery/discovery_bootstrap.cpp`, `core/src/services/discovery/discovery_uplink.cpp`, `core/src/services/discovery/discovery_state.cpp`, `core/src/services/discovery/discovery_update.cpp`, `core/tests/unittest/unittest_discovery_service_state.cpp` | 세션 로그: `core/tools/refactor/logs/posd_perf_first_5_7D_discovery_20260326_173200.md`; build: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON -DZLINK_BUILD_C_BINDINGS=OFF -DZLINK_BUILD_CPP_BINDINGS=OFF`, `cmake --build core/build -j"$(nproc)"`; gate: `ctest --test-dir core/build --output-on-failure -R '^(unittest_discovery_service_state|test_spot_service_introspection|test_spot_service_introspection_member_peers|test_spot_service_introspection_metadata_local|test_spot_service_introspection_handler_monitor_close|test_spot_pubsub_scenario)$'`; ABI: `git diff -- core/include/zlink.h core/src/libzlink.vers`; owner 문장: `discovery_t`는 discovery semantic facade이고 local registration state는 `discovery_local_state_t`, provider snapshot/update-seq/observer coordination state는 `discovery_service_state_t`, registry bootstrap/socket-option/routing-id/uplink dealer detail은 `discovery_bootstrap_runtime_t`와 `discovery_uplink_runtime_t`가 소유한다. `commit: 756e54b4` |
+| Post-residual 기준 engine / transport owner 재판정 | 완료 | 5.7E | `core/src/engine/asio/asio_engine.cpp`, `core/src/transports/ws/asio_ws_engine.cpp` | 구조 판정: `asio_engine_t`는 backend-common async runtime과 stream fast-path tuning owner이고, `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution owner라서 current active 구조 row와 직접 연결되는 giant owner로 승격하지 않는다. representative smoke: `ctest --test-dir core/build --output-on-failure -R '^(test_stream_fastpath|test_spot_pubsub_scenario_peer_wss)$'`; ABI: `git diff -- core/include/zlink.h core/src/libzlink.vers`; archive 참고: `doc/plan/refactor/2nd/logs/phase5_7E_transport_smoke_20260325_120318.log`, `doc/plan/refactor/2nd/logs/phase5_7E_transport_smoke_20260325_120318.log.exitcode` |
+| Final lane gate 및 master plan 8.1/8.2/9 완료 판정 | 완료 | 5.8, 6.3 | `core/tests/run_test_lanes.sh`, `doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md`, `core/src/services/spot/spot_sub_recv.cpp`, `core/src/services/spot/spot_sub_subject_state.cpp`, `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/e2e/spot/test_spot_service_introspection.cpp` | preflight/long gate 재진입 후 `./core/tools/run_execution_gate_loop.sh --logs-dir /home/hep7/project/kairos/zlink/core/tools/refactor/logs --label posd_perf_first_gate --count 10 --next-success-cmd './core/tests/run_test_lanes.sh --build-dir core/build --include-e2e && git diff -- core/include/zlink.h core/src/libzlink.vers'`에서 먼저 `test_multi_spot_benchmark_process`가 다시 실패했다. 실패 로그: `core/tools/refactor/logs/posd_perf_first_gate_20260326_175846.log`, `core/tools/refactor/logs/posd_perf_first_gate_20260326_175846.log.exitcode`, `core/tools/refactor/logs/posd_perf_first_gate_next_20260326_175846.log`. 후속 수정으로 `spot_sub_recv.cpp`는 recv path multipart frame owner를 실제 move-owner로 바꿨고, `test_multi_spot_benchmark_process.cpp`는 `recv smoke` phase window와 large secure tuple exit timeout을 case 규모에 맞는 hard timeout으로 다시 계산하게 정리했다. 그 다음 재실행에서는 `test_spot_service_introspection_snapshots`가 stress 4/10에서 다시 실패했고 자동 단일 재현은 green이었다. 실패 로그: `core/tools/refactor/logs/posd_perf_first_gate_20260326_203802.log`, `core/tools/refactor/logs/posd_perf_first_gate_20260326_203802.log.exitcode`, 재현 로그: `core/tools/refactor/logs/posd_perf_first_gate_repro_test_spot_service_introspection_snapshots_20260326_203802.log`, `core/tools/refactor/logs/posd_perf_first_gate_repro_test_spot_service_introspection_snapshots_20260326_203802.log.exitcode`. 원인은 `spot_sub_subject_state.cpp`가 subscription-ready monitor 이벤트를 ready snapshot state 반영보다 먼저 내보내던 순서였고, 이를 state 반영 뒤 emit하도록 수정했다. focused 검증: `cmake --build core/build --target test_multi_spot_benchmark_process -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^unittest_spot_data_plane_budget$'`, `ctest --test-dir core/build --output-on-failure --repeat until-fail:3 -R '^test_multi_spot_benchmark_process$'`, `cmake --build core/build --target test_spot_service_introspection -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_service_introspection_handler_monitor_close|test_spot_service_introspection_late_connect|test_spot_service_introspection_subscription_ready_loss)$'`, `ctest --test-dir core/build --output-on-failure --repeat until-fail:30 -R '^test_spot_service_introspection_snapshots$'`, `ctest --test-dir core/build -N -L '^unittest$'`, `ctest --test-dir core/build -N -L '^integration$'`, `ctest --test-dir core/build -N -L '^e2e$'`; latest final lane gate 재성공: `./core/tools/run_execution_gate_loop.sh --logs-dir /home/hep7/project/kairos/zlink/core/tools/refactor/logs --label posd_perf_first_gate --count 10 --next-success-cmd './core/tests/run_test_lanes.sh --build-dir core/build --include-e2e && git diff -- core/include/zlink.h core/src/libzlink.vers'`, `core/tools/refactor/logs/posd_perf_first_gate_20260326_210806.log`, `core/tools/refactor/logs/posd_perf_first_gate_20260326_210806.log.exitcode`, `core/tools/refactor/logs/posd_perf_first_gate_next_20260326_210806.log`, `core/tools/refactor/logs/posd_perf_first_gate_next_20260326_210806.log.exitcode`; `git diff -- core/include/zlink.h core/src/libzlink.vers` 빈 출력; master plan Phase 1~6, 8.1, 8.2, 9와 gap review 재대조 결과 추가 구현 누락 없음. push commit hash는 인접 진행 메모에 기록한다. |
 
 이 표는 각 작업 묶음이 끝날 때마다 반드시 갱신한다.
 표에 `미착수`, `진행중`, `검증중`이 하나라도 남아 있으면 문서 완료가 아니다.
@@ -453,21 +453,26 @@ Phase 4에서 고정한 option owner map은 아래처럼 해석한다.
 - `core-socket`
   - `sndhwm`, `rcvhwm`, `affinity`, `routing_id`, `ipv6`, `immediate`, `conflate`
   - `stream_notify`, `handshake_ivl`, `heartbeat_ivl`, `heartbeat_timeout`, `zmp_metadata`
+  - `monitor_event_version` 같은 shared-bag implicit field도 monitor/socket owner 축으로 설명된다.
 - `transport-network`
   - `sndbuf`, `rcvbuf`, `linger`, `connect_timeout`, `tcp_maxrt`, `reconnect_*`
   - `tcp_keepalive*`, `tcp_nodelay`, `bindtodevice`, `tos`, `backlog`, `rcvtimeo`, `sndtimeo`
+  - `busy_poll` 같은 shared-bag implicit field도 transport owner 축으로 설명된다.
 - `protocol-metadata`
   - `heartbeat_ttl`
   - `tls_cert`, `tls_key`, `tls_ca`, `tls_verify`, `tls_require_client_cert`, `tls_hostname`, `tls_trust_system`, `tls_password`
+  - `hello_msg`, `disconnect_msg`, `hiccup_msg` 같은 handshake payload field도 protocol/session owner 축으로 설명된다.
 - `service-specific`
   - `subscribe`, `unsubscribe`, `topics_count`
   - router/xpub 계열 option, `FD`, `EVENTS`, `LAST_ENDPOINT`
   - central `options_t` bag이 직접 해석하지 않고 service/socket seam 뒤에서 처리
+  - internal numeric id가 shared-bag option과 겹치는 경우(`XPUB_MANUAL_LAST_VALUE` vs `TLS_VERIFY`)도 public surface owner map에서 service/socket seam으로 분리해 설명한다.
 
 닫힘 기준:
 
 - `getsockopt/setsockopt` round-trip 회귀 유지
 - transport/TLS/routing/subscription/heartbeat 계열이 owner별 module로 설명된다.
+- `monitor_event_version`, hello/disconnect/hiccup, `busy_poll` 계열도 owner map에서 빠지지 않는다.
 - option owner map이 코드와 문서에 모두 존재한다.
 
 ### 5.5 service seam 정제
@@ -686,13 +691,14 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 - 숨길 책임: bootstrap retry/wakeup, routing-id lock detail, socket option 저장/적용, tls client option materialization, uplink/control dealer state
 - 허용 파일 경계: `discovery.hpp`, `discovery_runtime_internal.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_state.cpp`, `discovery_update.cpp`, `discovery_registry_client.cpp`, 필요 시 이에 직접 연결된 `core/tests/`
 - 금지: bootstrap state를 `discovery_t` 본체 field로 더 늘리는 것, `spot/gateway`에서 discovery internal state를 직접 읽게 하는 것, transport restriction contract 완화
-- 필수 대표 gate: `test_service_discovery`, `test_service_introspection`, `test_service_introspection_discovery_self_close`, `test_service_introspection_discovery_control_path`, `test_monitor_service_contract`
+- 필수 대표 gate: `unittest_discovery_service_state`, `test_spot_service_introspection`, `test_spot_service_introspection_member_peers`, `test_spot_service_introspection_metadata_local`, `test_spot_service_introspection_handler_monitor_close`, `test_spot_pubsub_scenario`
 
 - [x] [`discovery.hpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery.hpp)와
   [`discovery_bootstrap.cpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery_bootstrap.cpp),
   [`discovery_uplink.cpp`](/home/hep7/project/kairos/zlink/core/src/services/discovery/discovery_uplink.cpp)가
   semantic facade인지 bootstrap/uplink coordinator인지 다시 판정한다.
 - [x] registry bootstrap, routing-id lock, socket option 저장/적용, tls client option 반영이 어떤 private owner에 속하는지 먼저 문장으로 고정한다.
+- [x] `discovery_t`가 직접 쥔 provider snapshot/update-seq/observer coordination state owner를 dedicated private owner로 이동한다.
 - [x] bootstrap retry/wakeup/control task 시작 조건이 top-level facade와 뒤섞인 지점을 줄인다.
 - [x] friend/access seam과 internal bootstrap helper가 상태 우회 통로로 남는 지점을 줄인다.
 - [x] 이 항목은 `5.7A`, `5.7B`, `5.7C` 완료 후에만 진행한다.
@@ -700,16 +706,17 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 닫힘 기준:
 
 - `discovery_t` 설명이 "semantic facade + bootstrap/uplink owner 위임" 수준으로 줄어든다.
+- provider snapshot/update-seq/observer coordination state가 top-level facade 바깥 private owner로 설명된다.
 - registry bootstrap과 uplink/control state가 top-level facade 바깥 private owner로 설명된다.
 - service/discovery 대표 회귀가 유지된다.
 
 구현 메모:
 
-- 실제 수정 파일: `discovery.hpp`, `discovery_runtime_internal.hpp`, `discovery_bootstrap.cpp`, `discovery_uplink.cpp`, `discovery_state.cpp`, `discovery_update.cpp`, `discovery_registry_client.cpp`
-- 통과한 gate 명령: `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_service_discovery|test_service_introspection|test_service_introspection_discovery_self_close|test_service_introspection_discovery_control_path|test_monitor_service_contract)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`
-- 최종 문장: `discovery_t`는 discovery semantic facade이고 registry bootstrap/socket-option/routing-id/uplink dealer detail은 `discovery_bootstrap_runtime_t`와 `discovery_uplink_runtime_t`가 소유한다.
-- push된 commit: `95b44aea`
-- 마스터 플랜 재점검: Phase 1~6, 8.1, 8.2, 9 기준으로 `5.7D` 외 추가 구현 누락은 발견하지 못했고, 다음 미완료 row는 `5.7E`다.
+- 실제 수정 파일: `discovery.hpp`, `discovery_runtime_internal.hpp`, `discovery_service_state.cpp`, `discovery_state.cpp`, `discovery_update.cpp`, `discovery.cpp`, `core/tests/unittest/unittest_discovery_service_state.cpp`
+- 통과한 gate 명령: `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON -DZLINK_BUILD_C_BINDINGS=OFF -DZLINK_BUILD_CPP_BINDINGS=OFF`, `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(unittest_discovery_service_state|test_spot_service_introspection|test_spot_service_introspection_member_peers|test_spot_service_introspection_metadata_local|test_spot_service_introspection_handler_monitor_close|test_spot_pubsub_scenario)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`
+- 최종 문장: `discovery_t`는 discovery semantic facade이고 local registration state는 `discovery_local_state_t`, provider snapshot/update-seq/observer coordination state는 `discovery_service_state_t`, registry bootstrap/socket-option/routing-id/uplink dealer detail은 `discovery_bootstrap_runtime_t`와 `discovery_uplink_runtime_t`가 소유한다.
+- push된 commit: `756e54b4`
+- 마스터 플랜 재점검: Phase 1~6, 8.1, 8.2, 9와 gap review/post-residual review를 다시 훑은 결과 `5.7D` 외 추가 구현 누락은 발견하지 못했고, 다음 첫 미완료 row는 `5.7E`다.
 
 ### 5.7E post-residual 기준 engine / transport owner 재판정
 
@@ -744,10 +751,10 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 
 구현 메모:
 
-- 실제 수정 파일: 구조 코드 변경 없음, 실행 가이드 판정/증거 갱신만 수행
-- 통과한 gate 명령: `cmake --build core/build -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^test_stream_fastpath$'`, `ctest --test-dir core/build --output-on-failure -R '^(test_gateway_ws|test_gateway_wss|test_service_introspection_transport_ws|test_service_introspection_registry_peer_mixed_ws|test_spot_pubsub_scenario_peer_wss)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`
+- 실제 수정 파일: 구조 코드 변경 없음, 실행 가이드/세션 로그 판정 갱신만 수행
+- 통과한 gate 명령: `ctest --test-dir core/build --output-on-failure -R '^(test_stream_fastpath|test_spot_pubsub_scenario_peer_wss)$'`, `git diff -- core/include/zlink.h core/src/libzlink.vers`
 - 최종 문장: `asio_engine_t`는 backend-common async runtime과 stream fast-path tuning을 소유하고, `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution을 소유하는 transport-local owner이므로 현재 POSD residual의 새 구조 phase를 열 대상이 아니다.
-- 마스터 플랜 재점검: Phase 1~6, 8.1, 8.2, 9 기준으로 `5.7E` 외 추가 구현 누락은 발견하지 못했고, 다음 순서는 최종 lane gate와 완료 판정이다.
+- 마스터 플랜 재점검: Phase 1~6, 8.1, 8.2, 9와 gap review/post-residual review를 다시 훑은 결과 다음 첫 미완료 row는 `5.8` final lane gate다.
 
 ### 5.8 최종 lane gate 및 완료 판정
 
@@ -759,14 +766,12 @@ git diff -- core/include/zlink.h core/src/libzlink.vers
 
 검증 메모:
 
-- preflight: `ctest --test-dir core/build -N -L '^unittest$'`, `ctest --test-dir core/build -N -L '^integration$'`, `ctest --test-dir core/build -N -L '^e2e$'`
-- build: `cmake --build core/build -j"$(nproc)"`
-- final lane gate: `./core/tests/run_test_lanes.sh --include-e2e`
-- 최종 로그: `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log`
-- exitcode: `doc/plan/refactor/2nd/logs/final_test_lanes_include_e2e_20260325_122706.log.exitcode`
-- ABI 확인: `git diff -- core/include/zlink.h core/src/libzlink.vers` 빈 출력
-- push된 completion commit: `75220e2a`
-- 마스터 플랜/갭 리뷰 재점검: Phase 1~6, 8.1, 8.2, 9와 `core-system-posd-refactor-gap-review.ko.md`를 다시 훑은 결과, 실행 가이드 5장에 추가해야 할 미반영 구현 항목은 발견하지 못했다.
+- preflight 재확인 완료: `ctest --test-dir core/build -N -L '^unittest$'`, `ctest --test-dir core/build -N -L '^integration$'`, `ctest --test-dir core/build -N -L '^e2e$'`
+- build 재고정 완료: `cmake --build core/build -j"$(nproc)"`
+- focused 안정화 증거: `cmake --build core/build --target test_multi_spot_benchmark_process -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^unittest_spot_data_plane_budget$'`, `ctest --test-dir core/build --output-on-failure --repeat until-fail:3 -R '^test_multi_spot_benchmark_process$'`, `cmake --build core/build --target test_spot_service_introspection -j"$(nproc)"`, `ctest --test-dir core/build --output-on-failure -R '^(test_spot_service_introspection_handler_monitor_close|test_spot_service_introspection_late_connect|test_spot_service_introspection_subscription_ready_loss)$'`, `ctest --test-dir core/build --output-on-failure --repeat until-fail:30 -R '^test_spot_service_introspection_snapshots$'`
+- final lane gate 성공 로그: `core/tools/refactor/logs/posd_perf_first_gate_20260326_204938.log`, exitcode: `core/tools/refactor/logs/posd_perf_first_gate_20260326_204938.log.exitcode`, next-success log: `core/tools/refactor/logs/posd_perf_first_gate_next_20260326_204938.log`, next-success exitcode: `core/tools/refactor/logs/posd_perf_first_gate_next_20260326_204938.log.exitcode`
+- ABI 재확인: `git diff -- core/include/zlink.h core/src/libzlink.vers` 빈 출력
+- 현재 row는 검증은 끝났지만 `5.0.2` commit/push 규칙은 아직 미충족이다.
 
 닫힘 기준:
 

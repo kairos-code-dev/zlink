@@ -43,10 +43,11 @@ void zlink::socket_base_t::start_reaping (poller_t *poller_)
         wait_async_quiesced (1000);
 
     //  Plug the socket to the reaper thread.
-    _poller = poller_;
+    lifecycle_coordinator ().set_reaper_poller (poller_);
 
     mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
-    mailbox->set_io_context (&_poller->get_io_context (),
+    mailbox->set_io_context (&lifecycle_coordinator ().reaper_poller ()
+                                  ->get_io_context (),
                              &socket_base_t::reaper_mailbox_handler, this,
                              &socket_base_t::reaper_mailbox_pre_post);
     mailbox->schedule_if_needed ();
@@ -72,14 +73,9 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
         //  depending on CPU speed: It's ~1ms on 3GHz CPU, ~2ms on 1.5GHz CPU
         //  etc. The optimisation makes sense only on platforms where getting
         //  a timestamp is a very cheap operation (tens of nanoseconds).
-        if (tsc && throttle_) {
-            //  Check whether TSC haven't jumped backwards (in case of migration
-            //  between CPU cores) and whether certain time have elapsed since
-            //  last command processing. If it didn't do nothing.
-            if (tsc >= _last_tsc && tsc - _last_tsc <= max_command_delay)
-                return 0;
-            _last_tsc = tsc;
-        }
+        if (tsc && throttle_
+            && command_runtime ().should_skip_throttled_command_poll (tsc))
+            return 0;
     }
 
     //  Check whether there are any commands pending for this thread.
@@ -151,13 +147,15 @@ void zlink::socket_base_t::process_term (int linger_)
     unregister_endpoints (this);
 
     //  Ask all attached pipes to terminate.
-    for (pipes_t::size_type i = 0, size = _pipes.size (); i != size; ++i) {
+    const size_t attached_pipe_count = endpoint_runtime ().attached_pipe_count ();
+    for (size_t i = 0; i != attached_pipe_count; ++i) {
         //  Only inprocs might have a disconnect message set
-        _pipes[i]->send_disconnect_msg ();
-        _pipes[i]->terminate (false);
+        pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
+        pipe->send_disconnect_msg ();
+        pipe->terminate (false);
     }
-    register_term_acks (static_cast<int> (_pipes.size ()));
-    _term_pipe_acks_registered = static_cast<int> (_pipes.size ());
+    register_term_acks (static_cast<int> (attached_pipe_count));
+    _term_pipe_acks_registered = static_cast<int> (attached_pipe_count);
     _term_pipe_acks_received = 0;
 
     //  Continue the termination process immediately.
@@ -172,9 +170,11 @@ void zlink::socket_base_t::process_term_endpoint (std::string *endpoint_)
 
 void zlink::socket_base_t::set_all_pipes_nodelay ()
 {
-    for (pipes_t::size_type i = 0, size = _pipes.size (); i != size; ++i) {
-        if (_pipes[i])
-            _pipes[i]->set_nodelay ();
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
+         i != size; ++i) {
+        pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
+        if (pipe)
+            pipe->set_nodelay ();
     }
 }
 
@@ -182,16 +182,18 @@ void zlink::socket_base_t::update_pipe_options (int option_)
 {
     if (option_ == ZLINK_INTERNAL_OPT_SNDHWM
         || option_ == ZLINK_INTERNAL_OPT_RCVHWM) {
-        for (pipes_t::size_type i = 0, size = _pipes.size (); i != size; ++i) {
-            _pipes[i]->set_hwms (options.rcvhwm, options.sndhwm);
-            _pipes[i]->send_hwms_to_peer (options.sndhwm, options.rcvhwm);
+        for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
+             i != size; ++i) {
+            pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
+            pipe->set_hwms (options.rcvhwm, options.sndhwm);
+            pipe->send_hwms_to_peer (options.sndhwm, options.rcvhwm);
         }
     }
 }
 
 void zlink::socket_base_t::process_destroy ()
 {
-    _destroyed = true;
+    lifecycle_coordinator ().mark_destroyed ();
 }
 
 void zlink::socket_base_t::in_event ()
@@ -202,7 +204,7 @@ void zlink::socket_base_t::in_event ()
         //  threads/sockets that may be available at the moment. Ultimately,
         //  the socket will be destroyed.
         process_commands (0, false);
-        if (_destroyed) {
+        if (lifecycle_coordinator ().is_destroyed ()) {
             check_destroy ();
             return;
         }
@@ -213,7 +215,7 @@ void zlink::socket_base_t::process_async_mailbox ()
 {
     do {
         process_commands (0, false);
-        if (_destroyed) {
+        if (lifecycle_coordinator ().is_destroyed ()) {
             check_destroy ();
             return;
         }
@@ -242,16 +244,18 @@ void zlink::socket_base_t::timer_event (int)
 void zlink::socket_base_t::check_destroy ()
 {
     //  If the object was already marked as destroyed, finish the deallocation.
-    if (_destroyed) {
+    if (lifecycle_coordinator ().is_destroyed ()) {
         lifecycle_coordinator ().mark_destroy_pending ();
         if (lifecycle_coordinator ().mailbox_refcount () != 0)
             return;
 
         inc_mailbox_ref ();
-        if (_poller) {
-            boost::asio::post (_poller->get_io_context (), [this]() {
+        if (lifecycle_coordinator ().reaper_poller ()) {
+            boost::asio::post (
+              lifecycle_coordinator ().reaper_poller ()->get_io_context (),
+              [this]() {
                 this->dec_mailbox_ref ();
-            });
+              });
         } else {
             dec_mailbox_ref ();
         }

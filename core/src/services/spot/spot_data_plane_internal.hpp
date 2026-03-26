@@ -45,51 +45,6 @@ struct spot_mesh_peer_state_t
     std::set<std::string> connected_endpoints;
 };
 
-inline bool is_websocket_transport (const std::string &endpoint_)
-{
-    return endpoint_.compare (0, 5, "ws://") == 0
-           || endpoint_.compare (0, 6, "wss://") == 0;
-}
-
-inline bool is_secure_transport (const std::string &endpoint_)
-{
-    return endpoint_.compare (0, 6, "tls://") == 0
-           || endpoint_.compare (0, 6, "wss://") == 0;
-}
-
-inline bool is_wss_transport (const std::string &endpoint_)
-{
-    return endpoint_.compare (0, 6, "wss://") == 0;
-}
-
-inline int resolve_mesh_pub_sndhwm_default (const std::string &endpoint_,
-                                            unsigned int ready_peers_)
-{
-    const bool secure = is_secure_transport (endpoint_);
-    const bool wss = is_wss_transport (endpoint_);
-
-    if (ready_peers_ == 0)
-        return 64;
-    if (ready_peers_ == 1)
-        return 768;
-    if (wss)
-        return 256;
-    if (!secure)
-        return 64;
-    return 768;
-}
-
-inline bool should_refresh_mesh_pub_budget (const std::string &endpoint_,
-                                            unsigned int previous_ready_peers_,
-                                            unsigned int next_ready_peers_)
-{
-    const int previous_budget =
-      resolve_mesh_pub_sndhwm_default (endpoint_, previous_ready_peers_);
-    const int next_budget =
-      resolve_mesh_pub_sndhwm_default (endpoint_, next_ready_peers_);
-    return previous_budget != next_budget;
-}
-
 inline bool sync_monitor_ready_endpoint (
   std::set<std::string> *endpoints_, const zlink_monitor_event_t &raw_)
 {
@@ -251,27 +206,6 @@ inline void reset_mesh_pub_budget_state (spot_mesh_peer_state_t *state_)
 
     state_->mesh_pub_ready_peer_count.store (0, std::memory_order_release);
     state_->budget_version.fetch_add (1, std::memory_order_acq_rel);
-}
-
-inline bool publish_mesh_pub_budget_hint (spot_mesh_peer_state_t *state_,
-                                          const std::string &endpoint_,
-                                          uint32_t ready_count_)
-{
-    if (!state_)
-        return false;
-
-    const uint32_t previous =
-      state_->mesh_pub_ready_peer_count.load (std::memory_order_acquire);
-    if (previous == ready_count_)
-        return false;
-
-    state_->mesh_pub_ready_peer_count.store (ready_count_,
-                                             std::memory_order_release);
-    if (should_refresh_mesh_pub_budget (endpoint_, previous, ready_count_)) {
-        state_->budget_version.fetch_add (1, std::memory_order_acq_rel);
-        return true;
-    }
-    return false;
 }
 
 struct spot_data_plane_runtime_state_t

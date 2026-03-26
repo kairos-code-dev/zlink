@@ -6,6 +6,7 @@
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
@@ -583,11 +584,9 @@ void spot_node_t::publish_mesh_pub_budget_hint_locked ()
         return;
 
     const uint32_t ready_count = max_pub_delivery_ready_count_locked ();
-    // Keep the ready-peer count authoritative, but only force the data plane to
-    // touch the live mesh_pub socket when the effective budget actually changes.
-    (void) publish_mesh_pub_budget_hint (&_runtime->mesh_peer_state,
-                                         _runtime->bound_endpoint,
-                                         ready_count);
+    // Keep the ready-peer count authoritative while leaving live socket refresh
+    // decisions to the budget owner.
+    (void) spot_mesh_pub_budget_t::publish_ready_hint (_runtime, ready_count);
 }
 
 void spot_node_t::schedule_subscription_ready_refresh ()

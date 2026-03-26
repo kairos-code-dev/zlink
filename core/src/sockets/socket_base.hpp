@@ -55,6 +55,7 @@ class socket_base_t : public own_t,
                       public i_pipe_events
 {
     friend class reaper_t;
+    friend class socket_callback_scope_t;
 
   public:
     //  Returns false if object is not a socket.
@@ -116,7 +117,6 @@ class socket_base_t : public own_t,
     static void *current_socket_msg_dispatch_subject ();
     static bool current_socket_msg_dispatch_source_rid (
       zlink_routing_id_t *out_);
-    bool send_ready_dispatch_in_callback () const;
     void invoke_send_ready_handler_for_testing ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int sub_dispatch_start (spot_sub_io_handler_fn callback_,
@@ -217,7 +217,6 @@ class socket_base_t : public own_t,
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
     int socket_id () const;
 
-    bool is_disconnected () const;
     bool is_ctx_terminated () const;
 
   protected:
@@ -328,6 +327,7 @@ class socket_base_t : public own_t,
     typedef zlink::socket_endpoints_t endpoints_t;
     typedef zlink::socket_inprocs_t inprocs_t;
     typedef zlink::socket_endpoint_runtime_t endpoint_runtime_t;
+    typedef zlink::socket_command_runtime_t command_runtime_t;
     typedef zlink::socket_monitor_runtime_t monitor_runtime_t;
     typedef zlink::socket_dispatch_bridge_t dispatch_bridge_t;
     typedef zlink::socket_lifecycle_coordinator_t lifecycle_coordinator_t;
@@ -340,6 +340,14 @@ class socket_base_t : public own_t,
     const endpoint_runtime_t &endpoint_runtime () const
     {
         return _runtime.endpoint_runtime;
+    }
+    command_runtime_t &command_runtime ()
+    {
+        return _runtime.command_runtime;
+    }
+    const command_runtime_t &command_runtime () const
+    {
+        return _runtime.command_runtime;
     }
     monitor_runtime_t &monitor_runtime ()
     {
@@ -376,6 +384,7 @@ class socket_base_t : public own_t,
 
     // Socket event data dispatch
     static void monitor_thread_main (void *arg_);
+    static void monitor_delivery_ready_pump (void *arg_);
     void monitor_loop ();
     void enqueue_monitor_event (const monitor_event_record_t &record_);
     bool build_monitor_event_record (
@@ -388,7 +397,6 @@ class socket_base_t : public own_t,
       const endpoint_uri_pair_t &endpoint_uri_pair_) const;
     bool dispatch_monitor_event (void *monitor_socket_,
                                  const monitor_event_record_t &record_) const;
-    void stop_monitor_thread ();
 
     // Monitor socket cleanup
     void stop_monitor (bool send_monitor_stopped_event_ = true);
@@ -411,11 +419,6 @@ class socket_base_t : public own_t,
 
     //  If true, associated context was already terminated.
     bool _ctx_terminated;
-
-    //  If true, object should have been already destroyed. However,
-    //  destruction is delayed while we unwind the stack to the point
-    //  where it doesn't intersect the object being destroyed.
-    bool _destroyed;
 
     //  Parse URI string.
     static int
@@ -454,57 +457,22 @@ class socket_base_t : public own_t,
 
     std::string resolve_tcp_addr (std::string endpoint_uri_,
                                   const char *tcp_address_);
-    bool enter_public_api ();
-    void leave_public_api ();
-    bool enter_callback_api ();
-    void leave_callback_api ();
-    bool begin_close_or_fail_busy (bool from_self_callback_);
     void finish_close_handoff ();
-    bool public_close_requested () const;
-    void lock_public_api_sync ();
-    void unlock_public_api_sync ();
-    bool send_ready_slot (
-      zlink_send_ready_handler_fn *handler_out_,
-      void **subject_out_) const;
 
     //  Socket's mailbox object.
     i_mailbox *_mailbox;
-
-    //  List of attached pipes.
-    typedef array_t<pipe_t, 3> pipes_t;
-    pipes_t _pipes;
-    std::set<std::string> _ready_connection_keys;
 
     //  Keep these counters in all builds so the class layout does not vary
     //  across translation units compiled with different debug settings.
     int _term_pipe_acks_registered;
     int _term_pipe_acks_received;
 
-    //  Reaper's poller.
-    poller_t *_poller;
-
-    //  Timestamp of when commands were processed the last time.
-    uint64_t _last_tsc;
-
-    //  Number of messages received since last command processing.
-    int _ticks;
-
-    //  True if the last message received had MORE flag set.
-    bool _rcvmore;
-
     //  Improves efficiency of time measurement.
     clock_t _clock;
-
-    // Last socket endpoint resolved URI
-    std::string _last_endpoint;
     socket_runtime_t _runtime;
     socket_discovery_attachment_t *_service_attachment;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
-
-    // Add a flag for mark disconnect action
-    bool _disconnected;
-
 };
 
 class routing_socket_base_t : public socket_base_t

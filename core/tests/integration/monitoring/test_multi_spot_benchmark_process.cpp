@@ -121,6 +121,55 @@ std::string sibling_binary_path (const char *argv0_, const char *name_)
     return path.substr (0, slash + 1) + name_;
 }
 
+bool is_secure_transport_name (const char *transport_)
+{
+    return transport_
+           && (std::strcmp (transport_, "tls") == 0
+               || std::strcmp (transport_, "wss") == 0);
+}
+
+size_t max_message_size_from_csv (const char *msg_sizes_)
+{
+    if (!msg_sizes_)
+        return 0;
+
+    size_t max_size = 0;
+    const char *cursor = msg_sizes_;
+    while (*cursor) {
+        char *end = NULL;
+        const unsigned long long parsed = std::strtoull (cursor, &end, 10);
+        if (end == cursor)
+            break;
+        if (parsed > max_size)
+            max_size = static_cast<size_t> (parsed);
+        cursor = *end == ',' ? end + 1 : end;
+        if (*cursor == '\0')
+            break;
+    }
+
+    return max_size;
+}
+
+int resolve_case_exit_timeout_ms (const char *transport_,
+                                  const char *msg_sizes_,
+                                  int clients_,
+                                  int duration_seconds_,
+                                  int warmup_seconds_)
+{
+    int timeout_ms =
+      std::max (30000, (duration_seconds_ + warmup_seconds_ + 10) * 1000);
+    const size_t max_msg_size = max_message_size_from_csv (msg_sizes_);
+
+    if (clients_ >= 100 || max_msg_size >= 131072)
+        timeout_ms = std::max (timeout_ms, 60000);
+    if (is_secure_transport_name (transport_))
+        timeout_ms = std::max (timeout_ms, 60000);
+    if (is_secure_transport_name (transport_) && max_msg_size >= 131072)
+        timeout_ms = std::max (timeout_ms, 90000);
+
+    return timeout_ms;
+}
+
 void close_process_capture (process_capture_t *proc_)
 {
     if (!proc_)
@@ -471,8 +520,8 @@ void run_multi_spot_process_case (const char *recv_mode_,
     write_stdin_line (server, (std::string ("START,") + msg_size_ + "\n").c_str ());
 
     int client_rc = INT_MIN;
-    const int exit_timeout_ms =
-      std::max (30000, (duration_seconds_ + warmup_seconds_ + 10) * 1000);
+    const int exit_timeout_ms = resolve_case_exit_timeout_ms (
+      transport_, msg_size_, clients_, duration_seconds_, warmup_seconds_);
     TEST_ASSERT_TRUE_MESSAGE (
       wait_for_exit_code (client, exit_timeout_ms, &client_rc),
       capture_case_debug_text (server, client).c_str ());
@@ -602,9 +651,11 @@ void run_multi_spot_process_sequence_case (
     }
 
     int client_rc = INT_MIN;
-    const int exit_timeout_ms =
-      std::max (60000, (duration_seconds_ + warmup_seconds_ + 15)
-                           * static_cast<int> (msg_sizes.size ()) * 1000);
+    const int exit_timeout_ms = std::max (
+      resolve_case_exit_timeout_ms (transport_, msg_sizes_, clients_,
+                                    duration_seconds_, warmup_seconds_),
+      (duration_seconds_ + warmup_seconds_ + 15)
+        * static_cast<int> (msg_sizes.size ()) * 1000);
     TEST_ASSERT_TRUE_MESSAGE (
       wait_for_exit_code (client, exit_timeout_ms, &client_rc),
       capture_case_debug_text (server, client).c_str ());
@@ -670,7 +721,7 @@ void tearDown ()
 
 void test_multi_spot_process_recv_smoke ()
 {
-    run_multi_spot_process_case ("recv", "tcp", "64", 2, 15000);
+    run_multi_spot_process_case ("recv", "tcp", "64", 2, 15000, 2, 2);
 }
 
 void test_multi_spot_process_callback_smoke ()

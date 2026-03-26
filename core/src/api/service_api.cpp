@@ -123,17 +123,27 @@ void destroy_spot_handle_for_testing (void *spot_)
 }
 }
 
+namespace
+{
+int unsupported_or_fault_service_errno (void *handle_)
+{
+    const zlink::service_handle_resolution_t resolved =
+      zlink::resolve_service_handle (handle_);
+
+    errno = resolved.kind == zlink::service_handle_unknown ? EFAULT : ENOTSUP;
+    return -1;
+}
+}
+
 int zlink_service_send_internal (void *handle_,
                                  zlink_msg_t *parts_,
                                  size_t part_count_,
                                  zlink_send_flags_t flags_)
 {
-    LIBZLINK_UNUSED (handle_);
     LIBZLINK_UNUSED (parts_);
     LIBZLINK_UNUSED (part_count_);
     LIBZLINK_UNUSED (flags_);
-    errno = EFAULT;
-    return -1;
+    return unsupported_or_fault_service_errno (handle_);
 }
 
 int zlink_service_send_rid_internal (void *handle_,
@@ -142,13 +152,11 @@ int zlink_service_send_rid_internal (void *handle_,
                                      size_t part_count_,
                                      zlink_send_flags_t flags_)
 {
-    LIBZLINK_UNUSED (handle_);
     LIBZLINK_UNUSED (target_rid_);
     LIBZLINK_UNUSED (parts_);
     LIBZLINK_UNUSED (part_count_);
     LIBZLINK_UNUSED (flags_);
-    errno = EFAULT;
-    return -1;
+    return unsupported_or_fault_service_errno (handle_);
 }
 
 int zlink_service_recv_internal (void *handle_,

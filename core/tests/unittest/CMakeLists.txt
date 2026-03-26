@@ -11,11 +11,15 @@ set(unittests
     unittest_zmp_decoder
     unittest_raw_decoder
     unittest_msg_view
+    unittest_ctx_runtime
     unittest_service_runtime_base
+    unittest_discovery_service_state
     unittest_spot_data_plane_protocol
     unittest_spot_data_plane_budget
     unittest_spot_runtime_control_state
+    unittest_socket_runtime
     unittest_spot_subject_access
+    unittest_registry_access
     unittest_typed_option)
 
 # add location of platform.hpp for Windows builds
@@ -85,4 +89,3 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
     message(AUTHOR_WARNING "Test '${TESTNAME}' is not known to CTest.")
   endif()
 endforeach()
-    unittest_discovery_service_state

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "core/address.hpp"
+#include "core/ctx_inproc_registry.hpp"
 #include "core/io_thread.hpp"
 #include "core/pipe.hpp"
 #include "core/session_base.hpp"
@@ -121,15 +122,18 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
     }
 
     if (protocol == protocol_name::inproc) {
-        const endpoint_t endpoint = {this, options};
+        const endpoint_t endpoint (this, options);
         rc = register_endpoint (endpoint_uri_, endpoint);
         if (rc == 0) {
             connect_pending (endpoint_uri_, this);
-            _last_endpoint.assign (endpoint_uri_);
+            endpoint_runtime ().set_last_endpoint (endpoint_uri_);
             options.connected = true;
             if (_service_attachment
-                && _service_attachment->on_bind_success (_last_endpoint) != 0) {
-                (void) term_endpoint_internal (_last_endpoint.c_str ());
+                && _service_attachment->on_bind_success (
+                     endpoint_runtime ().last_endpoint_uri ())
+                     != 0) {
+                (void) term_endpoint_internal (
+                  endpoint_runtime ().last_endpoint_uri ().c_str ());
                 return -1;
             }
         }
@@ -163,13 +167,19 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
             return -1;
         }
 
-        listener->get_local_address (_last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
+        std::string last_endpoint;
+        listener->get_local_address (last_endpoint);
+        endpoint_runtime ().set_last_endpoint (last_endpoint);
+        add_endpoint (make_unconnected_bind_endpoint_pair (
+                        endpoint_runtime ().last_endpoint_uri ()),
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (_last_endpoint) != 0) {
-            (void) term_endpoint_internal (_last_endpoint.c_str ());
+            && _service_attachment->on_bind_success (
+                 endpoint_runtime ().last_endpoint_uri ())
+                 != 0) {
+            (void) term_endpoint_internal (
+              endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
         return 0;
@@ -188,13 +198,19 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
             return -1;
         }
 
-        listener->get_local_address (_last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
+        std::string last_endpoint;
+        listener->get_local_address (last_endpoint);
+        endpoint_runtime ().set_last_endpoint (last_endpoint);
+        add_endpoint (make_unconnected_bind_endpoint_pair (
+                        endpoint_runtime ().last_endpoint_uri ()),
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (_last_endpoint) != 0) {
-            (void) term_endpoint_internal (_last_endpoint.c_str ());
+            && _service_attachment->on_bind_success (
+                 endpoint_runtime ().last_endpoint_uri ())
+                 != 0) {
+            (void) term_endpoint_internal (
+              endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
         return 0;
@@ -214,13 +230,19 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
             return -1;
         }
 
-        listener->get_local_address (_last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
+        std::string last_endpoint;
+        listener->get_local_address (last_endpoint);
+        endpoint_runtime ().set_last_endpoint (last_endpoint);
+        add_endpoint (make_unconnected_bind_endpoint_pair (
+                        endpoint_runtime ().last_endpoint_uri ()),
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (_last_endpoint) != 0) {
-            (void) term_endpoint_internal (_last_endpoint.c_str ());
+            && _service_attachment->on_bind_success (
+                 endpoint_runtime ().last_endpoint_uri ())
+                 != 0) {
+            (void) term_endpoint_internal (
+              endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
         return 0;
@@ -267,13 +289,19 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
             return -1;
         }
 
-        listener->get_local_address (_last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
+        std::string last_endpoint;
+        listener->get_local_address (last_endpoint);
+        endpoint_runtime ().set_last_endpoint (last_endpoint);
+        add_endpoint (make_unconnected_bind_endpoint_pair (
+                        endpoint_runtime ().last_endpoint_uri ()),
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (_last_endpoint) != 0) {
-            (void) term_endpoint_internal (_last_endpoint.c_str ());
+            && _service_attachment->on_bind_success (
+                 endpoint_runtime ().last_endpoint_uri ())
+                 != 0) {
+            (void) term_endpoint_internal (
+              endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
         return 0;
@@ -347,7 +375,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         if (!peer.socket) {
             send_routing_id (new_pipes[0], options);
 
-            const endpoint_t endpoint = {this, options};
+            const endpoint_t endpoint (this, options);
             connected_inproc_now =
               pend_connection (std::string (endpoint_uri_), endpoint, new_pipes);
         } else {
@@ -371,7 +399,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         if (connected_inproc_now)
             emit_inproc_connection_ready (new_pipes[0]);
 
-        _last_endpoint.assign (endpoint_uri_);
+        endpoint_runtime ().set_last_endpoint (endpoint_uri_);
         endpoint_runtime ().inprocs.emplace (endpoint_uri_, new_pipes[0]);
         options.connected = true;
         return 0;
@@ -501,7 +529,9 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         session->attach_pipe (new_pipes[1]);
     }
 
-    paddr->to_string (_last_endpoint);
+    std::string last_endpoint;
+    paddr->to_string (last_endpoint);
+    endpoint_runtime ().set_last_endpoint (last_endpoint);
     add_endpoint (make_unconnected_connect_endpoint_pair (endpoint_uri_),
                   static_cast<own_t *> (session), newpipe);
     return 0;
@@ -598,8 +628,9 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
         term_child (it->second.endpoint);
     }
 
-    for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
-        pipe_t *const pipe = _pipes[i];
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
+         i != size; ++i) {
+        pipe_t *const pipe = endpoint_runtime ().attached_pipe (i);
         if (!pipe)
             continue;
         if (pipe->get_endpoint_pair ().identifier () == resolved_endpoint_uri)
@@ -616,9 +647,8 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
         return -1;
     }
 
-    if (!enter_public_api ())
+    socket_public_api_scope_t admission (lifecycle_coordinator ());
+    if (!admission.acquired ())
         return -1;
-    const int rc = term_endpoint_internal (endpoint_uri_);
-    leave_public_api ();
-    return rc;
+    return term_endpoint_internal (endpoint_uri_);
 }

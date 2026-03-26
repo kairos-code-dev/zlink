@@ -17,168 +17,15 @@
 #include "utils/random.hpp"
 #include "utils/sleep.hpp"
 
-#include <algorithm>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
 #include <vector>
 
 namespace zlink
 {
 static const uint32_t spot_node_tag_value = 0x1e6700d9;
-static const size_t spot_sub_queue_hwm_default = 64;
+static const size_t spot_sub_queue_hwm_default = 16;
 static const int ctrl_timeout_ms = 2000;
 static const char spot_ready_probe_prefix[] = "__zlink.ready__/";
-
-static void spot_node_debugf (const char *fmt_, ...)
-{
-    if (!std::getenv ("ZLINK_SPOT_NODE_DEBUG"))
-        return;
-    va_list args;
-    va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-node] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    va_end (args);
-}
-
-static bool spot_shutdown_debug_enabled ()
-{
-    return std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN") != NULL;
-}
-
-static void spot_shutdown_logf (bool always_, const char *fmt_, ...)
-{
-    LIBZLINK_UNUSED (always_);
-    LIBZLINK_UNUSED (fmt_);
-    return;
-#if 0
-    if (!std::getenv ("ZLINK_SPOT_SHUTDOWN_LOG")) {
-        LIBZLINK_UNUSED (always_);
-        return;
-    }
-    va_list stderr_args;
-    va_start (stderr_args, fmt_);
-    std::fprintf (stderr, "[spot-shutdown] ");
-    std::vfprintf (stderr, fmt_, stderr_args);
-    std::fprintf (stderr, "\n");
-    va_end (stderr_args);
-
-    FILE *fp = std::fopen ("/tmp/zlink_spot_shutdown.log", "a");
-    if (!fp)
-        return;
-
-    std::fprintf (fp,
-                  "ts=%llu pid=%ld ",
-                  static_cast<unsigned long long> (zlink::clock_t ().now_ms ()),
-                  static_cast<long> (getpid ()));
-    va_list file_args;
-    va_start (file_args, fmt_);
-    std::vfprintf (fp, fmt_, file_args);
-    std::fprintf (fp, "\n");
-    va_end (file_args);
-    std::fclose (fp);
-#endif
-}
-
-static void spot_ready_ack_debugf (const char *fmt_, ...)
-{
-    if (!std::getenv ("ZLINK_DEBUG_SPOT_READY_ACK"))
-        return;
-
-    va_list args;
-    va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-ready-ack] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    std::fflush (stderr);
-    FILE *fp = std::fopen ("/tmp/zlink_spot_ready_ack.log", "a");
-    if (fp) {
-        va_list file_args;
-        va_start (file_args, fmt_);
-        std::vfprintf (fp, fmt_, file_args);
-        std::fprintf (fp, "\n");
-        va_end (file_args);
-        std::fclose (fp);
-    }
-    va_end (args);
-}
-
-static void preserve_first_error (int rc_, int *first_error_)
-{
-    if (rc_ == 0 || !first_error_ || *first_error_ != 0)
-        return;
-    *first_error_ = errno != 0 ? errno : EIO;
-}
-
-static int send_ascii_frame (socket_base_t *socket_,
-                             const std::string &value_,
-                             int flags_)
-{
-    msg_t msg;
-    if (msg.init_size (value_.size ()) != 0)
-        return -1;
-    if (!value_.empty ())
-        memcpy (msg.data (), value_.data (), value_.size ());
-    const int rc = socket_->send (&msg, flags_);
-    msg.close ();
-    return rc;
-}
-
-static unsigned int subscription_ready_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_)
-{
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
-         it != connected_endpoints_.end (); ++it) {
-        if (it->compare (0, 6, "wss://") == 0)
-            return 500;
-        if (it->compare (0, 6, "tls://") == 0)
-            return 150;
-    }
-
-    return 50;
-}
-
-static unsigned int subscription_replay_attempt_count (
-  const std::set<std::string> &connected_endpoints_)
-{
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
-         it != connected_endpoints_.end (); ++it) {
-        if (it->compare (0, 6, "wss://") == 0)
-            return 300;
-        if (it->compare (0, 6, "tls://") == 0)
-            return 150;
-        if (it->compare (0, 5, "ws://") == 0)
-            return 50;
-    }
-
-    return 50;
-}
-
-static unsigned int pub_delivery_ready_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_)
-{
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
-         it != connected_endpoints_.end (); ++it) {
-        if (it->compare (0, 6, "wss://") == 0)
-            return 50;
-        if (it->compare (0, 6, "tls://") == 0)
-            return 15;
-    }
-
-    return 20;
-}
-
-static std::string make_ready_ack_arg (const std::string &target_endpoint_,
-                                       const std::string &raw_filter_,
-                                       const std::string &ack_source_id_)
-{
-    return target_endpoint_ + "\n" + raw_filter_ + "\n" + ack_source_id_;
-}
 
 static int recv_ascii_command (socket_base_t *socket_,
                                std::vector<std::string> *frames_)
@@ -202,16 +49,6 @@ static int recv_ascii_command (socket_base_t *socket_,
             break;
     }
     return frames_->empty () ? -1 : 0;
-}
-
-static void close_socket_ptr (socket_base_t **socket_p_)
-{
-    if (socket_p_ && *socket_p_) {
-        socket_base_t *socket = *socket_p_;
-        socket->stop ();
-        socket->close ();
-        *socket_p_ = NULL;
-    }
 }
 
 spot_node_t::spot_node_t (ctx_t *ctx_) :

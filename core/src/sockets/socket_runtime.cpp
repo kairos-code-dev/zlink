@@ -6,6 +6,8 @@
 
 #include "core/io_thread.hpp"
 #include "core/mailbox.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/config.hpp"
 #include "utils/err.hpp"
 #include "utils/macros.hpp"
 
@@ -13,6 +15,312 @@ namespace
 {
 const uint32_t public_api_closing_bit = 0x80000000u;
 const uint32_t public_api_inflight_mask = ~public_api_closing_bit;
+thread_local zlink::socket_base_t *g_current_send_ready_dispatch_socket = NULL;
+
+std::string make_monitor_ready_key (
+  const zlink::endpoint_uri_pair_t &endpoint_uri_pair_,
+  const unsigned char *routing_id_,
+  size_t routing_id_size_)
+{
+    std::string key = endpoint_uri_pair_.identifier ();
+    if (key.empty ())
+        key = endpoint_uri_pair_.remote;
+    key.push_back ('\0');
+    if (routing_id_ && routing_id_size_ > 0)
+        key.append (reinterpret_cast<const char *> (routing_id_),
+                    routing_id_size_);
+    return key;
+}
+}
+
+uint32_t zlink::socket_monitor_runtime_t::ready_count () const
+{
+    return static_cast<uint32_t> (ready_connections.size ());
+}
+
+bool zlink::socket_monitor_runtime_t::mark_ready_connection (
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  const unsigned char *routing_id_,
+  size_t routing_id_size_,
+  uint32_t *ready_count_out_)
+{
+    const bool inserted =
+      ready_connections.insert (make_monitor_ready_key (
+                                   endpoint_uri_pair_, routing_id_,
+                                   routing_id_size_))
+        .second;
+    if (inserted && ready_count_out_)
+        *ready_count_out_ = ready_count ();
+    return inserted;
+}
+
+bool zlink::socket_monitor_runtime_t::erase_ready_connection (
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  const unsigned char *routing_id_,
+  size_t routing_id_size_,
+  uint32_t *ready_count_out_)
+{
+    const bool erased =
+      ready_connections.erase (make_monitor_ready_key (
+                                 endpoint_uri_pair_, routing_id_,
+                                 routing_id_size_))
+      != 0;
+    if (erased && ready_count_out_)
+        *ready_count_out_ = ready_count ();
+    return erased;
+}
+
+void zlink::socket_monitor_runtime_t::reset_worker_state ()
+{
+    queue_sync.lock ();
+    queue.clear ();
+    queue_stop = false;
+    queue_sync.unlock ();
+}
+
+void zlink::socket_monitor_runtime_t::start_worker (
+  thread_fn *thread_fn_, void *arg_, const char *name_)
+{
+    thread.start (thread_fn_, arg_, name_);
+    thread_started = true;
+}
+
+bool zlink::socket_monitor_runtime_t::dequeue_worker_event (
+  socket_monitor_event_record_t *out_,
+  bool pump_delivery_ready_,
+  socket_monitor_worker_idle_fn *idle_fn_,
+  void *idle_arg_)
+{
+    if (!out_)
+        return false;
+
+    queue_sync.lock ();
+    while (true) {
+        if (queue_stop) {
+            queue_sync.unlock ();
+            return false;
+        }
+
+        if (!queue.empty ()) {
+            *out_ = queue.front ();
+            queue.pop_front ();
+            queue_sync.unlock ();
+            return true;
+        }
+
+        if (pump_delivery_ready_ && idle_fn_) {
+            queue_sync.unlock ();
+            idle_fn_ (idle_arg_);
+            queue_sync.lock ();
+            if (queue_stop) {
+                queue_sync.unlock ();
+                return false;
+            }
+            if (queue.empty ())
+                (void) queue_cv.wait (&queue_sync, 10);
+        } else {
+            (void) queue_cv.wait (&queue_sync, -1);
+        }
+    }
+}
+
+void zlink::socket_monitor_runtime_t::requeue_worker_event_front (
+  const socket_monitor_event_record_t &record_)
+{
+    queue_sync.lock ();
+    if (!queue_stop) {
+        queue.push_front (record_);
+        queue_cv.broadcast ();
+    }
+    queue_sync.unlock ();
+}
+
+void zlink::socket_monitor_runtime_t::enqueue_worker_event (
+  const socket_monitor_event_record_t &record_, size_t hwm_)
+{
+    queue_sync.lock ();
+    if (!queue_stop && (queue.size () < hwm_ || !lossy)) {
+        queue.push_back (record_);
+        queue_cv.broadcast ();
+    }
+    queue_sync.unlock ();
+}
+
+void zlink::socket_monitor_runtime_t::stop_worker ()
+{
+    queue_sync.lock ();
+    queue_stop = true;
+    queue.clear ();
+    queue_cv.broadcast ();
+    queue_sync.unlock ();
+
+    if (thread_started) {
+        thread.stop ();
+        thread_started = false;
+    }
+}
+
+void zlink::socket_endpoint_runtime_t::attach_pipe (pipe_t *pipe_)
+{
+    attached_pipes.push_back (pipe_);
+}
+
+void zlink::socket_endpoint_runtime_t::detach_pipe (pipe_t *pipe_)
+{
+    attached_pipes.erase (pipe_);
+}
+
+size_t zlink::socket_endpoint_runtime_t::attached_pipe_count () const
+{
+    return const_cast<attached_pipes_t &> (attached_pipes).size ();
+}
+
+bool zlink::socket_endpoint_runtime_t::has_attached_pipes () const
+{
+    return !const_cast<attached_pipes_t &> (attached_pipes).empty ();
+}
+
+zlink::pipe_t *zlink::socket_endpoint_runtime_t::attached_pipe (size_t index_)
+{
+    return attached_pipes[index_];
+}
+
+const zlink::pipe_t *zlink::socket_endpoint_runtime_t::attached_pipe (
+  size_t index_) const
+{
+    return const_cast<socket_endpoint_runtime_t *> (this)->attached_pipes[index_];
+}
+
+void zlink::socket_endpoint_runtime_t::store_last_recv_source_rid (
+  const zlink_routing_id_t *source_rid_)
+{
+    if (!source_rid_) {
+        clear_last_recv_source_rid ();
+        return;
+    }
+
+    last_recv_source_rid = *source_rid_;
+    last_recv_source_rid_valid = true;
+}
+
+void zlink::socket_endpoint_runtime_t::clear_last_recv_source_rid ()
+{
+    memset (&last_recv_source_rid, 0, sizeof (last_recv_source_rid));
+    last_recv_source_rid_valid = false;
+}
+
+bool zlink::socket_endpoint_runtime_t::copy_last_recv_source_rid (
+  zlink_routing_id_t *out_) const
+{
+    if (out_)
+        memset (out_, 0, sizeof (*out_));
+
+    if (!last_recv_source_rid_valid || !out_)
+        return false;
+
+    *out_ = last_recv_source_rid;
+    return true;
+}
+
+void zlink::socket_endpoint_runtime_t::set_last_endpoint (
+  const std::string &endpoint_)
+{
+    last_endpoint = endpoint_;
+}
+
+const std::string &zlink::socket_endpoint_runtime_t::last_endpoint_uri () const
+{
+    return last_endpoint;
+}
+
+bool zlink::socket_command_runtime_t::should_skip_throttled_command_poll (
+  uint64_t tsc_)
+{
+    if (!tsc_)
+        return false;
+
+    if (tsc_ >= last_command_tsc
+        && tsc_ - last_command_tsc <= max_command_delay)
+        return true;
+
+    last_command_tsc = tsc_;
+    return false;
+}
+
+bool zlink::socket_command_runtime_t::should_poll_commands_after_recv (
+  int inbound_poll_rate_)
+{
+    return ++recv_ticks == inbound_poll_rate_;
+}
+
+void zlink::socket_command_runtime_t::reset_recv_ticks ()
+{
+    recv_ticks = 0;
+}
+
+bool zlink::socket_command_runtime_t::should_block_on_recv () const
+{
+    return recv_ticks != 0;
+}
+
+bool zlink::socket_dispatch_bridge_t::load_send_ready_handler (
+  zlink_send_ready_handler_fn *handler_out_,
+  void **subject_out_,
+  void **userdata_out_) const
+{
+    if (!handler_out_ || !subject_out_ || !userdata_out_)
+        return false;
+
+    while (true) {
+        const uint32_t s1 = send_ready_seq.load (std::memory_order_acquire);
+        if ((s1 & 1u) != 0)
+            continue;
+
+        zlink_send_ready_handler_fn handler =
+          send_ready_handler.load (std::memory_order_acquire);
+        void *subject =
+          send_ready_handler_subject.load (std::memory_order_acquire);
+        void *userdata =
+          send_ready_handler_userdata.load (std::memory_order_acquire);
+        const uint32_t s2 = send_ready_seq.load (std::memory_order_acquire);
+        if (s1 != s2 || (s2 & 1u) != 0)
+            continue;
+
+        *handler_out_ = handler;
+        *subject_out_ = subject;
+        *userdata_out_ = userdata;
+        return handler != NULL;
+    }
+}
+
+void zlink::socket_dispatch_bridge_t::store_send_ready_handler (
+  zlink_send_ready_handler_fn handler_, void *subject_, void *userdata_)
+{
+    scoped_lock_t writer_lock (send_ready_writer_sync);
+    send_ready_seq.fetch_add (1, std::memory_order_acq_rel);
+    send_ready_handler.store (handler_, std::memory_order_release);
+    send_ready_handler_subject.store (subject_, std::memory_order_release);
+    send_ready_handler_userdata.store (userdata_, std::memory_order_release);
+    send_ready_seq.fetch_add (1, std::memory_order_acq_rel);
+}
+
+bool zlink::socket_dispatch_bridge_t::arm_send_ready_notification ()
+{
+    zlink_send_ready_handler_fn handler = NULL;
+    void *subject = NULL;
+    void *userdata = NULL;
+    if (!load_send_ready_handler (&handler, &subject, &userdata))
+        return false;
+
+    send_ready_armed.store (true, std::memory_order_release);
+    return true;
+}
+
+bool zlink::socket_dispatch_bridge_t::consume_send_ready_notification ()
+{
+    bool expected = true;
+    return send_ready_armed.compare_exchange_strong (
+      expected, false, std::memory_order_acq_rel, std::memory_order_acquire);
 }
 
 bool zlink::socket_lifecycle_coordinator_t::enter_public_api ()
@@ -102,6 +410,46 @@ void zlink::socket_lifecycle_coordinator_t::unlock_public_api_sync ()
     public_api_sync.store (false, std::memory_order_release);
 }
 
+zlink::socket_callback_scope_t::socket_callback_scope_t (
+  socket_base_t *socket_, socket_lifecycle_coordinator_t &coordinator_) :
+    _socket (socket_),
+    _coordinator (&coordinator_),
+    _entered (coordinator_.enter_callback_api ())
+{
+}
+
+zlink::socket_callback_scope_t::~socket_callback_scope_t ()
+{
+    if (!_entered)
+        return;
+
+    if (_coordinator->leave_callback_api () && _socket)
+        _socket->finish_close_handoff ();
+}
+
+zlink::socket_send_ready_dispatch_scope_t::socket_send_ready_dispatch_scope_t (
+  socket_base_t *socket_) :
+    _previous (g_current_send_ready_dispatch_socket)
+{
+    g_current_send_ready_dispatch_socket = socket_;
+}
+
+zlink::socket_send_ready_dispatch_scope_t::~socket_send_ready_dispatch_scope_t ()
+{
+    g_current_send_ready_dispatch_socket = _previous;
+}
+
+zlink::socket_base_t *zlink::socket_send_ready_dispatch_scope_t::current_socket ()
+{
+    return g_current_send_ready_dispatch_socket;
+}
+
+bool zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (
+  const socket_base_t *socket_)
+{
+    return g_current_send_ready_dispatch_socket == socket_;
+}
+
 int zlink::socket_lifecycle_coordinator_t::start_async_mailbox_processing (
   mailbox_t *mailbox_,
   io_thread_t *io_thread_,
@@ -171,6 +519,22 @@ bool zlink::socket_lifecycle_coordinator_t::is_async_quiesce_pending () const
     return async_quiesce_pending.load (std::memory_order_acquire);
 }
 
+void zlink::socket_lifecycle_coordinator_t::complete_deferred_close_handoff (
+  mailbox_t *mailbox_, int timeout_ms_)
+{
+    clear_deferred_close ();
+
+    if (is_async_mailbox_active ()) {
+        stop_async_mailbox_processing (mailbox_);
+        wait_async_quiesced (timeout_ms_);
+    } else if (is_async_quiesce_pending ()) {
+        wait_async_quiesced (timeout_ms_);
+    }
+
+    if (mailbox_)
+        mailbox_->clear_signalers ();
+}
+
 void zlink::socket_lifecycle_coordinator_t::clear_deferred_close ()
 {
     close_deferred.store (false, std::memory_order_release);
@@ -200,6 +564,27 @@ void zlink::socket_lifecycle_coordinator_t::clear_destroy_pending ()
 bool zlink::socket_lifecycle_coordinator_t::is_destroy_pending () const
 {
     return destroy_pending;
+}
+
+void zlink::socket_lifecycle_coordinator_t::set_reaper_poller (
+  poller_t *poller_)
+{
+    reaper_poller_value = poller_;
+}
+
+zlink::poller_t *zlink::socket_lifecycle_coordinator_t::reaper_poller () const
+{
+    return reaper_poller_value;
+}
+
+void zlink::socket_lifecycle_coordinator_t::mark_destroyed ()
+{
+    destroyed = true;
+}
+
+bool zlink::socket_lifecycle_coordinator_t::is_destroyed () const
+{
+    return destroyed;
 }
 
 int zlink::socket_lifecycle_coordinator_t::mailbox_refcount ()

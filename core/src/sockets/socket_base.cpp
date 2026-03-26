@@ -87,7 +87,7 @@ zlink::socket_base_t *zlink::socket_base_t::create (int type_,
     alloc_assert (s);
 
     if (s->_mailbox == NULL) {
-        s->_destroyed = true;
+        s->lifecycle_coordinator ().mark_destroyed ();
         LIBZLINK_DELETE (s);
         return NULL;
     }
@@ -101,14 +101,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     own_t (parent_, tid_),
     _tag (0xbaddecaf),
     _ctx_terminated (false),
-    _destroyed (false),
-    _poller (NULL),
-    _last_tsc (0),
-    _ticks (0),
-    _rcvmore (false),
     _runtime (),
-    _service_attachment (NULL),
-    _disconnected (false)
+    _service_attachment (NULL)
 {
     _term_pipe_acks_registered = 0;
     _term_pipe_acks_received = 0;
@@ -149,7 +143,7 @@ zlink::socket_base_t::~socket_base_t ()
     scoped_lock_t lock (monitor_runtime ().sync);
     stop_monitor ();
 
-    zlink_assert (_destroyed);
+    zlink_assert (lifecycle_coordinator ().is_destroyed ());
 }
 
 zlink::i_mailbox *zlink::socket_base_t::get_mailbox () const

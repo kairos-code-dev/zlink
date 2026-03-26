@@ -165,6 +165,7 @@ void test_spot_peer_tcp ();
 void test_spot_peer_ws ();
 void test_spot_peer_tls ();
 void test_spot_peer_wss ();
+void test_spot_sub_delivery_ready_immediate_first_publish ();
 void test_spot_unified_wss_subscription_ready_first_delivery ();
 void test_spot_multi_publisher ();
 void test_spot_same_handle_concurrent_publish ();

@@ -192,7 +192,7 @@ void test_spot_callback_policy ()
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_subscribe (spot, NULL, &parts, &part_count, topic, &topic_len,
                            ZLINK_DONTWAIT));
-    TEST_ASSERT_NOT_EQUAL (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_subscribe_handler (spot, &noop_spot_handler, NULL));
@@ -298,8 +298,19 @@ void test_spot_node_generic_data_plane_surface_removed ()
     char topic[32];
     size_t topic_len = sizeof (topic);
     zlink_msg_t part;
+    zlink_msg_t routed_part;
+    zlink_routing_id_t routing_id;
+    memset (&routing_id, 0, sizeof (routing_id));
+    routing_id.size = 4;
+    routing_id.data[0] = 'r';
+    routing_id.data[1] = 'o';
+    routing_id.data[2] = 'u';
+    routing_id.data[3] = 't';
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
     memcpy (zlink_msg_data (&part), "pong", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&routed_part, 4));
+    memcpy (zlink_msg_data (&routed_part), "pong", 4);
 
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
@@ -307,9 +318,15 @@ void test_spot_node_generic_data_plane_surface_removed ()
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_subscribe_handler (node, &noop_spot_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_send (node, &part, 1, 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_send_rid (node, &routing_id, &routed_part, 1, 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_publish (node, "bench", &part, 1, 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    zlink_msg_close (&routed_part);
     zlink_msg_close (&part);
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,

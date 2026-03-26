@@ -962,6 +962,7 @@ set(api-sources
     src/api/service_option_api.cpp
     src/api/service_option_spot_api.cpp
     src/api/socket_message_api.cpp
+    src/api/socket_message_recv_api.cpp
     src/api/socket_message_handler_api.cpp
     src/api/socket_message_send_api.cpp
     src/api/socket_api.cpp
@@ -978,6 +979,10 @@ set(core-sources
     src/core/send_internal.cpp
     src/core/ctx.cpp
     src/core/ctx_bootstrap.cpp
+    src/core/ctx_inproc_registry.cpp
+    src/core/ctx_io_thread_registry.cpp
+    src/core/ctx_runtime_resources.cpp
+    src/core/ctx_socket_registry.cpp
     src/core/ctx_termination.cpp
     src/core/pipe.cpp
     src/core/mailbox.cpp
@@ -1018,12 +1023,15 @@ set(discovery-sources
     src/services/discovery/registry_access.cpp
     src/services/discovery/registry_query_access.cpp
     src/services/discovery/registry.cpp
+    src/services/discovery/registry_config.cpp
+    src/services/discovery/registry_control.cpp
     src/services/discovery/registry_query.cpp
     src/services/discovery/registry_runtime.cpp
     src/services/discovery/registry_state.cpp
     src/services/discovery/discovery.cpp
     src/services/discovery/discovery_bootstrap.cpp
     src/services/discovery/discovery_registry_client.cpp
+    src/services/discovery/discovery_service_state.cpp
     src/services/discovery/socket_discovery_attachment.cpp
     src/services/discovery/discovery_state.cpp
     src/services/discovery/discovery_uplink.cpp
@@ -1032,9 +1040,12 @@ set(discovery-sources
 set(spot-sources
     src/services/spot/spot_data_plane.cpp
     src/services/spot/spot_data_plane_forwarding.cpp
+    src/services/spot/spot_data_plane_loop.cpp
     src/services/spot/spot_data_plane_runtime.cpp
     src/services/spot/spot_data_plane_protocol.cpp
+    src/services/spot/spot_mesh_pub_budget.cpp
     src/services/spot/spot_subject_access.cpp
+    src/services/spot/spot_subject_handler.cpp
     src/services/spot/spot_subject_poller.cpp
     src/services/spot/spot_subject_publish.cpp
     src/services/spot/spot_subject_query.cpp
@@ -1815,4 +1826,3 @@ if(ENABLE_NO_EXPORT)
   message(STATUS "Building with empty ZLINK_EXPORT macro")
   add_definitions(-DZLINK_NO_EXPORT)
 endif()
-    src/services/discovery/discovery_service_state.cpp

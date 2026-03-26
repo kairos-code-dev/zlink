@@ -13,9 +13,6 @@ class ctx_bootstrap_t
   public:
     static bool start_runtime_locked (ctx_t &ctx_);
     static service_control_runtime_t *ensure_service_runtime (ctx_t &ctx_);
-
-  private:
-    static void cleanup_failed_start_locked (ctx_t &ctx_);
 };
 }
 

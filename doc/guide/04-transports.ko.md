@@ -13,6 +13,20 @@
 | wss | `wss://host:port` | `wss://server:8443` | O | O |
 | tls | `tls://host:port` | `tls://server:5555` | O | O |
 
+### 소켓별 Transport 지원
+
+| Transport | PAIR | PUB/SUB | DEALER | ROUTER | STREAM |
+|-----------|:----:|:-------:|:------:|:------:|:------:|
+| tcp       |  O   |    O    |   O    |   O    | O (bind) |
+| ipc       |  O   |    O    |   O    |   O    |   -    |
+| inproc    |  O   |    O    |   O    |   O    |   -    |
+| tls       |  O   |    O    |   O    |   O    | O (bind) |
+| ws        |  O   |    O    |   O    |   O    | O (bind) |
+| wss       |  O   |    O    |   O    |   O    | O (bind) |
+
+- STREAM은 **bind만** 지원하며, 클라이언트는 raw socket/websocket으로 구현한다.
+- STREAM은 ipc/inproc을 지원하지 않는다.
+
 ## 2. TCP
 
 표준 TCP/IP 네트워크 통신.
@@ -194,7 +208,6 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 - Beast 라이브러리 기반
 - 바이너리 프레임 모드 (Opcode=0x02)
 - 64KB write buffer
-- **STREAM 소켓에서만 사용 가능**
 
 ## 6. WebSocket + TLS (wss)
 
@@ -243,7 +256,7 @@ zlink_connect(socket, "tls://server:5555");
 
 | 제약 | 설명 |
 |------|------|
-| ws/wss | STREAM 소켓만 지원. tls는 모든 소켓 가능 |
+| STREAM | bind만 지원, ipc/inproc 미지원 |
 | inproc | bind가 connect보다 먼저 호출 필요 |
 | ipc | Unix/Linux/macOS만 지원 (Windows 미지원) |
 | inproc context | 동일 context 내에서만 사용 |

@@ -16,14 +16,57 @@ ROUTER 소켓은 **routing_id 기반 라우팅** 소켓이다.
 **유효한 소켓 조합:** ROUTER ↔ DEALER, ROUTER ↔ ROUTER
 
 ```
-┌────────┐              ┌────────┐
-│DEALER 1│─────────────►│        │
-│ (D1)   │              │ ROUTER │  ← routing_id로 각 DEALER 구분
-└────────┘              │        │
-┌────────┐              │        │
-│DEALER 2│─────────────►│        │
-│ (D2)   │              └────────┘
-└────────┘
+ROUTER ↔ ROUTER: N개 노드가 routing_id로 상대를 지정 (메시/클러스터)
+
+  ┌──────────┐            ┌──────────┐
+  │ ROUTER A │◄──────────►│ ROUTER B │
+  │   (RA)   │            │   (RB)   │
+  └────┬──▲──┘            └──▲──┬────┘
+       │  │                  │  │
+       │  │  ┌──────────┐   │  │
+       │  └──┤ ROUTER C ├───┘  │
+       └────►│   (RC)   │◄────┘
+             └──────────┘
+
+  A→RC, B→RA, C→RB … routing_id로 대상 지정
+```
+
+```
+DEALER → ROUTER: round-robin 부하분산 + routing_id 응답 라우팅
+
+  각 DEALER가 연결된 ROUTER에 round-robin 분배:
+
+                                    ┌──────────┐
+                        ┌── send ──►│ ROUTER A │
+                        │           └──────────┘
+                        │
+  ┌──────────┐          │           ┌──────────┐
+  │ DEALER 1 │──────────┼── send ──►│ ROUTER B │
+  │   (D1)   │          │           └──────────┘
+  └──────────┘          │
+                        │           ┌──────────┐
+                        └── send ──►│ ROUTER C │
+                                    └──────────┘
+
+  ┌──────────┐
+  │ DEALER 2 │──────── (동일하게 A, B, C에 round-robin)
+  │   (D2)   │
+  └──────────┘
+
+
+  ROUTER는 source_rid로 요청한 DEALER를 식별하여 응답:
+
+  ┌──────────┐    ① send         ┌──────────┐
+  │ DEALER 1 │──────────────────►│ ROUTER A │
+  │   (D1)   │◄──────────────────┤          │
+  └──────────┘    ② send_rid     └──────────┘
+                   source_rid="D1"
+
+  ┌──────────┐    ① send         ┌──────────┐
+  │ DEALER 2 │──────────────────►│ ROUTER B │
+  │   (D2)   │◄──────────────────┤          │
+  └──────────┘    ② send_rid     └──────────┘
+                   source_rid="D2"
 ```
 
 ## 2. 기본 사용법
@@ -146,27 +189,220 @@ int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
 
 ## 5. 사용 패턴
 
-### 패턴 1: 다중 DEALER 서버
+### 패턴 1: ROUTER ↔ ROUTER 메시/클러스터
 
-가장 기본적인 ROUTER 패턴. 여러 DEALER 클라이언트를 routing_id로 구분.
+ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하여 특정 노드에 전송한다.
+1:1이면 DEALER로 충분하므로, ROUTER ↔ ROUTER는 N개 노드 간 통신에서 의미가 있다.
+
+```
+  ┌──────────┐    ① send_rid       ┌───────────┐
+  │ ROUTER A │─────────────────────►│           │
+  │   (RA)   │    target="HUB"     │    HUB    │
+  └──────────┘◄────────────────────┤  (ROUTER) │
+                  ③ send_rid       │           │
+                  target="RA"      └─────┬─────┘
+                                         │
+                                         │ ② send_rid
+                                         │    target="RB"
+                                         ▼
+                                   ┌──────────┐
+                                   │ ROUTER B │
+                                   │   (RB)   │
+                                   └──────────┘
+```
 
 ```c
-/* 서버: 핸들러가 있는 ROUTER */
-void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* 송신자에게 응답 */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+/* 허브 ROUTER: bind */
+void *hub = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(hub, "HUB", 3);
+zlink_bind(hub, "tcp://127.0.0.1:*");
+
+char endpoint[256];
+size_t len = sizeof(endpoint);
+zlink_get_option(hub, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
+
+/* 노드 A, B: connect */
+void *ra = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(ra, "RA", 2);
+zlink_connect(ra, endpoint);
+
+void *rb = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(rb, "RB", 2);
+zlink_connect(rb, endpoint);
+
+/* ① A → HUB: routing_id "HUB"를 지정하여 전송 */
+zlink_routing_id_t target_hub = { .data = "HUB", .size = 3 };
+zlink_msg_t msg_a;
+zlink_msg_init_size(&msg_a, 7);
+memcpy(zlink_msg_data(&msg_a), "from_RA", 7);
+zlink_send_rid(ra, &target_hub, &msg_a, 1, 0);
+
+/* ② HUB 수신: source_rid = "RA" → HUB가 "RB"에게 전달 */
+zlink_routing_id_t target_rb = { .data = "RB", .size = 2 };
+zlink_msg_t forward;
+zlink_msg_init_size(&forward, 10);
+memcpy(zlink_msg_data(&forward), "forwarded", 10);
+zlink_send_rid(hub, &target_rb, &forward, 1, 0);
+
+/* ③ HUB → RA 응답 */
+zlink_msg_t reply;
+zlink_msg_init_size(&reply, 3);
+memcpy(zlink_msg_data(&reply), "ack", 3);
+zlink_send_rid(hub, source_rid, &reply, 1, 0);  /* source_rid = "RA" */
+```
+
+> ROUTER ↔ ROUTER는 브로커, 클러스터 노드 간 메시 통신에 적합하다.
+> 모든 노드가 능동적으로 대상을 routing_id로 지정할 수 있다.
+
+### 패턴 2: DEALER → ROUTER 로드밸런싱 요청-응답
+
+DEALER ↔ ROUTER 조합의 핵심 장점:
+- **DEALER 측**: round-robin으로 여러 ROUTER 중 하나를 자동 선택 → 부하 분산
+- **ROUTER 측**: routing_id로 요청을 보낸 DEALER를 정확히 식별 → 응답 라우팅
+
+```
+                                    ┌──────────┐
+                        ┌── send ──►│ ROUTER A │
+                        │           └──────────┘
+  ┌──────────┐          │           ┌──────────┐
+  │ DEALER 1 │──────────┼── send ──►│ ROUTER B │    round-robin
+  │   (D1)   │          │           └──────────┘    순환 분배
+  └──────────┘          │           ┌──────────┐
+                        └── send ──►│ ROUTER C │
+                                    └──────────┘
+
+  ┌──────────┐
+  │ DEALER 2 │──────── (동일하게 A, B, C에 round-robin)
+  │   (D2)   │
+  └──────────┘
+
+
+  ROUTER가 요청한 DEALER에 응답:
+
+  ┌──────────┐    ① send         ┌──────────┐
+  │ DEALER 1 │──────────────────►│ ROUTER B │
+  │   (D1)   │◄──────────────────┤          │
+  └──────────┘    ② send_rid     └──────────┘
+                   source_rid="D1"
+```
+
+```c
+/* ROUTER 서버 3대 */
+void *ra = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(ra, "tcp://127.0.0.1:5560");
+void *rb = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(rb, "tcp://127.0.0.1:5561");
+void *rc = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(rc, "tcp://127.0.0.1:5562");
+
+/* DEALER 클라이언트: 3개 ROUTER에 연결 → round-robin 분배 */
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+zlink_set_routing_id(dealer, "D1", 2);
+zlink_connect(dealer, "tcp://127.0.0.1:5560");
+zlink_connect(dealer, "tcp://127.0.0.1:5561");
+zlink_connect(dealer, "tcp://127.0.0.1:5562");
+
+/* 3개 요청 전송 → req1→RA, req2→RB, req3→RC (round-robin) */
+for (int i = 0; i < 3; i++) {
+    zlink_msg_t req;
+    zlink_msg_init_size(&req, 5);
+    memcpy(zlink_msg_data(&req), "Hello", 5);
+    zlink_send(dealer, &req, 1, 0);
 }
 
+/* 각 ROUTER는 source_rid = "D1"로 요청 DEALER를 식별하여 응답 */
+```
+
+### 패턴 3: ROUTER ↔ ROUTER 가중치 라우팅
+
+DEALER → ROUTER는 round-robin이 고정되어 분배 비율을 제어할 수 없다.
+가중치, 우선순위, 조건부 라우팅이 필요하면 ROUTER ↔ ROUTER로 구성하고
+애플리케이션이 routing_id를 직접 선택한다.
+
+```
+  DEALER → ROUTER (round-robin 고정, 균등 분배):
+
+  ┌──────────┐     1/3      ┌──────────┐
+  │          │──────────────►│ ROUTER A │
+  │  DEALER  │     1/3      ┌──────────┐
+  │          │──────────────►│ ROUTER B │    변경 불가
+  │          │     1/3      ┌──────────┐
+  │          │──────────────►│ ROUTER C │
+  └──────────┘              └──────────┘
+
+
+  ROUTER ↔ ROUTER (애플리케이션이 대상 직접 선택):
+
+  ┌──────────┐     50%      ┌──────────┐
+  │          │──────────────►│ ROUTER A │
+  │  ROUTER  │     30%      ┌──────────┐
+  │ (client) │──────────────►│ ROUTER B │    자유롭게 제어
+  │          │     20%      ┌──────────┐
+  │          │──────────────►│ ROUTER C │
+  └──────────┘              └──────────┘
+```
+
+```c
+/* 서버 3대 */
+void *sa = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(sa, "SA", 2);
+zlink_bind(sa, "tcp://127.0.0.1:5560");
+void *sb = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(sb, "SB", 2);
+zlink_bind(sb, "tcp://127.0.0.1:5561");
+void *sc = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(sc, "SC", 2);
+zlink_bind(sc, "tcp://127.0.0.1:5562");
+
+/* 클라이언트 ROUTER: 3개 서버에 connect */
+void *client = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_set_routing_id(client, "C1", 2);
+zlink_connect(client, "tcp://127.0.0.1:5560");
+zlink_connect(client, "tcp://127.0.0.1:5561");
+zlink_connect(client, "tcp://127.0.0.1:5562");
+
+/* 가중치 테이블: SA=50%, SB=30%, SC=20% */
+typedef struct { const char *rid; size_t len; int weight; } route_t;
+route_t routes[] = {
+    { "SA", 2, 50 }, { "SB", 2, 30 }, { "SC", 2, 20 }
+};
+
+/* 가중치 기반 대상 선택 */
+int roll = rand() % 100;
+route_t *target = (roll < 50)  ? &routes[0]
+               : (roll < 80) ? &routes[1]
+               :                &routes[2];
+
+zlink_routing_id_t rid = { .data = target->rid, .size = target->len };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 7);
+memcpy(zlink_msg_data(&msg), "request", 7);
+zlink_send_rid(client, &rid, &msg, 1, 0);
+
+/* 서버 응답: source_rid = "C1"로 클라이언트 식별 가능 */
+```
+
+> DEALER → ROUTER의 round-robin이 충분하면 DEALER를 사용하고,
+> 분배 로직을 제어해야 하면 ROUTER ↔ ROUTER로 전환한다.
+
+### 패턴 4: 다중 DEALER 서버
+
+여러 DEALER가 하나의 ROUTER에 연결. ROUTER가 각 DEALER를 routing_id로 구분.
+
+```
+  ┌──────────┐
+  │ DEALER 1 │── send ──┐
+  │   (D1)   │          │
+  └──────────┘          │     ┌──────────┐
+                        ├────►│  ROUTER  │
+  ┌──────────┐          │     └──────────┘
+  │ DEALER 2 │── send ──┘         │
+  │   (D2)   │              source_rid로
+  └──────────┘              D1, D2 구분
+```
+
+```c
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* zlink_recv()로 수신 */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -175,17 +411,15 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* 클라이언트 1 */
 void *d1 = zlink_socket(ctx, ZLINK_DEALER);
-/* zlink_recv()로 응답 수신 */
 zlink_set_routing_id(d1, "D1", 2);
 zlink_connect(d1, endpoint);
 
 /* 클라이언트 2 */
 void *d2 = zlink_socket(ctx, ZLINK_DEALER);
-/* zlink_recv()로 응답 수신 */
 zlink_set_routing_id(d2, "D2", 2);
 zlink_connect(d2, endpoint);
 
-/* 각 클라이언트가 메시지 전송 — on_request가 source_rid와 함께 수신 */
+/* 각 클라이언트가 메시지 전송 — ROUTER가 source_rid로 구분 */
 zlink_msg_t m1;
 zlink_msg_init_size(&m1, 7);
 memcpy(zlink_msg_data(&m1), "from_d1", 7);
@@ -195,13 +429,76 @@ zlink_msg_t m2;
 zlink_msg_init_size(&m2, 7);
 memcpy(zlink_msg_data(&m2), "from_d2", 7);
 zlink_send(d2, &m2, 1, 0);
-
-/* on_reply가 각 DEALER의 응답을 수신 */
 ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 3가지 transport
 
-### 패턴 2: ROUTER_MANDATORY로 전송 실패 감지
+### 패턴 5: 프록시 패턴 (ROUTER-DEALER)
+
+ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
+
+```
+  ┌──────────┐                                       ┌──────────┐
+  │ CLIENT 1 │──┐                               ┌───►│ WORKER 1 │
+  │ (DEALER) │  │    ┌──────────┐  ┌──────────┐ │    │ (DEALER) │
+  └──────────┘  ├───►│  ROUTER  ├──►  DEALER  ├─┤    └──────────┘
+  ┌──────────┐  │    │(frontend)│  │(backend) │ │    ┌──────────┐
+  │ CLIENT 2 │──┘    └──────────┘  └──────────┘ └───►│ WORKER 2 │
+  │ (DEALER) │          proxy()                      │ (DEALER) │
+  └──────────┘                                       └──────────┘
+```
+
+```c
+/* 프론트엔드: 클라이언트가 연결 */
+void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(frontend, "tcp://*:5558");
+
+/* 백엔드: 워커 스레드가 연결 */
+void *backend = zlink_socket(ctx, ZLINK_DEALER);
+zlink_bind(backend, "inproc://backend");
+
+/* 워커 스레드 시작 후 프록시 실행 */
+zlink_proxy(frontend, backend, NULL);
+```
+
+```c
+/* 워커 스레드 */
+void worker_thread(void *arg) {
+    void on_work(const zlink_routing_id_t *source_rid,
+                 zlink_msg_t *parts, size_t part_count,
+                 void *userdata)
+    {
+        /* 처리 후 동일 routing_id로 응답 */
+        zlink_send_rid(worker, source_rid, parts, part_count, 0);
+    }
+
+    void *worker = zlink_socket(ctx, ZLINK_DEALER);
+    /* zlink_recv()로 작업 수신 */
+    zlink_connect(worker, "inproc://backend");
+
+    /* 소켓이 닫힐 때까지 워커 유지 */
+}
+```
+
+> 참고: `core/tests/test_proxy.cpp` — ROUTER(frontend) + DEALER(backend) + 워커 풀
+
+### 패턴 6: ROUTER_MANDATORY로 전송 실패 감지
+
+```
+  MANDATORY = 0 (기본):
+
+  ┌──────────┐   send_rid      ┌ ─ ─ ─ ─ ─ ┐
+  │  ROUTER  ├────────────────►  "UNKNOWN"       조용히 드롭
+  └──────────┘   target=       └ ─ ─ ─ ─ ─ ┘    (에러 없음)
+                 "UNKNOWN"
+
+  MANDATORY = 1:
+
+  ┌──────────┐   send_rid      ┌ ─ ─ ─ ─ ─ ┐
+  │  ROUTER  ├───────X─────────  "UNKNOWN"       rc = -1
+  └──────────┘   target=       └ ─ ─ ─ ─ ─ ┘    errno = EHOSTUNREACH
+                 "UNKNOWN"
+```
 
 ```c
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
@@ -231,9 +528,17 @@ if (rc == -1 && errno == EHOSTUNREACH) {
 
 > 참고: `core/tests/test_router_mandatory.cpp` — 기본 드롭 vs MANDATORY 에러
 
-### 패턴 3: 연결 확인 후 전송
+### 패턴 7: 연결 확인 후 전송
 
 DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTER가 응답.
+
+```
+  ┌──────────┐    ① "Hello"       ┌──────────┐
+  │  DEALER  │───────────────────►│  ROUTER  │
+  │   (X)    │◄───────────────────┤          │
+  └──────────┘    ② "Welcome"     └──────────┘
+                   source_rid="X"
+```
 
 ```c
 /* ROUTER 핸들러: DEALER의 초기 메시지로 연결 확인 */
@@ -265,9 +570,23 @@ zlink_send(dealer, &hello, 1, 0);
 
 > 참고: `core/tests/test_router_mandatory.cpp` — DEALER 연결 → 메시지 → ROUTER 응답
 
-### 패턴 4: 다중 Transport
+### 패턴 8: 다중 Transport
 
-같은 ROUTER에 다양한 transport로 DEALER를 연결 가능.
+같은 ROUTER에 다양한 transport로 연결 가능. routing_id로 통합 관리.
+
+```
+  ┌──────────┐                       ┌──────────┐
+  │ DEALER 1 │── tcp://  ───────────►│          │
+  └──────────┘                       │          │
+  ┌──────────┐                       │  ROUTER  │
+  │ DEALER 2 │── ipc://  ───────────►│          │
+  └──────────┘                       │          │
+  ┌──────────┐                       │          │
+  │ DEALER 3 │── inproc://  ────────►│          │
+  └──────────┘                       └──────────┘
+
+  transport가 달라도 routing_id로 동일하게 식별
+```
 
 ```c
 void *router = zlink_socket(ctx, ZLINK_ROUTER);

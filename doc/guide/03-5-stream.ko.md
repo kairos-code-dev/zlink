@@ -10,13 +10,13 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
 - `ZLINK_STREAM`은 `zlink_bind()`만 지원한다.
 - `ZLINK_STREAM`에 `zlink_connect()`를 호출하면 `EOPNOTSUPP`를 반환한다.
 - 클라이언트는 zlink STREAM 소켓이 아니라 OS/Asio/WebSocket 등의 **raw client**를 사용해야 한다.
-- wire 형식은 `4-byte length(big-endian) + body`이다.
-- zlink API에서는 `[routing_id(4B)][payload]` 2프레임으로 수신/송신한다.
+- STREAM은 raw 바이트 스트림을 그대로 전달한다. **프레이밍(패킷 경계)은 사용자가 정의**해야 한다.
+- zlink API에서 수신/송신 시 `source_rid`(서버가 자동 할당한 4B 연결 식별자)로 클라이언트를 구분한다.
 
 유효 조합:
 
 ```
-외부 raw client  <---- RAW(4B length + body) ---->  STREAM(server)
+외부 raw client  <---- RAW 바이트 스트림 ---->  STREAM(server)
 ```
 
 > STREAM은 zlink 내부 소켓(PAIR/PUB/SUB/DEALER/ROUTER)과 직접 호환되지 않는다.
@@ -114,16 +114,18 @@ zlink_recv_handler(stream, on_message, NULL);
 ## 5. 클라이언트 구현 원칙
 
 클라이언트는 raw socket/websocket로 구현한다.
+STREAM은 raw 바이트를 그대로 전달하므로, **패킷 경계(프레이밍)는 애플리케이션이 정의**해야 한다.
 
-POSIX TCP 예시(개념):
+아래는 `[4B length][body]` 형식을 사용자가 정의한 POSIX TCP 예시(개념):
 
 ```c
-// send: [4B length][body]
+// 사용자 정의 프레이밍 예시: [4B length(big-endian)][body]
+// send
 uint32_t len_be = htonl(body_len);
 send(fd, &len_be, 4, 0);
 send(fd, body, body_len, 0);
 
-// recv: [4B length][body]
+// recv
 recv(fd, &len_be, 4, MSG_WAITALL);
 uint32_t body_len = ntohl(len_be);
 recv(fd, body, body_len, MSG_WAITALL);

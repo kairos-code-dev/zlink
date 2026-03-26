@@ -16,12 +16,24 @@ send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하�
 **유효한 소켓 조합:** DEALER ↔ ROUTER, DEALER ↔ DEALER
 
 ```
-┌──────────┐                ┌────────┐
-│ DEALER 1 │────────────────►│        │
-└──────────┘  Round-robin   │ ROUTER │
-┌──────────┐                │        │
-│ DEALER 2 │────────────────►│        │
-└──────────┘                └────────┘
+1:1 양방향 비동기 (PAIR와 유사, HWM/재연결 지원)
+
+┌──────────┐                    ┌──────────┐
+│ DEALER A │◄──────────────────►│ DEALER B │
+└──────────┘                    └──────────┘
+
+
+1:N Round-robin 작업 분배 (PUSH/PULL 대체)
+
+                  ┌──────────┐
+        msg 1 ───►│ DEALER 1 │
+       /          └──────────┘
+┌────────┐        ┌──────────┐
+│ DEALER │─msg 2─►│ DEALER 2 │
+└────────┘        └──────────┘
+       \          ┌──────────┐
+        msg 3 ───►│ DEALER 3 │
+                  └──────────┘
 ```
 
 ## 2. 기본 사용법
@@ -81,7 +93,7 @@ if (rc == 0) {
 ## 3. 사용 예제
 
 ```c
-/* DEALER → ROUTER 전송 */
+/* DEALER ↔ DEALER 멀티파트 전송 */
 zlink_msg_t parts[2];
 zlink_msg_init_size(&parts[0], 6);
 memcpy(zlink_msg_data(&parts[0]), "header", 6);
@@ -117,140 +129,16 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 ## 5. 사용 패턴
 
-### 패턴 1: DEALER → ROUTER 요청-응답
+### 패턴 1: 1:1 양방향 비동기
 
-가장 기본적인 패턴. DEALER가 요청, ROUTER가 응답.
-
-```c
-/* 서버: 핸들러가 있는 ROUTER */
-void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* source_rid에 DEALER의 routing_id가 포함됨 */
-    printf("수신 [%.*s]: %.*s\n",
-           (int)source_rid->size, source_rid->data,
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-
-    /* 응답: zlink_send_rid로 원본 피어에게 전송 */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* zlink_recv()로 수신 */
-zlink_bind(router, "tcp://*:5558");
-
-/* 클라이언트: DEALER */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-/* zlink_recv()로 응답 수신 */
-zlink_set_routing_id(dealer, "D1", 2);
-zlink_connect(dealer, "tcp://127.0.0.1:5558");
-
-/* 클라이언트 요청 */
-zlink_msg_t req;
-zlink_msg_init_size(&req, 5);
-memcpy(zlink_msg_data(&req), "Hello", 5);
-zlink_send(dealer, &req, 1, 0);
-
-/* on_request가 메시지를 수신하여 "World"로 응답
-   on_reply가 응답을 수신 */
-```
-
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 예제
-
-### 패턴 2: 다중 DEALER 로드밸런싱
-
-여러 DEALER가 하나의 ROUTER에 연결. ROUTER가 각 DEALER를 routing_id로 구분.
-
-```c
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* ROUTER는 zlink_recv()로 수신하며 source_rid로 각 DEALER를 구분 */
-zlink_bind(router, "tcp://127.0.0.1:*");
-
-char endpoint[256];
-size_t len = sizeof(endpoint);
-zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
-
-void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer1, "D1", 2);
-zlink_connect(dealer1, endpoint);
-
-void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer2, "D2", 2);
-zlink_connect(dealer2, endpoint);
-
-/* 각 DEALER가 메시지 전송 */
-zlink_msg_t m1;
-zlink_msg_init_size(&m1, 12);
-memcpy(zlink_msg_data(&m1), "from_dealer1", 12);
-zlink_send(dealer1, &m1, 1, 0);
-
-zlink_msg_t m2;
-zlink_msg_init_size(&m2, 12);
-memcpy(zlink_msg_data(&m2), "from_dealer2", 12);
-zlink_send(dealer2, &m2, 1, 0);
-
-/* on_message가 각 DEALER의 메시지를 routing_id와 함께 수신 */
-```
-
-> 참고: `core/tests/test_router_multiple_dealers.cpp` — `test_router_multiple_dealers_tcp()`
-
-### 패턴 3: 프록시 패턴 (ROUTER-DEALER)
-
-ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
-
-```c
-/* 프론트엔드: 클라이언트가 연결 */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_bind(frontend, "tcp://*:5558");
-
-/* 백엔드: 워커 스레드가 연결 */
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
-zlink_bind(backend, "inproc://backend");
-
-/* 워커 스레드 시작 후 프록시 실행 */
-zlink_proxy(frontend, backend, NULL);
-```
-
-```c
-/* 워커 스레드 */
-void worker_thread(void *arg) {
-    void on_work(const zlink_routing_id_t *source_rid,
-                 zlink_msg_t *parts, size_t part_count,
-                 void *userdata)
-    {
-        /* 처리 후 동일 routing_id로 응답 */
-        zlink_send_rid(worker, source_rid, parts, part_count, 0);
-    }
-
-    void *worker = zlink_socket(ctx, ZLINK_DEALER);
-    /* zlink_recv()로 작업 수신 */
-    zlink_connect(worker, "inproc://backend");
-
-    /* 소켓이 닫힐 때까지 워커 유지 */
-}
-```
-
-> 참고: `core/tests/test_proxy.cpp` — ROUTER(frontend) + DEALER(backend) + 워커 풀
-
-### 패턴 4: DEALER ↔ DEALER 비동기 통신
-
-양쪽 모두 DEALER를 사용하여 완전 비동기 P2P 통신.
+PAIR와 유사하지만 HWM과 자동 재연결을 지원한다. 응답이 필요한 경우 반드시 1:1로 구성해야 한다.
+(routing_id가 없으므로 1:N에서는 어떤 피어가 응답했는지 구분할 수 없다.)
 
 ```c
 void *a = zlink_socket(ctx, ZLINK_DEALER);
-/* zlink_recv()로 수신 */
 zlink_bind(a, "tcp://*:5558");
 
 void *b = zlink_socket(ctx, ZLINK_DEALER);
-/* zlink_recv()로 수신 */
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
 /* 양방향 자유 전송 */
@@ -264,8 +152,40 @@ zlink_msg_init_size(&pong, 4);
 memcpy(zlink_msg_data(&pong), "pong", 4);
 zlink_send(b, &pong, 1, 0);
 
-/* on_message_b가 "ping" 수신, on_message_a가 "pong" 수신 */
+/* b가 "ping" 수신, a가 "pong" 수신 */
 ```
+
+### 패턴 2: 1:N Round-robin 작업 분배
+
+PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
+응답이 필요 없는 작업 분배 또는 파이프라인 단계 간 전달에 사용한다.
+
+```c
+/* 분배자 */
+void *sender = zlink_socket(ctx, ZLINK_DEALER);
+zlink_bind(sender, "tcp://*:5558");
+
+/* 워커 3대 */
+void *w1 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_connect(w1, "tcp://127.0.0.1:5558");
+void *w2 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_connect(w2, "tcp://127.0.0.1:5558");
+void *w3 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_connect(w3, "tcp://127.0.0.1:5558");
+
+/* 6개 작업 전송 → w1, w2, w3, w1, w2, w3 (round-robin) */
+for (int i = 0; i < 6; i++) {
+    char buf[16];
+    int len = snprintf(buf, sizeof(buf), "task-%d", i);
+    zlink_msg_t task;
+    zlink_msg_init_size(&task, len);
+    memcpy(zlink_msg_data(&task), buf, len);
+    zlink_send(sender, &task, 1, 0);
+}
+```
+
+> DEALER ↔ ROUTER 조합(로드밸런싱 + 응답 라우팅, 프록시 등)은
+> [ROUTER 소켓](03-4-router.ko.md)을 참고.
 
 ## 6. 주의사항
 

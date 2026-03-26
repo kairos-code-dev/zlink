@@ -122,34 +122,64 @@ raw 소켓의 transport/session 상태를 알려준다.
 ### 연결 성공
 
 ```
-클라이언트 측:
-  CONNECT_DELAYED (선택) → CONNECTED → CONNECTION_READY_CHANGED
+  클라이언트 측:
 
-서버 측:
-  ACCEPTED → CONNECTION_READY_CHANGED
+  ┌─────────────────┐       ┌───────────┐       ┌──────────────────────────┐
+  │ CONNECT_DELAYED │──────►│ CONNECTED │──────►│ CONNECTION_READY_CHANGED │
+  │    (선택)       │       └───────────┘       └──────────────────────────┘
+  └─────────────────┘
+
+
+  서버 측:
+
+  ┌──────────┐       ┌──────────────────────────┐
+  │ ACCEPTED │──────►│ CONNECTION_READY_CHANGED │
+  └──────────┘       └──────────────────────────┘
 ```
 
 ### 핸드셰이크 실패
 
 ```
-클라이언트 측:
-  CONNECTED → HANDSHAKE_FAILED_* → DISCONNECTED
+  클라이언트 측:
 
-서버 측:
-  ACCEPTED → HANDSHAKE_FAILED_* → DISCONNECTED
+  ┌───────────┐       ┌─────────────────────┐       ┌──────────────┐
+  │ CONNECTED │──────►│ HANDSHAKE_FAILED_*  │──────►│ DISCONNECTED │
+  └───────────┘       └─────────────────────┘       └──────────────┘
+
+
+  서버 측:
+
+  ┌──────────┐       ┌─────────────────────┐       ┌──────────────┐
+  │ ACCEPTED │──────►│ HANDSHAKE_FAILED_*  │──────►│ DISCONNECTED │
+  └──────────┘       └─────────────────────┘       └──────────────┘
 ```
 
 ### 정상 해제
 
 ```
-CONNECTION_READY_CHANGED → DISCONNECTED
+  ┌──────────────────────────┐       ┌──────────────┐
+  │ CONNECTION_READY_CHANGED │──────►│ DISCONNECTED │
+  └──────────────────────────┘       └──────────────┘
 ```
 
 ### 재연결
 
 ```
-CONNECTED → CONNECTION_READY_CHANGED → DISCONNECTED →
-CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY_CHANGED
+  ┌───────────┐       ┌──────────────────────────┐       ┌──────────────┐
+  │ CONNECTED │──────►│ CONNECTION_READY_CHANGED │──────►│ DISCONNECTED │
+  └───────────┘       └──────────────────────────┘       └──────┬───────┘
+                                                                │
+                      ┌─────────────────┐                       │
+                      │ CONNECT_DELAYED │◄──────────────────────┘
+                      └────────┬────────┘
+                               │
+                      ┌────────▼─────────┐
+                      │ CONNECT_RETRIED  │
+                      └────────┬─────────┘
+                               │
+                      ┌────────▼────┐       ┌──────────────────────────┐
+                      │  CONNECTED  │──────►│ CONNECTION_READY_CHANGED │
+                      └─────────────┘       └──────────────────────────┘
 ```
 
 ## 6. DISCONNECTED reason 코드
@@ -430,6 +460,39 @@ zlink_monitor_snapshot(mon, &snapshot);
 
 콜백 핸들러에서 블로킹 작업을 수행하면 I/O 진행에 영향을 줄 수 있다.
 느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다.
+
+### 원격 모니터링
+
+모니터 API는 **inproc 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
+원격 모니터링이 필요하면 콜백에서 이벤트를 수신하고 PUB 소켓으로 중계한다.
+
+```
+  ┌──────────┐   inproc (PAIR)   ┌─────────────────┐   tcp/wss (PUB)   ┌─────────────┐
+  │ 대상소켓  │─────────────────►│ monitor 콜백    │──────────────────►│  원격 SUB   │
+  │          │    이벤트 수집     │ → PUB 중계      │    이벤트 발행    │ (모니터링)   │
+  └──────────┘                   └─────────────────┘                   └─────────────┘
+```
+
+```c
+/* PUB 소켓으로 이벤트 중계 */
+void *pub = zlink_socket(ctx, ZLINK_PUB);
+zlink_bind(pub, "tcp://0.0.0.0:9090");
+
+void on_monitor_relay(const zlink_monitor_event_t *ev, void *userdata)
+{
+    void *pub = userdata;
+    zlink_msg_t msg;
+    zlink_msg_init_size(&msg, sizeof(*ev));
+    memcpy(zlink_msg_data(&msg), ev, sizeof(*ev));
+    zlink_publish_msg(pub, "monitor", 7, &msg, 1, ZLINK_DONTWAIT);
+}
+
+zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
+void *mon = zlink_socket_monitor_open(server, &opts);
+zlink_socket_monitor_handler(mon, on_monitor_relay, pub);
+
+/* 원격에서 SUB으로 모니터링 이벤트 수신 */
+```
 
 ### 모니터 종료 절차
 

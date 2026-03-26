@@ -1,0 +1,5 @@
+status=failure
+started_at=2026-03-26 05:49:45 +0900
+completed_at=2026-03-26 05:50:14 +0900
+stress_log=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/gateway_removal_metadata_gate_20260326_054945.log
+stress_exitcode=/home/hep7/project/kairos/zlink/doc/plan/refactor/2nd/logs/gateway_removal_metadata_gate_20260326_054945.log.exitcode

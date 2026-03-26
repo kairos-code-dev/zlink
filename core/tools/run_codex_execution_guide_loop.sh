@@ -213,7 +213,7 @@ while [[ "${iteration}" -le "${MAX_ITERATIONS}" ]]; do
 - 문서의 첫 미완료 항목부터 순서대로 진행한다.
 - core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
 - core/build/ 만 사용한다.
-- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --logs-dir ${LOGS_DIR} --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
 - flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 ${STRESS_COUNT}보다 더 크게 올릴 수 있다.
 - 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
 - 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.

@@ -23,7 +23,8 @@
 - `send/recv`와 `publish/subscribe`는 같은 이름 체계로 섞지 않는다.
 - `message_t`는 payload container이고, payload 변환 책임도 `message_t`가 가진다.
 - 각 socket 타입은 자기 타입에서만 의미 있는 option API만 노출한다.
-- 구형 `setsockopt/getsockopt` 스타일 이름은 노출하지 않는다.
+- unsupported 동작은 runtime 오류보다 compile-time surface 제한을 우선한다.
+- 구형 `setsockopt/getsockopt` 스타일 이름은 public surface에 노출하지 않는다.
 
 ## 3. 최종 계층 구조
 
@@ -33,10 +34,16 @@ socket_handle_t
   |
 base_socket_t
   ^
+  +-- send_socket_t
+  |     +-- push_socket_t
+  |     +-- scatter_socket_t
+  |
+  +-- recv_socket_t
+  |     +-- pull_socket_t
+  |     +-- gather_socket_t
+  |
   +-- message_socket_t
   |     +-- pair_socket_t
-  |     +-- push_socket_t
-  |     +-- pull_socket_t
   |     +-- req_socket_t
   |     +-- rep_socket_t
   |     +-- dealer_socket_t
@@ -48,17 +55,15 @@ base_socket_t
   |     +-- xpub_socket_t
   |
   +-- subscriber_socket_t
-  |     +-- sub_socket_t
-  |     +-- xsub_socket_t
-  |
-  +-- scatter_socket_t
-  +-- gather_socket_t
+        +-- sub_socket_t
+        +-- xsub_socket_t
 ```
 
 정책:
 
 - `socket_handle_t`는 최소 ownership wrapper다.
 - `base_socket_t`는 공통 동작을 제공하는 실제 깊은 모듈이다.
+- 방향성 제약은 `send_socket_t`, `recv_socket_t`, `message_socket_t`에서 해결한다.
 - 나머지 타입별 클래스는 public surface 제한과 타입별 option 노출만 담당한다.
 
 ## 4. 네임스페이스와 헤더 배치
@@ -67,6 +72,8 @@ base_socket_t
 
 - `include/zlink/socket_handle.hpp`
 - `include/zlink/base_socket.hpp`
+- `include/zlink/send_socket.hpp`
+- `include/zlink/recv_socket.hpp`
 - `include/zlink/message_socket.hpp`
 - `include/zlink/publisher_socket.hpp`
 - `include/zlink/subscriber_socket.hpp`
@@ -90,6 +97,13 @@ base_socket_t
 - `gather_socket_t`
 
 `include/zlink.hpp`는 위 헤더를 최종 public umbrella에 포함한다.
+
+추가 정책:
+
+- 기존 [`socket.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/socket.hpp)
+  는 즉시 삭제하지 않는다.
+- `socket.hpp`는 새 socket 계층 헤더를 재노출하는 umbrella/compat header로 축소한다.
+- 새 샘플과 새 contract test는 `socket_t` generic 생성자를 사용하지 않는다.
 
 ## 5. 클래스별 책임
 
@@ -137,7 +151,7 @@ protected:
 - 공통 lifecycle API
 - 공통 endpoint API
 - 공통 option API
-- common router/dealer/pub/sub/stream option dispatch
+- router/dealer/pub/sub/stream option domain dispatch
 - monitor/service monitor attach
 - callback registration 공통 처리
 - discovery attach 공통 처리
@@ -189,6 +203,7 @@ public:
     template<typename T>
     int get_option(socket_option_key_t<T> key, T *value) const;
 
+protected:
     int set_router_option(router_option option, const void *value, size_t size);
     int get_router_option(router_option option, void *value, size_t *size) const;
 
@@ -218,7 +233,6 @@ public:
                        const std::string &hostname,
                        bool trust_system = false);
 
-protected:
     base_socket_t(context_t &ctx, socket_type type);
     explicit base_socket_t(void *socket, bool own = true) noexcept;
 };
@@ -229,26 +243,84 @@ protected:
 - `base_socket_t`에는 `send`, `recv`, `publish`, `subscribe`를 직접 public으로
   두지 않는다.
 - data-plane 동작은 하위 facade가 의미에 맞게 노출한다.
+- 타입별 option domain API는 `base_socket_t`에 구현하되 protected로 둔다.
 
-### 5.3 `message_socket_t`
+### 5.3 `send_socket_t`
 
 역할:
 
-- 일반 message transport 계층 facade
-- `send/recv` overload를 공개
+- 송신만 가능한 raw transport facade
+
+대상 타입:
+
+- `PUSH`
+- `SCATTER`
+
+고정 인터페이스:
+
+```cpp
+class send_socket_t : public base_socket_t {
+public:
+    int send(message_t &msg, send_flag flags = send_flag::none);
+    int send(std::vector<message_t> &parts, send_flag flags = send_flag::none);
+
+    int send(const zlink_routing_id_t &rid,
+             message_t &msg,
+             send_flag flags = send_flag::none);
+    int send(const zlink_routing_id_t &rid,
+             std::vector<message_t> &parts,
+             send_flag flags = send_flag::none);
+
+protected:
+    send_socket_t(context_t &ctx, socket_type type);
+};
+```
+
+### 5.4 `recv_socket_t`
+
+역할:
+
+- 수신만 가능한 raw transport facade
+
+대상 타입:
+
+- `PULL`
+- `GATHER`
+
+고정 인터페이스:
+
+```cpp
+class recv_socket_t : public base_socket_t {
+public:
+    int recv(message_t &msg, recv_flag flags = recv_flag::none);
+    int recv(std::vector<message_t> &parts, recv_flag flags = recv_flag::none);
+
+    int recv(zlink_routing_id_t &rid,
+             message_t &msg,
+             recv_flag flags = recv_flag::none);
+    int recv(zlink_routing_id_t &rid,
+             std::vector<message_t> &parts,
+             recv_flag flags = recv_flag::none);
+
+protected:
+    recv_socket_t(context_t &ctx, socket_type type);
+};
+```
+
+### 5.5 `message_socket_t`
+
+역할:
+
+- 양방향 raw transport facade
 
 대상 타입:
 
 - `PAIR`
-- `PUSH`
-- `PULL`
 - `REQ`
 - `REP`
 - `DEALER`
 - `ROUTER`
 - `STREAM`
-- `SCATTER`
-- `GATHER`
 
 고정 인터페이스:
 
@@ -280,7 +352,14 @@ protected:
 };
 ```
 
-### 5.4 `publisher_socket_t`
+정책:
+
+- `send_socket_t`에는 `recv(...)`가 없다.
+- `recv_socket_t`에는 `send(...)`가 없다.
+- `message_socket_t`만 양방향 `send/recv`를 노출한다.
+- 구현 helper는 공유해도 public surface는 방향별로 분리한다.
+
+### 5.6 `publisher_socket_t`
 
 역할:
 
@@ -291,7 +370,6 @@ protected:
 
 - `PUB`
 - `XPUB`
-- unified `SPOT`는 별도 service layer이므로 여기 포함하지 않는다
 
 고정 인터페이스:
 
@@ -310,7 +388,7 @@ protected:
 };
 ```
 
-### 5.5 `subscriber_socket_t`
+### 5.7 `subscriber_socket_t`
 
 역할:
 
@@ -344,67 +422,27 @@ protected:
 
 ## 6. 구체 타입 facade 정의
 
-## 6.1 message 계열
+### 6.1 양방향 message 계열
 
 ```cpp
 class pair_socket_t   : public message_socket_t { public: explicit pair_socket_t(context_t &ctx); };
-class push_socket_t   : public message_socket_t { public: explicit push_socket_t(context_t &ctx); };
-class pull_socket_t   : public message_socket_t { public: explicit pull_socket_t(context_t &ctx); };
 class req_socket_t    : public message_socket_t { public: explicit req_socket_t(context_t &ctx); };
 class rep_socket_t    : public message_socket_t { public: explicit rep_socket_t(context_t &ctx); };
-class scatter_socket_t: public message_socket_t { public: explicit scatter_socket_t(context_t &ctx); };
-class gather_socket_t : public message_socket_t { public: explicit gather_socket_t(context_t &ctx); };
 ```
 
-추가 API 없음.
+추가 option facade가 필요한 `dealer_socket_t`, `router_socket_t`,
+`stream_socket_t`는 6.4에서 최종 형태를 정의한다.
 
-## 6.2 dealer/router 계열
+### 6.2 단방향 message 계열
 
 ```cpp
-class dealer_socket_t : public message_socket_t {
-public:
-    explicit dealer_socket_t(context_t &ctx);
-
-    template<typename T>
-    int set_option(dealer_option option, const T &value);
-
-    template<typename T>
-    int get_option(dealer_option option, T *value) const;
-};
-
-class router_socket_t : public message_socket_t {
-public:
-    explicit router_socket_t(context_t &ctx);
-
-    template<typename T>
-    int set_option(router_option option, const T &value);
-
-    template<typename T>
-    int get_option(router_option option, T *value) const;
-};
+class push_socket_t    : public send_socket_t { public: explicit push_socket_t(context_t &ctx); };
+class scatter_socket_t : public send_socket_t { public: explicit scatter_socket_t(context_t &ctx); };
+class pull_socket_t    : public recv_socket_t { public: explicit pull_socket_t(context_t &ctx); };
+class gather_socket_t  : public recv_socket_t { public: explicit gather_socket_t(context_t &ctx); };
 ```
 
-## 6.3 stream 계열
-
-```cpp
-class stream_socket_t : public message_socket_t {
-public:
-    explicit stream_socket_t(context_t &ctx);
-
-    template<typename T>
-    int set_option(stream_option option, const T &value);
-
-    template<typename T>
-    int get_option(stream_option option, T *value) const;
-};
-```
-
-정책:
-
-- old STREAM helper는 넣지 않는다.
-- STREAM도 `message_socket_t` 기반 `send/recv`만 사용한다.
-
-## 6.4 pub/sub 계열
+### 6.3 pub/sub 계열
 
 ```cpp
 class pub_socket_t : public publisher_socket_t {
@@ -452,13 +490,56 @@ public:
 };
 ```
 
+### 6.4 타입별 option facade
+
+```cpp
+class dealer_socket_t : public message_socket_t {
+public:
+    explicit dealer_socket_t(context_t &ctx);
+
+    template<typename T>
+    int set_option(dealer_option option, const T &value);
+
+    template<typename T>
+    int get_option(dealer_option option, T *value) const;
+};
+
+class router_socket_t : public message_socket_t {
+public:
+    explicit router_socket_t(context_t &ctx);
+
+    template<typename T>
+    int set_option(router_option option, const T &value);
+
+    template<typename T>
+    int get_option(router_option option, T *value) const;
+};
+
+class stream_socket_t : public message_socket_t {
+public:
+    explicit stream_socket_t(context_t &ctx);
+
+    template<typename T>
+    int set_option(stream_option option, const T &value);
+
+    template<typename T>
+    int get_option(stream_option option, T *value) const;
+};
+```
+
+정책:
+
+- old STREAM helper는 넣지 않는다.
+- STREAM도 `message_socket_t` 기반 `send/recv`만 사용한다.
+- 타입별 option facade는 protected base 구현을 재노출하는 얇은 forwarding layer다.
+
 ## 7. 허용 인터페이스 매트릭스
 
 | 클래스 | bind/connect | send/recv | publish/subscribe | typed option |
 |---|---|---|---|---|
 | `pair_socket_t` | O | `send/recv` | X | common |
-| `push_socket_t` | O | `send` | X | common |
-| `pull_socket_t` | O | `recv` | X | common |
+| `push_socket_t` | O | `send` only | X | common |
+| `pull_socket_t` | O | `recv` only | X | common |
 | `req_socket_t` | O | `send/recv` | X | common |
 | `rep_socket_t` | O | `send/recv` | X | common |
 | `dealer_socket_t` | O | `send/recv` | X | common + dealer |
@@ -468,13 +549,15 @@ public:
 | `sub_socket_t` | O | topic `recv` | `subscribe/unsubscribe` | common + sub |
 | `xpub_socket_t` | O | X | `publish` | common + pub |
 | `xsub_socket_t` | O | topic `recv` | `subscribe/unsubscribe` | common + sub |
-| `scatter_socket_t` | O | `send` | X | common |
-| `gather_socket_t` | O | `recv` | X | common |
+| `scatter_socket_t` | O | `send` only | X | common |
+| `gather_socket_t` | O | `recv` only | X | common |
 
-정책:
+의미:
 
-- unsupported 동작은 public surface에 아예 노출하지 않는다.
-- runtime `EINVAL`보다 compile-time surface 제한을 우선한다.
+- `push_socket_t`에는 `recv(...)`가 없다.
+- `pull_socket_t`에는 `send(...)`가 없다.
+- `pub_socket_t`에는 `recv(...)`와 `subscribe(...)`가 없다.
+- `sub_socket_t`에는 `send(...)`와 `publish(...)`가 없다.
 
 ## 8. 타입별 option 노출 규칙
 
@@ -538,6 +621,8 @@ dealer_socket_t dealer(ctx);
 sub_socket_t sub(ctx);
 pub_socket_t pub(ctx);
 stream_socket_t stream(ctx);
+push_socket_t push(ctx);
+pull_socket_t pull(ctx);
 ```
 
 이유:
@@ -572,6 +657,10 @@ stream_socket_t stream(ctx);
 - `socket_t(ctx, socket_type::stream)` -> `stream_socket_t(ctx)`
 - `socket_t(ctx, socket_type::pub)` -> `pub_socket_t(ctx)`
 - `socket_t(ctx, socket_type::sub)` -> `sub_socket_t(ctx)`
+- `socket_t(ctx, socket_type::push)` -> `push_socket_t(ctx)`
+- `socket_t(ctx, socket_type::pull)` -> `pull_socket_t(ctx)`
+- `socket_t(ctx, socket_type::scatter)` -> `scatter_socket_t(ctx)`
+- `socket_t(ctx, socket_type::gather)` -> `gather_socket_t(ctx)`
 
 구형 generic 작성 패턴은 `compat.hpp`에서도 복구하지 않는다.
 
@@ -581,18 +670,20 @@ stream_socket_t stream(ctx);
 
 - `socket_handle_t` 추출
 - 기존 `socket_t` 공통 lifecycle/option/monitor 코드를 `base_socket_t`로 이동
+- `send_socket_t`, `recv_socket_t`, `message_socket_t` 골격 추가
 - 기존 테스트 빌드 유지
 
 완료 조건:
 
 - 기존 contract test가 컴파일/통과
 - `base_socket_t`가 직접 data-plane public API를 노출하지 않음
+- 단방향 socket에 반대 방향 API가 public으로 노출되지 않음
 
 ### Slice 2. data-plane facade 분리
 
-- `message_socket_t`
 - `publisher_socket_t`
 - `subscriber_socket_t`
+- topic recv/publish helper 정리
 
 완료 조건:
 
@@ -602,7 +693,7 @@ stream_socket_t stream(ctx);
 
 - `pair_socket_t`, `dealer_socket_t`, `router_socket_t`, `pub_socket_t`,
   `sub_socket_t`, `stream_socket_t` 우선 추가
-- 이후 나머지 타입 추가
+- 이후 `push/pull/scatter/gather/xpub/xsub` 추가
 
 완료 조건:
 
@@ -620,8 +711,8 @@ stream_socket_t stream(ctx);
 ### Slice 5. generic constructor 제거
 
 - `socket_t(context_t&, socket_type)` public 진입 제거
+- `socket.hpp` compat 축소
 - migration 문서 반영
-- `compat.hpp` 축소
 
 완료 조건:
 
@@ -634,6 +725,7 @@ stream_socket_t stream(ctx);
 - `socket_type` enum 기반 generic public 생성자가 사라짐
 - 타입별 facade가 실제 public surface를 제한함
 - `send/recv` 계열과 `publish/subscribe` 계열이 분리됨
+- 단방향 socket의 잘못된 API가 compile-time에 차단됨
 - router/dealer/pub/sub/stream option이 각 facade에 노출됨
 - 기존 C++ 샘플이 concrete type facade 기준으로 재작성됨
 - contract test와 sample-smoke가 모두 통과함
@@ -659,6 +751,7 @@ stream_socket_t stream(ctx);
 - 구현은 `base_socket_t`에 집중
 - public surface는 타입별 facade로 분리
 - `send/recv`와 `publish/subscribe`를 의미 계층 기준으로 구분
+- 단방향/양방향 transport도 facade 계층에서 분리
 - option도 socket family 기준으로 분리
 
 즉, "generic socket 하나에 모든 기능을 넣는 구조"와 "타입별 구현을 전부 복제하는

@@ -1,3 +1,0 @@
-=================================================================
-==3834830==ERROR: AddressSanitizer: stack-use-after-return on address 0x78d715604cc8 at pc 0x62910ae61ebf bp 0x78d7147f5590 sp 0x78d7147f5580
-READ of size 8 at 0x78d715604cc8 thread T17

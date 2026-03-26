@@ -52,6 +52,17 @@ Examples:
 EOF
 }
 
+matches_current_supervisor() {
+  local line="$1"
+
+  [[ "${line}" == *"--guide ${GUIDE_PATH}"* ]] && return 0
+  [[ "${line}" == *"--master-plan ${MASTER_PLAN_PATH}"* ]] && return 0
+  [[ "${line}" == *"--logs-dir ${LOGS_DIR}"* ]] && return 0
+  [[ "${line}" == *"--gate-label ${GATE_LABEL}"* ]] && return 0
+
+  return 1
+}
+
 terminate_process_tree() {
   local pid="$1"
   local child_pid
@@ -231,12 +242,24 @@ if [[ ! -f "${MASTER_PLAN_PATH}" ]]; then
   exit 1
 fi
 
+GUIDE_PATH="$(realpath -m "${GUIDE_PATH}")"
+MASTER_PLAN_PATH="$(realpath -m "${MASTER_PLAN_PATH}")"
+LOGS_DIR="$(realpath -m "${LOGS_DIR}")"
+
 mkdir -p "${LOGS_DIR}"
 capture_external_artifact_snapshot
 
 mapfile -t existing_supervisors < <(
   pgrep -af "${ROOT_DIR}/core/tools/run_codex_execution_guide_loop.sh" | \
-    awk -v self="$$" '$1 != self {print}'
+    while IFS= read -r line; do
+      [[ -z "${line}" ]] && continue
+      if [[ "${line%% *}" == "$$" ]]; then
+        continue
+      fi
+      if matches_current_supervisor "${line}"; then
+        printf '%s\n' "${line}"
+      fi
+    done
 )
 
 if [[ "${#existing_supervisors[@]}" -gt 0 ]]; then

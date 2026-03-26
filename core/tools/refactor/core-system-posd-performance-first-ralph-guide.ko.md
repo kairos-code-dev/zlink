@@ -47,22 +47,6 @@
 즉 이 문서는 "POSD 리팩토링이 더 이상 영원히 필요 없다"는 선언문이 아니라,
 "이번 개발 사이클 종료 시점에 추가로 손댈 가치가 큰 구조 허브가 없다"는 상태를 반복적으로 확인하는 문서다.
 
-## 1.2 참고 문서
-
-이 가이드는 실행 순서와 종료 판정 기준 문서다.
-실제 구현 내용과 설계 intent는 아래 문서들을 함께 본다.
-
-- `doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md`
-- `doc/plan/refactor/2nd/core-system-posd-refactor-gap-review.ko.md`
-- `doc/plan/refactor/2nd/core-system-posd-refactor-post-residual-review.ko.md`
-
-해석 규칙:
-
-- 현재 실행의 작업 순서는 이 가이드를 따른다.
-- 구현 우선순위와 실제 미완료 범위는 위 세 문서를 함께 확인한다.
-- 위 문서들 중 어느 하나라도 새 미완료 항목을 드러내면, 이 가이드의 체크리스트와 구현 방향 메모를 먼저 갱신한 뒤 코드를 수정한다.
-- 위 문서들과 현재 코드가 어긋나면, 현재 코드 기준으로 세 문서를 다시 읽어 가장 보수적인 미완료 판정을 적용한다.
-
 ## 2. 해석 원칙
 
 ### 2.1 성능 우선 원칙
@@ -713,7 +697,7 @@ core/tools/refactor/logs/
 ### 10.4 잔여 후보 재점검 예시
 
 이 절은 특정 세션의 상태표가 아니며,
-`1.2`의 참고 문서들과 현재 코드를 다시 읽을 때
+현재 코드를 다시 읽을 때
 빠뜨리기 쉬운 잔여 후보 축을 재점검하기 위한 예시 목록이다.
 
 현재 코드에서 자주 다시 보는 재점검 축:
@@ -741,7 +725,7 @@ core/tools/refactor/logs/
    - 현재 코드 기준으로 `spot_node.cpp` 상단의 stale helper/control-path duplicate static policy는 제거됐고, `discovery_t`의 local value/metadata/metadata-max-size owner는 `discovery_local_state_t`로, provider snapshot/update-seq/observer coordination state owner는 `discovery_service_state_t`로 이동했다. `set_option/get_option`, `set_value/get_value`, `set_metadata/get_metadata`, member-query wrapper는 state owner TU로, provider update/observer sequencing은 `discovery_update.cpp`가 아니라 private state owner로 더 좁혔다. 이 축은 representative gate 재실행과 push commit `756e54b4`까지 완료됐고, 다음 첫 미완료 항목은 8번 engine/transport large-file owner 리뷰와 그 뒤 최종 gate다.
 8. engine/transport large-file owner 리뷰
    - `asio_engine.cpp`, `asio_ws_engine.cpp`와 실제 large file 중 owner 설명이 약한 축만 선별해 정리한다.
-   - 현재 코드 기준으로 `asio_engine_t`는 backend-common async runtime, handshake, timer, stream fast-path tuning owner이고 `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution owner다. representative smoke `test_stream_fastpath`, `test_spot_pubsub_scenario_peer_wss`와 ABI 무변경 확인 기준으로 새 구조 phase를 열 giant owner로는 승격하지 않았다. 최신 final lane gate도 다시 green이며, push commit `a4cac5b0` 기준으로 현재 코드/가이드/마스터 플랜 재대조 결과 추가 구현 미완료 항목은 남아 있지 않다.
+   - 현재 코드 기준으로 `asio_engine_t`는 backend-common async runtime, handshake, timer, stream fast-path tuning owner이고 `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution owner다. representative smoke `test_stream_fastpath`, `test_spot_pubsub_scenario_peer_wss`와 ABI 무변경 확인 기준으로 새 구조 phase를 열 giant owner로는 승격하지 않았다. 최신 final lane gate도 다시 green이며, push commit `a4cac5b0` 기준으로 현재 코드와 가이드를 다시 대조한 결과 추가 구현 미완료 항목은 남아 있지 않다.
 
 적용 규칙:
 

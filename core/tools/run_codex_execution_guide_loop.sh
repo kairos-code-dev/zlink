@@ -4,9 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-GUIDE_PATH="${ROOT_DIR}/doc/plan/refactor/2nd/core-system-posd-refactor-remaining-execution-guide.ko.md"
-MASTER_PLAN_PATH="${ROOT_DIR}/doc/plan/refactor/2nd/core-system-posd-refactor-master-plan.ko.md"
-LOGS_DIR="${ROOT_DIR}/doc/plan/refactor/2nd/logs"
+GUIDE_PATH="${ROOT_DIR}/core/tools/refactor/core-system-posd-performance-first-ralph-guide.ko.md"
+MASTER_PLAN_PATH="${GUIDE_PATH}"
+LOGS_DIR="${ROOT_DIR}/core/tools/refactor/logs"
 MAX_ITERATIONS=100
 POLL_SECONDS=30
 GATE_LABEL="phase2_thread_safe_stress"
@@ -23,13 +23,13 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
 
-Run Codex repeatedly against an execution guide and master plan until the guide
-is fully applied or Codex reports that user input is required.
+Run Codex repeatedly against an execution guide until the guide is fully applied
+or Codex reports that user input is required.
 
 Options:
   --guide PATH          Execution guide path
                         (default: ${GUIDE_PATH})
-  --master-plan PATH    Master plan path
+  --master-plan PATH    Optional secondary plan path
                         (default: ${MASTER_PLAN_PATH})
   --logs-dir PATH       Log directory
                         (default: ${LOGS_DIR})
@@ -164,14 +164,17 @@ mkdir -p "${LOGS_DIR}"
 
 timestamp="$(date '+%Y%m%d_%H%M%S')"
 session_dir="${LOGS_DIR}/codex_execution_guide_loop_${timestamp}"
-gate_status_file="${LOGS_DIR}/${GATE_LABEL}.status"
+gate_dir="${session_dir}/gate"
+gate_status_file="${gate_dir}/${GATE_LABEL}.status"
 mkdir -p "${session_dir}"
+mkdir -p "${gate_dir}"
 
 cat <<EOF
 === Codex execution guide loop start ===
 Guide: ${GUIDE_PATH}
 Master plan: ${MASTER_PLAN_PATH}
 Session dir: ${session_dir}
+Gate dir: ${gate_dir}
 Max iterations: ${MAX_ITERATIONS}
 Gate status file: ${gate_status_file}
 Stress count: ${STRESS_COUNT}
@@ -208,7 +211,7 @@ wait_for_running_gate() {
         printf 'stress_log=%s\n' "${gate_log}"
       fi
     } > "${gate_status_file}"
-    rm -rf "${LOGS_DIR}/${GATE_LABEL}.lock"
+    rm -rf "${gate_dir}/${GATE_LABEL}.lock"
     return 1
   fi
 
@@ -249,36 +252,35 @@ while [[ "${iteration}" -le "${MAX_ITERATIONS}" ]]; do
   run_log="${session_dir}/${iter_prefix}_codex.log"
   last_message="${session_dir}/${iter_prefix}_last_message.txt"
 
-  cat > "${prompt_file}" <<EOF
+  if [[ "${MASTER_PLAN_PATH}" == "${GUIDE_PATH}" ]]; then
+    cat > "${prompt_file}" <<EOF
 /home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
 
 작업 목표:
 - ${GUIDE_PATH}
-  이 문서의 남은 작업을 중단 없이 끝까지 진행한다.
-- ${MASTER_PLAN_PATH}
-  이 문서의 실제 구현 내용이 코드에 반영되도록 작업한다.
+  이 문서의 남은 작업과 실제 구현 내용을 중단 없이 끝까지 진행한다.
 
 작업 규칙:
-- 실행 가이드와 마스터 플랜을 둘 다 authority로 사용한다.
-- 실행 순서와 완료 판정은 실행 가이드를 따르되, 실제 구현 내용과 설계 intent는 마스터 플랜을 기준으로 확인한다.
-- 각 작업 묶음을 끝낼 때마다 마스터 플랜 전체와 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
-- 실행 가이드 체크리스트가 green이어도 마스터 플랜의 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
-- 마스터 플랜에 있는데 실행 가이드 체크리스트에 없는 구현 항목을 발견하면 실행 가이드를 먼저 갱신한 뒤 작업을 계속한다.
-- 마스터 플랜과 실행 가이드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 현재 실행의 유일한 기준 문서는 실행 가이드다.
+- 각 작업 묶음을 끝낼 때마다 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 실행 가이드와 현재 코드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 실행 가이드의 현재 파일 내용이 source of truth다. 명시적으로 요청받지 않은 한 실행 가이드 자체의 `git diff`나 삭제된 legacy 문서 diff를 근거로 판단하지 않는다.
+- `git status` 에서 보이는 삭제된 legacy 문서나 과거 계획 문서는 현재 실행 범위의 근거가 아니다. unrelated 변경처럼 취급하고 현재 가이드와 현재 코드만 본다.
 - 문서의 첫 미완료 항목부터 순서대로 진행한다.
 - core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
 - core/build/ 만 사용한다.
-- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --logs-dir ${LOGS_DIR} --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --logs-dir ${gate_dir} --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
 - flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 ${STRESS_COUNT}보다 더 크게 올릴 수 있다.
 - 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
 - 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
-- 가이드나 마스터 플랜에 단계별 commit / push 규칙이 있으면 그대로 따른다.
+- 가이드에 단계별 commit / push 규칙이 있으면 그대로 따른다.
 - unrelated 변경은 commit/push에 섞지 않는다. 현재 단계 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
 - push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남길 수 있으면 남긴다.
 - routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
 - 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
 - stress/lane/perf/functional regression은 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
-- 테스트 통과만으로 마스터 플랜 구현 내용이 반영됐다고 추정하지 않는다.
+- 테스트 통과만으로 실행 가이드의 실제 구현 내용이 반영됐다고 추정하지 않는다.
 
 종료 판정 규칙:
 - 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
@@ -290,7 +292,51 @@ while [[ "${iteration}" -le "${MAX_ITERATIONS}" ]]; do
 - 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
 계속 진행 필요
 EOF
+  else
+    cat > "${prompt_file}" <<EOF
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
 
+작업 목표:
+- ${GUIDE_PATH}
+  이 문서의 남은 작업을 중단 없이 끝까지 진행한다.
+- ${MASTER_PLAN_PATH}
+  이 문서의 실제 구현 내용이 코드에 반영되도록 작업한다.
+
+작업 규칙:
+- 실행 가이드와 보조 계획 문서를 둘 다 사용한다.
+- 실행 순서와 완료 판정은 실행 가이드를 따르되, 실제 구현 내용과 설계 intent는 보조 계획 문서를 기준으로 확인한다.
+- 각 작업 묶음을 끝낼 때마다 보조 계획 문서 전체와 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 보조 계획 문서의 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 보조 계획 문서에 있는데 실행 가이드 체크리스트에 없는 구현 항목을 발견하면 실행 가이드를 먼저 갱신한 뒤 작업을 계속한다.
+- 보조 계획 문서와 실행 가이드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 실행 가이드와 보조 계획 문서의 현재 파일 내용이 source of truth다. 명시적으로 요청받지 않은 한 실행 가이드 자체의 `git diff`나 삭제된 legacy 문서 diff를 근거로 판단하지 않는다.
+- `git status` 에서 보이는 삭제된 legacy 문서나 과거 계획 문서는 현재 실행 범위의 근거가 아니다. unrelated 변경처럼 취급하고 현재 기준 문서와 현재 코드만 본다.
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/run_execution_gate_loop.sh --logs-dir ${gate_dir} --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 ${STRESS_COUNT}보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- 가이드나 보조 계획 문서에 단계별 commit / push 규칙이 있으면 그대로 따른다.
+- unrelated 변경은 commit/push에 섞지 않는다. 현재 단계 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
+- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남길 수 있으면 남긴다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+- stress/lane/perf/functional regression은 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- 테스트 통과만으로 보조 계획 문서 구현 내용이 반영됐다고 추정하지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+EOF
+  fi
   echo "=== Codex iteration ${iteration}/${MAX_ITERATIONS} start ($(date '+%Y-%m-%d %H:%M:%S %z')) ==="
   set +e
   codex "${CODEX_ARGS[@]}" "${MODEL_ARG[@]}" \

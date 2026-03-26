@@ -1,2 +1,0 @@
-=== Verifying stress test registration ===
-Configured stress test is not registered in CTest: test_service_introspection_discovery_control_path

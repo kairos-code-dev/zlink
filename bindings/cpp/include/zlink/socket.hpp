@@ -7,7 +7,7 @@
 #include "types.hpp"
 
 #include <cerrno>
-#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <type_traits>
@@ -15,32 +15,193 @@
 
 namespace zlink
 {
+namespace service
+{
+class discovery_t;
+}
 
-/**
- * @brief RAII wrapper for a zlink socket handle.
- */
+namespace detail
+{
+
+inline void close_message_array (zlink_msg_t *parts_, size_t part_count_) noexcept
+{
+    if (!parts_)
+        return;
+    zlink_multipart_close (parts_, part_count_);
+    std::free (parts_);
+}
+
+inline bool is_common_string_option (socket_option option_) noexcept
+{
+    switch (option_) {
+    case socket_option::last_endpoint:
+    case socket_option::bindtodevice:
+    case socket_option::tls_cert:
+    case socket_option::tls_key:
+    case socket_option::tls_ca:
+    case socket_option::tls_hostname:
+    case socket_option::tls_password:
+        return true;
+    default:
+        return false;
+    }
+}
+
+inline size_t initial_common_string_capacity (socket_option option_) noexcept
+{
+    switch (option_) {
+    case socket_option::last_endpoint:
+        return 1024;
+    default:
+        return 512;
+    }
+}
+
+template<typename Getter, typename Option>
+inline int get_string_option (Getter getter_,
+                              void *handle_,
+                              Option option_,
+                              size_t initial_capacity_,
+                              std::string &value_)
+{
+    size_t cap = initial_capacity_;
+    const size_t max_cap = 64u * 1024u;
+
+    while (cap <= max_cap) {
+        std::vector<char> buffer (cap);
+        size_t size = cap;
+        const int rc = getter_ (handle_, option_, buffer.data (), &size);
+        if (rc == 0) {
+            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
+            size_t out_size = bounded;
+            if (out_size > 0 && buffer[out_size - 1] == '\0')
+                --out_size;
+            value_.assign (buffer.data (), out_size);
+            return 0;
+        }
+
+        if (errno != EINVAL || cap == max_cap)
+            return -1;
+
+        cap *= 2u;
+        if (cap > max_cap)
+            cap = max_cap;
+    }
+
+    errno = EINVAL;
+    return -1;
+}
+
+inline int move_parts_to_native (std::vector<message_t> &parts_,
+                                 std::vector<zlink_msg_t> &native_)
+{
+    native_.clear ();
+    native_.resize (parts_.size ());
+
+    size_t moved = 0;
+    for (; moved < parts_.size (); ++moved) {
+        if (!parts_[moved].valid ()) {
+            errno = EINVAL;
+            break;
+        }
+        if (parts_[moved].move_to (&native_[moved]) != 0)
+            break;
+    }
+
+    if (moved == parts_.size ())
+        return 0;
+
+    for (size_t i = 0; i < moved; ++i) {
+        if (parts_[i].init () == 0)
+            (void) zlink_msg_move (parts_[i].handle (), &native_[i]);
+        (void) zlink_msg_close (&native_[i]);
+    }
+
+    native_.clear ();
+    return -1;
+}
+
+inline void restore_parts_from_native (std::vector<message_t> &parts_,
+                                       std::vector<zlink_msg_t> &native_) noexcept
+{
+    const size_t count =
+      native_.size () < parts_.size () ? native_.size () : parts_.size ();
+    for (size_t i = 0; i < count; ++i) {
+        if (parts_[i].init () == 0)
+            (void) zlink_msg_move (parts_[i].handle (), &native_[i]);
+        (void) zlink_msg_close (&native_[i]);
+    }
+    native_.clear ();
+}
+
+inline int assign_parts_from_native (zlink_msg_t *parts_native_,
+                                     size_t part_count_,
+                                     std::vector<message_t> &parts_)
+{
+    std::vector<message_t> tmp;
+    tmp.resize (part_count_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        if (zlink_msg_move (tmp[i].handle (), &parts_native_[i]) != 0) {
+            close_message_array (parts_native_, part_count_);
+            return -1;
+        }
+    }
+
+    std::free (parts_native_);
+    parts_.swap (tmp);
+    return 0;
+}
+
+inline int recv_parts (void *socket_,
+                       zlink_routing_id_t *source_rid_out_,
+                       recv_flag flags_,
+                       std::vector<message_t> &parts_)
+{
+    zlink_msg_t *native_parts = NULL;
+    size_t native_part_count = 0;
+    const int rc = zlink_recv (
+      socket_, source_rid_out_, &native_parts, &native_part_count,
+      static_cast<zlink_send_flags_t> (flags_));
+    if (rc != 0)
+        return rc;
+
+    if (assign_parts_from_native (native_parts, native_part_count, parts_) != 0)
+        return -1;
+    return 0;
+}
+
+inline int recv_single_part (void *socket_,
+                             zlink_routing_id_t *source_rid_out_,
+                             recv_flag flags_,
+                             message_t &part_)
+{
+    std::vector<message_t> parts;
+    if (recv_parts (socket_, source_rid_out_, flags_, parts) != 0)
+        return -1;
+
+    if (parts.size () != 1) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    part_ = std::move (parts[0]);
+    return 0;
+}
+
+} // namespace detail
+
 class socket_t
 {
   public:
-    /**
-     * @brief Construct an empty socket wrapper.
-     */
     socket_t () : _socket (NULL), _own (false) {}
 
-    /**
-     * @brief Create a new socket from a context.
-     * @param ctx_ Context wrapper.
-     * @param type_ Socket type.
-     */
     socket_t (context_t &ctx_, socket_type type_)
-        : _socket (zlink_socket (ctx_.handle (), static_cast<int> (type_), NULL)),
+        : _socket (zlink_socket (ctx_.handle (),
+                                 static_cast<zlink_socket_type_t> (type_))),
           _own (true)
     {
     }
 
-    /**
-     * @brief Close owned socket on destruction.
-     */
     ~socket_t () { (void) close (); }
 
     socket_t (socket_t &&other) noexcept
@@ -50,723 +211,228 @@ class socket_t
         other._own = false;
     }
 
-    socket_t &operator= (socket_t &&other) noexcept = delete;
+    socket_t &operator= (socket_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        (void) close ();
+        _socket = other._socket;
+        _own = other._own;
+        other._socket = NULL;
+        other._own = false;
+        return *this;
+    }
 
     socket_t (const socket_t &) = delete;
     socket_t &operator= (const socket_t &) = delete;
 
-    /**
-     * @brief Adopt ownership of an existing native socket.
-     * @param socket_ Native socket handle.
-     * @return Owning wrapper.
-     */
     static socket_t adopt (void *socket_)
     {
-        socket_t s;
-        s._socket = socket_;
-        s._own = true;
-        return s;
+        socket_t socket;
+        socket._socket = socket_;
+        socket._own = true;
+        return socket;
     }
 
-    /**
-     * @brief Wrap a native socket without taking ownership.
-     * @param socket_ Native socket handle.
-     * @return Non-owning wrapper.
-     */
     static socket_t wrap (void *socket_)
     {
-        socket_t s;
-        s._socket = socket_;
-        s._own = false;
-        return s;
+        socket_t socket;
+        socket._socket = socket_;
+        socket._own = false;
+        return socket;
     }
 
-    /**
-     * @brief Access mutable native socket handle.
-     * @return Native handle pointer.
-     */
+    bool valid () const noexcept { return _socket != NULL; }
     void *handle () noexcept { return _socket; }
-    /**
-     * @brief Access const native socket handle.
-     * @return Native handle pointer.
-     */
     const void *handle () const noexcept { return _socket; }
 
-    /**
-     * @brief Bind socket to an endpoint.
-     * @param endpoint_ Endpoint string.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int bind (const std::string &endpoint_)
     {
         return zlink_bind (_socket, endpoint_.c_str ());
     }
 
-    /**
-     * @brief Connect socket to an endpoint.
-     * @param endpoint_ Endpoint string.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int connect (const std::string &endpoint_)
     {
         return zlink_connect (_socket, endpoint_.c_str ());
     }
 
-    /**
-     * @brief Unbind socket from an endpoint.
-     * @param endpoint_ Endpoint string.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int unbind (const std::string &endpoint_)
     {
         return zlink_unbind (_socket, endpoint_.c_str ());
     }
 
-    /**
-     * @brief Disconnect socket from an endpoint.
-     * @param endpoint_ Endpoint string.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int disconnect (const std::string &endpoint_)
     {
         return zlink_disconnect (_socket, endpoint_.c_str ());
     }
 
-    /**
-     * @brief Close the socket when this wrapper owns it.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int close () noexcept
     {
-        int rc = 0;
-        if (_socket && _own)
-            rc = zlink_close (_socket);
-        _socket = NULL;
-        _own = false;
+        if (!_socket) {
+            _own = false;
+            return 0;
+        }
+
+        if (!_own) {
+            _socket = NULL;
+            return 0;
+        }
+
+        const int rc = zlink_close (_socket);
+        if (rc == 0) {
+            _socket = NULL;
+            _own = false;
+        }
         return rc;
     }
 
-    /**
-     * @brief Send raw bytes.
-     * @param buf_ Payload buffer.
-     * @param len_ Payload length.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    send (const void *buf_, size_t len_, send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int send (message_t &part_,
+                                  send_flag flags_ = send_flag::none)
     {
-        return zlink_send (_socket, buf_, len_, static_cast<int> (flags_));
-    }
-
-    /**
-     * @brief Send a string payload.
-     * @param s_ Payload string.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    send (const std::string &s_, send_flag flags_ = send_flag::none)
-    {
-        return zlink_send (_socket, s_.data (), s_.size (),
-                           static_cast<int> (flags_));
-    }
-
-    /**
-     * @brief Send an external payload buffer without a pre-send copy.
-     * @param data_ External payload buffer. May be `NULL` only when `len_` is 0.
-     * @param len_ Payload length in bytes.
-     * @param ffn_ Optional release callback for `data_`.
-     * @param hint_ Optional callback context pointer.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     * @note Ownership of `data_` is consumed regardless of send result.
-     */
-    ZLINK_CPP_NODISCARD int
-    send_zero (void *data_,
-               size_t len_,
-               zlink_free_fn *ffn_,
-               void *hint_ = NULL,
-               send_flag flags_ = send_flag::none)
-    {
-        if (len_ > 0 && !data_) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        message_t msg;
-        if (msg.init (data_, len_, ffn_, hint_) != 0)
-            return -1;
-
-        const int rc =
-          zlink_msg_send (msg.handle (), _socket, static_cast<int> (flags_));
-        (void) msg.close ();
+        std::vector<message_t> parts (1);
+        parts[0] = std::move (part_);
+        const int rc = send (parts, flags_);
+        if (rc != 0)
+            part_ = std::move (parts[0]);
         return rc;
     }
 
-    /**
-     * @brief Receive raw bytes.
-     * @param buf_ Destination buffer.
-     * @param len_ Destination capacity.
-     * @param flags_ Receive flags.
-     * @return Received byte count or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    recv (void *buf_, size_t len_, recv_flag flags_ = recv_flag::none)
+    ZLINK_CPP_NODISCARD int send (std::vector<message_t> &parts_,
+                                  send_flag flags_ = send_flag::none)
     {
-        return zlink_recv (_socket, buf_, len_, static_cast<int> (flags_));
-    }
-
-    /**
-     * @brief Send a message frame.
-     * @param msg_ Message to send.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     * @note `msg_` ownership is transferred and it is closed regardless of result.
-     */
-    ZLINK_CPP_NODISCARD int
-    send (message_t &msg_, send_flag flags_ = send_flag::none)
-    {
-        if (!msg_.valid ()) {
-            errno = EINVAL;
+        std::vector<zlink_msg_t> native_parts;
+        if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
-        }
 
-        const int rc = zlink_msg_send (msg_.handle (), _socket,
-                                       static_cast<int> (flags_));
-        msg_.close ();
+        const int rc = zlink_send (
+          _socket, native_parts.empty () ? NULL : &native_parts[0],
+          native_parts.size (), static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0)
+            detail::restore_parts_from_native (parts_, native_parts);
         return rc;
     }
 
-    /**
-     * @brief Receive into a message frame.
-     * @param msg_ Destination message.
-     * @param flags_ Receive flags.
-     * @return Received byte count or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    recv (message_t &msg_, recv_flag flags_ = recv_flag::none)
+    ZLINK_CPP_NODISCARD int send (const zlink_routing_id_t &target_rid_,
+                                  message_t &part_,
+                                  send_flag flags_ = send_flag::none)
     {
-        if (!msg_.valid () && msg_.init () != 0)
-            return -1;
-        return zlink_msg_recv (msg_.handle (), _socket,
-                               static_cast<int> (flags_));
-    }
-
-    /**
-     * @brief Attach framed stream callback.
-     * @param on_packets_ Callback for packetized data.
-     * @param flags_ Dispatch flags.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    stream_attach (zlink_stream_on_packets_fn on_packets_, int flags_ = 0)
-    {
-        return zlink_stream_attach (_socket, on_packets_, flags_);
-    }
-
-    /**
-     * @brief Attach raw stream callback.
-     * @param on_raw_ Callback for raw bytes.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int stream_attach (zlink_stream_on_raw_fn on_raw_)
-    {
-        return zlink_stream_attach_raw (_socket, on_raw_, NULL);
-    }
-
-    /**
-     * @brief Attach LEN32-BE framed callback parser.
-     * @param on_packets_ Callback for decoded packets.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    stream_attach_len32be (zlink_stream_on_packets_fn on_packets_)
-    {
-        return zlink_stream_attach_len32be (_socket, on_packets_);
-    }
-
-    /**
-     * @brief Attach framed stream callback with dispatch mode.
-     * @param on_packets_ Callback for packetized data.
-     * @param mode_ Stream dispatch mode.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    stream_attach (zlink_stream_on_packets_fn on_packets_,
-                   stream_dispatch_mode mode_)
-    {
-        return stream_attach (on_packets_, static_cast<int> (mode_));
-    }
-
-    /**
-     * @brief Detach stream callback.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int stream_detach ()
-    {
-        return zlink_stream_detach (_socket);
-    }
-
-    /**
-     * @brief Get routing id for a connected stream peer by index.
-     * @param index_ Peer index.
-     * @param out_ Output routing id as a 32-bit value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int stream_peer_routing_id (int index_, uint32_t *out_)
-    {
-        if (!out_) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        zlink_routing_id_t rid;
-        std::memset (&rid, 0, sizeof (rid));
-        if (zlink_socket_peer_routing_id (_socket, index_, &rid) != 0)
-            return -1;
-
-        if (rid.size != 4) {
-            errno = EPROTO;
-            return -1;
-        }
-
-        *out_ = decode_stream_routing_id (rid);
-        return 0;
-    }
-
-    /**
-     * @brief Send bytes to a stream peer by native routing id.
-     * @param routing_id_ Target peer routing id.
-     * @param buf_ Payload buffer.
-     * @param len_ Payload length.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    stream_send (const zlink_routing_id_t &routing_id_,
-                 const void *buf_,
-                 size_t len_,
-                 send_flag flags_ = send_flag::none)
-    {
-        if (routing_id_.size == 0) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        return zlink_stream_send (_socket, &routing_id_, buf_, len_,
-                                  static_cast<int> (flags_));
-    }
-
-    /**
-     * @brief Send bytes to a stream peer by routing id value.
-     * @param routing_id_ Peer routing id as a 32-bit value.
-     * @param buf_ Payload buffer.
-     * @param len_ Payload length.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    stream_send (uint32_t routing_id_,
-                 const void *buf_,
-                 size_t len_,
-                 send_flag flags_ = send_flag::none)
-    {
-        zlink_routing_id_t rid;
-        encode_stream_routing_id (routing_id_, &rid);
-        return zlink_stream_send (_socket, &rid, buf_, len_,
-                                  static_cast<int> (flags_));
-    }
-
-    /**
-     * @brief Send string to a stream peer by native routing id.
-     * @param routing_id_ Target peer routing id.
-     * @param payload_ Payload string.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    stream_send (const zlink_routing_id_t &routing_id_,
-                 const std::string &payload_,
-                 send_flag flags_ = send_flag::none)
-    {
-        return stream_send (routing_id_, payload_.data (), payload_.size (),
-                            flags_);
-    }
-
-    /**
-     * @brief Send string to a stream peer by routing id value.
-     * @param routing_id_ Peer routing id as a 32-bit value.
-     * @param payload_ Payload string.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    stream_send (uint32_t routing_id_,
-                 const std::string &payload_,
-                 send_flag flags_ = send_flag::none)
-    {
-        return stream_send (routing_id_, payload_.data (), payload_.size (),
-                            flags_);
-    }
-
-    /**
-     * @brief Send a message frame to a stream peer by native routing id.
-     * @param routing_id_ Target peer routing id.
-     * @param msg_ Message frame.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     * @note `msg_` ownership is transferred and it is closed regardless of
-     * result.
-     */
-    ZLINK_CPP_NODISCARD int
-    stream_send (const zlink_routing_id_t &routing_id_,
-                 message_t &msg_,
-                 send_flag flags_ = send_flag::none)
-    {
-        if (!msg_.valid ()) {
-            errno = EINVAL;
-            return -1;
-        }
-        if (routing_id_.size == 0) {
-            msg_.close ();
-            errno = EINVAL;
-            return -1;
-        }
-
-        const int rc = zlink_stream_send_msg (
-          _socket, &routing_id_, msg_.handle (), static_cast<int> (flags_));
-        msg_.close ();
+        std::vector<message_t> parts (1);
+        parts[0] = std::move (part_);
+        const int rc = send (target_rid_, parts, flags_);
+        if (rc != 0)
+            part_ = std::move (parts[0]);
         return rc;
     }
 
-    /**
-     * @brief Send a message frame to a stream peer.
-     * @param routing_id_ Peer routing id as a 32-bit value.
-     * @param msg_ Message frame.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     * @note `msg_` ownership is transferred and it is closed regardless of result.
-     */
     ZLINK_CPP_NODISCARD int
-    stream_send (uint32_t routing_id_,
-                 message_t &msg_,
-                 send_flag flags_ = send_flag::none)
+    send (const zlink_routing_id_t &target_rid_,
+          std::vector<message_t> &parts_,
+          send_flag flags_ = send_flag::none)
     {
-        if (!msg_.valid ()) {
-            errno = EINVAL;
+        std::vector<zlink_msg_t> native_parts;
+        if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
-        }
 
-        zlink_routing_id_t rid;
-        encode_stream_routing_id (routing_id_, &rid);
-        const int rc = zlink_stream_send_msg (
-          _socket, &rid, msg_.handle (), static_cast<int> (flags_));
-        msg_.close ();
+        const int rc = zlink_send_rid (
+          _socket, &target_rid_, native_parts.empty () ? NULL : &native_parts[0],
+          native_parts.size (), static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0)
+            detail::restore_parts_from_native (parts_, native_parts);
         return rc;
     }
 
-    /**
-     * @brief Set a raw socket option.
-     * @param option_ Option key.
-     * @param optval_ Option value buffer.
-     * @param optlen_ Buffer size.
-     * @return 0 on success, -1 on failure.
-     */
+    ZLINK_CPP_NODISCARD int recv (message_t &part_,
+                                  recv_flag flags_ = recv_flag::none)
+    {
+        return detail::recv_single_part (_socket, NULL, flags_, part_);
+    }
+
+    ZLINK_CPP_NODISCARD int recv (std::vector<message_t> &parts_,
+                                  recv_flag flags_ = recv_flag::none)
+    {
+        return detail::recv_parts (_socket, NULL, flags_, parts_);
+    }
+
+    ZLINK_CPP_NODISCARD int recv (zlink_routing_id_t &source_rid_,
+                                  message_t &part_,
+                                  recv_flag flags_ = recv_flag::none)
+    {
+        std::memset (&source_rid_, 0, sizeof (source_rid_));
+        return detail::recv_single_part (_socket, &source_rid_, flags_, part_);
+    }
+
     ZLINK_CPP_NODISCARD int
-    set (socket_option option_, const void *optval_, size_t optlen_)
+    recv (zlink_routing_id_t &source_rid_,
+          std::vector<message_t> &parts_,
+          recv_flag flags_ = recv_flag::none)
     {
-        return zlink_setsockopt (_socket, static_cast<int> (option_), optval_,
-                                 optlen_);
+        std::memset (&source_rid_, 0, sizeof (source_rid_));
+        return detail::recv_parts (_socket, &source_rid_, flags_, parts_);
     }
 
-    /**
-     * @brief Get a raw socket option.
-     * @param option_ Option key.
-     * @param optval_ Output value buffer.
-     * @param optlen_ Input/output buffer size.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    get (socket_option option_, void *optval_, size_t *optlen_) const
+    ZLINK_CPP_NODISCARD int publish (const std::string &topic_id_,
+                                     message_t &part_,
+                                     send_flag flags_ = send_flag::none)
     {
-        return zlink_getsockopt (_socket, static_cast<int> (option_), optval_,
-                                 optlen_);
+        std::vector<message_t> parts (1);
+        parts[0] = std::move (part_);
+        const int rc = publish (topic_id_, parts, flags_);
+        if (rc != 0)
+            part_ = std::move (parts[0]);
+        return rc;
     }
 
-    /**
-     * @brief Set an integer socket option.
-     * @param option_ Option key.
-     * @param value_ Integer value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int set (socket_option option_, int value_)
+    ZLINK_CPP_NODISCARD int publish (const std::string &topic_id_,
+                                     std::vector<message_t> &parts_,
+                                     send_flag flags_ = send_flag::none)
     {
-        return zlink_setsockopt (_socket, static_cast<int> (option_), &value_,
-                                 sizeof (value_));
-    }
-
-    /**
-     * @brief Set a typed `int` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Integer value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int set (socket_option_key_t<int> key_, int value_)
-    {
-        return set (key_.option, value_);
-    }
-
-    /**
-     * @brief Set a typed `int64_t` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ 64-bit integer value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set (socket_option_key_t<int64_t> key_, int64_t value_)
-    {
-        return zlink_setsockopt (_socket, static_cast<int> (key_.option), &value_,
-                                 sizeof (value_));
-    }
-
-    /**
-     * @brief Set a typed `uint64_t` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Unsigned 64-bit value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set (socket_option_key_t<uint64_t> key_, uint64_t value_)
-    {
-        return zlink_setsockopt (_socket, static_cast<int> (key_.option), &value_,
-                                 sizeof (value_));
-    }
-
-    /**
-     * @brief Set a typed non-string socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Typed value.
-     * @return 0 on success, -1 on failure.
-     */
-    template<typename T>
-    ZLINK_CPP_NODISCARD
-    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
-    set (socket_option_key_t<T> key_, const T &value_)
-    {
-        return zlink_setsockopt (_socket, static_cast<int> (key_.option), &value_,
-                                 sizeof (value_));
-    }
-
-    /**
-     * @brief Get an integer socket option.
-     * @param option_ Option key.
-     * @param value_ Output value pointer.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int get (socket_option option_, int *value_) const
-    {
-        if (!value_) {
-            errno = EINVAL;
+        std::vector<zlink_msg_t> native_parts;
+        if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
-        }
 
-        size_t len = sizeof (*value_);
-        return zlink_getsockopt (_socket, static_cast<int> (option_), value_,
-                                 &len);
+        const int rc = zlink_publish (
+          _socket, topic_id_.c_str (),
+          native_parts.empty () ? NULL : &native_parts[0], native_parts.size (),
+          static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0)
+            detail::restore_parts_from_native (parts_, native_parts);
+        return rc;
     }
 
-    /**
-     * @brief Get an integer socket option.
-     * @param option_ Option key.
-     * @param value_ Output integer reference.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int get (socket_option option_, int &value_) const
+    ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)
     {
-        return get (option_, &value_);
+        return zlink_set_subscription (_socket, filter_.c_str ());
     }
 
-    /**
-     * @brief Get a typed `int` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output integer pointer.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int get (socket_option_key_t<int> key_, int *value_) const
+    ZLINK_CPP_NODISCARD int unset_subscription (const std::string &filter_)
     {
-        return get (key_.option, value_);
+        return zlink_unset_subscription (_socket, filter_.c_str ());
     }
 
-    /**
-     * @brief Get a typed `int` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output integer reference.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int get (socket_option_key_t<int> key_, int &value_) const
-    {
-        return get (key_, &value_);
-    }
-
-    /**
-     * @brief Get a typed `int64_t` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output integer pointer.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    get (socket_option_key_t<int64_t> key_, int64_t *value_) const
+    subscription_at (size_t index_, std::string &filter_, bool *is_pattern_ = NULL)
     {
-        if (!value_) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        size_t len = sizeof (*value_);
-        return zlink_getsockopt (_socket, static_cast<int> (key_.option), value_,
-                                 &len);
-    }
-
-    /**
-     * @brief Get a typed `int64_t` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output integer reference.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    get (socket_option_key_t<int64_t> key_, int64_t &value_) const
-    {
-        return get (key_, &value_);
-    }
-
-    /**
-     * @brief Get a typed `uint64_t` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output integer pointer.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    get (socket_option_key_t<uint64_t> key_, uint64_t *value_) const
-    {
-        if (!value_) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        size_t len = sizeof (*value_);
-        return zlink_getsockopt (_socket, static_cast<int> (key_.option), value_,
-                                 &len);
-    }
-
-    /**
-     * @brief Get a typed `uint64_t` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output integer reference.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    get (socket_option_key_t<uint64_t> key_, uint64_t &value_) const
-    {
-        return get (key_, &value_);
-    }
-
-    /**
-     * @brief Get a typed non-string socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output value pointer.
-     * @return 0 on success, -1 on failure.
-     */
-    template<typename T>
-    ZLINK_CPP_NODISCARD
-    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
-    get (socket_option_key_t<T> key_, T *value_) const
-    {
-        if (!value_) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        size_t len = sizeof (*value_);
-        return zlink_getsockopt (_socket, static_cast<int> (key_.option), value_,
-                                 &len);
-    }
-
-    /**
-     * @brief Get a typed non-string socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output value reference.
-     * @return 0 on success, -1 on failure.
-     */
-    template<typename T>
-    ZLINK_CPP_NODISCARD
-    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
-    get (socket_option_key_t<T> key_, T &value_) const
-    {
-        return get (key_, &value_);
-    }
-
-    /**
-     * @brief Set a string socket option.
-     * @param option_ Option key.
-     * @param value_ Option value string.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set (socket_option option_, const std::string &value_)
-    {
-        return zlink_setsockopt (_socket, static_cast<int> (option_),
-                                 value_.data (), value_.size ());
-    }
-
-    /**
-     * @brief Set a typed `std::string` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Option value string.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set (socket_option_key_t<std::string> key_, const std::string &value_)
-    {
-        return set (key_.option, value_);
-    }
-
-    /**
-     * @brief Get a string socket option.
-     * @param option_ Option key.
-     * @param value_ Output string.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    get (socket_option option_, std::string &value_) const
-    {
-        if (!is_string_socket_option (option_)) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        const bool binary = is_binary_string_socket_option (option_);
-        size_t cap = initial_string_option_capacity (option_);
+        size_t cap = 256;
         const size_t max_cap = 64u * 1024u;
-
         while (cap <= max_cap) {
-            std::vector<char> buf (cap);
-            size_t len = cap;
-            const int rc = zlink_getsockopt (
-              _socket, static_cast<int> (option_), buf.data (), &len);
+            std::vector<char> buffer (cap);
+            size_t size = cap;
+            int pattern = 0;
+            const int rc = zlink_subscription_at (
+              _socket, index_, buffer.data (), &size, &pattern);
             if (rc == 0) {
-                const size_t bounded_len = len <= buf.size () ? len : buf.size ();
-                size_t out_len = bounded_len;
-                if (!binary && out_len > 0 && buf[out_len - 1] == '\0')
-                    --out_len;
-                value_.assign (buf.data (), out_len);
+                const size_t bounded = size <= buffer.size () ? size : buffer.size ();
+                filter_.assign (buffer.data (), bounded);
+                if (is_pattern_)
+                    *is_pattern_ = pattern != 0;
                 return 0;
             }
 
             if (errno != EINVAL || cap == max_cap)
                 return -1;
 
-            cap = cap * 2u;
+            cap *= 2u;
             if (cap > max_cap)
                 cap = max_cap;
         }
@@ -775,170 +441,434 @@ class socket_t
         return -1;
     }
 
-    /**
-     * @brief Get a typed `std::string` socket option key.
-     * @param key_ Typed option key.
-     * @param value_ Output string.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    get (socket_option_key_t<std::string> key_, std::string &value_) const
+    ZLINK_CPP_NODISCARD int subscribe (std::string &topic_id_out_,
+                                       message_t &part_,
+                                       recv_flag flags_ = recv_flag::none)
     {
-        return get (key_.option, value_);
-    }
-
-    /**
-     * @brief Configure socket event monitoring endpoint.
-     * @param addr_ Monitor endpoint.
-     * @param events_ Event mask.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    monitor (const std::string &addr_, monitor_event events_)
-    {
-        return zlink_socket_monitor (
-          _socket, addr_.c_str (), static_cast<int> (events_));
-    }
-
-    /**
-     * @brief Open an inproc monitor socket for this socket.
-     * @param events_ Event mask.
-     * @return Owning monitor socket wrapper.
-     */
-    ZLINK_CPP_NODISCARD socket_t monitor_open (monitor_event events_)
-    {
-        void *m = zlink_socket_monitor_open (_socket, static_cast<int> (events_), NULL, NULL);
-        return socket_t::adopt (m);
-    }
-
-    /**
-     * @brief Query metadata for a peer routing id.
-     * @param routing_id_ Peer routing id.
-     * @param info_ Output peer info.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    peer_info (const std::string &routing_id_, zlink_peer_info_t *info_) const
-    {
-        zlink_routing_id_t rid;
-        if (routing_id_from (routing_id_, &rid) != 0)
+        std::vector<message_t> parts;
+        const int rc = subscribe (topic_id_out_, parts, flags_);
+        if (rc != 0)
+            return rc;
+        if (parts.size () != 1) {
+            errno = EMSGSIZE;
             return -1;
-        return zlink_socket_peer_info (_socket, &rid, info_);
-    }
-
-    /**
-     * @brief Fetch peer routing id by index as a binary string.
-     * @param index_ Peer index.
-     * @param out_ Output routing id bytes.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    peer_routing_id (int index_, std::string &out_) const
-    {
-        zlink_routing_id_t rid;
-        std::memset (&rid, 0, sizeof (rid));
-        if (zlink_socket_peer_routing_id (_socket, index_, &rid) != 0)
-            return -1;
-        out_ = routing_id_to_string (rid);
+        }
+        part_ = std::move (parts[0]);
         return 0;
     }
 
-    /**
-     * @brief Count currently known peers.
-     * @return Peer count, or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int peer_count () const
+    ZLINK_CPP_NODISCARD int
+    subscribe (std::string &topic_id_out_,
+               std::vector<message_t> &parts_out_,
+               recv_flag flags_ = recv_flag::none)
     {
-        return _socket ? zlink_socket_peer_count (_socket) : -1;
+        zlink_routing_id_t unused_rid;
+        return subscribe (unused_rid, topic_id_out_, parts_out_, flags_);
     }
 
-    /**
-     * @brief Enumerate currently known peers.
-     * @param peers_ Output peer array.
-     * @param count_ In/out capacity and written count.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    peers (zlink_peer_info_t *peers_, size_t *count_) const
+    ZLINK_CPP_NODISCARD int subscribe (zlink_routing_id_t &source_rid_out_,
+                                       std::string &topic_id_out_,
+                                       message_t &part_,
+                                       recv_flag flags_ = recv_flag::none)
     {
-        return zlink_socket_peers (_socket, peers_, count_);
+        std::vector<message_t> parts;
+        const int rc = subscribe (source_rid_out_, topic_id_out_, parts, flags_);
+        if (rc != 0)
+            return rc;
+        if (parts.size () != 1) {
+            errno = EMSGSIZE;
+            return -1;
+        }
+        part_ = std::move (parts[0]);
+        return 0;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    subscribe (zlink_routing_id_t &source_rid_out_,
+               std::string &topic_id_out_,
+               std::vector<message_t> &parts_out_,
+               recv_flag flags_ = recv_flag::none)
+    {
+        std::vector<char> topic_buffer (256);
+        zlink_msg_t *parts_native = NULL;
+        size_t part_count = 0;
+        size_t topic_size = topic_buffer.size ();
+        std::memset (&source_rid_out_, 0, sizeof (source_rid_out_));
+        const int rc = zlink_subscribe (
+          _socket, &source_rid_out_, &parts_native, &part_count,
+          topic_buffer.data (), &topic_size,
+          static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0)
+            return rc;
+
+        const size_t bounded_topic =
+          topic_size <= topic_buffer.size () ? topic_size : topic_buffer.size ();
+        topic_id_out_.assign (topic_buffer.data (), bounded_topic);
+        return detail::assign_parts_from_native (parts_native, part_count, parts_out_);
+    }
+
+    ZLINK_CPP_NODISCARD int subscription_event (bool &subscribed_out_,
+                                                std::string &topic_id_out_,
+                                                recv_flag flags_ = recv_flag::none)
+    {
+        zlink_routing_id_t unused_rid;
+        return subscription_event (
+          unused_rid, subscribed_out_, topic_id_out_, flags_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    subscription_event (zlink_routing_id_t &source_rid_out_,
+                        bool &subscribed_out_,
+                        std::string &topic_id_out_,
+                        recv_flag flags_ = recv_flag::none)
+    {
+        std::vector<char> topic_buffer (256);
+        size_t topic_size = topic_buffer.size ();
+        int subscribed = 0;
+        std::memset (&source_rid_out_, 0, sizeof (source_rid_out_));
+        const int rc = zlink_subscription_event (
+          _socket, &source_rid_out_, &subscribed, topic_buffer.data (),
+          &topic_size, static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0)
+            return rc;
+
+        const size_t bounded_topic =
+          topic_size <= topic_buffer.size () ? topic_size : topic_buffer.size ();
+        topic_id_out_.assign (topic_buffer.data (), bounded_topic);
+        subscribed_out_ = subscribed != 0;
+        return 0;
+    }
+
+    ZLINK_CPP_NODISCARD int recv_handler (zlink_socket_msg_handler_fn handler_,
+                                          void *userdata_ = NULL)
+    {
+        return zlink_recv_handler (_socket, handler_, userdata_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    subscribe_handler (zlink_subscribe_handler_fn handler_, void *userdata_ = NULL)
+    {
+        return zlink_subscribe_handler (_socket, handler_, userdata_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    send_ready_handler (zlink_send_ready_handler_fn handler_,
+                        void *userdata_ = NULL)
+    {
+        return zlink_send_ready_handler (_socket, handler_, userdata_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_option (socket_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_option (
+          _socket, static_cast<zlink_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set_option (socket_option option_, const T &value_)
+    {
+        return set_option (option_, &value_, sizeof (value_));
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_option (socket_option option_, const std::string &value_)
+    {
+        if (!detail::is_common_string_option (option_)) {
+            errno = EINVAL;
+            return -1;
+        }
+        return set_option (option_, value_.data (), value_.size ());
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set_option (socket_option_key_t<T> key_, const T &value_)
+    {
+        return set_option (key_.option, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_option (socket_option_key_t<std::string> key_, const std::string &value_)
+    {
+        return set_option (key_.option, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_option (socket_option option_, void *value_, size_t *size_) const
+    {
+        return zlink_get_option (
+          _socket, static_cast<zlink_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    get_option (socket_option option_, T *value_) const
+    {
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+        size_t size = sizeof (*value_);
+        return get_option (option_, value_, &size);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    get_option (socket_option_key_t<T> key_, T *value_) const
+    {
+        return get_option (key_.option, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_option (socket_option option_, std::string &value_) const
+    {
+        if (!detail::is_common_string_option (option_)) {
+            errno = EINVAL;
+            return -1;
+        }
+        return detail::get_string_option (
+          zlink_get_option, _socket, static_cast<zlink_option_t> (option_),
+          detail::initial_common_string_capacity (option_), value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_option (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return get_option (key_.option, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_router_option (router_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_router_option (
+          _socket, static_cast<zlink_router_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set_router_option (router_option option_, const T &value_)
+    {
+        return set_router_option (option_, &value_, sizeof (value_));
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_router_option (router_option option_, const std::string &value_)
+    {
+        return set_router_option (option_, value_.data (), value_.size ());
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_router_option (router_option option_, void *value_, size_t *size_) const
+    {
+        return zlink_get_router_option (
+          _socket, static_cast<zlink_router_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    get_router_option (router_option option_, T *value_) const
+    {
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+        size_t size = sizeof (*value_);
+        return get_router_option (option_, value_, &size);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_router_option (router_option option_, std::string &value_) const
+    {
+        return detail::get_string_option (
+          zlink_get_router_option, _socket,
+          static_cast<zlink_router_option_t> (option_), 256, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_dealer_option (dealer_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_dealer_option (
+          _socket, static_cast<zlink_dealer_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set_dealer_option (dealer_option option_,
+                                               const T &value_)
+    {
+        return set_dealer_option (option_, &value_, sizeof (value_));
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_pub_option (pub_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_pub_option (
+          _socket, static_cast<zlink_pub_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set_pub_option (pub_option option_, const T &value_)
+    {
+        return set_pub_option (option_, &value_, sizeof (value_));
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_pub_option (pub_option option_, const std::string &value_)
+    {
+        return set_pub_option (option_, value_.data (), value_.size ());
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_pub_option (pub_option option_, void *value_, size_t *size_) const
+    {
+        return zlink_get_pub_option (
+          _socket, static_cast<zlink_pub_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    get_pub_option (pub_option option_, T *value_) const
+    {
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+        size_t size = sizeof (*value_);
+        return get_pub_option (option_, value_, &size);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_pub_option (pub_option option_, std::string &value_) const
+    {
+        return detail::get_string_option (
+          zlink_get_pub_option, _socket, static_cast<zlink_pub_option_t> (option_),
+          256, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_sub_option (sub_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_sub_option (
+          _socket, static_cast<zlink_sub_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set_sub_option (sub_option option_, const T &value_)
+    {
+        return set_sub_option (option_, &value_, sizeof (value_));
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_sub_option (sub_option option_, void *value_, size_t *size_) const
+    {
+        return zlink_get_sub_option (
+          _socket, static_cast<zlink_sub_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int get_sub_option (sub_option option_, T *value_) const
+    {
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+        size_t size = sizeof (*value_);
+        return get_sub_option (option_, value_, &size);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_stream_option (stream_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_stream_option (
+          _socket, static_cast<zlink_stream_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set_stream_option (stream_option option_,
+                                               const T &value_)
+    {
+        return set_stream_option (option_, &value_, sizeof (value_));
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_stream_option (stream_option option_, void *value_, size_t *size_) const
+    {
+        return zlink_get_stream_option (
+          _socket, static_cast<zlink_stream_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int
+    get_stream_option (stream_option option_, T *value_) const
+    {
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+        size_t size = sizeof (*value_);
+        return get_stream_option (option_, value_, &size);
+    }
+
+    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    {
+        return zlink_set_routing_id (_socket, data_, size_);
+    }
+
+    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &routing_id_)
+    {
+        return set_routing_id (routing_id_.data (), routing_id_.size ());
+    }
+
+    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t &routing_id_) const
+    {
+        std::memset (&routing_id_, 0, sizeof (routing_id_));
+        return zlink_get_routing_id (_socket, &routing_id_);
+    }
+
+    ZLINK_CPP_NODISCARD int get_routing_id (std::string &routing_id_) const
+    {
+        zlink_routing_id_t native_rid;
+        if (get_routing_id (native_rid) != 0)
+            return -1;
+        routing_id_ = routing_id_to_string (native_rid);
+        return 0;
+    }
+
+    ZLINK_CPP_NODISCARD int set_tls_server (const std::string &cert_,
+                                            const std::string &key_,
+                                            bool require_client_cert_ = false)
+    {
+        return zlink_set_tls_server (
+          _socket, cert_.c_str (), key_.c_str (), require_client_cert_ ? 1 : 0);
+    }
+
+    ZLINK_CPP_NODISCARD int set_tls_client (const std::string &ca_cert_,
+                                            const std::string &hostname_,
+                                            bool trust_system_ = false)
+    {
+        const char *ca_cert = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
+        const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
+        return zlink_set_tls_client (
+          _socket, ca_cert, hostname, trust_system_ ? 1 : 0);
+    }
+
+    template<typename DiscoveryT>
+    ZLINK_CPP_NODISCARD int attach_discovery (DiscoveryT &discovery_)
+    {
+        return zlink_socket_attach_discovery (_socket, discovery_.handle ());
     }
 
   private:
-    static bool is_string_socket_option (socket_option option_) noexcept
-    {
-        switch (option_) {
-            case socket_option::routing_id:
-            case socket_option::subscribe:
-            case socket_option::unsubscribe:
-            case socket_option::last_endpoint:
-            case socket_option::connect_routing_id:
-            case socket_option::xpub_welcome_msg:
-            case socket_option::bindtodevice:
-            case socket_option::tls_cert:
-            case socket_option::tls_key:
-            case socket_option::tls_ca:
-            case socket_option::tls_hostname:
-            case socket_option::tls_password:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    static bool is_binary_string_socket_option (socket_option option_) noexcept
-    {
-        switch (option_) {
-            case socket_option::routing_id:
-            case socket_option::connect_routing_id:
-            case socket_option::subscribe:
-            case socket_option::unsubscribe:
-            case socket_option::xpub_welcome_msg:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    static size_t initial_string_option_capacity (socket_option option_) noexcept
-    {
-        switch (option_) {
-            case socket_option::routing_id:
-            case socket_option::connect_routing_id:
-                return 255;
-            case socket_option::tls_cert:
-            case socket_option::tls_key:
-            case socket_option::tls_ca:
-            case socket_option::tls_hostname:
-            case socket_option::tls_password:
-                return 512;
-            case socket_option::last_endpoint:
-                return 1024;
-            default:
-                return 512;
-        }
-    }
-
-    static void encode_stream_routing_id (uint32_t routing_id_,
-                                          zlink_routing_id_t *out_) noexcept
-    {
-        std::memset (out_, 0, sizeof (*out_));
-        out_->size = 4;
-        out_->data[0] = static_cast<uint8_t> ((routing_id_ >> 24) & 0xFF);
-        out_->data[1] = static_cast<uint8_t> ((routing_id_ >> 16) & 0xFF);
-        out_->data[2] = static_cast<uint8_t> ((routing_id_ >> 8) & 0xFF);
-        out_->data[3] = static_cast<uint8_t> (routing_id_ & 0xFF);
-    }
-
-    static uint32_t decode_stream_routing_id (
-      const zlink_routing_id_t &routing_id_) noexcept
-    {
-        return (static_cast<uint32_t> (routing_id_.data[0]) << 24)
-               | (static_cast<uint32_t> (routing_id_.data[1]) << 16)
-               | (static_cast<uint32_t> (routing_id_.data[2]) << 8)
-               | static_cast<uint32_t> (routing_id_.data[3]);
-    }
-
     void *_socket;
     bool _own;
 };

@@ -1,231 +1,152 @@
-# C++ Wrapper API Draft (cppzmq-style)
+# C++ Wrapper API Draft
 
 ## 공통 정책
-- header-only, thin wrapper
-- 기본은 에러 코드, `ZLINK_CPP_EXCEPTIONS` 정의 시 예외
-- 모든 핸들은 move-only
 
----
+- header-only thin wrapper를 유지한다.
+- 기본 오류 모델은 반환 코드다.
+- 모든 핸들은 move-only다.
+- payload 변환은 `message_t`가 담당한다.
+- `socket_t`는 `message_t` / `std::vector<message_t>` 기반
+  `send`/`recv` overload만 제공한다.
 
-## error helpers
+## 핵심 표면
+
 ```cpp
 namespace zlink {
 
-class error_t {
-public:
-    int code() const noexcept;
-    const char* what() const noexcept;
-};
+class context_t;
+class message_t;
+class socket_t;
+class monitor_handle_t;
+class service_monitor_handle_t;
+class poller_t;
 
-inline error_t last_error();
-
-#ifdef ZLINK_CPP_EXCEPTIONS
-inline void throw_on_error(int rc);
-#endif
+namespace service {
+class registry_t;
+class registry_query_client_t;
+class discovery_t;
+class spot_node_t;
+class spot_t;
+} // namespace service
 
 } // namespace zlink
 ```
 
----
+## `message_t`
 
-## message_t
 ```cpp
-namespace zlink {
-
 class message_t {
 public:
     message_t();
     explicit message_t(size_t size);
-    ~message_t();
 
-    message_t(message_t&&) noexcept;
-    message_t& operator=(message_t&&) noexcept;
+    static message_t from_bytes(const void *data, size_t size);
+    static message_t from_string(const std::string &text);
+    static message_t from_external(
+      void *data, size_t size, zlink_free_fn *ffn = NULL, void *hint = NULL);
 
-    message_t(const message_t&) = delete;
-    message_t& operator=(const message_t&) = delete;
-
-    void* data() noexcept;
-    const void* data() const noexcept;
-    size_t size() const noexcept;
-    bool more() const noexcept;
-    int close() noexcept;
-
-    zlink_msg_t* handle() noexcept;
-    const zlink_msg_t* handle() const noexcept;
-
-private:
-    zlink_msg_t _msg;
-    bool _valid;
+    std::vector<uint8_t> to_bytes() const;
+    std::string to_string() const;
 };
-
-} // namespace zlink
 ```
 
----
+## `socket_t`
 
-## context_t
 ```cpp
-namespace zlink {
-
-class context_t {
-public:
-    context_t();
-    explicit context_t(int io_threads);
-    ~context_t();
-
-    context_t(context_t&&) noexcept;
-    context_t& operator=(context_t&&) noexcept;
-
-    context_t(const context_t&) = delete;
-    context_t& operator=(const context_t&) = delete;
-
-    void* handle() noexcept;
-
-    int set(int option, const void* value, size_t len);
-    int get(int option, void* value, size_t* len) const;
-
-private:
-    void* _ctx;
-};
-
-} // namespace zlink
-```
-
----
-
-## socket_t
-```cpp
-namespace zlink {
-
 class socket_t {
 public:
-    socket_t(context_t& ctx, int type);
-    ~socket_t();
+    socket_t(context_t &ctx, socket_type type);
 
-    socket_t(socket_t&&) noexcept;
-    socket_t& operator=(socket_t&&) noexcept;
+    int send(message_t &part, send_flag flags = send_flag::none);
+    int send(std::vector<message_t> &parts, send_flag flags = send_flag::none);
+    int send(
+      const zlink_routing_id_t &rid, message_t &part,
+      send_flag flags = send_flag::none);
+    int send(
+      const zlink_routing_id_t &rid, std::vector<message_t> &parts,
+      send_flag flags = send_flag::none);
 
-    socket_t(const socket_t&) = delete;
-    socket_t& operator=(const socket_t&) = delete;
+    int recv(message_t &part, recv_flag flags = recv_flag::none);
+    int recv(std::vector<message_t> &parts, recv_flag flags = recv_flag::none);
+    int recv(
+      zlink_routing_id_t &rid, message_t &part,
+      recv_flag flags = recv_flag::none);
+    int recv(
+      zlink_routing_id_t &rid, std::vector<message_t> &parts,
+      recv_flag flags = recv_flag::none);
 
-    void* handle() noexcept;
-
-    int bind(const char* endpoint);
-    int bind(const std::string& endpoint);
-
-    int connect(const char* endpoint);
-    int connect(const std::string& endpoint);
-
-    int close() noexcept;
-
-    int send(const void* buf, size_t len, int flags = 0);
-    int recv(void* buf, size_t len, int flags = 0);
-
-    int send(message_t& msg, int flags = 0);
-    int recv(message_t& msg, int flags = 0);
-
-    int send(const std::string& s, int flags = 0);
-
-    template <typename T>
-    int set(int option, const T& value);
-
-    template <typename T>
-    int get(int option, T& value) const;
-
-private:
-    void* _socket;
+    int recv_handler(zlink_socket_msg_handler_fn, void *userdata = NULL);
+    int subscribe_handler(zlink_subscribe_handler_fn, void *userdata = NULL);
+    int send_ready_handler(zlink_send_ready_handler_fn, void *userdata = NULL);
 };
-
-} // namespace zlink
 ```
 
----
+제거한 convenience:
 
-## poller_t (가능하면 C API poller 래핑)
+- `recv(void *, size_t)`
+- `send(const void *, size_t)`
+- `send(const std::string &)`
+- STREAM 전용 `stream_attach*` / `stream_send*`
+
+## 서비스 계층
+
 ```cpp
 namespace zlink {
+namespace service {
 
-class poller_t {
+class registry_t {
 public:
-    poller_t();
-    ~poller_t();
-
-    poller_t(poller_t&&) noexcept;
-    poller_t& operator=(poller_t&&) noexcept;
-
-    poller_t(const poller_t&) = delete;
-    poller_t& operator=(const poller_t&) = delete;
-
-    int add(socket_t& s, short events, void* user = nullptr);
-    int remove(socket_t& s);
-    int wait(std::vector<poll_event>& events, long timeout_ms);
-
-private:
-    void* _poller;
+    int bind(const std::string &pub_endpoint, const std::string &router_endpoint);
+    int status_snapshot(zlink_registry_status_t &out) const;
+    int topology_snapshot(zlink_registry_topology_entry_t *entries, size_t *count) const;
 };
 
+class registry_query_client_t {
+public:
+    int connect(const std::string &endpoint);
+    int snapshot(
+      zlink_registry_topology_entry_t *entries, size_t *count,
+      const zlink_registry_topology_filter_t *filter = NULL) const;
+};
+
+class discovery_t {
+public:
+    discovery_t(context_t &ctx, service_type type, const std::string &service_name);
+    int connect_registry(const std::string &endpoint);
+    int set_value(int64_t value);
+    int set_metadata(const std::string &text);
+};
+
+class spot_node_t {
+public:
+    int bind(const std::string &endpoint);
+    int connect_peer(const std::string &endpoint);
+    int attach_discovery(discovery_t &discovery);
+};
+
+class spot_t {
+public:
+    int publish(const std::string &topic, message_t &part, send_flag flags = send_flag::none);
+    int publish(const std::string &topic, std::vector<message_t> &parts, send_flag flags = send_flag::none);
+    int recv(message_t &part, std::string &topic, recv_flag flags = recv_flag::none);
+    int subscribe(const std::string &filter);
+    int subscribe_handler(zlink_subscribe_handler_fn, void *userdata = NULL);
+};
+
+} // namespace service
 } // namespace zlink
 ```
 
----
+명시적으로 제외하는 구형 개념:
 
-## 멀티파트 수신 타입
-멀티파트 수신 컨테이너는 별도 `multipart_t` 대신
-`std::vector<message_t>`를 사용한다.
+- `receiver_t`
+- `spot_pub_t`
+- `spot_sub_t`
 
----
+## 검증 진입점
 
-## discovery/receiver/spot (요약)
-```cpp
-namespace zlink {
-
-class registry_t { /* zlink_registry_* */ };
-class discovery_t { /* zlink_discovery_* */ };
-class receiver_t { /* zlink_receiver_* */ };
-class spot_node_t { /* zlink_spot_node_* */ };
-class spot_t { /* zlink_spot_* */ };
-
-} // namespace zlink
-```
-
----
-
-## utilities (atomic/timer/thread/proxy)
-```cpp
-namespace zlink {
-
-class atomic_counter_t { /* zlink_atomic_counter_* */ };
-class stopwatch_t { /* zlink_stopwatch_* */ };
-class thread_t { /* zlink_thread_start/close */ };
-
-int proxy(socket_t&, socket_t&, socket_t* capture = nullptr);
-int proxy(socket_t&, socket_t&, socket_t* capture, socket_t& control);
-bool has(const char* capability);
-
-} // namespace zlink
-```
-
----
-
-## 예외 모드
-```cpp
-#ifdef ZLINK_CPP_EXCEPTIONS
-// send/recv/bind/connect에서 rc < 0이면 throw
-#endif
-```
-
----
-
-## 사용 예시
-```cpp
-zlink::context_t ctx;
-zlink::socket_t s(ctx, ZLINK_PAIR);
-s.bind("ipc:///tmp/a");
-
-zlink::message_t msg(5);
-memcpy(msg.data(), "hello", 5);
-s.send(msg);
-
-zlink::message_t r;
-s.recv(r);
+```bash
+./bindings/cpp/build.sh ON ON
+ctest --test-dir core/build --output-on-failure -L contract
+ctest --test-dir core/build --output-on-failure -L sample-smoke -j1
 ```

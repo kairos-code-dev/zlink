@@ -25,94 +25,133 @@ if(NOT DEFINED ZLINK_CPP_BUILD_TESTS)
   option(ZLINK_CPP_BUILD_TESTS "Build C++ binding tests" OFF)
 endif()
 
-if(ZLINK_CPP_BUILD_TESTS)
+if(NOT DEFINED ZLINK_CPP_BUILD_SAMPLES)
+  option(ZLINK_CPP_BUILD_SAMPLES "Build C++ binding samples" OFF)
+endif()
+
+if(ZLINK_CPP_BUILD_TESTS OR ZLINK_CPP_BUILD_SAMPLES)
   if(NOT TARGET libzlink)
     message(FATAL_ERROR "libzlink target not found. Build core first or add_subdirectory(core)")
   endif()
 
-  function(add_cpp_binding_test test_name source_file)
-    add_executable(${test_name} ${source_file})
-    target_link_libraries(${test_name} PRIVATE libzlink zlink-cpp)
+  function(add_cpp_binding_executable target_name source_file)
+    add_executable(${target_name} ${source_file})
+    target_link_libraries(${target_name} PRIVATE libzlink zlink-cpp)
     if(MSVC)
-      target_compile_options(${test_name} PRIVATE /UNDEBUG)
+      target_compile_options(${target_name} PRIVATE /UNDEBUG)
     else()
-      target_compile_options(${test_name} PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME ${test_name} COMMAND ${test_name})
-    set_tests_properties(${test_name} PROPERTIES TIMEOUT 120)
-    if(WIN32)
-      set_tests_properties(${test_name}
-        PROPERTIES
-          ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
+      target_compile_options(${target_name} PRIVATE -UNDEBUG)
     endif()
   endfunction()
 
-  add_cpp_binding_test(test_cpp_core_connect_resolve tests/test_cpp_core_connect_resolve.cpp)
-  add_cpp_binding_test(test_cpp_core_ctx_destroy tests/test_cpp_core_ctx_destroy.cpp)
-  add_cpp_binding_test(test_cpp_core_poller tests/test_cpp_core_poller.cpp)
-  add_cpp_binding_test(test_cpp_core_ctx_options tests/test_cpp_core_ctx_options.cpp)
-  add_cpp_binding_test(test_cpp_core_socket_null tests/test_cpp_core_socket_null.cpp)
-  add_cpp_binding_test(test_cpp_core_ancillaries tests/test_cpp_core_ancillaries.cpp)
-  add_cpp_binding_test(test_cpp_core_capabilities tests/test_cpp_core_capabilities.cpp)
-  add_cpp_binding_test(test_cpp_core_system tests/test_cpp_core_system.cpp)
-  add_cpp_binding_test(test_cpp_core_many_sockets tests/test_cpp_core_many_sockets.cpp)
-  add_cpp_binding_test(test_cpp_core_heartbeats tests/test_cpp_core_heartbeats.cpp)
-  add_cpp_binding_test(test_cpp_core_issue_566 tests/test_cpp_core_issue_566.cpp)
-  add_cpp_binding_test(test_cpp_core_shutdown_stress tests/test_cpp_core_shutdown_stress.cpp)
-  add_cpp_binding_test(test_cpp_core_proxy tests/test_cpp_core_proxy.cpp)
-  add_cpp_binding_test(test_cpp_core_pair_inproc tests/test_cpp_core_pair_inproc.cpp)
-  add_cpp_binding_test(test_cpp_core_pair_tcp tests/test_cpp_core_pair_tcp.cpp)
-  add_cpp_binding_test(test_cpp_core_pair_ipc tests/test_cpp_core_pair_ipc.cpp)
-  add_cpp_binding_test(test_cpp_core_pair_send_blocking_wakeup tests/test_cpp_core_pair_send_blocking_wakeup.cpp)
-  add_cpp_binding_test(test_cpp_core_pubsub tests/test_cpp_core_pubsub.cpp)
-  add_cpp_binding_test(test_cpp_core_sub_forward tests/test_cpp_core_sub_forward.cpp)
-  add_cpp_binding_test(test_cpp_core_abstract_ipc tests/test_cpp_core_abstract_ipc.cpp)
-  add_cpp_binding_test(test_cpp_core_bind_after_connect_tcp tests/test_cpp_core_bind_after_connect_tcp.cpp)
-  add_cpp_binding_test(test_cpp_core_bind_src_address tests/test_cpp_core_bind_src_address.cpp)
-  add_cpp_binding_test(test_cpp_core_getsockopt_memset tests/test_cpp_core_getsockopt_memset.cpp)
-  add_cpp_binding_test(test_cpp_core_diffserv tests/test_cpp_core_diffserv.cpp)
-  add_cpp_binding_test(test_cpp_core_ipc_wildcard tests/test_cpp_core_ipc_wildcard.cpp)
-  add_cpp_binding_test(test_cpp_core_reconnect_ivl tests/test_cpp_core_reconnect_ivl.cpp)
-  add_cpp_binding_test(test_cpp_core_reconnect_options tests/test_cpp_core_reconnect_options.cpp)
-  add_cpp_binding_test(test_cpp_core_last_endpoint tests/test_cpp_core_last_endpoint.cpp)
-  add_cpp_binding_test(test_cpp_core_immediate tests/test_cpp_core_immediate.cpp)
-  add_cpp_binding_test(test_cpp_core_timeo tests/test_cpp_core_timeo.cpp)
-  add_cpp_binding_test(test_cpp_core_probe_router tests/test_cpp_core_probe_router.cpp)
-  add_cpp_binding_test(test_cpp_core_pub_invert_matching tests/test_cpp_core_pub_invert_matching.cpp)
-  add_cpp_binding_test(test_cpp_core_pubsub_filter_xpub tests/test_cpp_core_pubsub_filter_xpub.cpp)
-  add_cpp_binding_test(test_cpp_core_disconnect_inproc tests/test_cpp_core_disconnect_inproc.cpp)
-  add_cpp_binding_test(test_cpp_core_msg_flags tests/test_cpp_core_msg_flags.cpp)
-  add_cpp_binding_test(test_cpp_core_msg_ffn tests/test_cpp_core_msg_ffn.cpp)
-  add_cpp_binding_test(test_cpp_core_connect_rid tests/test_cpp_core_connect_rid.cpp)
-  add_cpp_binding_test(test_cpp_core_connect_rid_string_alias tests/test_cpp_core_connect_rid_string_alias.cpp)
-  add_cpp_binding_test(test_cpp_core_router_auto_id_format tests/test_cpp_core_router_auto_id_format.cpp)
-  add_cpp_binding_test(test_cpp_core_router_mandatory tests/test_cpp_core_router_mandatory.cpp)
-  add_cpp_binding_test(test_cpp_core_router_multiple_dealers tests/test_cpp_core_router_multiple_dealers.cpp)
-  add_cpp_binding_test(test_cpp_core_spec_router tests/test_cpp_core_spec_router.cpp)
-  add_cpp_binding_test(test_cpp_core_router_handover tests/test_cpp_core_router_handover.cpp)
-  add_cpp_binding_test(test_cpp_core_router_mandatory_hwm tests/test_cpp_core_router_mandatory_hwm.cpp)
-  add_cpp_binding_test(test_cpp_core_hwm_pubsub tests/test_cpp_core_hwm_pubsub.cpp)
-  add_cpp_binding_test(test_cpp_core_transport_matrix tests/test_cpp_core_transport_matrix.cpp)
-  add_cpp_binding_test(test_cpp_core_xpub_nodrop tests/test_cpp_core_xpub_nodrop.cpp)
-  add_cpp_binding_test(test_cpp_core_xpub_verbose tests/test_cpp_core_xpub_verbose.cpp)
-  add_cpp_binding_test(test_cpp_core_xpub_manual tests/test_cpp_core_xpub_manual.cpp)
-  add_cpp_binding_test(test_cpp_core_xpub_welcome_msg tests/test_cpp_core_xpub_welcome_msg.cpp)
-  add_cpp_binding_test(test_cpp_core_xpub_topic tests/test_cpp_core_xpub_topic.cpp)
-  add_cpp_binding_test(test_cpp_core_zmp_metadata tests/test_cpp_core_zmp_metadata.cpp)
-  add_cpp_binding_test(test_cpp_core_zmp_ws_wss tests/test_cpp_core_zmp_ws_wss.cpp)
-  add_cpp_binding_test(test_cpp_core_monitor_enhanced tests/test_cpp_core_monitor_enhanced.cpp)
-  add_cpp_binding_test(test_cpp_core_stream_fastpath tests/test_cpp_core_stream_fastpath.cpp)
-  add_cpp_binding_test(test_cpp_core_stream_socket tests/test_cpp_core_stream_socket.cpp)
-  add_cpp_binding_test(test_cpp_core_stream_send_blocking_wakeup tests/test_cpp_core_stream_send_blocking_wakeup.cpp)
-  add_cpp_binding_test(test_cpp_core_stream_routing_id_size tests/test_cpp_core_stream_routing_id_size.cpp)
-  add_cpp_binding_test(test_cpp_core_spot_pubsub_basic tests/test_cpp_core_spot_pubsub_basic.cpp)
-  add_cpp_binding_test(test_cpp_core_spot_zero_copy tests/test_cpp_core_spot_zero_copy.cpp)
-  add_cpp_binding_test(test_cpp_core_spot_pubsub_scenario tests/test_cpp_core_spot_pubsub_scenario.cpp)
-  add_cpp_binding_test(test_cpp_core_spot_send_blocking_wakeup tests/test_cpp_core_spot_send_blocking_wakeup.cpp)
-  add_cpp_binding_test(test_cpp_core_service_discovery tests/test_cpp_core_service_discovery.cpp)
-  add_cpp_binding_test(test_cpp_core_service_mode_split tests/test_cpp_core_service_mode_split.cpp)
-  add_cpp_binding_test(test_cpp_core_socket_options_typed tests/test_cpp_core_socket_options_typed.cpp)
-  add_cpp_binding_test(test_cpp_core_message_send_ownership tests/test_cpp_core_message_send_ownership.cpp)
+  function(configure_cpp_binding_runtime target_name)
+    set_tests_properties(${target_name} PROPERTIES
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    if(WIN32)
+      set_tests_properties(${target_name} PROPERTIES
+        ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
+    endif()
+  endfunction()
+endif()
+
+if(ZLINK_CPP_BUILD_SAMPLES)
+  function(add_cpp_sample target_name source_file)
+    add_cpp_binding_executable(${target_name} ${source_file})
+    if(UNIX AND NOT WIN32)
+      add_test(NAME sample_smoke_${target_name}
+        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+    else()
+      add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
+    endif()
+    set_tests_properties(sample_smoke_${target_name} PROPERTIES
+      LABELS "sample-smoke"
+      TIMEOUT 120
+    )
+    configure_cpp_binding_runtime(sample_smoke_${target_name})
+  endfunction()
+
+  add_cpp_sample(
+    sample_cpp_pair_recv
+    samples/pair/pair_recv.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_pair_callback
+    samples/pair/pair_callback.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_pubsub_recv
+    samples/pubsub/pubsub_recv.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_pubsub_callback
+    samples/pubsub/pubsub_callback.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_dealer_router_recv
+    samples/dealer_router/dealer_router_recv.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_dealer_router_callback
+    samples/dealer_router/dealer_router_callback.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_stream_recv
+    samples/stream/stream_recv.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_stream_callback
+    samples/stream/stream_callback.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_spot_recv
+    samples/spot/spot_recv.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_spot_callback
+    samples/spot/spot_callback.cpp
+  )
+endif()
+
+if(ZLINK_CPP_BUILD_TESTS)
+  function(add_cpp_contract_test target_name source_file)
+    add_cpp_binding_executable(${target_name} ${source_file})
+    if(UNIX AND NOT WIN32)
+      add_test(NAME ${target_name}
+        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+    else()
+      add_test(NAME ${target_name} COMMAND ${target_name})
+    endif()
+    set_tests_properties(${target_name} PROPERTIES
+      LABELS "contract"
+      TIMEOUT 120
+    )
+    configure_cpp_binding_runtime(${target_name})
+  endfunction()
+
+  add_cpp_contract_test(
+    test_cpp_contract_message
+    tests/contract/test_cpp_contract_message.cpp
+  )
+  add_cpp_contract_test(
+    test_cpp_contract_socket
+    tests/contract/test_cpp_contract_socket.cpp
+  )
+  add_cpp_contract_test(
+    test_cpp_contract_callback_mode
+    tests/contract/test_cpp_contract_callback_mode.cpp
+  )
+  add_cpp_contract_test(
+    test_cpp_contract_options
+    tests/contract/test_cpp_contract_options.cpp
+  )
+  add_cpp_contract_test(
+    test_cpp_contract_monitor
+    tests/contract/test_cpp_contract_monitor.cpp
+  )
+  add_cpp_contract_test(
+    test_cpp_contract_service
+    tests/contract/test_cpp_contract_service.cpp
+  )
 endif()
 
 option(ZLINK_CPP_BUILD_BENCHMARKS "Build C++ binding benchmarks" OFF)

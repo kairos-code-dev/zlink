@@ -27,4 +27,18 @@
 #define ZLINK_CPP_NODISCARD
 #endif
 
+#if defined(__has_cpp_attribute)
+#if __has_cpp_attribute(deprecated)
+#define ZLINK_CPP_DEPRECATED(msg_) [[deprecated(msg_)]]
+#else
+#define ZLINK_CPP_DEPRECATED(msg_)
+#endif
+#elif defined(_MSC_VER)
+#define ZLINK_CPP_DEPRECATED(msg_) __declspec(deprecated(msg_))
+#elif defined(__GNUC__) || defined(__clang__)
+#define ZLINK_CPP_DEPRECATED(msg_) __attribute__ ((deprecated(msg_)))
+#else
+#define ZLINK_CPP_DEPRECATED(msg_)
+#endif
+
 #endif

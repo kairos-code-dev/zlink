@@ -37,6 +37,43 @@ class message_t
      */
     ~message_t () { close (); }
 
+    message_t (const message_t &other) : _valid (false)
+    {
+        if (!other._valid)
+            return;
+
+        if (zlink_msg_init (&_msg) != 0)
+            return;
+
+        if (zlink_msg_copy (&_msg, const_cast<zlink_msg_t *> (&other._msg)) == 0) {
+            _valid = true;
+            return;
+        }
+
+        zlink_msg_close (&_msg);
+    }
+
+    message_t &operator= (const message_t &other)
+    {
+        if (this == &other)
+            return *this;
+
+        close ();
+        if (!other._valid)
+            return *this;
+
+        if (zlink_msg_init (&_msg) != 0)
+            return *this;
+
+        if (zlink_msg_copy (&_msg, const_cast<zlink_msg_t *> (&other._msg)) == 0) {
+            _valid = true;
+            return *this;
+        }
+
+        zlink_msg_close (&_msg);
+        return *this;
+    }
+
     message_t (message_t &&other) noexcept : _valid (false)
     {
         if (!other._valid)
@@ -76,14 +113,44 @@ class message_t
         return *this;
     }
 
-    message_t (const message_t &) = delete;
-    message_t &operator= (const message_t &) = delete;
-
     /**
      * @brief Check whether the wrapper currently owns a valid message.
      * @return `true` when initialized, otherwise `false`.
      */
     bool valid () const noexcept { return _valid; }
+
+    static message_t from_bytes (const void *data_, size_t size_)
+    {
+        message_t msg (size_);
+        if (!msg.valid ())
+            return msg;
+
+        if (size_ > 0 && data_)
+            std::memcpy (msg.data (), data_, size_);
+        return msg;
+    }
+
+    static message_t from_bytes (const std::vector<uint8_t> &bytes_)
+    {
+        return from_bytes (
+          bytes_.empty () ? NULL : &bytes_[0], bytes_.size ());
+    }
+
+    static message_t from_string (const std::string &text_)
+    {
+        return from_bytes (text_.data (), text_.size ());
+    }
+
+    static message_t
+    from_external (void *data_,
+                   size_t size_,
+                   zlink_free_fn *ffn_ = NULL,
+                   void *hint_ = NULL)
+    {
+        message_t msg;
+        (void) msg.init (data_, size_, ffn_, hint_);
+        return msg;
+    }
 
     /**
      * @brief Initialize an empty message if needed.
@@ -158,30 +225,12 @@ class message_t
     }
 
     /**
-     * @brief Check multipart continuation flag.
-     * @return `true` when more frames follow.
+     * @brief Get the storage reference count.
+     * @return Reference count, or -1 when invalid.
      */
-    bool more () const noexcept { return _valid && zlink_msg_more (&_msg) != 0; }
-
-    /**
-     * @brief Get integer message property.
-     * @param property_ Property constant.
-     * @return Property value or -1 on failure.
-     */
-    int get (int property_) const
+    int refcnt () const noexcept
     {
-        return _valid ? zlink_msg_get (&_msg, property_) : -1;
-    }
-
-    /**
-     * @brief Set integer message property.
-     * @param property_ Property constant.
-     * @param optval_ Property value.
-     * @return 0 on success, -1 on failure.
-     */
-    int set (int property_, int optval_)
-    {
-        return _valid ? zlink_msg_set (&_msg, property_, optval_) : -1;
+        return _valid ? zlink_msg_refcnt (&_msg) : -1;
     }
 
     /**
@@ -211,6 +260,19 @@ class message_t
         return 0;
     }
 
+    std::vector<uint8_t> to_bytes () const
+    {
+        const uint8_t *ptr = static_cast<const uint8_t *> (data ());
+        return ptr ? std::vector<uint8_t> (ptr, ptr + size ())
+                   : std::vector<uint8_t> ();
+    }
+
+    std::string to_string () const
+    {
+        const char *ptr = static_cast<const char *> (data ());
+        return ptr ? std::string (ptr, ptr + size ()) : std::string ();
+    }
+
     /**
      * @brief Close and invalidate the message.
      * @return 0 on success, -1 on failure.
@@ -234,6 +296,30 @@ class message_t
      * @return Message handle pointer.
      */
     const zlink_msg_t *handle () const noexcept { return &_msg; }
+
+    /**
+     * @brief Adopt ownership from an already initialized native message.
+     * @param src_ Source native message that transfers ownership on success.
+     * @return 0 on success, -1 on failure.
+     */
+    int adopt (zlink_msg_t *src_)
+    {
+        if (!src_)
+            return -1;
+
+        close ();
+        if (zlink_msg_init (&_msg) != 0)
+            return -1;
+
+        const int rc = zlink_msg_move (&_msg, src_);
+        if (rc == 0) {
+            _valid = true;
+            return 0;
+        }
+
+        zlink_msg_close (&_msg);
+        return rc;
+    }
 
     /**
      * @brief Move message ownership into another native message.

@@ -3,44 +3,37 @@
 #define ZLINK_CPP_SERVICES_DISCOVERY_HPP_INCLUDED
 
 #include "../context.hpp"
+#include "../message.hpp"
 #include "../types.hpp"
+
 #include <cerrno>
-#include <type_traits>
 
 namespace zlink
 {
 namespace service
 {
 
-/**
- * @brief Service discovery client wrapper.
- */
 class discovery_t
 {
   public:
-    /**
-     * @brief Create a typed discovery client.
-     * @param ctx_ Context wrapper.
-     * @param service_type_ Service type to discover.
-     */
-    discovery_t (context_t &ctx_, service_type service_type_)
-        : _disc (zlink_discovery_new_typed (
-            ctx_.handle (), static_cast<uint16_t> (service_type_))),
+    discovery_t (context_t &ctx_,
+                 service_type service_type_,
+                 const std::string &service_name_)
+        : _discovery (zlink_discovery_new (
+            ctx_.handle (), static_cast<zlink_service_type_t> (service_type_),
+            service_name_.c_str ())),
           _last_error (0)
     {
-        if (!_disc)
+        if (!_discovery)
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    /**
-     * @brief Destroy discovery handle.
-     */
     ~discovery_t () { (void) destroy (); }
 
     discovery_t (discovery_t &&other) noexcept
-        : _disc (other._disc), _last_error (other._last_error)
+        : _discovery (other._discovery), _last_error (other._last_error)
     {
-        other._disc = NULL;
+        other._discovery = NULL;
         other._last_error = 0;
     }
 
@@ -50,9 +43,9 @@ class discovery_t
             return *this;
 
         (void) destroy ();
-        _disc = other._disc;
+        _discovery = other._discovery;
         _last_error = other._last_error;
-        other._disc = NULL;
+        other._discovery = NULL;
         other._last_error = 0;
         return *this;
     }
@@ -60,101 +53,98 @@ class discovery_t
     discovery_t (const discovery_t &) = delete;
     discovery_t &operator= (const discovery_t &) = delete;
 
-    /**
-     * @brief Check whether discovery handle was created.
-     * @return `true` when handle is valid.
-     */
-    bool valid () const noexcept { return _disc != NULL; }
+    bool valid () const noexcept { return _discovery != NULL; }
 
-    /**
-     * @brief Return constructor-time initialization error.
-     * @return Error number, or 0 when initialized successfully.
-     */
     int last_error () const noexcept { return _last_error; }
 
-    /**
-     * @brief Connect to registry PUB endpoint.
-     * @param pub_ Registry PUB endpoint.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int connect_registry (const std::string &pub_)
+    ZLINK_CPP_NODISCARD int connect_registry (const std::string &endpoint_)
     {
-        return zlink_discovery_connect_registry (_disc, pub_.c_str ());
+        return zlink_discovery_connect_registry (_discovery, endpoint_.c_str ());
     }
 
-    /**
-     * @brief Get number of known receivers for a service.
-     * @param service_ Service name.
-     * @return Receiver count, or -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int receiver_count (const std::string &service_)
+    ZLINK_CPP_NODISCARD int set_value (int64_t value_)
     {
-        return zlink_discovery_receiver_count (_disc, service_.c_str ());
+        return zlink_discovery_set_value (_discovery, value_);
     }
 
-    /**
-     * @brief Check whether a service currently has providers.
-     * @param service_ Service name.
-     * @return 1 when available, 0 when unavailable, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int service_available (const std::string &service_)
+    ZLINK_CPP_NODISCARD int get_value (int64_t *value_out_) const
     {
-        return zlink_discovery_service_available (_disc, service_.c_str ());
+        return zlink_discovery_get_value (_discovery, value_out_);
     }
 
-    /**
-     * @brief Configure TLS settings for discovery registry links.
-     * @param ca_cert_ PEM CA bundle path or contents, depending on platform.
-     * @param hostname_ Expected remote hostname.
-     * @param trust_system_ Whether to use system trust roots.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int set_tls_client (const std::string &ca_cert_,
-                                            const std::string &hostname_,
-                                            int trust_system_)
-    {
-        return zlink_discovery_set_tls_client (
-          _disc, ca_cert_.c_str (), hostname_.c_str (), trust_system_);
-    }
-
-    /**
-     * @brief Fetch receiver list for a service.
-     * @param service_ Service name.
-     * @param providers_ Output receiver array.
-     * @param count_ In/out capacity and written count.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    get_receivers (const std::string &service_,
-                   zlink_receiver_info_t *providers_,
-                   size_t *count_)
+    set_metadata (const void *data_, size_t size_)
     {
-        return zlink_discovery_get_receivers (
-          _disc, service_.c_str (), providers_, count_);
+        return zlink_discovery_set_metadata (_discovery, data_, size_);
     }
 
-    /**
-     * @brief Explicitly destroy discovery handle.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int destroy ()
+    ZLINK_CPP_NODISCARD int
+    set_metadata (const std::vector<uint8_t> &bytes_)
     {
-        if (!_disc)
+        return set_metadata (
+          bytes_.empty () ? NULL : &bytes_[0], bytes_.size ());
+    }
+
+    ZLINK_CPP_NODISCARD int set_metadata (const std::string &text_)
+    {
+        return set_metadata (text_.data (), text_.size ());
+    }
+
+    ZLINK_CPP_NODISCARD int get_metadata (message_t &metadata_out_) const
+    {
+        zlink_msg_t native;
+        const int rc = zlink_discovery_get_metadata (_discovery, &native);
+        if (rc != 0)
+            return rc;
+
+        if (metadata_out_.adopt (&native) == 0)
             return 0;
 
-        void *tmp = _disc;
-        _disc = NULL;
-        return zlink_discovery_destroy (&tmp);
+        zlink_msg_close (&native);
+        return -1;
     }
 
-    /**
-     * @brief Access raw native discovery handle.
-     * @return Native handle pointer.
-     */
-    void *handle () const { return _disc; }
+    ZLINK_CPP_NODISCARD int
+    member_peers (zlink_member_peer_entry_t *entries_, size_t *count_) const
+    {
+        return zlink_discovery_member_peers (_discovery, entries_, count_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    member_peer_metadata (service_role service_role_,
+                          const std::string &endpoint_,
+                          message_t &metadata_out_) const
+    {
+        zlink_msg_t native;
+        const int rc = zlink_discovery_member_peer_metadata (
+          _discovery, static_cast<uint16_t> (service_role_),
+          endpoint_.c_str (), &native);
+        if (rc != 0)
+            return rc;
+
+        if (metadata_out_.adopt (&native) == 0)
+            return 0;
+
+        zlink_msg_close (&native);
+        return -1;
+    }
+
+    ZLINK_CPP_NODISCARD int destroy ()
+    {
+        if (!_discovery)
+            return 0;
+
+        void *tmp = _discovery;
+        const int rc = zlink_discovery_destroy (&tmp);
+        if (rc == 0)
+            _discovery = NULL;
+        return rc;
+    }
+
+    void *handle () const { return _discovery; }
 
   private:
-    void *_disc;
+    void *_discovery;
     int _last_error;
 };
 

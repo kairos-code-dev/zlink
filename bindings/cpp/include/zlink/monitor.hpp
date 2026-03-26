@@ -8,39 +8,89 @@
 namespace zlink
 {
 
-/**
- * @brief Wrapper around a monitor PAIR socket.
- */
-class monitor_socket_t
+class monitor_handle_t
 {
   public:
-    /**
-     * @brief Construct from an owned monitor socket.
-     * @param sock_ Monitor socket wrapper.
-     */
-    explicit monitor_socket_t (socket_t &&sock_) : _sock (std::move (sock_)) {}
+    monitor_handle_t () : _monitor (NULL) {}
 
-    /**
-     * @brief Receive one monitor event frame.
-     * @param event_ Output event structure.
-     * @param flags_ Receive flags.
-     * @return 0 on success, -1 on failure.
-     */
-    int recv (zlink_monitor_event_t &event_, recv_flag flags_ = recv_flag::none)
+    explicit monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
+
+    explicit monitor_handle_t (socket_t &socket_,
+                               monitor_event events_ = monitor_event::all)
+        : _monitor (NULL)
     {
-        return zlink_monitor_recv (_sock.handle (), &event_,
-                                   static_cast<int> (flags_));
+        zlink_socket_monitor_open_options_t options;
+        options.events =
+          static_cast<zlink_socket_monitor_event_mask_t> (events_);
+        _monitor = zlink_socket_monitor_open (socket_.handle (), &options);
     }
 
-    /**
-     * @brief Access underlying socket wrapper.
-     * @return Socket reference.
-     */
-    socket_t &socket () noexcept { return _sock; }
+    ~monitor_handle_t () { (void) close (); }
+
+    monitor_handle_t (monitor_handle_t &&other) noexcept
+        : _monitor (other._monitor)
+    {
+        other._monitor = NULL;
+    }
+
+    monitor_handle_t &operator= (monitor_handle_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        (void) close ();
+        _monitor = other._monitor;
+        other._monitor = NULL;
+        return *this;
+    }
+
+    monitor_handle_t (const monitor_handle_t &) = delete;
+    monitor_handle_t &operator= (const monitor_handle_t &) = delete;
+
+    static monitor_handle_t open (socket_t &socket_,
+                                  monitor_event events_ = monitor_event::all)
+    {
+        return monitor_handle_t (socket_, events_);
+    }
+
+    bool valid () const noexcept { return _monitor != NULL; }
+
+    void *handle () noexcept { return _monitor; }
+    const void *handle () const noexcept { return _monitor; }
+
+    int handler (zlink_socket_monitor_handler_fn handler_,
+                 void *userdata_ = NULL)
+    {
+        return zlink_socket_monitor_handler (_monitor, handler_, userdata_);
+    }
+
+    int recv (zlink_socket_monitor_event_t &event_)
+    {
+        return zlink_socket_monitor_recv (_monitor, &event_);
+    }
+
+    int snapshot (zlink_monitor_snapshot_t &snapshot_) const
+    {
+        return zlink_monitor_snapshot (_monitor, &snapshot_);
+    }
+
+    int close () noexcept
+    {
+        if (!_monitor)
+            return 0;
+
+        void *monitor = _monitor;
+        const int rc = zlink_monitor_close (&monitor);
+        if (rc == 0)
+            _monitor = NULL;
+        return rc;
+    }
 
   private:
-    socket_t _sock;
+    void *_monitor;
 };
+
+typedef monitor_handle_t monitor_socket_t;
 
 } // namespace zlink
 

@@ -4,27 +4,23 @@
 
 #include "common.hpp"
 
+#include <cerrno>
+
 namespace zlink
 {
 
-/**
- * @brief Socket kinds used with `socket_t`.
- */
 enum class socket_type : int
 {
-    pair = ZLINK_PAIR,
-    pub = ZLINK_PUB,
-    sub = ZLINK_SUB,
-    dealer = ZLINK_DEALER,
-    router = ZLINK_ROUTER,
-    xpub = ZLINK_XPUB,
-    xsub = ZLINK_XSUB,
-    stream = ZLINK_STREAM
+    pair = ZLINK_SOCKET_PAIR,
+    pub = ZLINK_SOCKET_PUB,
+    sub = ZLINK_SOCKET_SUB,
+    dealer = ZLINK_SOCKET_DEALER,
+    router = ZLINK_SOCKET_ROUTER,
+    xpub = ZLINK_SOCKET_XPUB,
+    xsub = ZLINK_SOCKET_XSUB,
+    stream = ZLINK_SOCKET_STREAM
 };
 
-/**
- * @brief Context option keys for `context_t::set/get`.
- */
 enum class context_option : int
 {
     io_threads = ZLINK_IO_THREADS,
@@ -36,86 +32,98 @@ enum class context_option : int
     msg_t_size = ZLINK_MSG_T_SIZE,
     thread_affinity_cpu_add = ZLINK_THREAD_AFFINITY_CPU_ADD,
     thread_affinity_cpu_remove = ZLINK_THREAD_AFFINITY_CPU_REMOVE,
-    thread_name_prefix = ZLINK_THREAD_NAME_PREFIX
+    thread_name_prefix = ZLINK_THREAD_NAME_PREFIX,
+    blocky = ZLINK_CTX_OPT_BLOCKY
 };
 
-/**
- * @brief Socket option keys for `socket_t::set/get`.
- */
 enum class socket_option : int
 {
-    affinity = ZLINK_AFFINITY,
-    routing_id = ZLINK_ROUTING_ID,
-    subscribe = ZLINK_SUBSCRIBE,
-    unsubscribe = ZLINK_UNSUBSCRIBE,
-    rate = ZLINK_RATE,
-    recovery_ivl = ZLINK_RECOVERY_IVL,
-    sndbuf = ZLINK_SNDBUF,
-    rcvbuf = ZLINK_RCVBUF,
-    rcvmore = ZLINK_RCVMORE,
-    fd = ZLINK_FD,
-    events = ZLINK_EVENTS,
-    type = ZLINK_TYPE,
-    linger = ZLINK_LINGER,
-    reconnect_ivl = ZLINK_RECONNECT_IVL,
-    backlog = ZLINK_BACKLOG,
-    reconnect_ivl_max = ZLINK_RECONNECT_IVL_MAX,
-    maxmsgsize = ZLINK_MAXMSGSIZE,
-    sndhwm = ZLINK_SNDHWM,
-    rcvhwm = ZLINK_RCVHWM,
-    multicast_hops = ZLINK_MULTICAST_HOPS,
-    rcvtimeo = ZLINK_RCVTIMEO,
-    sndtimeo = ZLINK_SNDTIMEO,
-    last_endpoint = ZLINK_LAST_ENDPOINT,
-    router_mandatory = ZLINK_ROUTER_MANDATORY,
-    tcp_keepalive = ZLINK_TCP_KEEPALIVE,
-    tcp_keepalive_cnt = ZLINK_TCP_KEEPALIVE_CNT,
-    tcp_keepalive_idle = ZLINK_TCP_KEEPALIVE_IDLE,
-    tcp_keepalive_intvl = ZLINK_TCP_KEEPALIVE_INTVL,
-    tcp_nodelay = ZLINK_TCP_NODELAY,
-    immediate = ZLINK_IMMEDIATE,
-    xpub_verbose = ZLINK_XPUB_VERBOSE,
-    ipv6 = ZLINK_IPV6,
-    probe_router = ZLINK_PROBE_ROUTER,
-    conflate = ZLINK_CONFLATE,
-    router_handover = ZLINK_ROUTER_HANDOVER,
-    tos = ZLINK_TOS,
-    connect_routing_id = ZLINK_CONNECT_ROUTING_ID,
-    handshake_ivl = ZLINK_HANDSHAKE_IVL,
-    xpub_nodrop = ZLINK_XPUB_NODROP,
-    blocky = ZLINK_BLOCKY,
-    xpub_manual = ZLINK_XPUB_MANUAL,
-    xpub_welcome_msg = ZLINK_XPUB_WELCOME_MSG,
-    stream_notify = ZLINK_STREAM_NOTIFY,
-    invert_matching = ZLINK_INVERT_MATCHING,
-    heartbeat_ivl = ZLINK_HEARTBEAT_IVL,
-    heartbeat_ttl = ZLINK_HEARTBEAT_TTL,
-    heartbeat_timeout = ZLINK_HEARTBEAT_TIMEOUT,
-    xpub_verboser = ZLINK_XPUB_VERBOSER,
-    connect_timeout = ZLINK_CONNECT_TIMEOUT,
-    tcp_maxrt = ZLINK_TCP_MAXRT,
-    multicast_maxtpdu = ZLINK_MULTICAST_MAXTPDU,
-    bindtodevice = ZLINK_BINDTODEVICE,
-    tls_cert = ZLINK_TLS_CERT,
-    tls_key = ZLINK_TLS_KEY,
-    tls_ca = ZLINK_TLS_CA,
-    tls_verify = ZLINK_TLS_VERIFY,
-    tls_require_client_cert = ZLINK_TLS_REQUIRE_CLIENT_CERT,
-    tls_hostname = ZLINK_TLS_HOSTNAME,
-    tls_trust_system = ZLINK_TLS_TRUST_SYSTEM,
-    tls_password = ZLINK_TLS_PASSWORD,
-    xpub_manual_last_value = ZLINK_XPUB_MANUAL_LAST_VALUE,
-    only_first_subscribe = ZLINK_ONLY_FIRST_SUBSCRIBE,
-    topics_count = ZLINK_TOPICS_COUNT,
-    zmp_metadata = ZLINK_ZMP_METADATA
+    affinity = ZLINK_OPT_AFFINITY,
+    rate = ZLINK_OPT_RATE,
+    recovery_ivl = ZLINK_OPT_RECOVERY_IVL,
+    sndbuf = ZLINK_OPT_SNDBUF,
+    rcvbuf = ZLINK_OPT_RCVBUF,
+    fd = ZLINK_OPT_FD,
+    events = ZLINK_OPT_EVENTS,
+    type = ZLINK_OPT_TYPE,
+    linger = ZLINK_OPT_LINGER,
+    reconnect_ivl = ZLINK_OPT_RECONNECT_IVL,
+    backlog = ZLINK_OPT_BACKLOG,
+    reconnect_ivl_max = ZLINK_OPT_RECONNECT_IVL_MAX,
+    maxmsgsize = ZLINK_OPT_MAXMSGSIZE,
+    sndhwm = ZLINK_OPT_SNDHWM,
+    rcvhwm = ZLINK_OPT_RCVHWM,
+    multicast_hops = ZLINK_OPT_MULTICAST_HOPS,
+    rcvtimeo = ZLINK_OPT_RCVTIMEO,
+    sndtimeo = ZLINK_OPT_SNDTIMEO,
+    last_endpoint = ZLINK_OPT_LAST_ENDPOINT,
+    tcp_keepalive = ZLINK_OPT_TCP_KEEPALIVE,
+    tcp_keepalive_cnt = ZLINK_OPT_TCP_KEEPALIVE_CNT,
+    tcp_keepalive_idle = ZLINK_OPT_TCP_KEEPALIVE_IDLE,
+    tcp_keepalive_intvl = ZLINK_OPT_TCP_KEEPALIVE_INTVL,
+    tcp_nodelay = ZLINK_OPT_TCP_NODELAY,
+    immediate = ZLINK_OPT_IMMEDIATE,
+    ipv6 = ZLINK_OPT_IPV6,
+    conflate = ZLINK_OPT_CONFLATE,
+    tos = ZLINK_OPT_TOS,
+    handshake_ivl = ZLINK_OPT_HANDSHAKE_IVL,
+    blocky = ZLINK_OPT_BLOCKY,
+    invert_matching = ZLINK_OPT_INVERT_MATCHING,
+    heartbeat_ivl = ZLINK_OPT_HEARTBEAT_IVL,
+    heartbeat_ttl = ZLINK_OPT_HEARTBEAT_TTL,
+    heartbeat_timeout = ZLINK_OPT_HEARTBEAT_TIMEOUT,
+    connect_timeout = ZLINK_OPT_CONNECT_TIMEOUT,
+    tcp_maxrt = ZLINK_OPT_TCP_MAXRT,
+    multicast_maxtpdu = ZLINK_OPT_MULTICAST_MAXTPDU,
+    bindtodevice = ZLINK_OPT_BINDTODEVICE,
+    tls_cert = ZLINK_OPT_TLS_CERT,
+    tls_key = ZLINK_OPT_TLS_KEY,
+    tls_ca = ZLINK_OPT_TLS_CA,
+    tls_verify = ZLINK_OPT_TLS_VERIFY,
+    tls_require_client_cert = ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT,
+    tls_hostname = ZLINK_OPT_TLS_HOSTNAME,
+    tls_trust_system = ZLINK_OPT_TLS_TRUST_SYSTEM,
+    tls_password = ZLINK_OPT_TLS_PASSWORD,
+    zmp_metadata = ZLINK_OPT_ZMP_METADATA,
+    discovery_metadata_max_size = ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE
 };
 
-/**
- * @brief Typed socket option key.
- *
- * This mirrors the .NET `SocketOptionKey<T>` usability pattern and lets
- * `socket_t` expose type-safe `set/get` overloads.
- */
+enum class router_option : int
+{
+    mandatory = ZLINK_ROUTER_OPT_MANDATORY,
+    handover = ZLINK_ROUTER_OPT_HANDOVER,
+    probe = ZLINK_ROUTER_OPT_PROBE,
+    connect_routing_id = ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID
+};
+
+enum class dealer_option : int
+{
+    probe = ZLINK_DEALER_OPT_PROBE
+};
+
+enum class pub_option : int
+{
+    verbose = ZLINK_PUB_OPT_VERBOSE,
+    verboser = ZLINK_PUB_OPT_VERBOSER,
+    manual = ZLINK_PUB_OPT_MANUAL,
+    manual_last_value = ZLINK_PUB_OPT_MANUAL_LAST_VALUE,
+    nodrop = ZLINK_PUB_OPT_NODROP,
+    welcome_msg = ZLINK_PUB_OPT_WELCOME_MSG,
+    topics_count = ZLINK_PUB_OPT_TOPICS_COUNT,
+    approve_subscribe = ZLINK_PUB_OPT_APPROVE_SUBSCRIBE,
+    reject_subscribe = ZLINK_PUB_OPT_REJECT_SUBSCRIBE
+};
+
+enum class sub_option : int
+{
+    topics_count = ZLINK_SUB_OPT_TOPICS_COUNT
+};
+
+enum class stream_option : int
+{
+    notify = ZLINK_STREAM_OPT_NOTIFY
+};
+
 template<typename T> struct socket_option_key_t
 {
     explicit constexpr socket_option_key_t (socket_option option_)
@@ -126,24 +134,14 @@ template<typename T> struct socket_option_key_t
     socket_option option;
 };
 
-/**
- * @brief Predefined typed socket option keys.
- */
 namespace socket_options
 {
 static const socket_option_key_t<uint64_t> affinity (socket_option::affinity);
-static const socket_option_key_t<std::string> routing_id (
-  socket_option::routing_id);
-static const socket_option_key_t<std::string> subscribe (
-  socket_option::subscribe);
-static const socket_option_key_t<std::string> unsubscribe (
-  socket_option::unsubscribe);
 static const socket_option_key_t<int> rate (socket_option::rate);
 static const socket_option_key_t<int> recovery_ivl (
   socket_option::recovery_ivl);
 static const socket_option_key_t<int> sndbuf (socket_option::sndbuf);
 static const socket_option_key_t<int> rcvbuf (socket_option::rcvbuf);
-static const socket_option_key_t<int> rcvmore (socket_option::rcvmore);
 static const socket_option_key_t<zlink_fd_t> fd (socket_option::fd);
 static const socket_option_key_t<int> events (socket_option::events);
 static const socket_option_key_t<int> type (socket_option::type);
@@ -163,8 +161,6 @@ static const socket_option_key_t<int> rcvtimeo (socket_option::rcvtimeo);
 static const socket_option_key_t<int> sndtimeo (socket_option::sndtimeo);
 static const socket_option_key_t<std::string> last_endpoint (
   socket_option::last_endpoint);
-static const socket_option_key_t<int> router_mandatory (
-  socket_option::router_mandatory);
 static const socket_option_key_t<int> tcp_keepalive (
   socket_option::tcp_keepalive);
 static const socket_option_key_t<int> tcp_keepalive_cnt (
@@ -176,28 +172,12 @@ static const socket_option_key_t<int> tcp_keepalive_intvl (
 static const socket_option_key_t<int> tcp_nodelay (
   socket_option::tcp_nodelay);
 static const socket_option_key_t<int> immediate (socket_option::immediate);
-static const socket_option_key_t<int> xpub_verbose (
-  socket_option::xpub_verbose);
 static const socket_option_key_t<int> ipv6 (socket_option::ipv6);
-static const socket_option_key_t<int> probe_router (
-  socket_option::probe_router);
 static const socket_option_key_t<int> conflate (socket_option::conflate);
-static const socket_option_key_t<int> router_handover (
-  socket_option::router_handover);
 static const socket_option_key_t<int> tos (socket_option::tos);
-static const socket_option_key_t<std::string> connect_routing_id (
-  socket_option::connect_routing_id);
 static const socket_option_key_t<int> handshake_ivl (
   socket_option::handshake_ivl);
-static const socket_option_key_t<int> xpub_nodrop (
-  socket_option::xpub_nodrop);
 static const socket_option_key_t<int> blocky (socket_option::blocky);
-static const socket_option_key_t<int> xpub_manual (
-  socket_option::xpub_manual);
-static const socket_option_key_t<std::string> xpub_welcome_msg (
-  socket_option::xpub_welcome_msg);
-static const socket_option_key_t<int> stream_notify (
-  socket_option::stream_notify);
 static const socket_option_key_t<int> invert_matching (
   socket_option::invert_matching);
 static const socket_option_key_t<int> heartbeat_ivl (
@@ -206,8 +186,6 @@ static const socket_option_key_t<int> heartbeat_ttl (
   socket_option::heartbeat_ttl);
 static const socket_option_key_t<int> heartbeat_timeout (
   socket_option::heartbeat_timeout);
-static const socket_option_key_t<int> xpub_verboser (
-  socket_option::xpub_verboser);
 static const socket_option_key_t<int> connect_timeout (
   socket_option::connect_timeout);
 static const socket_option_key_t<int> tcp_maxrt (socket_option::tcp_maxrt);
@@ -229,65 +207,41 @@ static const socket_option_key_t<int> tls_trust_system (
   socket_option::tls_trust_system);
 static const socket_option_key_t<std::string> tls_password (
   socket_option::tls_password);
-static const socket_option_key_t<int> xpub_manual_last_value (
-  socket_option::xpub_manual_last_value);
-static const socket_option_key_t<int> only_first_subscribe (
-  socket_option::only_first_subscribe);
-static const socket_option_key_t<int> topics_count (
-  socket_option::topics_count);
 static const socket_option_key_t<int> zmp_metadata (
   socket_option::zmp_metadata);
 } // namespace socket_options
 
-/**
- * @brief Send flag bitmask.
- */
 enum class send_flag : int
 {
     none = 0,
     dontwait = ZLINK_DONTWAIT,
-    sndmore = ZLINK_SNDMORE
+    sndmore = 0x0002
 };
 
-/**
- * @brief Combine send flags.
- */
 inline send_flag operator| (send_flag a, send_flag b)
 {
     return static_cast<send_flag> (static_cast<int> (a)
                                    | static_cast<int> (b));
 }
 
-/**
- * @brief Receive flag bitmask.
- */
 enum class recv_flag : int
 {
     none = 0,
     dontwait = ZLINK_DONTWAIT
 };
 
-/**
- * @brief Combine receive flags.
- */
 inline recv_flag operator| (recv_flag a, recv_flag b)
 {
     return static_cast<recv_flag> (static_cast<int> (a)
                                    | static_cast<int> (b));
 }
 
-/**
- * @brief Stream packet dispatch mode.
- */
 enum class stream_dispatch_mode : int
 {
     none = 0,
-    len32be = ZLINK_STREAM_DISPATCH_LEN32BE
+    len32be = 1
 };
 
-/**
- * @brief Canonical zlink runtime error codes.
- */
 enum class error_code : int
 {
     efsm = EFSM,
@@ -296,62 +250,90 @@ enum class error_code : int
     emthread = EMTHREAD
 };
 
-/**
- * @brief Protocol-specific handshake and framing errors.
- */
 enum class protocol_error : int
 {
     zmp_malformed_command_hello =
       ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO
 };
 
-/**
- * @brief Event mask for socket monitoring.
- */
-enum class monitor_event : int
+enum class monitor_event : uint32_t
 {
-    connected = ZLINK_EVENT_CONNECTED,
-    connect_delayed = ZLINK_EVENT_CONNECT_DELAYED,
-    connect_retried = ZLINK_EVENT_CONNECT_RETRIED,
-    listening = ZLINK_EVENT_LISTENING,
-    bind_failed = ZLINK_EVENT_BIND_FAILED,
-    accepted = ZLINK_EVENT_ACCEPTED,
-    accept_failed = ZLINK_EVENT_ACCEPT_FAILED,
-    closed = ZLINK_EVENT_CLOSED,
-    close_failed = ZLINK_EVENT_CLOSE_FAILED,
-    disconnected = ZLINK_EVENT_DISCONNECTED,
-    monitor_stopped = ZLINK_EVENT_MONITOR_STOPPED,
-    handshake_failed_no_detail = ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL,
-    connection_ready = ZLINK_EVENT_CONNECTION_READY,
-    handshake_failed_protocol = ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL,
-    handshake_failed_auth = ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
-    all = ZLINK_EVENT_ALL
+    connected = ZLINK_SOCKET_MONITOR_EVENT_CONNECTED,
+    connect_delayed = ZLINK_SOCKET_MONITOR_EVENT_CONNECT_DELAYED,
+    connect_retried = ZLINK_SOCKET_MONITOR_EVENT_CONNECT_RETRIED,
+    listening = ZLINK_SOCKET_MONITOR_EVENT_LISTENING,
+    bind_failed = ZLINK_SOCKET_MONITOR_EVENT_BIND_FAILED,
+    accepted = ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED,
+    accept_failed = ZLINK_SOCKET_MONITOR_EVENT_ACCEPT_FAILED,
+    closed = ZLINK_SOCKET_MONITOR_EVENT_CLOSED,
+    close_failed = ZLINK_SOCKET_MONITOR_EVENT_CLOSE_FAILED,
+    disconnected = ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED,
+    monitor_stopped = ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED,
+    handshake_failed_no_detail =
+      ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL,
+    connection_ready = ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED,
+    connection_ready_changed =
+      ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED,
+    handshake_failed_protocol =
+      ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL,
+    handshake_failed_auth = ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH,
+    sub_delivery_ready_changed =
+      ZLINK_SOCKET_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED,
+    pub_delivery_ready_changed =
+      ZLINK_SOCKET_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED,
+    all = ZLINK_SOCKET_MONITOR_EVENT_ALL
 };
 
-/**
- * @brief Combine monitor event masks.
- */
 inline monitor_event operator| (monitor_event a, monitor_event b)
 {
-    return static_cast<monitor_event> (static_cast<int> (a)
-                                       | static_cast<int> (b));
+    return static_cast<monitor_event> (static_cast<uint32_t> (a)
+                                       | static_cast<uint32_t> (b));
 }
 
-/**
- * @brief Peer disconnect classification.
- */
-enum class disconnect_reason : int
+enum class monitor_source_kind : int
 {
-    unknown = ZLINK_DISCONNECT_UNKNOWN,
-    handshake_failed = ZLINK_DISCONNECT_HANDSHAKE_FAILED,
-    transport_error = ZLINK_DISCONNECT_TRANSPORT_ERROR,
-    ctx_term = ZLINK_DISCONNECT_CTX_TERM
+    socket = ZLINK_MONITOR_SOURCE_SOCKET,
+    spot_pub = ZLINK_MONITOR_SOURCE_SPOT_PUB,
+    spot_sub = ZLINK_MONITOR_SOURCE_SPOT_SUB
 };
 
-/**
- * @brief Poll event mask.
- */
-enum class poll_event : int
+enum class monitor_state : uint32_t
+{
+    ready = ZLINK_MONITOR_STATE_READY,
+    bound_ready = ZLINK_MONITOR_STATE_BOUND_READY,
+    send_ready = ZLINK_MONITOR_STATE_SEND_READY,
+    closed = ZLINK_MONITOR_STATE_CLOSED
+};
+
+inline monitor_state operator| (monitor_state a, monitor_state b)
+{
+    return static_cast<monitor_state> (static_cast<uint32_t> (a)
+                                       | static_cast<uint32_t> (b));
+}
+
+enum class monitor_snapshot_detail : uint32_t
+{
+    ready_count = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT,
+    snd_pending_msgs = ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS,
+    rcv_pending_msgs = ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS
+};
+
+inline monitor_snapshot_detail operator| (monitor_snapshot_detail a,
+                                          monitor_snapshot_detail b)
+{
+    return static_cast<monitor_snapshot_detail> (
+      static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
+}
+
+enum class disconnect_reason : int
+{
+    unknown = ZLINK_DISCONNECT_REASON_UNKNOWN,
+    handshake_failed = ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED,
+    transport_error = ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR,
+    ctx_term = ZLINK_DISCONNECT_REASON_CTX_TERM
+};
+
+enum class poll_event : short
 {
     pollin = ZLINK_POLLIN,
     pollout = ZLINK_POLLOUT,
@@ -359,53 +341,94 @@ enum class poll_event : int
     pollpri = ZLINK_POLLPRI
 };
 
-/**
- * @brief Combine poll event masks.
- */
 inline poll_event operator| (poll_event a, poll_event b)
 {
-    return static_cast<poll_event> (static_cast<int> (a)
-                                    | static_cast<int> (b));
+    return static_cast<poll_event> (static_cast<short> (a)
+                                    | static_cast<short> (b));
 }
 
-/**
- * @brief Service-plane participant type.
- */
 enum class service_type : int
 {
-    spot = ZLINK_SERVICE_TYPE_SPOT
+    spot = ZLINK_SERVICE_TYPE_SPOT,
+    socket = ZLINK_SERVICE_TYPE_SOCKET
 };
 
-/**
- * @brief Socket roles exposed by registry.
- */
+enum class service_role : int
+{
+    invalid = ZLINK_SERVICE_ROLE_INVALID,
+    spot = ZLINK_SERVICE_ROLE_SPOT,
+    router = ZLINK_SERVICE_ROLE_ROUTER,
+    dealer = ZLINK_SERVICE_ROLE_DEALER,
+    pub = ZLINK_SERVICE_ROLE_PUB,
+    sub = ZLINK_SERVICE_ROLE_SUB
+};
+
+enum class service_kind : int
+{
+    discovery = ZLINK_SERVICE_KIND_DISCOVERY,
+    spot_sub = ZLINK_SERVICE_KIND_SPOT_SUB,
+    spot_pub = ZLINK_SERVICE_KIND_SPOT_PUB,
+    socket = ZLINK_SERVICE_KIND_SOCKET
+};
+
+enum class service_event_subject_kind : int
+{
+    none = ZLINK_SERVICE_EVENT_SUBJECT_NONE,
+    topic = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC,
+    pattern = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
+};
+
+enum class monitor_target_kind : int
+{
+    socket = ZLINK_MONITOR_TARGET_SOCKET,
+    discovery = ZLINK_MONITOR_TARGET_DISCOVERY,
+    spot = ZLINK_MONITOR_TARGET_SPOT,
+    spot_node = ZLINK_MONITOR_TARGET_SPOT_NODE
+};
+
+enum class service_monitor_event : uint32_t
+{
+    error = ZLINK_SERVICE_MONITOR_EVENT_ERROR,
+    closed = ZLINK_SERVICE_MONITOR_EVENT_CLOSED,
+    discovery_ready_changed =
+      ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED,
+    discovery_service_up = ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP,
+    discovery_service_down =
+      ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN,
+    discovery_providers_changed =
+      ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED,
+    spot_ready_changed = ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED,
+    spot_filter_applied = ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED,
+    spot_subscription_ready_changed =
+      ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED,
+    spot_pub_delivery_ready_changed =
+      ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED,
+    spot_sub_delivery_ready_changed =
+      ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED,
+    spot_first_delivery_ready_changed =
+      ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED,
+    all = ZLINK_SERVICE_MONITOR_EVENT_ALL
+};
+
+inline service_monitor_event operator| (service_monitor_event a,
+                                        service_monitor_event b)
+{
+    return static_cast<service_monitor_event> (
+      static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
+}
+
 enum class registry_socket_role : int
 {
-    pub = ZLINK_REGISTRY_SOCKET_PUB,
-    router = ZLINK_REGISTRY_SOCKET_ROUTER,
-    peer_sub = ZLINK_REGISTRY_SOCKET_PEER_SUB
+    pub = 1,
+    router = 2,
+    peer_sub = 3
 };
 
-/**
- * @brief Socket roles exposed by discovery.
- */
 enum class discovery_socket_role : int
 {
     sub = 0
 };
 
-/**
- * @brief Socket roles exposed by receiver.
- */
-enum class receiver_socket_role : int
-{
-    router = 0,
-    dealer = 1
-};
-
-/**
- * @brief Socket roles exposed by spot node.
- */
 enum class spot_node_socket_role : int
 {
     node = 0,
@@ -414,22 +437,68 @@ enum class spot_node_socket_role : int
     dealer = 3
 };
 
-/**
- * @brief Socket roles used by `spot_t`.
- */
 enum class spot_socket_role : int
 {
-    pub = 1,
-    sub = 2
+    pub = ZLINK_SPOT_ROLE_PUB,
+    sub = ZLINK_SPOT_ROLE_SUB
 };
 
-/**
- * @brief Build a native routing id from raw bytes.
- * @param bytes_ Byte buffer. May be `NULL` only when `size_` is zero.
- * @param size_ Number of bytes in `bytes_` (0..255).
- * @param out_ Output routing id.
- * @return 0 on success, -1 on failure.
- */
+enum class spot_node_state : int
+{
+    idle = ZLINK_SPOT_NODE_STATE_IDLE,
+    connecting = ZLINK_SPOT_NODE_STATE_CONNECTING,
+    partial_ready = ZLINK_SPOT_NODE_STATE_PARTIAL_READY,
+    ready = ZLINK_SPOT_NODE_STATE_READY,
+    error = ZLINK_SPOT_NODE_STATE_ERROR
+};
+
+enum class spot_peer_source : int
+{
+    manual = ZLINK_SPOT_PEER_SOURCE_MANUAL,
+    discovery = ZLINK_SPOT_PEER_SOURCE_DISCOVERY,
+    mixed = ZLINK_SPOT_PEER_SOURCE_MIXED
+};
+
+enum class spot_peer_state : int
+{
+    configured = ZLINK_SPOT_PEER_STATE_CONFIGURED,
+    connecting = ZLINK_SPOT_PEER_STATE_CONNECTING,
+    connected = ZLINK_SPOT_PEER_STATE_CONNECTED
+};
+
+enum class registry_state : int
+{
+    idle = ZLINK_REGISTRY_STATE_IDLE,
+    active = ZLINK_REGISTRY_STATE_ACTIVE,
+    degraded = ZLINK_REGISTRY_STATE_DEGRADED,
+    error = ZLINK_REGISTRY_STATE_ERROR
+};
+
+enum class topology_source : int
+{
+    manual = ZLINK_TOPOLOGY_SOURCE_MANUAL,
+    discovery = ZLINK_TOPOLOGY_SOURCE_DISCOVERY,
+    registry = ZLINK_TOPOLOGY_SOURCE_REGISTRY
+};
+
+enum class topology_state : int
+{
+    discovered = ZLINK_TOPOLOGY_STATE_DISCOVERED,
+    connecting = ZLINK_TOPOLOGY_STATE_CONNECTING,
+    ready = ZLINK_TOPOLOGY_STATE_READY,
+    lost = ZLINK_TOPOLOGY_STATE_LOST,
+    error = ZLINK_TOPOLOGY_STATE_ERROR,
+    stopped = ZLINK_TOPOLOGY_STATE_STOPPED
+};
+
+template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N])
+{
+    size_t len = 0;
+    while (len < N && src_[len] != '\0')
+        ++len;
+    return std::string (src_, len);
+}
+
 inline int routing_id_from (const void *bytes_,
                             size_t size_,
                             zlink_routing_id_t *out_)
@@ -454,23 +523,19 @@ inline int routing_id_from (const void *bytes_,
     return 0;
 }
 
-/**
- * @brief Build a native routing id from binary string bytes.
- * @param bytes_ Routing id bytes.
- * @param out_ Output routing id.
- * @return 0 on success, -1 on failure.
- */
 inline int routing_id_from (const std::string &bytes_,
                             zlink_routing_id_t *out_)
 {
     return routing_id_from (bytes_.data (), bytes_.size (), out_);
 }
 
-/**
- * @brief Convert native routing id bytes to a binary string.
- * @param routing_id_ Native routing id.
- * @return Binary string with exactly `routing_id_.size` bytes.
- */
+inline std::vector<uint8_t>
+routing_id_to_bytes (const zlink_routing_id_t &routing_id_)
+{
+    return std::vector<uint8_t> (
+      routing_id_.data, routing_id_.data + routing_id_.size);
+}
+
 inline std::string routing_id_to_string (const zlink_routing_id_t &routing_id_)
 {
     const size_t size = static_cast<size_t> (routing_id_.size);
@@ -478,6 +543,45 @@ inline std::string routing_id_to_string (const zlink_routing_id_t &routing_id_)
         return std::string ();
     return std::string (
       reinterpret_cast<const char *> (routing_id_.data), size);
+}
+
+inline std::string
+service_name (const zlink_service_event_t &event_)
+{
+    return fixed_string_to_string (event_.service_name);
+}
+
+inline std::string endpoint (const zlink_service_event_t &event_)
+{
+    return fixed_string_to_string (event_.endpoint);
+}
+
+inline std::string subject (const zlink_service_event_t &event_)
+{
+    return fixed_string_to_string (event_.subject);
+}
+
+inline std::string
+service_name (const zlink_member_peer_entry_t &entry_)
+{
+    return fixed_string_to_string (entry_.service_name);
+}
+
+inline std::string endpoint (const zlink_member_peer_entry_t &entry_)
+{
+    return fixed_string_to_string (entry_.endpoint);
+}
+
+inline std::string
+service_name (const zlink_registry_topology_entry_t &entry_)
+{
+    return fixed_string_to_string (entry_.service_name);
+}
+
+inline std::string
+endpoint (const zlink_registry_topology_entry_t &entry_)
+{
+    return fixed_string_to_string (entry_.endpoint);
 }
 
 } // namespace zlink

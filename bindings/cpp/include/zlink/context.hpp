@@ -34,9 +34,7 @@ class context_t
      */
     ~context_t ()
     {
-        if (_ctx)
-            zlink_ctx_term (_ctx);
-        _ctx = NULL;
+        (void) term ();
     }
 
     context_t (context_t &&other) noexcept : _ctx (other._ctx)
@@ -49,8 +47,7 @@ class context_t
         if (this == &other)
             return *this;
 
-        if (_ctx)
-            zlink_ctx_term (_ctx);
+        (void) term ();
         _ctx = other._ctx;
         other._ctx = NULL;
         return *this;
@@ -58,6 +55,8 @@ class context_t
 
     context_t (const context_t &) = delete;
     context_t &operator= (const context_t &) = delete;
+
+    bool valid () const noexcept { return _ctx != NULL; }
 
     /**
      * @brief Access the raw context handle.
@@ -80,6 +79,20 @@ class context_t
     }
 
     /**
+     * @brief Terminate and release the context early.
+     * @return 0 on success, -1 on failure.
+     */
+    ZLINK_CPP_NODISCARD int term () noexcept
+    {
+        if (!_ctx)
+            return 0;
+
+        void *ctx = _ctx;
+        _ctx = NULL;
+        return zlink_ctx_term (ctx);
+    }
+
+    /**
      * @brief Set a context option.
      * @param option_ Option key.
      * @param value_ Option value.
@@ -87,8 +100,10 @@ class context_t
      */
     ZLINK_CPP_NODISCARD int set (context_option option_, int value_)
     {
-        return _ctx ? zlink_ctx_set (_ctx, static_cast<int> (option_), value_)
-                    : -1;
+        return _ctx
+                 ? zlink_ctx_set (
+                     _ctx, static_cast<zlink_ctx_option_t> (option_), value_)
+                 : -1;
     }
 
     /**
@@ -102,7 +117,8 @@ class context_t
         if (!_ctx || !value_)
             return -1;
         errno = 0;
-        const int rc = zlink_ctx_get (_ctx, static_cast<int> (option_));
+        const int rc =
+          zlink_ctx_get (_ctx, static_cast<zlink_ctx_option_t> (option_));
         if (rc == -1 && errno != 0)
             return -1;
         *value_ = rc;

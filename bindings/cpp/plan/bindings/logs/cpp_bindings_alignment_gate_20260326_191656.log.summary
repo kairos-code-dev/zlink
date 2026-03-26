@@ -1,0 +1,5 @@
+status=success
+started_at=2026-03-26 19:16:56 +0900
+completed_at=2026-03-26 19:17:55 +0900
+stress_log=/home/hep7/project/kairos/zlink/bindings/cpp/plan/bindings/logs/cpp_bindings_alignment_gate_20260326_191656.log
+stress_exitcode=/home/hep7/project/kairos/zlink/bindings/cpp/plan/bindings/logs/cpp_bindings_alignment_gate_20260326_191656.log.exitcode

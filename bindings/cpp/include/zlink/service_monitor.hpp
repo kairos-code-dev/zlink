@@ -1,0 +1,119 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#ifndef ZLINK_CPP_SERVICE_MONITOR_HPP_INCLUDED
+#define ZLINK_CPP_SERVICE_MONITOR_HPP_INCLUDED
+
+#include "services/discovery.hpp"
+#include "services/spot.hpp"
+#include "types.hpp"
+
+namespace zlink
+{
+
+class service_monitor_handle_t
+{
+  public:
+    service_monitor_handle_t () : _monitor (NULL) {}
+
+    explicit service_monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
+
+    explicit service_monitor_handle_t (
+      void *target_, service_monitor_event events_ = service_monitor_event::all)
+        : _monitor (NULL)
+    {
+        zlink_service_monitor_open_options_t options;
+        options.events =
+          static_cast<zlink_service_monitor_event_mask_t> (events_);
+        _monitor = zlink_service_monitor_open (target_, &options);
+    }
+
+    explicit service_monitor_handle_t (
+      service::discovery_t &discovery_,
+      service_monitor_event events_ = service_monitor_event::all)
+        : service_monitor_handle_t (discovery_.handle (), events_)
+    {
+    }
+
+    explicit service_monitor_handle_t (
+      service::spot_t &spot_,
+      service_monitor_event events_ = service_monitor_event::all)
+        : service_monitor_handle_t (spot_.handle (), events_)
+    {
+    }
+
+    explicit service_monitor_handle_t (
+      service::spot_node_t &node_,
+      service_monitor_event events_ = service_monitor_event::all)
+        : service_monitor_handle_t (node_.handle (), events_)
+    {
+    }
+
+    ~service_monitor_handle_t () { (void) close (); }
+
+    service_monitor_handle_t (service_monitor_handle_t &&other) noexcept
+        : _monitor (other._monitor)
+    {
+        other._monitor = NULL;
+    }
+
+    service_monitor_handle_t &
+    operator= (service_monitor_handle_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        (void) close ();
+        _monitor = other._monitor;
+        other._monitor = NULL;
+        return *this;
+    }
+
+    service_monitor_handle_t (const service_monitor_handle_t &) = delete;
+    service_monitor_handle_t &
+    operator= (const service_monitor_handle_t &) = delete;
+
+    static service_monitor_handle_t
+    open (void *target_, service_monitor_event events_ = service_monitor_event::all)
+    {
+        return service_monitor_handle_t (target_, events_);
+    }
+
+    bool valid () const noexcept { return _monitor != NULL; }
+
+    void *handle () noexcept { return _monitor; }
+    const void *handle () const noexcept { return _monitor; }
+
+    int handler (zlink_service_monitor_handler_fn handler_,
+                 void *userdata_ = NULL)
+    {
+        return zlink_service_monitor_handler (_monitor, handler_, userdata_);
+    }
+
+    int recv (zlink_service_monitor_event_t &event_)
+    {
+        return zlink_service_monitor_recv (_monitor, &event_);
+    }
+
+    int snapshot (zlink_monitor_snapshot_t &snapshot_) const
+    {
+        return zlink_monitor_snapshot (_monitor, &snapshot_);
+    }
+
+    int close () noexcept
+    {
+        if (!_monitor)
+            return 0;
+
+        void *monitor = _monitor;
+        const int rc = zlink_monitor_close (&monitor);
+        if (rc == 0)
+            _monitor = NULL;
+        return rc;
+    }
+
+  private:
+    void *_monitor;
+};
+
+} // namespace zlink
+
+#endif

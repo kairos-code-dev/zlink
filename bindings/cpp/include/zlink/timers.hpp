@@ -111,8 +111,10 @@ class timers_t
             return 0;
 
         void *tmp = _timers;
-        _timers = NULL;
-        return zlink_timers_destroy (&tmp);
+        const int rc = zlink_timers_destroy (&tmp);
+        if (rc == 0)
+            _timers = NULL;
+        return rc;
     }
 
     /**

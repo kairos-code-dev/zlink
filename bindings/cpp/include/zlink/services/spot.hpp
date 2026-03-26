@@ -5,11 +5,14 @@
 #include "../context.hpp"
 #include "../message.hpp"
 #include "../types.hpp"
+#include "discovery.hpp"
 
 #include <cerrno>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 namespace zlink
 {
@@ -19,71 +22,153 @@ namespace service
 namespace detail
 {
 
-inline int spot_pub_option_from_socket_option (socket_option option_)
+inline void close_message_array (zlink_msg_t *parts_, size_t part_count_) noexcept
 {
-    switch (option_) {
-    case socket_option::sndhwm:
-        return ZLINK_SPOT_PUB_OPT_SNDHWM;
-    case socket_option::sndtimeo:
-        return ZLINK_SPOT_PUB_OPT_SNDTIMEO;
-    case socket_option::linger:
-        return ZLINK_SPOT_PUB_OPT_LINGER;
-    case socket_option::xpub_nodrop:
-        return ZLINK_SPOT_PUB_OPT_NODROP;
-    case socket_option::sndbuf:
-        return ZLINK_SPOT_PUB_OPT_SNDBUF;
-    case socket_option::rcvbuf:
-        return ZLINK_SPOT_PUB_OPT_RCVBUF;
-    default:
-        errno = EINVAL;
-        return -1;
-    }
+    if (!parts_)
+        return;
+    zlink_multipart_close (parts_, part_count_);
+    std::free (parts_);
 }
 
-inline int spot_sub_option_from_socket_option (socket_option option_)
+inline int move_parts_to_native (std::vector<message_t> &parts_,
+                                 std::vector<zlink_msg_t> &native_)
 {
-    switch (option_) {
-    case socket_option::rcvhwm:
-        return ZLINK_SPOT_SUB_OPT_RCVHWM;
-    case socket_option::rcvtimeo:
-        return ZLINK_SPOT_SUB_OPT_RCVTIMEO;
-    case socket_option::linger:
-        return ZLINK_SPOT_SUB_OPT_LINGER;
-    case socket_option::sndbuf:
-        return ZLINK_SPOT_SUB_OPT_SNDBUF;
-    case socket_option::rcvbuf:
-        return ZLINK_SPOT_SUB_OPT_RCVBUF;
-    default:
-        errno = EINVAL;
-        return -1;
+    native_.clear ();
+    native_.resize (parts_.size ());
+
+    size_t moved = 0;
+    for (; moved < parts_.size (); ++moved) {
+        if (!parts_[moved].valid ()) {
+            errno = EINVAL;
+            break;
+        }
+        if (parts_[moved].move_to (&native_[moved]) != 0)
+            break;
     }
+
+    if (moved == parts_.size ())
+        return 0;
+
+    for (size_t i = 0; i < moved; ++i) {
+        if (parts_[i].init () == 0)
+            (void) zlink_msg_move (parts_[i].handle (), &native_[i]);
+        (void) zlink_msg_close (&native_[i]);
+    }
+
+    native_.clear ();
+    return -1;
+}
+
+inline int assign_parts_from_native (zlink_msg_t *parts_native_,
+                                     size_t part_count_,
+                                     std::vector<message_t> &parts_)
+{
+    std::vector<message_t> tmp;
+    tmp.resize (part_count_);
+
+    for (size_t i = 0; i < part_count_; ++i) {
+        if (zlink_msg_move (tmp[i].handle (), &parts_native_[i]) != 0) {
+            close_message_array (parts_native_, part_count_);
+            return -1;
+        }
+    }
+
+    std::free (parts_native_);
+    parts_.swap (tmp);
+    return 0;
+}
+
+inline int get_string_option (int (*getter_) (void *, zlink_option_t, void *, size_t *),
+                              void *handle_,
+                              socket_option option_,
+                              size_t initial_capacity_,
+                              std::string &value_)
+{
+    size_t capacity = initial_capacity_;
+    const size_t max_capacity = 64u * 1024u;
+
+    while (capacity <= max_capacity) {
+        std::vector<char> buffer (capacity);
+        size_t size = capacity;
+        if (getter_ (
+              handle_, static_cast<zlink_option_t> (option_), buffer.data (),
+              &size)
+            == 0) {
+            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
+            size_t out_size = bounded;
+            if (out_size > 0 && buffer[out_size - 1] == '\0')
+                --out_size;
+            value_.assign (buffer.data (), out_size);
+            return 0;
+        }
+
+        if (errno != EINVAL || capacity == max_capacity)
+            return -1;
+
+        capacity *= 2u;
+        if (capacity > max_capacity)
+            capacity = max_capacity;
+    }
+
+    errno = EINVAL;
+    return -1;
+}
+
+inline int get_string_option (int (*getter_) (void *, zlink_pub_option_t, void *, size_t *),
+                              void *handle_,
+                              pub_option option_,
+                              size_t initial_capacity_,
+                              std::string &value_)
+{
+    size_t capacity = initial_capacity_;
+    const size_t max_capacity = 64u * 1024u;
+
+    while (capacity <= max_capacity) {
+        std::vector<char> buffer (capacity);
+        size_t size = capacity;
+        if (getter_ (
+              handle_, static_cast<zlink_pub_option_t> (option_), buffer.data (),
+              &size)
+            == 0) {
+            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
+            size_t out_size = bounded;
+            if (out_size > 0 && buffer[out_size - 1] == '\0')
+                --out_size;
+            value_.assign (buffer.data (), out_size);
+            return 0;
+        }
+
+        if (errno != EINVAL || capacity == max_capacity)
+            return -1;
+
+        capacity *= 2u;
+        if (capacity > max_capacity)
+            capacity = max_capacity;
+    }
+
+    errno = EINVAL;
+    return -1;
 }
 
 } // namespace detail
 
-/**
- * @brief Spot node wrapper that manages publish/subscribe service sockets.
- */
 class spot_node_t
 {
   public:
-    /**
-     * @brief Create a spot node.
-     * @param ctx_ Context wrapper.
-     */
     explicit spot_node_t (context_t &ctx_)
-        : _node (zlink_spot_node_new (ctx_.handle (), NULL, NULL, NULL))
+        : _node (zlink_spot_node_new (ctx_.handle ())), _last_error (0)
     {
+        if (!_node)
+            _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    /**
-     * @brief Destroy node handle.
-     */
     ~spot_node_t () { (void) destroy (); }
 
-    spot_node_t (spot_node_t &&other) noexcept : _node (other._node)
+    spot_node_t (spot_node_t &&other) noexcept
+        : _node (other._node), _last_error (other._last_error)
     {
         other._node = NULL;
+        other._last_error = 0;
     }
 
     spot_node_t &operator= (spot_node_t &&other) noexcept
@@ -93,346 +178,182 @@ class spot_node_t
 
         (void) destroy ();
         _node = other._node;
+        _last_error = other._last_error;
         other._node = NULL;
+        other._last_error = 0;
         return *this;
     }
 
     spot_node_t (const spot_node_t &) = delete;
     spot_node_t &operator= (const spot_node_t &) = delete;
 
-    /**
-     * @brief Bind spot node endpoint.
-     * @param endpoint_ Bind endpoint.
-     * @return 0 on success, -1 on failure.
-     */
+    bool valid () const noexcept { return _node != NULL; }
+
+    int last_error () const noexcept { return _last_error; }
+
     ZLINK_CPP_NODISCARD int bind (const std::string &endpoint_)
     {
         return zlink_spot_node_bind (_node, endpoint_.c_str ());
     }
 
-    /**
-     * @brief Connect to another spot node's PUB endpoint.
-     * @param endpoint_ Peer PUB endpoint.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int connect_peer_pub (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int connect_peer (const std::string &endpoint_)
     {
-        return zlink_spot_node_connect_peer_pub (_node, endpoint_.c_str ());
+        return zlink_spot_node_connect_peer (_node, endpoint_.c_str ());
     }
 
-    /**
-     * @brief Disconnect from a peer PUB endpoint.
-     * @param endpoint_ Peer PUB endpoint.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int disconnect_peer_pub (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int disconnect_peer (const std::string &endpoint_)
     {
-        return zlink_spot_node_disconnect_peer_pub (_node, endpoint_.c_str ());
+        return zlink_spot_node_disconnect_peer (_node, endpoint_.c_str ());
     }
 
-    /**
-     * @brief Register spot service endpoint.
-     * @param service_ Service name.
-     * @param advertise_ Advertised endpoint.
-     * @return 0 on success, -1 on failure.
-     */
+    ZLINK_CPP_NODISCARD int attach_discovery (discovery_t &discovery_)
+    {
+        return zlink_spot_node_attach_discovery (_node, discovery_.handle ());
+    }
+
+    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    {
+        return zlink_set_routing_id (_node, data_, size_);
+    }
+
+    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &data_)
+    {
+        return set_routing_id (data_.data (), data_.size ());
+    }
+
+    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t *out_) const
+    {
+        return zlink_get_routing_id (_node, out_);
+    }
+
+    ZLINK_CPP_NODISCARD int set_tls_server (const std::string &cert_,
+                                            const std::string &key_,
+                                            bool require_client_cert_ = false)
+    {
+        return zlink_set_tls_server (
+          _node, cert_.c_str (), key_.c_str (), require_client_cert_ ? 1 : 0);
+    }
+
     ZLINK_CPP_NODISCARD int
-    register_service (const std::string &service_,
-                      const std::string &advertise_)
+    set_tls_client (const std::string &ca_cert_,
+                    const std::string &hostname_ = std::string (),
+                    bool trust_system_ = false)
     {
-        return zlink_spot_node_register (
-          _node, service_.c_str (), advertise_.c_str ());
+        const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
+        const char *hostname =
+          hostname_.empty () ? NULL : hostname_.c_str ();
+        return zlink_set_tls_client (
+          _node, ca, hostname, trust_system_ ? 1 : 0);
     }
 
-    /**
-     * @brief Unregister a spot service.
-     * @param service_ Service name.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int unregister_service (const std::string &service_)
-    {
-        return zlink_spot_node_unregister (_node, service_.c_str ());
-    }
-
-    /**
-     * @brief Inject external discovery handle for a service.
-     * @param discovery_ Native discovery handle.
-     * @param service_ Service name.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    set_discovery (void *discovery_, const std::string &service_)
+    set (socket_option option_, const void *value_, size_t size_)
     {
-        return zlink_spot_node_set_discovery (
-          _node, discovery_, service_.c_str ());
+        return zlink_set_option (
+          _node, static_cast<zlink_option_t> (option_), value_, size_);
     }
 
-    /**
-     * @brief Configure TLS server certificate for node sockets.
-     * @param cert_ Certificate file path.
-     * @param key_ Private key file path.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set_tls_server (const std::string &cert_, const std::string &key_)
-    {
-        return zlink_spot_node_set_tls_server (
-          _node, cert_.c_str (), key_.c_str ());
-    }
-
-    /**
-     * @brief Configure TLS client settings for node sockets.
-     * @param ca_ CA file path.
-     * @param hostname_ Expected peer hostname.
-     * @param trust_ Trust-system flag.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set_tls_client (const std::string &ca_,
-                    const std::string &hostname_,
-                    int trust_)
-    {
-        const char *ca = ca_.empty () ? NULL : ca_.c_str ();
-        const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
-        return zlink_spot_node_set_tls_client (
-          _node, ca, hostname, trust_);
-    }
-
-    /**
-     * @brief Configure TLS client settings for node sockets.
-     * @param ca_ CA file path.
-     * @param hostname_ Expected peer hostname.
-     * @param trust_ Trust-system flag.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set_tls_client (const std::string &ca_,
-                    const std::string &hostname_,
-                    bool trust_)
-    {
-        return set_tls_client (ca_, hostname_, trust_ ? 1 : 0);
-    }
-
-    /**
-     * @brief Set socket option by internal role.
-     * @param role_ Internal socket role.
-     * @param option_ Socket option key.
-     * @param value_ Option value buffer.
-     * @param len_ Buffer length in bytes.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int
-    set_sockopt (spot_node_socket_role role_,
-                 socket_option option_,
-                 const void *value_,
-                 size_t len_)
-    {
-        int mapped = -1;
-
-        switch (role_) {
-        case spot_node_socket_role::pub:
-            mapped = detail::spot_pub_option_from_socket_option (option_);
-            if (mapped < 0)
-                return -1;
-            return zlink_spot_node_set_pub_option (_node, mapped, value_, len_);
-        case spot_node_socket_role::sub:
-            mapped = detail::spot_sub_option_from_socket_option (option_);
-            if (mapped < 0)
-                return -1;
-            return zlink_spot_node_set_sub_option (_node, mapped, value_, len_);
-        case spot_node_socket_role::node:
-            errno = ENOTSUP;
-            return -1;
-        default:
-            errno = EINVAL;
-            return -1;
-        }
-    }
-
-    /**
-     * @brief Set typed non-string socket option by internal role.
-     * @param role_ Internal socket role.
-     * @param key_ Typed socket option key.
-     * @param value_ Typed option value.
-     * @return 0 on success, -1 on failure.
-     */
     template<typename T>
     ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
-    set_sockopt (spot_node_socket_role role_,
-                 socket_option_key_t<T> key_,
-                 const T &value_)
+    set (socket_option_key_t<T> key_, const T &value_)
     {
-        return set_sockopt (role_, key_.option, &value_, sizeof (value_));
+        return set (key_.option, &value_, sizeof (value_));
     }
 
-    /**
-     * @brief Set typed string socket option by internal role.
-     * @param role_ Internal socket role.
-     * @param key_ Typed socket option key.
-     * @param value_ Option value bytes.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    set_sockopt (spot_node_socket_role role_,
-                 socket_option_key_t<std::string> key_,
-                 const std::string &value_)
+    set (socket_option_key_t<std::string> key_, const std::string &value_)
     {
-        return set_sockopt (role_, key_.option, value_.data (), value_.size ());
+        return set (key_.option, value_.data (), value_.size ());
     }
 
-    /**
-     * @brief Set integer socket option by internal role.
-     * @param role_ Internal socket role.
-     * @param option_ Socket option key.
-     * @param value_ Integer option value.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    set_sockopt (spot_node_socket_role role_,
-                 socket_option option_,
-                 int value_)
+    get (socket_option option_, void *value_, size_t *size_) const
     {
-        return set_sockopt (role_, option_, &value_, sizeof (value_));
+        return zlink_get_option (
+          _node, static_cast<zlink_option_t> (option_), value_, size_);
     }
 
-    /**
-     * @brief Set node-level integer option.
-     * @param option_ Node option key.
-     * @param value_ Integer option value.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int set_sockopt (spot_node_option option_, int value_)
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    get (socket_option_key_t<T> key_, T &value_) const
     {
-        return zlink_spot_node_set_pub_option (
-          _node, static_cast<int> (option_), &value_, sizeof (value_));
+        size_t size = sizeof (value_);
+        return get (key_.option, &value_, &size);
     }
 
-    /**
-     * @brief Access internal PUB socket handle.
-     * @return Native socket handle.
-     */
-    void *pub_socket_handle () const
-    {
-        return zlink_spot_node_default_pub (_node);
-    }
-
-    /**
-     * @brief Access internal SUB socket handle.
-     * @return Native socket handle.
-     */
-    void *sub_socket_handle () const
-    {
-        return zlink_spot_node_default_sub (_node);
-    }
-
-    /**
-     * @brief Enumerate PUB socket peers.
-     * @param peers_ Output peer array.
-     * @param count_ In/out capacity and written count.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    pub_peers (zlink_peer_info_t *peers_, size_t *count_)
+    get (socket_option_key_t<std::string> key_, std::string &value_) const
     {
-        void *pub = zlink_spot_node_default_pub (_node);
-        if (!pub)
-            return -1;
-
-        return zlink_spot_pub_peers (pub, peers_, count_);
+        return detail::get_string_option (
+          &zlink_get_option, _node, key_.option, 256u, value_);
     }
 
-    /**
-     * @brief Enumerate SUB socket peers.
-     * @param peers_ Output peer array.
-     * @param count_ In/out capacity and written count.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    sub_peers (zlink_peer_info_t *peers_, size_t *count_)
+    status_snapshot (zlink_spot_node_status_t &out_) const
     {
-        void *sub = zlink_spot_node_default_sub (_node);
-        if (!sub)
-            return -1;
-
-        return zlink_spot_sub_peers (sub, peers_, count_);
+        return zlink_spot_node_status_snapshot (_node, &out_);
     }
 
-    /**
-     * @brief Explicitly destroy node handle.
-     * @return 0 on success, -1 on failure.
-     */
+    ZLINK_CPP_NODISCARD int
+    peers_snapshot (zlink_spot_node_peer_entry_t *entries_, size_t *count_) const
+    {
+        return zlink_spot_node_peers_snapshot (_node, entries_, count_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    peers_query (zlink_spot_node_peer_entry_t *entries_,
+                 size_t *count_,
+                 const zlink_spot_node_peer_filter_t *filter_) const
+    {
+        return zlink_spot_node_peers_query (_node, filter_, entries_, count_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    subjects_snapshot (zlink_spot_node_subject_entry_t *entries_,
+                       size_t *count_,
+                       const zlink_spot_node_subject_filter_t *filter_ = NULL) const
+    {
+        return zlink_spot_node_subjects_snapshot (
+          _node, filter_, entries_, count_);
+    }
+
     ZLINK_CPP_NODISCARD int destroy ()
     {
         if (!_node)
             return 0;
 
         void *tmp = _node;
-        _node = NULL;
-        return zlink_spot_node_destroy (&tmp);
+        const int rc = zlink_spot_node_destroy (&tmp);
+        if (rc == 0)
+            _node = NULL;
+        return rc;
     }
 
-    /**
-     * @brief Access raw native node handle.
-     * @return Native handle pointer.
-     */
     void *handle () const { return _node; }
 
   private:
     void *_node;
+    int _last_error;
 };
 
-/**
- * @brief Spot pub/sub convenience wrapper for one node.
- */
 class spot_t
 {
   public:
-    /**
-     * @brief Subscription callback type.
-     */
-    typedef std::function<void (const std::string &, const zlink_msg_t *, size_t)>
-      handler_fn;
-
-    /**
-     * @brief Create spot pub/sub handles from a node.
-     * @param node_ Spot node wrapper.
-     */
-    explicit spot_t (spot_node_t &node_)
-        : _node (node_.handle ()),
-          _pub (zlink_spot_pub_new (node_.handle ())),
-          _sub (zlink_spot_sub_new (node_.handle ())),
-          _last_error (0)
+    explicit spot_t (context_t &ctx_)
+        : _spot (zlink_spot_new (ctx_.handle ())), _last_error (0)
     {
-        if (_pub && _sub)
-            return;
-
-        const int err = errno;
-        if (_pub)
-            zlink_spot_pub_destroy (&_pub);
-        if (_sub)
-            zlink_spot_sub_destroy (&_sub);
-        _pub = NULL;
-        _sub = NULL;
-        _last_error = err != 0 ? err : EFAULT;
+        if (!_spot)
+            _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    /**
-     * @brief Destroy pub/sub handles.
-     */
     ~spot_t () { (void) destroy (); }
 
     spot_t (spot_t &&other) noexcept
-        : _node (NULL), _pub (NULL), _sub (NULL), _last_error (0)
+        : _spot (other._spot), _last_error (other._last_error)
     {
-        (void) other.set_handler (handler_fn ());
-        _node = other._node;
-        _pub = other._pub;
-        _sub = other._sub;
-        _last_error = other._last_error;
-        other._node = NULL;
-        other._pub = NULL;
-        other._sub = NULL;
+        other._spot = NULL;
         other._last_error = 0;
     }
 
@@ -441,16 +362,10 @@ class spot_t
         if (this == &other)
             return *this;
 
-        (void) set_handler (handler_fn ());
         (void) destroy ();
-        (void) other.set_handler (handler_fn ());
-        _node = other._node;
-        _pub = other._pub;
-        _sub = other._sub;
+        _spot = other._spot;
         _last_error = other._last_error;
-        other._node = NULL;
-        other._pub = NULL;
-        other._sub = NULL;
+        other._spot = NULL;
         other._last_error = 0;
         return *this;
     }
@@ -458,31 +373,16 @@ class spot_t
     spot_t (const spot_t &) = delete;
     spot_t &operator= (const spot_t &) = delete;
 
-    /**
-     * @brief Check whether publisher/subscriber handles were created.
-     * @return `true` when both handles are valid.
-     */
-    bool valid () const noexcept { return _pub != NULL && _sub != NULL; }
+    bool valid () const noexcept { return _spot != NULL; }
 
-    /**
-     * @brief Return the last constructor-time initialization error.
-     * @return Error number, or 0 when initialized successfully.
-     */
     int last_error () const noexcept { return _last_error; }
 
-    /**
-     * @brief Publish multipart payload on a topic.
-     * @param topic_ Topic string.
-     * @param parts_ Message parts. Ownership is transferred regardless of result.
-     * @param flags_ Send flags.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
     publish (const std::string &topic_,
              std::vector<message_t> &parts_,
              send_flag flags_ = send_flag::none)
     {
-        if (!_pub) {
+        if (!_spot) {
             errno = _last_error != 0 ? _last_error : EFAULT;
             return -1;
         }
@@ -492,59 +392,69 @@ class spot_t
             return -1;
         }
 
-        _publish_parts_scratch.resize (parts_.size ());
-        size_t moved = 0;
-        if (move_parts_transfer (parts_, _publish_parts_scratch, moved) != 0) {
-            _publish_parts_scratch.clear ();
+        std::vector<zlink_msg_t> native;
+        if (detail::move_parts_to_native (parts_, native) != 0)
             return -1;
-        }
 
-        const int rc = zlink_spot_pub_publish (
-          _pub, topic_.c_str (), _publish_parts_scratch.data (),
-          _publish_parts_scratch.size (),
-          static_cast<int> (flags_));
+        const int rc = zlink_publish (
+          _spot, topic_.c_str (), native.data (), native.size (),
+          static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0) {
             const int err = errno;
-            close_native_parts (_publish_parts_scratch, moved);
+            for (size_t i = 0; i < native.size (); ++i)
+                (void) zlink_msg_close (&native[i]);
             errno = err;
         }
-        _publish_parts_scratch.clear ();
         return rc;
     }
 
-    /**
-     * @brief Publish single-frame bytes on a topic.
-     * @param topic_ Topic string.
-     * @param data_ Payload pointer.
-     * @param size_ Payload size in bytes.
-     * @param flags_ Send flags.
-     * @return 0 on success, -1 on failure.
-     */
+    ZLINK_CPP_NODISCARD int
+    publish (const std::string &topic_,
+             message_t &part_,
+             send_flag flags_ = send_flag::none)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        zlink_msg_t native;
+        if (zlink_msg_init_size (&native, part_.size ()) != 0)
+            return -1;
+        if (part_.size () > 0 && part_.data ())
+            std::memcpy (zlink_msg_data (&native), part_.data (), part_.size ());
+
+        const int rc = zlink_publish (
+          _spot, topic_.c_str (), &native, 1,
+          static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0) {
+            const int err = errno;
+            (void) zlink_msg_close (&native);
+            errno = err;
+        }
+        return rc;
+    }
+
     ZLINK_CPP_NODISCARD int
     publish (const std::string &topic_,
              const void *data_,
              size_t size_,
              send_flag flags_ = send_flag::none)
     {
-        if (!_pub) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
+        message_t part = message_t::from_bytes (data_, size_);
+        if (!part.valid ())
             return -1;
-        }
-        return zlink_spot_pub_publish_bytes (
-          _pub, topic_.c_str (), data_, size_, static_cast<int> (flags_));
+        return publish (topic_, part, flags_);
     }
 
-    /**
-     * @brief Publish single-frame external buffer without a pre-send copy.
-     * @param topic_ Topic string.
-     * @param data_ External payload buffer. May be `NULL` only when `size_` is 0.
-     * @param size_ Payload size in bytes.
-     * @param ffn_ Optional release callback for `data_`.
-     * @param hint_ Optional callback context pointer.
-     * @param flags_ Send flags.
-     * @return 0 on success, -1 on failure.
-     * @note Once initialized, ownership of `data_` is consumed regardless of publish result.
-     */
+    ZLINK_CPP_NODISCARD int
+    publish (const std::string &topic_,
+             const std::string &text_,
+             send_flag flags_ = send_flag::none)
+    {
+        return publish (topic_, text_.data (), text_.size (), flags_);
+    }
+
     ZLINK_CPP_NODISCARD int
     publish_zero (const std::string &topic_,
                   void *data_,
@@ -553,7 +463,7 @@ class spot_t
                   void *hint_ = NULL,
                   send_flag flags_ = send_flag::none)
     {
-        if (!_pub) {
+        if (!_spot) {
             errno = _last_error != 0 ? _last_error : EFAULT;
             return -1;
         }
@@ -566,360 +476,262 @@ class spot_t
         if (zlink_msg_init_data (&part, data_, size_, ffn_, hint_) != 0)
             return -1;
 
-        const int rc = zlink_spot_pub_publish (
-          _pub, topic_.c_str (), &part, 1, static_cast<int> (flags_));
+        const int rc = zlink_publish (
+          _spot, topic_.c_str (), &part, 1, static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0) {
             const int err = errno;
-            zlink_msg_close (&part);
+            (void) zlink_msg_close (&part);
             errno = err;
         }
         return rc;
     }
 
-    /**
-     * @brief Subscribe to an exact topic.
-     * @param topic_ Topic string.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int subscribe (const std::string &topic_)
+    ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)
     {
-        if (!_sub) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
-            return -1;
-        }
-        return zlink_spot_sub_subscribe (_sub, topic_.c_str ());
+        return zlink_set_subscription (_spot, filter_.c_str ());
     }
 
-    /**
-     * @brief Subscribe using a topic pattern.
-     * @param pattern_ Pattern string.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int subscribe_pattern (const std::string &pattern_)
+    ZLINK_CPP_NODISCARD int unset_subscription (const std::string &filter_)
     {
-        if (!_sub) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
-            return -1;
-        }
-        return zlink_spot_sub_subscribe_pattern (_sub, pattern_.c_str ());
+        return zlink_unset_subscription (_spot, filter_.c_str ());
     }
 
-    /**
-     * @brief Remove topic or pattern subscription.
-     * @param topic_or_pattern_ Topic or pattern string.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int unsubscribe (const std::string &topic_or_pattern_)
+    ZLINK_CPP_NODISCARD int subscribe (const std::string &filter_)
     {
-        if (!_sub) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
-            return -1;
-        }
-        return zlink_spot_sub_unsubscribe (_sub, topic_or_pattern_.c_str ());
+        return set_subscription (filter_);
     }
 
-    /**
-     * @brief Register or clear async message handler.
-     * @param fn_ Handler function. Empty function disables callbacks.
-     * @return 0 on success, -1 on failure.
-     */
-    ZLINK_CPP_NODISCARD int set_handler (handler_fn fn_)
+    ZLINK_CPP_NODISCARD int unsubscribe (const std::string &filter_)
     {
-        const bool enable = static_cast<bool> (fn_);
-        if (!_sub) {
-            if (enable) {
-                errno = _last_error != 0 ? _last_error : EFAULT;
-                return -1;
+        return unset_subscription (filter_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    subscription_at (size_t index_,
+                     std::string &filter_out_,
+                     bool *is_pattern_out_ = NULL) const
+    {
+        size_t capacity = 256u;
+        const size_t max_capacity = 64u * 1024u;
+
+        while (capacity <= max_capacity) {
+            std::vector<char> buffer (capacity);
+            size_t length = capacity;
+            int is_pattern = 0;
+            const int rc = zlink_subscription_at (
+              _spot, index_, buffer.data (), &length, &is_pattern);
+            if (rc == 0) {
+                const size_t bounded = length <= buffer.size () ? length
+                                                                : buffer.size ();
+                size_t out_size = bounded;
+                if (out_size > 0 && buffer[out_size - 1] == '\0')
+                    --out_size;
+                filter_out_.assign (buffer.data (), out_size);
+                if (is_pattern_out_)
+                    *is_pattern_out_ = is_pattern != 0;
+                return 0;
             }
 
-            std::lock_guard<std::mutex> lock (_handler_sync);
-            _handler_fn = handler_fn ();
-            return 0;
+            if (errno != EINVAL || capacity == max_capacity)
+                return -1;
+
+            capacity *= 2u;
+            if (capacity > max_capacity)
+                capacity = max_capacity;
         }
 
-        const int rc = zlink_spot_sub_set_handler (
-          _sub, enable ? &spot_t::handler_trampoline : NULL, this);
-        if (rc != 0)
-            return -1;
-
-        std::lock_guard<std::mutex> lock (_handler_sync);
-        _handler_fn = std::move (fn_);
-        return 0;
+        errno = EINVAL;
+        return -1;
     }
 
-    /**
-     * @brief Receive one multipart publication.
-     * @param out_ Output message frames.
-     * @param topic_ Output topic.
-     * @param flags_ Receive flags.
-     * @param topic_len_out_ Optional output for full topic byte length.
-     * @param truncated_out_ Optional output for topic truncation flag.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    recv (std::vector<message_t> &out_,
+    subscribe_handler (zlink_subscribe_handler_fn handler_,
+                       void *userdata_ = NULL)
+    {
+        return zlink_subscribe_handler (_spot, handler_, userdata_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    send_ready_handler (zlink_send_ready_handler_fn handler_,
+                        void *userdata_ = NULL)
+    {
+        return zlink_send_ready_handler (_spot, handler_, userdata_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    recv (std::vector<message_t> &parts_,
           std::string &topic_,
           recv_flag flags_ = recv_flag::none,
+          zlink_routing_id_t *source_rid_out_ = NULL,
           size_t *topic_len_out_ = NULL,
           bool *truncated_out_ = NULL)
     {
-        if (!_sub) {
+        if (!_spot) {
             errno = _last_error != 0 ? _last_error : EFAULT;
             return -1;
         }
 
-        zlink_msg_t *parts = NULL;
-        size_t count = 0;
-        char topic_buf[256];
-        size_t topic_len = sizeof (topic_buf);
-        const int rc = zlink_spot_sub_recv (
-          _sub,
-          &parts,
-          &count,
-          static_cast<int> (flags_),
-          topic_buf,
-          &topic_len);
+        zlink_msg_t *parts_native = NULL;
+        size_t part_count = 0;
+        char topic_buffer[256];
+        size_t topic_length = sizeof (topic_buffer);
+        zlink_routing_id_t source_rid;
+        zlink_routing_id_t *rid_ptr = source_rid_out_ ? source_rid_out_ : &source_rid;
+
+        const int rc = zlink_subscribe (
+          _spot, rid_ptr, &parts_native, &part_count, topic_buffer, &topic_length,
+          static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0)
             return rc;
 
-        const bool truncated = topic_len > (sizeof (topic_buf) - 1);
+        const bool truncated = topic_length > (sizeof (topic_buffer) - 1u);
         if (topic_len_out_)
-            *topic_len_out_ = topic_len;
+            *topic_len_out_ = topic_length;
         if (truncated_out_)
             *truncated_out_ = truncated;
 
         const size_t topic_size =
-          topic_len < sizeof (topic_buf) ? topic_len : sizeof (topic_buf) - 1;
-        topic_.assign (topic_buf, topic_size);
-        return move_received_parts (out_, parts, count);
+          topic_length < sizeof (topic_buffer) ? topic_length
+                                               : sizeof (topic_buffer) - 1u;
+        topic_.assign (topic_buffer, topic_size);
+        return detail::assign_parts_from_native (parts_native, part_count, parts_);
     }
 
-    /**
-     * @brief Receive one single-frame payload into a caller buffer.
-     * @param topic_ Output topic string.
-     * @param data_ Destination payload buffer.
-     * @param size_ Destination buffer size in bytes.
-     * @param received_size_ Output payload size copied.
-     * @param flags_ Receive flags.
-     * @param topic_len_out_ Optional output for full topic byte length.
-     * @param truncated_out_ Optional output for topic truncation flag.
-     * @return 0 on success, -1 on failure.
-     */
     ZLINK_CPP_NODISCARD int
-    recv (std::string &topic_,
-          void *data_,
-          size_t size_,
-          size_t *received_size_,
+    recv (message_t &part_,
+          std::string &topic_,
           recv_flag flags_ = recv_flag::none,
+          zlink_routing_id_t *source_rid_out_ = NULL,
           size_t *topic_len_out_ = NULL,
           bool *truncated_out_ = NULL)
     {
-        if (!_sub) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
+        std::vector<message_t> parts;
+        if (recv (
+              parts, topic_, flags_, source_rid_out_, topic_len_out_,
+              truncated_out_)
+            != 0)
             return -1;
-        }
-        if (!received_size_ || (size_ > 0 && !data_)) {
-            errno = EINVAL;
-            return -1;
-        }
 
-        zlink_msg_t *parts = NULL;
-        size_t count = 0;
-        char topic_buf[256];
-        size_t topic_len = sizeof (topic_buf);
-        const int rc = zlink_spot_sub_recv (
-          _sub,
-          &parts,
-          &count,
-          static_cast<int> (flags_),
-          topic_buf,
-          &topic_len);
-        if (rc != 0)
-            return rc;
-
-        const bool truncated = topic_len > (sizeof (topic_buf) - 1);
-        if (topic_len_out_)
-            *topic_len_out_ = topic_len;
-        if (truncated_out_)
-            *truncated_out_ = truncated;
-
-        const size_t topic_size =
-          topic_len < sizeof (topic_buf) ? topic_len : sizeof (topic_buf) - 1;
-        topic_.assign (topic_buf, topic_size);
-
-        *received_size_ = 0;
-        if (!parts || count != 1) {
-            close_received_parts (parts, count);
-            errno = EPROTO;
-            return -1;
-        }
-
-        const size_t payload_size = zlink_msg_size (&parts[0]);
-        if (payload_size > size_) {
-            close_received_parts (parts, count);
+        if (parts.size () != 1) {
             errno = EMSGSIZE;
             return -1;
         }
 
-        if (payload_size > 0) {
-            void *payload_data = zlink_msg_data (&parts[0]);
-            if (payload_data && data_)
-                memcpy (data_, payload_data, payload_size);
-        }
-        *received_size_ = payload_size;
-        close_received_parts (parts, count);
+        part_ = std::move (parts[0]);
         return 0;
     }
 
-    /**
-     * @brief Explicitly destroy pub/sub handles.
-     * @return 0 on success, -1 on failure.
-     */
+    ZLINK_CPP_NODISCARD int
+    set (socket_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_option (
+          _spot, static_cast<zlink_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set (socket_option_key_t<T> key_, const T &value_)
+    {
+        return set (key_.option, &value_, sizeof (value_));
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set (socket_option_key_t<std::string> key_, const std::string &value_)
+    {
+        return set (key_.option, value_.data (), value_.size ());
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get (socket_option option_, void *value_, size_t *size_) const
+    {
+        return zlink_get_option (
+          _spot, static_cast<zlink_option_t> (option_), value_, size_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    get (socket_option_key_t<T> key_, T &value_) const
+    {
+        size_t size = sizeof (value_);
+        return get (key_.option, &value_, &size);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return detail::get_string_option (
+          &zlink_get_option, _spot, key_.option, 256u, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set (pub_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_pub_option (
+          _spot, static_cast<zlink_pub_option_t> (option_), value_, size_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get (pub_option option_, void *value_, size_t *size_) const
+    {
+        return zlink_get_pub_option (
+          _spot, static_cast<zlink_pub_option_t> (option_), value_, size_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set (sub_option option_, const void *value_, size_t size_)
+    {
+        return zlink_set_sub_option (
+          _spot, static_cast<zlink_sub_option_t> (option_), value_, size_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get (sub_option option_, void *value_, size_t *size_) const
+    {
+        return zlink_get_sub_option (
+          _spot, static_cast<zlink_sub_option_t> (option_), value_, size_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get (pub_option option_, std::string &value_) const
+    {
+        return detail::get_string_option (
+          &zlink_get_pub_option, _spot, option_, 256u, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    {
+        return zlink_set_routing_id (_spot, data_, size_);
+    }
+
+    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &data_)
+    {
+        return set_routing_id (data_.data (), data_.size ());
+    }
+
+    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t *out_) const
+    {
+        return zlink_get_routing_id (_spot, out_);
+    }
+
     ZLINK_CPP_NODISCARD int destroy ()
     {
-        int rc = 0;
-        if (_sub)
-            (void) set_handler (handler_fn ());
+        if (!_spot)
+            return 0;
 
-        if (_pub) {
-            void *tmp = _pub;
-            _pub = NULL;
-            if (zlink_spot_pub_destroy (&tmp) != 0)
-                rc = -1;
-        }
-
-        if (_sub) {
-            void *tmp = _sub;
-            _sub = NULL;
-            if (zlink_spot_sub_destroy (&tmp) != 0)
-                rc = -1;
-        }
-
-        _node = NULL;
+        void *tmp = _spot;
+        const int rc = zlink_spot_destroy (&tmp);
+        if (rc == 0)
+            _spot = NULL;
         return rc;
     }
 
-    /**
-     * @brief Access native publisher handle.
-     * @return Native handle pointer.
-     */
-    void *pub_handle () const { return _pub; }
-    /**
-     * @brief Access native publisher handle.
-     * @return Native handle pointer.
-     */
-    void *publisher_handle () const { return _pub; }
-    /**
-     * @brief Access native subscriber handle.
-     * @return Native handle pointer.
-     */
-    void *sub_handle () const { return _sub; }
-    /**
-     * @brief Access native subscriber handle.
-     * @return Native handle pointer.
-     */
-    void *subscriber_handle () const { return _sub; }
-    /**
-     * @brief Access native publisher handle (legacy alias).
-     * @return Native handle pointer.
-     */
-    void *handle () const { return pub_handle (); }
+    void *handle () const { return _spot; }
 
   private:
-    static void close_received_parts (zlink_msg_t *parts_, size_t count_) noexcept
-    {
-        if (!parts_)
-            return;
-        for (size_t i = 0; i < count_; ++i)
-            zlink_msg_close (&parts_[i]);
-        std::free (parts_);
-    }
-
-    static void close_native_parts (std::vector<zlink_msg_t> &parts_,
-                                    size_t count_) noexcept
-    {
-        for (size_t i = 0; i < count_; ++i)
-            zlink_msg_close (&parts_[i]);
-    }
-
-    static int move_parts_transfer (std::vector<message_t> &parts_,
-                                    std::vector<zlink_msg_t> &native_parts_,
-                                    size_t &moved_)
-    {
-        moved_ = 0;
-        for (size_t i = 0; i < parts_.size (); ++i) {
-            if (parts_[i].move_to (&native_parts_[i]) != 0) {
-                const int err = errno;
-                close_native_parts (native_parts_, moved_);
-                for (size_t j = i; j < parts_.size (); ++j)
-                    parts_[j].close ();
-                errno = err;
-                return -1;
-            }
-            ++moved_;
-        }
-        return 0;
-    }
-
-    static int move_received_parts (std::vector<message_t> &out_,
-                                    zlink_msg_t *parts_,
-                                    size_t count_)
-    {
-        out_.clear ();
-        if (!parts_ || count_ == 0) {
-            if (parts_)
-                close_received_parts (parts_, count_);
-            return 0;
-        }
-
-        out_.reserve (count_);
-        for (size_t i = 0; i < count_; ++i) {
-            message_t part;
-            if (!part.valid () || zlink_msg_move (part.handle (), &parts_[i]) != 0) {
-                close_received_parts (parts_, count_);
-                out_.clear ();
-                errno = EFAULT;
-                return -1;
-            }
-            out_.push_back (std::move (part));
-        }
-
-        close_received_parts (parts_, count_);
-        return 0;
-    }
-
-    static void handler_trampoline (const char *topic_,
-                                    size_t topic_len_,
-                                    const zlink_msg_t *parts_,
-                                    size_t part_count_,
-                                    void *userdata_) noexcept
-    {
-        spot_t *self = static_cast<spot_t *> (userdata_);
-        if (!self)
-            return;
-
-        handler_fn fn;
-        {
-            std::lock_guard<std::mutex> lock (self->_handler_sync);
-            fn = self->_handler_fn;
-        }
-        if (!fn)
-            return;
-
-        try {
-            fn (std::string (topic_, topic_len_), parts_, part_count_);
-        }
-        catch (...) {
-        }
-    }
-
-    void *_node;
-    void *_pub;
-    void *_sub;
+    void *_spot;
     int _last_error;
-    std::vector<zlink_msg_t> _publish_parts_scratch;
-    handler_fn _handler_fn;
-    std::mutex _handler_sync;
 };
 
 } // namespace service

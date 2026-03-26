@@ -3,434 +3,420 @@
 #define ZLINK_CPP_COMPAT_HPP_INCLUDED
 
 #include "common.hpp"
-#include <cerrno>
-#include <cstdlib>
 
 namespace zlink
 {
 namespace compat
 {
 
-namespace detail
+ZLINK_CPP_DEPRECATED ("Use zlink_errno().")
+inline int err_no ()
 {
-
-inline int receiver_option_from_socket_option (int option_)
-{
-    switch (option_) {
-    case ZLINK_SNDHWM:
-        return ZLINK_RECEIVER_OPT_SNDHWM;
-    case ZLINK_RCVHWM:
-        return ZLINK_RECEIVER_OPT_RCVHWM;
-    case ZLINK_SNDTIMEO:
-        return ZLINK_RECEIVER_OPT_SNDTIMEO;
-    case ZLINK_RCVTIMEO:
-        return ZLINK_RECEIVER_OPT_RCVTIMEO;
-    case ZLINK_LINGER:
-        return ZLINK_RECEIVER_OPT_LINGER;
-    case ZLINK_SNDBUF:
-        return ZLINK_RECEIVER_OPT_SNDBUF;
-    case ZLINK_RCVBUF:
-        return ZLINK_RECEIVER_OPT_RCVBUF;
-    default:
-        errno = EINVAL;
-        return -1;
-    }
+    return zlink_errno ();
 }
 
-inline int spot_pub_option_from_socket_option (int option_)
+ZLINK_CPP_DEPRECATED ("Use zlink_strerror().")
+inline const char *strerror (int code_)
 {
-    switch (option_) {
-    case ZLINK_SNDHWM:
-        return ZLINK_SPOT_PUB_OPT_SNDHWM;
-    case ZLINK_SNDTIMEO:
-        return ZLINK_SPOT_PUB_OPT_SNDTIMEO;
-    case ZLINK_LINGER:
-        return ZLINK_SPOT_PUB_OPT_LINGER;
-    case ZLINK_XPUB_NODROP:
-        return ZLINK_SPOT_PUB_OPT_NODROP;
-    case ZLINK_SNDBUF:
-        return ZLINK_SPOT_PUB_OPT_SNDBUF;
-    case ZLINK_RCVBUF:
-        return ZLINK_SPOT_PUB_OPT_RCVBUF;
-    default:
-        errno = EINVAL;
-        return -1;
-    }
+    return zlink_strerror (code_);
 }
 
-inline int spot_sub_option_from_socket_option (int option_)
+ZLINK_CPP_DEPRECATED ("Use zlink_has().")
+inline int has (const char *capability_)
 {
-    switch (option_) {
-    case ZLINK_RCVHWM:
-        return ZLINK_SPOT_SUB_OPT_RCVHWM;
-    case ZLINK_RCVTIMEO:
-        return ZLINK_SPOT_SUB_OPT_RCVTIMEO;
-    case ZLINK_LINGER:
-        return ZLINK_SPOT_SUB_OPT_LINGER;
-    case ZLINK_SNDBUF:
-        return ZLINK_SPOT_SUB_OPT_SNDBUF;
-    case ZLINK_RCVBUF:
-        return ZLINK_SPOT_SUB_OPT_RCVBUF;
-    default:
-        errno = EINVAL;
-        return -1;
-    }
+    return zlink_has (capability_);
 }
 
-} // namespace detail
+ZLINK_CPP_DEPRECATED ("Use zlink_ctx_new().")
+inline void *ctx_new ()
+{
+    return zlink_ctx_new ();
+}
 
-inline int err_no () { return zlink_errno (); }
-inline const char *strerror (int code_) { return zlink_strerror (code_); }
-inline int has (const char *capability_) { return zlink_has (capability_); }
-
-inline void *ctx_new () { return zlink_ctx_new (); }
+ZLINK_CPP_DEPRECATED ("Use zlink_ctx_set().")
 inline int ctx_set (void *ctx_, int option_, int value_)
 {
-    return zlink_ctx_set (ctx_, option_, value_);
+    return zlink_ctx_set (
+      ctx_, static_cast<zlink_ctx_option_t> (option_), value_);
 }
-inline int ctx_shutdown (void *ctx_) { return zlink_ctx_shutdown (ctx_); }
-inline int ctx_term (void *ctx_) { return zlink_ctx_term (ctx_); }
 
-inline void *socket (void *ctx_, int type_) { return zlink_socket (ctx_, type_, NULL); }
-inline int close (void *socket_) { return zlink_close (socket_); }
+ZLINK_CPP_DEPRECATED ("Use zlink_ctx_shutdown().")
+inline int ctx_shutdown (void *ctx_)
+{
+    return zlink_ctx_shutdown (ctx_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_ctx_term().")
+inline int ctx_term (void *ctx_)
+{
+    return zlink_ctx_term (ctx_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_socket(ctx, type).")
+inline void *socket (void *ctx_, int type_)
+{
+    return zlink_socket (ctx_, static_cast<zlink_socket_type_t> (type_));
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_close().")
+inline int close (void *socket_)
+{
+    return zlink_close (socket_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_bind().")
 inline int bind (void *socket_, const char *endpoint_)
 {
     return zlink_bind (socket_, endpoint_);
 }
+
+ZLINK_CPP_DEPRECATED ("Use zlink_connect().")
 inline int connect (void *socket_, const char *endpoint_)
 {
     return zlink_connect (socket_, endpoint_);
 }
-inline int send (void *socket_, const void *buf_, size_t len_, int flags_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_unbind().")
+inline int unbind (void *socket_, const char *endpoint_)
 {
-    return zlink_send (socket_, buf_, len_, flags_);
+    return zlink_unbind (socket_, endpoint_);
 }
-inline int recv (void *socket_, void *buf_, size_t len_, int flags_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_disconnect().")
+inline int disconnect (void *socket_, const char *endpoint_)
 {
-    return zlink_recv (socket_, buf_, len_, flags_);
+    return zlink_disconnect (socket_, endpoint_);
 }
-inline int set_sockopt (void *socket_,
-                        int option_,
-                        const void *value_,
-                        size_t len_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_send() multipart API.")
+inline int send (void *socket_,
+                 zlink_msg_t *parts_,
+                 size_t part_count_,
+                 int flags_)
 {
-    return zlink_setsockopt (socket_, option_, value_, len_);
+    return zlink_send (
+      socket_, parts_, part_count_, static_cast<zlink_send_flags_t> (flags_));
 }
-inline int setsockopt (void *socket_,
+
+ZLINK_CPP_DEPRECATED ("Use zlink_recv() multipart API.")
+inline int recv (void *socket_,
+                 zlink_routing_id_t *source_rid_out_,
+                 zlink_msg_t **parts_out_,
+                 size_t *part_count_out_,
+                 int flags_)
+{
+    return zlink_recv (socket_, source_rid_out_, parts_out_, part_count_out_,
+                       static_cast<zlink_send_flags_t> (flags_));
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_publish().")
+inline int publish (void *subject_,
+                    const char *topic_id_,
+                    zlink_msg_t *parts_,
+                    size_t part_count_,
+                    int flags_)
+{
+    return zlink_publish (
+      subject_, topic_id_, parts_, part_count_,
+      static_cast<zlink_send_flags_t> (flags_));
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_set_option().")
+inline int set_option (void *handle_,
                        int option_,
                        const void *value_,
-                       size_t len_)
+                       size_t size_)
 {
-    return set_sockopt (socket_, option_, value_, len_);
+    return zlink_set_option (
+      handle_, static_cast<zlink_option_t> (option_), value_, size_);
 }
-inline int get_sockopt (void *socket_, int option_, void *value_, size_t *len_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_get_option().")
+inline int get_option (void *handle_,
+                       int option_,
+                       void *value_,
+                       size_t *size_)
 {
-    return zlink_getsockopt (socket_, option_, value_, len_);
+    return zlink_get_option (
+      handle_, static_cast<zlink_option_t> (option_), value_, size_);
 }
-inline int getsockopt (void *socket_, int option_, void *value_, size_t *len_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_set_routing_id().")
+inline int set_routing_id (void *handle_, const void *data_, size_t size_)
 {
-    return get_sockopt (socket_, option_, value_, len_);
+    return zlink_set_routing_id (handle_, data_, size_);
 }
+
+ZLINK_CPP_DEPRECATED ("Use zlink_get_routing_id().")
+inline int get_routing_id (void *handle_, zlink_routing_id_t *out_)
+{
+    return zlink_get_routing_id (handle_, out_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_set_tls_server().")
+inline int set_tls_server (void *handle_,
+                           const char *cert_,
+                           const char *key_,
+                           int require_client_cert_)
+{
+    return zlink_set_tls_server (
+      handle_, cert_, key_, require_client_cert_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_set_tls_client().")
+inline int set_tls_client (void *handle_,
+                           const char *ca_cert_,
+                           const char *hostname_,
+                           int trust_system_)
+{
+    return zlink_set_tls_client (
+      handle_, ca_cert_, hostname_, trust_system_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_set_subscription().")
+inline int set_subscription (void *handle_, const char *filter_)
+{
+    return zlink_set_subscription (handle_, filter_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_unset_subscription().")
+inline int unset_subscription (void *handle_, const char *filter_)
+{
+    return zlink_unset_subscription (handle_, filter_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_subscription_at().")
+inline int subscription_at (void *handle_,
+                            size_t index_,
+                            char *filter_out_,
+                            size_t *filter_len_inout_,
+                            int *is_pattern_out_)
+{
+    return zlink_subscription_at (
+      handle_, index_, filter_out_, filter_len_inout_, is_pattern_out_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_socket_monitor_open().")
+inline void *
+socket_monitor_open (void *socket_, zlink_socket_monitor_event_mask_t events_)
+{
+    zlink_socket_monitor_open_options_t options;
+    options.events = events_;
+    return zlink_socket_monitor_open (socket_, &options);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_socket_monitor_recv().")
+inline int monitor_recv (void *monitor_, zlink_socket_monitor_event_t *event_)
+{
+    return zlink_socket_monitor_recv (monitor_, event_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_monitor_snapshot().")
+inline int monitor_snapshot (void *monitor_, zlink_monitor_snapshot_t *snapshot_)
+{
+    return zlink_monitor_snapshot (monitor_, snapshot_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_monitor_close().")
+inline int monitor_close (void **monitor_)
+{
+    return zlink_monitor_close (monitor_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_service_monitor_open().")
+inline void *
+service_monitor_open (void *target_, zlink_service_monitor_event_mask_t events_)
+{
+    zlink_service_monitor_open_options_t options;
+    options.events = events_;
+    return zlink_service_monitor_open (target_, &options);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_service_monitor_recv().")
+inline int
+service_monitor_recv (void *monitor_, zlink_service_monitor_event_t *event_)
+{
+    return zlink_service_monitor_recv (monitor_, event_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_service_monitor_handler().")
+inline int service_monitor_handler (void *monitor_,
+                                    zlink_service_monitor_handler_fn handler_,
+                                    void *userdata_)
+{
+    return zlink_service_monitor_handler (monitor_, handler_, userdata_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_socket_monitor_handler().")
+inline int socket_monitor_handler (void *monitor_,
+                                   zlink_socket_monitor_handler_fn handler_,
+                                   void *userdata_)
+{
+    return zlink_socket_monitor_handler (monitor_, handler_, userdata_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_registry_new().")
+inline void *registry_new (void *ctx_)
+{
+    return zlink_registry_new (ctx_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_registry_bind().")
+inline int registry_bind (void *registry_,
+                          const char *pub_endpoint_,
+                          const char *router_endpoint_)
+{
+    return zlink_registry_bind (registry_, pub_endpoint_, router_endpoint_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_registry_destroy().")
+inline int registry_destroy (void **registry_)
+{
+    return zlink_registry_destroy (registry_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_discovery_new(ctx, type, name).")
+inline void *discovery_new (void *ctx_,
+                            zlink_service_type_t service_type_,
+                            const char *service_name_)
+{
+    return zlink_discovery_new (ctx_, service_type_, service_name_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_discovery_connect_registry().")
+inline int discovery_connect_registry (void *discovery_, const char *endpoint_)
+{
+    return zlink_discovery_connect_registry (discovery_, endpoint_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_discovery_destroy().")
+inline int discovery_destroy (void **discovery_)
+{
+    return zlink_discovery_destroy (discovery_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_spot_new().")
+inline void *spot_new (void *ctx_)
+{
+    return zlink_spot_new (ctx_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_spot_destroy().")
+inline int spot_destroy (void **spot_)
+{
+    return zlink_spot_destroy (spot_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_spot_node_new().")
+inline void *spot_node_new (void *ctx_)
+{
+    return zlink_spot_node_new (ctx_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_spot_node_attach_discovery().")
+inline int spot_node_attach_discovery (void *node_, void *discovery_)
+{
+    return zlink_spot_node_attach_discovery (node_, discovery_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_spot_node_destroy().")
+inline int spot_node_destroy (void **node_)
+{
+    return zlink_spot_node_destroy (node_);
+}
+
+ZLINK_CPP_DEPRECATED ("Use zlink_poll().")
 inline int poll (zlink_pollitem_t *items_, int count_, long timeout_ms_)
 {
     return zlink_poll (items_, count_, timeout_ms_);
 }
 
-inline int msg_init (zlink_msg_t *msg_) { return zlink_msg_init (msg_); }
-inline int msg_close (zlink_msg_t *msg_) { return zlink_msg_close (msg_); }
-inline int msg_recv (zlink_msg_t *msg_, void *socket_, int flags_)
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_init().")
+inline int msg_init (zlink_msg_t *msg_)
 {
-    return zlink_msg_recv (msg_, socket_, flags_);
+    return zlink_msg_init (msg_);
 }
-inline int msg_send (zlink_msg_t *msg_, void *socket_, int flags_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_init_size().")
+inline int msg_init_size (zlink_msg_t *msg_, size_t size_)
 {
-    return zlink_msg_send (msg_, socket_, flags_);
+    return zlink_msg_init_size (msg_, size_);
 }
-inline void *msg_data (zlink_msg_t *msg_) { return zlink_msg_data (msg_); }
-inline size_t msg_size (const zlink_msg_t *msg_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_init_data().")
+inline int msg_init_data (zlink_msg_t *msg_,
+                          void *data_,
+                          size_t size_,
+                          zlink_free_fn *ffn_,
+                          void *hint_)
 {
-    return zlink_msg_size (const_cast<zlink_msg_t *> (msg_));
+    return zlink_msg_init_data (msg_, data_, size_, ffn_, hint_);
 }
-inline int msg_more (const zlink_msg_t *msg_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_close().")
+inline int msg_close (zlink_msg_t *msg_)
 {
-    return zlink_msg_more (const_cast<zlink_msg_t *> (msg_));
+    return zlink_msg_close (msg_);
 }
+
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_move().")
 inline int msg_move (zlink_msg_t *dest_, zlink_msg_t *src_)
 {
     return zlink_msg_move (dest_, src_);
 }
-inline int multipart_close (zlink_msg_t *parts_, size_t count_)
+
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_copy().")
+inline int msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_)
 {
-    if (!parts_)
-        return 0;
-    for (size_t i = 0; i < count_; ++i)
-        zlink_msg_close (&parts_[i]);
-    std::free (parts_);
-    return 0;
+    return zlink_msg_copy (dest_, src_);
 }
 
-inline void *socket_monitor_open (void *socket_, int events_)
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_data().")
+inline void *msg_data (zlink_msg_t *msg_)
 {
-    return zlink_socket_monitor_open (socket_, events_, NULL, NULL);
-}
-inline int socket_monitor (void *socket_, const char *addr_, int events_)
-{
-    return zlink_socket_monitor (socket_, addr_, events_);
-}
-inline int monitor_recv (void *monitor_, zlink_monitor_event_t *event_, int flags_)
-{
-    return zlink_monitor_recv (monitor_, event_, flags_);
-}
-inline int socket_peers (void *socket_, zlink_peer_info_t *peers_, size_t *count_)
-{
-    return zlink_socket_peers (socket_, peers_, count_);
-}
-inline int socket_peer_info (void *socket_,
-                             const zlink_routing_id_t *routing_id_,
-                             zlink_peer_info_t *info_)
-{
-    return zlink_socket_peer_info (
-      socket_, const_cast<zlink_routing_id_t *> (routing_id_), info_);
+    return zlink_msg_data (msg_);
 }
 
-inline void *registry_new (void *ctx_) { return zlink_registry_new (ctx_); }
-inline int registry_destroy (void **registry_)
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_size().")
+inline size_t msg_size (const zlink_msg_t *msg_)
 {
-    return zlink_registry_destroy (registry_);
-}
-inline int registry_set_endpoints (void *registry_,
-                                   const char *pub_,
-                                   const char *router_)
-{
-    return zlink_registry_set_endpoints (registry_, pub_, router_);
-}
-inline int registry_set_broadcast_interval (void *registry_, uint32_t ivl_ms_)
-{
-    return zlink_registry_set_broadcast_interval (registry_, ivl_ms_);
-}
-inline int registry_set_heartbeat (void *registry_,
-                                   uint32_t ivl_ms_,
-                                   uint32_t timeout_ms_)
-{
-    return zlink_registry_set_heartbeat (registry_, ivl_ms_, timeout_ms_);
-}
-inline int registry_start (void *registry_) { return zlink_registry_start (registry_); }
-
-inline void *discovery_new_typed (void *ctx_, uint16_t service_type_)
-{
-    return zlink_discovery_new_typed (ctx_, service_type_);
-}
-inline int discovery_destroy (void **discovery_)
-{
-    return zlink_discovery_destroy (discovery_);
-}
-inline int discovery_connect_registry (void *discovery_, const char *endpoint_)
-{
-    return zlink_discovery_connect_registry (discovery_, endpoint_);
-}
-inline int discovery_receiver_count (void *discovery_, const char *service_)
-{
-    return zlink_discovery_receiver_count (discovery_, service_);
-}
-inline int discovery_service_available (void *discovery_, const char *service_)
-{
-    return zlink_discovery_service_available (discovery_, service_);
-}
-inline int discovery_get_receivers (void *discovery_,
-                                    const char *service_,
-                                    zlink_receiver_info_t *providers_,
-                                    size_t *count_)
-{
-    return zlink_discovery_get_receivers (
-      discovery_, service_, providers_, count_);
+    return zlink_msg_size (const_cast<zlink_msg_t *> (msg_));
 }
 
-inline void *receiver_new (void *ctx_, const char *routing_id_)
+ZLINK_CPP_DEPRECATED ("Use zlink_msg_refcnt().")
+inline int msg_refcnt (const zlink_msg_t *msg_)
 {
-    return zlink_receiver_new (ctx_, routing_id_);
-}
-inline int receiver_destroy (void **receiver_)
-{
-    return zlink_receiver_destroy (receiver_);
-}
-inline int receiver_bind (void *receiver_, const char *endpoint_)
-{
-    return zlink_receiver_bind (receiver_, endpoint_);
-}
-inline int receiver_connect_registry (void *receiver_, const char *endpoint_)
-{
-    return zlink_receiver_connect_registry (receiver_, endpoint_);
-}
-inline int receiver_register (void *receiver_,
-                              const char *service_,
-                              const char *advertise_,
-                              uint32_t weight_)
-{
-    return zlink_receiver_register (receiver_, service_, advertise_, weight_);
-}
-inline int receiver_setsockopt (void *receiver_,
-                                int role_,
-                                int option_,
-                                const void *value_,
-                                size_t len_)
-{
-    (void) role_;
-    const int mapped = detail::receiver_option_from_socket_option (option_);
-    if (mapped < 0)
-        return -1;
-
-    return zlink_receiver_set_option (receiver_, mapped, value_, len_);
-}
-inline void *receiver_router_socket_unsafe (void *receiver_)
-{
-    (void) receiver_;
-    errno = ENOTSUP;
-    return NULL;
+    return zlink_msg_refcnt (const_cast<zlink_msg_t *> (msg_));
 }
 
-inline void *spot_node_new (void *ctx_) { return zlink_spot_node_new (ctx_, NULL, NULL, NULL); }
-inline int spot_node_destroy (void **node_) { return zlink_spot_node_destroy (node_); }
-inline int spot_node_bind (void *node_, const char *endpoint_)
+ZLINK_CPP_DEPRECATED ("Use zlink_multipart_close().")
+inline void multipart_close (zlink_msg_t *parts_, size_t count_)
 {
-    return zlink_spot_node_bind (node_, endpoint_);
-}
-inline int spot_node_register (void *node_,
-                               const char *service_,
-                               const char *advertise_)
-{
-    return zlink_spot_node_register (node_, service_, advertise_);
-}
-inline int spot_node_unregister (void *node_, const char *service_)
-{
-    return zlink_spot_node_unregister (node_, service_);
-}
-inline int spot_node_set_discovery (void *node_,
-                                    void *discovery_,
-                                    const char *service_)
-{
-    return zlink_spot_node_set_discovery (node_, discovery_, service_);
-}
-inline int spot_node_setsockopt (void *node_,
-                                 int role_,
-                                 int option_,
-                                 const void *value_,
-                                 size_t len_)
-{
-    switch (role_) {
-    case 0:
-        errno = EINVAL;
-        return -1;
-    case 1: {
-        const int mapped = detail::spot_pub_option_from_socket_option (option_);
-        if (mapped < 0)
-            return -1;
-        return zlink_spot_node_set_pub_option (node_, mapped, value_, len_);
-    }
-    case 2: {
-        const int mapped = detail::spot_sub_option_from_socket_option (option_);
-        if (mapped < 0)
-            return -1;
-        return zlink_spot_node_set_sub_option (node_, mapped, value_, len_);
-    }
-    default:
-        errno = EINVAL;
-        return -1;
-    }
-}
-inline void *spot_node_pub_socket_unsafe (void *node_)
-{
-    return zlink_spot_node_default_pub (node_);
-}
-inline void *spot_node_pub_socket (void *node_)
-{
-    return zlink_spot_node_default_pub (node_);
-}
-inline void *spot_node_sub_socket_unsafe (void *node_)
-{
-    return zlink_spot_node_default_sub (node_);
-}
-inline void *spot_node_sub_socket (void *node_)
-{
-    return zlink_spot_node_default_sub (node_);
-}
-inline int spot_node_pub_peers (void *node_,
-                                zlink_peer_info_t *peers_,
-                                size_t *count_)
-{
-    void *pub = zlink_spot_node_default_pub (node_);
-    if (!pub)
-        return -1;
-
-    return zlink_spot_pub_peers (pub, peers_, count_);
-}
-inline int spot_node_sub_peers (void *node_,
-                                zlink_peer_info_t *peers_,
-                                size_t *count_)
-{
-    void *sub = zlink_spot_node_default_sub (node_);
-    if (!sub)
-        return -1;
-
-    return zlink_spot_sub_peers (sub, peers_, count_);
+    zlink_multipart_close (parts_, count_);
 }
 
-inline void *spot_pub_new (void *node_) { return zlink_spot_pub_new (node_); }
-inline int spot_pub_destroy (void **spot_pub_)
+ZLINK_CPP_DEPRECATED ("Use zlink_recv_handler().")
+inline int recv_handler (void *socket_,
+                         zlink_socket_msg_handler_fn handler_,
+                         void *userdata_)
 {
-    return zlink_spot_pub_destroy (spot_pub_);
-}
-inline int spot_pub_publish_bytes (void *spot_pub_,
-                                   const char *topic_,
-                                   const void *data_,
-                                   size_t size_,
-                                   int flags_)
-{
-    return zlink_spot_pub_publish_bytes (
-      spot_pub_, topic_, data_, size_, flags_);
+    return zlink_recv_handler (socket_, handler_, userdata_);
 }
 
-inline void *spot_sub_new (void *node_) { return zlink_spot_sub_new (node_); }
-inline int spot_sub_destroy (void **spot_sub_)
+ZLINK_CPP_DEPRECATED ("Use zlink_subscribe_handler().")
+inline int subscribe_handler (void *subject_,
+                              zlink_subscribe_handler_fn handler_,
+                              void *userdata_)
 {
-    return zlink_spot_sub_destroy (spot_sub_);
-}
-inline int spot_sub_subscribe (void *spot_sub_, const char *topic_)
-{
-    return zlink_spot_sub_subscribe (spot_sub_, topic_);
-}
-inline int spot_sub_recv (void *spot_sub_,
-                          zlink_msg_t **parts_,
-                          size_t *count_,
-                          int flags_,
-                          char *topic_,
-                          size_t *topic_len_)
-{
-    return zlink_spot_sub_recv (
-      spot_sub_, parts_, count_, flags_, topic_, topic_len_);
+    return zlink_subscribe_handler (subject_, handler_, userdata_);
 }
 
-inline int stream_attach_raw (void *socket_, zlink_stream_on_raw_fn on_raw_)
+ZLINK_CPP_DEPRECATED ("Use zlink_send_ready_handler().")
+inline int send_ready_handler (void *subject_,
+                               zlink_send_ready_handler_fn handler_,
+                               void *userdata_)
 {
-    return zlink_stream_attach_raw (socket_, on_raw_, NULL);
-}
-inline int stream_attach_len32be (void *socket_,
-                                  zlink_stream_on_packets_fn on_packets_)
-{
-    return zlink_stream_attach_len32be (socket_, on_packets_);
-}
-inline int stream_detach (void *socket_) { return zlink_stream_detach (socket_); }
-inline int stream_send (void *socket_,
-                        const zlink_routing_id_t *routing_id_,
-                        const void *data_,
-                        size_t size_,
-                        int flags_)
-{
-    return zlink_stream_send (
-      socket_,
-      const_cast<zlink_routing_id_t *> (routing_id_),
-      data_,
-      size_,
-      flags_);
+    return zlink_send_ready_handler (subject_, handler_, userdata_);
 }
 
 } // namespace compat

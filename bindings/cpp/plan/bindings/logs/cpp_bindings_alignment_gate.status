@@ -1,0 +1,11 @@
+status=success
+stage=done
+label=cpp_bindings_alignment_gate
+owner_pid=2603966
+started_at=2026-03-26 19:16:56 +0900
+updated_at=2026-03-26 19:17:55 +0900
+stress_log=/home/hep7/project/kairos/zlink/bindings/cpp/plan/bindings/logs/cpp_bindings_alignment_gate_20260326_191656.log
+stress_exitcode=/home/hep7/project/kairos/zlink/bindings/cpp/plan/bindings/logs/cpp_bindings_alignment_gate_20260326_191656.log.exitcode
+stress_summary=/home/hep7/project/kairos/zlink/bindings/cpp/plan/bindings/logs/cpp_bindings_alignment_gate_20260326_191656.log.summary
+stress_command=./core/tests/run_thread_safe_contract_stress.sh --build-dir /home/hep7/project/kairos/zlink/core/build --count 1
+stress_pid=2603975

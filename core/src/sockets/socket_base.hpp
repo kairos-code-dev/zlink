@@ -84,10 +84,20 @@ class socket_base_t : public own_t,
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
     int send (zlink::msg_t *msg_, int flags_);
+    // Internal helper for logical multipart wrappers that already hold the
+    // public send scope for the whole transaction.
+    int send_scoped (zlink::msg_t *msg_,
+                     int flags_,
+                     socket_public_send_scope_t &scope_);
     int send_routed (const zlink_routing_id_t *target_rid_,
                      zlink::msg_t *msg_,
                      int flags_);
+    int send_routed_scoped (const zlink_routing_id_t *target_rid_,
+                            zlink::msg_t *msg_,
+                            int flags_,
+                            socket_public_send_scope_t &scope_);
     int rollback ();
+    int rollback_scoped (socket_public_send_scope_t &scope_);
     int recv (zlink::msg_t *msg_, int flags_);
     int recv_routed (zlink::msg_t *msg_,
                      zlink_routing_id_t *source_rid_out_,
@@ -315,6 +325,29 @@ class socket_base_t : public own_t,
 
   private:
     friend class socket_discovery_attachment_t;
+    friend int logical_multipart_send (socket_base_t *socket_,
+                                       zlink_msg_t *parts_,
+                                       size_t part_count_,
+                                       int flags_);
+    friend int logical_multipart_send_routed (
+      socket_base_t *socket_,
+      const zlink_routing_id_t *routing_id_,
+      zlink_msg_t *parts_,
+      size_t part_count_,
+      int flags_);
+    friend int logical_multipart_send_prefixed (socket_base_t *socket_,
+                                                const void *prefix_data_,
+                                                size_t prefix_size_,
+                                                zlink_msg_t *parts_,
+                                                size_t part_count_,
+                                                int flags_,
+                                                int route_ready_retry_ms_);
+    friend int logical_multipart_publish (socket_base_t *socket_,
+                                          const char *topic_,
+                                          zlink_msg_t *parts_,
+                                          size_t part_count_,
+                                          int flags_,
+                                          bool fallback_on_missing_sndtimeo_);
 
     enum
     {

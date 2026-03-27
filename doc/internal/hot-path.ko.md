@@ -55,6 +55,18 @@ public send/recv 경로다.
   `inproc -41.79% / -44.68%`였다.
 - 즉 empty-topic frame/topic-aware recv surface mismatch는 실제로 있었지만,
   현재 `PUBSUB` 잔여 gap을 그 차이 하나로 설명할 수는 없다.
+- 이후 2026-03-28 same-handle concurrent `PUB` publish regression
+  (`test_pubsub_publish_is_safe_from_multiple_threads`)이
+  topic+payload interleave로 재현돼,
+  현재 코드는 logical multipart publish/send 전체를 하나의 public send
+  scope로 묶어 contract를 회복했다.
+- 다만 이 fix 뒤 latest single `PUBSUB` public rerun은
+  `tcp/inproc -30.71% / -40.37%`였고,
+  no-topic single-part direct-send fallback rerun도
+  `-31.67% / -38.76%`로 broad win이 아니었다.
+- 즉 logical multipart send scope는 이제 correctness contract로 유지하되,
+  `PUBSUB` 잔여 gap을 줄이는 다음 단계는 같은 contract를 유지한 채
+  publication/lifecycle cost를 더 줄이는 쪽이어야 한다.
 
 ## 2. 현재 비교 surface
 
@@ -77,16 +89,28 @@ publication/lifecycle/distribution differential을 더 직접적으로 반영한
 
 이 문서의 hot path도 그 기준으로 정의한다.
 
-다만 2026-03-27 현재 `PAIR`/`DEALER_DEALER`의 zlink 내부 raw/public 분리를
-다시 찍어보면, zlink 내부 public wrapper penalty는 이미 low single-digit
-수준이다. 따라서 현재 남은 큰 gap의 상위 축은 public wrapper alone이 아니라
-send-side lifecycle/pipe publication 쪽으로 본다.
+다만 raw/public 해석은 현재 고정된 결론이 아니다.
+
+- 2026-03-28 직렬 rerun에서 `PAIR` zlink 절대 throughput은
+  public→raw가 `tcp 3200.10 -> 3367.91`, `inproc 2816.95 -> 3015.08`로
+  회복됐다.
+- 반면 `DEALER_DEALER`는 public→raw가
+  `tcp 2830.18 -> 3263.08`로 회복됐지만,
+  `inproc 3145.71 -> 2799.88`로 다시 악화됐다.
+- 같은 날 logical multipart publish contract fix 뒤 serial rerun에서도
+  `PAIR` public→raw가 `2717.91 -> 3212.40`, `3326.33 -> 3136.33`,
+  `DEALER_DEALER` public→raw가 `3126.42 -> 3135.91`,
+  `3163.47 -> 3138.42`로 다시 mixed였다.
+
+즉 현재는 "`public wrapper penalty가 이미 low single-digit`"라고
+고정하지 않는다. raw/public 분리는 send-side 변경 뒤 매번 다시 찍어야 하는
+guardrail이고, 패턴/transport별로 엇갈릴 수 있다.
 
 즉 현재 hot path 계약의 해석은 이렇게 고정한다.
 
 - `surface mismatch`는 현재 비교를 읽을 때 항상 붙여야 하는 해석 축이다.
-- 하지만 `raw/public` 분리 결과상 이는 현재 상위 cost axis가 아니라
-  해석용 보조 축이다.
+- 하지만 `raw/public` 분리는 현재 고정 결론이 아니라
+  iteration별 guardrail/해석 축이다.
 - 실제 코드 개선 우선순위는 그 다음에 오는 send lifecycle,
   send-side ordering/publication, pattern-specific public path 쪽이다.
 
@@ -235,8 +259,8 @@ steady-state single-part recv hot path:
 
 현재 기준 다음 성능개선 순서는 아래가 맞다.
 
-1. `PAIR`/`DEALER_DEALER` raw/public 분리는 완료됐고,
-   public penalty가 현재 secondary라는 점을 기준선으로 유지한다
+1. `PAIR`/`DEALER_DEALER` raw/public 분리는 완료됐지만,
+   public penalty를 고정 상수처럼 취급하지 않고 serial guardrail로 유지한다
 2. `socket_base_t::send()`의 public lifecycle fast path는
    steady-state에서 더 적은 atomic으로 합치는 설계 후보로 본다
 3. blocking retry에서는 `enter_public_api()`가 아니라
@@ -372,8 +396,8 @@ steady-state single-part recv hot path:
   일반 `lb_t` loop와 fairness bookkeeping을 반복하지 않도록 줄였다
 - `PUBSUB`처럼 matching/active pipe가 하나뿐인 steady-state는
   일반 `dist_t` loop와 pipe index lookup을 반복하지 않도록 줄였다
-- `PAIR`/`DEALER_DEALER` zlink 내부 raw/public 분리를 다시 찍어보면,
-  public wrapper penalty는 현재 secondary고 남은 상위 축은 send-side다
+- `PAIR`/`DEALER_DEALER` raw/public 분리는 send-side 변경 뒤 매번 다시 찍는
+  guardrail이고, 현재도 pattern/transport에 따라 방향이 엇갈린다
 
 현재 quick 결과 해석:
 
@@ -496,6 +520,18 @@ steady-state single-part recv hot path:
   - 결론: blocking retry에서 "handler installed"와 "notification armed"를
     구분하는 발상은 타당했지만, installed-but-idle handler를 모두 sync-held
     쪽으로 보내는 현재 형태는 broad win이 아니다
+- `socket_message_send_api.cpp` no-topic single-part `PUBSUB` public fast path
+  - [`perf_linux_20260328_030104_pubsub_no_topic_singlepart_fastpath_isolated.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_030104_pubsub_no_topic_singlepart_fastpath_isolated.txt)
+  - `PUBSUB tcp/inproc 64B`: `-32.84% / -45.80%`
+  - 결론: aligned no-topic single surface에서 generic multipart wrapper를
+    바로 우회하는 현재 형태는 오히려 broad regression이라 rejected candidate로 둔다
+- `socket_message_recv_api.cpp` `SUB/XSUB` raw multipart single-part recv fast path
+  - [`perf_linux_20260328_030652_pubsub_sub_raw_multipart_recv_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_030652_pubsub_sub_raw_multipart_recv_fastpath.txt)
+  - [`perf_linux_20260328_030723_pubsub_sub_raw_multipart_recv_fastpath_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_030723_pubsub_sub_raw_multipart_recv_fastpath_rerun.txt)
+  - first/rerun `PUBSUB tcp 64B`: `-30.67% / -26.74%`
+  - first/rerun `PUBSUB inproc 64B`: `-41.47% / -50.68%`
+  - 결론: raw recv single-part export를 더 직접화해도 방향이 엇갈려
+    current `PUBSUB` 잔여 gap의 broad answer는 아니었다
 
 이 순서는 thread-safe 계약을 유지하면서도 실제 `single` gap에 직접 닿는
 순서다.

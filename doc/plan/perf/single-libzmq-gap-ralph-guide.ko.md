@@ -352,6 +352,8 @@ rejected candidate는 반드시 로그에 남긴다.
   - `lb.cpp` one-active-pipe `DEALER` send fast path
   - `dist.cpp` one-matching-pipe `PUBSUB` send fast path와
     index-stable deactivate helper
+  - `multipart_send_txn.cpp` / `socket_base_msg.cpp` logical multipart
+    single public send scope contract fix
   - `test_multi_socket_contract_regressions.cpp` concurrent `PUB` publish
     regression 추가
   - `bench_zlink_pubsub.cpp` no-topic payload-only surface alignment
@@ -389,6 +391,12 @@ rejected candidate는 반드시 로그에 남긴다.
     `DEALER_DEALER tcp 64B`는 `-9.81%`까지 회복했지만
     `PAIR inproc 64B` / `DEALER_DEALER inproc 64B`가
     `-24.33%` / `-32.86%`로 다시 흔들려 원복
+  - `socket_message_send_api.cpp` no-topic single-part `PUBSUB`
+    public fast path도 isolated run에서 `tcp/inproc -32.84% / -45.80%`로
+    다시 악화돼 원복
+  - `socket_message_recv_api.cpp` `SUB/XSUB` raw multipart single-part recv
+    fast path도 first/rerun이 `tcp -30.67% / -26.74%`,
+    `inproc -41.47% / -50.68%`로 엇갈려 broad win이 아니어서 원복
 - 현재 코드/문서 정합 메모
   - `pipe.cpp`의 `write()`, `write_and_flush()`, `check_write_status()`는
     `_out_sync`를 잡은 뒤 `check_hwm()`에서 같은 recursive fast mutex를
@@ -409,9 +417,47 @@ rejected candidate는 반드시 로그에 남긴다.
   - 같은 날 `socket_base_msg.cpp` retry loop에서
     installed-but-idle send-ready handler까지 sync 유지 범위를 넓히는 후보도
     serial public/raw guardrail을 만족시키지 못해 현재 코드에는 남아 있지 않다.
-  - 같은 날 `socket_base_msg.cpp` / `multipart_send_txn.cpp`의
-    publish topic+payload single send scope 후보도
-    `PUBSUB tcp 64B`를 `-28.61%`로 다시 악화시켜 현재 코드에는 남아 있지 않다.
+  - 2026-03-28 baseline 재검증에서
+    `test_pubsub_publish_is_safe_from_multiple_threads`가
+    `part_count Expected 1 Was 2`로 반복 실패했고,
+    현재 코드는 `socket_base_msg.cpp` / `multipart_send_txn.cpp`에서
+    logical multipart publish/send 전체를 하나의 public send scope로 묶어
+    topic+payload interleave를 막도록 고쳤다.
+  - 이후 `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions)$' -j1`
+    는 다시 통과한다.
+  - 다만 이 fix는 contract 회복 단계이지 keep-worthy perf delta가 아니다.
+    latest single `PUBSUB` public rerun은
+    `tcp/inproc -30.71% / -40.37%`였고,
+    no-topic single-part direct-send fallback은
+    `tcp/inproc -31.67% / -38.76%`로 broad recovery를 만들지 못해
+    현재 코드에는 남기지 않았다.
+  - post-fix serial raw/public rerun에서도 `PAIR` public→raw가
+    `2717.91 -> 3212.40`, `3326.33 -> 3136.33`,
+    `DEALER_DEALER` public→raw가
+    `3126.42 -> 3135.91`, `3163.47 -> 3138.42`로 다시 엇갈렸다.
+  - 따라서 raw/public 분리는 계속 guardrail로 유지하되,
+    다음 iteration은 contract fix를 유지한 채 send-side lifecycle /
+    publication cost를 더 줄이는 쪽으로 이어간다.
+  - 같은 날 `socket_message_send_api.cpp` no-topic single-part `PUBSUB`
+    public fast path도 isolated run에서 broad win을 만들지 못해
+    현재 코드에는 남아 있지 않다.
+  - 같은 날 `socket_message_recv_api.cpp` `SUB/XSUB` raw multipart
+    single-part recv fast path도 tcp/inproc 방향이 엇갈려
+    현재 코드에는 남아 있지 않다.
+  - 2026-03-28 직렬 raw/public spot-check
+    (`codex_20260328_pair_public_serial`,
+    `codex_20260328_pair_raw_serial`,
+    `codex_20260328_dealer_public_serial`,
+    `codex_20260328_dealer_raw_serial`)에서는
+    zlink 절대 throughput 기준으로
+    `PAIR tcp/inproc` public→raw가 `3200.10 -> 3367.91`,
+    `2816.95 -> 3015.08`로 모두 회복됐지만,
+    `DEALER_DEALER tcp/inproc`는 `2830.18 -> 3263.08`,
+    `3145.71 -> 2799.88`로 inproc 방향이 다시 엇갈렸다.
+  - 따라서 "`public penalty는 이미 low single-digit이고 secondary`"라는
+    문장은 현재 guide의 고정 전제로 둘 수 없다.
+  - raw/public 분리는 계속 guardrail로 유지하되, 이번 실행에서는
+    패턴/transport별 serial 재측정으로만 해석을 갱신한다.
   - single `PUBSUB` zlink bench는 현재
     `zlink_publish(NULL, &part, 1)` + `zlink_recv(...)` no-topic payload-only
     경로로 정렬됐다.
@@ -420,19 +466,22 @@ rejected candidate는 반드시 로그에 남긴다.
   - 즉 empty-topic frame/topic-aware recv surface mismatch는 실제로 있었지만,
     이를 제거해도 `PUBSUB` 잔여 gap의 본체가 사라지지는 않는다.
 - 아직 남은 핵심 미달
-  - `PAIR tcp 64B`: `-15.78%`
-  - `PAIR inproc 64B`: `-17.62%`
-  - `DEALER_DEALER tcp 64B`: `-13.19%`
-  - `DEALER_DEALER inproc 64B`: `-18.46%`
+  - `PAIR tcp 64B`: `-27.03%`
+  - `PAIR inproc 64B`: `-15.45%`
+  - `DEALER_DEALER tcp 64B`: `-30.30%`
+  - `DEALER_DEALER inproc 64B`: `-27.02%`
   - `DEALER_ROUTER tcp 64B`: `-33.98%`
   - `DEALER_ROUTER inproc 64B`: `-24.43%`
-  - `PUBSUB tcp 64B`: `-23.17%`
-  - `PUBSUB inproc 64B`: `-44.68%`
+  - `PUBSUB tcp 64B`: `-30.71%`
+  - `PUBSUB inproc 64B`: `-40.37%`
   - `ROUTER_ROUTER tcp 64B`: `-56.66%`
   - `ROUTER_ROUTER inproc 64B`: `-25.32%`
   - multi `dealer_dealer tcp 64B`: `-29.55%`
   - multi `pubsub tcp 64B`: `-26.97%`
 
+- [x] same-handle concurrent `PUB` publish contract regression
+      (`test_pubsub_publish_is_safe_from_multiple_threads`)을 고치고
+      logical multipart send scope를 재검증했다.
 - [ ] send-side lifecycle/backpressure retry cost를 더 줄일 구조를 찾는다.
 - [ ] `pipe` send/publication 경로에서 ordering을 유지한 채 lock 안 work를 줄인다.
 - [x] single `PUBSUB` no-topic bench surface를 현재 계약에 맞게 다시 정렬했다.

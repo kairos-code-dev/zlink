@@ -18,6 +18,15 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     if (!send_scope.acquired ())
         return -1;
 
+    return send_scoped (msg_, flags_, send_scope);
+}
+
+int zlink::socket_base_t::send_scoped (msg_t *msg_,
+                                       int flags_,
+                                       socket_public_send_scope_t &send_scope)
+{
+    zlink_assert (send_scope.acquired ());
+
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
         return -1;
@@ -105,6 +114,17 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
     socket_public_send_scope_t send_scope (lifecycle, true);
     if (!send_scope.acquired ())
         return -1;
+
+    return send_routed_scoped (target_rid_, msg_, flags_, send_scope);
+}
+
+int zlink::socket_base_t::send_routed_scoped (
+  const zlink_routing_id_t *target_rid_,
+  msg_t *msg_,
+  int flags_,
+  socket_public_send_scope_t &send_scope)
+{
+    zlink_assert (send_scope.acquired ());
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -198,6 +218,13 @@ int zlink::socket_base_t::rollback ()
     }
 
     socket_public_api_lock_scope_t guard (lifecycle);
+    const int rc = xrollback ();
+    return rc;
+}
+
+int zlink::socket_base_t::rollback_scoped (socket_public_send_scope_t &scope_)
+{
+    zlink_assert (scope_.acquired ());
     const int rc = xrollback ();
     return rc;
 }

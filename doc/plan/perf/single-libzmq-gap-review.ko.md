@@ -22,9 +22,13 @@
 ## 1. 현재 결론
 
 현재 `with_zmq single` 격차는 "libzmq와 같은 수준의 raw message path"를
-비교한 결과가 아니지만, 현재 HEAD 기준 raw/public 분리까지 반영하면
-남은 본체는 public wrapper보다 send-side core engine differential로 읽는 것이
-가장 맞다.
+비교한 결과가 아니다. 다만 raw/public 분리는 최근 rerun에서도 패턴과
+transport에 따라 다시 엇갈렸으므로, 더 이상 "`public wrapper penalty는 이미
+항상 작다`"는 식의 고정 전제로 읽으면 안 된다.
+
+현재 HEAD 기준에서는 raw/public을 iteration별 guardrail로 다시 찍으면서,
+남은 본체를 send-side core engine differential과 public penalty 변화로 함께
+읽는 것이 가장 맞다.
 
 핵심은 다음 네 가지다.
 
@@ -1771,3 +1775,181 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
     single-subscriber win의 `inproc`/multi 확장 여부를 직접 보는 것이다.
   - 공통 send-side 후보가 다시 살아나지 않으면 그 다음은
     `ROUTER_ROUTER` public routed differential 정리다.
+
+## 22. 2026-03-28 no-topic single-part `PUBSUB` public fast path 로그
+
+- 작업한 가설
+  - aligned single `PUBSUB` surface의 `zlink_publish(NULL, &part, 1)`는
+    여전히 generic multipart publish wrapper를 지난다.
+  - no-topic single-part publish만 `socket->send()` direct fast path로 좁히면
+    public wrapper penalty를 더 줄일 수 있다.
+- 수정한 파일 경로
+  - [`socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+  - 위 파일은 isolated bench 확인 후 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^test_multi_socket_contract_regressions$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_no_topic_singlepart_fastpath_isolated`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_030104_pubsub_no_topic_singlepart_fastpath_isolated.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_030104_pubsub_no_topic_singlepart_fastpath_isolated.txt)
+- 핵심 수치
+  - `PUBSUB tcp 64B`: `3329.43 Kmsg/s` vs `2236.07 Kmsg/s`, `-32.84%`
+  - `PUBSUB inproc 64B`: `3817.36 Kmsg/s` vs `2069.11 Kmsg/s`, `-45.80%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `socket_message_send_api.cpp` no-topic single-part `PUBSUB` public fast path
+- 해석
+  - aligned no-topic single surface에서도 generic multipart wrapper를
+    바로 우회하는 현재 형태는 tcp/inproc 둘 다 오히려 더 나빴다.
+  - 즉 현재 `PUBSUB` 잔여 gap을 public publish wrapper 한 겹으로
+    설명할 수는 없다.
+
+## 23. 2026-03-28 `SUB/XSUB` raw multipart recv fast path 로그
+
+- 작업한 가설
+  - aligned single `PUBSUB` zlink bench의 receive side는
+    `zlink_recv(..., &parts, &part_count)` payload-only raw multipart surface다.
+  - `PAIR/DEALER`처럼 TLS first-slot direct export를 `SUB/XSUB` raw recv에도
+    좁게 적용하면 single `PUBSUB` recv-side cost를 줄일 수 있다.
+- 수정한 파일 경로
+  - [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+  - [`test_socket_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_socket_with_handler.cpp)
+  - 위 두 파일은 rerun 확인 후 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^test_socket_with_handler$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_sub_raw_multipart_recv_fastpath`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_sub_raw_multipart_recv_fastpath_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_030652_pubsub_sub_raw_multipart_recv_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_030652_pubsub_sub_raw_multipart_recv_fastpath.txt)
+  - [`perf_linux_20260328_030723_pubsub_sub_raw_multipart_recv_fastpath_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_030723_pubsub_sub_raw_multipart_recv_fastpath_rerun.txt)
+- 핵심 수치
+  - first run
+    - `PUBSUB tcp 64B`: `3308.89 Kmsg/s` vs `2294.20 Kmsg/s`, `-30.67%`
+    - `PUBSUB inproc 64B`: `3896.50 Kmsg/s` vs `2280.61 Kmsg/s`, `-41.47%`
+  - rerun
+    - `PUBSUB tcp 64B`: `3318.78 Kmsg/s` vs `2431.17 Kmsg/s`, `-26.74%`
+    - `PUBSUB inproc 64B`: `4255.17 Kmsg/s` vs `2098.59 Kmsg/s`, `-50.68%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `socket_message_recv_api.cpp` `SUB/XSUB` raw multipart single-part recv fast path
+    - `test_socket_with_handler.cpp` raw multipart recv 회귀 추가
+- 해석
+  - first run은 `inproc`만 약간 좋아졌지만 tcp는 크게 악화됐고,
+    rerun은 tcp가 일부 회복되는 대신 inproc이 `-50.68%`로 더 악화됐다.
+  - 즉 raw recv single-part export를 `SUB/XSUB`에 더 직접 적용하는 현재 형태는
+    broad win이 아니며, current `PUBSUB` 잔여 gap의 본체를 정확히 짚지 못했다.
+
+## 24. 2026-03-28 `PAIR`/`DEALER_DEALER` serial raw/public 재기준 로그
+
+- 작업한 가설
+  - guide/hot-path가 여전히 "`public penalty는 이미 secondary`" 쪽으로
+    읽히고 있어, 현재 HEAD의 raw/public guardrail을 직렬 baseline으로 다시
+    고정해야 했다.
+  - 병렬 perf run은 서로 간섭하므로 폐기하고, `PAIR`/`DEALER_DEALER`의
+    public/raw를 모두 직렬로 다시 찍어 현재 해석을 갱신한다.
+- 수정한 파일 경로
+  - 없음
+- 실행한 명령
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_public_serial`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_raw_serial`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_public_serial`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_raw_serial`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_031439_codex_20260328_pair_public_serial.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_031439_codex_20260328_pair_public_serial.txt)
+  - [`perf_linux_20260328_031501_codex_20260328_pair_raw_serial.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_031501_codex_20260328_pair_raw_serial.txt)
+  - [`perf_linux_20260328_031526_codex_20260328_dealer_public_serial.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_031526_codex_20260328_dealer_public_serial.txt)
+  - [`perf_linux_20260328_031551_codex_20260328_dealer_raw_serial.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_031551_codex_20260328_dealer_raw_serial.txt)
+- 핵심 수치
+  - `PAIR`
+    - public `tcp/inproc`: `3200.10 / 2816.95 Kmsg/s`
+    - raw `tcp/inproc`: `3367.91 / 3015.08 Kmsg/s`
+    - raw-public delta: `+5.24% / +7.03%`
+  - `DEALER_DEALER`
+    - public `tcp/inproc`: `2830.18 / 3145.71 Kmsg/s`
+    - raw `tcp/inproc`: `3263.08 / 2799.88 Kmsg/s`
+    - raw-public delta: `+15.30% / -10.99%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - 없음
+- 해석
+  - raw/public 분리는 현재도 keep해야 할 guardrail이지만, 패턴/transport별로
+    방향이 다시 엇갈린다.
+  - 따라서 `PAIR`/`DEALER` 공통으로 "`public penalty는 이미 low
+    single-digit`"라고 고정하는 해석은 더 이상 안전하지 않다.
+  - 다음 code iteration에서는 raw/public을 고정 전제가 아니라
+    serial rerun으로 다시 확인해야 하는 동적 guardrail로 취급한다.
+
+## 25. 2026-03-28 logical multipart publish contract fix 로그
+
+- 작업한 가설
+  - baseline HEAD는 same-handle concurrent `PUB` publish에서
+    topic frame과 payload frame이 interleave되어
+    `test_pubsub_publish_is_safe_from_multiple_threads`가
+    `part_count Expected 1 Was 2`로 반복 실패했다.
+  - `socket_base_t::send()` 단위가 아니라 logical multipart publish/send
+    전체를 하나의 public send scope로 묶어야 이 contract를 복구할 수 있다.
+- 수정한 파일 경로
+  - [`multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+  - [`socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+  - [`socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_contract_scope_public`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_contract_scope_public_nosinglefast`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_public_contract_scope`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_raw_contract_scope`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_public_contract_scope`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_raw_contract_scope`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_033544_codex_20260328_pubsub_contract_scope_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033544_codex_20260328_pubsub_contract_scope_public.txt)
+  - [`perf_linux_20260328_033719_codex_20260328_pubsub_contract_scope_public_nosinglefast.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033719_codex_20260328_pubsub_contract_scope_public_nosinglefast.txt)
+  - [`perf_linux_20260328_033847_codex_20260328_pair_public_contract_scope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033847_codex_20260328_pair_public_contract_scope.txt)
+  - [`perf_linux_20260328_033914_codex_20260328_pair_raw_contract_scope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033914_codex_20260328_pair_raw_contract_scope.txt)
+  - [`perf_linux_20260328_033936_codex_20260328_dealer_public_contract_scope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033936_codex_20260328_dealer_public_contract_scope.txt)
+  - [`perf_linux_20260328_033957_codex_20260328_dealer_raw_contract_scope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033957_codex_20260328_dealer_raw_contract_scope.txt)
+- 핵심 수치
+  - 회귀 테스트
+    - `test_multi_socket_contract_regressions`
+    - `test_public_inproc_multipart_send`
+    - `unittest_socket_runtime`
+    - 모두 재통과
+  - `PUBSUB` public
+    - contract fix만 유지한 current code:
+      `tcp -30.71%`, `inproc -40.37%`
+    - no-topic single-part direct-send fallback 잠깐 추가한 rerun:
+      `tcp -31.67%`, `inproc -38.76%`
+  - `PAIR` public/raw
+    - public `tcp/inproc`: `2717.91 / 3326.33 Kmsg/s`
+    - raw `tcp/inproc`: `3212.40 / 3136.33 Kmsg/s`
+  - `DEALER_DEALER` public/raw
+    - public `tcp/inproc`: `3126.42 / 3163.47 Kmsg/s`
+    - raw `tcp/inproc`: `3135.91 / 3138.42 Kmsg/s`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `multipart_send_txn.cpp` logical multipart publish/send single public
+      send scope contract fix
+    - `socket_base.hpp` logical multipart wrapper friend 선언과 scoped send helper 연계
+    - `socket_base_msg.cpp` scoped rollback assert
+  - 원복
+    - `multipart_send_txn.cpp` no-topic single-part direct-send fallback
+- 해석
+  - logical multipart publish/send 전체를 하나의 public send scope로 묶는
+    수정 없이는 same-handle concurrent `PUB` publish contract가 깨진다.
+    이 수정은 성능 후보가 아니라 correctness fix로 유지해야 한다.
+  - 다만 latest `PUBSUB` public rerun은 broad win이 아니었고,
+    no-topic single-part direct-send fallback도 추가 회복을 만들지 못했다.
+  - post-fix raw/public serial rerun은 `PAIR`/`DEALER_DEALER` 모두 다시 mixed라서
+    raw/public 분리는 여전히 동적 guardrail이다.
+- 다음 iteration 우선순위
+  - contract fix를 유지한 채 send-side lifecycle/backpressure retry cost를
+    다시 줄인다.
+  - 그 다음은 `PUBSUB` publication path에서 single-subscriber correctness를
+    유지하면서 steady-state work를 더 걷는 후보를 본다.

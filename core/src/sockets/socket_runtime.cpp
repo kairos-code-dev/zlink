@@ -14,7 +14,9 @@
 namespace
 {
 const uint32_t public_api_closing_bit = 0x80000000u;
-const uint32_t public_api_inflight_mask = ~public_api_closing_bit;
+const uint32_t public_api_sync_bit = 0x40000000u;
+const uint32_t public_api_inflight_mask =
+  ~(public_api_closing_bit | public_api_sync_bit);
 thread_local zlink::socket_base_t *g_current_send_ready_dispatch_socket = NULL;
 
 std::string make_monitor_ready_key (
@@ -337,6 +339,22 @@ bool zlink::socket_lifecycle_coordinator_t::enter_public_api ()
     return false;
 }
 
+bool zlink::socket_lifecycle_coordinator_t::enter_public_api_and_lock_sync ()
+{
+    uint32_t expected = 0;
+    if (public_api_state.compare_exchange_strong (
+          expected, 1u | public_api_sync_bit, std::memory_order_acq_rel,
+          std::memory_order_acquire)) {
+        return true;
+    }
+
+    if (!enter_public_api ())
+        return false;
+
+    lock_public_api_sync ();
+    return true;
+}
+
 void zlink::socket_lifecycle_coordinator_t::leave_public_api ()
 {
     const uint32_t old =
@@ -396,18 +414,44 @@ bool zlink::socket_lifecycle_coordinator_t::public_close_requested () const
            != 0;
 }
 
+bool zlink::socket_lifecycle_coordinator_t::public_api_sync_held () const
+{
+    return (public_api_state.load (std::memory_order_acquire)
+            & public_api_sync_bit)
+           != 0;
+}
+
 void zlink::socket_lifecycle_coordinator_t::lock_public_api_sync ()
 {
-    bool expected = false;
-    while (!public_api_sync.compare_exchange_weak (
-      expected, true, std::memory_order_acquire, std::memory_order_relaxed)) {
-        expected = false;
+    uint32_t old = public_api_state.load (std::memory_order_acquire);
+    while (true) {
+        if ((old & public_api_sync_bit) == 0) {
+            const uint32_t desired = old | public_api_sync_bit;
+            if (public_api_state.compare_exchange_weak (
+                  old, desired, std::memory_order_acquire,
+                  std::memory_order_acquire)) {
+                return;
+            }
+            continue;
+        }
+
+        old = public_api_state.load (std::memory_order_acquire);
     }
 }
 
 void zlink::socket_lifecycle_coordinator_t::unlock_public_api_sync ()
 {
-    public_api_sync.store (false, std::memory_order_release);
+    const uint32_t old =
+      public_api_state.fetch_and (~public_api_sync_bit, std::memory_order_release);
+    zlink_assert ((old & public_api_sync_bit) != 0);
+}
+
+void zlink::socket_lifecycle_coordinator_t::unlock_public_api_sync_and_leave ()
+{
+    const uint32_t old = public_api_state.fetch_sub (
+      public_api_sync_bit | 1u, std::memory_order_acq_rel);
+    zlink_assert ((old & public_api_sync_bit) != 0);
+    zlink_assert ((old & public_api_inflight_mask) > 0);
 }
 
 zlink::socket_callback_scope_t::socket_callback_scope_t (
@@ -425,6 +469,51 @@ zlink::socket_callback_scope_t::~socket_callback_scope_t ()
 
     if (_coordinator->leave_callback_api () && _socket)
         _socket->finish_close_handoff ();
+}
+
+zlink::socket_public_send_scope_t::socket_public_send_scope_t (
+  socket_lifecycle_coordinator_t &coordinator_, bool needs_sync_) :
+    _coordinator (&coordinator_),
+    _entered (false),
+    _needs_sync (needs_sync_),
+    _sync_locked (false)
+{
+    if (_needs_sync) {
+        _entered = _coordinator->enter_public_api_and_lock_sync ();
+        _sync_locked = _entered;
+        return;
+    }
+
+    _entered = _coordinator->enter_public_api ();
+}
+
+zlink::socket_public_send_scope_t::~socket_public_send_scope_t ()
+{
+    if (!_entered)
+        return;
+
+    if (_sync_locked)
+        _coordinator->unlock_public_api_sync_and_leave ();
+    else
+        _coordinator->leave_public_api ();
+}
+
+void zlink::socket_public_send_scope_t::unlock_sync ()
+{
+    if (!_entered || !_needs_sync || !_sync_locked)
+        return;
+
+    _coordinator->unlock_public_api_sync ();
+    _sync_locked = false;
+}
+
+void zlink::socket_public_send_scope_t::relock_sync ()
+{
+    if (!_entered || !_needs_sync || _sync_locked)
+        return;
+
+    _coordinator->lock_public_api_sync ();
+    _sync_locked = true;
 }
 
 zlink::socket_send_ready_dispatch_scope_t::socket_send_ready_dispatch_scope_t (

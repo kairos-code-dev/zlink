@@ -248,7 +248,9 @@ void zlink::pipe_t::reset_connection_ready_event_emitted ()
 
 bool zlink::pipe_t::check_read ()
 {
-    scoped_fast_lock_t lock (_out_sync);
+    // Hot path: PAIR/DEALER steady-state recv reaches this path for every
+    // message. Any extra locking or bookkeeping here shows up directly in
+    // small-message throughput.
     if (unlikely (!_in_active))
         return false;
     if (unlikely (_state != active && _state != waiting_for_delimiter))
@@ -275,7 +277,6 @@ bool zlink::pipe_t::check_read ()
 
 bool zlink::pipe_t::read (msg_t *msg_)
 {
-    scoped_fast_lock_t lock (_out_sync);
     if (unlikely (!_in_active))
         return false;
     if (unlikely (_state != active && _state != waiting_for_delimiter))
@@ -313,22 +314,30 @@ bool zlink::pipe_t::read (msg_t *msg_)
 
 bool zlink::pipe_t::check_write ()
 {
+    return check_write_status () == pipe_write_ready;
+}
+
+zlink::pipe_write_status_t zlink::pipe_t::check_write_status ()
+{
     scoped_fast_lock_t lock (_out_sync);
     if (unlikely (!_out_active || _state != active))
-        return false;
+        return pipe_write_inactive;
 
     const bool full = !check_hwm ();
 
     if (unlikely (full)) {
         _out_active = false;
-        return false;
+        return pipe_write_hwm_full;
     }
 
-    return true;
+    return pipe_write_ready;
 }
 
 bool zlink::pipe_t::write (const msg_t *msg_)
 {
+    // Hot path: PAIR/DEALER steady-state send reaches this path for every
+    // message. Keep changes here tightly justified against thread-safe pipe
+    // state transitions.
     scoped_fast_lock_t lock (_out_sync);
     if (unlikely (!_out_active || _state != active))
         return false;
@@ -363,6 +372,30 @@ bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
     return true;
 }
 
+bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+{
+    scoped_fast_lock_t lock (_out_sync);
+    if (unlikely (!_out_active || _state != active))
+        return false;
+
+    const bool full = !check_hwm ();
+    if (unlikely (full)) {
+        _out_active = false;
+        return false;
+    }
+
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool is_routing_id = msg_->is_routing_id ();
+    _out_pipe->write (*msg_, more);
+    if (!more && !is_routing_id)
+        _msgs_written++;
+
+    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+        send_activate_read (_peer);
+
+    return true;
+}
+
 void zlink::pipe_t::rollback () const
 {
     scoped_optional_fast_lock_t lock (
@@ -380,6 +413,7 @@ void zlink::pipe_t::rollback () const
 
 void zlink::pipe_t::flush ()
 {
+    // Hot path: single-part send flushes on every completed message.
     scoped_fast_lock_t lock (_out_sync);
     //  The peer does not exist anymore at this point.
     if (_state == term_ack_sent)

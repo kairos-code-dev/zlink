@@ -20,6 +20,13 @@ namespace zlink
 {
 class pipe_t;
 
+enum pipe_write_status_t
+{
+    pipe_write_ready = 0,
+    pipe_write_hwm_full,
+    pipe_write_inactive
+};
+
 //  Create a pipepair for bi-directional transfer of messages.
 //  First HWM is for messages passed from first pipe to the second pipe.
 //  Second HWM is for messages passed from second pipe to the first pipe.
@@ -92,6 +99,10 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  function returns false.
     bool check_write ();
 
+    //  Checks whether messages can be written to the pipe and reports whether
+    //  failure was caused by HWM or inactive pipe state.
+    pipe_write_status_t check_write_status ();
+
     //  Writes a message to the underlying pipe. Returns false if the
     //  message does not pass check_write. If false, the message object
     //  retains ownership of its message buffer.
@@ -100,6 +111,11 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Writes a message assuming HWM was already checked by caller.
     //  Still validates pipe active/termination state.
     bool write_no_hwm_check (const msg_t *msg_);
+
+    //  Writes a message and flushes it downstream under the same pipe lock.
+    //  Use this for final single-part send hot paths to avoid paying for
+    //  separate write/flush lock acquisitions.
+    bool write_and_flush (const msg_t *msg_);
 
     //  Remove unfinished parts of the outbound message from the pipe.
     void rollback () const;

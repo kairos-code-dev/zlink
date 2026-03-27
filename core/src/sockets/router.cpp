@@ -101,11 +101,9 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_,
         int rc = probe_msg.init ();
         errno_assert (rc == 0);
 
-        rc = pipe_->write (&probe_msg);
+        rc = pipe_->write_and_flush (&probe_msg);
         // zlink_assert (rc) is not applicable here, since it is not a bug.
         LIBZLINK_UNUSED (rc);
-
-        pipe_->flush ();
 
         rc = probe_msg.close ();
         errno_assert (rc == 0);
@@ -254,9 +252,11 @@ int zlink::router_t::xsend (msg_t *msg_)
                 _current_out = out_pipe->pipe;
 
                 // Check whether pipe is closed or not
-                if (!_current_out->check_write ()) {
-                    // Check whether pipe is full or not
-                    const bool pipe_full = !_current_out->check_hwm ();
+                const pipe_write_status_t write_status =
+                  _current_out->check_write_status ();
+                if (write_status != pipe_write_ready) {
+                    const bool pipe_full =
+                      write_status == pipe_write_hwm_full;
                     out_pipe->active = false;
                     _current_out = NULL;
 
@@ -300,7 +300,8 @@ int zlink::router_t::xsend (msg_t *msg_)
 
     //  Push the message into the pipe. If there's no out pipe, just drop it.
     if (_current_out) {
-        const bool ok = _current_out->write (msg_);
+        const bool ok = _more_out ? _current_out->write (msg_)
+                                  : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
             if (router_debug_enabled ()) {
                 fprintf (stderr,
@@ -316,7 +317,6 @@ int zlink::router_t::xsend (msg_t *msg_)
             _current_out = NULL;
         } else {
             if (!_more_out) {
-                _current_out->flush ();
                 _current_out = NULL;
             }
         }
@@ -352,8 +352,10 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
     if (out_pipe) {
         _current_out = out_pipe->pipe;
 
-        if (!_current_out->check_write ()) {
-            const bool pipe_full = !_current_out->check_hwm ();
+        const pipe_write_status_t write_status =
+          _current_out->check_write_status ();
+        if (write_status != pipe_write_ready) {
+            const bool pipe_full = write_status == pipe_write_hwm_full;
             out_pipe->active = false;
             _current_out = NULL;
 
@@ -370,14 +372,14 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
     }
 
     if (_current_out) {
-        const bool ok = _current_out->write (msg_);
+        const bool ok = _more_out ? _current_out->write (msg_)
+                                  : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
             const int rc = msg_->close ();
             errno_assert (rc == 0);
             _current_out->rollback ();
             _current_out = NULL;
         } else if (!_more_out) {
-            _current_out->flush ();
             _current_out = NULL;
         }
     } else {

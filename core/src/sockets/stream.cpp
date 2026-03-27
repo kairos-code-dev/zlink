@@ -237,12 +237,11 @@ int zlink::stream_t::xsend (msg_t *msg_)
         if (msg_->size () == 0) {
             out->terminate (false);
         } else {
-            const bool ok = out->write (msg_);
+            const bool ok = out->write_and_flush (msg_);
             if (unlikely (!ok)) {
                 errno = EAGAIN;
                 return -1;
             }
-            out->flush ();
         }
 
         const int init_rc = msg_->init ();
@@ -273,7 +272,8 @@ int zlink::stream_t::xsend (msg_t *msg_)
             }
 
             _current_out = it->second;
-            if (!_current_out->check_write ()) {
+            if (_current_out->check_write_status ()
+                != pipe_write_ready) {
                 _current_out = NULL;
                 errno = EAGAIN;
                 return -1;
@@ -303,9 +303,8 @@ int zlink::stream_t::xsend (msg_t *msg_)
             return 0;
             }
 
-            const bool ok = _current_out->write (msg_);
+            const bool ok = _current_out->write_and_flush (msg_);
             if (likely (ok)) {
-                _current_out->flush ();
             } else {
                 _current_out = NULL;
                 const int rc = msg_->close ();

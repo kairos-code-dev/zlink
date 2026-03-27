@@ -113,6 +113,7 @@ Options:
   --clean-build          Remove build directory and do a clean build.
   --results-dir PATH     Override results root directory.
   --results-tag NAME     Optional tag appended to the results filename.
+  --result-file PATH     Override the consolidated multi result file.
   --build-dir PATH       Override build directory.
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
@@ -326,6 +327,7 @@ RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 RESULTS_TAG=""
 BUILD_DIR=""
 OUTPUT_FILE=""
+RESULT_FILE=""
 PIN_CPU=0
 
 CLIENTS="${PERF_CLIENTS:-}"
@@ -460,6 +462,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       OUTPUT_FILE="${2}"
+      shift 2
+      ;;
+    --result-file)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      RESULT_FILE="${2}"
       shift 2
       ;;
     --server-io-threads)
@@ -699,9 +709,26 @@ if [[ -z "${RESULTS_DIR_OVERRIDE}" ]]; then
 fi
 RESULTS_DIR_OVERRIDE="$(realpath -m "${RESULTS_DIR_OVERRIDE}")"
 
+if [[ -n "${RESULT_FILE}" ]]; then
+  RESULT_FILE="$(realpath -m "${RESULT_FILE}")"
+else
+  TS="$(date +%Y%m%d_%H%M%S)"
+  NAME="perf_$(detect_platform_tag)_${TS}"
+  if [[ -n "${RESULTS_TAG}" ]]; then
+    NAME="${NAME}_${RESULTS_TAG}"
+  fi
+  RESULT_FILE="${RESULTS_DIR_OVERRIDE}/multi/report/${NAME}.txt"
+fi
+mkdir -p "$(dirname "${RESULT_FILE}")"
+
 if [[ -n "${OUTPUT_FILE}" ]]; then
   OUTPUT_FILE="$(realpath -m "${OUTPUT_FILE}")"
   mkdir -p "$(dirname "${OUTPUT_FILE}")"
+fi
+
+if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" == "${RESULT_FILE}" ]]; then
+  echo "Error: --output cannot point to the same file as consolidated result output." >&2
+  exit 1
 fi
 
 if [[ -z "${BUILD_DIR}" ]]; then
@@ -779,6 +806,7 @@ run_all_patterns() {
     env_args+=(BENCH_SERVER_SHUTDOWN_TIMEOUT_MS="${SERVER_SHUTDOWN_TIMEOUT_MS}")
     env_args+=(BENCH_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}")
     env_args+=(BENCH_SUPPRESS_TOTAL_TIME=1)
+    env_args+=(BENCH_MULTI_SUPPRESS_PATTERN_RESULT_SAVE=1)
 
     if ! env "${env_args[@]}" "${cmd[@]}"; then
       failed=1
@@ -795,10 +823,14 @@ run_all_patterns() {
 SHOW_TOTAL_TIME=1
 if [[ -n "${OUTPUT_FILE}" ]]; then
   set +e
-  run_all_patterns 2>&1 | tee "${OUTPUT_FILE}"
+  run_all_patterns 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
   status=${PIPESTATUS[0]}
   set -e
   exit "${status}"
 else
-  run_all_patterns
+  set +e
+  run_all_patterns 2>&1 | tee "${RESULT_FILE}"
+  status=${PIPESTATUS[0]}
+  set -e
+  exit "${status}"
 fi

@@ -24,6 +24,52 @@ int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)
     return 0;
 }
 
+void consume_send_frame (zlink_msg_t *part_)
+{
+    if (!part_)
+        return;
+
+    zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (part_);
+    if (!msg->check ())
+        return;
+
+    const int close_rc = msg->close ();
+    errno_assert (close_rc == 0);
+    const int init_rc = msg->init ();
+    errno_assert (init_rc == 0);
+}
+
+void consume_send_frames_from (zlink_msg_t *parts_,
+                               size_t start_index_,
+                               size_t part_count_)
+{
+    if (!parts_)
+        return;
+
+    for (size_t i = start_index_; i < part_count_; ++i)
+        consume_send_frame (&parts_[i]);
+}
+
+bool try_extract_router_target_rid (const zlink_msg_t *part_,
+                                    zlink_routing_id_t *out_)
+{
+    if (!part_ || !out_)
+        return false;
+
+    zlink::msg_t *msg =
+      reinterpret_cast<zlink::msg_t *> (const_cast<zlink_msg_t *> (part_));
+    if (!msg->check ())
+        return false;
+
+    const size_t size = msg->size ();
+    if (size == 0 || size > sizeof (out_->data))
+        return false;
+
+    out_->size = static_cast<uint8_t> (size);
+    memcpy (out_->data, msg->data (), size);
+    return true;
+}
+
 int s_sendmsg (socket_handle_t handle_,
                zlink_msg_t *msg_,
                zlink_send_flags_t flags_)
@@ -205,6 +251,9 @@ int send_socket_unrouted_parts (socket_handle_t handle_,
                                 size_t part_count_,
                                 zlink_send_flags_t flags_)
 {
+    // Hot path: PAIR/DEALER single-part public send reaches here on every
+    // message. Keep this path free of extra allocation and avoid adding
+    // indirection beyond the public contract checks.
     const int type = socket_type (handle_);
     if (type == ZLINK_CORE_SOCKET_PUB || type == ZLINK_CORE_SOCKET_SUB
         || type == ZLINK_CORE_SOCKET_XSUB || type == ZLINK_CORE_SOCKET_XPUB) {
@@ -273,8 +322,26 @@ int send_socket_parts (socket_handle_t handle_,
     if (validate_socket_send_request (handle_, parts_, part_count_, flags_) != 0)
         return -1;
 
-    if (!target_rid_)
+    if (!target_rid_) {
+        const int type = socket_type (handle_);
+        const bool blocking_send = (flags_ & ZLINK_DONTWAIT) == 0;
+
+        if (type == ZLINK_CORE_SOCKET_ROUTER && blocking_send
+            && part_count_ > 1) {
+            zlink_routing_id_t target_rid;
+            memset (&target_rid, 0, sizeof (target_rid));
+            if (try_extract_router_target_rid (&parts_[0], &target_rid)) {
+                const int rc = send_socket_routed_parts (
+                  handle_, &target_rid, parts_ + 1, part_count_ - 1, flags_);
+                consume_send_frame (&parts_[0]);
+                if (rc != 0)
+                    consume_send_frames_from (parts_, 1, part_count_);
+                return rc;
+            }
+        }
+
         return send_socket_unrouted_parts (handle_, parts_, part_count_, flags_);
+    }
 
     return send_socket_routed_parts (handle_, target_rid_, parts_, part_count_,
                                      flags_);

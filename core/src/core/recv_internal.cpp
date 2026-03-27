@@ -17,6 +17,8 @@ int zlink::recv_msg_socket (socket_base_t *socket_,
                             zlink_msg_t *msg_,
                             int flags_)
 {
+    // Hot path: direct recv-mode entry for single-message public recv. Changes
+    // here affect PAIR/DEALER small-message throughput even without contention.
     if (!socket_ || !msg_) {
         errno = EFAULT;
         return -1;

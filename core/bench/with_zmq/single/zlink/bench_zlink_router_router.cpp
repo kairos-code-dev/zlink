@@ -133,10 +133,9 @@ inline int recv_router_header_flags (void *socket,
     }
 
     const size_t actual_size = zlink_msg_size (&parts[0]);
-    const bool size_ok = actual_size == payload_size;
     bool header_ok = false;
 
-    if (size_ok) {
+    if (actual_size == payload_size) {
         if (header_out) {
             header_ok = perf_single_metric::decode_payload_header (
               zlink_msg_data (&parts[0]), actual_size, header_out);
@@ -150,7 +149,7 @@ inline int recv_router_header_flags (void *socket,
     if (header_ok_out)
         *header_ok_out = header_ok;
 
-    return 1;
+    return actual_size == payload_size ? 1 : -1;
 }
 
 inline bool setup_router_router_session (void *router1,

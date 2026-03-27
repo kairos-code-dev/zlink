@@ -195,7 +195,10 @@ bool zlink::dist_t::has_out ()
 
 bool zlink::dist_t::write (pipe_t *pipe_, msg_t *msg_)
 {
-    if (!pipe_->write (msg_)) {
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool ok =
+      more ? pipe_->write (msg_) : pipe_->write_and_flush (msg_);
+    if (!ok) {
         _pipes.swap (_pipes.index (pipe_), _matching - 1);
         _matching--;
         _pipes.swap (_pipes.index (pipe_), _active - 1);
@@ -204,8 +207,6 @@ bool zlink::dist_t::write (pipe_t *pipe_, msg_t *msg_)
         _eligible--;
         return false;
     }
-    if (!(msg_->flags () & msg_t::more))
-        pipe_->flush ();
     return true;
 }
 

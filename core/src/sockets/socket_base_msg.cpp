@@ -8,9 +8,14 @@
 
 int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 {
+    // Hot path: every public single-part send pays this steady-state cost.
+    // Keep lifecycle/backpressure logic correct, but avoid thickening the
+    // success path with new work that is not contract-critical.
     socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
-    socket_public_api_scope_t admission (lifecycle);
-    if (!admission.acquired ())
+    const bool needs_public_api_sync =
+      options.type != ZLINK_CORE_SOCKET_PAIR;
+    socket_public_send_scope_t send_scope (lifecycle, needs_public_api_sync);
+    if (!send_scope.acquired ())
         return -1;
 
     if (unlikely (_ctx_terminated)) {
@@ -32,10 +37,7 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
         msg_->set_flags (msg_t::more);
     msg_->reset_metadata ();
 
-    {
-        socket_public_api_lock_scope_t guard (lifecycle);
-        rc = xsend (msg_);
-    }
+    rc = xsend (msg_);
     if (rc == 0)
         return 0;
     if (unlikely (rc == -2)) {
@@ -64,17 +66,23 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 
     int timeout = options.sndtimeo;
     const uint64_t end = timeout < 0 ? 0 : (_clock.now_ms () + timeout);
+    const bool hold_sync_during_retry =
+      send_scope.sync_locked () && !send_ready_handler_active ();
+
+    if (!hold_sync_during_retry)
+        send_scope.unlock_sync ();
 
     while (true) {
         rc = process_commands (timeout, false);
         if (unlikely (rc != 0))
             return -1;
-        {
-            socket_public_api_lock_scope_t guard (lifecycle);
-            rc = xsend (msg_);
-        }
+        if (!hold_sync_during_retry)
+            send_scope.relock_sync ();
+        rc = xsend (msg_);
         if (rc == 0)
             break;
+        if (!hold_sync_during_retry)
+            send_scope.unlock_sync ();
         if (unlikely (errno != EAGAIN))
             return -1;
         if (timeout > 0) {
@@ -94,8 +102,8 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
                                        int flags_)
 {
     socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
-    socket_public_api_scope_t admission (lifecycle);
-    if (!admission.acquired ())
+    socket_public_send_scope_t send_scope (lifecycle, true);
+    if (!send_scope.acquired ())
         return -1;
 
     if (unlikely (_ctx_terminated)) {
@@ -117,10 +125,7 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
         msg_->set_flags (msg_t::more);
     msg_->reset_metadata ();
 
-    {
-        socket_public_api_lock_scope_t guard (lifecycle);
-        rc = xsend_routed (target_rid_, msg_);
-    }
+    rc = xsend_routed (target_rid_, msg_);
     if (rc == 0)
         return 0;
     if (unlikely (rc == -2)) {
@@ -149,17 +154,23 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
 
     int timeout = options.sndtimeo;
     const uint64_t end = timeout < 0 ? 0 : (_clock.now_ms () + timeout);
+    const bool hold_sync_during_retry =
+      send_scope.sync_locked () && !send_ready_handler_active ();
+
+    if (!hold_sync_during_retry)
+        send_scope.unlock_sync ();
 
     while (true) {
         rc = process_commands (timeout, false);
         if (unlikely (rc != 0))
             return -1;
-        {
-            socket_public_api_lock_scope_t guard (lifecycle);
-            rc = xsend_routed (target_rid_, msg_);
-        }
+        if (!hold_sync_during_retry)
+            send_scope.relock_sync ();
+        rc = xsend_routed (target_rid_, msg_);
         if (rc == 0)
             break;
+        if (!hold_sync_during_retry)
+            send_scope.unlock_sync ();
         if (unlikely (errno != EAGAIN))
             return -1;
         if (timeout > 0) {
@@ -193,6 +204,9 @@ int zlink::socket_base_t::rollback ()
 
 int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
 {
+    // Hot path: every public direct recv eventually reaches here. Keep the
+    // no-message and success paths lean; recv-mode costs show up directly in
+    // PAIR/DEALER small-message benchmarks.
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
         return -1;

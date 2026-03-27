@@ -15,6 +15,7 @@
 #include <fstream>
 #include <climits>
 #include <zlink.h>
+#include "../../../../src/core/msg.hpp"
 
 typedef struct zlink_peer_info_t
 {
@@ -29,6 +30,13 @@ inline int zlink_socket_peers(void *, zlink_peer_info_t *, size_t *)
 {
     errno = ENOTSUP;
     return -1;
+}
+
+inline bool bench_msg_has_more(const zlink_msg_t &msg_)
+{
+    return (reinterpret_cast<const zlink::msg_t *>(&msg_)->flags()
+            & zlink::msg_t::more)
+           != 0;
 }
 
 #if !defined(_WIN32)
@@ -426,6 +434,17 @@ inline int resolve_single_send_timeout_ms()
 inline int resolve_single_recv_timeout_ms()
 {
     return parse_positive_env_or_default("PERF_SINGLE_RCVTIMEO_MS", 200);
+}
+
+inline bool use_raw_msg_api_bench()
+{
+    const char *env = std::getenv("PERF_SINGLE_ZLINK_RAW_MSG_API");
+    if (!env || !*env)
+        return false;
+
+    return std::strcmp(env, "1") == 0 || std::strcmp(env, "true") == 0
+           || std::strcmp(env, "TRUE") == 0 || std::strcmp(env, "on") == 0
+           || std::strcmp(env, "ON") == 0;
 }
 
 inline int resolve_single_pubsub_recv_timeout_ms()

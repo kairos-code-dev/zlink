@@ -1,0 +1,364 @@
+# Hot Path 계약 메모
+
+> 목적: 성능개선 작업과 리팩토링이 동시에 진행될 때,
+> small-message steady-state hot path가 무의식적으로 두꺼워지는 일을 막기 위한
+> 내부 계약 문서다.
+>
+> 이 문서는 "어디가 hot path인지", "무엇을 넣으면 안 되는지", "성능개선 중 어떤
+> 규칙으로 문서를 갱신할지"를 짧고 명시적으로 유지한다.
+
+## 1. 범위
+
+현재 1차 범위는 `with_zmq single` 상대 비교에서 gap이 가장 직접적으로 드러나는
+public send/recv 경로다.
+
+- [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+- [`core/src/api/socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+- [`core/src/core/recv_internal.cpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_internal.cpp)
+- [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+- [`core/src/sockets/pair.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/pair.cpp)
+- [`core/src/sockets/dealer.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dealer.cpp)
+- [`core/src/core/recv_tls_view.hpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_tls_view.hpp)
+
+현재 기준 패턴은 아래 두 개를 최우선으로 본다.
+
+- `PAIR`
+- `DEALER_DEALER`
+
+이 둘은 pattern-specific framing이 가장 적어서 공통 원인과 공통 회귀를 보기
+가장 좋다.
+
+보조 해석 규칙:
+
+- `echo`는 거의 동등한데 `oneway`에서만 gap이 커지면
+  recv보다 send-side publication/backpressure 쪽을 먼저 본다.
+- `echo`는 round-trip pace 때문에 queue/HWM 경로가 덜 드러나고,
+  `oneway`는 success path와 backpressure 복귀 비용이 그대로 드러난다.
+- backpressure 분석에서는 `activate_write publication`과
+  `sender retry consumption`을 분리해서 본다.
+  현재 코드는 후자 쪽이 더 유력하다.
+- `PUBSUB`의 delivery-ready monitor bookkeeping은 steady-state에서
+  건너뛰어도 bench 수치가 거의 움직이지 않았다.
+  현재 `PUBSUB` gap의 상위 축은 monitor-ready 계산보다
+  publication/ordering 경로에 더 가깝다.
+
+## 2. 현재 비교 surface
+
+현재 `with_zmq single`의 `PAIR`/`DEALER_DEALER`는 아래를 비교한다.
+
+- zlink:
+  - `zlink_send(parts, 1)`
+  - `zlink_recv(&parts, &count)`
+- libzmq:
+  - `send_exact(buffer)`
+  - `zlink_msg_recv(msg)` 즉 `zmq_msg_recv()`
+
+즉 현재 측정은 raw transport core만 비교하는 것이 아니라,
+`zlink`의 public API cost를 함께 포함한다.
+
+이 문서의 hot path도 그 기준으로 정의한다.
+
+다만 2026-03-27 현재 `PAIR`/`DEALER_DEALER`의 zlink 내부 raw/public 분리를
+다시 찍어보면, zlink 내부 public wrapper penalty는 이미 low single-digit
+수준이다. 따라서 현재 남은 큰 gap의 상위 축은 public wrapper alone이 아니라
+send-side lifecycle/pipe publication 쪽으로 본다.
+
+즉 현재 hot path 계약의 해석은 이렇게 고정한다.
+
+- `surface mismatch`는 현재 비교를 읽을 때 항상 붙여야 하는 해석 축이다.
+- 하지만 `raw/public` 분리 결과상 이는 현재 상위 cost axis가 아니라
+  해석용 보조 축이다.
+- 실제 코드 개선 우선순위는 그 다음에 오는 send lifecycle,
+  send-side ordering/publication, pattern-specific public path 쪽이다.
+
+## 3. 현재 hot path
+
+### 3.1 send
+
+steady-state single-part send hot path:
+
+`zlink_send()`  
+→ `send_socket_unrouted_parts()`  
+→ `socket_base_t::send()`  
+→ `xsend()`
+
+핵심 파일:
+
+- [`socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+- [`socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+
+### 3.2 recv
+
+steady-state single-part recv hot path:
+
+`zlink_recv()`  
+→ `recv_socket_parts()`
+
+현재 `PAIR`/`DEALER`의 direct single-part 경로는 별도 fast path를 가진다.
+
+`zlink_recv()`  
+→ `recv_socket_parts()`  
+→ `recv_tls_view::begin_with_first_slot()`  
+→ `socket_base_t::recv()`  
+→ `xrecv()`  
+→ `recv_tls_view::commit_reserved_single()`
+
+그 외 routed/strip/multipart 경로는 여전히:
+
+`zlink_recv()`  
+→ `recv_socket_parts()`  
+→ `recv_msg_socket()` 또는 `recv_msg_routed_socket()`  
+→ `socket_base_t::recv()` 또는 `recv_routed()`  
+→ `recv_tls_view::export_single()` 또는 `push()/commit()`
+
+핵심 파일:
+
+- [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+- [`recv_internal.cpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_internal.cpp)
+- [`socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+- [`recv_tls_view.hpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_tls_view.hpp)
+
+## 4. 현재 상위 비용 축
+
+현재 코드 기준 상위 비용 축은 아래와 같다.
+
+1. `zlink_send()`의 public lifecycle/backpressure path
+2. blocking retry에서 반복되는 `public_api_sync` 재획득 또는
+   retry 동안 sync를 유지하지 못해 생기는 복귀 비용
+3. send-side `pipe_t`의 per-message serialization cost
+4. `zlink_recv()`의 남아 있는 aggregate/TLS export와 routed/strip 경로
+5. `recv_internal.cpp`의 dispatch/mode guard
+6. `PUBSUB`/`ROUTER` 계열의 pattern-specific public surface 차이
+
+반대로 현재 기준 상위 후보가 아닌 것은:
+
+- `surface mismatch` 자체를 현재 gap의 본체로 보는 해석
+- `fq/lb` 재작성
+- `PAIR/DEALER` algorithm 자체 변경
+- 이미 HEAD에서 빠진 `last_recv_source_rid`
+- thread-safe 증명 없이 `pipe` lock 제거
+
+여기서 `pipe` 항목은 현재 가장 큰 단일 후보 중 하나지만,
+최근 no-op 제거 실험이 모두 악화됐기 때문에 "바로 제거" 후보가 아니다.
+현재는 `object` command 기반 상태 전이와 activation/progress ordering과
+묶여 있으므로, "같은 의미를 더 싸게 제공할 방법을 찾아야 하는 고위험 후보"로
+본다.
+
+또한 현재 `PAIR`/`DEALER_DEALER` raw/public 분리 결과를 보면,
+`zlink_recv()` wrapper를 계속 얇게 만드는 것만으로는 전체 gap이 닫히지 않는다.
+즉 recv public path는 여전히 hot path지만, 현재 상위 본체는 send-side에 더 가깝다.
+
+## 5. 리팩토링 금지 규칙
+
+아래 규칙을 깨는 변경은 성능개선 명분으로도 넣지 않는다.
+
+### 5.1 send
+
+- single-part send hot path에 heap allocation을 추가하지 않는다
+- single-part send hot path에 retry를 위한 clone/materialization을 다시 넣지 않는다
+- validation/helper 분기 계층을 늘릴 때는 `PAIR/DEALER` steady-state 영향부터 확인한다
+
+### 5.2 recv
+
+- single-part recv hot path에 heap allocation을 추가하지 않는다
+- single-part recv를 multipart materialization 일반 경로로 밀어 넣지 않는다
+- recv mode 경로에 callback/service용 상태 분기를 무심코 추가하지 않는다
+- TLS export를 유지하더라도 single-part 경로는 가능한 한 가장 얇게 유지한다
+
+### 5.3 lifecycle / thread-safe
+
+- lifecycle coordinator 의미를 약화하지 않는다
+- callback/close handoff 계약을 약화하지 않는다
+- command 대상 객체인 `pipe`의 동기화를 증명 없이 제거하지 않는다
+
+특히 현재 [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+의 `check_read/read/check_write/write/flush`는 steady-state message마다
+`fast_mutex_t`를 잡는다. libzmq [`pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)
+에는 같은 잠금이 없다. 따라서 이 항목은 "영향이 작은 마지막 후보"가 아니라
+"영향은 크지만 correctness risk도 큰 후보"로 유지한다.
+
+## 6. 파일 주석 규칙
+
+아래 파일에는 짧은 hot path 경고 주석을 유지한다.
+
+- [`socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+- [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+- [`recv_internal.cpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_internal.cpp)
+- [`socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+- [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+
+주석은 설명형보다 계약형으로 짧게 쓴다.
+
+예:
+
+- `Hot path: keep single-part recv free of heap allocation and extra indirection.`
+- `Hot path: changes here affect PAIR/DEALER small-message throughput.`
+
+## 7. 업데이트 규칙
+
+이 문서는 아래 경우에 반드시 갱신한다.
+
+1. hot path 원인분석 우선순위가 바뀌었을 때
+2. 현재 P0 후보가 제거되거나 무효화됐을 때
+3. benchmark surface 해석이 바뀌었을 때
+4. 새로운 public fast path 또는 raw fast path가 추가됐을 때
+
+특히 stale한 가설을 남겨두지 않는다.
+
+예:
+
+- 과거엔 유력했지만 현재 HEAD에서는 빠진 항목
+- benchmark surface가 달라져 더 이상 같은 의미가 아닌 비교
+
+이런 항목은 즉시 문서에서 historical note로 내리거나 제거한다.
+
+## 8. 현재 작업 방향
+
+현재 기준 다음 성능개선 순서는 아래가 맞다.
+
+1. `PAIR`/`DEALER_DEALER` raw/public 분리는 완료됐고,
+   public penalty가 현재 secondary라는 점을 기준선으로 유지한다
+2. `socket_base_t::send()`의 public lifecycle fast path는
+   steady-state에서 더 적은 atomic으로 합치는 설계 후보로 본다
+3. blocking retry에서는 `enter_public_api()`가 아니라
+   `public_api_sync` 재획득 또는 retry-side sync 유지 실패가 비용이라는 점을
+   기준으로 본다
+   - `activate_write` 자체는 zlink가 같은-thread에서 즉시
+     `process_command()`를 호출하므로 publication이 더 늦다고 단정하지 않는다
+   - 현재 더 의심하는 축은 wakeup 이후 sender retry 소비 비용이다
+4. send-side `pipe_t`는 전체 lock 제거가 아니라
+   activation/flush ordering을 유지한 채 lock 안의 work를 줄이는 방향으로 본다
+5. `socket_base_t::send()`의 send-side throttle은 보조 후보로만 본다
+   - 현재 `process_commands(0, true)`는 libzmq와 거의 같은 구조다
+   - `counter-only` 치환은 현재 보류다
+6. `zlink_recv()`의 남은 routed/strip/multipart export 경로를 더 얇게 만든다
+7. `recv_internal.cpp` mode guard 비용을 steady-state mode specialization 쪽으로
+   줄인다
+8. `PUBSUB`/`ROUTER` public surface는 공통 개선 후 별도 정리한다
+
+## 8.1 현재 보류/기각된 방향
+
+아래 방향은 현재 hot path 계약상 바로 진행하지 않는다.
+
+1. `pipe` lock 전체 제거
+2. `pipe` activation을 lock 밖으로 이동
+3. mailbox read lock 제거
+4. send-side throttle의 counter-only 치환
+5. pipe 전용 non-reentrant mutex
+
+이 항목들은 최근 A/B 실험이나 current code invariant 기준으로
+이미 역효과가 확인됐거나 correctness risk가 높다.
+
+## 9. 현재 반영된 개선
+
+2026-03-27 기준으로 아래 개선이 들어갔다.
+
+- [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+  에 `PAIR`/`DEALER` public single-part direct recv fast path 추가
+- [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+  에 `ROUTER` public single-part direct routed recv fast path 추가
+- [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+  에 `SUB/XSUB` topic frame direct recv 경량화 추가
+- [`recv_tls_view.hpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_tls_view.hpp)
+  에 first-slot reserve/commit helper 추가
+- [`message_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/message_api.cpp)
+  와 [`recv_tls_view.hpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_tls_view.hpp)
+  에 TLS-view `multipart_close` release 최적화 추가
+- [`socket_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.hpp)
+  / [`socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  에 `public_api_sync` shadow atomic 제거
+- [`socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+  에 send-ready handler가 없는 blocking send는 retry 동안
+  `public_api_sync`를 유지하도록 조정
+- [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp) 의
+  `check_read()` / `read()` 에서 steady-state `fast_mutex_t` 제거
+- [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp),
+  [`pair.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/pair.cpp),
+  [`lb.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/lb.cpp),
+  [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp),
+  [`router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp),
+  [`stream.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/stream.cpp)
+  에 `write_and_flush()` 경로 추가
+
+의미:
+
+- common `PAIR`/`DEALER` recv가 더 이상 임시 `first` message init/move를
+  반드시 거치지 않는다
+- single-part는 TLS slot 0으로 바로 recv한 뒤 바로 commit한다
+- 이전 multipart 뒤 다음 single-part를 받을 때도 같은 TLS storage를
+  안전하게 재사용한다
+- caller가 `zlink_multipart_close()`를 이미 호출한 경우, 다음 recv begin에서
+  같은 TLS slot을 다시 close/init 하는 낭비를 줄인다
+- recv는 공개 thread-safe hot path가 아니므로, recv-side `pipe` steady-state
+  잠금은 send-side concurrent contract보다 먼저 줄일 수 있다
+- send는 thread-safe 계약을 유지한 채 `write` + `flush`를 같은 pipe lock으로
+  묶어, final part에서 lock 2회를 1회로 줄인다
+- `PAIR`/`DEALER_DEALER` zlink 내부 raw/public 분리를 다시 찍어보면,
+  public wrapper penalty는 현재 secondary고 남은 상위 축은 send-side다
+
+현재 quick 결과 해석:
+
+- `3s quick run` 기준
+  - `PAIR tcp 64B`: `libzmq 3908.78 Kmsg/s`, `zlink 3046.03 Kmsg/s`, `-22.07%`
+  - `DEALER_DEALER tcp 64B`: `libzmq 3765.72 Kmsg/s`,
+    `zlink 3180.02 Kmsg/s`, `-15.55%`
+
+따라서 현재 해석은:
+
+- public recv single-part 경로는 실제 병목 축이 맞다
+- recv-side `pipe` 잠금도 실제 병목 축이 맞다
+- send-side `write + flush` 이중 잠금도 실제 병목 축이 맞다
+- `zlink_multipart_close()` 이후 TLS slot release 최적화도 steady-state recv
+  비용을 낮추는 데 실제로 기여한다
+- 하지만 남은 전체 gap을 혼자 설명하는 축은 아니다
+- `PAIR`는 `xsend()`가 `pipe::write_and_flush()`만 타고 별도 `lb/dist`
+  상태를 건드리지 않으므로, public send sync를 반드시 같이 잡아야 하는지
+  따로 볼 여지가 있다
+
+추가 관찰:
+
+- 현재 환경에서는 `perf`를 사용할 수 없어 `perf stat`으로
+  `resource_stalls.sb`, `L1-dcache-load-misses`를 직접 비교하진 못했다.
+- 대신 `_out_sync`를 `pipe.cpp` 전체에서 no-op으로 만드는 직접 A/B 실험을
+  해봤지만, 오히려 quick throughput이 더 나빠졌다.
+  - `PAIR tcp 64B`: 약 `3.046M -> 2.158M msg/s`
+  - `DEALER_DEALER tcp 64B`: 약 `3.180M -> 2.468M msg/s`
+- 이 결과는 `pipe` lock이 "전부 제거하면 바로 빨라지는 순수 고정비"가 아니라,
+  현재 구현에서는 활성화/직렬화/진행 보장과도 얽혀 있다는 뜻이다.
+- 따라서 `pipe`를 상위 원인 후보로 유지하더라도,
+  naive한 전체 lock 제거는 올바른 해결책이 아니다.
+
+즉 여기서 얻은 가장 중요한 교훈은:
+
+- `lock cost`를 줄이는 것이 목표가 아니라
+- hot path가 같은 ordering을 더 적은 work로 달성하게 만드는 것이 목표다.
+
+실험적으로 `PAIR`에서 `socket_base_t::send()`의 public sync를 우회하는
+경로를 다시 검토했다.
+
+- 현재는 `PAIR`에만 한정해서 public sync를 우회하고 있다.
+- same-handle concurrent send 회귀 테스트는 계속 통과한다.
+- 현재 안정 상태 `5s quick run` 기준 `PAIR tcp 64B`는
+  `zlink 3.058M msg/s`, `libzmq 3.643M msg/s`로 약 `-16.1%` 차이다.
+- 폭이 크진 않아서 과대해석하면 안 되지만,
+  `PAIR`에서는 public send sync가 실제 비용 축이라는 근거는 더 강해졌다.
+- 반대로 `DEALER`는 `lb_t`의 `_active/_current/_more/_dropping` 상태 때문에
+  같은 우회를 바로 적용하면 안 된다.
+
+배제된 후보:
+
+- `pipe.cpp` 전체 `_out_sync` no-op
+  - `PAIR tcp 64B`: 약 `3.046M -> 2.158M`
+  - `DEALER_DEALER tcp 64B`: 약 `3.180M -> 2.468M`
+  - 결론: `pipe` lock은 단순 순수 고정비가 아니라 현재 구현의 직렬화 순서와
+    얽혀 있어 naive 제거는 역효과
+- `pipe::write_and_flush()` / `flush()`에서 peer activation을 lock 밖으로 이동
+  - `PAIR tcp 64B`: 약 `3.122M -> 2.970M`
+  - 결론: 현재 경로에서는 activation ordering이 성능에도 직접 영향
+- `mailbox.cpp`의 recv/check_read 측 read-side lock 제거
+  - `PAIR tcp 64B`: 약 `3.058M -> 2.860M`
+  - `DEALER_DEALER tcp 64B`: 약 `3.133M -> 2.809M`
+  - 결론: 이 경로도 현재 구현과는 독립적인 순수 오버헤드가 아니다
+
+이 순서는 thread-safe 계약을 유지하면서도 실제 `single` gap에 직접 닿는
+순서다.

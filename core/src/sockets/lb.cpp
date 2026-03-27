@@ -69,7 +69,10 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
     }
 
     while (_active > 0) {
-        if (_pipes[_current]->write (msg_)) {
+        const bool more = (msg_->flags () & msg_t::more) != 0;
+        const bool ok = more ? _pipes[_current]->write (msg_)
+                             : _pipes[_current]->write_and_flush (msg_);
+        if (ok) {
             if (pipe_)
                 *pipe_ = _pipes[_current];
             break;
@@ -117,8 +120,6 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
     //  continue round-robining (load balance).
     _more = (msg_->flags () & msg_t::more) != 0;
     if (!_more) {
-        _pipes[_current]->flush ();
-
         if (++_current >= _active)
             _current = 0;
     }

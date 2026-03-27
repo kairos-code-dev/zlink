@@ -4,6 +4,7 @@
 
 #include "protocol/metadata.hpp"
 #include "core/msg.hpp"
+#include "core/recv_tls_view.hpp"
 
 int zlink_msg_init (zlink_msg_t *msg_)
 {
@@ -78,6 +79,10 @@ void zlink_multipart_close (zlink_msg_t *parts_, size_t part_count_)
 {
     if (!parts_)
         return;
+
+    if (zlink::recv_tls_view::release_closed_prefix (parts_, part_count_))
+        return;
+
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
 }

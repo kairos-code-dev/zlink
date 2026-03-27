@@ -303,6 +303,7 @@ RESULTS_DIR="${BENCH_RESULTS_DIR:-${PERF_RESULTS_DIR:-}}"
 RESULTS_TAG=""
 RESULT_FILE=""
 OUTPUT_FILE=""
+SUPPRESS_RESULT_SAVE="${BENCH_MULTI_SUPPRESS_PATTERN_RESULT_SAVE:-0}"
 
 MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-2}"
 MULTI_DURATION_SECONDS="${BENCH_MULTI_DURATION_SECONDS:-5}"
@@ -485,7 +486,7 @@ fi
 
 if [[ -n "${RESULT_FILE}" ]]; then
   RESULT_FILE="$(realpath -m "${RESULT_FILE}")"
-else
+elif [[ "${SUPPRESS_RESULT_SAVE}" != "1" ]]; then
   TS="$(date +%Y%m%d_%H%M%S)"
   NAME="perf_$(detect_platform_tag)_${TS}"
   if [[ -n "${RESULTS_TAG}" ]]; then
@@ -494,14 +495,16 @@ else
   RESULT_FILE="${RESULTS_DIR}/multi/report/${NAME}.txt"
 fi
 
-if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" == "${RESULT_FILE}" ]]; then
+if [[ -n "${OUTPUT_FILE}" && -n "${RESULT_FILE}" && "${OUTPUT_FILE}" == "${RESULT_FILE}" ]]; then
   echo "Error: --output cannot point to the same file as result output." >&2
   exit 1
 fi
 
 cleanup_old_results_dirs "${RESULTS_DIR}"
 
-mkdir -p "$(dirname "${RESULT_FILE}")"
+if [[ -n "${RESULT_FILE}" ]]; then
+  mkdir -p "$(dirname "${RESULT_FILE}")"
+fi
 if [[ -n "${OUTPUT_FILE}" ]]; then
   mkdir -p "$(dirname "${OUTPUT_FILE}")"
 fi
@@ -590,15 +593,21 @@ fi
 SHOW_TOTAL_TIME=1
 
 set +e
-if [[ -n "${OUTPUT_FILE}" ]]; then
+if [[ -n "${RESULT_FILE}" && -n "${OUTPUT_FILE}" ]]; then
   PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
-else
+elif [[ -n "${RESULT_FILE}" ]]; then
   PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}"
+elif [[ -n "${OUTPUT_FILE}" ]]; then
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${OUTPUT_FILE}"
+else
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}"
 fi
 run_status=${PIPESTATUS[0]}
 set -e
 
-enforce_file_retention "$(dirname "${RESULT_FILE}")"
+if [[ -n "${RESULT_FILE}" ]]; then
+  enforce_file_retention "$(dirname "${RESULT_FILE}")"
+fi
 
 if [[ "${run_status}" -ne 0 ]]; then
   exit "${run_status}"

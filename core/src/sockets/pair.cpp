@@ -92,13 +92,13 @@ void zlink::pair_t::xwrite_activated (pipe_t *)
 
 int zlink::pair_t::xsend (msg_t *msg_)
 {
-    if (!_pipe || !_pipe->write (msg_)) {
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool ok =
+      _pipe ? (more ? _pipe->write (msg_) : _pipe->write_and_flush (msg_)) : false;
+    if (!ok) {
         errno = EAGAIN;
         return -1;
     }
-
-    if (!(msg_->flags () & msg_t::more))
-        _pipe->flush ();
 
     //  Detach the original message from the data buffer.
     const int rc = msg_->init ();

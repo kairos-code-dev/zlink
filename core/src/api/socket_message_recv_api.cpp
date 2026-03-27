@@ -14,6 +14,16 @@
 
 namespace
 {
+bool is_direct_public_recv_fast_type (int type_)
+{
+    return type_ == ZLINK_CORE_SOCKET_PAIR || type_ == ZLINK_CORE_SOCKET_DEALER;
+}
+
+bool is_direct_public_routed_recv_fast_type (int type_)
+{
+    return type_ == ZLINK_CORE_SOCKET_ROUTER;
+}
+
 bool frame_has_more (const zlink_msg_t &msg_)
 {
     return (reinterpret_cast<const zlink::msg_t *> (&msg_)->flags ()
@@ -167,6 +177,44 @@ int export_payload_sequence (void *socket_,
     }
 }
 
+int export_followup_sequence_from_reserved_first (void *socket_,
+                                                  zlink_msg_t **parts_out_,
+                                                  size_t *part_count_out_)
+{
+    if (!socket_ || !parts_out_ || !part_count_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (zlink::recv_tls_view::reserve_first_slot () != 0)
+        return -1;
+
+    while (true) {
+        zlink::recv_tls_view::storage_t &tls = zlink::recv_tls_view::storage ();
+        const bool more = frame_has_more (tls.parts[tls.count - 1]);
+        if (!more)
+            return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
+
+        zlink_msg_t next;
+        zlink_msg_init (&next);
+        if (zlink::recv_followup_msg_socket (
+              static_cast<zlink::socket_base_t *> (socket_), &next)
+            < 0) {
+            zlink_msg_close (&next);
+            zlink::recv_tls_view::abort ();
+            return -1;
+        }
+
+        if (zlink::recv_tls_view::push (&next) != 0) {
+            const int saved_errno = errno;
+            (void) drain_followup_frames (socket_, &next);
+            zlink::recv_tls_view::abort ();
+            errno = saved_errno;
+            return -1;
+        }
+    }
+}
+
 int recv_socket_subscribe_parts (socket_handle_t handle_,
                                  zlink_routing_id_t *source_rid_out_,
                                  zlink_msg_t **parts_out_,
@@ -186,7 +234,10 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
     if (validate_recv_flags (flags_) != 0)
         return -1;
 
-    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+    zlink_msg_t *first_slot = NULL;
+    if (zlink::recv_tls_view::begin_with_first_slot (
+          parts_out_, part_count_out_, &first_slot)
+        != 0)
         return -1;
     if (source_rid_out_)
         memset (source_rid_out_, 0, sizeof (*source_rid_out_));
@@ -199,7 +250,14 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
 
     zlink_msg_t topic_frame;
     zlink_msg_init (&topic_frame);
-    if (zlink::recv_msg_socket (handle_.socket, type, &topic_frame, flags_) < 0) {
+    if (handle_.socket->sub_dispatch_active ()) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    if (handle_.socket->recv (
+          reinterpret_cast<zlink::msg_t *> (&topic_frame), flags_)
+        < 0) {
         zlink_msg_close (&topic_frame);
         return -1;
     }
@@ -218,17 +276,20 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
         return 0;
     }
 
-    zlink_msg_t payload_frame;
-    zlink_msg_init (&payload_frame);
-    if (zlink::recv_followup_msg_socket (handle_.socket, &payload_frame) < 0) {
-        zlink_msg_close (&payload_frame);
+    if (zlink::recv_followup_msg_socket (handle_.socket, first_slot) < 0) {
         zlink_msg_close (&topic_frame);
+        zlink::recv_tls_view::abort ();
         return -1;
     }
     zlink_msg_close (&topic_frame);
 
-    return export_payload_sequence (handle_.socket, &payload_frame, parts_out_,
-                                    part_count_out_);
+    if (!frame_has_more (*first_slot))
+        return zlink::recv_tls_view::commit_reserved_single (parts_out_,
+                                                             part_count_out_);
+
+    return export_followup_sequence_from_reserved_first (handle_.socket,
+                                                         parts_out_,
+                                                         part_count_out_);
 }
 
 int recv_socket_parts (socket_handle_t handle_,
@@ -237,6 +298,9 @@ int recv_socket_parts (socket_handle_t handle_,
                        size_t *part_count_out_,
                        zlink_send_flags_t flags_)
 {
+    // Hot path: PAIR/DEALER single-part public recv reaches here on every
+    // message in with_zmq single. Keep single-part export lean and do not
+    // accidentally fold it back into a heavier multipart path.
     if (!handle_.socket) {
         errno = EFAULT;
         return -1;
@@ -247,11 +311,6 @@ int recv_socket_parts (socket_handle_t handle_,
     }
     if (validate_recv_flags (flags_) != 0)
         return -1;
-
-    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
-        return -1;
-    if (source_rid_out_)
-        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
 
     const int type = socket_type (handle_);
     if (type == ZLINK_CORE_SOCKET_PUB || type == ZLINK_CORE_SOCKET_XPUB
@@ -264,6 +323,69 @@ int recv_socket_parts (socket_handle_t handle_,
       type == ZLINK_CORE_SOCKET_ROUTER && source_rid_out_ != NULL;
     const bool strip_recv_routing_id =
       type == ZLINK_CORE_SOCKET_STREAM || routed_router_payload;
+    const bool direct_public_recv_fast =
+      !strip_recv_routing_id && !source_rid_out_
+      && is_direct_public_recv_fast_type (type);
+    const bool direct_public_routed_recv_fast =
+      routed_router_payload
+      && is_direct_public_routed_recv_fast_type (type);
+
+    if (direct_public_recv_fast) {
+        zlink_msg_t *first_slot = NULL;
+        if (zlink::recv_tls_view::begin_with_first_slot (
+              parts_out_, part_count_out_, &first_slot)
+            != 0)
+            return -1;
+
+        if (handle_.socket->socket_msg_dispatch_active ()) {
+            errno = EBUSY;
+            return -1;
+        }
+
+        if (handle_.socket->recv (
+              reinterpret_cast<zlink::msg_t *> (first_slot), flags_)
+            < 0)
+            return -1;
+
+        if (!frame_has_more (*first_slot))
+            return zlink::recv_tls_view::commit_reserved_single (
+              parts_out_, part_count_out_);
+
+        return export_followup_sequence_from_reserved_first (
+          handle_.socket, parts_out_, part_count_out_);
+    }
+
+    if (direct_public_routed_recv_fast) {
+        zlink_msg_t *first_slot = NULL;
+        if (zlink::recv_tls_view::begin_with_first_slot (
+              parts_out_, part_count_out_, &first_slot)
+            != 0)
+            return -1;
+
+        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+        if (handle_.socket->socket_msg_dispatch_active ()) {
+            errno = EBUSY;
+            return -1;
+        }
+
+        if (handle_.socket->recv_routed (
+              reinterpret_cast<zlink::msg_t *> (first_slot), source_rid_out_,
+              flags_)
+            < 0)
+            return -1;
+
+        if (!frame_has_more (*first_slot))
+            return zlink::recv_tls_view::commit_reserved_single (
+              parts_out_, part_count_out_);
+
+        return export_followup_sequence_from_reserved_first (
+          handle_.socket, parts_out_, part_count_out_);
+    }
+
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+        return -1;
+    if (source_rid_out_)
+        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
 
     zlink_msg_t first;
     zlink_msg_init (&first);

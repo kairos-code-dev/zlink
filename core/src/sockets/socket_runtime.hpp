@@ -220,7 +220,6 @@ class socket_lifecycle_coordinator_t
   public:
     socket_lifecycle_coordinator_t () :
         public_api_state (0),
-        public_api_sync (),
         callback_api_depth (0),
         close_deferred (false),
         mailbox_refcnt (0),
@@ -236,12 +235,15 @@ class socket_lifecycle_coordinator_t
 
     bool enter_public_api ();
     void leave_public_api ();
+    bool enter_public_api_and_lock_sync ();
     bool enter_callback_api ();
     bool leave_callback_api ();
     bool begin_close_or_fail_busy (bool from_self_callback_);
     bool public_close_requested () const;
+    bool public_api_sync_held () const;
     void lock_public_api_sync ();
     void unlock_public_api_sync ();
+    void unlock_public_api_sync_and_leave ();
 
     int start_async_mailbox_processing (mailbox_t *mailbox_,
                                         io_thread_t *io_thread_,
@@ -270,7 +272,6 @@ class socket_lifecycle_coordinator_t
     bool dec_mailbox_ref ();
 
     std::atomic<uint32_t> public_api_state;
-    std::atomic<bool> public_api_sync;
     std::atomic<uint32_t> callback_api_depth;
     std::atomic<bool> close_deferred;
     atomic_counter_t mailbox_refcnt;
@@ -343,6 +344,25 @@ class socket_public_api_lock_scope_t
   private:
     socket_lifecycle_coordinator_t *_coordinator;
     bool _locked;
+};
+
+class socket_public_send_scope_t
+{
+  public:
+    socket_public_send_scope_t (socket_lifecycle_coordinator_t &coordinator_,
+                                bool needs_sync_);
+    ~socket_public_send_scope_t ();
+
+    bool acquired () const { return _entered; }
+    bool sync_locked () const { return _sync_locked; }
+    void unlock_sync ();
+    void relock_sync ();
+
+  private:
+    socket_lifecycle_coordinator_t *_coordinator;
+    bool _entered;
+    bool _needs_sync;
+    bool _sync_locked;
 };
 
 class socket_send_ready_dispatch_scope_t

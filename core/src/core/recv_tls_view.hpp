@@ -60,11 +60,46 @@ inline void reset ()
         if (!tls.occupied[i])
             continue;
 
-        (void) zlink_msg_close (&tls.parts[i]);
+        if (reinterpret_cast<zlink::msg_t *> (&tls.parts[i])->check ())
+            (void) zlink_msg_close (&tls.parts[i]);
         (void) zlink_msg_init (&tls.parts[i]);
         tls.occupied[i] = 0;
     }
     tls.count = 0;
+}
+
+inline bool owns_prefix (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_)
+        return false;
+
+    storage_t &tls = storage ();
+    if (tls.parts.empty () || part_count_ == 0 || part_count_ > tls.count)
+        return false;
+
+    return parts_ == &tls.parts[0];
+}
+
+inline bool release_closed_prefix (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!owns_prefix (parts_, part_count_))
+        return false;
+
+    storage_t &tls = storage ();
+    for (size_t i = 0; i < part_count_; ++i) {
+        if (!tls.occupied[i])
+            continue;
+
+        if (reinterpret_cast<zlink::msg_t *> (&tls.parts[i])->check ())
+            (void) zlink_msg_close (&tls.parts[i]);
+        (void) zlink_msg_init (&tls.parts[i]);
+        tls.occupied[i] = 0;
+    }
+
+    if (part_count_ == tls.count)
+        tls.count = 0;
+
+    return true;
 }
 
 inline int begin (zlink_msg_t **parts_out_, size_t *part_count_out_)
@@ -77,6 +112,29 @@ inline int begin (zlink_msg_t **parts_out_, size_t *part_count_out_)
     reset ();
     *parts_out_ = NULL;
     *part_count_out_ = 0;
+    return 0;
+}
+
+inline int begin_with_first_slot (zlink_msg_t **parts_out_,
+                                  size_t *part_count_out_,
+                                  zlink_msg_t **first_slot_out_)
+{
+    if (!parts_out_ || !part_count_out_ || !first_slot_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    reset ();
+    *parts_out_ = NULL;
+    *part_count_out_ = 0;
+
+    storage_t &tls = storage ();
+    if (tls.parts.empty ()) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    *first_slot_out_ = &tls.parts[0];
     return 0;
 }
 
@@ -144,6 +202,28 @@ inline int commit (zlink_msg_t **parts_out_, size_t *part_count_out_)
     *part_count_out_ = tls.count;
     errno = 0;
     return 0;
+}
+
+inline int reserve_first_slot ()
+{
+    storage_t &tls = storage ();
+    if (tls.parts.empty ()) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    tls.occupied[0] = 1;
+    tls.count = 1;
+    return 0;
+}
+
+inline int commit_reserved_single (zlink_msg_t **parts_out_,
+                                   size_t *part_count_out_)
+{
+    if (reserve_first_slot () != 0)
+        return -1;
+
+    return commit (parts_out_, part_count_out_);
 }
 }
 }

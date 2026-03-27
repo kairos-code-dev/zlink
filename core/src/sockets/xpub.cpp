@@ -105,9 +105,8 @@ void zlink::xpub_t::xattach_pipe (pipe_t *pipe_,
         copy.init ();
         const int rc = copy.copy (_welcome_msg);
         errno_assert (rc == 0);
-        const bool ok = pipe_->write (&copy);
+        const bool ok = pipe_->write_and_flush (&copy);
         zlink_assert (ok);
-        pipe_->flush ();
     }
 
     //  The pipe is active when attached. Let's read the subscriptions from

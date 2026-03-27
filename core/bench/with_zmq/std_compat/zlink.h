@@ -33,6 +33,8 @@ typedef int zlink_fd_t;
 
 namespace zlink_std_compat
 {
+static const size_t k_recv_frame_cap = 8;
+
 inline std::vector<zlink_msg_t> &recv_tls_parts ()
 {
     static thread_local std::vector<zlink_msg_t> parts (2);
@@ -86,6 +88,14 @@ inline int recv_tls_push (zlink_msg_t *src_)
     occupied[count] = 1;
     ++count;
     return 0;
+}
+
+inline void close_frame_range (zlink_msg_t *frames_, size_t frame_count_)
+{
+    if (!frames_)
+        return;
+    for (size_t i = 0; i < frame_count_; ++i)
+        zmq_msg_close (&frames_[i]);
 }
 }
 
@@ -591,26 +601,37 @@ inline int zlink_recv (void *s_,
     size_t socket_type_size = sizeof (socket_type);
     (void) zmq_getsockopt (s_, ZMQ_TYPE, &socket_type, &socket_type_size);
 
-    std::vector<zlink_msg_t> frames;
+    zlink_msg_t frames[zlink_std_compat::k_recv_frame_cap];
+    size_t frame_count = 0;
     while (true) {
-        zlink_msg_t frame;
-        if (zmq_msg_init (&frame) != 0)
-            return -1;
-        const int rc = zmq_msg_recv (&frame, s_, static_cast<int> (flags_));
-        if (rc < 0) {
-            zmq_msg_close (&frame);
-            for (size_t i = 0; i < frames.size (); ++i)
-                zmq_msg_close (&frames[i]);
+        if (frame_count >= zlink_std_compat::k_recv_frame_cap) {
+            zlink_std_compat::close_frame_range (frames, frame_count);
+            errno = EMSGSIZE;
             return -1;
         }
-        frames.push_back (frame);
-        if (!zmq_msg_more (&frames.back ()))
+
+        if (zmq_msg_init (&frames[frame_count]) != 0) {
+            zlink_std_compat::close_frame_range (frames, frame_count);
+            return -1;
+        }
+
+        const int rc =
+          zmq_msg_recv (&frames[frame_count], s_, static_cast<int> (flags_));
+        if (rc < 0) {
+            zmq_msg_close (&frames[frame_count]);
+            zlink_std_compat::close_frame_range (frames, frame_count);
+            return -1;
+        }
+
+        const int more = zmq_msg_more (&frames[frame_count]);
+        ++frame_count;
+        if (!more)
             break;
         flags_ = static_cast<zlink_send_flags_t> (flags_ | ZMQ_DONTWAIT);
     }
 
     size_t start_index = 0;
-    if (!frames.empty ()
+    if (frame_count > 0
         && (socket_type == ZMQ_ROUTER || socket_type == ZMQ_STREAM)) {
         if (source_rid_out_) {
             const size_t rid_size =
@@ -624,7 +645,7 @@ inline int zlink_recv (void *s_,
         start_index = 1;
     }
 
-    const size_t payload_count = frames.size () - start_index;
+    const size_t payload_count = frame_count - start_index;
     for (size_t i = 0; i < start_index; ++i)
         zmq_msg_close (&frames[i]);
     for (size_t i = 0; i < payload_count; ++i) {
@@ -711,35 +732,75 @@ inline int zlink_subscribe (void *subject_,
                             size_t *topic_id_len_out_,
                             zlink_send_flags_t flags_)
 {
-    zlink_msg_t *frames = NULL;
-    size_t frame_count = 0;
-    if (zlink_recv (subject_, source_rid_out_, &frames, &frame_count, flags_)
-        != 0)
-        return -1;
-
-    if (!frames || frame_count == 0) {
-        errno = EPROTO;
+    if (!parts_out_ || !part_count_out_) {
+        errno = EINVAL;
         return -1;
     }
 
-    const size_t topic_len = zmq_msg_size (&frames[0]);
+    zlink_std_compat::recv_tls_reset ();
+    *parts_out_ = NULL;
+    *part_count_out_ = 0;
+    if (source_rid_out_)
+        source_rid_out_->size = 0;
+
+    zlink_msg_t topic_frame;
+    if (zmq_msg_init (&topic_frame) != 0)
+        return -1;
+
+    const int rc = zmq_msg_recv (&topic_frame, subject_, static_cast<int> (flags_));
+    if (rc < 0) {
+        zmq_msg_close (&topic_frame);
+        return -1;
+    }
+
+    const int topic_more = zmq_msg_more (&topic_frame);
+    const size_t topic_len = zmq_msg_size (&topic_frame);
     if (topic_id_len_out_)
         *topic_id_len_out_ = topic_len;
     if (topic_id_out_ && topic_len > 0)
-        std::memcpy (topic_id_out_, zmq_msg_data (&frames[0]), topic_len);
+        std::memcpy (topic_id_out_, zmq_msg_data (&topic_frame), topic_len);
 
-    zlink_std_compat::recv_tls_reset ();
-    const size_t payload_count = frame_count > 0 ? frame_count - 1 : 0;
-    for (size_t i = 0; i < payload_count; ++i) {
-        if (zlink_std_compat::recv_tls_push (&frames[i + 1]) != 0) {
+    if (!topic_more) {
+        zmq_msg_close (&topic_frame);
+        return 0;
+    }
+
+    size_t payload_count = 0;
+    flags_ = static_cast<zlink_send_flags_t> (flags_ | ZMQ_DONTWAIT);
+    while (true) {
+        zlink_msg_t payload_frame;
+        if (zmq_msg_init (&payload_frame) != 0) {
+            zmq_msg_close (&topic_frame);
+            zlink_std_compat::recv_tls_reset ();
+            return -1;
+        }
+
+        const int payload_rc =
+          zmq_msg_recv (&payload_frame, subject_, static_cast<int> (flags_));
+        if (payload_rc < 0) {
             const int saved_errno = errno;
-            zlink_multipart_close (frames, frame_count);
+            zmq_msg_close (&payload_frame);
+            zmq_msg_close (&topic_frame);
             zlink_std_compat::recv_tls_reset ();
             errno = saved_errno;
             return -1;
         }
+
+        const int more = zmq_msg_more (&payload_frame);
+        if (zlink_std_compat::recv_tls_push (&payload_frame) != 0) {
+            const int saved_errno = errno;
+            zmq_msg_close (&payload_frame);
+            zmq_msg_close (&topic_frame);
+            zlink_std_compat::recv_tls_reset ();
+            errno = saved_errno;
+            return -1;
+        }
+        ++payload_count;
+        if (!more)
+            break;
     }
-    zlink_multipart_close (frames, frame_count);
+
+    zmq_msg_close (&topic_frame);
 
     *parts_out_ = payload_count > 0 ? &zlink_std_compat::recv_tls_parts ()[0] : NULL;
     *part_count_out_ = zlink_std_compat::recv_tls_count ();

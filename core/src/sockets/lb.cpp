@@ -68,6 +68,28 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
         return 0;
     }
 
+    // Hot path: DEALER_DEALER single benchmarks run with one active pipe.
+    // Keep the one-pipe steady-state out of the general load-balancing loop.
+    if (_active == 1 && _current == 0) {
+        pipe_t *pipe = _pipes[0];
+        const bool more = (msg_->flags () & msg_t::more) != 0;
+        const bool ok = more ? pipe->write (msg_) : pipe->write_and_flush (msg_);
+        if (!ok) {
+            _active = 0;
+            errno = EAGAIN;
+            return -1;
+        }
+
+        if (pipe_)
+            *pipe_ = pipe;
+
+        _more = more;
+
+        const int rc = msg_->init ();
+        errno_assert (rc == 0);
+        return 0;
+    }
+
     while (_active > 0) {
         const bool more = (msg_->flags () & msg_t::more) != 0;
         const bool ok = more ? _pipes[_current]->write (msg_)
@@ -137,6 +159,14 @@ bool zlink::lb_t::has_out ()
     //  write the rest of the message.
     if (_more)
         return true;
+
+    if (_active == 1 && _current == 0) {
+        if (_pipes[0]->check_write ())
+            return true;
+
+        _active = 0;
+        return false;
+    }
 
     while (_active > 0) {
         //  Check whether a pipe has room for another message.

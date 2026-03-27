@@ -348,6 +348,17 @@ rejected candidate는 반드시 로그에 남긴다.
 
 ## 12. 현재 작업 레지스터
 
+- 현재 유지 중인 latest delta
+  - `lb.cpp` one-active-pipe `DEALER` send fast path
+  - `DEALER_DEALER tcp 64B` quick run이 `-11.58%`까지 회복
+- 이번 iteration에서 배제한 후보
+  - `fq.cpp` one-active-pipe recv fast path
+  - `DEALER_DEALER inproc 64B`가 `-34.71%`로 악화돼 원복
+- 아직 남은 핵심 미달
+  - `DEALER_DEALER inproc 64B`: `-27.07%`
+  - `PAIR inproc 64B`: `-31.39%`
+  - multi `dealer_dealer tcp 64B`: `-29.55%`
+
 - [ ] send-side lifecycle/backpressure retry cost를 더 줄일 구조를 찾는다.
 - [ ] `pipe` send/publication 경로에서 ordering을 유지한 채 lock 안 work를 줄인다.
 - [ ] `PUBSUB` publish/distribution path를 직접 비교해 zlink-only differential을 좁힌다.

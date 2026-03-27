@@ -1029,3 +1029,70 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
 "public wrapper 때문에 느리다"보다,
 "현재 zlink core send-side engine이 libzmq raw path 대비 얼마나 비싼가"
 에 더 가깝다.
+
+## 9. 2026-03-27 late-night iteration 로그
+
+- 작업한 가설
+  - `DEALER_DEALER` single bench의 steady-state는 active outbound pipe가
+    하나뿐이므로, `lb_t::sendpipe()/has_out()`에서 일반 load-balancing loop를
+    매 메시지 반복하지 않아도 된다.
+- 수정한 파일 경로
+  - [`lb.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/lb.cpp)
+  - [`test_public_inproc_multipart_send.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_public_inproc_multipart_send.cpp)
+- 실행한 명령
+  - `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^test_public_inproc_multipart_send$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag dealer_single_pipe_fastpath`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pair_single_pipe_guardrail`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pair_single_pipe_guardrail_raw`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag dealer_single_pipe_fastpath_raw`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag dealer_router_single_pipe_fastpath`
+  - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py dealer_dealer --build-dir core/build --runs 1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260327_233556_dealer_single_pipe_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_233556_dealer_single_pipe_fastpath.txt)
+  - [`perf_linux_20260327_233634_pair_single_pipe_guardrail.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_233634_pair_single_pipe_guardrail.txt)
+  - [`perf_linux_20260327_233703_pair_single_pipe_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_233703_pair_single_pipe_guardrail_raw.txt)
+  - [`perf_linux_20260327_233733_dealer_single_pipe_fastpath_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_233733_dealer_single_pipe_fastpath_raw.txt)
+  - [`perf_linux_20260327_233804_dealer_router_single_pipe_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_233804_dealer_router_single_pipe_fastpath.txt)
+- 핵심 수치
+  - 유지한 `lb` one-pipe fast path
+    - `DEALER_DEALER tcp 64B`: `3693.91 Kmsg/s` vs `3265.99 Kmsg/s`, `-11.58%`
+    - `DEALER_DEALER inproc 64B`: `4356.51 Kmsg/s` vs `3177.03 Kmsg/s`, `-27.07%`
+    - `DEALER_DEALER tcp raw`: `3822.41 Kmsg/s` vs `3352.16 Kmsg/s`, `-12.30%`
+    - `DEALER_DEALER inproc raw`: `4164.13 Kmsg/s` vs `2917.13 Kmsg/s`, `-29.95%`
+    - `DEALER` public penalty는 이번 상태에서 작다.
+      - tcp: `3265.99` vs raw `3352.16`, public이 약 `-2.57%`
+      - inproc: `3177.03` vs raw `2917.13`, public이 약 `+8.91%`
+    - `PAIR` guardrail
+      - public tcp `-10.00%`, inproc `-31.39%`
+      - raw tcp `-16.73%`, inproc `-15.13%`
+      - 즉 `PAIR inproc` public penalty는 다시 커져 있다.
+    - `DEALER_ROUTER` smoke
+      - tcp `-33.98%`, inproc `-24.43%`
+    - multi `dealer_dealer tcp 64B`
+      - `2299.48 Kmsg/s` vs `1619.89 Kmsg/s`, `-29.55%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `lb.cpp` one-active-pipe `DEALER` send fast path
+    - `DEALER` public inproc single/multipart/concurrent send regression 추가
+  - 원복
+    - `fq.cpp` one-active-pipe recv fast path
+      - [`perf_linux_20260327_234037_dealer_single_pipe_fastpath_lb_fq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_234037_dealer_single_pipe_fastpath_lb_fq.txt)
+      - `DEALER_DEALER inproc 64B`가 `-34.71%`로 악화돼 유지하지 않음
+- 해석
+  - 이번 라운드의 유지 후보는 "send-side `pipe` publication/order lock 안 work 축소"에
+    해당한다.
+  - `DEALER_DEALER tcp`는 stop condition 바로 아래까지 회복됐고,
+    raw/public 분리상 이번 라운드의 이득은 public wrapper가 아니라
+    core send-side work 축 축소로 읽는 편이 맞다.
+  - 반대로 `inproc`, `DEALER_ROUTER`, multi guardrail은 아직 미달이다.
+  - 따라서 이 변경은 유지할 가치가 있지만, broader acceptance를 통과한
+    안정 지점은 아직 아니다.
+- 다음 iteration 우선순위
+  - `send-side lifecycle/backpressure`에서 더 안전한 공통 atomic 축소 후보가
+    실제로 있는지 다시 좁힌다.
+  - 동시에 `DEALER` 계열은 이번 one-pipe send fast path를 기준선으로 두고,
+    `inproc` core differential과 routed/pattern-specific 잔여 비용을 분리한다.
+  - `PUBSUB` / `ROUTER_ROUTER`는 아직 이번 라운드로는 직접 닿지 않았으므로
+    우선순위는 그대로 유지한다.

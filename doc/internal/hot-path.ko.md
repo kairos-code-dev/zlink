@@ -279,6 +279,10 @@ steady-state single-part recv hot path:
   [`router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp),
   [`stream.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/stream.cpp)
   에 `write_and_flush()` 경로 추가
+- [`lb.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/lb.cpp)
+  에 one-active-pipe `DEALER` send fast path 추가
+- [`test_public_inproc_multipart_send.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_public_inproc_multipart_send.cpp)
+  에 `DEALER` single/multipart/concurrent send 회귀 추가
 
 의미:
 
@@ -293,6 +297,8 @@ steady-state single-part recv hot path:
   잠금은 send-side concurrent contract보다 먼저 줄일 수 있다
 - send는 thread-safe 계약을 유지한 채 `write` + `flush`를 같은 pipe lock으로
   묶어, final part에서 lock 2회를 1회로 줄인다
+- `DEALER_DEALER`처럼 outbound pipe가 하나뿐인 steady-state는
+  일반 `lb_t` loop와 fairness bookkeeping을 반복하지 않도록 줄였다
 - `PAIR`/`DEALER_DEALER` zlink 내부 raw/public 분리를 다시 찍어보면,
   public wrapper penalty는 현재 secondary고 남은 상위 축은 send-side다
 
@@ -344,6 +350,14 @@ steady-state single-part recv hot path:
   `PAIR`에서는 public send sync가 실제 비용 축이라는 근거는 더 강해졌다.
 - 반대로 `DEALER`는 `lb_t`의 `_active/_current/_more/_dropping` 상태 때문에
   같은 우회를 바로 적용하면 안 된다.
+- 대신 `DEALER`는 "동일 의미를 더 적은 work로 달성"하는 좁은 후보로
+  one-active-pipe `lb_t::sendpipe()/has_out()` fast path를 유지한다.
+  - 유지 기준 quick 결과:
+    - `DEALER_DEALER tcp 64B`
+      `3693.91 Kmsg/s` vs `3265.99 Kmsg/s`, `-11.58%`
+    - `DEALER_DEALER inproc 64B`
+      `4356.51 Kmsg/s` vs `3177.03 Kmsg/s`, `-27.07%`
+  - 즉 `tcp`는 크게 회복됐지만 `inproc`과 multi guardrail은 아직 미달이다.
 
 배제된 후보:
 
@@ -359,6 +373,12 @@ steady-state single-part recv hot path:
   - `PAIR tcp 64B`: 약 `3.058M -> 2.860M`
   - `DEALER_DEALER tcp 64B`: 약 `3.133M -> 2.809M`
   - 결론: 이 경로도 현재 구현과는 독립적인 순수 오버헤드가 아니다
+- `fq.cpp` one-active-pipe recv fast path
+  - [`perf_linux_20260327_234037_dealer_single_pipe_fastpath_lb_fq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_234037_dealer_single_pipe_fastpath_lb_fq.txt)
+  - `DEALER_DEALER tcp 64B`: `-12.98%`
+  - `DEALER_DEALER inproc 64B`: `-34.71%`
+  - 결론: `DEALER` one-pipe recv는 이번 형태로는 오히려 `inproc`을 악화시켜
+    유지 후보가 아니다
 
 이 순서는 thread-safe 계약을 유지하면서도 실제 `single` gap에 직접 닿는
 순서다.

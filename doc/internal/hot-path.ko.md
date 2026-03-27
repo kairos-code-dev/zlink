@@ -48,6 +48,13 @@ public send/recv 경로다.
 - 반면 같은 라운드의 `PUBSUB inproc 64B`는 `-42.51%`,
   multi `pubsub tcp 64B`는 `-26.97%`라서 publication/lifecycle differential은
   아직 남아 있다.
+- 2026-03-28 single zlink `PUBSUB` bench는
+  `zlink_publish(NULL, &part, 1)` + `zlink_recv(...)` no-topic payload-only
+  경로로 정렬했다.
+- aligned first run/rerun은 `tcp -24.51% / -23.17%`,
+  `inproc -41.79% / -44.68%`였다.
+- 즉 empty-topic frame/topic-aware recv surface mismatch는 실제로 있었지만,
+  현재 `PUBSUB` 잔여 gap을 그 차이 하나로 설명할 수는 없다.
 
 ## 2. 현재 비교 surface
 
@@ -62,6 +69,11 @@ public send/recv 경로다.
 
 즉 현재 측정은 raw transport core만 비교하는 것이 아니라,
 `zlink`의 public API cost를 함께 포함한다.
+
+특히 `PUBSUB` single은 no-topic payload-only 비교를 하면서도
+현재는 `NULL topic + zlink_recv()` payload-only 경로로 정렬돼 있다.
+따라서 현재 남은 `PUBSUB` single gap은 이전 empty-topic mismatch보다
+publication/lifecycle/distribution differential을 더 직접적으로 반영한다.
 
 이 문서의 hot path도 그 기준으로 정의한다.
 
@@ -266,6 +278,14 @@ steady-state single-part recv hot path:
    - raw는 `PAIR tcp -7.94%`, `DEALER_DEALER inproc -19.30%`까지 회복했지만
      public rerun에서 `DEALER_DEALER tcp/inproc`가
      `-27.23% / -30.85%`로 다시 흔들려 rejected candidate로 둔다
+10. `socket_runtime.cpp` `PAIR` no-sync send scope enter+leave fast path
+   - raw는 `PAIR tcp/inproc -19.98% / -19.77%`까지 회복했지만
+     public seq에서 `PAIR tcp/inproc`가 `-37.97% / -32.71%`로 다시 벌어져
+     raw/public guardrail을 깨뜨렸다
+11. `socket_runtime.cpp` `PAIR` no-sync send scope leave-only fast path
+   - `PAIR` 자체는 `tcp/inproc -17.01% / -19.88%`로 덜 흔들렸지만
+     같은 seq run의 `DEALER_DEALER tcp/inproc`가
+     `-37.43% / -34.21%`로 내려가 broad win 근거가 없었다
 
 이 항목들은 최근 A/B 실험이나 current code invariant 기준으로
 이미 역효과가 확인됐거나 correctness risk가 높다.
@@ -279,6 +299,10 @@ steady-state single-part recv hot path:
   current code 기준으로는 raw/public guardrail과 `PAIR`/`DEALER` broad win을
   동시에 만족시키지 못했다. 즉 이 축은 여전히 P0이지만, 지금 형태의
   uncontended CAS 치환은 유지 후보가 아니다.
+- `PAIR` no-sync send scope fast path 둘도 같은 이유로 rejected candidate로 둔다.
+  `PAIR` admission/leave를 더 싸게 만들고 싶다는 방향은 맞지만,
+  current public surface에서는 오히려 raw/public 분리나 non-`PAIR` guardrail을
+  동시에 깨뜨렸다.
 
 ## 9. 현재 반영된 개선
 
@@ -463,6 +487,15 @@ steady-state single-part recv hot path:
   - 결론: 현재 public single-part send wrapper의 중복 `msg->check()`는
     broad guardrail을 깨뜨릴 만큼 상위 원인이 아니다. 이 축은
     유지 후보에서 제외한다.
+- `socket_base_msg.cpp` blocking retry의 idle send-ready handler sync 유지
+  - [`perf_linux_20260328_021040_codex_idle_send_ready_retry_public_seq_serial.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_021040_codex_idle_send_ready_retry_public_seq_serial.txt)
+  - [`perf_linux_20260328_021124_codex_idle_send_ready_retry_raw_seq_serial.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_021124_codex_idle_send_ready_retry_raw_seq_serial.txt)
+  - `DEALER_DEALER tcp` public은 `-9.81%`까지 회복됐지만
+    `PAIR inproc` public이 `-24.33%`,
+    `DEALER_DEALER tcp/inproc` raw가 `-27.29% / -24.59%`로 흔들렸다
+  - 결론: blocking retry에서 "handler installed"와 "notification armed"를
+    구분하는 발상은 타당했지만, installed-but-idle handler를 모두 sync-held
+    쪽으로 보내는 현재 형태는 broad win이 아니다
 
 이 순서는 thread-safe 계약을 유지하면서도 실제 `single` gap에 직접 닿는
 순서다.

@@ -432,6 +432,23 @@ rejected candidate는 반드시 로그에 남긴다.
   - `xpub.cpp` / `xsub.cpp` `xwrite_activated()` delivery-ready refresh 제거도
     single `PUBSUB tcp/inproc 64B`가 `-27.31%` / `-44.93%`로
     baseline보다 악화돼 원복
+  - `xpub.cpp` no-monitor delivery-ready tracking gate와
+    monitor-open ready-count priming도 isolated first/rerun이
+    `PUBSUB tcp/inproc 64B -26.72% / -37.92%`,
+    `-27.12% / -43.79%`로 accepted baseline보다 나빠져 원복
+  - `lb.cpp` one-active-pipe no-recursive HWM helper도
+    `DEALER` isolated run은 일부 회복했지만
+    public serial guardrail의 `PAIR tcp/inproc 64B`가
+    `-23.95% / -31.30%`로 무너져 원복
+  - `pair.cpp` final-part no-recursive HWM helper도
+    isolated `PAIR tcp 64B`는 `-8.49%`까지 회복했지만
+    rerun `PAIR inproc 64B`가 `-21.18%`로 흔들리고
+    serial guardrail의 `DEALER_DEALER inproc 64B` public/raw가
+    `-31.36%` / `-30.57%`로 무너져 원복
+  - `XPUB` prechecked no-HWM-recheck도
+    isolated first run은 `PUBSUB tcp/inproc 64B -21.70% / -35.47%`로
+    둘 다 좋아졌지만, clean rerun `PUBSUB inproc 64B`가 `-41.46%`로
+    accepted baseline보다 다시 나빠져 원복
 - 현재 코드/문서 정합 메모
   - `pipe.cpp`의 `write()`, `write_and_flush()`, `check_write_status()`는
     `_out_sync`를 잡은 뒤 `check_hwm()`에서 같은 recursive fast mutex를
@@ -515,6 +532,32 @@ rejected candidate는 반드시 로그에 남긴다.
     `-27.31% / -44.93%`로 나빠져 현재 코드에는 없다.
   - 즉 current `PUBSUB` 잔여 gap은 `write_activated`에서의 monitor-ready
     refresh 하나를 빼는 수준으로는 줄지 않는다.
+  - 같은 날 `xpub.cpp` no-monitor delivery-ready tracking gate와
+    monitor-open ready-count priming도 isolated first/rerun이
+    `PUBSUB tcp/inproc 64B -26.72% / -37.92%`,
+    `-27.12% / -43.79%`로 accepted baseline보다 나빠져 현재 코드에는 없다.
+  - 즉 current `PUBSUB` 잔여 gap은
+    "monitor가 없을 때 ready-count recompute를 건너뛰자"는
+    bookkeeping gate 하나로도 줄지 않는다.
+  - 같은 날 `lb.cpp` one-active-pipe no-recursive HWM helper도
+    isolated `DEALER` run은 일부 회복했지만
+    public serial guardrail `PAIR tcp/inproc 64B`가
+    `-23.95% / -31.30%`로 깨져 현재 코드에는 없다.
+  - 같은 날 `pair.cpp` final-part no-recursive HWM helper도
+    isolated `PAIR tcp 64B`는 `-8.49%`까지 회복했지만
+    rerun `PAIR inproc 64B`가 `-21.18%`로 다시 흔들렸고,
+    serial guardrail의 `DEALER_DEALER inproc 64B` public/raw가
+    `-31.36%` / `-30.57%`로 무너져 현재 코드에는 없다.
+  - 같은 날 `XPUB` prechecked no-HWM-recheck도
+    isolated first run은 `PUBSUB tcp/inproc 64B -21.70% / -35.47%`로
+    둘 다 회복했지만, clean rerun `PUBSUB inproc 64B`가 `-41.46%`로
+    accepted baseline보다 다시 나빠져 현재 코드에는 없다.
+  - 같은 날 current accepted `dist` helper 위
+    `XPUB` all-attached empty-prefix `send_to_all()` v2도
+    sequential seq1/seq2 `PUBSUB tcp/inproc 64B`가
+    `-25.77% / -40.89%`, `-23.12% / -40.39%`로
+    accepted baseline `-23.63% / -39.84%`를 stable하게 넘지 못해
+    현재 코드에는 없다.
   - 같은 날 `socket_message_recv_api.cpp` `SUB/XSUB` raw multipart
     single-part recv fast path도 tcp/inproc 방향이 엇갈려
     현재 코드에는 남아 있지 않다.
@@ -558,14 +601,45 @@ rejected candidate는 반드시 로그에 남긴다.
       logical multipart send scope를 재검증했다.
 - [ ] send-side lifecycle/backpressure retry cost를 더 줄일 구조를 찾는다.
       현재 current code 기준 keep-worthy 공통 delta는 없고,
-      다음 실제 code 후보는 `pipe`/`PUBSUB` publication 축이다.
+      no-monitor delivery-ready tracking gate도 rejected candidate가 됐다.
+      `lb.cpp` one-active-pipe no-recursive HWM helper도
+      `PAIR` public guardrail을 깨뜨려 rejected candidate가 됐다.
+      `pair.cpp` final-part no-recursive HWM helper도
+      `DEALER_DEALER inproc` public/raw guardrail을 깨뜨려
+      rejected candidate가 됐다.
+      `XPUB` prechecked no-HWM-recheck도
+      clean rerun `PUBSUB inproc`이 accepted baseline 아래로 다시 내려가
+      rejected candidate가 됐다.
+      current accepted `dist` helper 위
+      `XPUB` all-attached empty-prefix `send_to_all()` v2도
+      seq1/seq2 모두 keep-worthy broad win이 아니어서 rejected candidate다.
+      `ROUTER` blocking envelope / `zlink_send_rid()` multipart
+      routed-data view candidate도 first/rerun
+      `ROUTER_ROUTER tcp/inproc 64B`
+      `-58.62% / -30.04%`, `-55.12% / -29.06%`로
+      stable broad win이 아니어서 rejected candidate가 됐다.
+      다음 실제 code 후보는 여전히 다른 `pipe`/`PUBSUB` publication 축이나
+      다른 `ROUTER_ROUTER` 전용 differential 정리다.
 - [x] `pipe` send/publication 경로에서 ordering을 유지한 채 lock 안 work를 줄였다.
 - [x] single `PUBSUB` no-topic bench surface를 현재 계약에 맞게 다시 정렬했다.
 - [ ] `PUBSUB` publish/distribution path를 single-subscriber win에서
       inproc/multi까지 확장한다.
+      current accepted `dist` helper 위
+      `XPUB` all-attached empty-prefix `send_to_all()` v2도
+      sequential seq1/seq2 `PUBSUB tcp/inproc 64B`
+      `-25.77% / -40.89%`, `-23.12% / -40.39%`로
+      accepted baseline `-23.63% / -39.84%`를 stable하게 넘지 못해
+      rejected candidate가 됐다.
 - [x] `test_router_mandatory_hwm`를 ctest에 등록하고
       `zlink_send_rid()` mandatory-HWM 회귀를 추가했다.
+- [x] `test_public_inproc_router_send_rid_multipart_blocking()`으로
+      `zlink_send_rid()` multipart blocking contract를 회귀에 추가했다.
 - [ ] `ROUTER_ROUTER` routed path를 패턴 전용으로 본다.
+      `socket_message_send_api.cpp` / `multipart_send_txn.cpp` /
+      `socket_base_msg.cpp` / `router.cpp` routed-data view candidate도
+      first/rerun `ROUTER_ROUTER tcp/inproc 64B`
+      `-58.62% / -30.04%`, `-55.12% / -29.06%`로
+      stable broad win이 아니어서 current code에는 남기지 않았다.
 - [x] 이번 단계 send-path 변경 뒤 `PAIR`/`DEALER_DEALER` raw/public 분리를
       다시 기록했다.
 - [x] broader single / multi smoke까지 통과하는 안정 지점을 남겼다.

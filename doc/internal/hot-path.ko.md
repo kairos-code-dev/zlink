@@ -554,6 +554,43 @@ steady-state single-part recv hot path:
   - `DEALER_DEALER inproc 64B`: `-34.71%`
   - 결론: `DEALER` one-pipe recv는 이번 형태로는 오히려 `inproc`을 악화시켜
     유지 후보가 아니다
+- `lb.cpp` one-active-pipe no-recursive HWM helper
+  - [`perf_linux_20260328_053159_codex_20260328_dealer_lb_no_recursive.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053159_codex_20260328_dealer_lb_no_recursive.txt)
+  - [`perf_linux_20260328_053222_codex_20260328_dealer_lb_no_recursive_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053222_codex_20260328_dealer_lb_no_recursive_rerun.txt)
+  - [`perf_linux_20260328_053315_codex_20260328_dealer_router_lb_no_recursive_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053315_codex_20260328_dealer_router_lb_no_recursive_rerun.txt)
+  - [`perf_linux_20260328_053439_codex_20260328_lb_no_recursive_guardrail_public_serial.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053439_codex_20260328_lb_no_recursive_guardrail_public_serial.txt)
+  - `DEALER_DEALER` isolated first/rerun `tcp/inproc`: `-14.30% / -33.01%`,
+    `-24.41% / -23.27%`
+  - `DEALER_ROUTER` isolated first/rerun `tcp/inproc`: `-25.76% / -32.27%`,
+    `-19.09% / -25.35%`
+  - serial public guardrail `PAIR tcp/inproc`: `-23.95% / -31.30%`
+  - 결론: `DEALER` one-pipe path만 좁게 바꿔도 isolated win은 보이지만
+    `PAIR` public guardrail을 깨뜨려 broad win이 아니다. current accepted
+    `lb_t` one-active-pipe fast path는 유지하되 no-recursive helper는 넣지 않는다.
+- `pair.cpp` final-part no-recursive HWM helper
+  - [`perf_linux_20260328_054250_codex_20260328_pair_no_recursive_flush.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_054250_codex_20260328_pair_no_recursive_flush.txt)
+  - [`perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_rerun.txt)
+  - [`perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_public.txt)
+  - [`perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_raw.txt)
+  - `PAIR` isolated first/rerun `tcp/inproc`: `-8.49% / -18.39%`,
+    `-11.64% / -21.18%`
+  - serial public guardrail `DEALER_DEALER tcp/inproc`: `-8.22% / -31.36%`
+  - serial raw guardrail `DEALER_DEALER tcp/inproc`: `-19.70% / -30.57%`
+  - 결론: `PAIR` final-part path만 좁게 바꿔도 isolated `tcp`는 회복했지만
+    rerun `inproc`와 `DEALER_DEALER` public/raw guardrail을 동시에 깨뜨렸다.
+    current `PAIR` 잔여 gap을 final-part helper 하나로 설명하진 않는다.
+- `XPUB` prechecked no-HWM-recheck
+  - [`perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt)
+  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt)
+  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt)
+  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt)
+  - `PUBSUB` isolated first/rerun `tcp/inproc`: `-21.70% / -35.47%`,
+    `-19.65% / -41.46%`
+  - serial public guardrail `PAIR tcp/inproc`: `-13.42% / -17.59%`
+  - serial public guardrail `DEALER_DEALER tcp/inproc`: `-18.56% / -19.78%`
+  - 결론: nodrop precheck 뒤 second HWM check를 줄이면 first run은 좋아 보였지만
+    clean rerun `PUBSUB inproc`가 accepted baseline보다 다시 나빠졌다.
+    current `PUBSUB` 잔여 gap을 precheck/HWM recheck 하나로 설명하진 않는다.
 - `object.cpp` same-thread `send_activate_read()` direct delivery
   - generic 적용:
     - [`perf_linux_20260327_235547_pair_activate_read_direct.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_235547_pair_activate_read_direct.txt)
@@ -597,6 +634,39 @@ steady-state single-part recv hot path:
   - first/rerun `PUBSUB inproc 64B`: `-41.47% / -50.68%`
   - 결론: raw recv single-part export를 더 직접화해도 방향이 엇갈려
     current `PUBSUB` 잔여 gap의 broad answer는 아니었다
+- `xpub.cpp` no-monitor delivery-ready tracking gate
+  - [`perf_linux_20260328_052420_codex_20260328_pubsub_monitor_tracking_gate.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_052420_codex_20260328_pubsub_monitor_tracking_gate.txt)
+  - [`perf_linux_20260328_052446_codex_20260328_pubsub_monitor_tracking_gate_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_052446_codex_20260328_pubsub_monitor_tracking_gate_rerun.txt)
+  - first/rerun `PUBSUB tcp/inproc 64B`: `-26.72% / -37.92%`,
+    `-27.12% / -43.79%`
+  - 결론: monitor가 없는 steady-state에서 delivery-ready recompute를
+    통째로 건너뛰고 monitor open 시 count를 priming해도 accepted baseline보다
+    나빠졌다. current `PUBSUB` gap은 no-monitor ready bookkeeping 하나로
+    설명되지 않는다.
+- current accepted `dist` helper 위 `XPUB` all-attached empty-prefix
+  `send_to_all()` v2
+  - [`perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt)
+  - [`perf_linux_20260328_060332_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060332_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2.txt)
+  - sequential seq1 `PUBSUB tcp/inproc 64B`: `-25.77% / -40.89%`
+  - sequential seq2 `PUBSUB tcp/inproc 64B`: `-23.12% / -40.39%`
+  - 결론: accepted `dist` helper 위에 다시 얹어도
+    empty-prefix match elimination은 stable broad win이 아니다.
+    `tcp`는 들쭉날쭉하고 `inproc`는 seq1/seq2 모두 accepted baseline보다
+    더 나빴다. 따라서 current `PUBSUB` 잔여 gap을
+    all-attached empty-prefix `send_to_all()` 계열로 다시 설명하진 않는다.
+- `ROUTER` blocking envelope / `zlink_send_rid()` multipart routed-data view
+  - [`perf_linux_20260328_062033_codex_20260328_router_routed_data_view.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_062033_codex_20260328_router_routed_data_view.txt)
+  - [`perf_linux_20260328_062105_codex_20260328_router_routed_data_view_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_062105_codex_20260328_router_routed_data_view_rerun.txt)
+  - first/rerun `ROUTER_ROUTER tcp/inproc 64B`: `-58.62% / -30.04%`,
+    `-55.12% / -29.06%`
+  - 결론: routing-id frame copy/elision과 multipart first-payload direct routed
+    transaction을 묶어도 `tcp` broad win은 나오지 않았다.
+    current `ROUTER` 잔여 gap을 send-side routed-data view 하나로
+    설명하진 않는다.
+- current code에는
+  [`test_public_inproc_multipart_send.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_public_inproc_multipart_send.cpp)
+  의 `test_public_inproc_router_send_rid_multipart_blocking()`만 retained
+  regression으로 남겨 `zlink_send_rid()` multipart blocking contract를 잡는다.
 
 이 순서는 thread-safe 계약을 유지하면서도 실제 `single` gap에 직접 닿는
 순서다.

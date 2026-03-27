@@ -2300,3 +2300,351 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - 다음은 guide 순서대로 남은 send-side lifecycle/backpressure 공통 축을
     다시 보고, 그다음 `PUBSUB`의 publication/distribution 잔여 gap과
     `ROUTER_ROUTER` 전용 differential을 이어서 줄인다.
+
+## 29. 2026-03-28 `XPUB` no-monitor delivery-ready tracking gate 로그
+
+- 가설
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)의
+    delivery-ready ready-count recompute는 monitor가 없는 기본 bench에서도
+    계속 돌고 있다.
+  - monitor가 붙지 않은 steady-state에서는 이 recompute를 건너뛰고,
+    monitor open 시 현재 count를 한 번 priming하면
+    `PUBSUB` publication/wakeup cost를 더 줄일 수 있다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/sockets/socket_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.hpp)
+    - [`core/src/sockets/socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+    - [`core/src/sockets/socket_base_monitor.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_monitor.cpp)
+    - [`core/src/sockets/xpub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.hpp)
+    - [`core/src/sockets/xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+    - [`core/tests/integration/monitoring/test_monitor_socket_contract.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_socket_contract.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_monitor_perf_contract|test_monitor_enhanced|test_multi_socket_contract_regressions|test_pubsub_filter_xpub)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_monitor_tracking_gate`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_monitor_tracking_gate_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_052420_codex_20260328_pubsub_monitor_tracking_gate.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_052420_codex_20260328_pubsub_monitor_tracking_gate.txt)
+  - [`perf_linux_20260328_052446_codex_20260328_pubsub_monitor_tracking_gate_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_052446_codex_20260328_pubsub_monitor_tracking_gate_rerun.txt)
+- 핵심 수치
+  - isolated first run
+    - `PUBSUB tcp 64B`: `3252.39 Kmsg/s` vs `2383.49 Kmsg/s`, `-26.72%`
+    - `PUBSUB inproc 64B`: `3857.46 Kmsg/s` vs `2394.57 Kmsg/s`, `-37.92%`
+  - isolated rerun
+    - `PUBSUB tcp 64B`: `3191.25 Kmsg/s` vs `2325.76 Kmsg/s`, `-27.12%`
+    - `PUBSUB inproc 64B`: `3861.36 Kmsg/s` vs `2170.53 Kmsg/s`, `-43.79%`
+  - accepted baseline 대비
+    - current accepted broader single `PUBSUB tcp/inproc`: `-23.63% / -39.84%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - no-monitor `XPUB` delivery-ready tracking gate
+    - monitor-open ready-count priming hook
+    - late-open snapshot regression test도 함께 원복
+- 해석
+  - monitor가 없는 경로에서 delivery-ready recompute를 줄여도
+    isolated first/rerun이 accepted baseline보다 모두 나빠졌다.
+  - 즉 current `PUBSUB` 잔여 gap은
+    "monitor가 없는데도 ready-count를 계산하는 steady-state bookkeeping" 하나로
+    설명되지 않는다.
+  - `monitor-ready bookkeeping`은 여전히 secondary고,
+    실제 우선순위는 `pipe` publication/order와 wakeup differential 쪽으로 둔다.
+- 다음 iteration 우선순위
+  - 이 gate는 rejected candidate로 유지한다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보를 본다.
+
+## 30. 2026-03-28 `lb.cpp` one-active-pipe no-recursive HWM helper 로그
+
+- 가설
+  - [`lb.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/lb.cpp)의
+    one-active-pipe `DEALER` fast path는 여전히
+    `pipe::write()/write_and_flush()` 안에서 recursive `check_hwm()` 재진입을 탄다.
+  - generic rollout은 rejected candidate였지만, `DEALER` one-pipe fast path에만
+    `write_no_recursive_hwm_check()` /
+    `write_and_flush_no_recursive_hwm_check()`를 쓰면
+    `DEALER_DEALER` / `DEALER_ROUTER` send cost를 더 줄일 수 있다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/sockets/lb.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/lb.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc) --target libzlink comp_zlink_dealer_dealer comp_zlink_dealer_router`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_router_multiple_dealers|test_multi_socket_contract_regressions)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_lb_no_recursive`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_lb_no_recursive_rerun`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_router_lb_no_recursive`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_router_lb_no_recursive_rerun`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_lb_no_recursive_guardrail_public_serial`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_053159_codex_20260328_dealer_lb_no_recursive.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053159_codex_20260328_dealer_lb_no_recursive.txt)
+  - [`perf_linux_20260328_053222_codex_20260328_dealer_lb_no_recursive_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053222_codex_20260328_dealer_lb_no_recursive_rerun.txt)
+  - [`perf_linux_20260328_053249_codex_20260328_dealer_router_lb_no_recursive.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053249_codex_20260328_dealer_router_lb_no_recursive.txt)
+  - [`perf_linux_20260328_053315_codex_20260328_dealer_router_lb_no_recursive_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053315_codex_20260328_dealer_router_lb_no_recursive_rerun.txt)
+  - [`perf_linux_20260328_053439_codex_20260328_lb_no_recursive_guardrail_public_serial.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_053439_codex_20260328_lb_no_recursive_guardrail_public_serial.txt)
+- 핵심 수치
+  - `DEALER_DEALER` isolated first/rerun
+    - `tcp/inproc`: `-14.30% / -33.01%`, `-24.41% / -23.27%`
+  - `DEALER_ROUTER` isolated first/rerun
+    - `tcp/inproc`: `-25.76% / -32.27%`, `-19.09% / -25.35%`
+  - public serial guardrail
+    - `PAIR tcp/inproc`: `-23.95% / -31.30%`
+    - `DEALER_DEALER tcp/inproc`: `-27.78% / -18.05%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `lb.cpp` one-active-pipe no-recursive HWM helper
+- 해석
+  - narrow dealer-path helper는 isolated run에서 `DEALER_ROUTER` / `DEALER_DEALER`
+    일부 transport를 당겼지만, serial public guardrail에서 `PAIR`가 즉시
+    `-23.95% / -31.30%`로 무너졌다.
+  - 즉 current accepted `lb.cpp` one-active-pipe fast path 위에
+    no-recursive HWM helper를 덧대는 현재 형태는 broad win이 아니다.
+  - `pipe` self-reentry cost 축은 여전히 살아 있지만,
+    `DEALER` one-pipe send path에만 helper를 꽂는 현재 형태도 rejected candidate로 둔다.
+- 다음 iteration 우선순위
+  - current accepted `lb.cpp` one-active-pipe fast path만 유지한다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보를 본다.
+
+## 31. 2026-03-28 `PAIR` final-part no-recursive HWM helper 로그
+
+- 가설
+  - generic `check_hwm_locked()` rollout은 raw/public guardrail 때문에
+    keep되지 못했지만, [`pair.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/pair.cpp)
+    의 final single-part send는 `pipe::write_and_flush()`만 타므로
+    final-part path에만 `write_and_flush_no_recursive_hwm_check()`를 쓰면
+    `PAIR` send cost를 더 좁게 줄일 수 있다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/sockets/pair.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/pair.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc) --target libzlink comp_zlink_pair`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_public_inproc_multipart_send)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_no_recursive_flush`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_no_recursive_flush_rerun`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_no_recursive_flush_guardrail_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_no_recursive_flush_guardrail_raw`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_054250_codex_20260328_pair_no_recursive_flush.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_054250_codex_20260328_pair_no_recursive_flush.txt)
+  - [`perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_rerun.txt)
+  - [`perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_public.txt)
+  - [`perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_raw.txt)
+- 핵심 수치
+  - `PAIR` isolated first/rerun
+    - `tcp/inproc`: `-8.49% / -18.39%`, `-11.64% / -21.18%`
+  - public serial guardrail
+    - `PAIR tcp/inproc`: `-16.22% / -13.64%`
+    - `DEALER_DEALER tcp/inproc`: `-8.22% / -31.36%`
+  - raw serial guardrail
+    - `PAIR tcp/inproc`: `-7.44% / -33.95%`
+    - `DEALER_DEALER tcp/inproc`: `-19.70% / -30.57%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `pair.cpp` final-part `write_and_flush_no_recursive_hwm_check()` 적용
+- 해석
+  - isolated first run에서는 `PAIR tcp 64B`가 `-8.49%`까지 회복돼
+    candidate처럼 보였지만, rerun에서 `PAIR inproc 64B`가 `-21.18%`로
+    다시 흔들렸다.
+  - 더 중요한 건 serial guardrail에서 `DEALER_DEALER inproc 64B` public이
+    `-31.36%`, raw가 `-30.57%`로 크게 무너졌다는 점이다.
+  - 즉 final-part helper를 `PAIR`에만 좁게 꽂아도 broad win이 아니라
+    `inproc`/guardrail 변동을 키웠다. current code에는 남기지 않는다.
+- 다음 iteration 우선순위
+  - `PAIR` final-part no-recursive helper도 rejected candidate로 유지한다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보를 계속 본다.
+
+## 32. 2026-03-28 `XPUB` prechecked no-HWM-recheck 로그
+
+- 가설
+  - current accepted `dist` delta 뒤에도 `XPUB nodrop` path는
+    `_dist.check_hwm()` precheck를 통과한 뒤 `dist::write_at()`에서
+    다시 HWM을 확인한다.
+  - normal matching path에서만 prechecked send helper로 second HWM check를
+    줄이면 `PUBSUB` publication cost를 더 낮추고, 특히 single/multi `tcp`
+    회복을 넓힐 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+    - [`core/src/sockets/dist.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.hpp)
+    - [`core/src/sockets/dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+    - [`core/src/sockets/xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc) --target libzlink comp_zlink_pubsub`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt)
+  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt)
+  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt)
+  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt)
+- 핵심 수치
+  - `PUBSUB` isolated first/rerun
+    - `tcp/inproc`: `-21.70% / -35.47%`, `-19.65% / -41.46%`
+  - public serial guardrail
+    - `PAIR tcp/inproc`: `-13.42% / -17.59%`
+    - `DEALER_DEALER tcp/inproc`: `-18.56% / -19.78%`
+  - raw serial guardrail
+    - `PAIR tcp/inproc`: `-12.00% / -22.52%`
+    - `DEALER_DEALER tcp/inproc`: `-22.70% / -21.25%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `XPUB` prechecked no-HWM-recheck helper 전부
+- 해석
+  - first run에서는 accepted baseline 대비 `PUBSUB tcp/inproc`가 둘 다 좋아져
+    candidate처럼 보였다.
+  - 하지만 clean rerun에서 `PUBSUB inproc 64B`가 `-41.46%`로 다시 내려가
+    current accepted baseline `-39.84%`보다 나빠졌다.
+  - raw/public guardrail 자체는 무너지지 않았지만, single accepted baseline을
+    stable하게 넘지 못했으므로 broader single이나 multi smoke로 올릴 이유가
+    없었다.
+  - 따라서 current `PUBSUB` 잔여 gap을 "`nodrop precheck 뒤 second HWM check`"
+    하나로 설명하긴 이르며, current code에는 남기지 않는다.
+- 다음 iteration 우선순위
+  - `XPUB` prechecked no-HWM-recheck도 rejected candidate로 유지한다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보를 본다.
+
+## 33. 2026-03-28 `XPUB` all-attached empty-prefix `send_to_all()` v2 로그
+
+- 작업한 가설
+  - earlier `XPUB` all-attached empty-prefix fast path는
+    current accepted `dist` helper가 들어오기 전 결과였다.
+  - current accepted `dist` delta 위에서
+    `xpub.cpp` 내부에 empty-prefix subscribed pipe만 좁게 추적해
+    all-attached일 때만 `send_to_all()`로 내리면
+    `PUBSUB` single/multi `tcp` 회복을 additive하게 넓힐 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/sockets/dist.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.hpp)
+    - [`core/src/sockets/xpub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.hpp)
+    - [`core/src/sockets/xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+  - discarded overlap run:
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_rerun`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean_rerun`
+  - keep 판정에 사용한 sequential rerun:
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2`
+  - 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+- 생성된 결과 파일 경로
+  - discarded overlap run:
+    - [`perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2.txt)
+    - [`perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_rerun.txt)
+    - [`perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean.txt)
+    - [`perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean_rerun.txt)
+  - keep 판정에 사용한 sequential rerun:
+    - [`perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt)
+    - [`perf_linux_20260328_060332_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060332_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2.txt)
+- 핵심 수치
+  - discarded overlap run은 build/bench 동시 실행과 parallel rerun이 섞여
+    판정에 사용하지 않았다.
+  - sequential seq1
+    - `PUBSUB tcp/inproc 64B`: `-25.77%` / `-40.89%`
+  - sequential seq2
+    - `PUBSUB tcp/inproc 64B`: `-23.12%` / `-40.39%`
+  - current accepted baseline
+    - broader single `PUBSUB tcp/inproc 64B`: `-23.63%` / `-39.84%`
+  - 회귀 테스트
+    - `test_monitor_socket_contract`
+    - `test_monitor_perf_contract`
+    - `test_multi_socket_contract_regressions`
+    - `test_public_inproc_multipart_send`
+    - `test_pubsub_filter_xpub`
+    - 원복 후 다시 모두 통과
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - current accepted `dist` delta 위
+      `XPUB` all-attached empty-prefix `send_to_all()` v2
+- 해석
+  - current accepted `dist` helper 위에 다시 얹어도
+    empty-prefix match elimination은 stable broad win이 아니었다.
+  - `tcp`는 seq2에서 accepted baseline을 아주 조금 넘겼지만,
+    seq1에서는 baseline보다 나빴고 `inproc`는 seq1/seq2 모두 더 나빴다.
+  - 따라서 이 조합도 current code에는 남기지 않는다.
+  - same idea를 helper 위치만 바꿔 반복해도 `PUBSUB` 잔여 gap의 본체를
+    설명하지 못한다는 근거가 더 강해졌다.
+- 다음 iteration 우선순위
+  - current accepted `dist` helper는 그대로 유지한다.
+  - `XPUB` all-attached empty-prefix `send_to_all()` 계열은
+    current accepted delta 위에서도 rejected candidate로 둔다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보나
+    `ROUTER_ROUTER` 전용 differential 정리로 이어간다.
+
+## 34. 2026-03-28 `ROUTER` routed-data view candidate 로그
+
+- 작업한 가설
+  - `ROUTER` blocking envelope send와 `zlink_send_rid(..., multipart)`는
+    routing-id frame을 `zlink_routing_id_t`로 복사하거나 prefix frame으로
+    다시 조립하는 경로가 남아 있다.
+  - routed transaction 첫 payload를 raw routing-id view로 직접 내려 보내면
+    `ROUTER_ROUTER` public send differential을 조금 더 줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - 유지
+    - [`core/tests/integration/test_public_inproc_multipart_send.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_public_inproc_multipart_send.cpp)
+  - 실험 후 원복
+    - [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+    - [`core/src/core/multipart_send_txn.hpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.hpp)
+    - [`core/src/core/multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+    - [`core/src/sockets/socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+    - [`core/src/sockets/socket_base.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp)
+    - [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+    - [`core/src/sockets/router.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.hpp)
+    - [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_public_inproc_multipart_send|test_router_mandatory_hwm|test_router_multiple_dealers|test_multi_socket_contract_regressions|test_stream_send_blocking_wakeup|test_transport_matrix)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_routed_data_view`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_routed_data_view_rerun`
+  - 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_public_inproc_multipart_send|test_router_mandatory_hwm|test_router_multiple_dealers|test_multi_socket_contract_regressions|test_stream_send_blocking_wakeup|test_transport_matrix)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_062033_codex_20260328_router_routed_data_view.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_062033_codex_20260328_router_routed_data_view.txt)
+  - [`perf_linux_20260328_062105_codex_20260328_router_routed_data_view_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_062105_codex_20260328_router_routed_data_view_rerun.txt)
+- 핵심 수치
+  - first run
+    - `ROUTER_ROUTER tcp 64B`: `2955.81 Kmsg/s` vs `1222.99 Kmsg/s`, `-58.62%`
+    - `ROUTER_ROUTER inproc 64B`: `3472.66 Kmsg/s` vs `2429.63 Kmsg/s`, `-30.04%`
+  - rerun
+    - `ROUTER_ROUTER tcp 64B`: `2723.92 Kmsg/s` vs `1222.60 Kmsg/s`, `-55.12%`
+    - `ROUTER_ROUTER inproc 64B`: `3430.17 Kmsg/s` vs `2433.48 Kmsg/s`, `-29.06%`
+  - 원복 후 회귀
+    - `test_public_inproc_multipart_send`
+    - `test_router_mandatory_hwm`
+    - `test_router_multiple_dealers`
+    - `test_multi_socket_contract_regressions`
+    - `test_stream_send_blocking_wakeup`
+    - `test_transport_matrix`
+    - 여섯 테스트 모두 다시 통과
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `test_public_inproc_router_send_rid_multipart_blocking()` 추가로
+      `zlink_send_rid()` multipart blocking contract 회귀 보강
+  - 원복
+    - raw routing-id view direct send helper와 routed multipart direct path 전부
+- 해석
+  - `inproc`는 약간 회복됐지만 `tcp`는 first run에서 baseline보다 더 나빴고
+    rerun도 사실상 baseline 수준에 머물렀다.
+  - 따라서 current `ROUTER` 잔여 gap을 routing-id frame copy/elision이나
+    multipart first-payload direct routed send 하나로 설명하긴 어렵다.
+  - candidate는 keep-worthy stable broad win이 아니므로 current code에는 남기지 않는다.
+- 다음 iteration 우선순위
+  - retained regression만 가지고 간다.
+  - guide 순서대로 다른 `PUBSUB` publication 축이나
+    더 큰 `ROUTER_ROUTER` public/aggregate differential을 본다.

@@ -168,11 +168,15 @@ raw/public 분리를 다시 찍는다.
 
 현재 우선순위는 아래 순서를 유지한다.
 
-1. send-side lifecycle / backpressure retry cost
-2. send-side `pipe` publication / ordering 경로의 lock 안 work 축소
-3. `PUBSUB` publish / distribution path
-4. `ROUTER_ROUTER` routed path
-5. 남아 있는 recv-side routed / strip / multipart export 경로
+1. send-side `pipe` publication / ordering 경로의 lock 안 work 축소
+2. `PUBSUB` publish / distribution path
+3. `ROUTER_ROUTER` routed path
+4. 남아 있는 recv-side routed / strip / multipart export 경로
+
+2026-03-28 현재 send-side lifecycle / backpressure 공통 fast-path 후보는
+keep-worthy delta를 만들지 못해 actual implementation 우선순위에서 내렸다.
+새로운 broad win 근거가 나오기 전까지는 raw/public guardrail과 broader single
+acceptance를 동시에 만족한 pattern-specific publication/routed 후보만 올린다.
 
 naive lock 제거는 현재 배제된 후보로 유지한다.
 
@@ -381,6 +385,9 @@ rejected candidate는 반드시 로그에 남긴다.
     `DEALER_DEALER tcp 64B`를 `-25.06%`로 악화시켜 원복
   - `PAIR` no-handler 전용 gate도 `PAIR tcp/inproc 64B`를
     `-26.32%` / `-32.96%`로 악화시켜 원복
+  - `dist.cpp` final-part same-thread `send_activate_read()` inline wakeup도
+    isolated `PUBSUB tcp/inproc 64B`를 `-25.70% / -42.49%`로
+    accepted baseline 아래로 내려 원복
   - `socket_message_send_api.cpp` single-part public fast path의
     중복 `msg->check()` 제거도 `DEALER_DEALER inproc 64B`를
     `-31.51%`로 악화시켜 원복
@@ -607,31 +614,13 @@ rejected candidate는 반드시 로그에 남긴다.
 - [x] same-handle concurrent `PUB` publish contract regression
       (`test_pubsub_publish_is_safe_from_multiple_threads`)을 고치고
       logical multipart send scope를 재검증했다.
-- [ ] send-side lifecycle/backpressure retry cost를 더 줄일 구조를 찾는다.
-      현재 current code 기준 keep-worthy 공통 delta는 없고,
-      no-monitor delivery-ready tracking gate도 rejected candidate가 됐다.
-      `lb.cpp` one-active-pipe no-recursive HWM helper도
-      `PAIR` public guardrail을 깨뜨려 rejected candidate가 됐다.
-      `pair.cpp` final-part no-recursive HWM helper도
-      `DEALER_DEALER inproc` public/raw guardrail을 깨뜨려
-      rejected candidate가 됐다.
-      `XPUB` prechecked no-HWM-recheck도
-      clean rerun `PUBSUB inproc`이 accepted baseline 아래로 다시 내려가
-      rejected candidate가 됐다.
-      current accepted `dist` helper 위
-      `XPUB` all-attached empty-prefix `send_to_all()` v2도
-      seq1/seq2 모두 keep-worthy broad win이 아니어서 rejected candidate다.
-      `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path도
-      seq1/seq2/seq3가 `PUBSUB tcp/inproc 64B`
-      `-24.81% / -43.41%`, `-22.71% / -34.67%`,
-      `-24.42% / -41.68%`로 흔들려 rejected candidate가 됐다.
-      `ROUTER` blocking envelope / `zlink_send_rid()` multipart
-      routed-data view candidate도 first/rerun
-      `ROUTER_ROUTER tcp/inproc 64B`
-      `-58.62% / -30.04%`, `-55.12% / -29.06%`로
-      stable broad win이 아니어서 rejected candidate가 됐다.
-      다음 실제 code 후보는 여전히 다른 `pipe`/`PUBSUB` publication 축이나
-      다른 `ROUTER_ROUTER` 전용 differential 정리다.
+- [x] send-side lifecycle/backpressure 공통 후보를 current code 기준으로
+      소진했다. `public_api_state` CAS fast path, `PAIR` no-sync send scope,
+      idle send-ready retry gate, generic same-thread `send_activate_read()`
+      direct delivery 모두 keep-worthy broad win을 만들지 못했다.
+      따라서 common lifecycle/backpressure 축은 새 근거가 나올 때만 다시 올리고,
+      actual next code 후보는 pattern-specific `pipe`/`PUBSUB` publication 축과
+      `ROUTER_ROUTER` 전용 differential 정리로 넘긴다.
 - [x] `pipe` send/publication 경로에서 ordering을 유지한 채 lock 안 work를 줄였다.
 - [x] single `PUBSUB` no-topic bench surface를 현재 계약에 맞게 다시 정렬했다.
 - [ ] `PUBSUB` publish/distribution path를 single-subscriber win에서
@@ -646,6 +635,9 @@ rejected candidate는 반드시 로그에 남긴다.
       seq1/seq2/seq3 `PUBSUB tcp/inproc 64B`
       `-24.81% / -43.41%`, `-22.71% / -34.67%`,
       `-24.42% / -41.68%`로 stable broad win이 아니었다.
+      `dist.cpp` final-part same-thread `send_activate_read()` inline wakeup도
+      isolated `PUBSUB tcp/inproc 64B`가 `-25.70% / -42.49%`로
+      accepted baseline 아래라 rejected candidate가 됐다.
 - [x] `test_router_mandatory_hwm`를 ctest에 등록하고
       `zlink_send_rid()` mandatory-HWM 회귀를 추가했다.
 - [x] `test_public_inproc_router_send_rid_multipart_blocking()`으로

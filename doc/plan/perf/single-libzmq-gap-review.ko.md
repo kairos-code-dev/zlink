@@ -2702,3 +2702,49 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - current accepted `dist` helper만 유지한다.
   - guide 순서대로 다른 `pipe`/publication actual cost 후보나
     더 큰 `ROUTER_ROUTER` public/aggregate differential을 본다.
+
+## 36. 2026-03-28 `dist.cpp` final-part same-thread `send_activate_read()` inline wakeup 로그
+
+- 작업한 가설
+  - current accepted `dist` helper는 final-part `write_and_flush`까지는 줄였지만,
+    same-thread `PUBSUB inproc`에서는 flush 뒤 `send_activate_read()`가 여전히
+    mailbox를 한 번 더 돈다.
+  - `dist` final-part 경로에 한해 same-thread `activate_read` wakeup을 inline으로
+    전달하면 `PUBSUB` publication/wakeup differential을 더 줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+    - [`core/src/sockets/dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_pubsub_filter_xpub)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_same_thread_activate_read`
+  - 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_pubsub_filter_xpub)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_064859_codex_20260328_pubsub_dist_same_thread_activate_read.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_064859_codex_20260328_pubsub_dist_same_thread_activate_read.txt)
+- 핵심 수치
+  - `PUBSUB tcp 64B`: `3253.34 Kmsg/s` vs `2417.16 Kmsg/s`, `-25.70%`
+  - `PUBSUB inproc 64B`: `3761.90 Kmsg/s` vs `2163.65 Kmsg/s`, `-42.49%`
+  - current accepted baseline:
+    `PUBSUB tcp/inproc 64B -23.63% / -39.84%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `dist` final-part same-thread inline `activate_read` wakeup 전부
+- 해석
+  - same-thread mailbox bounce를 줄여도 `tcp`, `inproc` 모두 accepted baseline보다
+    더 나빠졌다.
+  - 따라서 current `PUBSUB` 잔여 gap을
+    `send_activate_read()` same-thread publication 하나로 설명하진 않는다.
+  - 이 candidate는 current accepted `dist` helper 위 keep-worthy broad win이
+    아니므로 current code에는 남기지 않는다.
+- 다음 iteration 우선순위
+  - current accepted `dist` helper만 유지한다.
+  - `PUBSUB`은 같은 `activate_read` direct wakeup 계열을 다시 시도하지 않는다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보나
+    `ROUTER_ROUTER` public/aggregate differential을 본다.

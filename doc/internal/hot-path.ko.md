@@ -262,13 +262,16 @@ steady-state single-part recv hot path:
 1. `PAIR`/`DEALER_DEALER` raw/public 분리는 완료됐지만,
    public penalty를 고정 상수처럼 취급하지 않고 serial guardrail로 유지한다
 2. `socket_base_t::send()`의 public lifecycle fast path는
-   steady-state에서 더 적은 atomic으로 합치는 설계 후보로 본다
-3. blocking retry에서는 `enter_public_api()`가 아니라
-   `public_api_sync` 재획득 또는 retry-side sync 유지 실패가 비용이라는 점을
-   기준으로 본다
+   current code 기준 keep-worthy 공통 delta가 없어 actual 구현 우선순위에서
+   내린다. 새 broad win 근거가 생길 때만 다시 올린다
+3. blocking retry 공통 gate도 현재는 같은 상태다
+   - `enter_public_api()` 자체보다 `public_api_sync` 재획득 또는
+     retry-side sync 유지 실패가 비용이라는 해석은 유지한다
+   - 다만 2026-03-28 current code 기준 keep-worthy 공통 retry delta는 없다
    - `activate_write` 자체는 zlink가 같은-thread에서 즉시
      `process_command()`를 호출하므로 publication이 더 늦다고 단정하지 않는다
-   - 현재 더 의심하는 축은 wakeup 이후 sender retry 소비 비용이다
+   - 따라서 actual next work는 공통 retry gate 자체보다
+     pattern-specific publication/wakeup differential 쪽이다
 4. send-side `pipe_t`는 전체 lock 제거가 아니라
    activation/flush ordering을 유지한 채 lock 안의 work를 줄이는 방향으로 본다
 5. `socket_base_t::send()`의 send-side throttle은 보조 후보로만 본다
@@ -279,7 +282,7 @@ steady-state single-part recv hot path:
    줄인다
 8. `PUBSUB`는 `dist_t` one-matching-pipe fast path를 기준선으로 유지한 채
    empty-prefix trie match 제거보다 publication/lifecycle 잔여 gap을 더 줄인다.
-   `ROUTER`는 공통 개선 후 별도 정리한다
+   `ROUTER`는 현재 `PUBSUB` publication 축 다음으로 별도 정리한다
 
 ## 8.1 현재 보류/기각된 방향
 
@@ -350,6 +353,12 @@ steady-state single-part recv hot path:
      `-23.63% / -39.84%`를 stable하게 넘지 못했다
    - 즉 current `PUBSUB` 잔여 gap을 single-pipe dist bookkeeping 하나로
      설명하진 않는다
+19. `dist.cpp` final-part same-thread `send_activate_read()` inline wakeup
+   - current accepted `dist` helper 위에서 same-thread flush wakeup을
+     inline으로 전달해도 isolated `PUBSUB tcp/inproc 64B`가
+     `-25.70% / -42.49%`로 accepted baseline보다 둘 다 나빠졌다
+   - 즉 current `PUBSUB` 잔여 gap을 same-thread `activate_read`
+     mailbox bounce 하나로 설명하진 않는다
 
 이 항목들은 최근 A/B 실험이나 current code invariant 기준으로
 이미 역효과가 확인됐거나 correctness risk가 높다.
@@ -613,6 +622,9 @@ steady-state single-part recv hot path:
     - [`perf_linux_20260328_000053_pair_inline_activate_read_pair_only.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_000053_pair_inline_activate_read_pair_only.txt)
     - `PAIR tcp 64B`: `-26.32%`
     - `PAIR inproc 64B`: `-32.96%`
+  - `dist.cpp` final-part same-thread inline wakeup:
+    - [`perf_linux_20260328_064859_codex_20260328_pubsub_dist_same_thread_activate_read.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_064859_codex_20260328_pubsub_dist_same_thread_activate_read.txt)
+    - `PUBSUB tcp/inproc 64B`: `-25.70% / -42.49%`
   - 결론: 현재 `activate_read` publication은 direct delivery로 줄일
     순수 mailbox overhead가 아니다. progress ordering / callback / engine
     wakeup과 얽혀 있어 기본 후보에서 제외한다.

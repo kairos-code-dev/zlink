@@ -1248,6 +1248,9 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - [`perf_linux_20260328_002427_pair_dealer_guardrail_public_after_pubsub_dist_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_002427_pair_dealer_guardrail_public_after_pubsub_dist_seq.txt)
   - [`perf_linux_20260328_002516_pair_dealer_guardrail_raw_after_pubsub_dist_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_002516_pair_dealer_guardrail_raw_after_pubsub_dist_seq.txt)
   - [`perf_linux_20260328_002837_pubsub_dist_single_pipe_fastpath_multi.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/multi/report/perf_linux_20260328_002837_pubsub_dist_single_pipe_fastpath_multi.txt)
+- 단계 commit / push
+  - commit: `af020ce4`
+  - push: `origin/main`
 - 핵심 수치
   - `PUBSUB` first run
     - `tcp 64B`: `3180.04 Kmsg/s` vs `2409.49 Kmsg/s`, `-24.23%`

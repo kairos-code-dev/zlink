@@ -1915,6 +1915,7 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - [`perf_linux_20260328_033914_codex_20260328_pair_raw_contract_scope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033914_codex_20260328_pair_raw_contract_scope.txt)
   - [`perf_linux_20260328_033936_codex_20260328_dealer_public_contract_scope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033936_codex_20260328_dealer_public_contract_scope.txt)
   - [`perf_linux_20260328_033957_codex_20260328_dealer_raw_contract_scope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_033957_codex_20260328_dealer_raw_contract_scope.txt)
+  - pushed commit: `754ee6080badb92539cd266b29680ea37c1284d9`
 - 핵심 수치
   - 회귀 테스트
     - `test_multi_socket_contract_regressions`

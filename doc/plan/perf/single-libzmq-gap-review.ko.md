@@ -1739,6 +1739,9 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
 - 생성된 결과 파일 경로
   - [`perf_linux_20260328_024920_pubsub_no_topic_surface_align.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_024920_pubsub_no_topic_surface_align.txt)
   - [`perf_linux_20260328_024954_pubsub_no_topic_surface_align_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_024954_pubsub_no_topic_surface_align_rerun.txt)
+- 단계 commit / push
+  - commit: `d03f56dd`
+  - push: `origin/main`
 - 핵심 수치
   - first run
     - `PUBSUB tcp 64B`: `3208.01 Kmsg/s` vs `2421.78 Kmsg/s`, `-24.51%`

@@ -7,12 +7,14 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 GUIDE_PATH="${ROOT_DIR}/core/tools/refactor/core-system-posd-performance-first-ralph-guide.ko.md"
 MASTER_PLAN_PATH="${GUIDE_PATH}"
 LOGS_DIR="${ROOT_DIR}/core/tools/refactor/logs"
-MAX_ITERATIONS=100
+MAX_ITERATIONS=0
 POLL_SECONDS=30
 GATE_LABEL="phase2_thread_safe_stress"
 STRESS_COUNT=1
+INIT_ONLY=0
 MODEL_ARG=()
 CURRENT_JOB_PID=""
+DISPLAY_NAME="${RALPH_LOOP_DISPLAY_NAME:-$(basename "$0")}"
 CODEX_ARGS=(
   exec
   --dangerously-bypass-approvals-and-sandbox
@@ -21,7 +23,7 @@ CODEX_ARGS=(
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [options]
+Usage: ${DISPLAY_NAME} [options]
 
 Run Codex repeatedly against an execution guide until the guide is fully applied
 or Codex reports that user input is required.
@@ -34,8 +36,10 @@ Options:
                         (default: ${MASTER_PLAN_PATH})
   --logs-dir PATH       Log directory
                         (default: ${LOGS_DIR})
-  --max-iterations N    Maximum Codex iterations
+  --max-iterations N    Maximum Codex iterations. Use 0 for unlimited.
                         (default: ${MAX_ITERATIONS})
+  --init-only           Initialize session/log directories and exit without
+                        starting Codex
   --poll-seconds N      Waiting interval while a long-running gate is active
                         (default: ${POLL_SECONDS})
   --gate-label NAME     Gate status label to watch
@@ -49,7 +53,13 @@ Termination contract:
   - If the Codex final message is exactly '미적용 사항이 없습니다.' the loop exits 0.
   - If the Codex final message starts with '사용자 입력 필요:' the loop exits 2.
   - If the Codex final message is exactly '계속 진행 필요' the loop continues.
+  - When --max-iterations is 0, the loop runs until one of the termination
+    conditions above is met.
 EOF
+}
+
+is_nonnegative_integer() {
+  [[ "${1}" =~ ^[0-9]+$ ]]
 }
 
 terminate_process_tree() {
@@ -124,6 +134,10 @@ while [[ $# -gt 0 ]]; do
       MAX_ITERATIONS="$2"
       shift 2
       ;;
+    --init-only)
+      INIT_ONLY=1
+      shift
+      ;;
     --poll-seconds)
       POLL_SECONDS="$2"
       shift 2
@@ -160,6 +174,10 @@ if [[ ! -f "${MASTER_PLAN_PATH}" ]]; then
   echo "Master plan not found: ${MASTER_PLAN_PATH}" >&2
   exit 1
 fi
+if ! is_nonnegative_integer "${MAX_ITERATIONS}"; then
+  echo "--max-iterations must be a non-negative integer: ${MAX_ITERATIONS}" >&2
+  exit 1
+fi
 
 mkdir -p "${LOGS_DIR}"
 
@@ -170,16 +188,26 @@ gate_status_file="${gate_dir}/${GATE_LABEL}.status"
 mkdir -p "${session_dir}"
 mkdir -p "${gate_dir}"
 
+max_iterations_display="${MAX_ITERATIONS}"
+if [[ "${MAX_ITERATIONS}" == "0" ]]; then
+  max_iterations_display="unlimited"
+fi
+
 cat <<EOF
 === Codex execution guide loop start ===
 Guide: ${GUIDE_PATH}
 Legacy secondary plan: ${MASTER_PLAN_PATH}
 Session dir: ${session_dir}
 Gate dir: ${gate_dir}
-Max iterations: ${MAX_ITERATIONS}
+Max iterations: ${max_iterations_display}
 Gate status file: ${gate_status_file}
 Stress count: ${STRESS_COUNT}
 EOF
+
+if [[ "${INIT_ONLY}" == "1" ]]; then
+  echo "=== Init-only requested; exiting without starting Codex ==="
+  exit 0
+fi
 
 load_gate_field() {
   local file_path="$1"
@@ -241,7 +269,11 @@ wait_for_running_gate() {
 }
 
 iteration=1
-while [[ "${iteration}" -le "${MAX_ITERATIONS}" ]]; do
+while true; do
+  if [[ "${MAX_ITERATIONS}" != "0" ]] && (( iteration > MAX_ITERATIONS )); then
+    break
+  fi
+
   if [[ -f "${gate_status_file}" ]]; then
     if wait_for_running_gate; then
       continue
@@ -306,7 +338,13 @@ ${legacy_plan_rules}
 - 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
 계속 진행 필요
 EOF
-  echo "=== Codex iteration ${iteration}/${MAX_ITERATIONS} start ($(date '+%Y-%m-%d %H:%M:%S %z')) ==="
+  if [[ "${MAX_ITERATIONS}" == "0" ]]; then
+    iteration_label="${iteration}/unlimited"
+  else
+    iteration_label="${iteration}/${MAX_ITERATIONS}"
+  fi
+
+  echo "=== Codex iteration ${iteration_label} start ($(date '+%Y-%m-%d %H:%M:%S %z')) ==="
   set +e
   codex "${CODEX_ARGS[@]}" "${MODEL_ARG[@]}" \
     -o "${last_message}" \

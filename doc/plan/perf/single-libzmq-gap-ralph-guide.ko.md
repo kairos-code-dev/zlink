@@ -30,6 +30,8 @@
 - 실제 변경이 없더라도, iteration 결과가 두 문서의 현재 내용과 일치하는지
   확인하지 않으면 다음 iteration으로 넘어가면 안 된다.
 - 별도 main/master/gap/residual/spec 문서는 추가로 만들지 않는다.
+- 이 루프의 기본 동작은 `--max-iterations 0`, 즉 목표 완료까지 무한 반복이다.
+- 반복 횟수를 제한하고 싶을 때만 명시적으로 `--max-iterations <N>`을 넘긴다.
 
 ## 3. 범위
 
@@ -145,6 +147,23 @@ raw/public 분리를 다시 찍는다.
     변경이 없음을 확인한다.
 11. 아직 stop condition을 못 만족하면 다음 미해결 가설로 반복한다.
 
+### 6.1 단계별 commit / push
+
+- 유지하기로 결정한 변경 묶음 하나를 한 단계로 본다.
+- 각 단계는 아래를 모두 만족한 뒤 바로 commit 하고 push 한다.
+  - 필요한 코드/테스트/문서 갱신 완료
+  - targeted bench와 필요한 smoke 검증 완료
+  - [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+    와
+    [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
+    갱신 완료
+- 한 commit 에 여러 단계 변경을 섞지 않는다.
+- 실험했다가 버린 변경은 commit 하지 않는다.
+- push 가 끝난 뒤 commit hash 와 검증 결과 파일 경로를
+  [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+  에 남긴다.
+- push 없이 다음 단계로 넘어가면 안 된다.
+
 ## 7. 작업 순서 우선순위
 
 현재 우선순위는 아래 순서를 유지한다.
@@ -182,11 +201,23 @@ bash -n doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh \
 ```
 
 ```bash
-./doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh --max-iterations 0
+./doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh --init-only
 ```
 
 마지막 명령은 session/log 디렉터리 초기화만 확인하는 스모크다.
-이 경우 exit code `3`은 정상이다.
+이 경우 exit code `0`이 정상이다.
+
+무한 반복 기본 동작으로 실제 루프를 시작하려면:
+
+```bash
+./doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh
+```
+
+반복 횟수를 제한하고 싶을 때만:
+
+```bash
+./doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh --max-iterations 5
+```
 
 ### 9.1 빌드
 

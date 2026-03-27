@@ -1285,3 +1285,276 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - 두 번째는 `PUBSUB` single-subscriber win을 `inproc`/multi까지
     확장하는 publication/order 후보 재탐색이다.
   - 세 번째는 `ROUTER_ROUTER` routed path의 pattern-specific differential 정리다.
+
+## 13. 2026-03-28 XPUB single-pipe nodrop fusion 로그
+
+- 작업한 가설
+  - `XPUB`에서 matching pipe가 하나뿐인 `nodrop` steady-state는
+    `check_hwm()` precheck와 실제 `write`를 같은 pipe lock 안으로 합치면
+    `zlink_publish(topic, payload)`의 prefix/payload send differential을
+    더 줄일 수 있다.
+- 수정한 파일 경로
+  - [`dist.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.hpp)
+  - [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+  - 위 세 파일은 bench 확인 후 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_pubsub_filter_xpub)$' -j1`
+  - `./core/build/bin/test_xpub_nodrop`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_single_pipe_nodrop_write_fusion`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_single_pipe_nodrop_write_fusion_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_004716_pubsub_single_pipe_nodrop_write_fusion.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_004716_pubsub_single_pipe_nodrop_write_fusion.txt)
+  - [`perf_linux_20260328_004750_pubsub_single_pipe_nodrop_write_fusion_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_004750_pubsub_single_pipe_nodrop_write_fusion_rerun.txt)
+- 핵심 수치
+  - first run
+    - `PUBSUB tcp 64B`: `3674.19 Kmsg/s` vs `2414.00 Kmsg/s`, `-34.30%`
+    - `PUBSUB inproc 64B`: `3806.91 Kmsg/s` vs `2405.61 Kmsg/s`, `-36.81%`
+  - rerun
+    - `PUBSUB tcp 64B`: `3766.63 Kmsg/s` vs `2405.39 Kmsg/s`, `-36.14%`
+    - `PUBSUB inproc 64B`: `3971.62 Kmsg/s` vs `2176.55 Kmsg/s`, `-45.20%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `XPUB` single matching `nodrop` HWM+write fusion helper 전부
+- 해석
+  - first run에서 `inproc`만 좋아 보였지만 rerun에서 그 이득도 사라졌다.
+  - 반대로 `tcp`는 두 번 모두 accepted baseline보다 명확히 나빠졌다.
+  - 따라서 이 후보는 keep-worthy broad win이 아니며 rejected candidate로 둔다.
+  - 위 해석에서 "failed write가 pipe inactive 전이까지 함께 일으켜
+    tcp publication/wakeup 쪽을 더 비싸게 만들었을 가능성"은 현재 코드 기반
+    추론이지만, 원인 규명 전까지는 채택하지 않는다.
+- 다음 iteration 우선순위
+  - 첫 번째는 그대로 `socket_base_t::send()` lifecycle/backpressure 쪽의
+    공통 atomic 축소 후보 재검토다.
+  - 두 번째는 `PUBSUB`에서 distribution 자체보다 남은 publication/wakeup
+    differential을 더 좁게 분리하는 것이다.
+
+## 14. 2026-03-28 `check_hwm_locked()` self-reentry A/B 로그
+
+- 작업한 가설
+  - [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp) 의
+    `write()` / `write_and_flush()` / `check_write_status()`가 `_out_sync`
+    아래에서 `check_hwm()`로 같은 recursive fast mutex를 다시 잡고 있으므로,
+    locked helper로 이 self-reentry를 제거하면 send-side `pipe` cost를
+    더 줄일 수 있다.
+- 수정한 파일 경로
+  - [`pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  - [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  - 위 두 파일은 bench A/B 후 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_socket_with_handler|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_stream_send_blocking_wakeup)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_pipe_hwm_locked_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_pipe_hwm_locked_raw`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_pipe_hwm_recursive_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_pipe_hwm_recursive_raw`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_010113_codex_pipe_hwm_locked_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_010113_codex_pipe_hwm_locked_public.txt)
+  - [`perf_linux_20260328_010154_codex_pipe_hwm_locked_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_010154_codex_pipe_hwm_locked_raw.txt)
+  - [`perf_linux_20260328_010424_codex_pipe_hwm_recursive_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_010424_codex_pipe_hwm_recursive_public.txt)
+  - [`perf_linux_20260328_010507_codex_pipe_hwm_recursive_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_010507_codex_pipe_hwm_recursive_raw.txt)
+- 핵심 수치
+  - patched public zlink throughput
+    - `PAIR tcp 64B`: `3237.13 Kmsg/s`
+    - `PAIR inproc 64B`: `3214.84 Kmsg/s`
+    - `DEALER_DEALER tcp 64B`: `3333.61 Kmsg/s`
+    - `DEALER_DEALER inproc 64B`: `3191.00 Kmsg/s`
+  - reverted public zlink throughput
+    - `PAIR tcp 64B`: `3264.20 Kmsg/s`
+    - `PAIR inproc 64B`: `2787.27 Kmsg/s`
+    - `DEALER_DEALER tcp 64B`: `3062.35 Kmsg/s`
+    - `DEALER_DEALER inproc 64B`: `2759.72 Kmsg/s`
+  - patched raw zlink throughput
+    - `PAIR tcp 64B`: `2958.21 Kmsg/s`
+    - `PAIR inproc 64B`: `2807.57 Kmsg/s`
+    - `DEALER_DEALER tcp 64B`: `3256.14 Kmsg/s`
+    - `DEALER_DEALER inproc 64B`: `3280.86 Kmsg/s`
+  - reverted raw zlink throughput
+    - `PAIR tcp 64B`: `2867.24 Kmsg/s`
+    - `PAIR inproc 64B`: `3193.91 Kmsg/s`
+    - `DEALER_DEALER tcp 64B`: `3187.07 Kmsg/s`
+    - `DEALER_DEALER inproc 64B`: `3290.80 Kmsg/s`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `pipe.cpp` / `pipe.hpp` locked `check_hwm()` helper
+- 해석
+  - `DEALER_DEALER` public은 눈에 띄게 좋아졌지만,
+    `PAIR`와 raw guardrail은 같은 방향으로 움직이지 않았다.
+  - 특히 `PAIR inproc raw`가 `3193.91 -> 2807.57 Kmsg/s`로 내려가
+    broad win으로 보긴 어렵다.
+  - 따라서 "`_out_sync` self-reentry 제거"는 plausible cost axis인 것은
+    맞지만, 현재 구현 형태 그대로는 keep-worthy accepted delta가 아니다.
+  - 이 결론은 결과 파일 기반 해석이며, libzmq absolute throughput 자체도 run마다
+    흔들려 직접 diff만으로 과대해석하지 않았다.
+- 다음 iteration 우선순위
+  - 첫 번째는 다시 `socket_base_t::send()` lifecycle/backpressure 쪽의
+    공통 atomic/admission 후보를 좁히는 것이다.
+  - 두 번째는 send-side `pipe` 경로에서 self-reentry 제거보다 더 직접적인
+    ordering/work 축소 후보를 찾는 것이다.
+  - 세 번째는 keep-worthy 공통 후보가 더 없으면 `PUBSUB` publication 잔여축과
+    `ROUTER_ROUTER` routed path를 순서대로 올린다.
+
+## 15. 2026-03-28 ROUTER single-out-pipe lookup cache 로그
+
+- 작업한 가설
+  - `ROUTER`/`STREAM` routed steady-state에서 outbound pipe가 하나뿐이면
+    `routing_socket_base_t`의 routed lookup을 cache로 우회하는 것만으로도
+    `ROUTER_ROUTER` public send differential을 줄일 수 있다.
+- 수정한 파일 경로
+  - [`socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+  - [`socket_base_routing.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_routing.cpp)
+  - 위 두 파일은 bench 확인 후 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_connect_rid|test_probe_router|test_router_multiple_dealers|test_router_auto_id_format|test_transport_matrix)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag router_single_out_pipe_cache`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag router_single_out_pipe_cache_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_011839_router_single_out_pipe_cache.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_011839_router_single_out_pipe_cache.txt)
+  - [`perf_linux_20260328_011918_router_single_out_pipe_cache_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_011918_router_single_out_pipe_cache_rerun.txt)
+- 핵심 수치
+  - first run
+    - `ROUTER_ROUTER tcp 64B`: `2998.27 Kmsg/s` vs `1237.50 Kmsg/s`, `-58.73%`
+    - `ROUTER_ROUTER inproc 64B`: `3142.30 Kmsg/s` vs `2453.71 Kmsg/s`, `-21.91%`
+  - rerun
+    - `ROUTER_ROUTER tcp 64B`: `2844.23 Kmsg/s` vs `1230.30 Kmsg/s`, `-56.74%`
+    - `ROUTER_ROUTER inproc 64B`: `3257.12 Kmsg/s` vs `2407.00 Kmsg/s`, `-26.10%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `routing_socket_base` single-out-pipe routed lookup cache 전부
+- 해석
+  - `inproc` first run만 보면 회복처럼 보였지만 rerun에서 그 이득이 사라졌고,
+    `tcp`는 기준선보다 좋아졌다고 보기 어렵다.
+  - 따라서 현재 `ROUTER_ROUTER` 잔여 gap을 routed `std::map` lookup 하나로
+    설명할 수는 없다.
+  - 이 후보는 keep-worthy broad win이 아니며 rejected candidate로 둔다.
+- 다음 iteration 우선순위
+  - 첫 번째는 여전히 `socket_base_t::send()` lifecycle/backpressure 쪽의
+    공통 atomic/admission 후보를 다시 좁히는 것이다.
+  - 두 번째는 send-side `pipe` 경로에서 ordering/work 축소 후보다.
+  - 세 번째는 keep-worthy 공통 후보가 더 없으면 `PUBSUB` publication 잔여축과
+    `ROUTER_ROUTER` public routed send/recv differential을 순서대로 다시 좁힌다.
+
+## 16. 2026-03-28 `public_api_state` full CAS fast path 로그
+
+- 작업한 가설
+  - [`socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+    의 `enter_public_api()` / `leave_public_api()` /
+    `unlock_public_api_sync_and_leave()` 에 uncontended CAS fast path를 넣으면
+    send-side lifecycle atomic cost를 줄일 수 있다.
+- 수정한 파일 경로
+  - [`socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  - [`unittest_socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/tests/unittest/unittest_socket_runtime.cpp)
+  - 위 두 파일은 bench 확인 후 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_monitor_perf_contract|test_socket_with_handler|test_public_inproc_multipart_send|test_stream_send_blocking_wakeup)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_lifecycle_fast_exit_public_seq`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_lifecycle_fast_exit_raw_seq`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_lifecycle_fast_exit_reverted_public_seq`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_lifecycle_fast_exit_reverted_raw_seq`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_012937_codex_lifecycle_fast_exit_public_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_012937_codex_lifecycle_fast_exit_public_seq.txt)
+  - [`perf_linux_20260328_013023_codex_lifecycle_fast_exit_raw_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_013023_codex_lifecycle_fast_exit_raw_seq.txt)
+  - [`perf_linux_20260328_013301_codex_lifecycle_fast_exit_reverted_public_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_013301_codex_lifecycle_fast_exit_reverted_public_seq.txt)
+  - [`perf_linux_20260328_013344_codex_lifecycle_fast_exit_reverted_raw_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_013344_codex_lifecycle_fast_exit_reverted_raw_seq.txt)
+- 핵심 수치
+  - patched public
+    - `PAIR tcp 64B`: `4542.78 Kmsg/s` vs `2800.92 Kmsg/s`, `-38.34%`
+    - `PAIR inproc 64B`: `4181.74 Kmsg/s` vs `2795.49 Kmsg/s`, `-33.15%`
+    - `DEALER_DEALER tcp 64B`: `3858.44 Kmsg/s` vs `3125.45 Kmsg/s`, `-19.00%`
+    - `DEALER_DEALER inproc 64B`: `4080.17 Kmsg/s` vs `3356.60 Kmsg/s`, `-17.73%`
+  - patched raw
+    - `PAIR tcp 64B`: `4387.06 Kmsg/s` vs `3233.82 Kmsg/s`, `-26.29%`
+    - `PAIR inproc 64B`: `4172.40 Kmsg/s` vs `2665.57 Kmsg/s`, `-36.11%`
+    - `DEALER_DEALER tcp 64B`: `3714.39 Kmsg/s` vs `3187.49 Kmsg/s`, `-14.19%`
+    - `DEALER_DEALER inproc 64B`: `4037.43 Kmsg/s` vs `2833.70 Kmsg/s`, `-29.81%`
+  - reverted public
+    - `PAIR tcp 64B`: `3625.10 Kmsg/s` vs `3158.47 Kmsg/s`, `-12.87%`
+    - `PAIR inproc 64B`: `4188.57 Kmsg/s` vs `3171.66 Kmsg/s`, `-24.28%`
+    - `DEALER_DEALER tcp 64B`: `3550.24 Kmsg/s` vs `2751.97 Kmsg/s`, `-22.49%`
+    - `DEALER_DEALER inproc 64B`: `4174.18 Kmsg/s` vs `3186.47 Kmsg/s`, `-23.66%`
+  - reverted raw
+    - `PAIR tcp 64B`: `4567.20 Kmsg/s` vs `3280.92 Kmsg/s`, `-28.16%`
+    - `PAIR inproc 64B`: `4192.83 Kmsg/s` vs `3143.78 Kmsg/s`, `-25.02%`
+    - `DEALER_DEALER tcp 64B`: `3719.76 Kmsg/s` vs `2797.58 Kmsg/s`, `-24.79%`
+    - `DEALER_DEALER inproc 64B`: `4347.30 Kmsg/s` vs `2853.17 Kmsg/s`, `-34.37%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `socket_runtime.cpp` full lifecycle CAS fast path
+    - `unittest_socket_runtime.cpp` 임시 close-preservation 회귀 추가
+- 해석
+  - `DEALER` raw/public은 일부 회복했지만 `PAIR` public과 `PAIR inproc raw`가
+    clean reverted baseline 대비 너무 크게 흔들렸다.
+  - 즉 lifecycle atomic cost axis 자체는 살아 있지만, `enter/leave` 전부를
+    CAS fast path로 치환하는 현재 형태는 broad win이 아니다.
+  - 따라서 이 후보는 rejected candidate로 두고, 다음 라운드는 `PAIR`를
+    건드리지 않는 더 좁은 non-`PAIR` 종료 경로로 다시 본다.
+- 다음 iteration 우선순위
+  - `unlock_public_api_sync_and_leave()` 단독 fast path로
+    `DEALER` 계열 raw 회복이 `PAIR` public 흔들림 없이 유지되는지 확인한다.
+
+## 17. 2026-03-28 `unlock_public_api_sync_and_leave()` CAS fast path 로그
+
+- 작업한 가설
+  - [`socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+    의 `unlock_public_api_sync_and_leave()` 하나만 좁게 fast path로 바꾸면
+    non-`PAIR` send 종료 비용을 줄이면서도 `PAIR` regression은 피할 수 있다.
+- 수정한 파일 경로
+  - [`socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  - [`unittest_socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/tests/unittest/unittest_socket_runtime.cpp)
+  - 위 두 파일은 bench 확인 후 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_monitor_perf_contract|test_socket_with_handler|test_public_inproc_multipart_send|test_stream_send_blocking_wakeup)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_lifecycle_sync_leave_public_seq`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_lifecycle_sync_leave_raw_seq`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_lifecycle_sync_leave_public_rerun_seq`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_013518_codex_lifecycle_sync_leave_public_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_013518_codex_lifecycle_sync_leave_public_seq.txt)
+  - [`perf_linux_20260328_013557_codex_lifecycle_sync_leave_raw_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_013557_codex_lifecycle_sync_leave_raw_seq.txt)
+  - [`perf_linux_20260328_013659_codex_lifecycle_sync_leave_public_rerun_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_013659_codex_lifecycle_sync_leave_public_rerun_seq.txt)
+- 핵심 수치
+  - public first run
+    - `PAIR tcp 64B`: `4558.41 Kmsg/s` vs `3090.47 Kmsg/s`, `-32.20%`
+    - `PAIR inproc 64B`: `4086.96 Kmsg/s` vs `2810.77 Kmsg/s`, `-31.23%`
+    - `DEALER_DEALER tcp 64B`: `4283.26 Kmsg/s` vs `3061.73 Kmsg/s`, `-28.52%`
+    - `DEALER_DEALER inproc 64B`: `4250.57 Kmsg/s` vs `3171.47 Kmsg/s`, `-25.39%`
+  - raw
+    - `PAIR tcp 64B`: `3605.96 Kmsg/s` vs `3319.62 Kmsg/s`, `-7.94%`
+    - `PAIR inproc 64B`: `4201.83 Kmsg/s` vs `3348.56 Kmsg/s`, `-20.31%`
+    - `DEALER_DEALER tcp 64B`: `3610.30 Kmsg/s` vs `2854.94 Kmsg/s`, `-20.92%`
+    - `DEALER_DEALER inproc 64B`: `4096.07 Kmsg/s` vs `3305.53 Kmsg/s`, `-19.30%`
+  - public rerun
+    - `PAIR tcp 64B`: `3655.07 Kmsg/s` vs `3127.22 Kmsg/s`, `-14.44%`
+    - `PAIR inproc 64B`: `4104.06 Kmsg/s` vs `3317.05 Kmsg/s`, `-19.18%`
+    - `DEALER_DEALER tcp 64B`: `4262.76 Kmsg/s` vs `3101.84 Kmsg/s`, `-27.23%`
+    - `DEALER_DEALER inproc 64B`: `4155.75 Kmsg/s` vs `2873.87 Kmsg/s`, `-30.85%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `socket_runtime.cpp` `unlock_public_api_sync_and_leave()` CAS fast path
+    - `unittest_socket_runtime.cpp` 임시 close-preservation 회귀 추가
+- 해석
+  - raw는 `PAIR tcp`, `DEALER_DEALER inproc`까지 꽤 회복해
+    lifecycle 종료 비용이 실제 cost axis라는 점은 더 강해졌다.
+  - 하지만 public rerun에서는 `DEALER_DEALER tcp/inproc`가
+    reverted baseline보다 더 흔들렸고, `PAIR`도 stop condition에는 멀다.
+  - 즉 이 후보는 raw/public 분리상 "core differential을 줄이는 방향" 자체는
+    맞지만, current public surface에서 keep-worthy broad win으로 보긴 어렵다.
+  - 따라서 이 후보도 rejected candidate로 두고 원복한다.
+- 다음 iteration 우선순위
+  - 첫 번째는 여전히 `socket_base_t::send()` lifecycle/backpressure 쪽의
+    다음 공통 후보를 찾는 것이다.
+  - 다만 현재 문서 기준으로 단순 uncontended CAS 치환 계열은
+    유지 후보가 아니므로 우선순위를 낮춘다.

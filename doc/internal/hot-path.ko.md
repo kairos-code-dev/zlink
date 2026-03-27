@@ -253,9 +253,32 @@ steady-state single-part recv hot path:
 3. mailbox read lock 제거
 4. send-side throttle의 counter-only 치환
 5. pipe 전용 non-reentrant mutex
+6. `routing_socket_base` single-out-pipe lookup cache
+   - 2026-03-28 `ROUTER_ROUTER` single rerun이 `tcp -56.74%`,
+     `inproc -26.10%`로 broad win이 아니었다
+   - 즉 현재 `ROUTER` 잔여 gap을 routed map lookup 하나로 설명하진 않는다
+7. `XPUB` single matching `nodrop` HWM+write fusion
+8. `socket_runtime.cpp` `public_api_state` full enter/leave CAS fast path
+   - clean A/B에서 `DEALER` raw는 일부 좋아졌지만
+     `PAIR` public `tcp/inproc`가 `-38.34% / -33.15%`,
+     `PAIR inproc raw`가 `-36.11%`까지 흔들려 broad win이 아니었다
+9. `socket_runtime.cpp` `unlock_public_api_sync_and_leave()` CAS fast path
+   - raw는 `PAIR tcp -7.94%`, `DEALER_DEALER inproc -19.30%`까지 회복했지만
+     public rerun에서 `DEALER_DEALER tcp/inproc`가
+     `-27.23% / -30.85%`로 다시 흔들려 rejected candidate로 둔다
 
 이 항목들은 최근 A/B 실험이나 current code invariant 기준으로
 이미 역효과가 확인됐거나 correctness risk가 높다.
+
+- `XPUB` single matching `nodrop` HWM+write fusion은
+  `PUBSUB tcp 64B`를 `-34.30%`, rerun `-36.14%`로 다시 악화시켰다.
+  `check_hwm()` precheck를 single-pipe write와 합치는 발상 자체는 타당했지만,
+  현재 구현에서는 keep-worthy broad win이 아니므로 rejected candidate로 둔다.
+- `public_api_state` CAS fast path 실험 둘은 "send-side lifecycle atomic을 더
+  싸게 만들면 회복할 수 있다"는 방향성 자체는 유지시켰지만,
+  current code 기준으로는 raw/public guardrail과 `PAIR`/`DEALER` broad win을
+  동시에 만족시키지 못했다. 즉 이 축은 여전히 P0이지만, 지금 형태의
+  uncontended CAS 치환은 유지 후보가 아니다.
 
 ## 9. 현재 반영된 개선
 
@@ -310,7 +333,17 @@ steady-state single-part recv hot path:
 - recv는 공개 thread-safe hot path가 아니므로, recv-side `pipe` steady-state
   잠금은 send-side concurrent contract보다 먼저 줄일 수 있다
 - send는 thread-safe 계약을 유지한 채 `write` + `flush`를 같은 pipe lock으로
-  묶어, final part에서 lock 2회를 1회로 줄인다
+  묶어, 별도 `write`/`flush` lock pair는 제거했다
+- 다만 현재 [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  의 `write()` / `write_and_flush()` / `check_write_status()`는
+  `_out_sync`를 잡은 뒤 `check_hwm()`에서 같은 recursive fast mutex를
+  다시 잡는다.
+- 이건 여전히 plausible cost axis지만, 2026-03-28
+  `check_hwm_locked()` helper A/B는 `PAIR`/raw guardrail까지 포함한 broad win을
+  만들지 못했다.
+- 따라서 현재 남은 send-side `pipe` 과제는 "이 self-reentry를 무조건 없애자"가
+  아니라, ordering과 HWM semantics를 유지한 채 실제 broad win이 나는 좁은
+  work 축소를 다시 찾는 것이다.
 - `DEALER_DEALER`처럼 outbound pipe가 하나뿐인 steady-state는
   일반 `lb_t` loop와 fairness bookkeeping을 반복하지 않도록 줄였다
 - `PUBSUB`처럼 matching/active pipe가 하나뿐인 steady-state는

@@ -366,6 +366,31 @@ rejected candidate는 반드시 로그에 남긴다.
   - `socket_message_send_api.cpp` single-part public fast path의
     중복 `msg->check()` 제거도 `DEALER_DEALER inproc 64B`를
     `-31.51%`로 악화시켜 원복
+  - `xpub.cpp` single matching `nodrop` HWM+write fusion도
+    `PUBSUB tcp 64B`를 `-34.30%`, rerun `-36.14%`로 다시 악화시켜 원복
+  - `socket_base_routing.cpp` single-out-pipe routed lookup cache도
+    `ROUTER_ROUTER tcp 64B` rerun `-56.74%`, inproc rerun `-26.10%`로
+    broad win이 아니어서 원복
+  - `socket_runtime.cpp` `public_api_state` 전체 enter/leave CAS fast path도
+    `PAIR` public이 `tcp/inproc -38.34% / -33.15%`로 흔들리고
+    `PAIR inproc raw`도 `-36.11%`까지 악화돼 원복
+  - `socket_runtime.cpp` `unlock_public_api_sync_and_leave()` 단독 CAS fast path는
+    raw는 좋아졌지만 public rerun에서 `DEALER_DEALER tcp/inproc`이
+    `-27.23% / -30.85%`로 다시 흔들려 원복
+- 현재 코드/문서 정합 메모
+  - `pipe.cpp`의 `write()`, `write_and_flush()`, `check_write_status()`는
+    `_out_sync`를 잡은 뒤 `check_hwm()`에서 같은 recursive fast mutex를
+    한 번 더 재진입한다.
+  - 따라서 문서에 적힌 "`write+flush`로 final-part lock 2회 -> 1회"는
+    현재 코드에서는 아직 완전히 성립하지 않는다.
+  - 다만 2026-03-28 `check_hwm_locked()` helper A/B는 `PAIR`/raw guardrail이
+    섞여 keep-worthy broad win으로 남지 못했다.
+  - 이 재진입은 계속 cost-axis 후보로 보되, 현재는 active delta가 아니라
+    parked candidate로 유지한다.
+  - 2026-03-28 `socket_runtime.cpp` lifecycle atomic CAS fast path A/B도
+    `DEALER` raw 회복과 `PAIR`/public 흔들림이 엇갈렸다.
+  - 따라서 send-side lifecycle/backpressure 첫 우선순위는 유지하되,
+    현재 문서 기준으로 keep-worthy 공통 atomic fast path는 아직 없다.
 - 아직 남은 핵심 미달
   - `PAIR tcp 64B`: `-15.78%`
   - `PAIR inproc 64B`: `-17.62%`

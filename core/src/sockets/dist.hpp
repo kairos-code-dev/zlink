@@ -58,15 +58,17 @@ class dist_t
     void rollback ();
 
   private:
+    //  List of outbound pipes.
+    typedef array_t<zlink::pipe_t, 2> pipes_t;
+
+    void deactivate_matching_pipe (pipes_t::size_type index_);
+
     //  Write the message to the pipe. Make the pipe inactive if writing
     //  fails. In such a case false is returned.
-    bool write (zlink::pipe_t *pipe_, zlink::msg_t *msg_);
+    bool write_at (pipes_t::size_type index_, zlink::msg_t *msg_);
 
     //  Put the message to all active pipes.
     void distribute (zlink::msg_t *msg_);
-
-    //  List of outbound pipes.
-    typedef array_t<zlink::pipe_t, 2> pipes_t;
     pipes_t _pipes;
 
     //  Number of all the pipes to send the next message to.

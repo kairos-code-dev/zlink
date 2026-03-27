@@ -41,6 +41,13 @@ public send/recv 경로다.
   건너뛰어도 bench 수치가 거의 움직이지 않았다.
   현재 `PUBSUB` gap의 상위 축은 monitor-ready 계산보다
   publication/ordering 경로에 더 가깝다.
+- 다만 2026-03-28 `dist_t` one-matching-pipe fast path를 넣자
+  `PUBSUB tcp 64B`가 `-24.23%`, rerun에서 `-26.00%`까지 즉시 회복됐다.
+  즉 monitor-ready는 여전히 secondary지만, distributor loop/index/deactivate
+  work 자체는 실제 hot-path 비용 축이다.
+- 반면 같은 라운드의 `PUBSUB inproc 64B`는 `-42.51%`,
+  multi `pubsub tcp 64B`는 `-26.97%`라서 publication/lifecycle differential은
+  아직 남아 있다.
 
 ## 2. 현재 비교 surface
 
@@ -234,7 +241,8 @@ steady-state single-part recv hot path:
 6. `zlink_recv()`의 남은 routed/strip/multipart export 경로를 더 얇게 만든다
 7. `recv_internal.cpp` mode guard 비용을 steady-state mode specialization 쪽으로
    줄인다
-8. `PUBSUB`/`ROUTER` public surface는 공통 개선 후 별도 정리한다
+8. `PUBSUB`는 `dist_t` one-matching-pipe fast path를 기준선으로 유지한 채
+   `inproc`/multi 잔여 gap을 더 줄인다. `ROUTER`는 공통 개선 후 별도 정리한다
 
 ## 8.1 현재 보류/기각된 방향
 
@@ -251,7 +259,7 @@ steady-state single-part recv hot path:
 
 ## 9. 현재 반영된 개선
 
-2026-03-27 기준으로 아래 개선이 들어갔다.
+2026-03-28 기준으로 아래 개선이 들어갔다.
 
 - [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
   에 `PAIR`/`DEALER` public single-part direct recv fast path 추가
@@ -281,8 +289,14 @@ steady-state single-part recv hot path:
   에 `write_and_flush()` 경로 추가
 - [`lb.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/lb.cpp)
   에 one-active-pipe `DEALER` send fast path 추가
+- [`dist.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.hpp)
+  / [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+  에 one-matching-pipe `PUBSUB` send fast path와
+  index-stable deactivate helper 추가
 - [`test_public_inproc_multipart_send.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_public_inproc_multipart_send.cpp)
   에 `DEALER` single/multipart/concurrent send 회귀 추가
+- [`test_multi_socket_contract_regressions.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_multi_socket_contract_regressions.cpp)
+  에 same-handle concurrent `PUB` publish 회귀 추가
 
 의미:
 
@@ -299,6 +313,8 @@ steady-state single-part recv hot path:
   묶어, final part에서 lock 2회를 1회로 줄인다
 - `DEALER_DEALER`처럼 outbound pipe가 하나뿐인 steady-state는
   일반 `lb_t` loop와 fairness bookkeeping을 반복하지 않도록 줄였다
+- `PUBSUB`처럼 matching/active pipe가 하나뿐인 steady-state는
+  일반 `dist_t` loop와 pipe index lookup을 반복하지 않도록 줄였다
 - `PAIR`/`DEALER_DEALER` zlink 내부 raw/public 분리를 다시 찍어보면,
   public wrapper penalty는 현재 secondary고 남은 상위 축은 send-side다
 
@@ -308,15 +324,28 @@ steady-state single-part recv hot path:
   - `PAIR tcp 64B`: `libzmq 3908.78 Kmsg/s`, `zlink 3046.03 Kmsg/s`, `-22.07%`
   - `DEALER_DEALER tcp 64B`: `libzmq 3765.72 Kmsg/s`,
     `zlink 3180.02 Kmsg/s`, `-15.55%`
+- `2026-03-28 PUBSUB` quick run 기준
+  - `PUBSUB tcp 64B`: `libzmq 3180.04 Kmsg/s`, `zlink 2409.49 Kmsg/s`,
+    `-24.23%`
+  - `PUBSUB tcp 64B` rerun: `libzmq 3309.57 Kmsg/s`,
+    `zlink 2448.99 Kmsg/s`, `-26.00%`
+  - `PUBSUB inproc 64B` rerun: `libzmq 3874.20 Kmsg/s`,
+    `zlink 2227.44 Kmsg/s`, `-42.51%`
+  - multi `pubsub tcp 64B`: `libzmq 6094.02 Kmsg/s`,
+    `zlink 4450.16 Kmsg/s`, `-26.97%`
 
 따라서 현재 해석은:
 
 - public recv single-part 경로는 실제 병목 축이 맞다
 - recv-side `pipe` 잠금도 실제 병목 축이 맞다
 - send-side `write + flush` 이중 잠금도 실제 병목 축이 맞다
+- `dist_t`의 single-subscriber distributor loop/index work도
+  `PUBSUB tcp`에서는 실제 병목 축이 맞다
 - `zlink_multipart_close()` 이후 TLS slot release 최적화도 steady-state recv
   비용을 낮추는 데 실제로 기여한다
 - 하지만 남은 전체 gap을 혼자 설명하는 축은 아니다
+- `PUBSUB inproc`과 multi `pubsub`가 아직 크게 남아 있으므로,
+  send-side lifecycle/backpressure/publication differential은 계속 추적해야 한다
 - `PAIR`는 `xsend()`가 `pipe::write_and_flush()`만 타고 별도 `lb/dist`
   상태를 건드리지 않으므로, public send sync를 반드시 같이 잡아야 하는지
   따로 볼 여지가 있다
@@ -379,6 +408,28 @@ steady-state single-part recv hot path:
   - `DEALER_DEALER inproc 64B`: `-34.71%`
   - 결론: `DEALER` one-pipe recv는 이번 형태로는 오히려 `inproc`을 악화시켜
     유지 후보가 아니다
+- `object.cpp` same-thread `send_activate_read()` direct delivery
+  - generic 적용:
+    - [`perf_linux_20260327_235547_pair_activate_read_direct.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_235547_pair_activate_read_direct.txt)
+    - [`perf_linux_20260327_235621_dealer_activate_read_direct.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260327_235621_dealer_activate_read_direct.txt)
+    - `PAIR inproc`은 `-23.82%`까지 회복됐지만
+      `DEALER_DEALER tcp`가 `-25.06%`로 악화됐다
+  - `PAIR` no-handler 전용 gate:
+    - [`perf_linux_20260328_000053_pair_inline_activate_read_pair_only.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_000053_pair_inline_activate_read_pair_only.txt)
+    - `PAIR tcp 64B`: `-26.32%`
+    - `PAIR inproc 64B`: `-32.96%`
+  - 결론: 현재 `activate_read` publication은 direct delivery로 줄일
+    순수 mailbox overhead가 아니다. progress ordering / callback / engine
+    wakeup과 얽혀 있어 기본 후보에서 제외한다.
+- `socket_message_send_api.cpp` single-part public fast path의
+  wrapper-side `msg->check()` 제거
+  - [`perf_linux_20260328_000714_pair_singlepart_public_check_elision.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_000714_pair_singlepart_public_check_elision.txt)
+  - [`perf_linux_20260328_000746_dealer_singlepart_public_check_elision.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_000746_dealer_singlepart_public_check_elision.txt)
+  - `PAIR inproc`은 `-21.42%`까지 회복됐지만
+    `DEALER_DEALER inproc`이 `-31.51%`로 악화됐다
+  - 결론: 현재 public single-part send wrapper의 중복 `msg->check()`는
+    broad guardrail을 깨뜨릴 만큼 상위 원인이 아니다. 이 축은
+    유지 후보에서 제외한다.
 
 이 순서는 thread-safe 계약을 유지하면서도 실제 `single` gap에 직접 닿는
 순서다.

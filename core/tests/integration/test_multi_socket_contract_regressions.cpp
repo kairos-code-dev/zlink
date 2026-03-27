@@ -4,6 +4,7 @@
 #include "testutil_unity.hpp"
 #include "../../src/sockets/socket_base.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <chrono>
 #include <cstring>
@@ -39,6 +40,36 @@ struct delivery_ready_monitor_t
 
     void *monitor;
     delivery_ready_monitor_state_t *state;
+};
+
+struct publish_start_gate_t
+{
+    publish_start_gate_t () : ready (0), go (false) {}
+
+    std::mutex sync;
+    std::condition_variable cv;
+    std::atomic<int> ready;
+    bool go;
+};
+
+struct publisher_probe_t
+{
+    publisher_probe_t () :
+        gate (NULL),
+        socket (NULL),
+        phase ('?'),
+        count (0),
+        failed (false),
+        publish_errno (0)
+    {
+    }
+
+    publish_start_gate_t *gate;
+    void *socket;
+    char phase;
+    int count;
+    std::atomic<bool> failed;
+    std::atomic<int> publish_errno;
 };
 
 struct pubsub_callback_probe_t
@@ -351,6 +382,65 @@ void publish_payload (void *pub_, const std::string &payload_)
     memcpy (zlink_msg_data (&part), payload_.data (), payload_.size ());
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_publish (pub_, k_pubsub_topic, &part, 1, 0));
+}
+
+void wait_and_publish_payloads (publisher_probe_t *probe_)
+{
+    {
+        std::unique_lock<std::mutex> lock (probe_->gate->sync);
+        probe_->gate->ready.fetch_add (1, std::memory_order_acq_rel);
+        probe_->gate->cv.notify_all ();
+        probe_->gate->cv.wait (lock, [&] () { return probe_->gate->go; });
+    }
+
+    for (int i = 0; i < probe_->count; ++i) {
+        const std::string payload =
+          make_fixed_size_payload (probe_->phase, static_cast<size_t> (i), 64);
+
+        zlink_msg_t part;
+        if (zlink_msg_init_size (&part, payload.size ()) != 0) {
+            probe_->failed.store (true, std::memory_order_release);
+            probe_->publish_errno.store (errno, std::memory_order_release);
+            return;
+        }
+
+        memcpy (zlink_msg_data (&part), payload.data (), payload.size ());
+        if (zlink_publish (probe_->socket, k_pubsub_topic, &part, 1, 0) != 0) {
+            const int err = errno;
+            (void) zlink_msg_close (&part);
+            probe_->failed.store (true, std::memory_order_release);
+            probe_->publish_errno.store (err, std::memory_order_release);
+            return;
+        }
+    }
+}
+
+bool parse_concurrent_publish_payload (const std::string &payload_,
+                                       char *phase_out_,
+                                       int *seq_out_)
+{
+    if (!phase_out_ || !seq_out_)
+        return false;
+
+    const std::string::size_type first_colon = payload_.find (':');
+    if (first_colon != 1)
+        return false;
+
+    const std::string::size_type second_colon =
+      payload_.find (':', first_colon + 1);
+    if (second_colon == std::string::npos || second_colon == first_colon + 1)
+        return false;
+
+    int seq = -1;
+    std::istringstream seq_stream (
+      payload_.substr (first_colon + 1, second_colon - first_colon - 1));
+    seq_stream >> seq;
+    if (!seq_stream || !seq_stream.eof ())
+        return false;
+
+    *phase_out_ = payload_[0];
+    *seq_out_ = seq;
+    return true;
 }
 
 void publish_two_part_payload (void *pub_,
@@ -863,6 +953,111 @@ void test_pubsub_subscribe_can_skip_topic_copy_and_keep_multipart_payload ()
     test_context_socket_close_zero_linger (pub);
 }
 
+void test_pubsub_publish_is_safe_from_multiple_threads ()
+{
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
+
+    set_timeout_opts (pub);
+    set_timeout_opts (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, k_pubsub_topic));
+
+    delivery_ready_monitor_t pub_monitor;
+    delivery_ready_monitor_t sub_monitor;
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      pub, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, &pub_monitor));
+    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
+      sub, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &sub_monitor));
+
+    char endpoint[MAX_SOCKET_STRING];
+    test_bind (pub, "tcp://127.0.0.1:*", endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&pub_monitor, 1, 5000));
+    TEST_ASSERT_TRUE (wait_delivery_ready_count (&sub_monitor, 1, 5000));
+
+    publish_start_gate_t gate;
+    const int per_publisher = 64;
+    publisher_probe_t publisher_a;
+    publisher_a.gate = &gate;
+    publisher_a.socket = pub;
+    publisher_a.phase = 'A';
+    publisher_a.count = per_publisher;
+
+    publisher_probe_t publisher_b;
+    publisher_b.gate = &gate;
+    publisher_b.socket = pub;
+    publisher_b.phase = 'B';
+    publisher_b.count = per_publisher;
+
+    std::thread sender_a (wait_and_publish_payloads, &publisher_a);
+    std::thread sender_b (wait_and_publish_payloads, &publisher_b);
+
+    {
+        std::unique_lock<std::mutex> lock (gate.sync);
+        const bool ready = gate.cv.wait_for (
+          lock, std::chrono::milliseconds (5000), [&] () {
+              return gate.ready.load (std::memory_order_acquire) == 2;
+          });
+        TEST_ASSERT_TRUE (ready);
+        gate.go = true;
+    }
+    gate.cv.notify_all ();
+
+    std::vector<bool> seen_a (per_publisher, false);
+    std::vector<bool> seen_b (per_publisher, false);
+
+    for (int i = 0; i < per_publisher * 2; ++i) {
+        char topic[32];
+        memset (topic, 0, sizeof (topic));
+        size_t topic_len = sizeof (topic);
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
+                           0));
+        TEST_ASSERT_EQUAL_UINT64 (std::strlen (k_pubsub_topic), topic_len);
+        TEST_ASSERT_EQUAL_MEMORY (k_pubsub_topic, topic, topic_len);
+        TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+
+        const char *data =
+          static_cast<const char *> (zlink_msg_data (&parts[0]));
+        const std::string payload (data, zlink_msg_size (&parts[0]));
+        char phase = '?';
+        int seq = -1;
+        const bool parsed =
+          parse_concurrent_publish_payload (payload, &phase, &seq);
+        zlink_multipart_close (parts, part_count);
+        TEST_ASSERT_TRUE (parsed);
+        TEST_ASSERT_TRUE (seq >= 0);
+        TEST_ASSERT_TRUE (seq < per_publisher);
+
+        std::vector<bool> *seen = NULL;
+        if (phase == 'A')
+            seen = &seen_a;
+        else if (phase == 'B')
+            seen = &seen_b;
+        TEST_ASSERT_NOT_NULL (seen);
+        TEST_ASSERT_FALSE ((*seen)[static_cast<size_t> (seq)]);
+        (*seen)[static_cast<size_t> (seq)] = true;
+    }
+
+    sender_a.join ();
+    sender_b.join ();
+
+    TEST_ASSERT_FALSE (publisher_a.failed.load (std::memory_order_acquire));
+    TEST_ASSERT_FALSE (publisher_b.failed.load (std::memory_order_acquire));
+    for (int i = 0; i < per_publisher; ++i) {
+        TEST_ASSERT_TRUE (seen_a[static_cast<size_t> (i)]);
+        TEST_ASSERT_TRUE (seen_b[static_cast<size_t> (i)]);
+    }
+
+    close_delivery_ready_monitor (&sub_monitor);
+    close_delivery_ready_monitor (&pub_monitor);
+    test_context_socket_close_zero_linger (sub);
+    test_context_socket_close_zero_linger (pub);
+}
+
 void test_pubsub_publish_rollback_preserves_next_topic_boundary ()
 {
     void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
@@ -924,6 +1119,7 @@ int main ()
     RUN_TEST (test_pubsub_repeated_topic_stops_delivery_after_unsubscribe);
     RUN_TEST (test_pubsub_repeated_topic_keeps_delivering_after_peer_disconnect);
     RUN_TEST (test_pubsub_subscribe_can_skip_topic_copy_and_keep_multipart_payload);
+    RUN_TEST (test_pubsub_publish_is_safe_from_multiple_threads);
     RUN_TEST (test_pubsub_publish_rollback_preserves_next_topic_boundary);
     return UNITY_END ();
 }

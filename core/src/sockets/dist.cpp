@@ -152,9 +152,19 @@ void zlink::dist_t::distribute (msg_t *msg_)
         return;
     }
 
+    // Hot path: PUB/XPUB single-subscriber steady state keeps exactly one
+    // matching pipe. Avoid the generic distributor loop, refcount churn, and
+    // repeated pipe index lookups in that narrow case.
+    if (_matching == 1 && _active == 1 && _eligible == 1) {
+        (void) write_at (0, msg_);
+        const int rc = msg_->init ();
+        errno_assert (rc == 0);
+        return;
+    }
+
     if (msg_->is_vsm ()) {
         for (pipes_t::size_type i = 0; i < _matching;) {
-            if (!write (_pipes[i], msg_)) {
+            if (!write_at (i, msg_)) {
                 //  Use same index again because entry will have been removed.
             } else {
                 ++i;
@@ -172,7 +182,7 @@ void zlink::dist_t::distribute (msg_t *msg_)
     //  Push copy of the message to each matching pipe.
     int failed = 0;
     for (pipes_t::size_type i = 0; i < _matching;) {
-        if (!write (_pipes[i], msg_)) {
+        if (!write_at (i, msg_)) {
             ++failed;
             //  Use same index again because entry will have been removed.
         } else {
@@ -193,18 +203,24 @@ bool zlink::dist_t::has_out ()
     return true;
 }
 
-bool zlink::dist_t::write (pipe_t *pipe_, msg_t *msg_)
+void zlink::dist_t::deactivate_matching_pipe (pipes_t::size_type index_)
 {
+    zlink_assert (index_ < _matching);
+    _pipes.swap (index_, _matching - 1);
+    _matching--;
+    _pipes.swap (_matching, _active - 1);
+    _active--;
+    _pipes.swap (_active, _eligible - 1);
+    _eligible--;
+}
+
+bool zlink::dist_t::write_at (pipes_t::size_type index_, msg_t *msg_)
+{
+    pipe_t *pipe = _pipes[index_];
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    const bool ok =
-      more ? pipe_->write (msg_) : pipe_->write_and_flush (msg_);
+    const bool ok = more ? pipe->write (msg_) : pipe->write_and_flush (msg_);
     if (!ok) {
-        _pipes.swap (_pipes.index (pipe_), _matching - 1);
-        _matching--;
-        _pipes.swap (_pipes.index (pipe_), _active - 1);
-        _active--;
-        _pipes.swap (_active, _eligible - 1);
-        _eligible--;
+        deactivate_matching_pipe (index_);
         return false;
     }
     return true;

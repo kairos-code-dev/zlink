@@ -350,18 +350,41 @@ rejected candidate는 반드시 로그에 남긴다.
 
 - 현재 유지 중인 latest delta
   - `lb.cpp` one-active-pipe `DEALER` send fast path
-  - `DEALER_DEALER tcp 64B` quick run이 `-11.58%`까지 회복
-- 이번 iteration에서 배제한 후보
+  - `dist.cpp` one-matching-pipe `PUBSUB` send fast path와
+    index-stable deactivate helper
+  - `test_multi_socket_contract_regressions.cpp` concurrent `PUB` publish
+    regression 추가
+  - `PUBSUB tcp 64B` quick run이 `-24.23%`, rerun이 `-26.00%`까지 회복
+- 현재 배제 유지 후보
   - `fq.cpp` one-active-pipe recv fast path
   - `DEALER_DEALER inproc 64B`가 `-34.71%`로 악화돼 원복
+  - `object.cpp` same-thread `send_activate_read()` direct delivery
+  - generic 적용은 `PAIR inproc`만 일부 회복했지만
+    `DEALER_DEALER tcp 64B`를 `-25.06%`로 악화시켜 원복
+  - `PAIR` no-handler 전용 gate도 `PAIR tcp/inproc 64B`를
+    `-26.32%` / `-32.96%`로 악화시켜 원복
+  - `socket_message_send_api.cpp` single-part public fast path의
+    중복 `msg->check()` 제거도 `DEALER_DEALER inproc 64B`를
+    `-31.51%`로 악화시켜 원복
 - 아직 남은 핵심 미달
-  - `DEALER_DEALER inproc 64B`: `-27.07%`
-  - `PAIR inproc 64B`: `-31.39%`
+  - `PAIR tcp 64B`: `-15.78%`
+  - `PAIR inproc 64B`: `-17.62%`
+  - `DEALER_DEALER tcp 64B`: `-13.19%`
+  - `DEALER_DEALER inproc 64B`: `-18.46%`
+  - `DEALER_ROUTER tcp 64B`: `-33.98%`
+  - `DEALER_ROUTER inproc 64B`: `-24.43%`
+  - `PUBSUB tcp 64B`: `-26.00%`
+  - `PUBSUB inproc 64B`: `-42.51%`
+  - `ROUTER_ROUTER tcp 64B`: `-56.66%`
+  - `ROUTER_ROUTER inproc 64B`: `-25.32%`
   - multi `dealer_dealer tcp 64B`: `-29.55%`
+  - multi `pubsub tcp 64B`: `-26.97%`
 
 - [ ] send-side lifecycle/backpressure retry cost를 더 줄일 구조를 찾는다.
 - [ ] `pipe` send/publication 경로에서 ordering을 유지한 채 lock 안 work를 줄인다.
-- [ ] `PUBSUB` publish/distribution path를 직접 비교해 zlink-only differential을 좁힌다.
+- [ ] `PUBSUB` publish/distribution path를 single-subscriber win에서
+      inproc/multi까지 확장한다.
 - [ ] `ROUTER_ROUTER` routed path를 패턴 전용으로 본다.
-- [ ] send-path 변경 뒤 `PAIR`/`DEALER_DEALER` raw/public 분리를 다시 기록한다.
+- [x] 이번 단계 send-path 변경 뒤 `PAIR`/`DEALER_DEALER` raw/public 분리를
+      다시 기록했다.
 - [ ] broader single / multi smoke까지 통과하는 안정 지점을 남긴다.

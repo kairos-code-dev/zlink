@@ -12,6 +12,31 @@ SETUP_TEARDOWN_TESTCONTEXT
 //#define DEBUG 0
 #define TRACE_ENABLED 0
 
+namespace
+{
+int send_routed_payload_expect_maybe_eagain (void *router_,
+                                             const zlink_routing_id_t *rid_,
+                                             const void *buf_,
+                                             size_t size_,
+                                             zlink_send_flags_t flags_)
+{
+    zlink_msg_t msg;
+    if (zlink_msg_init_size (&msg, size_) != 0)
+        return -1;
+    if (size_ > 0 && buf_)
+        memcpy (zlink_msg_data (&msg), buf_, size_);
+
+    const int rc = zlink_send_rid (router_, rid_, &msg, 1, flags_);
+    if (rc != 0) {
+        const int err = errno;
+        zlink_msg_close (&msg);
+        errno = err;
+        return -1;
+    }
+    return 0;
+}
+}
+
 void test_router_mandatory_hwm ()
 {
     if (TRACE_ENABLED)
@@ -82,11 +107,71 @@ void test_router_mandatory_hwm ()
     test_context_socket_close (dealer);
 }
 
+void test_router_send_rid_mandatory_hwm ()
+{
+    char my_endpoint[MAX_SOCKET_STRING];
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+
+    int mandatory = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
+    int sndhwm = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
+    int linger = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+
+    bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
+
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
+    int rcvhwm = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
+
+    send_string_expect_success (dealer, "Hello", 0);
+    recv_string_expect_success (router, "X", 0);
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    rid.size = 1;
+    rid.data[0] = 'X';
+
+    const int buf_size = 65536;
+    const uint8_t buf[buf_size] = {0};
+    int i = 0;
+    for (; i < 100000; ++i) {
+        const int rc = send_routed_payload_expect_maybe_eagain (
+          router, &rid, buf, sizeof (buf), ZLINK_DONTWAIT);
+        if (rc == -1 && zlink_errno () == EAGAIN)
+            break;
+        TEST_ASSERT_EQUAL_INT (0, rc);
+    }
+    TEST_ASSERT_LESS_THAN_INT (10, i);
+
+    msleep (1000);
+
+    for (; i < 100000; ++i) {
+        const int rc = send_routed_payload_expect_maybe_eagain (
+          router, &rid, buf, sizeof (buf), ZLINK_DONTWAIT);
+        if (rc == -1 && zlink_errno () == EAGAIN)
+            break;
+        TEST_ASSERT_EQUAL_INT (0, rc);
+    }
+    TEST_ASSERT_LESS_THAN_INT (20, i);
+
+    test_context_socket_close (router);
+    test_context_socket_close (dealer);
+}
+
 int main ()
 {
     setup_test_environment ();
 
     UNITY_BEGIN ();
     RUN_TEST (test_router_mandatory_hwm);
+    RUN_TEST (test_router_send_rid_mandatory_hwm);
     return UNITY_END ();
 }

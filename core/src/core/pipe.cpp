@@ -396,6 +396,49 @@ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
     return true;
 }
 
+bool zlink::pipe_t::write_no_recursive_hwm_check (const msg_t *msg_)
+{
+    scoped_fast_lock_t lock (_out_sync);
+    if (unlikely (!_out_active || _state != active))
+        return false;
+
+    if (unlikely (!check_hwm_unlocked ())) {
+        _out_active = false;
+        return false;
+    }
+
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool is_routing_id = msg_->is_routing_id ();
+    _out_pipe->write (*msg_, more);
+    if (!more && !is_routing_id)
+        _msgs_written++;
+
+    return true;
+}
+
+bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+{
+    scoped_fast_lock_t lock (_out_sync);
+    if (unlikely (!_out_active || _state != active))
+        return false;
+
+    if (unlikely (!check_hwm_unlocked ())) {
+        _out_active = false;
+        return false;
+    }
+
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool is_routing_id = msg_->is_routing_id ();
+    _out_pipe->write (*msg_, more);
+    if (!more && !is_routing_id)
+        _msgs_written++;
+
+    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+        send_activate_read (_peer);
+
+    return true;
+}
+
 void zlink::pipe_t::rollback () const
 {
     scoped_optional_fast_lock_t lock (
@@ -772,6 +815,11 @@ bool zlink::pipe_t::check_hwm () const
 {
     scoped_optional_fast_lock_t lock (
       const_cast<fast_mutex_t *> (&_out_sync));
+    return check_hwm_unlocked ();
+}
+
+bool zlink::pipe_t::check_hwm_unlocked () const
+{
     const bool full =
       _hwm > 0 && _msgs_written - _peers_msgs_read >= uint64_t (_hwm);
     return !full;

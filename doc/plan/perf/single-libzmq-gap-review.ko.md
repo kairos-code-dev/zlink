@@ -1954,3 +1954,349 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
     다시 줄인다.
   - 그 다음은 `PUBSUB` publication path에서 single-subscriber correctness를
     유지하면서 steady-state work를 더 걷는 후보를 본다.
+
+## 26. 2026-03-28 `XPUB` all-attached empty-prefix fast path 로그
+
+- 작업한 가설
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+    에서 모든 attached pipe가 empty-prefix subscription을 가진 steady-state면
+    single-part publish마다 `_subscriptions.match()`를 다시 돌지 말고
+    `send_to_all()`로 바로 내려보내면
+    `PUBSUB`의 no-topic/topic-aware 공통 publication cost를 더 줄일 수 있다.
+- 수정한 파일 경로
+  - [`socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+  - [`socket_base_monitor.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_monitor.cpp)
+  - [`xpub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.hpp)
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+  - [`test_multi_socket_contract_regressions.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_multi_socket_contract_regressions.cpp)
+  - 위 다섯 파일은 bench A/B 확인 뒤 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_socket_with_handler|test_pubsub_filter_xpub|test_monitor_perf_contract)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_match_all_public`
+  - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_match_all_guardrail_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_match_all_guardrail_raw`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_match_all_broader_single`
+  - 원복 후 `cmake --build core/build -j$(nproc) --target test_multi_socket_contract_regressions test_socket_with_handler test_pubsub_filter_xpub test_monitor_perf_contract`
+  - 원복 후 `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_socket_with_handler|test_pubsub_filter_xpub|test_monitor_perf_contract)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_040146_codex_20260328_xpub_match_all_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_040146_codex_20260328_xpub_match_all_public.txt)
+  - [`perf_linux_20260328_040232_codex_20260328_xpub_match_all_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_040232_codex_20260328_xpub_match_all_guardrail_public.txt)
+  - [`perf_linux_20260328_040313_codex_20260328_xpub_match_all_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_040313_codex_20260328_xpub_match_all_guardrail_raw.txt)
+  - [`perf_linux_20260328_040359_codex_20260328_xpub_match_all_broader_single.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_040359_codex_20260328_xpub_match_all_broader_single.txt)
+  - multi smoke는 Python runner가 새 report 파일을 남기지 않았고 콘솔 결과만 확인했다.
+- 핵심 수치
+  - isolated single `PUBSUB` public
+    - `tcp 64B`: `-22.28%`
+    - `inproc 64B`: `-43.96%`
+  - multi smoke `pubsub tcp 64B`
+    - `5725.08 Kmsg/s` vs `4488.36 Kmsg/s`, `-21.60%`
+  - raw/public guardrail
+    - public `PAIR tcp/inproc`: `-18.71%` / `-22.18%`
+    - public `DEALER_DEALER tcp/inproc`: `-15.66%` / `-23.31%`
+    - raw `PAIR tcp/inproc`: `-35.42%` / `-15.84%`
+    - raw `DEALER_DEALER tcp/inproc`: `-12.05%` / `-35.25%`
+  - broader single acceptance
+    - `PAIR tcp/inproc`: `-16.32%` / `-31.54%`
+    - `PUBSUB tcp/inproc`: `-30.53%` / `-42.65%`
+    - `DEALER_DEALER tcp/inproc`: `-17.46%` / `-27.16%`
+    - `DEALER_ROUTER tcp/inproc`: `-19.95%` / `-36.34%`
+    - `ROUTER_ROUTER tcp/inproc`: `-57.55%` / `-25.46%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `XPUB` all-attached empty-prefix `send_to_all()` fast path
+    - 해당 회귀 테스트/attached-pipe helper 전부
+- 해석
+  - empty-prefix trie-match 제거는 isolated `PUBSUB tcp`와 multi `pubsub tcp`
+    에서는 반응했지만, `PUBSUB inproc`은 `-43.96%` / broader single
+    `-42.65%`로 여전히 큰 gap이 남았다.
+  - broader single 기준 `PUBSUB tcp`도 `-30.53%`라서
+    current code의 `-30.71%` 대비 keep-worthy broad win이라고 보기 어렵다.
+  - 즉 현재 `PUBSUB` 잔여 gap의 본체를 empty-prefix match 비용 하나로
+    설명할 수는 없고, publication/lifecycle differential이 더 직접적인 축이다.
+- 다음 iteration 우선순위
+  - `XPUB` empty-prefix all-attached fast path는 다시 시도하지 않는다.
+  - `PUBSUB`은 trie match elimination이 아니라 publication/lifecycle 잔여축을
+    더 직접 줄이는 후보를 본다.
+  - 공통 축이 더 남지 않으면 guide 순서대로 `pipe` send/publication
+    ordering/work 축소와 `ROUTER_ROUTER` 전용 differential 정리로 넘어간다.
+
+## 27. 2026-03-28 `XPUB` single-subscriber ready-count fast path 로그
+
+- 작업한 가설
+  - `XPUB`의 single-subscriber wakeup path는 monitor가 없더라도
+    delivery-ready count를 다시 계산한다.
+  - single attached pipe에서는 이 ready-count bookkeeping을 더 싸게 만들면
+    `PUBSUB` publication/wakeup cost를 조금 더 줄일 수 있다.
+- 수정한 파일 경로
+  - [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+  - [`xpub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.hpp)
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+  - 위 세 파일은 bench A/B 확인 뒤 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_monitor_perf_contract|test_monitor_enhanced|test_monitor_socket_contract)$' -j1`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_public_inproc_multipart_send|test_socket_with_handler|test_stream_send_blocking_wakeup)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_single_subscriber_readycount_fastpath`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_single_subscriber_readycount_fastpath_rerun_seq`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_042325_codex_20260328_pubsub_single_subscriber_readycount_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_042325_codex_20260328_pubsub_single_subscriber_readycount_fastpath.txt)
+  - [`perf_linux_20260328_042357_codex_20260328_pubsub_single_subscriber_readycount_fastpath_rerun_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_042357_codex_20260328_pubsub_single_subscriber_readycount_fastpath_rerun_seq.txt)
+- 핵심 수치
+  - first run
+    - `PUBSUB tcp 64B`: `3216.78 Kmsg/s` vs `2373.33 Kmsg/s`, `-26.22%`
+    - `PUBSUB inproc 64B`: `3572.34 Kmsg/s` vs `2203.87 Kmsg/s`, `-38.31%`
+  - rerun
+    - `PUBSUB tcp 64B`: `3240.18 Kmsg/s` vs `2303.87 Kmsg/s`, `-28.90%`
+    - `PUBSUB inproc 64B`: `3662.76 Kmsg/s` vs `2090.81 Kmsg/s`, `-42.92%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - single-subscriber ready-count bookkeeping fast path 전체
+- 해석
+  - clean first/rerun 모두 current accepted baseline보다 낫지 않았다.
+  - 따라서 `PUBSUB` 잔여 gap의 본체를 delivery-ready ready-count
+    bookkeeping으로 읽는 것은 맞지 않다.
+  - monitor-ready bookkeeping은 current code 기준으로도 secondary candidate로
+    유지한다.
+
+## 28. 2026-03-28 `XPUB` single attached empty-prefix match fast path 로그
+
+- 작업한 가설
+  - current no-topic `PUBSUB` single bench는 `zlink_publish(NULL, ...)`라서
+    `XPUB`가 payload를 기준으로 `_subscriptions.match()`를 다시 돈다.
+  - attached pipe가 정확히 하나이고 그 pipe가 empty-prefix subscription을
+    가진 steady-state면, generic trie `match()`를 건너뛰고
+    기존 `dist.match()/send_to_matching()` 경로만 쓰면
+    `PUBSUB` single-subscriber publication cost를 더 줄일 수 있다.
+- 수정한 파일 경로
+  - [`xpub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.hpp)
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+  - 위 두 파일은 bench A/B 확인 뒤 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_monitor_perf_contract|test_monitor_enhanced|test_monitor_socket_contract)$' -j1`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_public_inproc_multipart_send|test_socket_with_handler|test_stream_send_blocking_wakeup)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_single_empty_prefix_pipe_fastpath`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_single_empty_prefix_pipe_fastpath_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_042724_codex_20260328_xpub_single_empty_prefix_pipe_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_042724_codex_20260328_xpub_single_empty_prefix_pipe_fastpath.txt)
+  - [`perf_linux_20260328_042751_codex_20260328_xpub_single_empty_prefix_pipe_fastpath_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_042751_codex_20260328_xpub_single_empty_prefix_pipe_fastpath_rerun.txt)
+- 핵심 수치
+  - first run
+    - `PUBSUB tcp 64B`: `3202.69 Kmsg/s` vs `2442.46 Kmsg/s`, `-23.74%`
+    - `PUBSUB inproc 64B`: `3611.05 Kmsg/s` vs `2286.97 Kmsg/s`, `-36.67%`
+  - rerun
+    - `PUBSUB tcp 64B`: `3702.91 Kmsg/s` vs `2548.99 Kmsg/s`, `-31.16%`
+    - `PUBSUB inproc 64B`: `4094.81 Kmsg/s` vs `2142.69 Kmsg/s`, `-47.67%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - single attached empty-prefix match fast path 전체
+- 해석
+  - first run만 보면 `tcp`와 `inproc` 둘 다 current code보다 좋아 보였지만,
+    clean rerun에서 둘 다 다시 무너졌다.
+  - 따라서 current `PUBSUB` 잔여 gap을
+    "single attached pipe + empty-prefix trie match" 하나로 설명할 수는 없다.
+  - empty-prefix trie match elimination은 all-attached 변형뿐 아니라
+    더 좁은 single-attached 변형도 current code 기준으로 keep-worthy broad win이
+    아니었다.
+- 다음 iteration 우선순위
+  - `PUBSUB`은 delivery-ready bookkeeping이나 empty-prefix trie match
+    elimination이 아니라 publication/wakeup differential 자체를 더 직접적으로
+    줄이는 후보를 본다.
+  - keep-worthy 공통 send-side delta가 더 나오지 않으면
+    guide 순서대로 `pipe` send/publication ordering/work 축소와
+    `ROUTER_ROUTER` 전용 differential 정리로 넘어간다.
+
+## 29. 2026-03-28 `ROUTER` mandatory-HWM 회귀 보강과 rejected candidate 로그
+
+- 작업한 가설
+  - `ROUTER` public routed send는 prefix frame 해석 뒤
+    `check_write_status()`와 `write()`가 사실상 같은 HWM/ready 확인을
+    두 번 밟는다. `check_write_status()`가 성공한 pipe에 한해
+    `write_no_hwm_check()+flush()`로 내리면 `ROUTER_ROUTER` public send gap을
+    조금 더 줄일 수 있다고 봤다.
+  - `ROUTER` public routed recv는 direct fast path에서도
+    `zlink_routing_id_t` 전체를 중복 zero-fill한다.
+    이 256B clear 하나를 줄이면 routed recv 쪽 고정비를 덜 수 있다고 봤다.
+- 수정한 파일 경로
+  - 유지
+    - [`CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/tests/CMakeLists.txt)
+    - [`test_router_mandatory_hwm.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_router_mandatory_hwm.cpp)
+  - bench A/B 뒤 원복
+    - [`pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+    - [`router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
+    - [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_public_inproc_multipart_send|test_router_multiple_dealers|test_stream_send_blocking_wakeup)$' -j1`
+  - `ctest --test-dir core/build --output-on-failure -R '^test_router_mandatory_hwm$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_prefix_hwm_skip`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_prefix_hwm_skip_guardrail_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_prefix_hwm_skip_guardrail_raw`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_recv_rid_zero_elision`
+  - 원복 후 `ctest --test-dir core/build --output-on-failure -R '^(test_router_mandatory_hwm|test_public_inproc_multipart_send|test_router_multiple_dealers|test_stream_send_blocking_wakeup)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_043954_codex_20260328_router_prefix_hwm_skip.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_043954_codex_20260328_router_prefix_hwm_skip.txt)
+  - [`perf_linux_20260328_044023_codex_20260328_router_prefix_hwm_skip_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_044023_codex_20260328_router_prefix_hwm_skip_guardrail_public.txt)
+  - [`perf_linux_20260328_044103_codex_20260328_router_prefix_hwm_skip_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_044103_codex_20260328_router_prefix_hwm_skip_guardrail_raw.txt)
+  - [`perf_linux_20260328_044628_codex_20260328_router_recv_rid_zero_elision.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_044628_codex_20260328_router_recv_rid_zero_elision.txt)
+- 핵심 수치
+  - routed send prefix/HWM second-check elimination
+    - `ROUTER_ROUTER tcp 64B`: `2740.96 Kmsg/s` vs `1228.10 Kmsg/s`, `-55.19%`
+    - `ROUTER_ROUTER inproc 64B`: `3261.50 Kmsg/s` vs `2444.50 Kmsg/s`, `-25.05%`
+  - public/raw guardrail
+    - public `PAIR tcp/inproc`: `-27.93%` / `-22.52%`
+    - public `DEALER_DEALER tcp/inproc`: `-26.16%` / `-24.15%`
+    - raw `PAIR tcp/inproc`: `-16.56%` / `-31.94%`
+    - raw `DEALER_DEALER tcp/inproc`: `-15.62%` / `-21.03%`
+  - routed recv source-rid zero-elision
+    - `ROUTER_ROUTER tcp 64B`: `2947.82 Kmsg/s` vs `1228.20 Kmsg/s`, `-58.34%`
+    - `ROUTER_ROUTER inproc 64B`: `3660.93 Kmsg/s` vs `2435.64 Kmsg/s`, `-33.47%`
+  - 원복 후 회귀
+    - `test_public_inproc_multipart_send`
+    - `test_router_multiple_dealers`
+    - `test_router_mandatory_hwm`
+    - `test_stream_send_blocking_wakeup`
+    - 네 테스트 모두 다시 통과
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `test_router_mandatory_hwm` ctest 등록
+    - `test_router_send_rid_mandatory_hwm()` 추가로
+      `zlink_send_rid()` mandatory-HWM regression coverage 보강
+  - 원복
+    - `pipe_t::write_and_flush_no_hwm_check()` helper와 ROUTER send fast path
+    - direct routed recv source-rid zero-elision helper와 API-side memset 제거
+- 해석
+  - routed send의 prefix/HWM second-check elimination은
+    `ROUTER_ROUTER tcp`를 약간만 줄였고 `inproc`도 baseline 대비 미세 개선에
+    그쳤다. broad single acceptance를 설명할 정도의 축은 아니다.
+  - routed recv source-rid zero-fill 제거는 zlink 절대 throughput 기준으로도
+    거의 움직이지 않았고 결과는 오히려 더 흔들렸다.
+  - 따라서 current `ROUTER` 잔여 gap은 prefix/HWM recheck나
+    source-rid zero-fill 같은 micro-elision보다 더 큰 routed/public
+    differential에서 찾아야 한다.
+- 다음 iteration 우선순위
+  - 이번에 유지한 것은 ROUTER mandatory-HWM regression surface 강화뿐이다.
+  - guide 순서대로 `pipe`/publication 축을 더 보고,
+    그다음 `ROUTER_ROUTER` routed/public differential을 다시 좁힌다.
+
+## 30. 2026-03-28 `xwrite_activated()` delivery-ready refresh 제거 로그
+
+- 작업한 가설
+  - `XPUB` / `XSUB`의 delivery-ready count는 attach/subscribe/terminate에서
+    실제로 바뀌고, `xwrite_activated()`는 current ready-count 정의를
+    직접 바꾸지 않는다.
+  - 따라서 `xwrite_activated()`에서 반복하는
+    `refresh_delivery_ready_state()`를 빼면
+    `PUBSUB` publication/wakeup path의 불필요한 recompute를 조금 더 줄일 수
+    있다고 봤다.
+- 수정한 파일 경로
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+  - [`xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+  - 위 두 파일은 bench A/B 확인 뒤 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_skip_delivery_ready_refresh_on_write_activated`
+  - 원복 후 `cmake --build core/build -j$(nproc)`
+  - 원복 후 `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_045824_codex_20260328_pubsub_skip_delivery_ready_refresh_on_write_activated.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_045824_codex_20260328_pubsub_skip_delivery_ready_refresh_on_write_activated.txt)
+- 핵심 수치
+  - `PUBSUB tcp 64B`: `3297.58 Kmsg/s` vs `2397.06 Kmsg/s`, `-27.31%`
+  - `PUBSUB inproc 64B`: `3915.21 Kmsg/s` vs `2156.23 Kmsg/s`, `-44.93%`
+  - 회귀 테스트
+    - `test_monitor_socket_contract`
+    - `test_monitor_perf_contract`
+    - `test_multi_socket_contract_regressions`
+    - `test_public_inproc_multipart_send`
+    - `test_pubsub_filter_xpub`
+    - 후보 적용 상태와 원복 상태 모두 다시 통과
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `XPUB` / `XSUB` `xwrite_activated()` delivery-ready refresh 제거
+- 해석
+  - write re-activation에서 ready-count recompute를 빼는 것만으로는
+    current `PUBSUB` 잔여 gap을 줄이지 못했고, single acceptance는
+    baseline보다 오히려 악화됐다.
+  - 즉 current `PUBSUB` 잔여 gap은
+    `xwrite_activated()` monitor-ready refresh 하나를 지우는 수준보다
+    더 큰 publication/wakeup differential에 있다.
+- 다음 iteration 우선순위
+  - 이 후보는 다시 시도하지 않는다.
+  - guide 순서대로 `pipe`/publication 축의 다른 실제 cost 후보를 다시 본다.
+
+## 31. 2026-03-28 `dist` 전용 non-recursive HWM check 로그
+
+- 작업한 가설
+  - generic `check_hwm_locked()` rollout은 `PAIR`/raw guardrail 때문에
+    유지하지 못했지만, 실제 publication hot path는 `dist_t::write_at()` 쪽이다.
+  - `PUBSUB` path에만 한정해 `pipe`의 recursive HWM self-reentry를 줄이면
+    generic rollout의 부작용 없이 publication cost를 더 줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - [`pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  - [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  - [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_no_recursive_hwm`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_no_recursive_hwm_rerun`
+  - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_no_recursive_hwm_broader_single`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_no_recursive_hwm_broader_single_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_050237_codex_20260328_pubsub_dist_no_recursive_hwm.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_050237_codex_20260328_pubsub_dist_no_recursive_hwm.txt)
+  - [`perf_linux_20260328_050313_codex_20260328_pubsub_dist_no_recursive_hwm_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_050313_codex_20260328_pubsub_dist_no_recursive_hwm_rerun.txt)
+  - [`perf_linux_20260328_050417_codex_20260328_pubsub_dist_no_recursive_hwm_broader_single.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_050417_codex_20260328_pubsub_dist_no_recursive_hwm_broader_single.txt)
+  - [`perf_linux_20260328_050636_codex_20260328_pubsub_dist_no_recursive_hwm_broader_single_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_050636_codex_20260328_pubsub_dist_no_recursive_hwm_broader_single_rerun.txt)
+  - multi smoke는 Python runner가 새 report 파일을 남기지 않았고 콘솔 결과만 확인했다.
+- 핵심 수치
+  - isolated first run
+    - `PUBSUB tcp 64B`: `3222.16 Kmsg/s` vs `2392.07 Kmsg/s`, `-25.76%`
+    - `PUBSUB inproc 64B`: `3862.32 Kmsg/s` vs `2321.95 Kmsg/s`, `-39.88%`
+  - isolated rerun
+    - `PUBSUB tcp 64B`: `3400.83 Kmsg/s` vs `2738.29 Kmsg/s`, `-19.48%`
+    - `PUBSUB inproc 64B`: `3724.72 Kmsg/s` vs `2260.46 Kmsg/s`, `-39.31%`
+  - multi smoke `pubsub tcp 64B`
+    - `5211.95 Kmsg/s` vs `4344.38 Kmsg/s`, `-16.65%`
+  - broader single rerun acceptance
+    - `PAIR tcp/inproc`: `-18.89%` / `-17.22%`
+    - `PUBSUB tcp/inproc`: `-23.63%` / `-39.84%`
+    - `DEALER_DEALER tcp/inproc`: `-24.09%` / `-27.90%`
+    - `DEALER_ROUTER tcp/inproc`: `-27.28%` / `-27.07%`
+    - `ROUTER_ROUTER tcp/inproc`: `-54.97%` / `-30.77%`
+  - 회귀 테스트
+    - `test_monitor_socket_contract`
+    - `test_monitor_perf_contract`
+    - `test_multi_socket_contract_regressions`
+    - `test_public_inproc_multipart_send`
+    - `test_pubsub_filter_xpub`
+    - 모두 통과
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `pipe`의 non-recursive HWM helper를 `dist` publication path에만 적용
+  - 원복
+    - 없음
+- 해석
+  - generic helper rollout은 broad win이 아니었지만,
+    `dist` 전용 좁은 적용은 isolated first/rerun, multi `pubsub`,
+    broader single rerun까지 current accepted baseline을 넘겼다.
+  - 따라서 current accepted 해석은
+    "`pipe` self-reentry 제거를 전역으로 밀자"가 아니라
+    "`PUBSUB` publication path에서만 실제로 반복되는 lock 안 work를 줄이자"다.
+- 다음 iteration 우선순위
+  - 이 delta는 유지한다.
+  - 다음은 guide 순서대로 남은 send-side lifecycle/backpressure 공통 축을
+    다시 보고, 그다음 `PUBSUB`의 publication/distribution 잔여 gap과
+    `ROUTER_ROUTER` 전용 differential을 이어서 줄인다.

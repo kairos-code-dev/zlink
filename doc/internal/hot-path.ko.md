@@ -278,7 +278,8 @@ steady-state single-part recv hot path:
 7. `recv_internal.cpp` mode guard 비용을 steady-state mode specialization 쪽으로
    줄인다
 8. `PUBSUB`는 `dist_t` one-matching-pipe fast path를 기준선으로 유지한 채
-   `inproc`/multi 잔여 gap을 더 줄인다. `ROUTER`는 공통 개선 후 별도 정리한다
+   empty-prefix trie match 제거보다 publication/lifecycle 잔여 gap을 더 줄인다.
+   `ROUTER`는 공통 개선 후 별도 정리한다
 
 ## 8.1 현재 보류/기각된 방향
 
@@ -310,6 +311,37 @@ steady-state single-part recv hot path:
    - `PAIR` 자체는 `tcp/inproc -17.01% / -19.88%`로 덜 흔들렸지만
      같은 seq run의 `DEALER_DEALER tcp/inproc`가
      `-37.43% / -34.21%`로 내려가 broad win 근거가 없었다
+12. `xpub.cpp` all-attached empty-prefix `send_to_all` fast path
+   - isolated `PUBSUB tcp 64B`와 multi `pubsub tcp 64B`는 회복했지만
+     `PUBSUB inproc 64B -43.96%`, broader single `PUBSUB tcp/inproc`
+     `-30.53% / -42.65%`로 broad win이 아니었다
+   - 즉 current `PUBSUB` gap을 empty-prefix trie match 제거 하나로
+     설명하진 않는다
+13. `xpub.cpp` single attached empty-prefix matching fast path
+   - first run은 `PUBSUB tcp/inproc -23.74% / -36.67%`로 좋아 보였지만
+     clean rerun이 `-31.16% / -47.67%`로 무너져 broad win이 아니었다
+   - 즉 current `PUBSUB` gap을 single-pipe empty-prefix match 제거 하나로도
+     설명하진 않는다
+14. `xpub.cpp` single-subscriber ready-count fast path
+   - clean first/rerun이 `PUBSUB tcp/inproc -26.22% / -38.31%`,
+     `-28.90% / -42.92%`로 accepted baseline을 넘지 못했다
+   - delivery-ready bookkeeping은 current code 기준으로도 secondary다
+15. `router.cpp` routed send prefix/HWM second-check elimination
+   - `check_write_status()` 뒤 `write_no_hwm_check()+flush()`로
+     한 번 더 도는 HWM 확인을 줄여도
+     `ROUTER_ROUTER tcp/inproc -55.19% / -25.05%`라 broad win이 아니었다
+   - 즉 current `ROUTER` gap을 prefix/HWM recheck 하나로 설명하진 않는다
+16. `socket_message_recv_api.cpp` / `router.cpp` routed recv
+    source-rid zero-elision
+   - direct routed recv에서 256B `zlink_routing_id_t` zero-fill 하나를 줄여도
+     `ROUTER_ROUTER tcp/inproc -58.34% / -33.47%`로 오히려 더 흔들렸다
+   - 즉 current `ROUTER` gap을 source-rid zero-fill 하나로도 설명하진 않는다
+17. `xpub.cpp` / `xsub.cpp` `xwrite_activated()` delivery-ready refresh 제거
+   - write re-activation은 current ready-count 정의를 바꾸지 않으므로
+     여기서 recompute를 빼도 될 것처럼 보였지만,
+     single `PUBSUB tcp/inproc -27.31% / -44.93%`로 baseline보다 악화됐다
+   - 즉 current `PUBSUB` gap을 `write_activated` monitor-ready refresh
+     하나로 설명하진 않는다
 
 이 항목들은 최근 A/B 실험이나 current code invariant 기준으로
 이미 역효과가 확인됐거나 correctness risk가 높다.
@@ -327,6 +359,19 @@ steady-state single-part recv hot path:
   `PAIR` admission/leave를 더 싸게 만들고 싶다는 방향은 맞지만,
   current public surface에서는 오히려 raw/public 분리나 non-`PAIR` guardrail을
   동시에 깨뜨렸다.
+- `XPUB` single attached empty-prefix matching fast path와
+  single-subscriber ready-count fast path도 같은 이유로 rejected candidate다.
+  둘 다 `PUBSUB` single first run에서는 일부 회복이 보였지만
+  clean rerun과 broader 해석에서 keep-worthy broad win을 만들지 못했다.
+  즉 current `PUBSUB` 잔여 gap의 본체는 trie match나 ready-count bookkeeping보다
+  publication/wakeup differential 쪽이다.
+- `ROUTER` routed send prefix/HWM recheck elimination과
+  routed recv source-rid zero-elision도 같은 이유로 rejected candidate다.
+  둘 다 routed public 미세 비용 축은 건드렸지만 current single acceptance에서
+  keep-worthy broad win을 만들지 못했다.
+- `XPUB` / `XSUB` `xwrite_activated()` delivery-ready refresh 제거도
+  같은 이유로 rejected candidate다. monitor-ready recompute를 빼는 발상은
+  그럴듯했지만 current `PUBSUB` single acceptance에서는 오히려 악화됐다.
 
 ## 9. 현재 반영된 개선
 
@@ -358,6 +403,10 @@ steady-state single-part recv hot path:
   [`router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp),
   [`stream.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/stream.cpp)
   에 `write_and_flush()` 경로 추가
+- [`pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  / [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  / [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+  에 `PUBSUB` publication path 전용 non-recursive HWM check helper 추가
 - [`lb.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/lb.cpp)
   에 one-active-pipe `DEALER` send fast path 추가
 - [`dist.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.hpp)
@@ -368,6 +417,10 @@ steady-state single-part recv hot path:
   에 `DEALER` single/multipart/concurrent send 회귀 추가
 - [`test_multi_socket_contract_regressions.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_multi_socket_contract_regressions.cpp)
   에 same-handle concurrent `PUB` publish 회귀 추가
+- [`test_router_mandatory_hwm.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_router_mandatory_hwm.cpp)
+  / [`CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/tests/CMakeLists.txt)
+  에 `ROUTER` mandatory-HWM 회귀를 ctest surface에 등록하고
+  `zlink_send_rid()` 경로까지 포함하도록 확장
 
 의미:
 
@@ -387,17 +440,26 @@ steady-state single-part recv hot path:
   `_out_sync`를 잡은 뒤 `check_hwm()`에서 같은 recursive fast mutex를
   다시 잡는다.
 - 이건 여전히 plausible cost axis지만, 2026-03-28
-  `check_hwm_locked()` helper A/B는 `PAIR`/raw guardrail까지 포함한 broad win을
-  만들지 못했다.
+  generic `check_hwm_locked()` helper A/B는 `PAIR`/raw guardrail까지 포함한
+  broad win을 만들지 못했다.
+- 대신 current accepted delta는 `dist_t`가 쓰는 `PUBSUB` publication path에만
+  non-recursive HWM check를 좁게 적용한 변형이다.
 - 따라서 현재 남은 send-side `pipe` 과제는 "이 self-reentry를 무조건 없애자"가
   아니라, ordering과 HWM semantics를 유지한 채 실제 broad win이 나는 좁은
-  work 축소를 다시 찾는 것이다.
+  work 축소를 pattern별로 찾는 것이다.
 - `DEALER_DEALER`처럼 outbound pipe가 하나뿐인 steady-state는
   일반 `lb_t` loop와 fairness bookkeeping을 반복하지 않도록 줄였다
 - `PUBSUB`처럼 matching/active pipe가 하나뿐인 steady-state는
   일반 `dist_t` loop와 pipe index lookup을 반복하지 않도록 줄였다
 - `PAIR`/`DEALER_DEALER` raw/public 분리는 send-side 변경 뒤 매번 다시 찍는
   guardrail이고, 현재도 pattern/transport에 따라 방향이 엇갈린다
+- `ROUTER` mandatory-HWM 회귀는 이제 standalone source file만 존재하는 게 아니라
+  ctest lane에서 실제 실행되고, prefix-frame 경로와 `zlink_send_rid()` 경로를
+  같이 검증한다
+- `PUBSUB`는 dist-only non-recursive HWM check 이후 isolated first/rerun이
+  `tcp/inproc -25.76% / -39.88%`, `-19.48% / -39.31%`,
+  broader single rerun이 `-23.63% / -39.84%`,
+  multi `pubsub tcp 64B`가 `-16.65%`였다
 
 현재 quick 결과 해석:
 
@@ -422,6 +484,9 @@ steady-state single-part recv hot path:
 - send-side `write + flush` 이중 잠금도 실제 병목 축이 맞다
 - `dist_t`의 single-subscriber distributor loop/index work도
   `PUBSUB tcp`에서는 실제 병목 축이 맞다
+- `dist_t` publication path의 recursive HWM self-reentry도
+  generic rollout은 실패했지만 `PUBSUB` 전용 좁은 적용은
+  current code 기준으로 의미 있는 병목 축이다
 - `zlink_multipart_close()` 이후 TLS slot release 최적화도 steady-state recv
   비용을 낮추는 데 실제로 기여한다
 - 하지만 남은 전체 gap을 혼자 설명하는 축은 아니다

@@ -117,6 +117,13 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  separate write/flush lock acquisitions.
     bool write_and_flush (const msg_t *msg_);
 
+    //  Writes a message with the HWM check performed under the already-held
+    //  pipe lock without re-entering check_hwm().
+    bool write_no_recursive_hwm_check (const msg_t *msg_);
+
+    //  Writes and flushes with the same non-recursive HWM check variant.
+    bool write_and_flush_no_recursive_hwm_check (const msg_t *msg_);
+
     //  Remove unfinished parts of the outbound message from the pipe.
     void rollback () const;
 
@@ -261,6 +268,7 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     //  Computes appropriate low watermark from the given high watermark.
     static int compute_lwm (int hwm_);
+    bool check_hwm_unlocked () const;
 
     const bool _conflate;
 

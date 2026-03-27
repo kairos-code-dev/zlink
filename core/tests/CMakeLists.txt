@@ -39,6 +39,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_reconnect_options
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
+  ${INTEGRATION_TEST_ROOT}/test_router_mandatory_hwm
   ${INTEGRATION_TEST_ROOT}/test_stream_socket
   ${INTEGRATION_TEST_ROOT}/test_stream_threadsafe
   ${INTEGRATION_TEST_ROOT}/test_stream_send_blocking_wakeup

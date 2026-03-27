@@ -331,6 +331,7 @@ def run_cmake_configure(cmake_build_dir: str) -> int:
         "-DBUILD_SHARED=ON",
         "-DBUILD_BENCHMARKS=ON",
         "-DZLINK_BUILD_BENCH_ZMQ=ON",
+        "-DZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES=ON",
         "-DZLINK_BUILD_BENCH_ZLINK=ON",
         "-DZLINK_BUILD_BENCH_BEAST=OFF",
     ]

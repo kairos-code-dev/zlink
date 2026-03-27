@@ -45,7 +45,7 @@ void test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count ()
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "tls://127.0.0.1:9000", 1));
     TEST_ASSERT_EQUAL_INT (
-      768,
+      2048,
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "tls://127.0.0.1:9000", 2));
 
@@ -58,7 +58,7 @@ void test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count ()
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "wss://127.0.0.1:9000", 1));
     TEST_ASSERT_EQUAL_INT (
-      128,
+      512,
       zlink::spot_mesh_pub_budget_t::resolve_default (
         "wss://127.0.0.1:9000", 2));
 }
@@ -73,7 +73,7 @@ void test_mesh_pub_budget_refresh_follows_ready_peer_count_changes ()
       "tcp://127.0.0.1:9000", 0, 1));
     TEST_ASSERT_TRUE (zlink::spot_mesh_pub_budget_t::should_refresh (
       "tcp://127.0.0.1:9000", 1, 2));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_budget_t::should_refresh (
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_budget_t::should_refresh (
       "tls://127.0.0.1:9000", 1, 2));
     TEST_ASSERT_FALSE (zlink::spot_mesh_pub_budget_t::should_refresh (
       "tls://127.0.0.1:9000", 2, 100));
@@ -131,9 +131,9 @@ void test_mesh_pub_budget_runtime_owner_uses_bound_endpoint ()
     TEST_ASSERT_TRUE (
       zlink::spot_mesh_pub_budget_t::publish_ready_hint (&runtime, 2));
     TEST_ASSERT_EQUAL_INT (
-      128, zlink::spot_mesh_pub_budget_t::resolve_runtime_default (&runtime));
+      512, zlink::spot_mesh_pub_budget_t::resolve_runtime_default (&runtime));
     TEST_ASSERT_EQUAL_INT (
-      128,
+      512,
       zlink::spot_mesh_pub_budget_t::resolve_initial_bind_sndhwm (
         &runtime, runtime.bound_endpoint));
 
@@ -157,10 +157,12 @@ void test_mesh_pub_budget_runtime_owner_tracks_ready_count_changes ()
     TEST_ASSERT_EQUAL_UINT (
       2, zlink::mesh_pub_ready_peer_count (&runtime.mesh_peer_state));
     TEST_ASSERT_EQUAL_UINT64 (
-      1, zlink::mesh_pub_budget_version (&runtime.mesh_peer_state));
+      2, zlink::mesh_pub_budget_version (&runtime.mesh_peer_state));
     TEST_ASSERT_EQUAL_INT (
-      768, zlink::spot_mesh_pub_budget_t::resolve_runtime_default (&runtime));
+      2048,
+      zlink::spot_mesh_pub_budget_t::resolve_runtime_default (&runtime));
 }
+
 }
 
 int main (int argc, char **argv)

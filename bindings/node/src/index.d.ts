@@ -43,6 +43,7 @@ export declare const TopologySource: Readonly<Record<string, number>>;
 export declare const TopologyState: Readonly<Record<string, number>>;
 
 export type BufferLike = Buffer | Uint8Array;
+export type MessageLike = Message | BufferLike | string;
 
 export interface MonitorSnapshot {
   sourceKind: number;
@@ -181,29 +182,97 @@ export class Received {
   close(): void;
 }
 
-export class Socket {
-  constructor(ctx: Context, type: number);
+export class BaseSocket {
+  protected constructor(ctx: Context, type: number);
   bind(endpoint: string): void;
   connect(endpoint: string): void;
-  send(message: Message | BufferLike | string, flags?: number): number;
-  sendParts(parts: readonly (Message | BufferLike | string)[], flags?: number): number;
+  setSockOpt(option: number, value: BufferLike | string): void;
+  getSockOpt(option: number): Buffer;
+  setOption(option: number, value: BufferLike | string): void;
+  getOption(option: number): Buffer;
+  setRoutingId(routingId: BufferLike): void;
+  getRoutingId(): Buffer;
+  monitorOpen(events: number): MonitorSocket;
+  close(): void;
+}
+
+export class SendSocket extends BaseSocket {
+  protected constructor(ctx: Context, type: number);
+  send(message: MessageLike, flags?: number): number;
+  sendParts(parts: readonly MessageLike[], flags?: number): number;
+  sendFrom(buffer: BufferLike, length: number, flags?: number): number;
+}
+
+export class DuplexSocket extends SendSocket {
+  protected constructor(ctx: Context, type: number);
+  recv(flags?: number): Received;
+  recvInto(buffer: BufferLike, flags?: number): number;
+  recvMsgInto(buffer: BufferLike, flags?: number): number;
+}
+
+export class SubscriberSocket extends BaseSocket {
+  protected constructor(ctx: Context, type: number);
+  subscribe(filter: BufferLike | string): void;
+  unsubscribe(filter: BufferLike | string): void;
+  recv(flags?: number): Received;
+  recvInto(buffer: BufferLike, flags?: number): number;
+  recvMsgInto(buffer: BufferLike, flags?: number): number;
+}
+
+export class PubSocket extends SendSocket {
+  constructor(ctx: Context);
+}
+
+export class XPubSocket extends SendSocket {
+  constructor(ctx: Context);
+}
+
+export class PairSocket extends DuplexSocket {
+  constructor(ctx: Context);
+}
+
+export class DealerSocket extends DuplexSocket {
+  constructor(ctx: Context);
+}
+
+export class RouterSocket extends DuplexSocket {
+  constructor(ctx: Context);
+}
+
+export class StreamSocket extends DuplexSocket {
+  constructor(ctx: Context);
+}
+
+export class SubSocket extends SubscriberSocket {
+  constructor(ctx: Context);
+}
+
+export class XSubSocket extends SubscriberSocket {
+  constructor(ctx: Context);
+}
+
+/**
+ * @deprecated Use the concrete socket classes (`PairSocket`, `PubSocket`,
+ * `SubSocket`, `DealerSocket`, `RouterSocket`, `StreamSocket`, `XPubSocket`,
+ * `XSubSocket`) for canonical raw socket usage.
+ */
+export class Socket extends BaseSocket {
+  constructor(ctx: Context, type: number);
+  send(message: MessageLike, flags?: number): number;
+  sendParts(parts: readonly MessageLike[], flags?: number): number;
   sendFrom(buffer: BufferLike, length: number, flags?: number): number;
   recv(flags?: number): Received;
   recv(size: number, flags: number): Buffer;
   recvInto(buffer: BufferLike, flags?: number): number;
   recvMsgInto(buffer: BufferLike, flags?: number): number;
-  setOption(option: number, value: BufferLike | string): void;
-  getOption(option: number): Buffer;
-  setRoutingId(routingId: BufferLike): void;
-  getRoutingId(): Buffer;
   subscribe(filter: BufferLike | string): void;
   unsubscribe(filter: BufferLike | string): void;
-  monitorOpen(events: number): MonitorSocket;
   streamAttach(handler: (routingId: Buffer, packets: Buffer[]) => number | void, mode?: number): void;
+  streamAttachRaw(handler: (routingId: Buffer, packets: Buffer[]) => number | void): void;
+  streamAttachLen32be(handler: (routingId: Buffer, packets: Buffer[]) => number | void): void;
   streamDetach(): void;
   streamPeerRoutingId(index?: number): Buffer | null;
   streamSend(routingId: BufferLike, payload: BufferLike, flags?: number): number;
-  close(): void;
 }
 
 export class MonitorSocket {
@@ -219,7 +288,7 @@ export class ServiceMonitor {
 }
 
 export class Poller {
-  addSocket(socket: Socket, events: number): void;
+  addSocket(socket: BaseSocket, events: number): void;
   poll(timeoutMs: number): number[];
 }
 
@@ -268,8 +337,6 @@ export class SpotNode {
   connectPeerPub(endpoint: string): void;
   disconnectPeerPub(endpoint: string): void;
   attachDiscovery(discovery: Discovery): void;
-  register(): never;
-  unregister(): never;
   setTlsServer(cert: string, key: string, requireClient?: number): void;
   setTlsClient(ca: string, host: string, trust?: number): void;
   statusSnapshot(): SpotNodeStatus;
@@ -281,11 +348,15 @@ export class SpotNode {
 
 export class Spot {
   constructor(ctx: Context);
-  publish(topic: string, payloadOrParts: Message | BufferLike | string | readonly (Message | BufferLike | string)[], flags?: number): void;
+  publish(topic: string, payload: MessageLike, flags?: number): void;
+  publish(topic: string, payloadParts: readonly BufferLike[], flags?: number): void;
   subscribe(topic: string): void;
   subscribePattern(pattern: string): void;
   unsubscribe(topicOrPattern: string): void;
-  recv(flags?: number): { topic: string; parts: Buffer[] };
+  recv(flags?: number): {
+    topic: string;
+    payload: Buffer;
+  };
   openMonitor(events?: number): ServiceMonitor;
   close(): void;
 }

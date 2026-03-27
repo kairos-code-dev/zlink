@@ -198,22 +198,30 @@ int publish_bootstrap_if_due (spot_node_t *node_,
                               spot_runtime_t *runtime_,
                               spot_data_plane_runtime_state_t *state_,
                               spot_data_plane_protocol_state_t *protocol_state_,
-                              uint64_t *next_bootstrap_ms_)
+                              uint64_t *next_bootstrap_ms_,
+                              uint64_t *last_bootstrap_peer_version_out_)
 {
     const uint64_t now_ms = clock_t ().now_ms ();
     if (now_ms < *next_bootstrap_ms_)
         return 0;
 
-    if (spot_data_plane_protocol_t::publish_bootstrap_descriptor (
-          state_->mesh_pub, node_, runtime_)
-        != 0) {
-        return errno;
+    const bool bootstrap_ready = !protocol_state_->peer_ready_filters.empty ();
+    if (spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
+          runtime_, bootstrap_ready, *last_bootstrap_peer_version_out_)) {
+        if (spot_data_plane_protocol_t::publish_bootstrap_descriptor (
+              state_->mesh_pub, node_, runtime_)
+            != 0) {
+            return errno;
+        }
+
+        *last_bootstrap_peer_version_out_ =
+          mesh_peer_version (&runtime_->mesh_peer_state);
     }
 
     *next_bootstrap_ms_ =
       now_ms
       + spot_data_plane_protocol_t::resolve_bootstrap_broadcast_interval_ms (
-          runtime_, !protocol_state_->peer_ready_filters.empty ());
+          runtime_, bootstrap_ready);
     return 0;
 }
 }
@@ -230,6 +238,7 @@ int spot_data_plane_loop_t::run_until_shutdown (
     bool running = true;
     int fatal_errno = 0;
     uint64_t next_bootstrap_ms = 0;
+    uint64_t last_bootstrap_peer_version = UINT64_MAX;
     spot_data_plane_protocol_state_t protocol_state;
     if (protocol_state_out_)
         *protocol_state_out_ = protocol_state;
@@ -260,7 +269,8 @@ int spot_data_plane_loop_t::run_until_shutdown (
 
         fatal_errno = publish_bootstrap_if_due (node_, runtime_, state_,
                                                 protocol_state_ptr,
-                                                &next_bootstrap_ms);
+                                                &next_bootstrap_ms,
+                                                &last_bootstrap_peer_version);
         if (fatal_errno != 0) {
             running = false;
             break;

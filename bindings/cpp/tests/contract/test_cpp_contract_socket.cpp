@@ -7,10 +7,10 @@ namespace {
 void test_pair_send_recv_single_part ()
 {
     zlink::context_t ctx;
-    zlink::socket_t left (ctx, zlink::socket_type::pair);
-    zlink::socket_t right (ctx, zlink::socket_type::pair);
-    zlink::monitor_handle_t left_monitor (left, zlink::monitor_event::all);
-    zlink::monitor_handle_t right_monitor (right, zlink::monitor_event::all);
+    zlink::pair_socket_t left (ctx);
+    zlink::pair_socket_t right (ctx);
+    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
+    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
 
     const std::string endpoint = zlink_cpp_contract::unique_tcp ("pair");
     assert (left.bind (endpoint) == 0);
@@ -35,10 +35,10 @@ void test_pair_send_recv_single_part ()
 void test_pair_send_recv_multipart ()
 {
     zlink::context_t ctx;
-    zlink::socket_t left (ctx, zlink::socket_type::pair);
-    zlink::socket_t right (ctx, zlink::socket_type::pair);
-    zlink::monitor_handle_t left_monitor (left, zlink::monitor_event::all);
-    zlink::monitor_handle_t right_monitor (right, zlink::monitor_event::all);
+    zlink::pair_socket_t left (ctx);
+    zlink::pair_socket_t right (ctx);
+    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
+    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_tcp ("pair-multipart");

@@ -3,8 +3,8 @@ import zlink
 
 def main():
     with zlink.Context() as ctx:
-        with zlink.Socket(ctx, zlink.SocketType.PUB) as pub:
-            with zlink.Socket(ctx, zlink.SocketType.SUB) as sub:
+        with zlink.PubSocket(ctx) as pub:
+            with zlink.SubSocket(ctx) as sub:
                 endpoint = "inproc://py-example-pubsub"
                 pub.bind(endpoint)
                 sub.connect(endpoint)

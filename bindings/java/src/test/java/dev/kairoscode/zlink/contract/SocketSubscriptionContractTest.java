@@ -3,11 +3,14 @@ package dev.kairoscode.zlink.contract;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
+import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.SubscriptionEntry;
+import dev.kairoscode.zlink.SubscriptionEvent;
+import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
+import dev.kairoscode.zlink.XPubSocket;
+import dev.kairoscode.zlink.XSubSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -25,15 +28,14 @@ public class SocketSubscriptionContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
-             Socket sub = new Socket(ctx, SocketType.SUB)) {
+             SubSocket sub = new SubSocket(ctx)) {
             sub.setSubscription("topic-a");
             sub.setSubscription("topic-b");
             sub.unsetSubscription("topic-b");
 
             List<SubscriptionEntry> entries = sub.subscriptions();
             assertEquals(1, entries.size());
-            assertArrayEquals("topic-a".getBytes(StandardCharsets.UTF_8),
-                entries.get(0).filter());
+            assertEquals("topic-a", entries.get(0).filter());
         }
     }
 
@@ -47,8 +49,8 @@ public class SocketSubscriptionContractTest {
         AtomicReference<String> topic = new AtomicReference<>();
         AtomicReference<byte[]> payload = new AtomicReference<>();
         try (Context ctx = new Context();
-             Socket pub = new Socket(ctx, SocketType.PUB);
-             Socket sub = new Socket(ctx, SocketType.SUB);
+             PubSocket pub = new PubSocket(ctx);
+             SubSocket sub = new SubSocket(ctx);
              var pubMonitor = pub.monitorOpen(readyEvents);
              var subMonitor = sub.monitorOpen(readyEvents)) {
             String endpoint = TestSupport.inprocEndpoint("publish-contract");
@@ -83,8 +85,8 @@ public class SocketSubscriptionContractTest {
         int readyEvents = MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
             | MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue();
         try (Context ctx = new Context();
-             Socket pub = new Socket(ctx, SocketType.PUB);
-             Socket sub = new Socket(ctx, SocketType.SUB);
+             PubSocket pub = new PubSocket(ctx);
+             SubSocket sub = new SubSocket(ctx);
              var pubMonitor = pub.monitorOpen(readyEvents);
              var subMonitor = sub.monitorOpen(readyEvents)) {
             String endpoint = TestSupport.inprocEndpoint("subscribe-contract");
@@ -103,6 +105,25 @@ public class SocketSubscriptionContractTest {
                 assertArrayEquals("payload-b".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
             }
+        }
+    }
+
+    @Test
+    public void xpubSubscriptionEventUsesDedicatedPubOptionSurface() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             XPubSocket pub = new XPubSocket(ctx);
+             XSubSocket sub = new XSubSocket(ctx)) {
+            pub.setOption(dev.kairoscode.zlink.options.SocketOptions.XPUB_MANUAL, 1);
+            String endpoint = TestSupport.inprocEndpoint("xpub-manual-contract");
+            pub.bind(endpoint);
+            sub.setSubscription("manual-topic");
+            sub.connect(endpoint);
+
+            SubscriptionEvent event = pub.subscriptionEvent();
+            assertTrue(event.subscribed());
+            assertEquals("manual-topic", event.filter());
         }
     }
 }

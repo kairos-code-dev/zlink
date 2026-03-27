@@ -20,7 +20,6 @@ static const int k_client_socket_type = ZLINK_SOCKET_SUB;
 static const uint32_t k_metric_run_id = 1U;
 static const char *k_pubsub_topic = "bench";
 
-using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
@@ -264,43 +263,42 @@ inline bool create_client_sockets (
   const std::string &transport,
   const std::string &endpoint,
   const multi_bench_settings_t &settings,
-  std::vector<void *> *sockets_out,
-  std::vector<ready_monitor_t> *monitors_out)
+  std::vector<void *> *sockets_out)
 {
-    if (!sockets_out || !monitors_out)
+    if (!sockets_out)
         return false;
 
     sockets_out->assign (settings.clients, NULL);
-    monitors_out->assign (settings.clients, ready_monitor_t ());
 
     for (size_t i = 0; i < sockets_out->size (); ++i) {
         void *sock = zlink_socket (
           ctx.get (), static_cast<zlink_socket_type_t> (k_client_socket_type));
-        if (!sock)
+        if (!sock) {
+            if (bench_debug_enabled ()) {
+                std::cerr << "[multi-pubsub-client] socket create failed slot="
+                          << i << " errno=" << zlink_errno () << std::endl;
+            }
             return false;
+        }
 
         apply_benchmark_socket_options (sock, settings.hwm, transport);
         static const char k_subscribe_all[] = "";
         if (zlink_set_subscription (sock, k_subscribe_all) != 0
             || !setup_tls_client (sock, transport)) {
-            zlink_close (sock);
-            return false;
-        }
-
-        if (!open_configured_socket_monitor (
-              sock,
-              ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
-                | ZLINK_EVENT_CLOSE_FAILED
-                | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-                | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
-              &(*monitors_out)[i])) {
+            if (bench_debug_enabled ()) {
+                std::cerr << "[multi-pubsub-client] subscribe/tls failed slot="
+                          << i << " errno=" << zlink_errno () << std::endl;
+            }
             zlink_close (sock);
             return false;
         }
 
         if (zlink_connect (sock, endpoint.c_str ()) != 0) {
-            close_ready_monitor ((*monitors_out)[i]);
+            if (bench_debug_enabled ()) {
+                std::cerr << "[multi-pubsub-client] connect failed slot=" << i
+                          << " endpoint=" << endpoint
+                          << " errno=" << zlink_errno () << std::endl;
+            }
             zlink_close (sock);
             return false;
         }
@@ -373,40 +371,24 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
 
     std::vector<void *> sockets;
-    std::vector<ready_monitor_t> monitors;
     void *poller = NULL;
     if (!create_client_sockets (
           ctx,
           transport,
           endpoint,
           base_settings,
-          &sockets,
-          &monitors)) {
-        close_client_monitors (&monitors);
+          &sockets)) {
         close_client_sockets (&sockets);
         return 1;
     }
 
     if (!create_pubsub_poller (sockets, &poller)) {
-        close_client_monitors (&monitors);
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-pubsub-client] poller create failed"
+                      << std::endl;
+        }
         close_client_sockets (&sockets);
         return 1;
-    }
-
-    for (size_t i = 0; i < monitors.size (); ++i) {
-        if (!wait_for_socket_monitor_event (
-              monitors[i],
-              ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED,
-              base_settings.connect_ready_timeout_ms)) {
-            if (bench_debug_enabled ()) {
-                std::cerr << "[multi-pubsub-client] sub ready wait failed slot="
-                          << i << std::endl;
-            }
-            zlink_poller_destroy (&poller);
-            close_client_monitors (&monitors);
-            close_client_sockets (&sockets);
-            return 1;
-        }
     }
 
     const size_t scratch_capacity = static_cast<size_t> (64);
@@ -427,14 +409,12 @@ inline int run_client_benchmark (const std::string &lib_name,
                           << msg_size << std::endl;
             }
             zlink_poller_destroy (&poller);
-            close_client_monitors (&monitors);
             close_client_sockets (&sockets);
             return 1;
         }
         std::cout << "CLIENT_DONE," << msg_size << std::endl;
     }
     zlink_poller_destroy (&poller);
-    close_client_monitors (&monitors);
     close_client_sockets (&sockets);
     return 0;
 }

@@ -25,7 +25,7 @@
 #include <unistd.h>
 #endif
 
-namespace zlink_cpp_sample
+namespace detail
 {
 
 inline std::string unique_name (const char *base_)
@@ -236,6 +236,6 @@ inline void close_raw_tcp (int fd_)
 }
 #endif
 
-} // namespace zlink_cpp_sample
+} // namespace detail
 
 #endif

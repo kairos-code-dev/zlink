@@ -4,14 +4,29 @@ Aligned Node bindings for `libzlink`.
 
 ## Canonical Raw API
 
-- `new Socket(ctx, SocketType.PAIR)`
-- `socket.send(Message.copyOf(data))`
-- `socket.sendParts([Message.copyOf(a), Message.wrap(b)])`
-- `socket.recv()` -> `Received`
-- `socket.recvInto(buffer)`
+- `new PairSocket(ctx)`, `new DealerSocket(ctx)`, `new RouterSocket(ctx)`,
+  `new StreamSocket(ctx)`
+- `new PubSocket(ctx)`, `new XPubSocket(ctx)`
+- `new SubSocket(ctx)`, `new XSubSocket(ctx)`
+- duplex sockets: `send(...)`, `sendParts(...)`, `recv()`, `recvInto(buffer)`
+- send sockets: `send(...)`, `sendParts(...)`
+- subscriber sockets: `subscribe(...)`, `unsubscribe(...)`, `recv()`
 
 `Message.copyOf()` copies payload ownership into the message.
 `Message.wrap()` keeps the caller-owned buffer as the payload source.
+Canonical raw sockets intentionally hide opposite-direction methods, so
+`PubSocket` does not expose `recv()` and `SubSocket` does not expose `send()`.
+`StreamSocket` also does not expose active stream helpers on the canonical path.
+
+## Compatibility Socket
+
+- `new Socket(ctx, SocketType.X)` remains as a deprecated compatibility path
+- legacy `recv(size, flags)` and `streamAttach` / `streamDetach` /
+  `streamPeerRoutingId` / `streamSend` stay on compat `Socket` only
+
+Not yet part of the canonical raw surface:
+raw socket TLS convenience helpers, raw publish(topic, payload), raw socket
+unbind/disconnect helpers.
 
 ## Service Surface
 

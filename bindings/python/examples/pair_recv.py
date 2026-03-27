@@ -3,8 +3,8 @@ import zlink
 
 def main():
     with zlink.Context() as ctx:
-        with zlink.Socket(ctx, zlink.SocketType.PAIR) as server:
-            with zlink.Socket(ctx, zlink.SocketType.PAIR) as client:
+        with zlink.PairSocket(ctx) as server:
+            with zlink.PairSocket(ctx) as client:
                 endpoint = "inproc://py-example-pair"
                 server.bind(endpoint)
                 client.connect(endpoint)

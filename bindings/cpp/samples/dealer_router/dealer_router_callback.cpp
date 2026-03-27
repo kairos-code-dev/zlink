@@ -41,20 +41,20 @@ void router_callback (const zlink_routing_id_t *source_rid_,
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t router (ctx, zlink::socket_type::router);
-    zlink::socket_t dealer (ctx, zlink::socket_type::dealer);
-    zlink::monitor_handle_t router_monitor (router, zlink::monitor_event::all);
-    zlink::monitor_handle_t dealer_monitor (dealer, zlink::monitor_event::all);
+    zlink::router_socket_t router (ctx);
+    zlink::dealer_socket_t dealer (ctx);
+    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
+    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
 
     const std::string endpoint =
-      zlink_cpp_sample::unique_tcp ("dealer-router-callback");
+      detail::unique_tcp ("dealer-router-callback");
     assert (router.bind (endpoint) == 0);
     assert (dealer.connect (endpoint) == 0);
-    assert (zlink_cpp_sample::wait_for_socket_monitor_event (
+    assert (detail::wait_for_socket_monitor_event (
       router_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
       2000, 1));
-    assert (zlink_cpp_sample::wait_for_socket_monitor_event (
+    assert (detail::wait_for_socket_monitor_event (
       dealer_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
       2000, 1));
@@ -64,11 +64,11 @@ int main ()
     assert (router.recv_handler (&router_callback, &state) == 0);
 
     zlink::message_t outbound =
-      zlink_cpp_sample::make_message ("dealer-router-callback");
+      detail::make_message ("dealer-router-callback");
     assert (dealer.send (outbound) == 0);
 
     std::unique_lock<std::mutex> lock (state.mutex);
-    assert (zlink_cpp_sample::wait_until (state.cv, lock, state.ready, 2000));
+    assert (detail::wait_until (state.cv, lock, state.ready, 2000));
     assert (!state.routing_id.empty ());
     assert (state.payload == "dealer-router-callback");
     return 0;

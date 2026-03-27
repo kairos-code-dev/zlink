@@ -7,26 +7,32 @@
 - `core/tests/integration/`: focused functional Unity tests.
 - `core/tests/e2e/`: umbrella and smoke-style Unity tests.
 - `core/tests/`: shared test helpers, README, and lane runner script.
-- `core/build-scripts/`: platform build scripts (e.g., `core/build-scripts/linux/build.sh`).
-- `core/builds/`: build helpers, templates, and CI tooling (CMake modules, platform helpers).
+- `core/builds/`: platform build scripts, CMake modules, templates, and CI
+  helpers (e.g., `core/builds/linux/build.sh`).
 - `core/external/`: bundled third-party sources (Boost, Unity, etc.).
 - `core/tools/`: dev/build helper scripts.
 - `core/packaging/`: packaging metadata (conan, debian, nuget, redhat).
 - `core/dist/`: packaged build outputs by platform.
+- `core/perf/`: performance runners and perf-specific verification assets.
+- `core/bench/`: benchmark stacks and comparison scenarios.
 - `bindings/`: language wrappers (C++, Java, C#, Node.js).
 - `doc/`: project documentation.
 
 ## Build, Test, and Development Commands
 - `./core/build.sh`: clean CMake build in `core/build/` and runs tests (Linux-style `nproc`).
-- `./core/build-scripts/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
+- `./core/builds/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
 - `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`: configure into the only supported build directory.
 - `cmake --build core/build`: compile from the fixed `core/build/` directory.
 - `ctest --test-dir core/build --output-on-failure`: run all registered tests from `core/build/`; prefer lane-based commands below for real verification.
 - `ctest --test-dir core/build --output-on-failure -L unittest -j$(nproc)`: run unit tests in parallel.
 - `ctest --test-dir core/build --output-on-failure -L integration -j1`: run integration tests serially.
 - `ctest --test-dir core/build --output-on-failure -L e2e -j1`: run e2e umbrella/scenario tests serially.
+- `ctest --test-dir core/build --output-on-failure -L regression -j1`: run regression lane tests serially.
 - `./core/tests/run_test_lanes.sh`: run the default sequential lane pipeline (`unittest` then `integration`).
 - `./core/tests/run_test_lanes.sh --include-e2e`: run the full sequential lane pipeline (`unittest`, `integration`, `e2e`).
+- `./core/tests/run_test_lanes.sh --include-e2e --include-regression`: run the full sequential lane pipeline including the regression lane.
+- `./core/tests/run_thread_safe_contract_stress.sh --count 10`: run the thread-safe contract stress lane from the repository test surface.
+- `./core/tests/run_thread_safe_contract_perf.sh --min-ratio 0.85`: run the thread-safe contract perf lane from the repository test surface.
 - Optional flags: `-DZLINK_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
 - Do not configure or build into a top-level `build/` directory for this repository. Use `core/build/` only.
 
@@ -47,6 +53,7 @@
 - Tests use the Unity framework; add coverage in `tests/` for behavior changes and `unittests/` for internal logic.
 - Some suites are platform-specific (IPC/TIPC, fuzzers); note skips in PRs.
 - Test layout, lane policy, and runner usage: `core/tests/README.md`
+- Test categories are `unittest`, `integration`, `e2e`, and `regression`.
 - Do not launch multiple `ctest` processes concurrently for serial lanes; `RESOURCE_LOCK` only coordinates tests within one `ctest` process.
 
 ### Fail-Fast Policy (all test types)
@@ -81,13 +88,21 @@ The following rules apply to **all** test categories: unit tests (`unittests/`),
 - `AGENTS.md` is the single source of truth for repo guidelines.
 - Agents must address the user as `팀장님`.
 - Agents must use `core/build/` as the only build directory for configure, build, test, perf, and bench commands in this repository.
+- Agents must treat any pre-existing top-level `build/` directory as legacy or user-owned state and must not use it for new configure, build, or test commands.
 - When the user asks for a `core` bug fix, agents must limit code changes to `core/` library and `core/tests/` regression coverage. Do not modify `core/perf/` or `core/bench/` unless the user explicitly asks for perf/bench code changes.
 - Do not use ad-hoc repro programs, `/tmp` experiments, or one-off binaries to justify a fix. Reproduction must be added as a repository regression test under `core/tests/` first, then used to validate the `core` fix.
+- Agents should prefer repository test runners under `core/tests/` for validation before using perf/bench surfaces or custom orchestration wrappers.
 - For perf or bench failures, first determine whether the same issue reproduces with a `core/tests/` regression. If it does, fix the `core` bug and keep the regression test. If it does not, treat it as a perf/bench usage bug and report it separately instead of modifying `core`.
 - Do not modify perf/bench helpers, runners, or wrappers as a workaround for a suspected `core` bug. Perf and bench are verification surfaces unless the user explicitly asks to change them.
 - If any agent-specific files are added in the future, they must reference `AGENTS.md` and instruct contributors to update `AGENTS.md` when guidelines change.
 - When the user says `posd` in the context of design or refactoring, interpret it as John Ousterhout's *A Philosophy of Software Design* and apply that book's principles.
 - Even when `posd` is not explicitly mentioned, agents should follow the repository's POSD-based design philosophy when reviewing, designing, implementing, or refactoring code and APIs.
+- When the user references `core/tools/ralphloop` and asks to "make/create a Ralph loop" for a spec, interpret that as a request to build a spec-specific Ralph wrapper and a single execution-guide document in the target directory using the shared scripts under `core/tools/ralphloop/`.
+- When the user says just "랄프루프 만들어줘" or otherwise asks to make/create a Ralph loop without restating the tool path, treat it the same way: use the shared scripts under `core/tools/ralphloop/` by default.
+- For new Ralph-loop setups, default to exactly one execution-guide document as the sole authority. Do not create separate main/master/gap/residual/auxiliary planning documents unless the user explicitly requests a multi-document set.
+- A Ralph loop created from `core/tools/ralphloop` must be adapted to the provided spec's scope, validation commands, gate behavior, and termination criteria; do not clone the existing POSD loop structure blindly.
+- After creating a Ralph loop from `core/tools/ralphloop`, verify it with at least a short smoke run or help/syntax validation so the generated wrapper and guide are confirmed to work together.
+- Existing-supervisor checks and gate lock enforcement for Ralph loops should be disabled by default and enabled only when the user explicitly requests that behavior.
 
 ## External References
 - Upstream reference project: `https://github.com/zeromq/libzmq`

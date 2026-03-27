@@ -264,34 +264,19 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
 
     std::vector<void *> sockets;
-    std::vector<ready_monitor_t> monitors;
     if (!create_client_sockets (
           ctx,
           transport,
           endpoint,
           settings,
           &sockets,
-          &monitors)) {
+          NULL)) {
         if (bench_debug_enabled ())
             std::cerr << "[multi-dealer-dealer-client] create sockets failed"
                       << std::endl;
-        close_client_monitors (&monitors);
         close_client_sockets (&sockets);
         return 1;
     }
-
-    if (!wait_all_client_connect_ready (
-          monitors,
-          settings.connect_ready_timeout_ms)) {
-        if (bench_debug_enabled ())
-            std::cerr
-              << "[multi-dealer-dealer-client] connect-ready wait failed"
-              << std::endl;
-        close_client_monitors (&monitors);
-        close_client_sockets (&sockets);
-        return 1;
-    }
-    close_client_monitors (&monitors);
 
     g_stop_requested.store (false, std::memory_order_release);
     install_signal_handlers ();
@@ -303,6 +288,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         }
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
+        std::cout << "CLIENT_READY," << msg_sizes[si] << std::endl;
         if (!run_single_size_case (
               sockets,
               settings,
@@ -315,6 +301,7 @@ inline int run_client_benchmark (const std::string &lib_name,
             close_client_sockets (&sockets);
             return 1;
         }
+        std::cout << "CLIENT_DONE," << msg_sizes[si] << std::endl;
     }
 
     close_client_sockets (&sockets);

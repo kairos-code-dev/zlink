@@ -1,1 +1,1 @@
-`StreamCallback` shows `AttachStreamRaw` with a raw TCP client.
+`StreamCallback` shows `StreamSocket.AttachStreamRaw` with a raw TCP client.

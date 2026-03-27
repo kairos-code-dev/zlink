@@ -551,12 +551,20 @@ int main (int argc, char **argv)
     }
 
     ctx_guard_t ctx;
-    if (!ctx.valid ())
+    if (!ctx.valid ()) {
+        if (bench_debug_enabled ())
+            std::cerr << "[multi-stream-server] ctx invalid" << std::endl;
         return 1;
+    }
 
     void *server = zlink_socket (ctx.get (), ZLINK_SOCKET_STREAM);
-    if (!server)
+    if (!server) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-stream-server] socket create failed errno="
+                      << zlink_errno () << std::endl;
+        }
         return 1;
+    }
 
     const bench_cpu_sample_t cpu_start = bench_capture_cpu_sample ();
     const bench_settings_t settings = resolve_bench_settings ();
@@ -575,6 +583,11 @@ int main (int argc, char **argv)
                      "ZLINK_OPT_TCP_NODELAY");
 
     if (!setup_tls_server (server, transport)) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-stream-server] tls setup failed transport="
+                      << transport << " errno=" << zlink_errno ()
+                      << std::endl;
+        }
         zlink_close (server);
         return 1;
     }
@@ -582,6 +595,10 @@ int main (int argc, char **argv)
     const std::string endpoint = bind_server_endpoint (
       server, transport, lib_name + "_stream_server");
     if (endpoint.empty ()) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-stream-server] bind endpoint failed errno="
+                      << zlink_errno () << std::endl;
+        }
         zlink_close (server);
         return 1;
     }

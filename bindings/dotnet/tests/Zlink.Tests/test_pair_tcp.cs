@@ -18,8 +18,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var sb = new Socket(ctx, SocketType.Pair);
-        using var sc = new Socket(ctx, SocketType.Pair);
+        using var sb = new PairSocket(ctx);
+        using var sc = new PairSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint(transport, "pair");
         sb.Bind(endpoint);
@@ -45,8 +45,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var server = new Socket(ctx, SocketType.Pair);
-        using var client = new Socket(ctx, SocketType.Pair);
+        using var server = new PairSocket(ctx);
+        using var client = new PairSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint(transport,
             "pair-multipart");
@@ -79,8 +79,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var sb = new Socket(ctx, SocketType.Pair);
-        using var sc = new Socket(ctx, SocketType.Pair);
+        using var sb = new PairSocket(ctx);
+        using var sc = new PairSocket(ctx);
 
         int port = CoreTestSupport.ExtractPort(CoreTestSupport.NewEndpoint("tcp",
             "pair-name"));
@@ -102,8 +102,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var sender = new Socket(ctx, SocketType.Pair);
-        using var receiver = new Socket(ctx, SocketType.Pair);
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "pair-poller-span");
         sender.Bind(endpoint);
         receiver.Connect(endpoint);
@@ -129,8 +129,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var sender = new Socket(ctx, SocketType.Pair);
-        using var receiver = new Socket(ctx, SocketType.Pair);
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
         using var poller = new Poller();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-poller-modify");
@@ -168,8 +168,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var sender = new Socket(ctx, SocketType.Pair);
-        using var receiver = new Socket(ctx, SocketType.Pair);
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
         using var poller = new Poller();
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "pair-poller-fd");
         sender.Bind(endpoint);
@@ -198,8 +198,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var sender = new Socket(ctx, SocketType.Pair);
-        using var receiver = new Socket(ctx, SocketType.Pair);
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-try-recv-code");
         sender.Bind(endpoint);
@@ -218,8 +218,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var sender = new Socket(ctx, SocketType.Pair);
-        using var receiver = new Socket(ctx, SocketType.Pair);
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-recv-handler");
         sender.Bind(endpoint);
@@ -244,8 +244,8 @@ public sealed class test_pair_tcp
             return;
 
         using var ctx = new Context();
-        using var server = new Socket(ctx, SocketType.Pair);
-        using var client = new Socket(ctx, SocketType.Pair);
+        using var server = new PairSocket(ctx);
+        using var client = new PairSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "pair-monitor-shape");
         server.Bind(endpoint);

@@ -12,7 +12,7 @@ public sealed class test_attach_discovery_contract
             return;
 
         using var ctx = new Context();
-        using var dealer = new Socket(ctx, SocketType.Dealer);
+        using var dealer = new DealerSocket(ctx);
         using var discovery = new Discovery(ctx, ServiceType.Socket,
             "attach-discovery");
 

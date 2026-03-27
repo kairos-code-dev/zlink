@@ -5,8 +5,8 @@ if (!SampleSupport.IsNativeAvailable())
     return;
 
 using var ctx = new Context();
-using var dealer = new Socket(ctx, SocketType.Dealer);
-using var router = new Socket(ctx, SocketType.Router);
+using var dealer = new DealerSocket(ctx);
+using var router = new RouterSocket(ctx);
 string endpoint = SampleSupport.NewEndpoint("inproc", "dealer-router-recv");
 router.Bind(endpoint);
 dealer.Connect(endpoint);

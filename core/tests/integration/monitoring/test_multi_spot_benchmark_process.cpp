@@ -734,9 +734,26 @@ void test_multi_spot_process_recv_many_clients_tcp_large_smoke ()
     run_multi_spot_process_case ("recv", "tcp", "65536", 100, 5000);
 }
 
+void test_multi_spot_process_recv_many_clients_tcp_very_large_smoke ()
+{
+    run_multi_spot_process_case ("recv", "tcp", "131072", 100, 5000, 2, 2);
+}
+
+void test_multi_spot_process_recv_many_clients_tcp_large_sequence ()
+{
+    run_multi_spot_process_sequence_case (
+      "recv", "tcp", "64,256,1024,65536,131072,262144", 100, 5000, 2, 2);
+}
+
 void test_multi_spot_process_recv_many_clients_tls_very_large_smoke ()
 {
     run_multi_spot_process_case ("recv", "tls", "262144", 100, 10000, 2, 2);
+}
+
+void test_multi_spot_process_recv_many_clients_tls_large_sequence ()
+{
+    run_multi_spot_process_sequence_case (
+      "recv", "tls", "65536,131072,262144", 100, 10000, 1, 1);
 }
 
 void test_multi_spot_process_recv_many_clients_ws_very_large_smoke ()
@@ -775,7 +792,10 @@ int main (int argc, char **argv)
     RUN_TEST (test_multi_spot_process_recv_smoke);
     RUN_TEST (test_multi_spot_process_callback_smoke);
     RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_large_smoke);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_very_large_smoke);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_large_sequence);
     RUN_TEST (test_multi_spot_process_recv_many_clients_tls_very_large_smoke);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tls_large_sequence);
     RUN_TEST (test_multi_spot_process_recv_many_clients_ws_very_large_smoke);
     RUN_TEST (test_multi_spot_process_recv_many_clients_wss_large_sequence);
     RUN_TEST (test_multi_spot_process_recv_many_clients_wss_perf_window_sequence);

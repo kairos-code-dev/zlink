@@ -17,7 +17,7 @@ void test_context_options ()
 void test_socket_common_and_router_options ()
 {
     zlink::context_t ctx;
-    zlink::socket_t router (ctx, zlink::socket_type::router);
+    zlink::router_socket_t router (ctx);
 
     const int linger = 0;
     assert (router.set_option (zlink::socket_options::linger, linger) == 0);
@@ -27,14 +27,20 @@ void test_socket_common_and_router_options ()
     assert (got_linger == linger);
 
     const int mandatory = 1;
-    assert (router.set_router_option (zlink::router_option::mandatory, mandatory)
-            == 0);
+    assert (router.set_option (zlink::router_options::mandatory, mandatory) == 0);
 
     int got_mandatory = 0;
-    assert (router.get_router_option (zlink::router_option::mandatory,
-                                      &got_mandatory)
+    assert (router.get_option (zlink::router_options::mandatory, &got_mandatory)
             == 0);
     assert (got_mandatory == mandatory);
+
+    zlink::stream_socket_t stream (ctx);
+    const int notify = 1;
+    assert (stream.set_option (zlink::stream_options::notify, notify) == 0);
+
+    int got_notify = 0;
+    assert (stream.get_option (zlink::stream_options::notify, &got_notify) == 0);
+    assert (got_notify == notify);
 
     assert (router.set_routing_id ("router-alpha") == 0);
     std::string routing_id;

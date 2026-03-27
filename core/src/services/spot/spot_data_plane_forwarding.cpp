@@ -18,6 +18,9 @@ namespace zlink
 namespace
 {
 static const unsigned int ingress_forward_batch_limit = 2048;
+// Bound one ingress burst by bytes as well as message count so large payloads
+// cannot monopolize the data-plane thread for an entire poll cycle.
+static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
 }
 
 void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
@@ -67,6 +70,7 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
     bool receiving_multipart = false;
     bool forward_to_fanout = false;
     unsigned int forwarded_messages = 0;
+    size_t forwarded_bytes = 0;
 
     for (;;) {
         msg_t msg;
@@ -83,6 +87,7 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
         }
 
         const bool more = (msg.flags () & msg_t::more) != 0;
+        forwarded_bytes += msg.size ();
 
         if (!receiving_multipart)
             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
@@ -124,7 +129,8 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
         if (!receiving_multipart) {
             forward_to_fanout = false;
             ++forwarded_messages;
-            if (forwarded_messages >= ingress_forward_batch_limit)
+            if (forwarded_messages >= ingress_forward_batch_limit
+                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
                 return 0;
         }
         msg.close ();

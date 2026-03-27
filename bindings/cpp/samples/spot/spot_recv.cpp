@@ -17,16 +17,16 @@ int main ()
     assert (pub_monitor.valid ());
 
     assert (spot.subscribe ("topic:alpha") == 0);
-    assert (zlink_cpp_sample::wait_for_service_monitor_event (
+    assert (detail::wait_for_service_monitor_event (
       sub_monitor,
       static_cast<uint32_t> (
         zlink::service_monitor_event::spot_filter_applied),
       10000));
-    assert (zlink_cpp_sample::wait_for_service_monitor_state (
+    assert (detail::wait_for_service_monitor_state (
       pub_monitor, ZLINK_MONITOR_STATE_SEND_READY, 10000));
 
     zlink::message_t outbound =
-      zlink_cpp_sample::make_message ("spot-recv");
+      detail::make_message ("spot-recv");
     assert (spot.publish ("topic:alpha", outbound) == 0);
 
     zlink::message_t inbound;

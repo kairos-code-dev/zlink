@@ -74,8 +74,8 @@ public sealed class test_socket_options
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
-        using var dealer = new Socket(ctx, SocketType.Dealer);
+        using var stream = new StreamSocket(ctx);
+        using var dealer = new DealerSocket(ctx);
 
         stream.SetOption(SocketOptions.StreamNotify, 0);
         Assert.Equal(0, stream.GetOption(SocketOptions.StreamNotify));
@@ -94,7 +94,7 @@ public sealed class test_socket_options
             return;
 
         using var ctx = new Context();
-        using var router = new Socket(ctx, SocketType.Router);
+        using var router = new RouterSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "socket-options-last-endpoint");

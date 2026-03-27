@@ -4,16 +4,15 @@ package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
+import dev.kairoscode.zlink.PairSocket;
 
 public final class PairRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.inprocEndpoint("pair-recv");
         try (Context ctx = new Context();
-            Socket server = new Socket(ctx, SocketType.PAIR);
-             Socket client = new Socket(ctx, SocketType.PAIR)) {
+            PairSocket server = new PairSocket(ctx);
+             PairSocket client = new PairSocket(ctx)) {
             server.bind(endpoint);
             client.connect(endpoint);
             try (Message outbound = Message.copyOfUtf8("pair-copy")) {

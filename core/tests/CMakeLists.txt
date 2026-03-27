@@ -22,6 +22,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_enhanced
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_socket_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_dealer_dealer_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
@@ -382,6 +383,24 @@ if(TARGET test_multi_pubsub_benchmark_process)
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
+if(TARGET test_multi_dealer_dealer_benchmark_process)
+  if(TARGET comp_src_dealer_dealer_server)
+    add_dependencies(
+      test_multi_dealer_dealer_benchmark_process
+      comp_src_dealer_dealer_server)
+  endif()
+  if(TARGET comp_src_dealer_dealer_client)
+    add_dependencies(
+      test_multi_dealer_dealer_benchmark_process
+      comp_src_dealer_dealer_client)
+  endif()
+  set_tests_properties(
+    test_multi_dealer_dealer_benchmark_process
+    PROPERTIES
+      TIMEOUT 180
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
 if(TARGET test_multi_spot_benchmark_process)
   if(TARGET comp_src_spot_server)
     add_dependencies(
@@ -396,7 +415,7 @@ if(TARGET test_multi_spot_benchmark_process)
   set_tests_properties(
     test_multi_spot_benchmark_process
     PROPERTIES
-      TIMEOUT 180
+      TIMEOUT 360
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()

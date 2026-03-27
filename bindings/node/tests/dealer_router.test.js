@@ -6,8 +6,8 @@ const zlink = require('../src');
 
 test('dealer/router uses routing id through Received and sendParts', () => {
   const ctx = new zlink.Context();
-  const router = new zlink.Socket(ctx, zlink.SocketType.ROUTER);
-  const dealer = new zlink.Socket(ctx, zlink.SocketType.DEALER);
+  const router = new zlink.RouterSocket(ctx);
+  const dealer = new zlink.DealerSocket(ctx);
 
   router.bind('inproc://dealer-router-contract');
   dealer.connect('inproc://dealer-router-contract');

@@ -2,16 +2,24 @@
 
 package dev.kairoscode.zlink;
 
-import java.util.Arrays;
+import java.nio.charset.StandardCharsets;
 
-/** Snapshot entry returned from {@link Socket#subscriptions()}. */
-public record SubscriptionEntry(byte[] filter, boolean pattern) {
+/** Snapshot entry returned from SUB/XSUB/XPUB subscription snapshots. */
+public record SubscriptionEntry(String filter, boolean pattern) {
     public SubscriptionEntry {
-        filter = filter == null ? new byte[0] : Arrays.copyOf(filter, filter.length);
+        filter = filter == null ? "" : filter;
     }
 
-    @Override
-    public byte[] filter() {
-        return Arrays.copyOf(filter, filter.length);
+    public byte[] filterBytes() {
+        return filter.getBytes(StandardCharsets.UTF_8);
+    }
+
+    static SubscriptionEntry fromBytes(byte[] filter, boolean pattern) {
+        return new SubscriptionEntry(filter == null ? ""
+            : new String(filter, StandardCharsets.UTF_8), pattern);
+    }
+
+    static SubscriptionEntry fromFilter(String filter, boolean pattern) {
+        return new SubscriptionEntry(filter, pattern);
     }
 }

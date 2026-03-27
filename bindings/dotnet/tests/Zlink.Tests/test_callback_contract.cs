@@ -13,8 +13,8 @@ public sealed class test_callback_contract
             return;
 
         using var ctx = new Context();
-        using var sender = new Socket(ctx, SocketType.Pair);
-        using var receiver = new Socket(ctx, SocketType.Pair);
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "callback-owned");
         sender.Bind(endpoint);
         receiver.Connect(endpoint);
@@ -45,8 +45,8 @@ public sealed class test_callback_contract
             return;
 
         using var ctx = new Context();
-        using var sender = new Socket(ctx, SocketType.Pair);
-        using var receiver = new Socket(ctx, SocketType.Pair);
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "callback-recv");
         sender.Bind(endpoint);
         receiver.Connect(endpoint);
@@ -87,8 +87,8 @@ public sealed class test_callback_contract
             return;
 
         using var ctx = new Context();
-        using var publisher = new Socket(ctx, SocketType.Pub);
-        using var subscriber = new Socket(ctx, SocketType.Sub);
+        using var publisher = new PubSocket(ctx);
+        using var subscriber = new SubSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "callback-subscribe-owned");
         publisher.Bind(endpoint);
@@ -124,8 +124,8 @@ public sealed class test_callback_contract
             return;
 
         using var ctx = new Context();
-        using var publisher = new Socket(ctx, SocketType.Pub);
-        using var subscriber = new Socket(ctx, SocketType.Sub);
+        using var publisher = new PubSocket(ctx);
+        using var subscriber = new SubSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "callback-subscribe");
         publisher.Bind(endpoint);

@@ -6,7 +6,7 @@ const zlink = require('../src');
 
 test('dedicated pub option constants stay available on SocketOption', () => {
   const ctx = new zlink.Context();
-  const xpub = new zlink.Socket(ctx, zlink.SocketType.XPUB);
+  const xpub = new zlink.XPubSocket(ctx);
 
   const verbose = Buffer.alloc(4);
   verbose.writeInt32LE(1, 0);

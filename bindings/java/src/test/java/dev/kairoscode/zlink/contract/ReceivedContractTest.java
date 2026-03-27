@@ -1,12 +1,12 @@
 package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Received;
+import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
 import dev.kairoscode.zlink.TestSupport;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -25,8 +25,8 @@ public class ReceivedContractTest {
 
         RoutingId dealerRid = RoutingId.copyOf("dealer-a".getBytes(StandardCharsets.UTF_8));
         try (Context ctx = new Context();
-             Socket router = new Socket(ctx, SocketType.ROUTER);
-             Socket dealer = new Socket(ctx, SocketType.DEALER)) {
+             RouterSocket router = new RouterSocket(ctx);
+             DealerSocket dealer = new DealerSocket(ctx)) {
             dealer.setRoutingId(dealerRid);
             String endpoint = TestSupport.inprocEndpoint("received-contract");
             router.bind(endpoint);

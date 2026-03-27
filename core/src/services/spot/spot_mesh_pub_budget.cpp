@@ -35,10 +35,10 @@ int spot_mesh_pub_budget_t::resolve_default (const std::string &endpoint_,
     if (ready_peers_ == 1)
         return 768;
     if (wss)
-        return 128;
+        return 512;
     if (!secure)
         return 64;
-    return 768;
+    return 2048;
 }
 
 bool spot_mesh_pub_budget_t::should_refresh (

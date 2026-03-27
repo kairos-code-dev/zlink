@@ -1,6 +1,7 @@
 import socket
 import threading
 import unittest
+import warnings
 
 import zlink
 
@@ -39,8 +40,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Socket(ctx, zlink.SocketType.PAIR) as sender:
-                with zlink.Socket(ctx, zlink.SocketType.PAIR) as receiver:
+            with zlink.PairSocket(ctx) as sender:
+                with zlink.PairSocket(ctx) as receiver:
                     endpoint = "inproc://py-canonical-recv"
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
@@ -62,8 +63,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Socket(ctx, zlink.SocketType.PAIR) as sender:
-                with zlink.Socket(ctx, zlink.SocketType.PAIR) as receiver:
+            with zlink.PairSocket(ctx) as sender:
+                with zlink.PairSocket(ctx) as receiver:
                     endpoint = "inproc://py-canonical-multipart"
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
@@ -84,8 +85,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Socket(ctx, zlink.SocketType.XPUB) as sender:
-                with zlink.Socket(ctx, zlink.SocketType.XSUB) as receiver:
+            with zlink.XPubSocket(ctx) as sender:
+                with zlink.XSubSocket(ctx) as receiver:
                     endpoint = "inproc://py-canonical-poller"
                     sender.set_pub_option(0x3301, (1).to_bytes(4, "little"))
                     sender.bind(endpoint)
@@ -106,7 +107,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Socket(ctx, zlink.SocketType.PAIR) as sock:
+            with zlink.PairSocket(ctx) as sock:
                 with sock.open_monitor(zlink.MonitorEvent.ALL) as monitor:
                     snapshot = monitor.snapshot()
                     self.assertIn("source_kind", snapshot)
@@ -159,8 +160,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Socket(ctx, zlink.SocketType.PAIR) as sender:
-                with zlink.Socket(ctx, zlink.SocketType.PAIR) as receiver:
+            with zlink.PairSocket(ctx) as sender:
+                with zlink.PairSocket(ctx) as receiver:
                     endpoint = _tcp_endpoint("py-callback-pair")
                     observed = {}
                     ready = threading.Event()
@@ -172,7 +173,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
 
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
-                    receiver.set_recv_handler(on_message)
+                    receiver.on_receive(on_message)
 
                     sender.send(b"callback")
                     self.assertTrue(ready.wait(3.0))
@@ -192,8 +193,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Socket(ctx, zlink.SocketType.PUB) as publisher:
-                with zlink.Socket(ctx, zlink.SocketType.SUB) as subscriber:
+            with zlink.PubSocket(ctx) as publisher:
+                with zlink.SubSocket(ctx) as subscriber:
                     endpoint = "inproc://py-callback-sub"
                     observed = {}
                     ready = threading.Event()
@@ -206,7 +207,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     publisher.bind(endpoint)
                     subscriber.connect(endpoint)
                     subscriber.subscribe(b"topic")
-                    subscriber.set_subscribe_handler(on_message)
+                    subscriber.on_topic_message(on_message)
 
                     publisher.publish(b"topic", b"payload")
                     self.assertTrue(ready.wait(3.0))
@@ -226,16 +227,89 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Socket(ctx, zlink.SocketType.PAIR) as sender:
-                with zlink.Socket(ctx, zlink.SocketType.PAIR) as receiver:
+            with zlink.PairSocket(ctx) as sender:
+                with zlink.PairSocket(ctx) as receiver:
                     endpoint = "inproc://py-send-ready"
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
-                    sender.set_send_ready_handler(lambda sock: None)
+                    sender.on_send_ready(lambda sock: None)
 
                     with zlink.Poller() as poller:
                         with self.assertRaises(zlink.ZlinkError):
                             poller.add_socket(sender, zlink.PollEvent.POLLOUT)
+
+    def test_concrete_socket_classes_are_exported_and_dispatched(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        with ctx:
+            with zlink.PairSocket(ctx) as direct:
+                self.assertIsInstance(direct, zlink.Socket)
+                self.assertIs(type(direct), zlink.PairSocket)
+
+            with zlink.Socket(ctx, zlink.SocketType.PAIR) as compat:
+                self.assertIsInstance(compat, zlink.Socket)
+                self.assertIs(type(compat), zlink.PairSocket)
+
+            with zlink.Socket(ctx, zlink.SocketType.XPUB) as compat_xpub:
+                self.assertIs(type(compat_xpub), zlink.XPubSocket)
+
+    def test_surface_restrictions_match_socket_role(self):
+        self.assertFalse(hasattr(zlink.PairSocket, "publish"))
+        self.assertFalse(hasattr(zlink.PubSocket, "recv_message"))
+        self.assertFalse(hasattr(zlink.SubSocket, "subscription_event"))
+        self.assertTrue(hasattr(zlink.XPubSocket, "subscription_event"))
+        self.assertTrue(hasattr(zlink.SubSocket, "on_topic_message"))
+        self.assertTrue(hasattr(zlink.PairSocket, "on_receive"))
+
+    def test_deprecated_callback_aliases_warn_and_forward(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        with ctx:
+            with zlink.PairSocket(ctx) as pair:
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    pair.set_recv_handler(lambda received: None)
+                self.assertEqual(len(caught), 1)
+                self.assertIn("on_receive()", str(caught[0].message))
+
+            with zlink.SubSocket(ctx) as sub:
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    sub.set_subscribe_handler(lambda received: None)
+                self.assertEqual(len(caught), 1)
+                self.assertIn("on_topic_message()", str(caught[0].message))
+
+            with zlink.PairSocket(ctx) as pair:
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    pair.set_send_ready_handler(lambda sock: None)
+                self.assertEqual(len(caught), 1)
+                self.assertIn("on_send_ready()", str(caught[0].message))
+
+    def test_xpub_subscription_event_remains_on_xpub_surface(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        with ctx:
+            with zlink.XPubSocket(ctx) as xpub:
+                with zlink.XSubSocket(ctx) as xsub:
+                    endpoint = "inproc://py-xpub-subscription-event"
+                    xpub.set_pub_option(0x3301, (1).to_bytes(4, "little"))
+                    xpub.bind(endpoint)
+                    xsub.connect(endpoint)
+                    xsub.subscribe(b"topic")
+
+                    event = xpub.subscription_event()
+                    self.assertTrue(event["subscribed"])
+                    self.assertEqual(event["topic"], b"topic")
 
 
 if __name__ == "__main__":

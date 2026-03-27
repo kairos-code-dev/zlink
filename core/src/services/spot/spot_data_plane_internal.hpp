@@ -105,15 +105,18 @@ inline void snapshot_connected_mesh_peer_endpoints (
     *out_ = state_->connected_endpoints;
 }
 
-inline bool sync_mesh_peer_monitor_state (spot_mesh_peer_state_t *state_,
-                                          const zlink_monitor_event_t &raw_)
+inline bool sync_mesh_peer_monitor_state (
+  spot_mesh_peer_state_t *state_,
+  const zlink_monitor_event_t &raw_,
+  bool *endpoint_membership_changed_out_ = NULL)
 {
     if (!state_ || raw_.remote_addr[0] == '\0')
         return false;
 
     scoped_lock_t lock (state_->sync);
-    bool changed =
+    bool endpoint_membership_changed =
       sync_monitor_connected_endpoint (&state_->connected_endpoints, raw_);
+    bool changed = endpoint_membership_changed;
     if (raw_.event == ZLINK_EVENT_DISCONNECTED
         && state_->connected_endpoints.empty ()
         && state_->connected_ready_peer_count.load (std::memory_order_acquire)
@@ -133,6 +136,8 @@ inline bool sync_mesh_peer_monitor_state (spot_mesh_peer_state_t *state_,
 
     if (changed)
         state_->version.fetch_add (1, std::memory_order_acq_rel);
+    if (endpoint_membership_changed_out_)
+        *endpoint_membership_changed_out_ = endpoint_membership_changed;
     return changed;
 }
 
@@ -258,6 +263,10 @@ struct spot_data_plane_protocol_t
     static int publish_bootstrap_descriptor (socket_base_t *mesh_pub_,
                                              spot_node_t *node_,
                                              spot_runtime_t *runtime_);
+    static bool should_publish_bootstrap_descriptor (
+      const spot_runtime_t *runtime_,
+      bool bootstrap_ready_,
+      uint64_t last_published_peer_version_);
     static uint64_t resolve_bootstrap_broadcast_interval_ms (
       const spot_runtime_t *runtime_,
       bool bootstrap_ready_);

@@ -6,8 +6,6 @@ from .helpers import (
     transports,
     endpoint_for,
     try_transport,
-    ZLINK_XPUB,
-    ZLINK_XSUB,
 )
 
 ZLINK_PUB_OPT_VERBOSE = 0x3301
@@ -18,8 +16,8 @@ class XpubXsubScenarioTest(unittest.TestCase):
         ctx = zlink.Context()
         for name, endpoint in transports("xpub"):
             def run():
-                xpub = zlink.Socket(ctx, ZLINK_XPUB)
-                xsub = zlink.Socket(ctx, ZLINK_XSUB)
+                xpub = zlink.XPubSocket(ctx)
+                xsub = zlink.XSubSocket(ctx)
                 xpub.set_pub_option(ZLINK_PUB_OPT_VERBOSE, (1).to_bytes(4, "little"))
                 ep = endpoint_for(name, endpoint, "-xpub")
                 xpub.bind(ep)

@@ -1,0 +1,157 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package dev.kairoscode.zlink;
+
+import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.NativeLayouts;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+final class TopicPlane {
+    private final Socket socket;
+
+    TopicPlane(Socket socket) {
+        this.socket = socket;
+    }
+
+    void publish(String topicId, Message part) {
+        publish(topicId, part, SendFlag.NONE);
+    }
+
+    void publish(String topicId, Message part, SendFlag flags) {
+        Objects.requireNonNull(part, "part");
+        publish(topicId, List.of(part), flags);
+    }
+
+    void publish(String topicId, List<Message> parts) {
+        publish(topicId, parts, SendFlag.NONE);
+    }
+
+    void publish(String topicId, List<Message> parts, SendFlag flags) {
+        Objects.requireNonNull(topicId, "topicId");
+        Objects.requireNonNull(parts, "parts");
+        Objects.requireNonNull(flags, "flags");
+        socket.publishParts(topicId, parts, flags, false);
+    }
+
+    TopicMessage subscribe() {
+        return subscribe(ReceiveFlag.NONE);
+    }
+
+    TopicMessage subscribe(ReceiveFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        socket.ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+                (byte) 0);
+            MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment topicOut = arena.allocate(Socket.TOPIC_CAPACITY);
+            MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+            topicLenOut.set(ValueLayout.JAVA_LONG, 0, Socket.TOPIC_CAPACITY);
+
+            int rc = Native.subscribe(socket.handle(), rid, partsOut, partCountOut,
+                topicOut, topicLenOut, flags.getValue());
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_subscribe");
+
+            byte[] routingId = Socket.decodeRoutingId(rid);
+            long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
+            MemorySegment partsAddr = partsOut.get(ValueLayout.ADDRESS, 0);
+            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
+            int topicLength = Socket.normalizeTopicLength(topicOut, Socket.TOPIC_CAPACITY,
+                topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+            String topicId = topicLength == 0
+                ? ""
+                : new String(topicOut.asSlice(0, topicLength).toArray(
+                    ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+            return new TopicMessage(Socket.toRoutingId(routingId), topicId, parts);
+        }
+    }
+
+    SubscriptionEvent subscriptionEvent(ReceiveFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        socket.ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+                (byte) 0);
+            MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment topicOut = arena.allocate(Socket.TOPIC_CAPACITY);
+            MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+            topicLenOut.set(ValueLayout.JAVA_LONG, 0, Socket.TOPIC_CAPACITY);
+
+            int rc = Native.subscriptionEvent(socket.handle(), rid, subscribedOut,
+                topicOut, topicLenOut, flags.getValue());
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_subscription_event");
+
+            int topicLength = Socket.normalizeTopicLength(topicOut, Socket.TOPIC_CAPACITY,
+                topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+            String filter = topicLength == 0
+                ? ""
+                : new String(topicOut.asSlice(0, topicLength).toArray(
+                    ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+            return new SubscriptionEvent(Socket.toRoutingId(Socket.decodeRoutingId(rid)),
+                subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0, filter);
+        }
+    }
+
+    void setRoutingId(RoutingId rid) {
+        Objects.requireNonNull(rid, "rid");
+        byte[] value = rid.toByteArray();
+        socket.setRoutingIdBytes(value, 0, value.length);
+    }
+
+    RoutingId routingId() {
+        return RoutingId.copyOf(socket.getRoutingIdBytes());
+    }
+
+    void setSubscription(String filter) {
+        Objects.requireNonNull(filter, "filter");
+        byte[] bytes = filter.getBytes(StandardCharsets.UTF_8);
+        socket.setSubscriptionBytes(bytes, 0, bytes.length, true);
+    }
+
+    void setSubscription(byte[] filter) {
+        Objects.requireNonNull(filter, "filter");
+        socket.setSubscriptionBytes(filter, 0, filter.length, true);
+    }
+
+    void unsetSubscription(String filter) {
+        Objects.requireNonNull(filter, "filter");
+        byte[] bytes = filter.getBytes(StandardCharsets.UTF_8);
+        socket.setSubscriptionBytes(bytes, 0, bytes.length, false);
+    }
+
+    void unsetSubscription(byte[] filter) {
+        Objects.requireNonNull(filter, "filter");
+        socket.setSubscriptionBytes(filter, 0, filter.length, false);
+    }
+
+    List<SubscriptionEntry> subscriptions() {
+        socket.ensureOpen();
+        ArrayList<SubscriptionEntry> out = new ArrayList<>();
+        int capacity = 64;
+        try (Arena arena = Arena.ofConfined()) {
+            for (long index = 0;; index++) {
+                MemorySegment lenInOut = arena.allocate(ValueLayout.JAVA_LONG);
+                MemorySegment isPatternOut = arena.allocate(ValueLayout.JAVA_INT);
+                byte[] filter = socket.subscriptionAt(index, lenInOut,
+                    isPatternOut, capacity);
+                if (filter == null)
+                    break;
+                capacity = Math.max(capacity, filter.length);
+                out.add(SubscriptionEntry.fromBytes(filter,
+                    isPatternOut.get(ValueLayout.JAVA_INT, 0) != 0));
+            }
+        }
+        return List.copyOf(out);
+    }
+}

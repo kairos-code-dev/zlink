@@ -4,13 +4,17 @@
 #include <algorithm>
 #include <errno.h>
 #include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 namespace {
 
 static const size_t k_stream_slot_count = 8;
+static const int32_t k_stream_dispatch_none = 0;
+static const int32_t k_stream_dispatch_len32be = 1;
 static const int32_t k_legacy_socket_pair = 0;
 static const int32_t k_legacy_socket_pub = 1;
 static const int32_t k_legacy_socket_sub = 2;
@@ -37,7 +41,8 @@ struct stream_js_state_t
         socket (NULL),
         env (NULL),
         tsfn (NULL),
-        stop_requested (0)
+        stop_requested (0),
+        dispatch_mode (k_stream_dispatch_none)
     {
     }
 
@@ -46,6 +51,9 @@ struct stream_js_state_t
     napi_env env;
     napi_threadsafe_function tsfn;
     std::atomic<int> stop_requested;
+    int32_t dispatch_mode;
+    std::map<std::string, std::vector<unsigned char> > len32be_pending;
+    std::vector<std::vector<unsigned char> > peer_routing_ids;
 };
 
 static std::mutex g_stream_slots_mu;
@@ -78,6 +86,16 @@ void reset_stream_slot_unsafe(stream_js_state_t *state)
     state->env = NULL;
     state->tsfn = NULL;
     state->stop_requested.store(0, std::memory_order_release);
+    state->dispatch_mode = k_stream_dispatch_none;
+    state->len32be_pending.clear();
+    state->peer_routing_ids.clear();
+}
+
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *, zlink_msg_t *);
+
+extern "C" {
+int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
+int zlink_stream_detach (void *s_);
 }
 
 zlink_socket_type_t translate_socket_type(int32_t type)
@@ -371,60 +389,75 @@ void stream_tsfn_call_js(napi_env env,
     }
 }
 
-template <size_t Slot>
-int stream_on_packets_slot(const zlink_routing_id_t *rid_,
-                           zlink_msg_t *msgs_,
-                           size_t msg_count_,
-                           void *userdata_)
+std::string make_routing_id_key(const zlink_routing_id_t *rid)
 {
-    if (!rid_ || !msgs_ || msg_count_ == 0)
-        return 0;
+    if (!rid || rid->size == 0)
+        return std::string();
+    return std::string(reinterpret_cast<const char *>(rid->data), rid->size);
+}
 
-    const auto close_msgs = [msgs_, msg_count_]() {
-        for (size_t i = 0; i < msg_count_; ++i)
-            (void) zlink_msg_close(&msgs_[i]);
-    };
+void remember_stream_peer_unsafe(stream_js_state_t *state,
+                                 const zlink_routing_id_t *rid)
+{
+    if (!state || !rid || rid->size == 0)
+        return;
 
-    stream_js_state_t *state = &g_stream_slots[Slot];
-    napi_threadsafe_function tsfn = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
-        if (!state->used || !state->tsfn) {
-            close_msgs();
-            return 0;
-        }
-        if (state->stop_requested.load(std::memory_order_acquire) != 0) {
-            close_msgs();
-            return 1;
-        }
-        tsfn = state->tsfn;
+    for (size_t i = 0; i < state->peer_routing_ids.size(); ++i) {
+        const std::vector<unsigned char> &known = state->peer_routing_ids[i];
+        if (known.size() != rid->size)
+            continue;
+        if (memcmp(known.data(), rid->data, rid->size) == 0)
+            return;
     }
 
-    std::unique_ptr<stream_js_payload_t> payload(new stream_js_payload_t());
-    payload->routing_id.assign(rid_->data, rid_->data + rid_->size);
-    payload->packets.reserve(msg_count_);
+    std::vector<unsigned char> peer(rid->data, rid->data + rid->size);
+    state->peer_routing_ids.push_back(peer);
+}
 
-    for (size_t i = 0; i < msg_count_; ++i) {
-        zlink_msg_t *msg = &msgs_[i];
-        const unsigned char *packet_data =
-          static_cast<const unsigned char *>(zlink_msg_data(msg));
-        const size_t packet_size = zlink_msg_size(msg);
+void collect_stream_payload_unsafe(stream_js_state_t *state,
+                                   const zlink_routing_id_t *rid,
+                                   zlink_msg_t *msg,
+                                   stream_js_payload_t *payload)
+{
+    if (!state || !msg || !payload)
+        return;
+
+    if (rid && rid->size > 0)
+        payload->routing_id.assign(rid->data, rid->data + rid->size);
+
+    const unsigned char *packet_data =
+      static_cast<const unsigned char *>(zlink_msg_data(msg));
+    const size_t packet_size = zlink_msg_size(msg);
+
+    if (state->dispatch_mode != k_stream_dispatch_len32be) {
         std::vector<unsigned char> packet;
         if (packet_data && packet_size > 0)
             packet.assign(packet_data, packet_data + packet_size);
         payload->packets.push_back(packet);
-        (void) zlink_msg_close(msg);
+        return;
     }
 
-    napi_status call_status =
-      napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_blocking);
-    if (call_status != napi_ok)
-        return 1;
-    payload.release();
+    const std::string peer_key = make_routing_id_key(rid);
+    std::vector<unsigned char> &pending = state->len32be_pending[peer_key];
+    if (packet_data && packet_size > 0)
+        pending.insert(pending.end(), packet_data, packet_data + packet_size);
 
-    if (state->stop_requested.load(std::memory_order_acquire) != 0)
-        return 1;
-    return 0;
+    while (pending.size() >= 4) {
+        const size_t frame_size =
+          (static_cast<size_t>(pending[0]) << 24)
+          | (static_cast<size_t>(pending[1]) << 16)
+          | (static_cast<size_t>(pending[2]) << 8)
+          | static_cast<size_t>(pending[3]);
+        if (pending.size() < frame_size + 4)
+            break;
+
+        std::vector<unsigned char> packet;
+        if (frame_size > 0) {
+            packet.assign(pending.begin() + 4, pending.begin() + 4 + frame_size);
+        }
+        payload->packets.push_back(packet);
+        pending.erase(pending.begin(), pending.begin() + 4 + frame_size);
+    }
 }
 
 template <size_t Slot>
@@ -437,6 +470,7 @@ int stream_on_raw_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_, void *
 
     stream_js_state_t *state = &g_stream_slots[Slot];
     napi_threadsafe_function tsfn = NULL;
+    std::unique_ptr<stream_js_payload_t> payload;
     {
         std::lock_guard<std::mutex> lock(g_stream_slots_mu);
         if (!state->used || !state->tsfn) {
@@ -448,19 +482,15 @@ int stream_on_raw_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_, void *
             return 1;
         }
         tsfn = state->tsfn;
+        remember_stream_peer_unsafe(state, rid_);
+        payload.reset(new stream_js_payload_t());
+        collect_stream_payload_unsafe(state, rid_, msg_, payload.get());
+        if (payload->packets.empty()) {
+            close_msg();
+            return 0;
+        }
     }
 
-    std::unique_ptr<stream_js_payload_t> payload(new stream_js_payload_t());
-    payload->routing_id.assign(rid_->data, rid_->data + rid_->size);
-    payload->packets.reserve(1);
-
-    const unsigned char *packet_data =
-      static_cast<const unsigned char *>(zlink_msg_data(msg_));
-    const size_t packet_size = zlink_msg_size(msg_);
-    std::vector<unsigned char> packet;
-    if (packet_data && packet_size > 0)
-        packet.assign(packet_data, packet_data + packet_size);
-    payload->packets.push_back(packet);
     (void) zlink_msg_close(msg_);
 
     napi_status call_status =
@@ -474,40 +504,28 @@ int stream_on_raw_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_, void *
     return 0;
 }
 
-typedef int (*stream_slot_packets_callback_t)(const zlink_routing_id_t *,
-                                              zlink_msg_t *,
-                                              size_t,
-                                              void *);
-typedef int (*stream_slot_raw_callback_t)(const zlink_routing_id_t *,
-                                          zlink_msg_t *,
-                                          void *);
+template <size_t Slot>
+int stream_on_raw_legacy_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+{
+    return stream_on_raw_slot<Slot>(rid_, msg_, NULL);
+}
 
-#define STREAM_SLOT_PACKETS_CALLBACK(N) &stream_on_packets_slot<N>
-static stream_slot_packets_callback_t
-  g_stream_slot_packet_callbacks[k_stream_slot_count] = {
-    STREAM_SLOT_PACKETS_CALLBACK(0),
-    STREAM_SLOT_PACKETS_CALLBACK(1),
-    STREAM_SLOT_PACKETS_CALLBACK(2),
-    STREAM_SLOT_PACKETS_CALLBACK(3),
-    STREAM_SLOT_PACKETS_CALLBACK(4),
-    STREAM_SLOT_PACKETS_CALLBACK(5),
-    STREAM_SLOT_PACKETS_CALLBACK(6),
-    STREAM_SLOT_PACKETS_CALLBACK(7),
-};
-#undef STREAM_SLOT_PACKETS_CALLBACK
+typedef int (*stream_slot_raw_legacy_callback_t)(const zlink_routing_id_t *,
+                                                 zlink_msg_t *);
 
-#define STREAM_SLOT_RAW_CALLBACK(N) &stream_on_raw_slot<N>
-static stream_slot_raw_callback_t g_stream_slot_raw_callbacks[k_stream_slot_count] = {
-    STREAM_SLOT_RAW_CALLBACK(0),
-    STREAM_SLOT_RAW_CALLBACK(1),
-    STREAM_SLOT_RAW_CALLBACK(2),
-    STREAM_SLOT_RAW_CALLBACK(3),
-    STREAM_SLOT_RAW_CALLBACK(4),
-    STREAM_SLOT_RAW_CALLBACK(5),
-    STREAM_SLOT_RAW_CALLBACK(6),
-    STREAM_SLOT_RAW_CALLBACK(7),
+#define STREAM_SLOT_RAW_LEGACY_CALLBACK(N) &stream_on_raw_legacy_slot<N>
+static stream_slot_raw_legacy_callback_t
+  g_stream_slot_raw_legacy_callbacks[k_stream_slot_count] = {
+    STREAM_SLOT_RAW_LEGACY_CALLBACK(0),
+    STREAM_SLOT_RAW_LEGACY_CALLBACK(1),
+    STREAM_SLOT_RAW_LEGACY_CALLBACK(2),
+    STREAM_SLOT_RAW_LEGACY_CALLBACK(3),
+    STREAM_SLOT_RAW_LEGACY_CALLBACK(4),
+    STREAM_SLOT_RAW_LEGACY_CALLBACK(5),
+    STREAM_SLOT_RAW_LEGACY_CALLBACK(6),
+    STREAM_SLOT_RAW_LEGACY_CALLBACK(7),
 };
-#undef STREAM_SLOT_RAW_CALLBACK
+#undef STREAM_SLOT_RAW_LEGACY_CALLBACK
 
 void stream_release_slot(void *socket)
 {
@@ -941,11 +959,67 @@ napi_value socket_stream_attach(napi_env env, napi_callback_info info)
     int32_t mode = 0;
     if (argc >= 3)
         napi_get_value_int32(env, argv[2], &mode);
-    (void) sock;
-    (void) mode;
-    napi_throw_error(env, NULL,
-                     "streamAttach is not available on the aligned public API");
-    return NULL;
+    if (mode != k_stream_dispatch_none && mode != k_stream_dispatch_len32be) {
+        napi_throw_range_error(env, NULL,
+                               "streamAttach mode must be NONE(0) or LEN32BE(1)");
+        return NULL;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        if (find_stream_slot_by_socket_unsafe(sock)) {
+            napi_throw_error(env, NULL, "STREAM callback already attached");
+            return NULL;
+        }
+    }
+
+    stream_js_state_t *slot = NULL;
+    size_t slot_index = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        slot = find_free_stream_slot_unsafe();
+        if (!slot) {
+            napi_throw_error(env, NULL,
+                             "no free STREAM callback slot (max 8 attached sockets)");
+            return NULL;
+        }
+        slot_index = static_cast<size_t>(slot - g_stream_slots);
+    }
+
+    napi_value resource_name;
+    napi_create_string_utf8(env, "zlink-stream", NAPI_AUTO_LENGTH,
+                            &resource_name);
+    napi_threadsafe_function tsfn = NULL;
+    napi_status tsfn_status = napi_create_threadsafe_function(
+      env, argv[1], NULL, resource_name, 0, 1, slot, stream_tsfn_finalize, slot,
+      stream_tsfn_call_js, &tsfn);
+    if (tsfn_status != napi_ok) {
+        napi_throw_error(env, NULL, "streamAttach failed to create callback queue");
+        return NULL;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        slot->used = true;
+        slot->socket = sock;
+        slot->env = env;
+        slot->tsfn = tsfn;
+        slot->stop_requested.store(0, std::memory_order_release);
+        slot->dispatch_mode = mode;
+        slot->len32be_pending.clear();
+        slot->peer_routing_ids.clear();
+    }
+
+    int rc = zlink_stream_attach_raw(
+      sock, g_stream_slot_raw_legacy_callbacks[slot_index]);
+    if (rc != 0) {
+        stream_release_slot(sock);
+        return throw_last_error(env, "streamAttach failed");
+    }
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value socket_stream_detach(napi_env env, napi_callback_info info)
@@ -956,7 +1030,12 @@ napi_value socket_stream_detach(napi_env env, napi_callback_info info)
     void *sock = NULL;
     napi_get_value_external(env, argv[0], &sock);
 
-    (void) sock;
+    int rc = zlink_stream_detach(sock);
+    if (rc != 0) {
+        int err = zlink_errno();
+        if (err != EINVAL)
+            return throw_last_error(env, "streamDetach failed");
+    }
     stream_release_slot(sock);
 
     napi_value ok;
@@ -975,11 +1054,25 @@ napi_value socket_stream_peer_routing_id(napi_env env, napi_callback_info info)
     if (argc >= 2)
         napi_get_value_int32(env, argv[1], &index);
 
-    (void) sock;
-    (void) index;
-    napi_value none;
-    napi_get_null(env, &none);
-    return none;
+    if (index < 0) {
+        napi_value none;
+        napi_get_null(env, &none);
+        return none;
+    }
+
+    std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+    stream_js_state_t *state = find_stream_slot_by_socket_unsafe(sock);
+    if (!state || static_cast<size_t>(index) >= state->peer_routing_ids.size()) {
+        napi_value none;
+        napi_get_null(env, &none);
+        return none;
+    }
+
+    const std::vector<unsigned char> &rid = state->peer_routing_ids[index];
+    napi_value out;
+    napi_create_buffer_copy(
+      env, rid.size(), rid.empty() ? NULL : rid.data(), NULL, &out);
+    return out;
 }
 
 napi_value socket_stream_send(napi_env env, napi_callback_info info)
@@ -1014,20 +1107,49 @@ napi_value socket_stream_send(napi_env env, napi_callback_info info)
         napi_throw_type_error(env, NULL, "streamSend payload must be Buffer");
         return NULL;
     }
+    const size_t public_payload_len = payload_len;
 
     int32_t flags = 0;
     if (argc >= 4)
         napi_get_value_int32(env, argv[3], &flags);
 
-    (void) sock;
-    (void) rid_data;
-    (void) rid_len;
-    (void) payload_data;
-    (void) payload_len;
-    (void) flags;
-    napi_throw_error(env, NULL,
-                     "streamSend is not available on the aligned public API");
-    return NULL;
+    std::vector<unsigned char> framed_payload;
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        stream_js_state_t *state = find_stream_slot_by_socket_unsafe(sock);
+        if (state && state->dispatch_mode == k_stream_dispatch_len32be) {
+            framed_payload.resize(payload_len + 4);
+            framed_payload[0] = static_cast<unsigned char>((payload_len >> 24) & 0xFF);
+            framed_payload[1] = static_cast<unsigned char>((payload_len >> 16) & 0xFF);
+            framed_payload[2] = static_cast<unsigned char>((payload_len >> 8) & 0xFF);
+            framed_payload[3] = static_cast<unsigned char>(payload_len & 0xFF);
+            if (payload_len > 0) {
+                memcpy(
+                  framed_payload.data() + 4, payload_data, payload_len);
+            }
+            payload_data = framed_payload.data();
+            payload_len = framed_payload.size();
+        }
+    }
+
+    zlink_routing_id_t rid;
+    memset(&rid, 0, sizeof(rid));
+    rid.size = static_cast<uint8_t>(rid_len);
+    memcpy(rid.data, rid_data, rid_len);
+
+    zlink_msg_t msg;
+    if (!init_msg_from_bytes(&msg, payload_data, payload_len))
+        return throw_last_error(env, "streamSend failed");
+
+    int rc = zlink_send_rid(sock, &rid, &msg, 1, flags);
+    if (rc != 0)
+        (void) zlink_msg_close(&msg);
+    if (rc < 0)
+        return throw_last_error(env, "streamSend failed");
+
+    napi_value out;
+    napi_create_int32(env, static_cast<int32_t>(public_payload_len), &out);
+    return out;
 }
 
 napi_value socket_setopt(napi_env env, napi_callback_info info)

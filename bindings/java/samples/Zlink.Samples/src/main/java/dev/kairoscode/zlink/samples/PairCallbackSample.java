@@ -4,8 +4,7 @@ package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
+import dev.kairoscode.zlink.PairSocket;
 import java.util.concurrent.CountDownLatch;
 
 public final class PairCallbackSample {
@@ -14,8 +13,8 @@ public final class PairCallbackSample {
         String endpoint = SampleSupport.inprocEndpoint("pair-callback");
         CountDownLatch delivered = new CountDownLatch(1);
         try (Context ctx = new Context();
-             Socket server = new Socket(ctx, SocketType.PAIR);
-             Socket client = new Socket(ctx, SocketType.PAIR)) {
+             PairSocket server = new PairSocket(ctx);
+             PairSocket client = new PairSocket(ctx)) {
             server.onReceive(received -> {
                 try (received) {
                     System.out.println("pair callback: " + SampleSupport.singleUtf8(received));

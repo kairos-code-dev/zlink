@@ -14,8 +14,8 @@ def _tcp_endpoint():
 
 def main():
     with zlink.Context() as ctx:
-        with zlink.Socket(ctx, zlink.SocketType.ROUTER) as router:
-            with zlink.Socket(ctx, zlink.SocketType.DEALER) as dealer:
+        with zlink.RouterSocket(ctx) as router:
+            with zlink.DealerSocket(ctx) as dealer:
                 done = threading.Event()
 
                 def on_request(received):
@@ -26,7 +26,7 @@ def main():
                 dealer.set_routing_id(b"CLIENT")
                 router.bind(endpoint)
                 dealer.connect(endpoint)
-                router.set_recv_handler(on_request)
+                router.on_receive(on_request)
 
                 dealer.send(b"ping")
                 if not done.wait(3.0):

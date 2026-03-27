@@ -5,8 +5,8 @@ if (!SampleSupport.IsNativeAvailable())
     return;
 
 using var ctx = new Context();
-using var publisher = new Socket(ctx, SocketType.Pub);
-using var subscriber = new Socket(ctx, SocketType.Sub);
+using var publisher = new PubSocket(ctx);
+using var subscriber = new SubSocket(ctx);
 string endpoint = SampleSupport.NewEndpoint("inproc", "pubsub-recv");
 publisher.Bind(endpoint);
 subscriber.Connect(endpoint);

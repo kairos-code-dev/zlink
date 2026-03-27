@@ -3,8 +3,8 @@ import zlink
 
 def main():
     with zlink.Context() as ctx:
-        with zlink.Socket(ctx, zlink.SocketType.ROUTER) as router:
-            with zlink.Socket(ctx, zlink.SocketType.DEALER) as dealer:
+        with zlink.RouterSocket(ctx) as router:
+            with zlink.DealerSocket(ctx) as dealer:
                 endpoint = "inproc://py-example-dealer-router"
                 dealer.set_routing_id(b"CLIENT")
                 router.bind(endpoint)

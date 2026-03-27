@@ -16,8 +16,8 @@ public sealed class test_xpub_verbose
             return;
 
         using var ctx = new Context();
-        using var xpub = new Socket(ctx, SocketType.XPub);
-        using var sub = new Socket(ctx, SocketType.Sub);
+        using var xpub = new XPubSocket(ctx);
+        using var sub = new SubSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "xpub-verbose");
         xpub.Bind(endpoint);
@@ -66,9 +66,9 @@ public sealed class test_xpub_verbose
             return;
 
         using var ctx = new Context();
-        using var xpub = new Socket(ctx, SocketType.XPub);
-        using var sub0 = new Socket(ctx, SocketType.Sub);
-        using var sub1 = new Socket(ctx, SocketType.Sub);
+        using var xpub = new XPubSocket(ctx);
+        using var sub0 = new SubSocket(ctx);
+        using var sub1 = new SubSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "xpub-two");
         xpub.Bind(endpoint);
@@ -120,8 +120,8 @@ public sealed class test_xpub_verbose
             return;
 
         using var ctx = new Context();
-        using var xpub = new Socket(ctx, SocketType.XPub);
-        using var sub = new Socket(ctx, SocketType.Sub);
+        using var xpub = new XPubSocket(ctx);
+        using var sub = new SubSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "xpub-verboser1");
         xpub.Bind(endpoint);
@@ -168,9 +168,9 @@ public sealed class test_xpub_verbose
             return;
 
         using var ctx = new Context();
-        using var xpub = new Socket(ctx, SocketType.XPub);
-        using var sub0 = new Socket(ctx, SocketType.Sub);
-        using var sub1 = new Socket(ctx, SocketType.Sub);
+        using var xpub = new XPubSocket(ctx);
+        using var sub0 = new SubSocket(ctx);
+        using var sub1 = new SubSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "xpub-verboser2");
         xpub.Bind(endpoint);

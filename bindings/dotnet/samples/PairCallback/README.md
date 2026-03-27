@@ -1,1 +1,1 @@
-`PairCallback` shows `RecvHandler` on a `PAIR` socket.
+`PairCallback` shows `RecvHandler` on `PairSocket`.

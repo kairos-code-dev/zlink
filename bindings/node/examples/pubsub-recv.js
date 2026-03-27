@@ -5,7 +5,7 @@
 const zlink = require('../src');
 
 const ctx = new zlink.Context();
-const sub = new zlink.Socket(ctx, zlink.SocketType.SUB);
+const sub = new zlink.SubSocket(ctx);
 
 sub.subscribe('topic');
 console.log('subscribed');

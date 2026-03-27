@@ -4,8 +4,7 @@
 #include "bench_multi_pattern.hpp"
 #include "bench_multi_resource.hpp"
 #include "bench_common_multi.hpp"
-
-#include "../../../../perf/multi/common/perf_common.hpp"
+#include "bench_common_zlink.hpp"
 
 #include <atomic>
 #include <csignal>

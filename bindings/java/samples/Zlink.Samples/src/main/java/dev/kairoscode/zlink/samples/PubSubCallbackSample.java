@@ -5,8 +5,8 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
+import dev.kairoscode.zlink.PubSocket;
+import dev.kairoscode.zlink.SubSocket;
 import java.util.concurrent.CountDownLatch;
 
 public final class PubSubCallbackSample {
@@ -18,8 +18,8 @@ public final class PubSubCallbackSample {
         String endpoint = SampleSupport.inprocEndpoint("pubsub-callback");
         CountDownLatch delivered = new CountDownLatch(1);
         try (Context ctx = new Context();
-             Socket pub = new Socket(ctx, SocketType.PUB);
-             Socket sub = new Socket(ctx, SocketType.SUB);
+             PubSocket pub = new PubSocket(ctx);
+             SubSocket sub = new SubSocket(ctx);
              var pubMonitor = pub.monitorOpen(READY_EVENTS);
              var subMonitor = sub.monitorOpen(READY_EVENTS)) {
             sub.onSubscribe((routingId, topic, received) -> {

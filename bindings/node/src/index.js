@@ -2,90 +2,32 @@
 
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-
-function prependPathEntries(entries) {
-  const existing = (process.env.PATH || '').split(';').filter(Boolean);
-  for (const entry of entries) {
-    if (!entry || !fs.existsSync(entry)) continue;
-    if (!existing.includes(entry)) existing.unshift(entry);
-  }
-  process.env.PATH = existing.join(';');
-}
-
-function loadNative() {
-  try {
-    if (process.platform === 'linux') {
-      const addonDir = path.join(__dirname, '..', 'build', 'Release');
-      const coreDir = path.join(__dirname, '..', '..', '..', 'core', 'build', 'lib');
-      const coreAltDir = path.join(__dirname, '..', '..', 'build_cpp', 'lib');
-      const addonLib = path.join(addonDir, 'libzlink.so.5');
-      const coreLib = path.join(coreDir, 'libzlink.so.5');
-      const coreAltLib = path.join(coreAltDir, 'libzlink.so.5');
-      if (!fs.existsSync(addonLib)) {
-        let sourceLib = null;
-        if (fs.existsSync(coreAltLib)) {
-          sourceLib = coreAltLib;
-        } else if (fs.existsSync(coreLib)) {
-          sourceLib = coreLib;
-        }
-        if (sourceLib) {
-          try {
-            fs.symlinkSync(sourceLib, addonLib);
-          } catch (err) {
-            if (!err || err.code !== 'EEXIST') throw err;
-          }
-        }
-      }
-      const existing = (process.env.LD_LIBRARY_PATH || '').split(':').filter(Boolean);
-      for (const entry of [coreAltDir, coreDir, addonDir]) {
-        if (!existing.includes(entry)) existing.unshift(entry);
-      }
-      process.env.LD_LIBRARY_PATH = existing.join(':');
-    }
-    return require('../build/Release/zlink.node');
-  } catch (_) {
-    try {
-      const prebuiltDir = path.join(__dirname, '..', 'prebuilds', `${process.platform}-${process.arch}`);
-      const prebuilt = path.join(prebuiltDir, 'zlink.node');
-      if (process.platform === 'win32') {
-        prependPathEntries([
-          prebuiltDir,
-          process.env.ZLINK_OPENSSL_BIN,
-          process.env.OPENSSL_BIN,
-          'C:\\Program Files\\OpenSSL-Win64\\bin',
-          'C:\\Program Files\\Git\\mingw64\\bin',
-          'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer\\Git\\mingw64\\bin'
-        ]);
-      }
-      return require(prebuilt);
-    } catch (_) {
-      return null;
-    }
-  }
-}
-
-const native = loadNative();
-
-function requireNative() {
-  if (!native) throw new Error('zlink native addon not found. Build with node-gyp.');
-  return native;
-}
-
-function normalizeBufferLike(value, label = 'value') {
-  if (Buffer.isBuffer(value)) return value;
-  if (value instanceof Uint8Array) {
-    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
-  }
-  if (typeof value === 'string') return Buffer.from(value);
-  throw new TypeError(`${label} must be Buffer, Uint8Array, or string`);
-}
-
-const SocketType = Object.freeze({
-  PAIR: 0x1001, PUB: 0x1002, SUB: 0x1003, DEALER: 0x1004,
-  ROUTER: 0x1005, XPUB: 0x1006, XSUB: 0x1007, STREAM: 0x1008
-});
+const { requireNative } = require('./native');
+const { normalizeBufferLike } = require('./buffer_like');
+const { Message, Received } = require('./message');
+const {
+  SocketType,
+  SocketOption,
+  SendFlag,
+  ReceiveFlag,
+  StreamDispatchMode
+} = require('./socket/constants');
+const { BaseSocket } = require('./socket/base_socket');
+const { SendSocket } = require('./socket/send_socket');
+const { DuplexSocket } = require('./socket/duplex_socket');
+const { SubscriberSocket } = require('./socket/subscriber_socket');
+const { Socket } = require('./socket/compat_socket');
+const { MonitorSocket } = require('./socket/monitor_socket');
+const {
+  PubSocket,
+  XPubSocket,
+  PairSocket,
+  DealerSocket,
+  RouterSocket,
+  StreamSocket,
+  SubSocket,
+  XSubSocket
+} = require('./socket/socket_types');
 
 const ContextOption = Object.freeze({
   IO_THREADS: 1, MAX_SOCKETS: 2, SOCKET_LIMIT: 3,
@@ -95,38 +37,6 @@ const ContextOption = Object.freeze({
   BLOCKY: 10
 });
 
-const SocketOption = Object.freeze({
-  AFFINITY: 0x3001, RATE: 0x3003, RECOVERY_IVL: 0x3004,
-  SNDBUF: 0x3005, RCVBUF: 0x3006, FD: 0x3007, EVENTS: 0x3008,
-  TYPE: 0x3009, LINGER: 0x300A, RECONNECT_IVL: 0x300B,
-  BACKLOG: 0x300C, RECONNECT_IVL_MAX: 0x300D, MAXMSGSIZE: 0x300E,
-  SNDHWM: 0x300F, RCVHWM: 0x3010, MULTICAST_HOPS: 0x3011,
-  RCVTIMEO: 0x3012, SNDTIMEO: 0x3013, LAST_ENDPOINT: 0x3014,
-  TCP_KEEPALIVE: 0x3015, TCP_KEEPALIVE_CNT: 0x3016,
-  TCP_KEEPALIVE_IDLE: 0x3017, TCP_KEEPALIVE_INTVL: 0x3018,
-  IMMEDIATE: 0x3019, IPV6: 0x301A, CONFLATE: 0x301B,
-  TOS: 0x301C, HANDSHAKE_IVL: 0x301D, BLOCKY: 0x301E,
-  INVERT_MATCHING: 0x3020, HEARTBEAT_IVL: 0x3021,
-  HEARTBEAT_TTL: 0x3022, HEARTBEAT_TIMEOUT: 0x3023,
-  CONNECT_TIMEOUT: 0x3024, TCP_MAXRT: 0x3025,
-  MULTICAST_MAXTPDU: 0x3026, BINDTODEVICE: 0x3027,
-  TLS_CERT: 0x3028, TLS_KEY: 0x3029, TLS_CA: 0x302A,
-  TLS_VERIFY: 0x302B, TLS_REQUIRE_CLIENT_CERT: 0x302C,
-  TLS_HOSTNAME: 0x302D, TLS_TRUST_SYSTEM: 0x302E,
-  TLS_PASSWORD: 0x302F, ZMP_METADATA: 0x3030,
-  TCP_NODELAY: 0x3031, DISCOVERY_METADATA_MAX_SIZE: 0x3032,
-  ROUTING_ID: 5, SUBSCRIBE: 6, UNSUBSCRIBE: 7,
-  ROUTER_MANDATORY: 0x3101, ROUTER_HANDOVER: 0x3102,
-  PROBE_ROUTER: 0x3103, CONNECT_ROUTING_ID: 0x3104,
-  XPUB_VERBOSE: 0x3301, XPUB_VERBOSER: 0x3302, XPUB_MANUAL: 0x3303,
-  XPUB_MANUAL_LAST_VALUE: 0x3304, XPUB_NODROP: 0x3305,
-  XPUB_WELCOME_MSG: 0x3306, TOPICS_COUNT: 0x3307,
-  ONLY_FIRST_SUBSCRIBE: 0x3308
-});
-
-const SendFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001, SNDMORE: 0x0002 });
-const ReceiveFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001 });
-const StreamDispatchMode = Object.freeze({ NONE: 0, LEN32BE: 1 });
 const ErrorCode = Object.freeze({
   EFSM: 156384763, ENOCOMPATPROTO: 156384764, ETERM: 156384765, EMTHREAD: 156384766
 });
@@ -196,195 +106,6 @@ class Context {
   close() {
     if (!this._native) return;
     requireNative().ctxTerm(this._native);
-    this._native = null;
-  }
-}
-
-class Message {
-  constructor(buffer, borrowed) {
-    this._buffer = buffer;
-    this._borrowed = borrowed === true;
-    Object.freeze(this);
-  }
-
-  static copyOf(data, encoding = 'utf8') {
-    if (typeof data === 'string') return new Message(Buffer.from(data, encoding), false);
-    return new Message(Buffer.from(normalizeBufferLike(data, 'data')), false);
-  }
-
-  static wrap(buffer) {
-    return new Message(normalizeBufferLike(buffer, 'buffer'), true);
-  }
-
-  static empty() {
-    return new Message(Buffer.alloc(0), false);
-  }
-
-  toBuffer() {
-    return this._borrowed ? this._buffer : Buffer.from(this._buffer);
-  }
-
-  byteLength() {
-    return this._buffer.length;
-  }
-}
-
-class Received {
-  constructor(parts, routingId = null, hasMore = false) {
-    this.parts = Object.freeze(parts.slice());
-    this.routingId = routingId;
-    this.hasMore = hasMore === true;
-  }
-
-  close() {}
-}
-
-class Socket {
-  constructor(ctx, type) {
-    this._native = requireNative().socketNew(ctx._native, type);
-    this._own = true;
-  }
-
-  bind(endpoint) {
-    requireNative().socketBind(this._native, endpoint);
-  }
-
-  connect(endpoint) {
-    requireNative().socketConnect(this._native, endpoint);
-  }
-
-  send(message, flags = 0) {
-    const payload = message instanceof Message
-      ? message._buffer
-      : normalizeBufferLike(message, 'message');
-    return requireNative().socketSend(this._native, payload, flags | 0);
-  }
-
-  sendParts(parts, flags = 0) {
-    if (!Array.isArray(parts)) throw new TypeError('parts must be an array');
-    const buffers = parts.map((part, index) => {
-      if (part instanceof Message) return part._buffer;
-      return normalizeBufferLike(part, `parts[${index}]`);
-    });
-    return requireNative().socketSendParts(this._native, buffers, flags | 0);
-  }
-
-  sendFrom(buffer, length, flags = 0) {
-    const source = normalizeBufferLike(buffer, 'buffer');
-    return requireNative().socketSendFrom(this._native, source, length | 0, flags | 0);
-  }
-
-  recv(arg0 = 0, arg1 = undefined) {
-    if (typeof arg1 === 'number') {
-      return requireNative().socketRecv(this._native, arg0 | 0, arg1 | 0);
-    }
-    if (typeof arg0 === 'number' && arg0 > ReceiveFlag.DONTWAIT) {
-      return requireNative().socketRecv(this._native, arg0 | 0, 0);
-    }
-    const raw = requireNative().socketRecvMessage(this._native, arg0 | 0);
-    return new Received(raw.parts, raw.routingId ?? null, raw.hasMore === true);
-  }
-
-  recvInto(buffer, flags = 0) {
-    return requireNative().socketRecvInto(this._native, normalizeBufferLike(buffer, 'buffer'), flags | 0);
-  }
-
-  recvMsgInto(buffer, flags = 0) {
-    return requireNative().socketRecvMsgInto(this._native, normalizeBufferLike(buffer, 'buffer'), flags | 0);
-  }
-
-  setSockOpt(option, value) {
-    requireNative().socketSetOpt(this._native, option | 0, normalizeBufferLike(value, 'value'));
-  }
-
-  getSockOpt(option) {
-    return requireNative().socketGetOpt(this._native, option | 0);
-  }
-
-  setOption(option, value) {
-    this.setSockOpt(option, value);
-  }
-
-  getOption(option) {
-    return this.getSockOpt(option);
-  }
-
-  setRoutingId(routingId) {
-    this.setSockOpt(SocketOption.ROUTING_ID, routingId);
-  }
-
-  getRoutingId() {
-    return this.getSockOpt(SocketOption.ROUTING_ID);
-  }
-
-  subscribe(filter) {
-    this.setSockOpt(SocketOption.SUBSCRIBE, normalizeBufferLike(filter, 'filter'));
-  }
-
-  unsubscribe(filter) {
-    this.setSockOpt(SocketOption.UNSUBSCRIBE, normalizeBufferLike(filter, 'filter'));
-  }
-
-  monitorOpen(events) {
-    return new MonitorSocket(requireNative().monitorOpen(this._native, events | 0));
-  }
-
-  streamAttach(handler, mode = 0) {
-    if (typeof handler !== 'function') throw new TypeError('streamAttach handler must be a function');
-    requireNative().socketStreamAttach(this._native, handler, mode | 0);
-  }
-
-  streamAttachRaw(handler) {
-    this.streamAttach(handler, StreamDispatchMode.NONE);
-  }
-
-  streamAttachLen32be(handler) {
-    this.streamAttach(handler, StreamDispatchMode.LEN32BE);
-  }
-
-  streamDetach() {
-    requireNative().socketStreamDetach(this._native);
-  }
-
-  streamPeerRoutingId(index = 0) {
-    return requireNative().socketStreamPeerRoutingId(this._native, index | 0);
-  }
-
-  streamSend(routingId, payload, flags = 0) {
-    return requireNative().socketStreamSend(
-      this._native,
-      normalizeBufferLike(routingId, 'routingId'),
-      normalizeBufferLike(payload, 'payload'),
-      flags | 0
-    );
-  }
-
-  close() {
-    if (!this._native) return;
-    try {
-      requireNative().socketStreamDetach(this._native);
-    } catch (_) {}
-    if (this._own) requireNative().socketClose(this._native);
-    this._native = null;
-  }
-}
-
-class MonitorSocket {
-  constructor(handle) {
-    this._native = handle;
-  }
-
-  recv() {
-    return requireNative().monitorRecv(this._native);
-  }
-
-  snapshot() {
-    return requireNative().monitorSnapshot(this._native);
-  }
-
-  close() {
-    if (!this._native) return;
-    requireNative().monitorClose(this._native);
     this._native = null;
   }
 }
@@ -749,8 +470,20 @@ module.exports = {
   Context,
   Message,
   Received,
+  BaseSocket,
+  SendSocket,
+  DuplexSocket,
+  SubscriberSocket,
   Socket,
   MonitorSocket,
+  PubSocket,
+  XPubSocket,
+  PairSocket,
+  DealerSocket,
+  RouterSocket,
+  StreamSocket,
+  SubSocket,
+  XSubSocket,
   ServiceMonitor,
   Poller,
   Registry,

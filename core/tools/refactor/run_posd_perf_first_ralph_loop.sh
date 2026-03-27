@@ -12,6 +12,7 @@ POLL_SECONDS=30
 STRESS_COUNT=10
 GATE_LABEL="posd_perf_first_gate"
 MODEL_ARG=(--model "gpt-5.4")
+CHECK_EXISTING_SUPERVISOR=0
 SUPERVISOR_PID=""
 ARTIFACT_SNAPSHOT_FILE=""
 EXTERNAL_ARTIFACTS_DIR=""
@@ -28,8 +29,8 @@ The default authority document is:
 Options:
   --guide PATH          Override execution guide path
                         (default: ${GUIDE_PATH})
-  --master-plan PATH    Override the secondary authority path passed
-                        to the supervisor. By default it reuses --guide.
+  --master-plan PATH    Legacy compatibility path passed to the supervisor.
+                        New runs should keep this equal to --guide.
                         (default: ${MASTER_PLAN_PATH})
   --logs-dir PATH       Override log directory
                         (default: ${LOGS_DIR})
@@ -43,6 +44,8 @@ Options:
                         (default: ${GATE_LABEL})
   --model MODEL         Override the default codex model
                         (default: gpt-5.4)
+  --check-existing-supervisor
+                        Refuse to start if the same supervisor is already running
   -h, --help            Show this help text
 
 Examples:
@@ -220,6 +223,10 @@ while [[ $# -gt 0 ]]; do
       MODEL_ARG=(--model "$2")
       shift 2
       ;;
+    --check-existing-supervisor)
+      CHECK_EXISTING_SUPERVISOR=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -249,29 +256,32 @@ LOGS_DIR="$(realpath -m "${LOGS_DIR}")"
 mkdir -p "${LOGS_DIR}"
 capture_external_artifact_snapshot
 
-mapfile -t existing_supervisors < <(
-  pgrep -af "${ROOT_DIR}/core/tools/run_codex_execution_guide_loop.sh" | \
-    while IFS= read -r line; do
-      [[ -z "${line}" ]] && continue
-      if [[ "${line%% *}" == "$$" ]]; then
-        continue
-      fi
-      if matches_current_supervisor "${line}"; then
-        printf '%s\n' "${line}"
-      fi
-    done
-)
+if [[ "${CHECK_EXISTING_SUPERVISOR}" -eq 1 ]]; then
+  mapfile -t existing_supervisors < <(
+    pgrep -af "${ROOT_DIR}/core/tools/ralphloop/run_codex_execution_guide_loop.sh" | \
+      while IFS= read -r line; do
+        [[ -z "${line}" ]] && continue
+        if [[ "${line%% *}" == "$$" ]]; then
+          continue
+        fi
+        if matches_current_supervisor "${line}"; then
+          printf '%s\n' "${line}"
+        fi
+      done
+  )
 
-if [[ "${#existing_supervisors[@]}" -gt 0 ]]; then
-  echo "Existing execution supervisor detected. Stop it before starting a new Ralph loop." >&2
-  printf '%s\n' "${existing_supervisors[@]}" >&2
-  exit 16
+  if [[ "${#existing_supervisors[@]}" -gt 0 ]]; then
+    echo "Existing execution supervisor detected. Stop it before starting a new Ralph loop." >&2
+    printf '%s\n' "${existing_supervisors[@]}" >&2
+    exit 16
+  fi
 fi
 
 echo "=== POSD performance-first Ralph loop start ==="
 echo "Root: ${ROOT_DIR}"
 echo "Guide: ${GUIDE_PATH}"
-echo "Master plan: ${MASTER_PLAN_PATH}"
+echo "Guide mode: single execution guide authority"
+echo "Legacy secondary plan: ${MASTER_PLAN_PATH}"
 echo "Logs dir: ${LOGS_DIR}"
 echo "Gate label: ${GATE_LABEL}"
 echo "Max iterations: ${MAX_ITERATIONS}"
@@ -279,7 +289,7 @@ echo "Stress count: ${STRESS_COUNT}"
 
 cd "${ROOT_DIR}"
 
-"${ROOT_DIR}/core/tools/run_codex_execution_guide_loop.sh" \
+"${ROOT_DIR}/core/tools/ralphloop/run_codex_execution_guide_loop.sh" \
   --guide "${GUIDE_PATH}" \
   --master-plan "${MASTER_PLAN_PATH}" \
   --logs-dir "${LOGS_DIR}" \

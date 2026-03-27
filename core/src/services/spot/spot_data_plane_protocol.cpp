@@ -28,6 +28,9 @@ namespace zlink
 namespace
 {
 static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+// Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+// data-plane thread long enough to inflate delivery tail latency.
+static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
 
 static void spot_ctrl_debugf (const char *fmt_, ...)
 {
@@ -407,6 +410,23 @@ int spot_data_plane_protocol_t::publish_bootstrap_descriptor (
     return 0;
 }
 
+bool spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
+  const spot_runtime_t *runtime_,
+  bool bootstrap_ready_,
+  uint64_t last_published_peer_version_)
+{
+    if (!runtime_ || !bootstrap_ready_)
+        return true;
+
+    const uint32_t ready_peer_count =
+      connected_ready_peer_count (&runtime_->mesh_peer_state);
+    if (ready_peer_count == 0)
+        return true;
+
+    return mesh_peer_version (&runtime_->mesh_peer_state)
+           != last_published_peer_version_;
+}
+
 void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
   spot_runtime_t *runtime_, const zlink_monitor_event_t &raw_)
 {
@@ -555,6 +575,7 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
     }
 
     unsigned int processed = 0;
+    size_t processed_bytes = 0;
     for (;;) {
         msg_t topic_msg;
         if (topic_msg.init () != 0)
@@ -570,6 +591,7 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         const char *topic_data =
           static_cast<const char *> (topic_msg.data ());
         const size_t topic_size = topic_msg.size ();
+        processed_bytes += topic_size;
 
         if (!spot_control_protocol::is_bootstrap_ctrl_descriptor_topic (
               topic_data, topic_size)) {
@@ -588,6 +610,7 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
                     return -1;
                 }
                 more = (frame.flags () & msg_t::more) != 0;
+                processed_bytes += frame.size ();
                 if (fanout_->send (&frame, more ? ZLINK_SNDMORE : 0) != 0) {
                     frame.close ();
                     return -1;
@@ -597,7 +620,8 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
 
             topic_msg.close ();
             ++processed;
-            if (processed >= mesh_xsub_forward_batch_limit)
+            if (processed >= mesh_xsub_forward_batch_limit
+                || processed_bytes >= mesh_xsub_forward_batch_bytes_limit)
                 return 0;
             continue;
         }
@@ -649,7 +673,8 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         }
         spot_node_access_t::schedule_subscription_replay (node_);
         ++processed;
-        if (processed >= mesh_xsub_forward_batch_limit)
+        if (processed >= mesh_xsub_forward_batch_limit
+            || processed_bytes >= mesh_xsub_forward_batch_bytes_limit)
             return 0;
     }
 }

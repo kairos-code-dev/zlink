@@ -5,8 +5,8 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
+import dev.kairoscode.zlink.PubSocket;
+import dev.kairoscode.zlink.SubSocket;
 
 public final class PubSubRecvSample {
     private static final int READY_EVENTS = MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
@@ -16,8 +16,8 @@ public final class PubSubRecvSample {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.inprocEndpoint("pubsub-recv");
         try (Context ctx = new Context();
-             Socket pub = new Socket(ctx, SocketType.PUB);
-             Socket sub = new Socket(ctx, SocketType.SUB);
+             PubSocket pub = new PubSocket(ctx);
+             SubSocket sub = new SubSocket(ctx);
              var pubMonitor = pub.monitorOpen(READY_EVENTS);
              var subMonitor = sub.monitorOpen(READY_EVENTS)) {
             pub.bind(endpoint);

@@ -4,10 +4,11 @@
 > 대상 범위: `core/`, `core/tests/`, `core/tools/refactor/`
 > 기본 빌드 디렉터리: `core/build/`
 > 실행 래퍼: `core/tools/refactor/run_posd_perf_first_ralph_loop.sh`
-> 상위 supervisor: `core/tools/run_codex_execution_guide_loop.sh`
+> 상위 supervisor: `core/tools/ralphloop/run_codex_execution_guide_loop.sh`
 > 우선순위: correctness/API-ABI 유지 > 성능 비퇴행 > POSD 기반 복잡도 감소
 > 목적: 성능이 핵심 계약인 `core`에서, hot path 비용을 늘리지 않는 POSD 리팩토링만 허용하면서 남아 있는 구조 허브를 반복적으로 줄이고, 더 이상 의미 있는 리팩토링 필요가 없을 때까지 자동/반자동 반복을 가능하게 한다.
 > 운영 방식: 이 문서는 개발 작업이 한 차례 정리된 뒤 주기적으로 실행하는 `core` POSD 리팩토링 가이드다.
+> 문서 체계: 이 실행의 유일한 authority 문서는 이 실행가이드 한 파일이다. 별도 main/master/gap/spec 보조 문서는 만들지 않는다.
 > 현재 운영 모드: 개발 완료 직후 정리 단계. 종료 게이트는 baseline 수치 준수보다 perf/test 무실패와 구조 허브 소거를 우선하며, baseline 비교는 기록용 참고 근거로 취급한다.
 
 ## 1. 이 문서의 역할
@@ -506,7 +507,7 @@ ctest --test-dir core/build --output-on-failure
 
 ```bash
 ./core/tests/run_test_lanes.sh --include-e2e
-./core/tools/run_execution_gate_loop.sh \
+./core/tools/ralphloop/run_execution_gate_loop.sh \
   --logs-dir /home/hep7/project/kairos/zlink/core/tools/refactor/logs \
   --label posd_perf_first_gate \
   --count 10

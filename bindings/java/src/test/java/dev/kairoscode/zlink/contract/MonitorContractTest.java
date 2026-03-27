@@ -2,8 +2,7 @@ package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
+import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.TestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +14,7 @@ public class MonitorContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
-             Socket socket = new Socket(ctx, SocketType.PAIR);
+             PairSocket socket = new PairSocket(ctx);
              var monitor = socket.monitorOpen(MonitorEventType.ALL.getValue())) {
             assertTrue(monitor.snapshot().readyCount() >= 0);
         }

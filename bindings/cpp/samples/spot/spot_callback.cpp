@@ -58,20 +58,20 @@ int main ()
     state.ready = false;
     assert (spot.subscribe_handler (&subscribe_callback, &state) == 0);
     assert (spot.subscribe ("topic:alpha") == 0);
-    assert (zlink_cpp_sample::wait_for_service_monitor_event (
+    assert (detail::wait_for_service_monitor_event (
       sub_monitor,
       static_cast<uint32_t> (
         zlink::service_monitor_event::spot_filter_applied),
       10000));
-    assert (zlink_cpp_sample::wait_for_service_monitor_state (
+    assert (detail::wait_for_service_monitor_state (
       pub_monitor, ZLINK_MONITOR_STATE_SEND_READY, 10000));
 
     zlink::message_t outbound =
-      zlink_cpp_sample::make_message ("spot-callback");
+      detail::make_message ("spot-callback");
     assert (spot.publish ("topic:alpha", outbound) == 0);
 
     std::unique_lock<std::mutex> lock (state.mutex);
-    assert (zlink_cpp_sample::wait_until (state.cv, lock, state.ready, 10000));
+    assert (detail::wait_until (state.cv, lock, state.ready, 10000));
     assert (state.topic == "topic:alpha");
     assert (state.payload == "spot-callback");
     lock.unlock ();

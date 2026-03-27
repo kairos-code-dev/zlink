@@ -50,7 +50,7 @@ public static class SampleSupport
         throw new TimeoutException(message);
     }
 
-    public static void SendUtf8UntilReady(Zlink.Socket socket, string payload,
+    public static void SendUtf8UntilReady(MessageSocketBase socket, string payload,
         int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -71,7 +71,7 @@ public static class SampleSupport
         throw new TimeoutException("send timeout");
     }
 
-    public static void PublishUtf8UntilReady(Zlink.Socket socket, string topic,
+    public static void PublishUtf8UntilReady(PublisherSocketBase socket, string topic,
         string payload, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -92,7 +92,7 @@ public static class SampleSupport
         throw new TimeoutException("publish timeout");
     }
 
-    public static string ReceiveUtf8(Zlink.Socket socket, int timeoutMs)
+    public static string ReceiveUtf8(MessageSocketBase socket, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
@@ -112,7 +112,7 @@ public static class SampleSupport
         throw new TimeoutException("receive timeout");
     }
 
-    public static string SubscribeUtf8(Zlink.Socket socket, out string topic,
+    public static string SubscribeUtf8(SubscriberSocketBase socket, out string topic,
         int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);

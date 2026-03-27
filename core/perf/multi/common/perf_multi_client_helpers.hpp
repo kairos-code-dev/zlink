@@ -39,6 +39,8 @@ inline bool is_supported_transport (const std::string &transport)
     if (transport == "ipc")
         return true;
 #endif
+    if (transport == "inproc")
+        return true;
     return false;
 }
 

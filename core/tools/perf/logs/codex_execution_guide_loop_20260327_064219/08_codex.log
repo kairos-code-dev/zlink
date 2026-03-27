@@ -1,0 +1,2101 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: medium
+reasoning summaries: none
+session id: 019d2caa-aee1-7a12-8cc8-f2067180f67e
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+  이 문서의 남은 작업과 실제 구현 내용을 중단 없이 끝까지 진행한다.
+
+작업 규칙:
+- 현재 실행의 유일한 기준 문서는 실행 가이드다.
+- 이 실행은 단일 문서 체계로 운영한다. 명시 요청이 없으면 main/master/gap/spec/residual/보조 계획 문서를 새로 만들지 않는다.
+- 필요한 계획, 작업 레지스터, 체크리스트, 종료 조건은 모두 실행 가이드 한 파일에 유지한다.
+- 실행 가이드와 별도 계획 문서로 분산돼 있던 내용이 보이면 실행 가이드로 먼저 합친다.
+- 별도 보조 계획서를 유지하거나 참조 체인을 늘리는 방식으로 작업을 진행하지 않는다.
+
+- 각 작업 묶음을 끝낼 때마다 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 실행 가이드와 현재 코드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 실행 가이드의 현재 파일 내용이 source of truth다. 명시적으로 요청받지 않은 한 실행 가이드 자체의 git diff나 삭제된 legacy 문서 diff를 근거로 판단하지 않는다.
+- git status 에서 보이는 삭제된 legacy 문서나 과거 계획 문서는 현재 실행 범위의 근거가 아니다. unrelated 변경처럼 취급하고 현재 가이드와 현재 코드만 본다.
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/ralphloop/run_execution_gate_loop.sh --logs-dir /home/hep7/project/kairos/zlink/core/tools/perf/logs/codex_execution_guide_loop_20260327_064219/gate --label perf_improvement_gate --count 1 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 1보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- 가이드에 단계별 commit / push 규칙이 있으면 그대로 따른다.
+- unrelated 변경은 commit/push에 섞지 않는다. 현재 단계 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
+- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남길 수 있으면 남긴다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+- stress/lane/perf/functional regression은 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- 테스트 통과만으로 실행 가이드의 실제 구현 내용이 반영됐다고 추정하지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+2026-03-27T00:21:16.865448Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 503 Service Unavailable, url: wss://chatgpt.com/backend-api/codex/responses
+2026-03-27T00:21:17.045724Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 503 Service Unavailable, url: wss://chatgpt.com/backend-api/codex/responses
+codex
+팀장님, 실행 가이드를 기준으로 현재 첫 미완료 항목부터 확인하고, 가이드와 코드가 어긋나는 부분이 있으면 문서부터 바로 맞춘 뒤 구현과 검증까지 이어서 진행하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# `core` 성능 개선 실행 가이드
+
+> 상태: active
+> 기준 baseline:
+> - `core/tools/perf/perf_linux_recv_20260323_094627.txt`
+> - `core/tools/perf/perf_linux_callback_20260323_082648.txt`
+> 실행 루프: `core/tools/perf/run_perf_improvement_loop.sh`
+> 상위 supervisor: `core/tools/ralphloop/run_codex_execution_guide_loop.sh`
+> 로그 디렉터리: `core/tools/perf/logs/`
+> 대상 범위: `core/`, `core/tests/`, `core/tools/perf/`
+> 목적: baseline 초과까지 중단 없이 반복 수행할 실전 실행 규칙 고정
+
+`run_perf_improvement_loop.sh`는 별도 락으로 막지 않는다.
+대신 `core/tools/perf/logs/` 아래 로그 파일이 실제로 갱신되는 `perf` 실행이 감지되면
+그 로그를 따라가며 대기하고, 완료되면 다음 iteration을 시작한다.
+프로세스는 남아 있는데 로그 갱신이 멈춘 경우에는 stale로 간주하고
+해당 `perf` 프로세스를 정리한 뒤 루프를 계속 진행한다.
+
+## 1. 문서 목적
+
+exec
+/bin/bash -lc "rg -n \"\\[ \\]|TODO|진행|미완료|TODO|남은\" /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+17:해당 `perf` 프로세스를 정리한 뒤 루프를 계속 진행한다.
+123:5. 구조 병목 가설을 적고 바로 코드/테스트/재측정으로 진행한다.
+299:- `진행중`
+306:| P2 | recv worst tuple 식별 및 1차 병목 제거 | 진행중 | `MULTI_SPOT/tls/131072` active-phase tail latency를 겨냥해 `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 large-message byte-budget cap(`16 MiB`)을 추가해 ingress/mesh_xsub burst가 poll cycle을 독점하지 못하게 했다. `test_multi_spot_benchmark_process` 회귀 후 targeted rerun `perf_linux_recv_20260327_084159.txt`에서 `MULTI_SPOT/tls/131072`는 `mean 293.634ms -> 135.180ms`, `P95 376.334ms -> 172.356ms`, `P99 392.574ms -> 179.641ms`로 추가 개선됐고 throughput/bandwidth도 baseline 위(`12.086 Kmsg/s`, `1584.084 MB/s`)를 유지했다. 다만 baseline latency(`108.176ms`, `153.935ms`, `172.448ms`)는 아직 완전히 넘지 못해 full recv 재실행은 다음 iteration으로 이월한다 | `core/src/services/spot/spot_data_plane_forwarding.cpp`; `core/src/services/spot/spot_data_plane_protocol.cpp`; `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`; `core/perf/results/multi/report/perf_linux_recv_20260327_080510.txt`; `core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt` |
+314:## 14.1 항목 진행 규칙
+316:- 항상 `완료`가 아닌 첫 항목부터 진행한다.
+328:4. baseline 대비 남은 부족 항목
+331:## 14.3 진행 메모
+366:- 그 외 계속 진행해야 할 때:
+369:계속 진행 필요
+exec
+/bin/bash -lc 'git status --short' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+ M AGENTS.md
+ M bindings/cpp/Doxyfile
+ M bindings/cpp/include/zlink.hpp
+ D bindings/cpp/include/zlink/compat.hpp
+ M bindings/cpp/include/zlink/types.hpp
+ D bindings/cpp/include/zlink_utils.h
+ M bindings/cpp/plan/socket/2026-03-26-cpp-socket-surface-detailed-design.ko.md
+ M bindings/cpp/samples/dealer_router/dealer_router_callback.cpp
+ M bindings/cpp/samples/dealer_router/dealer_router_recv.cpp
+ M bindings/cpp/samples/pair/pair_callback.cpp
+ M bindings/cpp/samples/pair/pair_recv.cpp
+ M bindings/cpp/samples/pubsub/pubsub_callback.cpp
+ M bindings/cpp/samples/pubsub/pubsub_recv.cpp
+ M bindings/cpp/samples/stream/stream_callback.cpp
+ M bindings/cpp/samples/stream/stream_recv.cpp
+ M bindings/cpp/tests/contract/test_cpp_contract_monitor.cpp
+ M bindings/cpp/tests/contract/test_cpp_contract_options.cpp
+ M bindings/cpp/tests/contract/test_cpp_contract_socket.cpp
+ M bindings/dotnet/samples/DealerRouterCallback/Program.cs
+ M bindings/dotnet/samples/DealerRouterCallback/README.md
+codex
+팀장님, 상태표 기준으로 첫 미완료는 `P2`이고 현재 초점은 `MULTI_SPOT/tls/131072` latency 미달입니다. 남은 항목과 최근 증거를 더 읽어서 바로 코드 경로와 측정 로그를 대조하겠습니다.
+exec
+/bin/bash -lc "sed -n '260,420p' /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+2. 최신 결과 파일 경로가 문서에 적혀 있는지 확인한다.
+3. `완료`가 아닌 행이 없는지 확인한다.
+4. full run이 아니라 spot run만 있는 행이 없는지 확인한다.
+
+아래는 완료가 아니다.
+
+- 일부 대표 transport만 개선
+- 평균 latency만 개선
+- callback만 개선하고 recv가 퇴행
+- 단일 실험 옵션에서만 baseline 초과
+- 문서와 로그 없이 "재측정해보니 좋아 보임" 상태
+
+## 12. 금지 규칙
+
+- baseline보다 낮은 항목이 남아 있는데 종료하지 않는다.
+- 성능 문제를 테스트 약화로 숨기지 않는다.
+- 대용량 tuple 악화를 소형 tuple 개선으로 상쇄했다고 해석하지 않는다.
+- transport별 임시 ifdef/환경변수 우회로 닫지 않는다.
+- ad-hoc binary나 `/tmp` repro로 근거를 대체하지 않는다.
+- `core/build/` 외 다른 build 디렉터리를 쓰지 않는다.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+#include "utils/err.hpp"
+
+#include <errno.h>
+#include <map>
+#include <set>
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+
+#include "services/spot/spot_node.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/err.hpp"
+
+#include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
+namespace zlink
+{
+namespace
+{
+static const unsigned int ingress_forward_batch_limit = 2048;
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "testutil.hpp"
+#include "testutil_unity.hpp"
+
+#ifndef _WIN32
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <csignal>
+#include <climits>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <thread>
+codex
+팀장님, 현재 가이드는 `P2`만 열려 있고 최근 여러 실험이 이미 폐기된 상태라, 먼저 현 코드가 문서의 best-known 상태와 일치하는지 확인한 뒤 남은 burst 원인을 줄일 수 있는 지점을 좁히겠습니다. 이후 수정 전에 가이드 상태 메모도 실제 코드와 맞춰 갱신하겠습니다.
+exec
+/bin/bash -lc "rg -n \"mesh_xsub_forward_batch_limit|mesh_xsub_forward_batch_bytes_limit|recv_and_forward_ingress|peer_ctrl_sub|drain|forward_batch|byte-budget|16 \\* 1024 \\* 1024|12 MiB|16 MiB\" /home/hep7/project/kairos/zlink/core/src/services/spot /home/hep7/project/kairos/zlink/core/tests -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_pub.hpp:94:    std::atomic<bool> _monitor_event_draining;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:177:    std::atomic<bool> _monitor_event_draining;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:27:    poller_->add (state_.peer_ctrl_sub, NULL, ZLINK_POLLIN);
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:37:    spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_sub);
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:43:    state_->peer_ctrl_sub->set_all_pipes_nodelay ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:52:int drain_peer_ctrl_messages (spot_node_t *node_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:57:      state_->peer_ctrl_sub, node_, protocol_state_);
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:63:    return socket_ == state_.ctrl || socket_ == state_.peer_ctrl_sub
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:83:                 state_->peer_ctrl_sub, frames, protocol_state_, running_out_)
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:91:    if (socket_ == state_->peer_ctrl_sub) {
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:92:        if (drain_peer_ctrl_messages (node_, state_, protocol_state_) != 0) {
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:149:    if (spot_data_plane_forwarder_t::recv_and_forward_ingress (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp:242:        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.cpp:41:    _monitor_event_draining (false),
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_runtime.cpp:60:    peer_ctrl_sub (NULL),
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_runtime.cpp:270:    socket_base_t *peer_ctrl_sub_local = NULL;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_runtime.cpp:281:        peer_ctrl_sub_local = peer_ctrl_sub;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_runtime.cpp:296:    if (peer_ctrl_sub_local)
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_runtime.cpp:297:        peer_ctrl_sub_local->stop ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_runtime.cpp:312:    socket_base_t *peer_ctrl_sub_local = NULL;
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_loop.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "core/socket_poller.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+
+namespace zlink
+{
+namespace
+{
+exec
+/bin/bash -lc 'ls -1 /home/hep7/project/kairos/zlink/core/perf/results/multi/report | tail -n 20' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+perf_linux_recv_20260327_071323.txt
+perf_linux_recv_20260327_071435.txt
+perf_linux_recv_20260327_071721.txt
+perf_linux_recv_20260327_071822.txt
+perf_linux_recv_20260327_072300.txt
+perf_linux_recv_20260327_074427.txt
+perf_linux_recv_20260327_075123.txt
+perf_linux_recv_20260327_075143.txt
+perf_linux_recv_20260327_080510.txt
+perf_linux_recv_20260327_082712.txt
+perf_linux_recv_20260327_082844.txt
+perf_linux_recv_20260327_082925.txt
+perf_linux_recv_20260327_083302.txt
+perf_linux_recv_20260327_084159.txt
+perf_linux_recv_20260327_084450.txt
+perf_linux_recv_20260327_085126.txt
+perf_linux_recv_20260327_085505.txt
+perf_linux_recv_20260327_091601.txt
+perf_linux_recv_20260327_091756.txt
+perf_linux_recv_20260327_092003.txt
+exec
+/bin/bash -lc "sed -n '1,220p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_mesh_pub_budget.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_mesh_pub_budget.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_runtime.hpp"
+#include "sockets/socket_base.hpp"
+
+namespace zlink
+{
+namespace
+{
+bool is_secure_transport_local (const std::string &endpoint_)
+{
+    return endpoint_.compare (0, 6, "tls://") == 0
+           || endpoint_.compare (0, 6, "wss://") == 0;
+}
+
+exec
+/bin/bash -lc "sed -n '520,700p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+             it != previous_filters.end (); ++it) {
+            if (new_filters.count (*it) != 0)
+                continue;
+            node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
+                                                  source_key, false);
+        }
+
+        for (std::set<std::string>::const_iterator it = new_filters.begin ();
+             it != new_filters.end (); ++it) {
+            if (previous_filters.count (*it) != 0)
+                continue;
+            node_->notify_pub_delivery_ready_ack (target_endpoint, *it,
+                                                  source_key, true);
+        }
+
+        spot_ctrl_debugf ("recv snapshot target=%s source=%s filters=%zu",
+                          target_endpoint.c_str (), source_key.c_str (),
+                          static_cast<size_t> (new_filters.size ()));
+
+        previous_filters.swap (new_filters);
+exec
+/bin/bash -lc 'rg -n "MULTI_SPOT.*tls.*131072|131072|Lat.Mean|Lat.P95|Lat.P99" /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt /home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:16:- msg_sizes: 131072
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:48:    Testing tls | 131072B:
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:49:      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:51:      | 131072B  |    12.086 Kmsg/s |   1584.084 MB/s |   135.180 ms |   172.356 ms |   179.641 ms | 12.578 |  486.602 |         0 |         0 |         0 |
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:59:- msg_sizes: 131072
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:91:RESULT,current,MULTI_SPOT,tls,131072,bandwidth,1584.084
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:92:RESULT,current,MULTI_SPOT,tls,131072,latency,135179.761
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:93:RESULT,current,MULTI_SPOT,tls,131072,latency_p95,172355.600
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:94:RESULT,current,MULTI_SPOT,tls,131072,latency_p99,179641.080
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:95:RESULT,current,MULTI_SPOT,tls,131072,server_cpu_pct,12.720
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:96:RESULT,current,MULTI_SPOT,tls,131072,server_mem_mb,486.600
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:97:RESULT,current,MULTI_SPOT,tls,131072,server_rcv_pending_end,0.000
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:98:RESULT,current,MULTI_SPOT,tls,131072,server_rcv_pending_max,0.000
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:99:RESULT,current,MULTI_SPOT,tls,131072,server_snd_pending_max,0.000
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt:100:RESULT,current,MULTI_SPOT,tls,131072,throughput,12085.600
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:16:- msg_sizes: 64,256,1024,65536,131072,262144
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:48:    Testing tcp | 64B,256B,1024B,65536B,131072B,262144B:
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:49:      | Size     |         Throughput |      Bandwidth |  Lat.Mean(ms) |   Lat.P95(ms) |   Lat.P99(ms) |  S.CPU% | S.Mem MB | Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:55:      | 131072B  |    84.224 Kmsg/s |  11039.408 MB/s |    87.379 ms |   137.672 ms |   146.668 ms | 12.965 |   26.164 |         0 |         0 |         0 |
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:59:    Testing tls | 64B,256B,1024B,65536B,131072B,262144B:
+exec
+/bin/bash -lc 'rg -n "test_multi_spot_benchmark_process|131072|tls" /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+127:           && (std::strcmp (transport_, "tls") == 0
+163:    if (clients_ >= 100 || max_msg_size >= 131072)
+167:    if (is_secure_transport_name (transport_) && max_msg_size >= 131072)
+739:    run_multi_spot_process_case ("recv", "tcp", "131072", 100, 5000, 2, 2);
+745:      "recv", "tcp", "64,256,1024,65536,131072,262144", 100, 5000, 2, 2);
+748:void test_multi_spot_process_recv_many_clients_tls_very_large_smoke ()
+750:    run_multi_spot_process_case ("recv", "tls", "262144", 100, 10000, 2, 2);
+753:void test_multi_spot_process_recv_many_clients_tls_large_sequence ()
+756:      "recv", "tls", "65536,131072,262144", 100, 10000, 1, 1);
+767:      "recv", "wss", "64,256,1024,65536,131072,262144", 100, 10000, 2, 2);
+797:    RUN_TEST (test_multi_spot_process_recv_many_clients_tls_very_large_smoke);
+798:    RUN_TEST (test_multi_spot_process_recv_many_clients_tls_large_sequence);
+codex
+팀장님, baseline 대비 남은 차이는 `mean +27ms`, `P95 +18ms`, `P99 +7ms` 수준이라 큰 구조 뒤집기보다 hot path의 잔여 독점 시간을 더 줄이는 쪽이 맞습니다. `SPOT` 벤치의 실제 데이터 경로와 fanout/mesh 사용 방식을 같이 읽고, 수정 폭이 작은 공통 병목을 찾겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SPOT_DATA_PLANE_INTERNAL_HPP_INCLUDED__
+#define __ZLINK_SPOT_DATA_PLANE_INTERNAL_HPP_INCLUDED__
+
+#include <zlink.h>
+
+#include "utils/mutex.hpp"
+
+#include <atomic>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace zlink
+{
+class socket_base_t;
+class spot_node_t;
+struct spot_runtime_t;
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/perf_common.hpp"
+#include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_metric_header.hpp"
+#include "../../common/perf_spot_handle.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <condition_variable>
+#include <mutex>
+#include <new>
+#include <set>
+#include <string>
+#include <thread>
+exec
+/bin/bash -lc "rg -n \"SPOT|spot\" /home/hep7/project/kairos/zlink/core/perf/multi/src -g '*.cpp'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:5:#include "../../common/perf_spot_handle.hpp"
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:24:static const char *k_pattern = "MULTI_SPOT";
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:25:static const char *k_service_name = "perf-spot";
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:33:enum spot_recv_mode_t
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:35:    spot_recv_recv = 0,
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:36:    spot_recv_callback = 1
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:39:struct spot_client_slot_t
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:41:    spot_client_slot_t() :
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:56:struct spot_recv_worker_t;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:57:struct spot_thread_metrics_t;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:59:struct spot_client_state_t
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:61:    spot_client_state_t() :
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:74:    std::vector<spot_client_slot_t *> slots;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:75:    std::vector<spot_recv_worker_t *> recv_workers;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:79:    std::vector<spot_thread_metrics_t *> thread_metrics;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:93:spot_client_state_t *g_client_state = NULL;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:95:struct spot_recv_worker_t
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:97:    spot_recv_worker_t() :
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:103:    spot_client_state_t *state;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp:105:    std::vector<spot_client_slot_t *> slots;
+exec
+/bin/bash -lc "sed -n '1,220p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_sub.hpp"
+
+#include "services/control/service_control_runtime.hpp"
+#include "services/discovery/discovery_protocol.hpp"
+#include "services/discovery/routing_id_utils.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+#include "utils/err.hpp"
+#include "utils/random.hpp"
+#include "utils/sleep.hpp"
+
+#include <string.h>
+exec
+/bin/bash -lc "rg -n \"has_local_filtered_subs|notify_pub_delivery_ready_ack|snapshot_raw_subscription_filters|schedule_subscription_replay|pub_delivery_ready\" /home/hep7/project/kairos/zlink/core/src/services/spot -g '*.cpp' -g '*.hpp'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_access.cpp:205:void spot_node_access_t::schedule_subscription_replay (spot_node_t *node_)
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_access.cpp:208:        node_->schedule_subscription_replay ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub_lifecycle.cpp:327:        _node->schedule_subscription_replay ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_summary.cpp:219:void spot_node_t::snapshot_raw_subscription_filters (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp:93:            forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:84:    bool has_local_filtered_subs () const;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:90:    void snapshot_raw_subscription_filters (std::set<std::string> *out_) const;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:99:    void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:122:    void schedule_subscription_replay ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:160:    void schedule_pub_delivery_ready_refresh ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:166:    void emit_pending_pub_delivery_ready_events ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:169:    uint32_t max_pub_delivery_ready_count_locked () const;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_lifecycle.cpp:126:        if (has_local_filtered_subs ()) {
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_lifecycle.cpp:128:            schedule_subscription_replay ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:27:    std::map<std::string, std::set<std::string> > pub_delivery_ready_sources;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:28:    std::map<std::string, uint32_t> pending_pub_delivery_ready_counts;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:36:    bool pub_delivery_ready_refresh_pending;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:37:    unsigned int pub_delivery_ready_refresh_holdoff_ticks;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:45:        pub_delivery_ready_refresh_pending (false),
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:46:        pub_delivery_ready_refresh_holdoff_ticks (0)
+codex
+팀장님, 지금 단계에서는 대규모 설계 변경보다 batch fairness 정책을 더 정교하게 만드는 것이 맞습니다. 현재 문서상 실패한 건 `mesh_xsub` 단독 12MiB와 control 순서 실험이므로, 그와 겹치지 않는 방향으로 `ingress` 쪽 burst 상한을 분리하는 쪽을 우선 시도하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,240p' /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "utils/macros.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "unity.h"
+
+#include <string.h>
+
+namespace
+{
+void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
+{
+    zlink::spot_runtime_t runtime (NULL);
+    runtime.mesh_peer_state.connected_endpoints.insert ("wss://127.0.0.1:9000");
+    runtime.mesh_peer_state.connected_ready_peer_count.store (1);
+    zlink_monitor_event_t raw;
+exec
+/bin/bash -lc "sed -n '1,220p' /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_spot_data_plane_budget.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../testutil_unity.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+namespace
+{
+void test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      64,
+      zlink::spot_mesh_pub_budget_t::resolve_default (
+        "tcp://127.0.0.1:9000", 0));
+    TEST_ASSERT_EQUAL_INT (
+      768,
+      zlink::spot_mesh_pub_budget_t::resolve_default (
+        "tcp://127.0.0.1:9000", 1));
+exec
+/bin/bash -lc "ls /home/hep7/project/kairos/zlink/core/tests/unittest | rg 'spot_data_plane|spot_.*protocol|spot_.*budget'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+unittest_spot_data_plane_budget.cpp
+unittest_spot_data_plane_protocol.cpp
+codex
+팀장님, 지금부터 수정합니다. 방향은 `ingress`가 `mesh_pub`와 `fanout`을 동시에 밀어넣는 경우에만 batch byte 상한을 더 낮춰, dual-forward burst가 poll cycle을 오래 점유하지 못하게 만드는 쪽입니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -23,2 +23,5 @@
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+@@ -71,2 +74,3 @@
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+@@ -93,2 +97,8 @@
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+@@ -132,3 +142,3 @@
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+apply_patch(auto_approved=true) exited 0 in 3ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 수정은 작게 들어갔고 기존 실패 실험과 겹치지 않도록 `dual-forward` 케이스에만 적용했습니다. 이제 `core/build/`에서 관련 테스트와 공식 SPOT targeted 측정을 바로 돌려서 이 방향이 실제로 남은 latency를 줄이는지 확인하겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)" --target test_multi_spot_benchmark_process unittest_spot_data_plane_budget unittest_spot_data_plane_protocol perf_spot' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol|test_multi_spot_benchmark_process' -j1" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+ exited 8 in 4.42s:
+1/3 Test  #8: test_multi_spot_benchmark_process ...***Failed    4.55 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:792:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_callback_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_tcp_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_tcp_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_tcp_large_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_tls_large_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_large_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_perf_window_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeout:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:708:test_multi_spot_process_invalid_mode_is_rejected:FAIL: Expected TRUE Was FALSE
+
+-----------------------
+12 Tests 11 Failures 0 Ignored 
+FAIL
+
+    Start 79: unittest_spot_data_plane_protocol
+2/3 Test #79: unittest_spot_data_plane_protocol ...   Passed    0.00 sec
+codex
+팀장님, 빌드는 정상 진행 중이고 회귀 테스트는 `test_multi_spot_benchmark_process`부터 직렬로 돌고 있습니다. 이 단계가 끝나면 바로 공식 runner로 `MULTI_SPOT/tls/131072` targeted 측정을 이어가겠습니다.
+ succeeded in 9.62s:
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_forwarding.cpp.o
+[ 95%] Built target objects
+[ 97%] Linking CXX shared library ../lib/libzlink.so
+[ 97%] Built target libzlink
+[100%] Built target testutil
+[100%] Linking CXX executable ../../bin/test_multi_spot_benchmark_process
+[100%] Built target test_multi_spot_benchmark_process
+[  0%] Built target unity
+[ 97%] Built target objects
+[ 97%] Linking CXX static library ../lib/libzlink.a
+[ 97%] Built target libzlink-static
+[100%] Built target testutil-static
+[100%] Linking CXX executable ../../../bin/unittest_spot_data_plane_budget
+[100%] Built target unittest_spot_data_plane_budget
+[  0%] Built target unity
+[ 97%] Built target objects
+[ 97%] Built target libzlink-static
+[100%] Built target testutil-static
+[100%] Linking CXX executable ../../../bin/unittest_spot_data_plane_protocol
+[100%] Built target unittest_spot_data_plane_protocol
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 코드 회귀 자체보다 `core/build/lib/libzlink.so.5`가 `file too short` 상태라 테스트 프로세스가 죽었습니다. 구현 검증을 계속하려면 먼저 빌드 산출물 손상을 복구해야 하므로, `core/build/` 안에서 라이브러리 링크 상태를 확인하고 같은 디렉터리에서 즉시 재빌드하겠습니다.
+exec
+/bin/bash -lc 'ls -l core/build/lib/libzlink.so*' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+lrwxrwxrwx 1 hep7 hep7      13 Mar 27 09:23 core/build/lib/libzlink.so -> libzlink.so.5
+lrwxrwxrwx 1 hep7 hep7      17 Mar 27 09:23 core/build/lib/libzlink.so.5 -> libzlink.so.5.2.5
+-rwxr-xr-x 1 hep7 hep7 7144328 Mar 27 09:23 core/build/lib/libzlink.so.5.2.5
+exec
+/bin/bash -lc 'file core/build/lib/libzlink.so core/build/lib/libzlink.so.5 core/build/lib/libzlink.so.5.0.0' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/build/lib/libzlink.so:       symbolic link to libzlink.so.5
+core/build/lib/libzlink.so.5:     symbolic link to libzlink.so.5.2.5
+core/build/lib/libzlink.so.5.0.0: cannot open `core/build/lib/libzlink.so.5.0.0' (No such file or directory)
+exec
+/bin/bash -lc 'cmake --build core/build -j1 --target libzlink test_multi_spot_benchmark_process comp_src_spot_server comp_src_spot_client' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+ succeeded in 1.75s:
+[ 97%] Built target objects
+[100%] Built target libzlink
+[  0%] Built target unity
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[100%] Built target testutil
+[100%] Built target test_multi_spot_benchmark_process
+[ 97%] Built target objects
+[100%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_server
+[100%] Built target comp_src_spot_server
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_client
+[100%] Built target comp_src_spot_client
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 빌드 산출물 손상은 복구했고 회귀 테스트를 다시 직렬로 돌리는 중입니다. 이 테스트만 정상 통과하면 같은 코드 상태로 공식 `SPOT/tls/131072` targeted run을 이어가겠습니다.
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, `test_multi_spot_benchmark_process`가 원래 긴 편이라 아직 실행 중입니다. 이 구간은 문서 규칙상 같은 owner로 끝까지 추적해야 해서 계속 붙어서 보고 있습니다.
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+ exited 8 in 2m 59s:
+1/3 Test  #8: test_multi_spot_benchmark_process ...***Timeout 180.02 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:792:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:793:test_multi_spot_process_callback_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:794:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:795:test_multi_spot_process_recv_many_clients_tcp_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:796:test_multi_spot_process_recv_many_clients_tcp_large_sequence:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:797:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:798:test_multi_spot_process_recv_many_clients_tls_large_sequence:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:799:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:PASS
+
+    Start 79: unittest_spot_data_plane_protocol
+2/3 Test #79: unittest_spot_data_plane_protocol ...   Passed    0.00 sec
+    Start 80: unittest_spot_data_plane_budget
+3/3 Test #80: unittest_spot_data_plane_budget .....   Passed    0.00 sec
+
+67% tests passed, 1 tests failed out of 3
+
+Label Time Summary:
+integration      = 180.02 sec*proc (1 test)
+parallel-safe    =   0.00 sec*proc (2 tests)
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 수정 후 기능 회귀는 대부분 통과했지만 `test_multi_spot_benchmark_process`가 180초 CTest 타임아웃에 걸렸습니다. 지금은 실제로 어느 케이스에서 지연이 생겼는지 같은 저장소 테스트 surface로 상세 출력 재현을 걸어 원인을 좁히겠습니다.
+exec
+/bin/bash -lc 'ctest --test-dir core/build --output-on-failure -V -R test_multi_spot_benchmark_process --timeout 300' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+exec
+/bin/bash -lc "sed -n '780,830p' core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+}
+
+void test_multi_spot_process_invalid_mode_is_rejected ()
+{
+    run_multi_spot_invalid_mode_case ();
+}
+
+int main (int argc, char **argv)
+{
+    signal (SIGPIPE, SIG_IGN);
+    g_self_path = argc > 0 ? argv[0] : NULL;
+    UNITY_BEGIN ();
+    RUN_TEST (test_multi_spot_process_recv_smoke);
+    RUN_TEST (test_multi_spot_process_callback_smoke);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_large_smoke);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_very_large_smoke);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_large_sequence);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tls_very_large_smoke);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_tls_large_sequence);
+    RUN_TEST (test_multi_spot_process_recv_many_clients_ws_very_large_smoke);
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..e9dcbe96a639be5db8580fd444786e732f0189c4
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 8MiB는 `wss` 회귀 시간을 과하게 늘린 것으로 보입니다. 같은 방향은 유지하되 폭을 줄여 `dual-forward` 상한만 14MiB로 완화해서 회귀 안전성과 tls 개선 여지를 다시 맞춰보겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -25,3 +25,3 @@
+ // smaller so one dual-forward cycle cannot stretch local delivery tail latency.
+-static const size_t ingress_dual_forward_batch_bytes_limit = 8 * 1024 * 1024;
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+apply_patch(auto_approved=true) exited 0 in 14ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 조정폭만 줄였고 나머지 경로는 그대로입니다. 다시 빌드해서 회귀 타임아웃이 사라지는지 먼저 확인한 뒤, 그 상태에서 targeted perf를 재측정하겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j1 --target libzlink test_multi_spot_benchmark_process comp_src_spot_server comp_src_spot_client perf_spot' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+ exited 8 in 43.94s:
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:792:test_multi_spot_process_recv_smoke:PASS
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:793:test_multi_spot_process_callback_smoke:PASS
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:794:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:795:test_multi_spot_process_recv_many_clients_tcp_very_large_smoke:PASS
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:796:test_multi_spot_process_recv_many_clients_tcp_large_sequence:PASS
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_tls_large_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_large_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_perf_window_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeout:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+8: /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:708:test_multi_spot_process_invalid_mode_is_rejected:FAIL: Expected TRUE Was FALSE
+8: 
+8: -----------------------
+8: 12 Tests 7 Failures 0 Ignored 
+8: FAIL
+1/1 Test #8: test_multi_spot_benchmark_process ...***Failed   44.04 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:792:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:793:test_multi_spot_process_callback_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:794:test_multi_spot_process_recv_many_clients_tcp_large_smoke:PASS
+ exited 8 in 4.46s:
+1/3 Test  #8: test_multi_spot_benchmark_process ...***Failed    4.58 sec
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:792:test_multi_spot_process_recv_smoke:PASS
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_callback_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_tcp_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_tcp_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_tcp_large_sequence:FAIL: 
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_tls_very_large_smoke:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_tls_large_sequence:FAIL: 
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:499:test_multi_spot_process_recv_many_clients_ws_very_large_smoke:FAIL: 
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_large_sequence:FAIL: 
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_perf_window_sequence:FAIL: server:\nstderr:\n/home/hep7/project/kairos/zlink/core/build/bin/comp_src_spot_server: error while loading shared libraries: /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.5: file too short\n
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:625:test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeout:FAIL: 
+/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp:708:test_multi_spot_process_invalid_mode_is_rejected:FAIL: Expected TRUE Was FALSE
+
+-----------------------
+12 Tests 11 Failures 0 Ignored 
+FAIL
+
+    Start 79: unittest_spot_data_plane_protocol
+2/3 Test #79: unittest_spot_data_plane_protocol ...   Passed    0.01 sec
+codex
+팀장님, 방금 빌드와 테스트가 겹쳐 산출물 경합 가능성이 있습니다. 결과를 바로 확인해서 라이브러리 경합이 보이면 같은 상태로 두지 않고, 빌드 완료 후 직렬 재검증으로 정리하겠습니다.
+ succeeded in 9.32s:
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_forwarding.cpp.o
+[ 97%] Built target objects
+[100%] Linking CXX shared library ../lib/libzlink.so
+[100%] Built target libzlink
+[  0%] Built target unity
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[100%] Built target testutil
+[100%] Linking CXX executable ../../bin/test_multi_spot_benchmark_process
+[100%] Built target test_multi_spot_benchmark_process
+[ 97%] Built target objects
+[100%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_server
+[100%] Built target comp_src_spot_server
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_client
+[100%] Built target comp_src_spot_client
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 방금 실패는 다시 라이브러리 링크 중간 상태를 읽은 경합 실패입니다. 산출물은 지금 완성됐으니, 같은 코드 상태로 직렬 재검증만 다시 돌리면 실제 회귀 여부를 볼 수 있습니다.
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 지금부터는 build/test 경합 없이 직렬 검증입니다. 이 결과가 이번 코드 조정의 실제 회귀 여부를 결정합니다.
+ succeeded in 2m 01s:
+1/3 Test  #8: test_multi_spot_benchmark_process ...   Passed  121.22 sec
+    Start 79: unittest_spot_data_plane_protocol
+2/3 Test #79: unittest_spot_data_plane_protocol ...   Passed    0.00 sec
+    Start 80: unittest_spot_data_plane_budget
+3/3 Test #80: unittest_spot_data_plane_budget .....   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+integration      = 121.22 sec*proc (1 test)
+parallel-safe    =   0.00 sec*proc (2 tests)
+serial           = 121.22 sec*proc (1 test)
+unittest         =   0.00 sec*proc (2 tests)
+
+Total Test time (real) = 121.22 sec
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 회귀는 정리됐습니다. 이제 같은 코드 상태로 공식 runner를 사용해 `MULTI_SPOT/tls/131072` targeted 측정을 실행하고 baseline 차이가 줄었는지 확인하겠습니다.
+exec
+/bin/bash -lc 'mkdir -p core/tools/perf/logs && ./core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --recv recv --pattern SPOT --transports tls --msg-sizes 131072 2>&1 | tee core/tools/perf/logs/perf_recv_spot_tls_131072_$(date +%Y%m%d_%H%M%S).log' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+ succeeded in 9.16s:
+      | 131072B  |    16.015 Kmsg/s |   2099.144 MB/s |   479.873 ms |   610.462 ms |   626.596 ms | 13.287 |  507.387 |         0 |         0 |         0 |
+    Testing tls: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls
+- msg_sizes: 131072
+- warmup_seconds: 2
+- active_warmup: 0
+- duration_seconds: 5
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: 100 (default)
+- sndhwm: 100 (default)
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 3759d2035c4e3ab5320a3a3e8e2feb9ae751f508..bc6bdb6b5f155e669968a1279dd5ff270ea2a5d9
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -21,6 +21,9 @@
+ // Bound one ingress burst by bytes as well as message count so large payloads
+ // cannot monopolize the data-plane thread for an entire poll cycle.
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
++// When the same burst must feed both mesh_pub and fanout, keep the batch
++// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
++static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -69,6 +72,7 @@
+ {
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
++    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+     size_t forwarded_bytes = 0;
+ 
+@@ -91,6 +95,12 @@
+ 
+         if (!receiving_multipart)
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
++        if (!receiving_multipart) {
++            batch_bytes_limit =
++              (mesh_pub_ && forward_to_fanout)
++                ? ingress_dual_forward_batch_bytes_limit
++                : ingress_forward_batch_bytes_limit;
++        }
+ 
+         if (mesh_pub_ && forward_to_fanout) {
+             msg_t copy;
+@@ -130,7 +140,7 @@
+             forward_to_fanout = false;
+             ++forwarded_messages;
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
++                || forwarded_bytes >= batch_bytes_limit)
+                 return 0;
+         }
+         msg.close ();
+
+codex
+팀장님, 이번 실험은 폐기해야 합니다. `dual-forward` 상한을 낮춘 상태의 공식 targeted run이 `mean 479.873ms / P95 610.462ms / P99 626.596ms`로 즉시 크게 퇴행했기 때문에, 문서 규칙대로 같은 iteration 안에서 코드를 best-known 상태로 되돌리고 증거를 가이드에 남기겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -23,5 +23,2 @@
+ static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
+-// When the same burst must feed both mesh_pub and fanout, keep the batch
+-// smaller so one dual-forward cycle cannot stretch local delivery tail latency.
+-static const size_t ingress_dual_forward_batch_bytes_limit = 14 * 1024 * 1024;
+ }
+@@ -74,3 +71,2 @@
+     bool forward_to_fanout = false;
+-    size_t batch_bytes_limit = ingress_forward_batch_bytes_limit;
+     unsigned int forwarded_messages = 0;
+@@ -97,8 +93,2 @@
+             forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
+-        if (!receiving_multipart) {
+-            batch_bytes_limit =
+-              (mesh_pub_ && forward_to_fanout)
+-                ? ingress_dual_forward_batch_bytes_limit
+-                : ingress_forward_batch_bytes_limit;
+-        }
+ 
+@@ -142,3 +132,3 @@
+             if (forwarded_messages >= ingress_forward_batch_limit
+-                || forwarded_bytes >= batch_bytes_limit)
++                || forwarded_bytes >= ingress_forward_batch_bytes_limit)
+                 return 0;
+apply_patch(auto_approved=true) exited 0 in 3ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp
+codex
+팀장님, 코드 상태는 다시 문서의 best-known `16 MiB` 기준으로 맞춥니다. 이제 가이드 진행 메모에 이번 폐기 실험과 결과를 반영해 source of truth를 현재 코드 상태와 다시 일치시키겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -347,2 +347,3 @@
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`에서 `mesh_pub + fanout` dual-forward ingress burst만 `14 MiB`로 낮추는 분리 실험을 했다. 회귀 `ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1`는 121.22초에 통과했지만, targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_093448.txt`가 `mean 479.873 ms`, `P95 610.462 ms`, `P99 626.596 ms`로 best-known과 baseline 대비 즉시 크게 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고, 현재 코드는 다시 대칭 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+apply_patch(auto_approved=true) exited 0 in 5ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index b4e6f0464e65490b617ff4a550f840159798d0fe..d4bf26778f1ace61da067e4362bed8a5839248c2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -345,6 +345,7 @@
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`에서 `mesh_pub + fanout` dual-forward ingress burst만 `14 MiB`로 낮추는 분리 실험을 했다. 회귀 `ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1`는 121.22초에 통과했지만, targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_093448.txt`가 `mean 479.873 ms`, `P95 610.462 ms`, `P99 626.596 ms`로 best-known과 baseline 대비 즉시 크게 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고, 현재 코드는 다시 대칭 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index b4e6f0464e65490b617ff4a550f840159798d0fe..d4bf26778f1ace61da067e4362bed8a5839248c2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -345,6 +345,7 @@
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`에서 `mesh_pub + fanout` dual-forward ingress burst만 `14 MiB`로 낮추는 분리 실험을 했다. 회귀 `ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1`는 121.22초에 통과했지만, targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_093448.txt`가 `mean 479.873 ms`, `P95 610.462 ms`, `P99 626.596 ms`로 best-known과 baseline 대비 즉시 크게 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고, 현재 코드는 다시 대칭 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+
+codex
+팀장님, 문서와 코드 상태를 다시 맞췄습니다. 마지막으로 revert 상태가 실제로 빌드되고 회귀 테스트가 깨지지 않는지만 다시 확인해서 이번 iteration을 안정 상태로 닫겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j1 --target libzlink test_multi_spot_benchmark_process unittest_spot_data_plane_budget unittest_spot_data_plane_protocol comp_src_spot_server comp_src_spot_client' in /home/hep7/project/kairos/zlinkfile update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index b4e6f0464e65490b617ff4a550f840159798d0fe..d4bf26778f1ace61da067e4362bed8a5839248c2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -345,6 +345,7 @@
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`에서 `mesh_pub + fanout` dual-forward ingress burst만 `14 MiB`로 낮추는 분리 실험을 했다. 회귀 `ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1`는 121.22초에 통과했지만, targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_093448.txt`가 `mean 479.873 ms`, `P95 610.462 ms`, `P99 626.596 ms`로 best-known과 baseline 대비 즉시 크게 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고, 현재 코드는 다시 대칭 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+
+ succeeded in 10.31s:
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_forwarding.cpp.o
+[ 97%] Built target objects
+[100%] Linking CXX shared library ../lib/libzlink.so
+[100%] Built target libzlink
+[  0%] Built target unity
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[100%] Built target testutil
+[100%] Linking CXX executable ../../bin/test_multi_spot_benchmark_process
+[100%] Built target test_multi_spot_benchmark_process
+[  0%] Built target unity
+[ 97%] Built target objects
+[ 97%] Linking CXX static library ../lib/libzlink.a
+[ 97%] Built target libzlink-static
+[100%] Built target testutil-static
+[100%] Linking CXX executable ../../../bin/unittest_spot_data_plane_budget
+[100%] Built target unittest_spot_data_plane_budget
+[  0%] Built target unity
+[ 97%] Built target objects
+[ 97%] Built target libzlink-static
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index b4e6f0464e65490b617ff4a550f840159798d0fe..d4bf26778f1ace61da067e4362bed8a5839248c2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -345,6 +345,7 @@
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`에서 `mesh_pub + fanout` dual-forward ingress burst만 `14 MiB`로 낮추는 분리 실험을 했다. 회귀 `ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1`는 121.22초에 통과했지만, targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_093448.txt`가 `mean 479.873 ms`, `P95 610.462 ms`, `P99 626.596 ms`로 best-known과 baseline 대비 즉시 크게 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고, 현재 코드는 다시 대칭 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1" in /home/hep7/project/kairos/zlinkfile update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index b4e6f0464e65490b617ff4a550f840159798d0fe..d4bf26778f1ace61da067e4362bed8a5839248c2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -345,6 +345,7 @@
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`에서 `mesh_pub + fanout` dual-forward ingress burst만 `14 MiB`로 낮추는 분리 실험을 했다. 회귀 `ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1`는 121.22초에 통과했지만, targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_093448.txt`가 `mean 479.873 ms`, `P95 610.462 ms`, `P99 626.596 ms`로 best-known과 baseline 대비 즉시 크게 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고, 현재 코드는 다시 대칭 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+
+codex
+팀장님, revert 상태 최종 회귀를 돌리는 중입니다. 이번 검증이 통과하면 현재 워크트리는 다시 문서의 best-known 상태와 일치한 안정 상태로 정리됩니다.
+ succeeded in 2m 00s:
+1/3 Test  #8: test_multi_spot_benchmark_process ...   Passed  120.29 sec
+    Start 79: unittest_spot_data_plane_protocol
+2/3 Test #79: unittest_spot_data_plane_protocol ...   Passed    0.00 sec
+    Start 80: unittest_spot_data_plane_budget
+3/3 Test #80: unittest_spot_data_plane_budget .....   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+integration      = 120.29 sec*proc (1 test)
+parallel-safe    =   0.00 sec*proc (2 tests)
+serial           = 120.29 sec*proc (1 test)
+unittest         =   0.00 sec*proc (2 tests)
+
+Total Test time (real) = 120.30 sec
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index b4e6f0464e65490b617ff4a550f840159798d0fe..d4bf26778f1ace61da067e4362bed8a5839248c2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -345,6 +345,7 @@
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`에서 `mesh_pub + fanout` dual-forward ingress burst만 `14 MiB`로 낮추는 분리 실험을 했다. 회귀 `ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1`는 121.22초에 통과했지만, targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_093448.txt`가 `mean 479.873 ms`, `P95 610.462 ms`, `P99 626.596 ms`로 best-known과 baseline 대비 즉시 크게 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고, 현재 코드는 다시 대칭 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+
+codex
+계속 진행 필요
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index b4e6f0464e65490b617ff4a550f840159798d0fe..d4bf26778f1ace61da067e4362bed8a5839248c2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -345,6 +345,7 @@
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`에서 `mesh_pub + fanout` dual-forward ingress burst만 `14 MiB`로 낮추는 분리 실험을 했다. 회귀 `ctest --test-dir core/build --output-on-failure -R 'test_multi_spot_benchmark_process|unittest_spot_data_plane_budget|unittest_spot_data_plane_protocol' -j1`는 121.22초에 통과했지만, targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_093448.txt`가 `mean 479.873 ms`, `P95 610.462 ms`, `P99 626.596 ms`로 best-known과 baseline 대비 즉시 크게 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고, 현재 코드는 다시 대칭 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+
+tokens used
+97,356
+계속 진행 필요

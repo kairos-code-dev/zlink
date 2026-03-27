@@ -3,18 +3,18 @@
 package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
 
 public final class DealerRouterRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.inprocEndpoint("dealer-router-recv");
         try (Context ctx = new Context();
-             Socket router = new Socket(ctx, SocketType.ROUTER);
-             Socket dealer = new Socket(ctx, SocketType.DEALER)) {
+             RouterSocket router = new RouterSocket(ctx);
+             DealerSocket dealer = new DealerSocket(ctx)) {
             dealer.setRoutingId(RoutingId.copyOf("dealer-a".getBytes()));
             router.bind(endpoint);
             dealer.connect(endpoint);

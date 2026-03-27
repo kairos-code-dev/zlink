@@ -1,1 +1,1 @@
-`StreamRecv` shows routed receive/send with a raw TCP client.
+`StreamRecv` shows `StreamSocket` routed receive/send with a raw TCP client.

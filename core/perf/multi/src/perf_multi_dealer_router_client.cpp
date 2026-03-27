@@ -351,20 +351,11 @@ bool create_dealer_slots(dealer_client_state_t *state,
     if (!state)
         return false;
 
-    std::vector<ready_monitor_t> monitors;
     if (!create_client_sockets(ctx, transport, endpoint, settings,
                                k_client_socket_type, &state->sockets,
-                               &monitors)) {
-        close_client_monitors(&monitors);
+                               NULL)) {
         return false;
     }
-
-    if (!wait_all_client_connect_ready(monitors,
-                                       settings.connect_ready_timeout_ms)) {
-        close_client_monitors(&monitors);
-        return false;
-    }
-    close_client_monitors(&monitors);
 
     state->poller = zlink_poller_new();
     if (!state->poller)

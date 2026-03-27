@@ -134,6 +134,56 @@ template<typename T> struct socket_option_key_t
     socket_option option;
 };
 
+template<typename T> struct router_option_key_t
+{
+    explicit constexpr router_option_key_t (router_option option_)
+        : option (option_)
+    {
+    }
+
+    router_option option;
+};
+
+template<typename T> struct dealer_option_key_t
+{
+    explicit constexpr dealer_option_key_t (dealer_option option_)
+        : option (option_)
+    {
+    }
+
+    dealer_option option;
+};
+
+template<typename T> struct pub_option_key_t
+{
+    explicit constexpr pub_option_key_t (pub_option option_)
+        : option (option_)
+    {
+    }
+
+    pub_option option;
+};
+
+template<typename T> struct sub_option_key_t
+{
+    explicit constexpr sub_option_key_t (sub_option option_)
+        : option (option_)
+    {
+    }
+
+    sub_option option;
+};
+
+template<typename T> struct stream_option_key_t
+{
+    explicit constexpr stream_option_key_t (stream_option option_)
+        : option (option_)
+    {
+    }
+
+    stream_option option;
+};
+
 namespace socket_options
 {
 static const socket_option_key_t<uint64_t> affinity (socket_option::affinity);
@@ -210,6 +260,47 @@ static const socket_option_key_t<std::string> tls_password (
 static const socket_option_key_t<int> zmp_metadata (
   socket_option::zmp_metadata);
 } // namespace socket_options
+
+namespace router_options
+{
+static const router_option_key_t<int> mandatory (router_option::mandatory);
+static const router_option_key_t<int> handover (router_option::handover);
+static const router_option_key_t<int> probe (router_option::probe);
+static const router_option_key_t<std::string> connect_routing_id (
+  router_option::connect_routing_id);
+} // namespace router_options
+
+namespace dealer_options
+{
+static const dealer_option_key_t<int> probe (dealer_option::probe);
+} // namespace dealer_options
+
+namespace pub_options
+{
+static const pub_option_key_t<int> verbose (pub_option::verbose);
+static const pub_option_key_t<int> verboser (pub_option::verboser);
+static const pub_option_key_t<int> manual (pub_option::manual);
+static const pub_option_key_t<int> manual_last_value (
+  pub_option::manual_last_value);
+static const pub_option_key_t<int> nodrop (pub_option::nodrop);
+static const pub_option_key_t<std::string> welcome_msg (
+  pub_option::welcome_msg);
+static const pub_option_key_t<int> topics_count (pub_option::topics_count);
+static const pub_option_key_t<std::string> approve_subscribe (
+  pub_option::approve_subscribe);
+static const pub_option_key_t<std::string> reject_subscribe (
+  pub_option::reject_subscribe);
+} // namespace pub_options
+
+namespace sub_options
+{
+static const sub_option_key_t<int> topics_count (sub_option::topics_count);
+} // namespace sub_options
+
+namespace stream_options
+{
+static const stream_option_key_t<int> notify (stream_option::notify);
+} // namespace stream_options
 
 enum class send_flag : int
 {

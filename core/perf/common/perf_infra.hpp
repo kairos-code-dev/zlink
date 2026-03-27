@@ -201,7 +201,8 @@ inline std::string make_fixed_endpoint(const std::string& transport, int port) {
 inline bool perf_supports_service_transport(const std::string &transport)
 {
     return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
+           || transport == "wss" || transport == "ipc"
+           || transport == "inproc";
 }
 
 inline bool perf_is_tls_transport(const std::string &transport)

@@ -19,9 +19,9 @@ public sealed class test_router_multiple_dealers
             return;
 
         using var ctx = new Context();
-        using var router = new Socket(ctx, SocketType.Router);
-        using var dealer1 = new Socket(ctx, SocketType.Dealer);
-        using var dealer2 = new Socket(ctx, SocketType.Dealer);
+        using var router = new RouterSocket(ctx);
+        using var dealer1 = new DealerSocket(ctx);
+        using var dealer2 = new DealerSocket(ctx);
 
         dealer1.SetOption(SocketOptions.RoutingId, "D1");
         dealer2.SetOption(SocketOptions.RoutingId, "D2");

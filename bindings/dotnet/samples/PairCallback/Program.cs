@@ -6,8 +6,8 @@ if (!SampleSupport.IsNativeAvailable())
     return;
 
 using var ctx = new Context();
-using var sender = new Socket(ctx, SocketType.Pair);
-using var receiver = new Socket(ctx, SocketType.Pair);
+using var sender = new PairSocket(ctx);
+using var receiver = new PairSocket(ctx);
 string endpoint = SampleSupport.NewEndpoint("tcp", "pair-callback");
 sender.Bind(endpoint);
 receiver.Connect(endpoint);

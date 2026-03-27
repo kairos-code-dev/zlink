@@ -5,8 +5,8 @@
 const zlink = require('../src');
 
 const ctx = new zlink.Context();
-const server = new zlink.Socket(ctx, zlink.SocketType.PAIR);
-const client = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+const server = new zlink.PairSocket(ctx);
+const client = new zlink.PairSocket(ctx);
 
 server.bind('inproc://example-pair-recv');
 client.connect('inproc://example-pair-recv');

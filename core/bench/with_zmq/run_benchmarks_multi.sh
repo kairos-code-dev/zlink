@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
-TRANSPORTS_DEFAULT="tcp,tls,ws,wss"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
+TRANSPORTS_DEFAULT="tcp,ipc"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
 SECONDS=0
@@ -101,9 +101,9 @@ Usage: core/bench/with_zmq/run_benchmarks_multi.sh [options]
 
 Run multi-socket benchmark patterns with libzmq vs zlink comparison.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
-By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
+By default, multi-bench uses transports: tcp,ipc (can be overridden with --transports).
 
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above).
@@ -147,7 +147,7 @@ Options:
 
 Notes:
   - result is saved under results/multi/report/.
-  - unsupported patterns in with_zmq (GATEWAY, SPOT) are skipped.
+  - multi comparison uses split server/client processes, so inproc is excluded.
   - STREAM_CALLBACK and STREAM_LEN32BE are mapped to STREAM.
 USAGE
 }
@@ -207,9 +207,6 @@ normalize_with_zmq_pattern() {
       ;;
     STREAM|STREAM_CALLBACK|STREAM_LEN32BE)
       echo "stream"
-      ;;
-    GATEWAY|SPOT)
-      echo ""
       ;;
     *)
       return 1
@@ -673,25 +670,12 @@ if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
 fi
 
 RUN_PATTERNS=()
-SKIPPED_PATTERNS=()
-SKIP_REASONS=()
-
 for raw_pattern in "${SELECTED_PATTERNS[@]}"; do
   mapped="$(normalize_with_zmq_pattern "${raw_pattern}" || true)"
   if [[ -z "${mapped}" ]]; then
-    up="$(printf '%s' "${raw_pattern}" | tr '[:lower:]' '[:upper:]')"
-    case "${up}" in
-      GATEWAY|SPOT)
-        SKIPPED_PATTERNS+=("${up}")
-        SKIP_REASONS+=("unsupported in with_zmq")
-        continue
-        ;;
-      *)
-        echo "Error: unsupported pattern '${raw_pattern}'." >&2
-        echo "Supported in with_zmq: DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM" >&2
-        exit 1
-        ;;
-    esac
+    echo "Error: unsupported pattern '${raw_pattern}'." >&2
+    echo "Supported in with_zmq: DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM" >&2
+    exit 1
   fi
 
   exists=0
@@ -707,13 +691,6 @@ for raw_pattern in "${SELECTED_PATTERNS[@]}"; do
 done
 
 if [[ "${#RUN_PATTERNS[@]}" -eq 0 ]]; then
-  if [[ "${#SKIPPED_PATTERNS[@]}" -gt 0 ]]; then
-    echo
-    echo "## Skips"
-    for i in "${!SKIPPED_PATTERNS[@]}"; do
-      echo "- ${SKIPPED_PATTERNS[i]}: ${SKIP_REASONS[i]}"
-    done
-  fi
   exit 0
 fi
 
@@ -811,14 +788,6 @@ run_all_patterns() {
       sleep_ms "${PATTERN_TRANSITION_MS}"
     fi
   done
-
-  if [[ "${#SKIPPED_PATTERNS[@]}" -gt 0 ]]; then
-    echo
-    echo "## Skips"
-    for i in "${!SKIPPED_PATTERNS[@]}"; do
-      echo "- ${SKIPPED_PATTERNS[i]}: ${SKIP_REASONS[i]}"
-    done
-  fi
 
   return "${failed}"
 }

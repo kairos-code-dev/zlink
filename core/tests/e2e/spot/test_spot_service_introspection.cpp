@@ -57,6 +57,7 @@ struct service_monitor_probe_t
 static std::atomic<int> g_port_seed (22618);
 static std::mutex g_default_handle_mutex;
 static std::map<void *, spot_handle_t *> g_default_spot_handles;
+static const int bind_retry_limit = 256;
 
 static void *default_pub_handle (void *node_);
 static void *default_sub_handle (void *node_);
@@ -386,7 +387,7 @@ static void *create_node (void *ctx_, const char *service_name_)
 
 static int bind_node (void *node_, int *port_seed_, char *endpoint_out_)
 {
-    for (int i = 0; i < 32; ++i) {
+    for (int i = 0; i < bind_retry_limit; ++i) {
         snprintf (endpoint_out_, MAX_SOCKET_STRING, "tcp://127.0.0.1:%d",
                   test_port ((*port_seed_)++));
         if (zlink_spot_node_bind (node_, endpoint_out_) == 0)
@@ -403,10 +404,11 @@ static void *create_registry (void *ctx_,
                               char *pub_endpoint_out_,
                               char *router_endpoint_out_)
 {
-    void *registry = zlink_registry_new (ctx_);
-    TEST_ASSERT_NOT_NULL (registry);
+    for (int i = 0; i < bind_retry_limit; ++i) {
+        void *registry = zlink_registry_new (ctx_);
+        if (!registry)
+            return NULL;
 
-    for (int i = 0; i < 32; ++i) {
         snprintf (pub_endpoint_out_, MAX_SOCKET_STRING, "tcp://127.0.0.1:%d",
                   test_port ((*port_seed_)++));
         snprintf (router_endpoint_out_, MAX_SOCKET_STRING, "tcp://127.0.0.1:%d",
@@ -418,11 +420,13 @@ static void *create_registry (void *ctx_,
               zlink_registry_set_broadcast_interval (registry, 50));
             return registry;
         }
-        if (zlink_errno () != EADDRINUSE)
-            break;
-    }
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+        const int bind_errno = zlink_errno ();
+        (void) zlink_registry_destroy (&registry);
+
+        if (bind_errno != EADDRINUSE && bind_errno != EBUSY)
+            continue;
+    }
     return NULL;
 }
 

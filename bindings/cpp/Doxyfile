@@ -34,8 +34,7 @@ INPUT                  = include/zlink.hpp \
                          README.doxygen.md
 FILE_PATTERNS          = *.hpp
 RECURSIVE              = YES
-EXCLUDE                = include/zlink.h \
-                         include/zlink_utils.h
+EXCLUDE                = include/zlink.h
 EXCLUDE_PATTERNS       = */build/*
 USE_MDFILE_AS_MAINPAGE = README.doxygen.md
 INPUT_ENCODING         = UTF-8

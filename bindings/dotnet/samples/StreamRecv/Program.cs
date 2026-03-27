@@ -6,7 +6,7 @@ if (!SampleSupport.IsNativeAvailable())
     return;
 
 using var ctx = new Context();
-using var stream = new Zlink.Socket(ctx, Zlink.SocketType.Stream);
+using var stream = new Zlink.StreamSocket(ctx);
 string endpoint = SampleSupport.NewEndpoint("tcp", "stream-recv");
 int port = SampleSupport.ExtractPort(endpoint);
 stream.Bind(endpoint);

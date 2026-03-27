@@ -5,8 +5,8 @@
 const zlink = require('../src');
 
 const ctx = new zlink.Context();
-const router = new zlink.Socket(ctx, zlink.SocketType.ROUTER);
-const dealer = new zlink.Socket(ctx, zlink.SocketType.DEALER);
+const router = new zlink.RouterSocket(ctx);
+const dealer = new zlink.DealerSocket(ctx);
 
 router.bind('inproc://example-dealer-router');
 dealer.connect('inproc://example-dealer-router');

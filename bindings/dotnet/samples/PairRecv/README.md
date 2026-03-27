@@ -1,1 +1,1 @@
-`PairRecv` shows synchronous `Socket.Receive` on an in-process `PAIR` link.
+`PairRecv` shows synchronous `PairSocket.Receive` on an in-process pair link.

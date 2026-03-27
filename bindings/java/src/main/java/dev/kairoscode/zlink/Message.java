@@ -326,6 +326,7 @@ public final class Message implements AutoCloseable {
         socket.sendMessageFrame(this, flag);
     }
 
+    @Deprecated(forRemoval = false)
     boolean trySend(Socket socket, SendFlag flag) {
         Objects.requireNonNull(socket, "socket");
         Objects.requireNonNull(flag, "flag");

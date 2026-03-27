@@ -6,8 +6,8 @@ const zlink = require('../src');
 
 test('pair sockets send and receive multipart through canonical api', () => {
   const ctx = new zlink.Context();
-  const left = new zlink.Socket(ctx, zlink.SocketType.PAIR);
-  const right = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+  const left = new zlink.PairSocket(ctx);
+  const right = new zlink.PairSocket(ctx);
 
   left.bind('inproc://multipart-contract');
   right.connect('inproc://multipart-contract');

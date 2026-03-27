@@ -445,10 +445,7 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const int linger_ms = 0;
-    const int pub_nodrop = 1;
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
-    set_pub_opt_int (
-      server, ZLINK_PUB_OPT_NODROP, pub_nodrop, "ZLINK_PUB_OPT_NODROP");
     apply_benchmark_hwm (server, settings.hwm);
     if (k_server_has_routing_id) {
         zlink_set_routing_id (
@@ -533,16 +530,6 @@ inline int run_server_benchmark (const std::string &lib_name,
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     std::cout << "READY," << endpoint << std::endl;
-    if (!wait_for_pub_delivery_ready_count (
-          server_monitor, settings.clients, settings.connect_ready_timeout_ms)) {
-        perf_stop_requested ().store (true, std::memory_order_release);
-        g_start_cv.notify_all ();
-        if (stdin_watcher.joinable ())
-            stdin_watcher.join ();
-        close_ready_monitor (server_monitor);
-        zlink_close (server);
-        return 1;
-    }
     close_ready_monitor (server_monitor);
 
     const bool loop_ok = run_server_loop (

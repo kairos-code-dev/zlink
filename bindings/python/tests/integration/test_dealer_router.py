@@ -7,8 +7,6 @@ from .helpers import (
     endpoint_for,
     try_transport,
     wait_for_socket_event,
-    ZLINK_DEALER,
-    ZLINK_ROUTER,
 )
 
 
@@ -17,8 +15,8 @@ class DealerRouterScenarioTest(unittest.TestCase):
         ctx = zlink.Context()
         for name, endpoint in transports("dealer-router"):
             def run():
-                router = zlink.Socket(ctx, ZLINK_ROUTER)
-                dealer = zlink.Socket(ctx, ZLINK_DEALER)
+                router = zlink.RouterSocket(ctx)
+                dealer = zlink.DealerSocket(ctx)
                 ep = endpoint_for(name, endpoint, "-dr")
                 router.bind(ep)
                 dealer.connect(ep)

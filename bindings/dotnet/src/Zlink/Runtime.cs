@@ -46,8 +46,8 @@ public static class Runtime
         NativeMethods.zlink_sleep((int)Math.Ceiling(totalSeconds));
     }
 
-    public static int Proxy(Socket frontend, Socket backend,
-        Socket? capture = null)
+    public static int Proxy(SocketBase frontend, SocketBase backend,
+        SocketBase? capture = null)
     {
         if (frontend == null)
             throw new ArgumentNullException(nameof(frontend));
@@ -60,8 +60,8 @@ public static class Runtime
         return rc;
     }
 
-    public static int ProxySteerable(Socket frontend, Socket backend,
-        Socket control, Socket? capture = null)
+    public static int ProxySteerable(SocketBase frontend, SocketBase backend,
+        SocketBase control, SocketBase? capture = null)
     {
         if (frontend == null)
             throw new ArgumentNullException(nameof(frontend));

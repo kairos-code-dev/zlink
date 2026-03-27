@@ -1,1 +1,1 @@
-`DealerRouterRecv` shows routed request/reply with `Dealer` and `Router`.
+`DealerRouterRecv` shows routed request/reply with `DealerSocket` and `RouterSocket`.

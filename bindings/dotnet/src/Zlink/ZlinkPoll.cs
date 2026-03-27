@@ -15,7 +15,7 @@ public static class ZlinkPoll
     [ThreadStatic]
     private static ZlinkPollItemWindows[]? _windowsItems;
 
-    public static int Poll(IReadOnlyList<Socket> sockets,
+    public static int Poll(IReadOnlyList<SocketBase> sockets,
         IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
         int timeoutMs)
     {

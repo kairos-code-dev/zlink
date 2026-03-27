@@ -5,7 +5,6 @@ import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.options.SocketOptions;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -31,8 +30,8 @@ public class CallbackModeContractTest {
         AtomicReference<byte[]> payload = new AtomicReference<>();
 
         try (Context ctx = new Context();
-             Socket left = new Socket(ctx, SocketType.PAIR);
-             Socket right = new Socket(ctx, SocketType.PAIR)) {
+             PairSocket left = new PairSocket(ctx);
+             PairSocket right = new PairSocket(ctx)) {
             String endpoint = TestSupport.inprocEndpoint("callback-recv");
             left.bind(endpoint);
             right.connect(endpoint);
@@ -68,8 +67,8 @@ public class CallbackModeContractTest {
         AtomicReference<byte[]> payload = new AtomicReference<>();
 
         try (Context ctx = new Context();
-             Socket pub = new Socket(ctx, SocketType.XPUB);
-             Socket sub = new Socket(ctx, SocketType.SUB)) {
+             XPubSocket pub = new XPubSocket(ctx);
+             SubSocket sub = new SubSocket(ctx)) {
             String endpoint = TestSupport.tcpEndpoint();
             pub.bind(endpoint);
             pub.setOption(SocketOptions.RCVTIMEO, TestSupport.DEFAULT_TIMEOUT_MS);
@@ -81,10 +80,9 @@ public class CallbackModeContractTest {
                 delivered.countDown();
             });
 
-            SubscriptionEvent event = waitForSubscriptionEvent(pub);
-            assertTrue(event.subscribed);
-            assertArrayEquals("alpha".getBytes(StandardCharsets.UTF_8),
-                event.topic);
+            SubscriptionEvent event = pub.subscriptionEvent();
+            assertTrue(event.subscribed());
+            assertEquals("alpha", event.filter());
             publish(pub, "alpha", List.of(Message.copyOfUtf8("payload")));
 
             assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,
@@ -102,8 +100,8 @@ public class CallbackModeContractTest {
         AtomicInteger installs = new AtomicInteger();
 
         try (Context ctx = new Context();
-             Socket left = new Socket(ctx, SocketType.PAIR);
-             Socket right = new Socket(ctx, SocketType.PAIR)) {
+             PairSocket left = new PairSocket(ctx);
+             PairSocket right = new PairSocket(ctx)) {
             String endpoint = TestSupport.inprocEndpoint("callback-send-ready");
             left.bind(endpoint);
             right.connect(endpoint);
@@ -114,7 +112,7 @@ public class CallbackModeContractTest {
         }
     }
 
-    private static void publish(Socket subject, String topic,
+    private static void publish(XPubSocket subject, String topic,
                                 List<Message> parts) {
         try (Arena arena = Arena.ofConfined()) {
             long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
@@ -159,26 +157,4 @@ public class CallbackModeContractTest {
         }
     }
 
-    private static SubscriptionEvent waitForSubscriptionEvent(Socket socket) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment topicOut = arena.allocate(256);
-            MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-            topicLenOut.set(ValueLayout.JAVA_LONG, 0, 256);
-            int rc = Native.subscriptionEvent(socket.handle(), MemorySegment.NULL,
-                subscribedOut, topicOut, topicLenOut, 0);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_subscription_event");
-            int topicLen = (int) topicLenOut.get(ValueLayout.JAVA_LONG, 0);
-            byte[] topic = new byte[topicLen];
-            if (topicLen > 0) {
-                MemorySegment.copy(topicOut, 0, MemorySegment.ofArray(topic), 0,
-                    topicLen);
-            }
-            return new SubscriptionEvent(
-                subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0, topic);
-        }
-    }
-
-    private record SubscriptionEvent(boolean subscribed, byte[] topic) {}
 }

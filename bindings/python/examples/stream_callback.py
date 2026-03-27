@@ -16,11 +16,11 @@ def main():
     endpoint = f"tcp://127.0.0.1:{port}"
 
     with zlink.Context() as ctx:
-        with zlink.Socket(ctx, zlink.SocketType.STREAM) as server:
+        with zlink.StreamSocket(ctx) as server:
             def on_message(received):
                 print(received.routing_id, received.to_bytes_list())
 
-            server.set_recv_handler(on_message)
+            server.on_receive(on_message)
             server.bind(endpoint)
             print("stream callback surface prepared", endpoint)
 

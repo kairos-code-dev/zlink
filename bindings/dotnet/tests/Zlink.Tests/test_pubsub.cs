@@ -18,8 +18,8 @@ public sealed class test_pubsub
             return;
 
         using var ctx = new Context();
-        using var publisher = new Socket(ctx, SocketType.Pub);
-        using var subscriber = new Socket(ctx, SocketType.Sub);
+        using var publisher = new PubSocket(ctx);
+        using var subscriber = new SubSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint(transport, "pubsub");
         publisher.Bind(endpoint);
@@ -46,8 +46,8 @@ public sealed class test_pubsub
             return;
 
         using var ctx = new Context();
-        using var publisher = new Socket(ctx, SocketType.Pub);
-        using var subscriber = new Socket(ctx, SocketType.Sub);
+        using var publisher = new PubSocket(ctx);
+        using var subscriber = new SubSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint(transport, "pubsub-filter");
         publisher.Bind(endpoint);
@@ -83,8 +83,8 @@ public sealed class test_pubsub
             return;
 
         using var ctx = new Context();
-        using var xpub = new Socket(ctx, SocketType.XPub);
-        using var xsub = new Socket(ctx, SocketType.XSub);
+        using var xpub = new XPubSocket(ctx);
+        using var xsub = new XSubSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint(transport, "xpub-xsub");
         xpub.Bind(endpoint);

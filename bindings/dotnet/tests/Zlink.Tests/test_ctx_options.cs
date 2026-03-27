@@ -67,7 +67,7 @@ public sealed class test_ctx_options
             return;
 
         using var ctx = new Context();
-        using (var preRouter = new Socket(ctx, SocketType.Router))
+        using (var preRouter = new RouterSocket(ctx))
         {
             Assert.Equal(-1, preRouter.GetOption(SocketOptions.Linger));
         }
@@ -75,7 +75,7 @@ public sealed class test_ctx_options
         ctx.SetOption(ContextOption.Blocky, 0);
         Assert.Equal(0, ctx.GetOption(ContextOption.Blocky));
 
-        using var router = new Socket(ctx, SocketType.Router);
+        using var router = new RouterSocket(ctx);
         Assert.Equal(0, router.GetOption(SocketOptions.Linger));
     }
 

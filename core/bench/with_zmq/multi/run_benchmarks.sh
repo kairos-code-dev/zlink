@@ -114,7 +114,7 @@ PY
 }
 
 DEFAULT_PATTERN="router_router"
-DEFAULT_TRANSPORT="tcp,tls,ws,wss"
+DEFAULT_TRANSPORT="tcp,ipc"
 
 normalize_pattern() {
   local raw="${1:-}"
@@ -131,6 +131,25 @@ normalize_pattern() {
     ROUTER_ROUTER) echo "MULTI_ROUTER_ROUTER" ;;
     PUBSUB) echo "MULTI_PUBSUB" ;;
     STREAM) echo "MULTI_STREAM" ;;
+    *) return 1 ;;
+  esac
+}
+
+comparison_pattern_arg() {
+  local raw="${1:-}"
+  if [[ -z "${raw}" ]]; then
+    return 1
+  fi
+
+  local up
+  up="$(echo "${raw}" | tr '[:lower:]' '[:upper:]')"
+
+  case "${up}" in
+    DEALER_DEALER|MULTI_DEALER_DEALER) echo "dealer_dealer" ;;
+    DEALER_ROUTER|MULTI_DEALER_ROUTER) echo "dealer_router" ;;
+    ROUTER_ROUTER|MULTI_ROUTER_ROUTER) echo "router_router" ;;
+    PUBSUB|MULTI_PUBSUB) echo "pubsub" ;;
+    STREAM|MULTI_STREAM) echo "stream" ;;
     *) return 1 ;;
   esac
 }
@@ -220,7 +239,7 @@ Options:
                                          pubsub, stream
   --runs N                      Iterations per configuration (default: 3)
   --transport NAME              Transport(s), comma-separated allowed
-                                (default: tcp,tls,ws,wss)
+                                (default: tcp,ipc)
   --transports NAME             Alias for --transport
   --zlink-only                  Re-measure only zlink (compare with cached libzmq)
   --single [N]                  Also run matching single pattern after multi
@@ -252,6 +271,7 @@ Environment:
 
 Notes:
   - result is saved under results/multi/report/.
+  - inproc is excluded in multi comparison because split server/client run in separate processes.
 USAGE
 }
 
@@ -449,6 +469,10 @@ PATTERN_INTERNAL="$(normalize_pattern "${PATTERN_RAW}")" || {
   echo "Supported: dealer_dealer, dealer_router, router_router, pubsub, stream" >&2
   exit 1
 }
+PATTERN_COMPARISON_ARG="$(comparison_pattern_arg "${PATTERN_RAW}")" || {
+  echo "Error: unsupported comparison pattern '${PATTERN_RAW}'." >&2
+  exit 1
+}
 
 if [[ -z "${RESULTS_DIR}" ]]; then
   RESULTS_DIR="${DEFAULT_RESULTS_ROOT}"
@@ -567,9 +591,9 @@ SHOW_TOTAL_TIME=1
 
 set +e
 if [[ -n "${OUTPUT_FILE}" ]]; then
-  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
 else
-  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}"
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}"
 fi
 run_status=${PIPESTATUS[0]}
 set -e

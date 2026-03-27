@@ -6,8 +6,8 @@ const zlink = require('../src');
 
 test('pair messaging uses Message and Received by default', () => {
   const ctx = new zlink.Context();
-  const sender = new zlink.Socket(ctx, zlink.SocketType.PAIR);
-  const receiver = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+  const sender = new zlink.PairSocket(ctx);
+  const receiver = new zlink.PairSocket(ctx);
 
   sender.bind('inproc://pair-contract');
   receiver.connect('inproc://pair-contract');

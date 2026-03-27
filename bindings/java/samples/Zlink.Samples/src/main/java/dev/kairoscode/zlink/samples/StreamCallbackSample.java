@@ -3,9 +3,7 @@
 package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
+import dev.kairoscode.zlink.StreamSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 
@@ -15,7 +13,7 @@ public final class StreamCallbackSample {
         String endpoint = SampleSupport.tcpEndpoint();
         CountDownLatch delivered = new CountDownLatch(1);
         try (Context ctx = new Context();
-             Socket server = new Socket(ctx, SocketType.STREAM)) {
+             StreamSocket server = new StreamSocket(ctx)) {
             server.onReceive(received -> {
                 try (received) {
                     System.out.println("stream callback: " + SampleSupport.singleUtf8(received));

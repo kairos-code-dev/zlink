@@ -24,8 +24,8 @@ public class NativeContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
-             Socket left = new Socket(ctx, SocketType.PAIR);
-             Socket right = new Socket(ctx, SocketType.PAIR);
+             PairSocket left = new PairSocket(ctx);
+             PairSocket right = new PairSocket(ctx);
              Arena arena = Arena.ofConfined()) {
             String endpoint = TestSupport.inprocEndpoint("native-send");
             left.bind(endpoint);
@@ -56,10 +56,10 @@ public class NativeContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
-             Socket router = new Socket(ctx, SocketType.ROUTER);
-             Socket xpub = new Socket(ctx, SocketType.XPUB);
-             Socket sub = new Socket(ctx, SocketType.SUB);
-             Socket stream = new Socket(ctx, SocketType.STREAM);
+             RouterSocket router = new RouterSocket(ctx);
+             XPubSocket xpub = new XPubSocket(ctx);
+             SubSocket sub = new SubSocket(ctx);
+             StreamSocket stream = new StreamSocket(ctx);
              Arena arena = Arena.ofConfined()) {
             MemorySegment intValue = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment sizeValue = arena.allocate(ValueLayout.JAVA_LONG);

@@ -5,8 +5,7 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.SocketType;
+import dev.kairoscode.zlink.StreamSocket;
 import java.nio.charset.StandardCharsets;
 
 public final class StreamRecvSample {
@@ -14,7 +13,7 @@ public final class StreamRecvSample {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
         try (Context ctx = new Context();
-             Socket server = new Socket(ctx, SocketType.STREAM)) {
+             StreamSocket server = new StreamSocket(ctx)) {
             server.bind(endpoint);
             try (java.net.Socket client = SampleSupport.connectRawTcp(endpoint)) {
                 SampleSupport.sendRawTcp(client,

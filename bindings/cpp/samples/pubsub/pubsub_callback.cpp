@@ -42,20 +42,20 @@ void subscribe_callback (const zlink_routing_id_t *,
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t publisher (ctx, zlink::socket_type::xpub);
-    zlink::socket_t subscriber (ctx, zlink::socket_type::sub);
-    zlink::monitor_handle_t pub_monitor (publisher, zlink::monitor_event::all);
-    zlink::monitor_handle_t sub_monitor (subscriber, zlink::monitor_event::all);
+    zlink::xpub_socket_t publisher (ctx);
+    zlink::sub_socket_t subscriber (ctx);
+    zlink::monitor_handle_t pub_monitor = publisher.monitor_handle ();
+    zlink::monitor_handle_t sub_monitor = subscriber.monitor_handle ();
 
     const std::string endpoint =
-      zlink_cpp_sample::unique_tcp ("pubsub-callback");
+      detail::unique_tcp ("pubsub-callback");
     assert (publisher.bind (endpoint) == 0);
     assert (subscriber.connect (endpoint) == 0);
-    assert (zlink_cpp_sample::wait_for_socket_monitor_event (
+    assert (detail::wait_for_socket_monitor_event (
       pub_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
       2000, 1));
-    assert (zlink_cpp_sample::wait_for_socket_monitor_event (
+    assert (detail::wait_for_socket_monitor_event (
       sub_monitor,
       static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
       2000, 1));
@@ -72,11 +72,11 @@ int main ()
     assert (topic == "topic:alpha");
 
     zlink::message_t outbound =
-      zlink_cpp_sample::make_message ("pubsub-callback");
+      detail::make_message ("pubsub-callback");
     assert (publisher.publish ("topic:alpha", outbound) == 0);
 
     std::unique_lock<std::mutex> lock (state.mutex);
-    assert (zlink_cpp_sample::wait_until (state.cv, lock, state.ready, 2000));
+    assert (detail::wait_until (state.cv, lock, state.ready, 2000));
     assert (state.topic == "topic:alpha");
     assert (state.payload == "pubsub-callback");
     return 0;

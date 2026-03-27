@@ -7,7 +7,6 @@ from .helpers import (
     endpoint_for,
     try_transport,
     wait_for_socket_event,
-    ZLINK_PAIR,
 )
 
 
@@ -16,8 +15,8 @@ class PairScenarioTest(unittest.TestCase):
         ctx = zlink.Context()
         for name, endpoint in transports("pair"):
             def run():
-                a = zlink.Socket(ctx, ZLINK_PAIR)
-                b = zlink.Socket(ctx, ZLINK_PAIR)
+                a = zlink.PairSocket(ctx)
+                b = zlink.PairSocket(ctx)
                 ep = endpoint_for(name, endpoint, "-pair")
                 a.bind(ep)
                 b.connect(ep)

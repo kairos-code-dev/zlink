@@ -16,7 +16,7 @@ def main():
     endpoint = f"tcp://127.0.0.1:{port}"
 
     with zlink.Context() as ctx:
-        with zlink.Socket(ctx, zlink.SocketType.STREAM) as server:
+        with zlink.StreamSocket(ctx) as server:
             server.bind(endpoint)
             print("stream recv surface prepared", endpoint, server.recv_multipart)
 

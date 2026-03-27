@@ -5,8 +5,8 @@
 const zlink = require('../src');
 
 const ctx = new zlink.Context();
-const left = new zlink.Socket(ctx, zlink.SocketType.PAIR);
-const right = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+const left = new zlink.PairSocket(ctx);
+const right = new zlink.PairSocket(ctx);
 
 left.bind('inproc://example-pair-handler');
 right.connect('inproc://example-pair-handler');

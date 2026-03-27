@@ -195,8 +195,11 @@ SPLIT_SERVER_CLIENT_PATTERNS = {
     "MULTI_DEALER_DEALER",
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
+    "MULTI_PUBSUB",
+    "MULTI_STREAM",
 }
-ZLINK_SPLIT_BINARIES = {
+SPLIT_BINARIES = {
+    "zlink": {
     "MULTI_DEALER_DEALER": (
         "comp_zlink_multi_dealer_dealer_server",
         "comp_zlink_multi_dealer_dealer_client",
@@ -209,11 +212,48 @@ ZLINK_SPLIT_BINARIES = {
         "comp_zlink_multi_router_router_server",
         "comp_zlink_multi_router_router_client",
     ),
+    "MULTI_PUBSUB": (
+        "comp_zlink_multi_pubsub_server",
+        "comp_zlink_multi_pubsub_client",
+    ),
+    "MULTI_STREAM": (
+        "comp_zlink_multi_stream_server",
+        "comp_zlink_multi_stream",
+    ),
+    },
+    "std_zmq": {
+    "MULTI_DEALER_DEALER": (
+        "comp_std_zmq_multi_dealer_dealer_server",
+        "comp_std_zmq_multi_dealer_dealer_client",
+    ),
+    "MULTI_DEALER_ROUTER": (
+        "comp_std_zmq_multi_dealer_router_server",
+        "comp_std_zmq_multi_dealer_router_client",
+    ),
+    "MULTI_ROUTER_ROUTER": (
+        "comp_std_zmq_multi_router_router_server",
+        "comp_std_zmq_multi_router_router_client",
+    ),
+    "MULTI_PUBSUB": (
+        "comp_std_zmq_multi_pubsub_server",
+        "comp_std_zmq_multi_pubsub_client",
+    ),
+    "MULTI_STREAM": (
+        "comp_std_zmq_multi_stream_server",
+        "comp_std_zmq_multi_stream_client",
+    ),
+    },
 }
 _platform_tag, _arch_tag = platform_arch_tag()
 DEFAULT_STD_CACHE_FILE = os.path.join(
     SCRIPT_DIR, f"std_zmq_multi_cache_{_platform_tag}-{_arch_tag}.json"
 )
+
+
+def canonical_lib_name(lib_name):
+    if lib_name in ("libzmq", "std_zmq"):
+        return "std_zmq"
+    return lib_name
 
 
 def parse_env_list(name, cast_fn):
@@ -244,6 +284,12 @@ SHOW_PREP = (
     or os.environ.get("BENCH_DEBUG", "0") == "1"
 )
 base_env = os.environ.copy()
+
+
+def transport_supported_for_pattern(pattern_name, transport):
+    if pattern_name == "MULTI_STREAM":
+        return transport == "tcp"
+    return transport in ("tcp", "ipc")
 
 
 def parse_nonnegative_int_env(name, default_value):
@@ -293,8 +339,8 @@ def select_comparisons(comparisons, pattern_req):
     return selected
 
 
-def required_zlink_split_binaries(pattern_name):
-    pair = ZLINK_SPLIT_BINARIES.get(pattern_name)
+def required_split_binaries(lib_name, pattern_name):
+    pair = SPLIT_BINARIES.get(canonical_lib_name(lib_name), {}).get(pattern_name)
     if not pair:
         return []
     server_bin, client_bin = pair
@@ -305,9 +351,10 @@ def expected_runtime_binaries(selected_comparisons, include_std):
     names = []
     for std_bin, zlk_bin, pattern_name in selected_comparisons:
         names.append(zlk_bin)
-        names.extend(required_zlink_split_binaries(pattern_name))
+        names.extend(required_split_binaries("zlink", pattern_name))
         if include_std:
             names.append(std_bin)
+            names.extend(required_split_binaries("std_zmq", pattern_name))
     return sorted(set(names))
 
 
@@ -327,9 +374,13 @@ def collect_multi_build_targets(comparisons, include_std):
             targets.append(std_bin)
         if zlk_bin not in targets:
             targets.append(zlk_bin)
-        for extra_bin in required_zlink_split_binaries(pattern_name):
+        for extra_bin in required_split_binaries("zlink", pattern_name):
             if extra_bin not in targets:
                 targets.append(extra_bin)
+        if include_std:
+            for extra_bin in required_split_binaries("std_zmq", pattern_name):
+                if extra_bin not in targets:
+                    targets.append(extra_bin)
     return targets
 
 
@@ -383,6 +434,7 @@ def run_cmake_configure(cmake_build_dir):
         "-DBUILD_SHARED=ON",
         "-DBUILD_BENCHMARKS=ON",
         "-DZLINK_BUILD_BENCH_ZMQ=ON",
+        "-DZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES=ON",
         "-DZLINK_BUILD_BENCH_ZLINK=ON",
         "-DZLINK_BUILD_BENCH_BEAST=OFF",
     ]
@@ -400,6 +452,7 @@ def run_cmake_configure(cmake_build_dir):
 
 
 def get_env_for_lib(lib_name):
+    lib_name = canonical_lib_name(lib_name)
     env = base_env.copy()
     env["BENCH_MSG_SIZES"] = ",".join(str(sz) for sz in MSG_SIZES)
     if IS_WINDOWS:
@@ -457,6 +510,18 @@ def parse_ready_endpoint_line(line):
     if len(parts) != 2:
         return ""
     return parts[1].strip()
+
+
+def parse_client_ready_size(line):
+    if not line.startswith("CLIENT_READY,"):
+        return None
+    parts = line.strip().split(",", 1)
+    if len(parts) != 2:
+        return None
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
 
 
 def _stop_server_process(proc, shutdown_timeout_ms):
@@ -606,6 +671,19 @@ def run_split_server_client_test(
                         process_done = True
                         break
                     continue
+                client_ready_size = parse_client_ready_size(line)
+                if client_ready_size is not None:
+                    if (
+                        client_ready_size in expected_sizes
+                        and server_proc is not None
+                        and server_proc.stdin is not None
+                    ):
+                        try:
+                            server_proc.stdin.write(f"START,{client_ready_size}\n")
+                            server_proc.stdin.flush()
+                        except Exception:
+                            pass
+                    continue
                 prep_line = parse_prep_line(line, transport, expected_sizes)
                 if prep_line and progress_cb is not None:
                     line_size, connect_ms, ready_ms = prep_line
@@ -704,6 +782,7 @@ def run_single_test(
     metric_cb=None,
 ):
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
+    lib_name = canonical_lib_name(lib_name)
     env = get_env_for_lib(lib_name)
     env["BENCH_MULTI_PATTERN"] = pattern_name
     size_list = list(sizes) if sizes else list(MSG_SIZES)
@@ -740,11 +819,8 @@ def run_single_test(
     expected_sizes = set(size_list)
 
     try:
-        if (
-            lib_name == "zlink"
-            and pattern_name in SPLIT_SERVER_CLIENT_PATTERNS
-        ):
-            split_server_bin, split_client_bin = ZLINK_SPLIT_BINARIES.get(
+        if pattern_name in SPLIT_SERVER_CLIENT_PATTERNS:
+            split_server_bin, split_client_bin = SPLIT_BINARIES.get(lib_name, {}).get(
                 pattern_name, (None, None)
             )
             if not split_server_bin or not split_client_bin:
@@ -963,11 +1039,7 @@ def collect_data(
     sizes = list(msg_sizes) if msg_sizes is not None else list(MSG_SIZES)
 
     for tr in transports:
-        if tr != "tcp":
-            if show_progress:
-                print(
-                    f"    Testing {tr}: Skipped (unsupported_transport(libzmq_tcp_only))"
-                )
+        if not transport_supported_for_pattern(pattern_name, tr):
             continue
 
         for sz in sizes:
@@ -1426,11 +1498,11 @@ def main():
         )
 
     comparisons = [
-        ("comp_std_zmq_multi_dealer_dealer", "comp_zlink_multi_dealer_dealer_client", "MULTI_DEALER_DEALER"),
-        ("comp_std_zmq_multi_dealer_router", "comp_zlink_multi_dealer_router_client", "MULTI_DEALER_ROUTER"),
-        ("comp_std_zmq_multi_router_router", "comp_zlink_multi_router_router_client", "MULTI_ROUTER_ROUTER"),
-        ("comp_std_zmq_multi_pubsub", "comp_zlink_multi_pubsub", "MULTI_PUBSUB"),
-        ("comp_std_zmq_multi_stream", "comp_zlink_multi_stream", "MULTI_STREAM"),
+        ("comp_std_zmq_multi_dealer_dealer_client", "comp_zlink_multi_dealer_dealer_client", "MULTI_DEALER_DEALER"),
+        ("comp_std_zmq_multi_dealer_router_client", "comp_zlink_multi_dealer_router_client", "MULTI_DEALER_ROUTER"),
+        ("comp_std_zmq_multi_router_router_client", "comp_zlink_multi_router_router_client", "MULTI_ROUTER_ROUTER"),
+        ("comp_std_zmq_multi_pubsub_client", "comp_zlink_multi_pubsub_client", "MULTI_PUBSUB"),
+        ("comp_std_zmq_multi_stream_client", "comp_zlink_multi_stream", "MULTI_STREAM"),
     ]
 
     supported = sorted({p for _, _, p in comparisons})
@@ -1560,8 +1632,7 @@ def main():
         print(f"  > Benchmarking zlink for {p_name}...")
 
         for transport_index, tr in enumerate(TRANSPORTS):
-            if tr != "tcp":
-                print(f"  > Skipping transport {tr} (unsupported_transport(libzmq_tcp_only))")
+            if not transport_supported_for_pattern(p_name, tr):
                 if (
                     TRANSPORT_TRANSITION_MS > 0
                     and transport_index + 1 < len(TRANSPORTS)

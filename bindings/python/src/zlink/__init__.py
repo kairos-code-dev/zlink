@@ -9,8 +9,18 @@ from ._core import (
     ReceivedMessage,
     ReceivedMultipart,
     ReceivedTopicMessage,
-    Socket,
     ZlinkError,
+)
+from ._socket_base import Socket
+from ._socket_types import (
+    DealerSocket,
+    PairSocket,
+    PubSocket,
+    RouterSocket,
+    StreamSocket,
+    SubSocket,
+    XPubSocket,
+    XSubSocket,
 )
 from ._poller import Poller
 from ._monitor import MonitorSocket, ServiceMonitor
@@ -57,6 +67,14 @@ __all__ = [
     "version",
     "Context",
     "Socket",
+    "PairSocket",
+    "DealerSocket",
+    "RouterSocket",
+    "StreamSocket",
+    "PubSocket",
+    "SubSocket",
+    "XPubSocket",
+    "XSubSocket",
     "Message",
     "ReceivedMessage",
     "ReceivedMultipart",

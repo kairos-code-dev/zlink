@@ -78,14 +78,31 @@ static unsigned int subscription_replay_attempt_count (
            connected_endpoints_.begin ();
          it != connected_endpoints_.end (); ++it) {
         if (it->compare (0, 6, "wss://") == 0)
-            return 300;
+            return 40;
         if (it->compare (0, 6, "tls://") == 0)
-            return 150;
+            return 20;
         if (it->compare (0, 5, "ws://") == 0)
-            return 50;
+            return 10;
     }
 
-    return 50;
+    return 10;
+}
+
+static unsigned int subscription_replay_holdoff_ticks (
+  const std::set<std::string> &connected_endpoints_)
+{
+    for (std::set<std::string>::const_iterator it =
+           connected_endpoints_.begin ();
+         it != connected_endpoints_.end (); ++it) {
+        if (it->compare (0, 6, "wss://") == 0)
+            return 2;
+        if (it->compare (0, 6, "tls://") == 0)
+            return 2;
+        if (it->compare (0, 5, "ws://") == 0)
+            return 2;
+    }
+
+    return 5;
 }
 
 static unsigned int pub_delivery_ready_holdoff_ticks (
@@ -317,7 +334,8 @@ void spot_node_t::emit_pending_subscription_replays ()
         }
         should_replay = true;
         --_peer_state.subscription_replay_attempts;
-        _peer_state.subscription_replay_holdoff_ticks = 10;
+        _peer_state.subscription_replay_holdoff_ticks =
+          subscription_replay_holdoff_ticks (_peer_state.connected_endpoints);
         if (_peer_state.subscription_replay_attempts == 0)
             _peer_state.subscription_replay_pending = false;
     }
@@ -445,6 +463,7 @@ void spot_node_t::refresh_connected_peer_endpoints ()
     std::set<std::string> connected;
     spot_runtime_t *runtime = NULL;
     uint64_t connected_peer_version = 0;
+    size_t previous_connected_count = 0;
     {
         scoped_lock_t lock (_sync);
         runtime = _runtime;
@@ -485,7 +504,7 @@ void spot_node_t::refresh_connected_peer_endpoints ()
                 obs.connected_since_ms = 0;
             }
         }
-        const size_t previous_connected_count = _peer_state.connected_endpoints.size ();
+        previous_connected_count = _peer_state.connected_endpoints.size ();
         _peer_state.connected_endpoints.swap (connected);
         changed = true;
         _summary_last_changed_ms = now_ms;

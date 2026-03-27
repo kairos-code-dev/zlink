@@ -14,8 +14,8 @@ def _tcp_endpoint():
 
 def main():
     with zlink.Context() as ctx:
-        with zlink.Socket(ctx, zlink.SocketType.PAIR) as server:
-            with zlink.Socket(ctx, zlink.SocketType.PAIR) as client:
+        with zlink.PairSocket(ctx) as server:
+            with zlink.PairSocket(ctx) as client:
                 done = threading.Event()
 
                 def on_message(received):
@@ -25,7 +25,7 @@ def main():
                 endpoint = _tcp_endpoint()
                 server.bind(endpoint)
                 client.connect(endpoint)
-                server.set_recv_handler(on_message)
+                server.on_receive(on_message)
 
                 client.send(b"hello from callback")
                 if not done.wait(3.0):

@@ -1,0 +1,2010 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: medium
+reasoning summaries: none
+session id: 019d2ca1-8691-7822-b2e4-755e48e00533
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+  이 문서의 남은 작업과 실제 구현 내용을 중단 없이 끝까지 진행한다.
+
+작업 규칙:
+- 현재 실행의 유일한 기준 문서는 실행 가이드다.
+- 이 실행은 단일 문서 체계로 운영한다. 명시 요청이 없으면 main/master/gap/spec/residual/보조 계획 문서를 새로 만들지 않는다.
+- 필요한 계획, 작업 레지스터, 체크리스트, 종료 조건은 모두 실행 가이드 한 파일에 유지한다.
+- 실행 가이드와 별도 계획 문서로 분산돼 있던 내용이 보이면 실행 가이드로 먼저 합친다.
+- 별도 보조 계획서를 유지하거나 참조 체인을 늘리는 방식으로 작업을 진행하지 않는다.
+
+- 각 작업 묶음을 끝낼 때마다 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 실행 가이드와 현재 코드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 실행 가이드의 현재 파일 내용이 source of truth다. 명시적으로 요청받지 않은 한 실행 가이드 자체의 git diff나 삭제된 legacy 문서 diff를 근거로 판단하지 않는다.
+- git status 에서 보이는 삭제된 legacy 문서나 과거 계획 문서는 현재 실행 범위의 근거가 아니다. unrelated 변경처럼 취급하고 현재 가이드와 현재 코드만 본다.
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/ralphloop/run_execution_gate_loop.sh --logs-dir /home/hep7/project/kairos/zlink/core/tools/perf/logs/codex_execution_guide_loop_20260327_064219/gate --label perf_improvement_gate --count 1 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 1보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- 가이드에 단계별 commit / push 규칙이 있으면 그대로 따른다.
+- unrelated 변경은 commit/push에 섞지 않는다. 현재 단계 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
+- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남길 수 있으면 남긴다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+- stress/lane/perf/functional regression은 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- 테스트 통과만으로 실행 가이드의 실제 구현 내용이 반영됐다고 추정하지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+codex
+팀장님, 실행 가이드를 기준으로 첫 미완료 항목부터 확인하고 현재 코드 반영 상태를 대조하겠습니다. 먼저 가이드와 관련 파일을 읽어 남은 구현 항목을 특정한 뒤 바로 코드와 테스트까지 이어서 진행하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# `core` 성능 개선 실행 가이드
+
+> 상태: active
+> 기준 baseline:
+> - `core/tools/perf/perf_linux_recv_20260323_094627.txt`
+> - `core/tools/perf/perf_linux_callback_20260323_082648.txt`
+> 실행 루프: `core/tools/perf/run_perf_improvement_loop.sh`
+> 상위 supervisor: `core/tools/ralphloop/run_codex_execution_guide_loop.sh`
+> 로그 디렉터리: `core/tools/perf/logs/`
+> 대상 범위: `core/`, `core/tests/`, `core/tools/perf/`
+> 목적: baseline 초과까지 중단 없이 반복 수행할 실전 실행 규칙 고정
+
+`run_perf_improvement_loop.sh`는 별도 락으로 막지 않는다.
+대신 `core/tools/perf/logs/` 아래 로그 파일이 실제로 갱신되는 `perf` 실행이 감지되면
+그 로그를 따라가며 대기하고, 완료되면 다음 iteration을 시작한다.
+프로세스는 남아 있는데 로그 갱신이 멈춘 경우에는 stale로 간주하고
+해당 `perf` 프로세스를 정리한 뒤 루프를 계속 진행한다.
+
+## 1. 문서 목적
+
+exec
+/bin/bash -lc 'git status --short' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+ M AGENTS.md
+ M bindings/cpp/Doxyfile
+ M bindings/cpp/include/zlink.hpp
+ D bindings/cpp/include/zlink/compat.hpp
+ M bindings/cpp/include/zlink/types.hpp
+ D bindings/cpp/include/zlink_utils.h
+ M bindings/cpp/plan/socket/2026-03-26-cpp-socket-surface-detailed-design.ko.md
+ M bindings/cpp/samples/dealer_router/dealer_router_callback.cpp
+ M bindings/cpp/samples/dealer_router/dealer_router_recv.cpp
+ M bindings/cpp/samples/pair/pair_callback.cpp
+ M bindings/cpp/samples/pair/pair_recv.cpp
+ M bindings/cpp/samples/pubsub/pubsub_callback.cpp
+ M bindings/cpp/samples/pubsub/pubsub_recv.cpp
+ M bindings/cpp/samples/stream/stream_callback.cpp
+ M bindings/cpp/samples/stream/stream_recv.cpp
+ M bindings/cpp/tests/contract/test_cpp_contract_monitor.cpp
+ M bindings/cpp/tests/contract/test_cpp_contract_options.cpp
+ M bindings/cpp/tests/contract/test_cpp_contract_socket.cpp
+ M bindings/dotnet/samples/DealerRouterCallback/Program.cs
+ M bindings/dotnet/samples/DealerRouterCallback/README.md
+exec
+/bin/bash -lc "rg -n \"TODO|\\[ \\]|미완료|pending|in progress|진행 중|남은 작업|unchecked|perf\" core/tools/perf core/src core/include core/tests -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/include/zlink.h:891:    uint64_t snd_pending_msgs;
+core/include/zlink.h:892:    uint64_t rcv_pending_msgs;
+core/src/api/monitor_query_api.cpp:24:int recv_socket_monitor_event_unchecked (void *monitor_socket_,
+core/src/api/monitor_query_api.cpp:139:int recv_service_monitor_event_unchecked (void *monitor_,
+core/src/api/monitor_query_api.cpp:170:    return recv_socket_monitor_event_unchecked (monitor_, out_, 0);
+core/src/api/monitor_query_api.cpp:207:    return recv_service_monitor_event_unchecked (monitor_, out_, 0);
+core/tools/perf/run_perf_improvement_loop.sh:7:GUIDE_PATH="${SCRIPT_DIR}/core-perf-optimization-execution-guide.ko.md"
+core/tools/perf/run_perf_improvement_loop.sh:9:RECV_BASELINE_PATH="${SCRIPT_DIR}/perf_linux_recv_20260323_094627.txt"
+core/tools/perf/run_perf_improvement_loop.sh:10:CALLBACK_BASELINE_PATH="${SCRIPT_DIR}/perf_linux_callback_20260323_082648.txt"
+core/tools/perf/run_perf_improvement_loop.sh:15:GATE_LABEL="perf_improvement_gate"
+core/tools/perf/run_perf_improvement_loop.sh:25:Run the perf-improvement Ralph loop from core/tools/perf.
+core/tools/perf/run_perf_improvement_loop.sh:45:  --perf-log-stale-seconds N
+core/tools/perf/run_perf_improvement_loop.sh:47:                        that an existing perf run is truly active
+core/tools/perf/run_perf_improvement_loop.sh:56:  ./run_perf_improvement_loop.sh
+core/tools/perf/run_perf_improvement_loop.sh:57:  ./run_perf_improvement_loop.sh --model gpt-5.4 --max-iterations 30
+core/tools/perf/run_perf_improvement_loop.sh:156:    --perf-log-stale-seconds)
+core/tools/perf/run_perf_improvement_loop.sh:206:find_running_perf_processes() {
+core/tools/perf/run_perf_improvement_loop.sh:207:  pgrep -af "${ROOT_DIR}/core/perf/run_benchmarks(_multi)?\\.sh|${ROOT_DIR}/core/perf/(single/)?run_comparison\\.py" || true
+core/tools/perf/run_perf_improvement_loop.sh:210:collect_running_perf_pids() {
+core/tools/perf/run_perf_improvement_loop.sh:212:  lines="$(find_running_perf_processes)"
+codex
+실행 가이드의 상태표와 최신 메모를 더 읽어 현재 첫 미완료 항목이 무엇인지 확정하겠습니다. 그 다음 baseline 대비 최신 공식 결과를 바로 대조해서 남은 구현이 문서와 일치하는지 확인하겠습니다.
+exec
+/bin/bash -lc "sed -n '261,520p' /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+3. `완료`가 아닌 행이 없는지 확인한다.
+4. full run이 아니라 spot run만 있는 행이 없는지 확인한다.
+
+아래는 완료가 아니다.
+
+- 일부 대표 transport만 개선
+- 평균 latency만 개선
+- callback만 개선하고 recv가 퇴행
+- 단일 실험 옵션에서만 baseline 초과
+- 문서와 로그 없이 "재측정해보니 좋아 보임" 상태
+
+## 12. 금지 규칙
+
+- baseline보다 낮은 항목이 남아 있는데 종료하지 않는다.
+- 성능 문제를 테스트 약화로 숨기지 않는다.
+- 대용량 tuple 악화를 소형 tuple 개선으로 상쇄했다고 해석하지 않는다.
+- transport별 임시 ifdef/환경변수 우회로 닫지 않는다.
+- ad-hoc binary나 `/tmp` repro로 근거를 대체하지 않는다.
+- `core/build/` 외 다른 build 디렉터리를 쓰지 않는다.
+
+exec
+/bin/bash -lc 'ls -1 /home/hep7/project/kairos/zlink/core/perf/results/multi/report 2>/dev/null | tail -n 20' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+perf_linux_recv_20260326_114822.txt
+perf_linux_recv_20260326_213606.txt
+perf_linux_recv_20260327_064255.txt
+perf_linux_recv_20260327_071323.txt
+perf_linux_recv_20260327_071435.txt
+perf_linux_recv_20260327_071721.txt
+perf_linux_recv_20260327_071822.txt
+perf_linux_recv_20260327_072300.txt
+perf_linux_recv_20260327_074427.txt
+perf_linux_recv_20260327_075123.txt
+perf_linux_recv_20260327_075143.txt
+perf_linux_recv_20260327_080510.txt
+perf_linux_recv_20260327_082712.txt
+perf_linux_recv_20260327_082844.txt
+perf_linux_recv_20260327_082925.txt
+perf_linux_recv_20260327_083302.txt
+perf_linux_recv_20260327_084159.txt
+perf_linux_recv_20260327_084450.txt
+perf_linux_recv_20260327_085126.txt
+perf_linux_recv_20260327_085505.txt
+exec
+/bin/bash -lc 'ls -1 /home/hep7/project/kairos/zlink/core/perf/results/report 2>/dev/null | tail -n 20' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+codex
+첫 미완료 항목은 `P2`이고, 현재 가이드는 `MULTI_SPOT/tls/131072` latency gap 해소를 남은 구현으로 명시하고 있습니다. baseline 수치와 현재 hot path를 읽어 어떤 구조 병목을 더 줄일지 특정하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "testutil.hpp"
+#include "testutil_unity.hpp"
+
+#ifndef _WIN32
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <csignal>
+#include <climits>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <thread>
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+
+#include "services/spot/spot_node.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/err.hpp"
+
+#include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
+namespace zlink
+{
+namespace
+{
+static const unsigned int ingress_forward_batch_limit = 2048;
+exec
+/bin/bash -lc "rg -n \"MULTI_SPOT,tls,131072|MULTI_SPOT\\s+tls\\s+131072|131072\" /home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt /home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:16:- msg_sizes: 131072
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:48:    Testing tls | 131072B:
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:51:      | 131072B  |    16.963 Kmsg/s |   2223.348 MB/s |   530.688 ms |   679.660 ms |   694.162 ms | 13.406 |  425.035 |         0 |         0 |         0 |
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:59:- msg_sizes: 131072
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:91:RESULT,current,MULTI_SPOT,tls,131072,bandwidth,2223.348
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:92:RESULT,current,MULTI_SPOT,tls,131072,latency,530687.707
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:93:RESULT,current,MULTI_SPOT,tls,131072,latency_p95,679660.200
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:94:RESULT,current,MULTI_SPOT,tls,131072,latency_p99,694161.680
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:95:RESULT,current,MULTI_SPOT,tls,131072,server_cpu_pct,14.010
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:96:RESULT,current,MULTI_SPOT,tls,131072,server_mem_mb,425.040
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:97:RESULT,current,MULTI_SPOT,tls,131072,server_rcv_pending_end,0.000
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:98:RESULT,current,MULTI_SPOT,tls,131072,server_rcv_pending_max,0.000
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:99:RESULT,current,MULTI_SPOT,tls,131072,server_snd_pending_max,0.000
+/home/hep7/project/kairos/zlink/core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt:100:RESULT,current,MULTI_SPOT,tls,131072,throughput,16962.800
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:16:- msg_sizes: 64,256,1024,65536,131072,262144
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:48:    Testing tcp | 64B,256B,1024B,65536B,131072B,262144B:
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:55:      | 131072B  |    84.224 Kmsg/s |  11039.408 MB/s |    87.379 ms |   137.672 ms |   146.668 ms | 12.965 |   26.164 |         0 |         0 |         0 |
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:59:    Testing tls | 64B,256B,1024B,65536B,131072B,262144B:
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:66:      | 131072B  |    48.595 Kmsg/s |   6369.496 MB/s |   151.373 ms |   207.436 ms |   216.241 ms | 17.013 |   42.746 |         0 |         0 |         0 |
+/home/hep7/project/kairos/zlink/core/tools/perf/perf_linux_recv_20260323_094627.txt:70:    Testing ws | 64B,256B,1024B,65536B,131072B,262144B:
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+#include "utils/err.hpp"
+
+#include <errno.h>
+#include <map>
+#include <set>
+exec
+/bin/bash -lc "sed -n '260,620p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        out_->push_back (std::string (
+          static_cast<const char *> (frame.data ()), frame.size ()));
+        const bool more = (frame.flags () & msg_t::more) != 0;
+        frame.close ();
+        if (!more)
+            break;
+    }
+    return 0;
+}
+
+static uint64_t default_bootstrap_broadcast_interval_ms (
+  const spot_runtime_t *runtime_)
+{
+    if (runtime_) {
+        const std::string &bound_endpoint = runtime_->bound_endpoint;
+        if (bound_endpoint.compare (0, 6, "tcp://") == 0
+            || bound_endpoint.compare (0, 6, "tls://") == 0) {
+            return 5000;
+        }
+    }
+exec
+/bin/bash -lc 'rg -n "mesh_xsub_forward_batch|fanout|poll cycle|forward_batch|recv_and_forward|xsub" /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:194:const std::string &spot_node_t::sub_fanout_endpoint () const
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.cpp:196:    return _runtime->sub_fanout_endpoint;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:217:    socket_base_t *mesh_xsub;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:218:    socket_base_t *mesh_xsub_monitor;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:222:    socket_base_t *fanout;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:241:    static int recv_and_dispatch_mesh_xsub (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:242:      socket_base_t *mesh_xsub_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:243:      socket_base_t *fanout_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:252:      socket_base_t *mesh_xsub_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:264:    static void sync_mesh_xsub_connected_endpoint (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:266:    static void clear_mesh_xsub_connected_endpoints (spot_runtime_t *runtime_);
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:276:    static int recv_and_forward_ingress (socket_base_t *src_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp:278:                                         socket_base_t *fanout_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp:20:static const unsigned int ingress_forward_batch_limit = 2048;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp:22:// cannot monopolize the data-plane thread for an entire poll cycle.
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp:23:static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp:64:int spot_data_plane_forwarder_t::recv_and_forward_ingress (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp:67:  socket_base_t *fanout_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp:71:    bool forward_to_fanout = false;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_forwarding.cpp:93:            forward_to_fanout = fanout_ && node_ && node_->has_local_filtered_subs ();
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_internal.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SPOT_DATA_PLANE_INTERNAL_HPP_INCLUDED__
+#define __ZLINK_SPOT_DATA_PLANE_INTERNAL_HPP_INCLUDED__
+
+#include <zlink.h>
+
+#include "utils/mutex.hpp"
+
+#include <atomic>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace zlink
+{
+class socket_base_t;
+class spot_node_t;
+struct spot_runtime_t;
+exec
+/bin/bash -lc "sed -n '1,320p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_data_plane_loop.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+namespace zlink
+{
+void spot_data_plane_t::thread_entry (void *arg_)
+{
+    run (static_cast<spot_node_t *> (arg_));
+}
+
+void spot_data_plane_t::run (spot_node_t *node_)
+{
+exec
+/bin/bash -lc "rg -n \"recv_and_dispatch_mesh_xsub|recv_and_forward_ingress|pump_socket_commands|poller|wake_control_task|peer_ctrl_sub|mesh_pub_ready\" /home/hep7/project/kairos/zlink/core/src/services/spot -g '"'!*.md'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:13:zlink::socket_base_t *spot_pub_poller_socket (void *spot_pub_)
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:20:    return pub->poller_socket ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:23:zlink::socket_base_t *spot_sub_poller_socket (void *spot_sub_)
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:30:    return sub->poller_socket ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:33:zlink::socket_base_t *resolve_spot_pub_subject_poller_socket (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:42:        return pub ? pub->poller_socket () : NULL;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:50:        return pub ? pub->poller_socket () : NULL;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:56:zlink::socket_base_t *resolve_spot_sub_subject_poller_socket (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:65:        return sub ? sub->poller_socket () : NULL;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:75:            return receiver->impl ()->poller_socket ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:77:        return sub ? sub->poller_socket () : NULL;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_lifecycle.cpp:360:    wake_control_task ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_lifecycle.cpp:376:        wake_control_task ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_access.cpp:199:void spot_node_access_t::wake_control_task (spot_node_t *node_)
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_access.cpp:202:        node_->wake_control_task ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:71:    socket_base_t *poller_socket () const { return socket (); }
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_runtime.cpp:42:    spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_sub);
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_runtime.cpp:82:    apply_common_internal_opts (state_->peer_ctrl_sub, linger);
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_runtime.cpp:111:    state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_runtime.cpp:114:    state_->peer_ctrl_sub->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE,
+codex
+이제 데이터 플레인 루프에서 이벤트가 어떤 순서로 소비되는지 보겠습니다. 남은 지연이 batch cap 자체보다 `mesh_xsub`와 `peer ctrl` 우선순위 문제인지 확인해야 다음 수정이 작고 설명 가능해집니다.
+exec
+/bin/bash -lc "sed -n '1,320p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,220p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_mesh_pub_budget.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_mesh_pub_budget.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_runtime.hpp"
+#include "sockets/socket_base.hpp"
+
+namespace zlink
+{
+namespace
+{
+bool is_secure_transport_local (const std::string &endpoint_)
+{
+    return endpoint_.compare (0, 6, "tls://") == 0
+           || endpoint_.compare (0, 6, "wss://") == 0;
+}
+
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/spot/spot_data_plane_loop.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+#include "services/common/monitor_decode.hpp"
+#include "core/socket_poller.hpp"
+#include "sockets/socket_base.hpp"
+#include "utils/clock.hpp"
+
+namespace zlink
+{
+namespace
+{
+exec
+/bin/bash -lc "rg -n \"notify_pub_delivery_ready_ack|has_local_filtered_subs|snapshot_raw_subscription_filters|ready_ack|delivery_ready\" /home/hep7/project/kairos/zlink/core/src/services/spot -g '"'!*.md'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:95:    void emit_delivery_ready_changed_event (const char *subject_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:107:    void send_ready_ack_lost_for_endpoint (const char *endpoint_);
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:141:    std::string ready_ack_source_id () const;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:142:    void release_ready_ack_endpoints (const std::string &raw_filter_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:144:    void release_all_ready_ack_endpoints (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:163:    std::set<std::string> _delivery_ready_raw_filters;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub.hpp:166:    std::map<std::string, std::set<std::string> > _ready_ack_endpoints;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:84:    bool has_local_filtered_subs () const;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:90:    void snapshot_raw_subscription_filters (std::set<std::string> *out_) const;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:99:    void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:160:    void schedule_pub_delivery_ready_refresh ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:166:    void emit_pending_pub_delivery_ready_events ();
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:169:    uint32_t max_pub_delivery_ready_count_locked () const;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:171:    void notify_pub_first_delivery_ready_settled (const std::string &subject_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:175:    int send_ready_ack_update (const std::string &target_endpoint_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:36:static void spot_ready_ack_debugf (const char *fmt_, ...)
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:47:    FILE *fp = std::fopen ("/tmp/zlink_spot_ready_ack.log", "a");
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:91:static unsigned int pub_delivery_ready_holdoff_ticks (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:106:static std::string make_ready_ack_arg (const std::string &target_endpoint_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:133:    if (!has_local_filtered_subs ())
+exec
+/bin/bash -lc "sed -n '620,860p' /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    server_args.push_back (transport_);
+    TEST_ASSERT_TRUE (
+      start_process (server_path, server_args, common_env, server));
+
+    std::string ready_line;
+    TEST_ASSERT_TRUE_MESSAGE (
+      wait_for_stdout_prefix (server, "READY,", 10000, &ready_line),
+      capture_case_debug_text (server, client).c_str ());
+    std::string endpoint = ready_line.substr (strlen ("READY,"));
+    if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
+        endpoint.erase (endpoint.size () - 1);
+
+    std::vector<std::string> client_args;
+    client_args.push_back ("zlink");
+    client_args.push_back (transport_);
+    client_args.push_back (msg_sizes.front ());
+    client_args.push_back ("--endpoint");
+    client_args.push_back (endpoint);
+
+    TEST_ASSERT_TRUE (
+exec
+/bin/bash -lc 'rg -n "131072|tls.*65536|tls.*262144|sequence|ready_timeout|perf_window" /home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+163:    if (clients_ >= 100 || max_msg_size >= 131072)
+167:    if (is_secure_transport_name (transport_) && max_msg_size >= 131072)
+450:                                  int connect_ready_timeout_ms_,
+487:                  connect_ready_timeout_ms_);
+550:void run_multi_spot_process_sequence_case (
+555:  int connect_ready_timeout_ms_,
+594:                  connect_ready_timeout_ms_);
+739:    run_multi_spot_process_case ("recv", "tcp", "131072", 100, 5000, 2, 2);
+742:void test_multi_spot_process_recv_many_clients_tcp_large_sequence ()
+744:    run_multi_spot_process_sequence_case (
+745:      "recv", "tcp", "64,256,1024,65536,131072,262144", 100, 5000, 2, 2);
+750:    run_multi_spot_process_case ("recv", "tls", "262144", 100, 10000, 2, 2);
+753:void test_multi_spot_process_recv_many_clients_tls_large_sequence ()
+755:    run_multi_spot_process_sequence_case (
+756:      "recv", "tls", "65536,131072,262144", 100, 10000, 1, 1);
+764:void test_multi_spot_process_recv_many_clients_wss_large_sequence ()
+766:    run_multi_spot_process_sequence_case (
+767:      "recv", "wss", "64,256,1024,65536,131072,262144", 100, 10000, 2, 2);
+770:void test_multi_spot_process_recv_many_clients_wss_perf_window_sequence ()
+772:    run_multi_spot_process_sequence_case (
+exec
+/bin/bash -lc "sed -n '80,220p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        if (it->compare (0, 6, "wss://") == 0)
+            return 300;
+        if (it->compare (0, 6, "tls://") == 0)
+            return 150;
+        if (it->compare (0, 5, "ws://") == 0)
+            return 50;
+    }
+
+    return 50;
+}
+
+static unsigned int pub_delivery_ready_holdoff_ticks (
+  const std::set<std::string> &connected_endpoints_)
+{
+    for (std::set<std::string>::const_iterator it =
+           connected_endpoints_.begin ();
+         it != connected_endpoints_.end (); ++it) {
+        if (it->compare (0, 6, "wss://") == 0)
+            return 50;
+        if (it->compare (0, 6, "tls://") == 0)
+codex
+남은 gap 크기가 `tls` holdoff 값과 비슷해서, steady-state가 아니라 ready-ack/control 쪽 지연이 active phase에 남아 있는지 확인하겠습니다. SPOT 퍼프 서버/클라이언트와 control holdoff 경로를 함께 읽고, 회귀 테스트로 고정 가능한 최소 수정만 선택하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,360p' /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/perf_common.hpp"
+#include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_metric_header.hpp"
+#include "../../common/perf_spot_handle.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>
+#include <new>
+#include <string>
+#include <thread>
+#include <vector>
+exec
+/bin/bash -lc "sed -n '1,320p' /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/perf_common.hpp"
+#include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_metric_header.hpp"
+#include "../../common/perf_spot_handle.hpp"
+#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <condition_variable>
+#include <mutex>
+#include <new>
+#include <set>
+#include <string>
+#include <thread>
+exec
+/bin/bash -lc 'rg -n "warmup|duration|ready|delivery_ready|holdoff|active phase|sleep" /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:53:        ready_quorum(1),
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:65:    size_t ready_quorum;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:76:struct spot_pub_ready_probe_t
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:78:    spot_pub_ready_probe_t() :
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:81:        ready_count(0),
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:90:    uint32_t ready_count;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:140:void spot_pub_ready_monitor_handler(const zlink_service_event_t *event_,
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:143:    spot_pub_ready_probe_t *probe =
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:144:      static_cast<spot_pub_ready_probe_t *>(userdata_);
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:160:            probe->ready_count = event_->value;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:166:bool open_spot_pub_ready_probe(void *pub, spot_pub_ready_probe_t *probe_out)
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:173:    probe_out->ready_count = 0;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:188:          monitor, &spot_pub_ready_monitor_handler, probe_out)
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:198:void close_spot_pub_ready_probe(spot_pub_ready_probe_t *probe)
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:209:uint32_t current_spot_pub_ready_count(spot_pub_ready_probe_t *probe)
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:215:    return probe->ready_count;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:218:bool wait_for_spot_pub_ready(spot_pub_ready_probe_t *probe,
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:232:    if (probe->ready_count >= required_count)
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:239:          return probe->error_code != 0 || probe->ready_count >= required_count;
+/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp:245:    return signaled && probe->ready_count >= required_count;
+exec
+/bin/bash -lc "sed -n '600,790p' /home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '780,860p' /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_client.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+            || zlink_spot_node_connect_peer(slot->node, endpoint.c_str()) != 0
+            || zlink_set_subscription (slot->handle, k_topic)
+                 != 0) {
+            if (bench_debug_enabled())
+                std::cerr << "[multi-spot-client] slot create failed slot=" << i
+                          << " node=" << (slot->node != NULL)
+                          << " err=" << zlink_errno() << std::endl;
+            close_spot_ready_monitor(slot);
+            if (slot->handle)
+                perf_destroy_default_spot_handle(&slot->handle);
+            if (slot->node)
+                zlink_spot_node_destroy(&slot->node);
+            delete slot;
+            return false;
+        }
+
+        slots_out->push_back(slot);
+        if (bench_transition_debug_enabled()
+            && (((i + 1) % 25) == 0 || (i + 1) == service_clients)) {
+            std::cerr << "[multi-spot-client] create slots progress ts_us="
+ succeeded in 0ms:
+        _peer_state.subscription_ready_refresh_pending = true;
+        holdoff_ticks =
+          subscription_ready_holdoff_ticks (_peer_state.connected_endpoints);
+        _peer_state.subscription_ready_refresh_holdoff_ticks = holdoff_ticks;
+    }
+    wake_control_task ();
+}
+
+void spot_node_t::schedule_pub_delivery_ready_refresh ()
+{
+    if (is_shutting_down ())
+        return;
+
+    unsigned int holdoff_ticks = 20;
+    {
+        scoped_lock_t lock (_sync);
+        _peer_state.pub_delivery_ready_refresh_pending = true;
+        holdoff_ticks =
+          pub_delivery_ready_holdoff_ticks (_peer_state.active_endpoints);
+        _peer_state.pub_delivery_ready_refresh_holdoff_ticks = holdoff_ticks;
+exec
+/bin/bash -lc "sed -n '560,680p' /home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+                      << transport << "," << sizes[i]
+                      << ",server_mem_mb," << std::fixed
+                      << std::setprecision(2) << metrics.mem_mb << std::endl;
+        }
+        print_server_queue_metrics(lib_name, k_pattern, transport, sizes[i],
+                                   queue_stats);
+    }
+}
+
+bool run_server_loop(spot_server_state_t *state,
+                     spot_pub_ready_probe_t *ready_probe,
+                     const multi_bench_settings_t &settings,
+                     const std::string &lib_name,
+                     const std::string &transport,
+                     const std::vector<size_t> &msg_sizes)
+{
+    const double warmup_seconds =
+      static_cast<double>(std::max(0, settings.warmup_seconds));
+    const double active_seconds =
+      static_cast<double>(std::max(1, settings.duration_seconds));
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/tests/e2e/spot/test_spot_service_introspection.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../../testutil.hpp"
+#include "../../testutil_unity.hpp"
+#include "../../testutil_monitoring.hpp"
+#include "../../../src/api/service_api_internal.hpp"
+#include "../../../src/api/zlink_testing.hpp"
+#include "../../../src/services/spot/spot_handle.hpp"
+#include "../../../src/services/spot/spot_node.hpp"
+#include "../../../src/services/spot/spot_node_access.hpp"
+#include "../../../src/services/spot/spot_pub.hpp"
+#include "../../../src/core/msg.hpp"
+
+#include <unity.h>
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <map>
+#include <mutex>
+exec
+/bin/bash -lc 'rg -n "pub_delivery_ready_holdoff_ticks|delivery_ready_refresh_holdoff|first_delivery_ready|PUB_DELIVERY_READY|holdoff" /home/hep7/project/kairos/zlink/core/tests /home/hep7/project/kairos/zlink/core/src/services/spot' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_subject_poller.cpp:87:                                      | ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node.hpp:171:    void notify_pub_first_delivery_ready_settled (const std::string &subject_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:32:    unsigned int subscription_ready_refresh_holdoff_ticks;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:35:    unsigned int subscription_replay_holdoff_ticks;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:37:    unsigned int pub_delivery_ready_refresh_holdoff_ticks;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:41:        subscription_ready_refresh_holdoff_ticks (0),
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:44:        subscription_replay_holdoff_ticks (0),
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_peer_state.hpp:46:        pub_delivery_ready_refresh_holdoff_ticks (0)
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_pub.hpp:54:    void emit_first_delivery_ready_changed_event (const char *subject_,
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_lifecycle.cpp:219:                    pubs[i]->emit_first_delivery_ready_changed_event (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:59:static unsigned int subscription_ready_holdoff_ticks (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:91:static unsigned int pub_delivery_ready_holdoff_ticks (
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:158:        _peer_state.subscription_replay_holdoff_ticks = 0;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:278:        _peer_state.subscription_replay_holdoff_ticks = 0;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:305:            _peer_state.subscription_replay_holdoff_ticks = 0;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:311:            _peer_state.subscription_replay_holdoff_ticks = 0;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:314:        if (_peer_state.subscription_replay_holdoff_ticks > 0) {
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:315:            --_peer_state.subscription_replay_holdoff_ticks;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:320:        _peer_state.subscription_replay_holdoff_ticks = 10;
+/home/hep7/project/kairos/zlink/core/src/services/spot/spot_node_control.cpp:524:            pubs[i]->emit_first_delivery_ready_changed_event (
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/core/tests/unittest/unittest_spot_data_plane_budget.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../testutil_unity.hpp"
+
+#include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_mesh_pub_budget.hpp"
+#include "services/spot/spot_runtime.hpp"
+
+namespace
+{
+void test_mesh_pub_budget_defaults_follow_transport_and_ready_peer_count ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      64,
+      zlink::spot_mesh_pub_budget_t::resolve_default (
+        "tcp://127.0.0.1:9000", 0));
+    TEST_ASSERT_EQUAL_INT (
+      768,
+      zlink::spot_mesh_pub_budget_t::resolve_default (
+        "tcp://127.0.0.1:9000", 1));
+codex
+현재 잔여 병목은 `peer_ctrl_sub`를 매 루프 선행 배수로 비우는 구조가 data path를 흔드는 쪽이 더 그럴듯합니다. 관련 파일의 현재 diff를 확인한 뒤, 충돌 없이 적용 가능한 최소 수정과 회귀 범위를 정하겠습니다.
+exec
+/bin/bash -lc 'git diff -- core/src/services/spot/spot_data_plane_loop.cpp core/src/services/spot/spot_data_plane_protocol.cpp core/src/services/spot/spot_data_plane_forwarding.cpp core/src/services/spot/spot_node_control.cpp core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp core/tests/unittest/unittest_spot_data_plane_budget.cpp core/tests/CMakeLists.txt' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/src/services/spot/spot_data_plane_forwarding.cpp b/core/src/services/spot/spot_data_plane_forwarding.cpp
+index 46d79319..3759d203 100644
+--- a/core/src/services/spot/spot_data_plane_forwarding.cpp
++++ b/core/src/services/spot/spot_data_plane_forwarding.cpp
+@@ -18,6 +18,9 @@ namespace zlink
+ namespace
+ {
+ static const unsigned int ingress_forward_batch_limit = 2048;
++// Bound one ingress burst by bytes as well as message count so large payloads
++// cannot monopolize the data-plane thread for an entire poll cycle.
++static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
+ }
+ 
+ void spot_data_plane_forwarder_t::pump_socket_commands (socket_base_t *socket_)
+@@ -67,6 +70,7 @@ int spot_data_plane_forwarder_t::recv_and_forward_ingress (
+     bool receiving_multipart = false;
+     bool forward_to_fanout = false;
+     unsigned int forwarded_messages = 0;
++    size_t forwarded_bytes = 0;
+ 
+exec
+/bin/bash -lc "sed -n '1,220p' /home/hep7/project/kairos/zlink/core/tests/CMakeLists.txt" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# CMake build script for Zlink tests
+cmake_minimum_required(VERSION 3.10)
+
+# On Windows: solution file will be called tests.sln
+project(tests)
+
+set(TEST_PTY_WRAPPER "${CMAKE_CURRENT_LIST_DIR}/run_under_pty.sh")
+set(REGISTERED_TESTS)
+set(SPLIT_ONLY_TEST_TARGETS)
+set(INTEGRATION_TEST_ROOT "integration")
+set(E2E_TEST_ROOT "e2e")
+
+set(STREAM_SCENARIO_ROOT "${CMAKE_SOURCE_DIR}/core/bench/with_stream/stacks")
+if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
+  set(STREAM_SCENARIO_ROOT
+      "${CMAKE_SOURCE_DIR}/core/bench/benchwithstreamcompare/stacks")
+endif()
+
+set(tests
+  ${INTEGRATION_TEST_ROOT}/test_ancillaries
+codex
+`peer_ctrl_sub`를 poll 전마다 선행 drain하는 이중 경로를 제거해 data path starvation 가능성을 줄이겠습니다. 수정은 `spot_data_plane_loop.cpp`에만 최소로 넣고, 기존 SPOT process regression과 targeted perf로 바로 확인하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -241,7 +241,2 @@
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+apply_patch(auto_approved=true) exited 0 in 3ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+exec
+/bin/bash -lc 'git diff -- core/src/services/spot/spot_data_plane_loop.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03..942ec522 100644
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@ int spot_data_plane_loop_t::run_until_shutdown (
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+exec
+/bin/bash -lc 'cmake --build core/build -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+codex
+빌드는 진행 중이고, 변경은 `peer_ctrl_sub`의 선행 drain 제거 한 점입니다. 링크가 끝나면 SPOT process regression부터 돌리고, 문제가 없으면 바로 targeted perf를 재실행해 P2 실측을 갱신하겠습니다.
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+ exited 2 in 19.23s:
+[  4%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_loop.cpp.o
+[ 44%] Built target objects
+[ 45%] Linking CXX shared library ../lib/libzlink.so
+[ 45%] Linking CXX static library ../lib/libzlink.a
+[ 45%] Built target libzlink-static
+[ 46%] Built target testutil-static
+[ 46%] Linking CXX executable ../../../bin/unittest_mtrie
+[ 47%] Linking CXX executable ../../../bin/unittest_raw_decoder
+[ 47%] Linking CXX executable ../../../bin/unittest_ypipe
+[ 47%] Linking CXX executable ../../../bin/unittest_radix_tree
+[ 47%] Linking CXX executable ../../../bin/unittest_msg_view
+[ 48%] Linking CXX executable ../../../bin/unittest_service_mode_policy
+[ 49%] Linking CXX executable ../../../bin/unittest_poller
+[ 49%] Linking CXX executable ../../../bin/unittest_ip_resolver
+[ 49%] Linking CXX executable ../../../bin/unittest_zmp_decoder
+[ 49%] Linking CXX executable ../../../bin/unittest_discovery_service_state
+[ 49%] Linking CXX executable ../../../bin/unittest_spot_data_plane_protocol
+[ 49%] Linking CXX executable ../../../bin/unittest_service_runtime_base
+[ 49%] Linking CXX executable ../../../bin/unittest_ctx_runtime
+[ 49%] Linking CXX executable ../../../bin/unittest_registry_access
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+codex
+전체 빌드는 제 변경과 무관한 `core/bench/with_zmq/multi/zlink/bench_zlink_multi_pubsub.cpp` API 불일치로 막혔습니다. 현재 범위를 유지하려고 관련 타깃만 선택 빌드해서 SPOT regression과 perf 검증을 계속 진행하겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build --target test_multi_spot_benchmark_process unittest_spot_data_plane_budget perf_spot comp_src_spot_server comp_src_spot_client -j"$(nproc)"' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+ succeeded in 3.16s:
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[100%] Built target testutil
+[100%] Linking CXX executable ../../bin/test_multi_spot_benchmark_process
+[100%] Built target test_multi_spot_benchmark_process
+[  0%] Built target unity
+[ 97%] Built target objects
+[ 97%] Built target libzlink-static
+[100%] Built target testutil-static
+[100%] Built target unittest_spot_data_plane_budget
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[ 97%] Linking CXX executable ../../bin/perf_spot
+[100%] Built target perf_spot
+[ 97%] Built target objects
+[100%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_server
+[100%] Built target comp_src_spot_server
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+codex
+선택 빌드는 끝났고 `test_multi_spot_benchmark_process`가 돌아가는 중입니다. 이 테스트가 통과하면 같은 변경 상태로 `MULTI_SPOT/tls/131072` targeted 공식 run을 바로 재실행하겠습니다.
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+ succeeded in 2m 02s:
+1/2 Test  #8: test_multi_spot_benchmark_process ...   Passed  122.19 sec
+    Start 80: unittest_spot_data_plane_budget
+2/2 Test #80: unittest_spot_data_plane_budget .....   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+integration      = 122.19 sec*proc (1 test)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           = 122.19 sec*proc (1 test)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) = 122.19 sec
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+exec
+/bin/bash -lc 'mkdir -p core/tools/perf/logs && ./core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --recv recv --pattern SPOT --transports tls --msg-sizes 131072 2>&1 | tee core/tools/perf/logs/perf_recv_spot_tls_131072_loopfair_$(date +%Y%m%d_%H%M%S).log' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+codex
+targeted 공식 run이 `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`로 생성 중입니다. 이 결과가 baseline gap을 줄였는지 확인한 뒤 실행 가이드 상태표와 진행 메모를 바로 동기화하겠습니다.
+ succeeded in 9.00s:
+      | 131072B  |    19.091 Kmsg/s |   2502.243 MB/s |   447.950 ms |   765.109 ms |   809.513 ms | 14.346 |  468.984 |         0 |         0 |         0 |
+    Testing tls: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls
+- msg_sizes: 131072
+- warmup_seconds: 2
+- active_warmup: 0
+- duration_seconds: 5
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: 100 (default)
+- sndhwm: 100 (default)
+file update:
+diff --git a/core/src/services/spot/spot_data_plane_loop.cpp b/core/src/services/spot/spot_data_plane_loop.cpp
+index 8ef01c03787997b599c4194a26c38a41984c7801..942ec522cd3c2a82dd3b71a22aedf7b1347f0ab8
+--- a/core/src/services/spot/spot_data_plane_loop.cpp
++++ b/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -239,11 +239,6 @@
+     while (running) {
+         service_runtime_sockets (runtime_, state_);
+ 
+-        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
+-            fatal_errno = errno;
+-            break;
+-        }
+-
+         socket_poller_t::event_t events[5];
+         const int rc = poller.wait (events, 5, 20);
+         if (rc < 0) {
+
+codex
+이번 시도는 targeted 공식 run에서 즉시 퇴행했습니다. 가이드 규칙대로 같은 iteration 안에서 수정은 되돌리고, 결과는 폐기 메모로만 남긴 뒤 다음 병목 후보로 넘어가겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp
+@@ -241,2 +241,7 @@
+ 
++        if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
++            fatal_errno = errno;
++            break;
++        }
++
+         socket_poller_t::event_t events[5];
+apply_patch(auto_approved=true) exited 0 in 3ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_loop.cpp
+exec
+/bin/bash -lc 'git diff -- core/src/services/spot/spot_data_plane_loop.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc 'cmake --build core/build --target test_multi_spot_benchmark_process perf_spot comp_src_spot_server comp_src_spot_client -j"$(nproc)"' in /home/hep7/project/kairos/zlink succeeded in 7.32s:
+[  0%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_loop.cpp.o
+[ 95%] Built target objects
+[ 97%] Linking CXX shared library ../lib/libzlink.so
+[ 97%] Built target libzlink
+[100%] Built target testutil
+[100%] Linking CXX executable ../../bin/test_multi_spot_benchmark_process
+[100%] Built target test_multi_spot_benchmark_process
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[ 97%] Linking CXX executable ../../bin/perf_spot
+[100%] Built target perf_spot
+[ 97%] Built target objects
+[100%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_server
+[100%] Built target comp_src_spot_server
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_client
+[100%] Built target comp_src_spot_client
+codex
+코드는 best-known 상태로 복구됐고, 이제 실행 가이드에 이번 실험의 폐기 사실과 현재 기준점을 남기겠습니다. 문서가 authority이므로 실패한 시도도 다음 iteration 판단에 필요한 만큼만 정확히 기록하겠습니다.
+exec
+/bin/bash -lc "sed -n '315,380p' /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+- 항상 `완료`가 아닌 첫 항목부터 진행한다.
+- `검증 증거`가 비어 있으면 `완료`로 바꾸지 않는다.
+- `P6`, `P7`은 반드시 full run 결과를 요구한다.
+- 한 항목이 끝나면 즉시 다음 항목으로 이동한다.
+
+## 14.2 iteration 종료 시 문서 갱신
+
+매 iteration 끝에는 아래를 반영한다.
+
+1. 방금 건드린 병목과 관련 파일
+2. 실행한 test/perf 명령
+3. 생성된 로그/결과 파일 경로
+4. baseline 대비 남은 부족 항목
+5. 다음 iteration의 첫 타깃
+
+## 14.3 진행 메모
+
+- 2026-03-27: 공식 full recv `core/perf/results/multi/report/perf_linux_recv_20260327_064255.txt`에서 `MULTI_DEALER_DEALER/tls`와 `MULTI_SPOT/tcp`가 partial/fail로 확인됨.
+- 2026-03-27: `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`에 `tcp 131072` 및 `tcp 64..262144` sequence 회귀를 추가했고 둘 다 통과했다. `MULTI_SPOT/tcp`는 단일 pattern targeted 공식 run `perf_linux_recv_20260327_071822.txt`에서 clean이므로 다음 full recv에서 다시 cross-pattern 영향을 확인해야 한다.
+file update
+M /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -345,3 +345,4 @@
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+apply_patch(auto_approved=true) exited 0 in 4ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+codex
+다음 후보는 `ingress`는 best-known `16 MiB`로 유지하고, 실제 client tail에 더 직접적인 `mesh_xsub -> fanout` 쪽만 더 짧게 자르는 분리 실험입니다. 이전 `12 MiB` 퇴행은 ingress와 mesh 둘 다 함께 줄인 상태였으니, 이번에는 write set을 `spot_data_plane_protocol.cpp` 하나로만 제한해 분리 검증하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -32,3 +32,3 @@
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+apply_patch(auto_approved=true) exited 0 in 6ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp
+file update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+file update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+exec
+/bin/bash -lc 'git diff -- core/src/services/spot/spot_data_plane_protocol.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index a8ac183e..3fc920ad 100644
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -28,6 +28,9 @@ namespace zlink
+ namespace
+ {
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
++// Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
++// data-plane thread long enough to inflate delivery tail latency.
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+@@ -406,7 +409,6 @@ int spot_data_plane_protocol_t::publish_bootstrap_descriptor (
+ 
+     return 0;
+ }
+-
+ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+exec
+/bin/bash -lc 'cmake --build core/build --target test_multi_spot_benchmark_process unittest_spot_data_plane_budget perf_spot comp_src_spot_server comp_src_spot_client -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+ succeeded in 9.00s:
+[  0%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_protocol.cpp.o
+[ 95%] Built target objects
+[ 97%] Linking CXX shared library ../lib/libzlink.so
+[ 97%] Built target libzlink
+[100%] Built target testutil
+[100%] Linking CXX executable ../../bin/test_multi_spot_benchmark_process
+[100%] Built target test_multi_spot_benchmark_process
+[  0%] Built target unity
+[ 97%] Built target objects
+[ 97%] Linking CXX static library ../lib/libzlink.a
+[ 97%] Built target libzlink-static
+[100%] Built target testutil-static
+[100%] Linking CXX executable ../../../bin/unittest_spot_data_plane_budget
+[100%] Built target unittest_spot_data_plane_budget
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[ 97%] Linking CXX executable ../../bin/perf_spot
+[100%] Built target perf_spot
+[ 97%] Built target objects
+[100%] Built target libzlink
+file update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+exec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc 'mkdir -p core/tools/perf/logs && ./core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --recv recv --pattern SPOT --transports tls --msg-sizes 131072 2>&1 | tee core/tools/perf/logs/perf_recv_spot_tls_131072_mesh12m_$(date +%Y%m%d_%H%M%S).log' in /home/hep7/project/kairos/zlinkfile update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+codex
+직전 명령에서 regression과 perf를 병렬로 올려서 이번 perf 수치는 오염 가능성이 있습니다. 두 프로세스는 끝까지 추적하되, perf 결과는 검증 근거로 쓰지 않고 ctest 종료 후 단독으로 다시 재실행하겠습니다.
+ succeeded in 8.85s:
+      | 131072B  |    11.125 Kmsg/s |   1458.202 MB/s |   145.871 ms |   187.092 ms |   200.347 ms | 12.270 |  495.730 |         0 |         0 |         0 |
+    Testing tls: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls
+- msg_sizes: 131072
+- warmup_seconds: 2
+- active_warmup: 0
+- duration_seconds: 5
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: 100 (default)
+- sndhwm: 100 (default)
+file update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+file update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+ succeeded in 2m 01s:
+1/2 Test  #8: test_multi_spot_benchmark_process ...   Passed  121.55 sec
+    Start 80: unittest_spot_data_plane_budget
+2/2 Test #80: unittest_spot_data_plane_budget .....   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+integration      = 121.55 sec*proc (1 test)
+parallel-safe    =   0.00 sec*proc (1 test)
+serial           = 121.55 sec*proc (1 test)
+unittest         =   0.00 sec*proc (1 test)
+
+Total Test time (real) = 121.55 sec
+file update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+codex
+`mesh_xsub 12 MiB` 분리 실험은 regression은 통과했고, 방금 perf는 병렬 실행이라 폐기 예정입니다. 같은 코드 상태로 단독 targeted 공식 run을 한 번 더 돌려 실제 수치를 확정하겠습니다.
+exec
+/bin/bash -lc 'mkdir -p core/tools/perf/logs && ./core/perf/run_benchmarks_multi.sh --build-dir core/build --reuse-build --recv recv --pattern SPOT --transports tls --msg-sizes 131072 2>&1 | tee core/tools/perf/logs/perf_recv_spot_tls_131072_mesh12m_solo_$(date +%Y%m%d_%H%M%S).log' in /home/hep7/project/kairos/zlinkfile update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+ succeeded in 9.06s:
+      | 131072B  |     8.713 Kmsg/s |   1142.004 MB/s |   339.649 ms |   440.518 ms |   457.334 ms | 11.611 |  496.664 |         0 |         0 |         0 |
+    Testing tls: Done
+
+## Effective Options (result)
+- runs: 1
+- recv_mode: recv
+- patterns: MULTI_SPOT
+- transports: tls
+- msg_sizes: 131072
+- warmup_seconds: 2
+- active_warmup: 0
+- duration_seconds: 5
+- clients: 100
+- default_clients: 100
+- default_stream_clients: 10000
+- service_clients: auto
+- server_io_threads: 4 (default)
+- client_io_threads: 4 (default)
+- hwm: 100 (default)
+- sndhwm: 100 (default)
+file update:
+
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index 4073c468156ad13fc7cf0973a3a3198f1d84ac79..3fc920ad2a6b62f4dd157872b29474b2d978ef5b
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -30,7 +30,7 @@
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
+ // Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+codex
+단독 targeted run에서 `mesh_xsub 12 MiB`도 분명한 퇴행으로 확인됐습니다. 이 수정 역시 같은 iteration 안에서 되돌리고, 가이드에는 오염 run 폐기와 단독 run 결과만 남기겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -32,3 +32,3 @@
+ // data-plane thread long enough to inflate delivery tail latency.
+-static const size_t mesh_xsub_forward_batch_bytes_limit = 12 * 1024 * 1024;
++static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
+ 
+apply_patch(auto_approved=true) exited 0 in 6ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/services/spot/spot_data_plane_protocol.cpp
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+exec
+/bin/bash -lc 'git diff -- core/src/services/spot/spot_data_plane_protocol.cpp' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+diff --git a/core/src/services/spot/spot_data_plane_protocol.cpp b/core/src/services/spot/spot_data_plane_protocol.cpp
+index a8ac183e..4073c468 100644
+--- a/core/src/services/spot/spot_data_plane_protocol.cpp
++++ b/core/src/services/spot/spot_data_plane_protocol.cpp
+@@ -28,6 +28,9 @@ namespace zlink
+ namespace
+ {
+ static const unsigned int mesh_xsub_forward_batch_limit = 16384;
++// Bound fanout bursts by bytes so large SPOT payloads cannot hold the client
++// data-plane thread long enough to inflate delivery tail latency.
++static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
+ 
+ static void spot_ctrl_debugf (const char *fmt_, ...)
+ {
+@@ -406,7 +409,6 @@ int spot_data_plane_protocol_t::publish_bootstrap_descriptor (
+ 
+     return 0;
+ }
+-
+ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
+exec
+/bin/bash -lc 'cmake --build core/build --target test_multi_spot_benchmark_process perf_spot comp_src_spot_server comp_src_spot_client -j"$(nproc)"' in /home/hep7/project/kairos/zlinkfile update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+ succeeded in 7.34s:
+[  0%] Building CXX object core/CMakeFiles/objects.dir/src/services/spot/spot_data_plane_protocol.cpp.o
+[ 95%] Built target objects
+[ 97%] Linking CXX shared library ../lib/libzlink.so
+[ 97%] Built target libzlink
+[100%] Built target testutil
+[100%] Linking CXX executable ../../bin/test_multi_spot_benchmark_process
+[100%] Built target test_multi_spot_benchmark_process
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[ 97%] Linking CXX executable ../../bin/perf_spot
+[100%] Built target perf_spot
+[ 97%] Built target objects
+[100%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_server
+[100%] Built target comp_src_spot_server
+[ 95%] Built target objects
+[ 97%] Built target libzlink
+[100%] Linking CXX executable ../../bin/comp_src_spot_client
+[100%] Built target comp_src_spot_client
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+exec
+/bin/bash -lc "sed -n '332,390p' /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+- 2026-03-27: 공식 full recv `core/perf/results/multi/report/perf_linux_recv_20260327_064255.txt`에서 `MULTI_DEALER_DEALER/tls`와 `MULTI_SPOT/tcp`가 partial/fail로 확인됨.
+- 2026-03-27: `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`에 `tcp 131072` 및 `tcp 64..262144` sequence 회귀를 추가했고 둘 다 통과했다. `MULTI_SPOT/tcp`는 단일 pattern targeted 공식 run `perf_linux_recv_20260327_071822.txt`에서 clean이므로 다음 full recv에서 다시 cross-pattern 영향을 확인해야 한다.
+- 2026-03-27: `core/tests/integration/monitoring/test_multi_dealer_dealer_benchmark_process.cpp`를 추가해 split process contract를 고정했다. `core/perf/multi/src/perf_multi_dealer_dealer_server.cpp`와 `core/perf/multi/src/perf_multi_dealer_dealer_client.cpp`에 runner용 start/done 동기화를 추가한 뒤 targeted 공식 run `perf_linux_recv_20260327_071721.txt`가 clean으로 복구됐다.
+- 2026-03-27: 공식 full recv `core/perf/results/multi/report/perf_linux_recv_20260327_072300.txt`는 `DEALER_DEALER/tls` fail 없이 complete로 종료됐다. baseline 비교 결과 새 worst tuple은 `MULTI_SPOT/tls/131072`였고, tail latency(`P95/P99`)와 secure SPOT bandwidth가 주된 잔여 미달 항목으로 남았다.
+- 2026-03-27: `core/perf/multi/src/perf_multi_spot_server.cpp`에 pub delivery-ready quorum gate를 추가하고 `core/tests/integration/monitoring/test_multi_spot_benchmark_process.cpp`에 `tls 65536,131072,262144` sequence 회귀를 추가했다. `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.07초에 통과했다.
+- 2026-03-27: targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_075123.txt`에서 `MULTI_SPOT/tls/131072` throughput은 `12.577 Kmsg/s -> 19.418 Kmsg/s`, bandwidth는 `1648.519 MB/s -> 2545.156 MB/s`, mean latency는 `821.785 ms -> 404.103 ms`로 개선됐다. 다만 `P95/P99`는 baseline 대비 여전히 크게 높아 full recv 재실행 전 추가 구조 수정이 더 필요하다.
+- 2026-03-27: `core/src/services/spot/spot_mesh_pub_budget.cpp`에서 secure multi-peer mesh pub budget을 `tls: 768 -> 2048`, `wss: 128 -> 512`로 키우고 `core/tests/unittest/unittest_spot_data_plane_budget.cpp` 기대값을 갱신했다. `ctest --test-dir core/build --output-on-failure -R unittest_spot_data_plane_budget -j1`, `ctest --test-dir core/build --output-on-failure -R test_spot_service_introspection -j1`, `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`가 모두 통과했다.
+- 2026-03-27: targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_080510.txt`에서 `MULTI_SPOT/tls/131072` throughput은 `15.988 Kmsg/s`, bandwidth는 `2095.579 MB/s`, mean latency는 `293.634 ms`, `P95/P99`는 `376.334/392.574 ms`로 추가 개선됐다. 이전 targeted run 대비 throughput은 일부 내려왔지만 tail latency와 server memory(`665.110 MB -> 470.120 MB`)는 개선됐다. baseline 대비 `throughput/bandwidth`는 여전히 상회하지만 `mean/P95/P99 latency`는 아직 미달이다.
+- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 large-message byte-budget cap(`16 MiB`)을 추가했다. 관련 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 124.10초에 통과했다.
+- 2026-03-27: targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`에서 `MULTI_SPOT/tls/131072`는 throughput `12.086 Kmsg/s`, bandwidth `1584.084 MB/s`, mean latency `135.180 ms`, `P95/P99 172.356/179.641 ms`를 기록했다. baseline 대비 throughput/bandwidth는 여전히 상회했고 latency는 `mean +27.004 ms`, `P95 +18.421 ms`, `P99 +7.193 ms` 차이까지 줄었다.
+- 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+- 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+- 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
+- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+
+## 15. Codex supervisor 종료 메시지 규칙
+
+반복 루프에서 아래 세 형식만 쓴다.
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..831154f9b29e9712635175617fe52a19783d34f2
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,8 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+file update
+M /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -346,2 +346,3 @@
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
+ - 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+apply_patch(auto_approved=true) exited 0 in 6ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..b4e6f0464e65490b617ff4a550f840159798d0fe
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,9 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..b4e6f0464e65490b617ff4a550f840159798d0fe
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,9 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+codex
+계속 진행 필요
+file update:
+
+diff --git a/core/tools/perf/core-perf-optimization-execution-guide.ko.md b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+index 5ee2c7c325581cbee98b0a25f29166b5cf0f2811..b4e6f0464e65490b617ff4a550f840159798d0fe
+--- a/core/tools/perf/core-perf-optimization-execution-guide.ko.md
++++ b/core/tools/perf/core-perf-optimization-execution-guide.ko.md
+@@ -343,7 +343,9 @@
+ - 2026-03-27: 같은 구조를 `12 MiB`까지 더 조인 실험(`core/perf/results/multi/report/perf_linux_recv_20260327_084450.txt`)은 `mean 266.564 ms`, `P95 425.514 ms`, `P99 468.609 ms`로 다시 퇴행해 폐기했고, 현재 코드는 `16 MiB` byte-budget cap 상태를 유지한다.
+ - 2026-03-27: `core/src/services/spot/spot_data_plane_forwarding.cpp`와 `core/src/services/spot/spot_data_plane_protocol.cpp`에 intra-batch socket service 지점을 추가하는 실험을 했지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_085126.txt`가 `mean 364.771 ms`, `P95 463.533 ms`, `P99 474.745 ms`로 즉시 퇴행했다. 해당 수정은 같은 iteration 안에서 되돌렸고 관련 결과는 폐기한다.
+ - 2026-03-27: best-known `16 MiB` 상태로 되돌린 뒤 process regression `ctest --test-dir core/build --output-on-failure -R test_multi_spot_benchmark_process -j1`는 120.95초에 다시 통과했다. 다만 targeted 공식 rerun `core/perf/results/multi/report/perf_linux_recv_20260327_085505.txt`는 `mean 530.688 ms`, `P95 679.660 ms`, `P99 694.162 ms`로 큰 편차를 보여 현 상태가 acceptance에 충분히 안정적이지 않음이 확인됐다.
+-- 다음 iteration 첫 타깃: `MULTI_SPOT/tls/131072` active phase latency의 잔여 `mean/P95/P99` gap만 남았으므로, `16 MiB` byte-budget cap을 기준점으로 두고 같은 ingress->mesh->fanout 경로에서 잔여 burst 원인을 한 단계 더 줄인 뒤 targeted run으로 재판정하고, 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_loop.cpp`에서 `peer_ctrl_sub` 선행 drain을 제거해 control path fairness를 높이는 실험을 했고, 선택 빌드(`test_multi_spot_benchmark_process`, `unittest_spot_data_plane_budget`, `perf_spot`, `comp_src_spot_server`, `comp_src_spot_client`)와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했다. 하지만 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_091601.txt`가 `mean 447.950 ms`, `P95 765.109 ms`, `P99 809.513 ms`로 즉시 크게 퇴행해 해당 수정은 같은 iteration 안에서 되돌렸고 결과는 폐기한다.
++- 2026-03-27: `core/src/services/spot/spot_data_plane_protocol.cpp`에서 `mesh_xsub` fanout byte-budget만 `12 MiB`로 낮추는 분리 실험을 했다. 관련 선택 빌드와 regression `ctest --test-dir core/build --output-on-failure -R 'unittest_spot_data_plane_budget|test_multi_spot_benchmark_process' -j1`는 통과했지만, 병렬 실행으로 오염된 `core/perf/results/multi/report/perf_linux_recv_20260327_091756.txt`는 폐기했고 단독 targeted 공식 run `core/perf/results/multi/report/perf_linux_recv_20260327_092003.txt`도 `mean 339.649 ms`, `P95 440.518 ms`, `P99 457.334 ms`로 baseline과 best-known 대비 모두 퇴행해 수정은 같은 iteration 안에서 되돌렸다.
++- 다음 iteration 첫 타깃: best-known `16 MiB` byte-budget cap 상태(`core/perf/results/multi/report/perf_linux_recv_20260327_084159.txt`)를 기준점으로 유지한 채, `MULTI_SPOT/tls/131072` 경로에서 control drain 순서가 아니라 ingress->mesh->fanout 자체의 잔여 burst 원인을 더 줄이는 방향만 다시 시도한다. 세 latency가 모두 baseline 이하가 되면 공식 `recv full`로 넘어간다.
+ 
+ ## 15. Codex supervisor 종료 메시지 규칙
+ 
+
+tokens used
+252,494
+계속 진행 필요

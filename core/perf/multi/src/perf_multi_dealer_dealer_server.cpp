@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -294,6 +295,24 @@ inline bool run_one_size_benchmark (
     return true;
 }
 
+inline bool parse_start_command (const std::string &line, size_t *msg_size_out)
+{
+    static const char prefix[] = "START,";
+    if (!msg_size_out
+        || line.compare (0, sizeof (prefix) - 1, prefix) != 0) {
+        return false;
+    }
+
+    const char *value = line.c_str () + (sizeof (prefix) - 1);
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull (value, &end, 10);
+    if (!end || *end != '\0' || parsed == 0)
+        return false;
+
+    *msg_size_out = static_cast<size_t> (parsed);
+    return true;
+}
+
 inline void print_server_resource_metrics (
   const std::string &lib_name,
   const std::string &transport,
@@ -348,36 +367,42 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    connect_monitor_t server_monitor;
-    if (!open_connect_monitor (server, server_monitor)) {
-        zlink_close (server);
-        return 1;
-    }
-
     const std::string endpoint = bind_server_endpoint (
       server,
       transport,
       lib_name + std::string ("_") + k_token + "_server");
     if (endpoint.empty ()) {
-        close_connect_monitor (server_monitor);
         zlink_close (server);
         return 1;
     }
 
     perf_stop_requested ().store (false, std::memory_order_release);
     install_perf_signal_handlers ();
+    std::mutex start_sync;
+    std::condition_variable start_cv;
+    std::set<size_t> pending_start_sizes;
 
-    std::thread stdin_watcher ([] () {
+    std::thread stdin_watcher ([&] () {
         std::string line;
         while (std::getline (std::cin, line)) {
+            size_t start_size = 0;
+            if (parse_start_command (line, &start_size)) {
+                {
+                    std::lock_guard<std::mutex> lock (start_sync);
+                    pending_start_sizes.insert (start_size);
+                }
+                start_cv.notify_all ();
+                continue;
+            }
             if (line == "STOP" || line == "QUIT") {
                 perf_stop_requested ().store (true, std::memory_order_release);
+                start_cv.notify_all ();
                 return;
             }
         }
         perf_stop_requested ().store (true, std::memory_order_release);
+        start_cv.notify_all ();
     });
-    stdin_watcher.detach ();
 
     std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
     if (sizes.empty ())
@@ -385,21 +410,29 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     std::cout << "READY," << endpoint << std::endl;
 
-    if (!wait_connect_ready_count (
-          server_monitor,
-          settings.clients,
-          settings.connect_ready_timeout_ms)) {
-        close_connect_monitor (server_monitor);
-        zlink_close (server);
-        return 1;
-    }
-
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
     bool ok = true;
     for (size_t si = 0; si < sizes.size (); ++si) {
         if (perf_stop_requested ().load (std::memory_order_acquire)) {
             ok = false;
             break;
+        }
+
+        {
+            std::unique_lock<std::mutex> lock (start_sync);
+            const bool started = start_cv.wait_for (
+              lock,
+              std::chrono::milliseconds (
+                std::max (1, settings.connect_ready_timeout_ms)),
+              [&] () {
+                  return perf_stop_requested ().load (std::memory_order_acquire)
+                         || pending_start_sizes.count (sizes[si]) != 0;
+              });
+            if (!started || perf_stop_requested ().load (std::memory_order_acquire)) {
+                ok = false;
+                break;
+            }
+            pending_start_sizes.erase (sizes[si]);
         }
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
@@ -419,7 +452,10 @@ inline int run_server_benchmark (const std::string &lib_name,
       bench_multi_finish_resource_probe (sample_start);
     print_server_resource_metrics (lib_name, transport, sizes, metrics);
 
-    close_connect_monitor (server_monitor);
+    perf_stop_requested ().store (true, std::memory_order_release);
+    start_cv.notify_all ();
+    if (stdin_watcher.joinable ())
+        stdin_watcher.join ();
     zlink_close (server);
 
     return ok ? 0 : 1;

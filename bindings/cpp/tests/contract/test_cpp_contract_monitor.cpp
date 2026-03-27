@@ -7,9 +7,9 @@ namespace {
 void test_socket_monitor_open_recv_snapshot ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
 
-    zlink::monitor_handle_t monitor (server, zlink::monitor_event::all);
+    zlink::monitor_handle_t monitor = server.monitor_handle ();
     assert (monitor.valid ());
 
     const std::string endpoint =

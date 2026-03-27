@@ -75,6 +75,9 @@ typedef zmq_pollitem_t zlink_pollitem_t;
 #ifndef ZLINK_ROUTER_MANDATORY
 #define ZLINK_ROUTER_MANDATORY ZMQ_ROUTER_MANDATORY
 #endif
+#ifndef ZLINK_ROUTER_OPT_MANDATORY
+#define ZLINK_ROUTER_OPT_MANDATORY ZLINK_ROUTER_MANDATORY
+#endif
 #ifndef ZLINK_SUBSCRIBE
 #define ZLINK_SUBSCRIBE ZMQ_SUBSCRIBE
 #endif
@@ -101,6 +104,12 @@ typedef zmq_pollitem_t zlink_pollitem_t;
 #define zlink_msg_more zmq_msg_more
 #define zlink_setsockopt zmq_setsockopt
 #define zlink_getsockopt zmq_getsockopt
+#define zlink_set_subscription(socket_, filter_) \
+    zmq_setsockopt((socket_), ZMQ_SUBSCRIBE, (filter_), std::strlen(filter_))
+#define zlink_set_routing_id(socket_, data_, size_) \
+    zmq_setsockopt((socket_), ZMQ_ROUTING_ID, (data_), (size_))
+#define zlink_set_router_option(socket_, option_, optval_, optvallen_) \
+    zmq_setsockopt((socket_), (option_), (optval_), (optvallen_))
 #define zlink_poll zmq_poll
 #define zlink_bind zmq_bind
 #define zlink_connect zmq_connect
@@ -151,6 +160,27 @@ inline int zlink_socket_peers(void * /*socket_*/,
 #ifndef ZLINK_TLS_HOSTNAME
 #define ZLINK_TLS_HOSTNAME 100
 #endif
+#ifndef ZLINK_OPT_TLS_CERT
+#define ZLINK_OPT_TLS_CERT ZLINK_TLS_CERT
+#endif
+#ifndef ZLINK_OPT_TLS_KEY
+#define ZLINK_OPT_TLS_KEY ZLINK_TLS_KEY
+#endif
+#ifndef ZLINK_OPT_TLS_CA
+#define ZLINK_OPT_TLS_CA ZLINK_TLS_CA
+#endif
+#ifndef ZLINK_OPT_TLS_HOSTNAME
+#define ZLINK_OPT_TLS_HOSTNAME ZLINK_TLS_HOSTNAME
+#endif
+#ifndef ZLINK_OPT_TLS_TRUST_SYSTEM
+#define ZLINK_OPT_TLS_TRUST_SYSTEM ZLINK_TLS_TRUST_SYSTEM
+#endif
+#ifndef ZLINK_OPT_LAST_ENDPOINT
+#define ZLINK_OPT_LAST_ENDPOINT ZLINK_SOCKOPT_LAST_ENDPOINT
+#endif
+
+#define zlink_set_option zlink_setsockopt
+#define zlink_get_option zlink_getsockopt
 
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
@@ -507,6 +537,21 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
         }
     }
     return rc == 0;
+}
+
+inline bool send_exact(void *socket_,
+                       const void *data_,
+                       size_t size_,
+                       int flags_)
+{
+    const int rc = zlink_send(socket_, data_, size_, flags_);
+    return rc >= 0 && static_cast<size_t>(rc) == size_;
+}
+
+inline bool recv_exact(void *socket_, void *data_, size_t size_, int flags_)
+{
+    const int rc = zlink_recv(socket_, data_, size_, flags_);
+    return rc >= 0 && static_cast<size_t>(rc) == size_;
 }
 
 inline int resolve_single_send_timeout_ms()

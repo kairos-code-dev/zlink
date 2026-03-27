@@ -54,7 +54,7 @@ public sealed class Poller : IDisposable
         }
     }
 
-    public void Add(Socket socket, PollEvents events, object? tag = null)
+    public void Add(SocketBase socket, PollEvents events, object? tag = null)
     {
         EnsureNotDisposed();
         if (socket == null)
@@ -88,7 +88,7 @@ public sealed class Poller : IDisposable
             fd, events, tag));
     }
 
-    public void Modify(Socket socket, PollEvents events)
+    public void Modify(SocketBase socket, PollEvents events)
     {
         EnsureNotDisposed();
         if (socket == null)
@@ -119,7 +119,7 @@ public sealed class Poller : IDisposable
         _items[index].Events = events;
     }
 
-    public bool Remove(Socket socket)
+    public bool Remove(SocketBase socket)
     {
         EnsureNotDisposed();
         if (socket == null)
@@ -345,7 +345,7 @@ public sealed class Poller : IDisposable
 
     private sealed class PollItem
     {
-        public PollItem(PollItemKind kind, Socket? socket, IntPtr userData,
+        public PollItem(PollItemKind kind, SocketBase? socket, IntPtr userData,
             IntPtr socketHandle, int fd, PollEvents events, object? tag)
         {
             Kind = kind;
@@ -358,7 +358,7 @@ public sealed class Poller : IDisposable
         }
 
         public PollItemKind Kind { get; }
-        public Socket? Socket { get; }
+        public SocketBase? Socket { get; }
         public IntPtr UserData { get; }
         public IntPtr SocketHandle { get; }
         public int Fd { get; }
@@ -370,7 +370,7 @@ public sealed class Poller : IDisposable
 
 public readonly struct PollEvent
 {
-    public PollEvent(Socket? socket, int? fd, object? tag, PollEvents events,
+    public PollEvent(SocketBase? socket, int? fd, object? tag, PollEvents events,
         PollEvents revents)
     {
         Socket = socket;
@@ -380,7 +380,7 @@ public readonly struct PollEvent
         Revents = revents;
     }
 
-    public Socket? Socket { get; }
+    public SocketBase? Socket { get; }
     public int? Fd { get; }
     public object? Tag { get; }
     public PollEvents Events { get; }

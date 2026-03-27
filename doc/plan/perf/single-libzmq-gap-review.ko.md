@@ -2617,6 +2617,7 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
 - 생성된 결과 파일 경로
   - [`perf_linux_20260328_062033_codex_20260328_router_routed_data_view.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_062033_codex_20260328_router_routed_data_view.txt)
   - [`perf_linux_20260328_062105_codex_20260328_router_routed_data_view_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_062105_codex_20260328_router_routed_data_view_rerun.txt)
+  - pushed commit: `efc97d1b0e309869790a19d413c86483a3dc74b6`
 - 핵심 수치
   - first run
     - `ROUTER_ROUTER tcp 64B`: `2955.81 Kmsg/s` vs `1222.99 Kmsg/s`, `-58.62%`
@@ -2647,4 +2648,57 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
 - 다음 iteration 우선순위
   - retained regression만 가지고 간다.
   - guide 순서대로 다른 `PUBSUB` publication 축이나
+    더 큰 `ROUTER_ROUTER` public/aggregate differential을 본다.
+
+## 35. 2026-03-28 `dist.cpp` single-pipe match/activated bookkeeping fast path 로그
+
+- 작업한 가설
+  - current accepted `dist` delta는 single-subscriber send/write 쪽은 줄였지만,
+    `dist_t::match()`와 `activated()`는 single-pipe steady-state에서도
+    여전히 `_pipes.index()`와 swap bookkeeping을 돈다.
+  - matching pipe가 하나뿐인 `PUBSUB` steady-state에서
+    이 bookkeeping을 좁게 줄이면 publication/wakeup differential을
+    추가로 더 줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/sockets/dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_pubsub_filter_xpub)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_single_pipe_bookkeeping`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_single_pipe_bookkeeping_rerun`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_single_pipe_bookkeeping_seq3`
+  - 원복 후
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_pubsub_filter_xpub)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_063622_codex_20260328_pubsub_dist_single_pipe_bookkeeping.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_063622_codex_20260328_pubsub_dist_single_pipe_bookkeeping.txt)
+  - [`perf_linux_20260328_063651_codex_20260328_pubsub_dist_single_pipe_bookkeeping_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_063651_codex_20260328_pubsub_dist_single_pipe_bookkeeping_rerun.txt)
+  - [`perf_linux_20260328_063722_codex_20260328_pubsub_dist_single_pipe_bookkeeping_seq3.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_063722_codex_20260328_pubsub_dist_single_pipe_bookkeeping_seq3.txt)
+- 핵심 수치
+  - sequential seq1
+    - `PUBSUB tcp 64B`: `3430.55 Kmsg/s` vs `2579.34 Kmsg/s`, `-24.81%`
+    - `PUBSUB inproc 64B`: `3756.54 Kmsg/s` vs `2125.68 Kmsg/s`, `-43.41%`
+  - sequential seq2
+    - `PUBSUB tcp 64B`: `3304.52 Kmsg/s` vs `2554.09 Kmsg/s`, `-22.71%`
+    - `PUBSUB inproc 64B`: `3786.45 Kmsg/s` vs `2473.61 Kmsg/s`, `-34.67%`
+  - sequential seq3
+    - `PUBSUB tcp 64B`: `3270.77 Kmsg/s` vs `2471.98 Kmsg/s`, `-24.42%`
+    - `PUBSUB inproc 64B`: `4053.83 Kmsg/s` vs `2364.14 Kmsg/s`, `-41.68%`
+  - current accepted baseline
+    - broader single `PUBSUB tcp/inproc 64B`: `-23.63% / -39.84%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path
+- 해석
+  - seq2만 보면 `tcp/inproc`가 둘 다 accepted baseline보다 좋아 보여
+    candidate처럼 보였지만, seq1과 seq3가 다시 baseline 아래로 내려갔다.
+  - 즉 current accepted `dist` helper 위에 single-pipe bookkeeping만 더 줄여도
+    stable broad win은 아니었다.
+  - 따라서 current `PUBSUB` 잔여 gap을 `match()/activated()` index/swap
+    bookkeeping 하나로 설명하진 않는다.
+- 다음 iteration 우선순위
+  - current accepted `dist` helper만 유지한다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보나
     더 큰 `ROUTER_ROUTER` public/aggregate differential을 본다.

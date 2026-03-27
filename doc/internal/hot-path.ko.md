@@ -342,6 +342,14 @@ steady-state single-part recv hot path:
      single `PUBSUB tcp/inproc -27.31% / -44.93%`로 baseline보다 악화됐다
    - 즉 current `PUBSUB` gap을 `write_activated` monitor-ready refresh
      하나로 설명하진 않는다
+18. `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path
+   - sequential seq1/seq2/seq3 `PUBSUB tcp/inproc`가
+     `-24.81% / -43.41%`, `-22.71% / -34.67%`,
+     `-24.42% / -41.68%`로 흔들렸다
+   - seq2만 보면 candidate처럼 보였지만 seq1/seq3는 accepted baseline
+     `-23.63% / -39.84%`를 stable하게 넘지 못했다
+   - 즉 current `PUBSUB` 잔여 gap을 single-pipe dist bookkeeping 하나로
+     설명하진 않는다
 
 이 항목들은 최근 A/B 실험이나 current code invariant 기준으로
 이미 역효과가 확인됐거나 correctness risk가 높다.
@@ -372,6 +380,10 @@ steady-state single-part recv hot path:
 - `XPUB` / `XSUB` `xwrite_activated()` delivery-ready refresh 제거도
   같은 이유로 rejected candidate다. monitor-ready recompute를 빼는 발상은
   그럴듯했지만 current `PUBSUB` single acceptance에서는 오히려 악화됐다.
+- `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path도
+  같은 이유로 rejected candidate다. seq2만 보면 좋아 보였지만
+  seq1/seq3가 accepted baseline 아래로 다시 내려가
+  stable broad win을 만들지 못했다.
 
 ## 9. 현재 반영된 개선
 

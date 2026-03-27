@@ -449,6 +449,10 @@ rejected candidate는 반드시 로그에 남긴다.
     isolated first run은 `PUBSUB tcp/inproc 64B -21.70% / -35.47%`로
     둘 다 좋아졌지만, clean rerun `PUBSUB inproc 64B`가 `-41.46%`로
     accepted baseline보다 다시 나빠져 원복
+  - `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path도
+    sequential seq1/seq2/seq3 `PUBSUB tcp/inproc 64B`가
+    `-24.81% / -43.41%`, `-22.71% / -34.67%`,
+    `-24.42% / -41.68%`로 흔들려 stable broad win이 아니어서 원복
 - 현재 코드/문서 정합 메모
   - `pipe.cpp`의 `write()`, `write_and_flush()`, `check_write_status()`는
     `_out_sync`를 잡은 뒤 `check_hwm()`에서 같은 recursive fast mutex를
@@ -558,6 +562,10 @@ rejected candidate는 반드시 로그에 남긴다.
     `-25.77% / -40.89%`, `-23.12% / -40.39%`로
     accepted baseline `-23.63% / -39.84%`를 stable하게 넘지 못해
     현재 코드에는 없다.
+  - 같은 날 `dist.cpp` single-pipe `match()/activated()` bookkeeping
+    fast path도 sequential seq1/seq2/seq3가
+    `-24.81% / -43.41%`, `-22.71% / -34.67%`,
+    `-24.42% / -41.68%`로 다시 흔들려 현재 코드에는 없다.
   - 같은 날 `socket_message_recv_api.cpp` `SUB/XSUB` raw multipart
     single-part recv fast path도 tcp/inproc 방향이 엇갈려
     현재 코드에는 남아 있지 않다.
@@ -613,6 +621,10 @@ rejected candidate는 반드시 로그에 남긴다.
       current accepted `dist` helper 위
       `XPUB` all-attached empty-prefix `send_to_all()` v2도
       seq1/seq2 모두 keep-worthy broad win이 아니어서 rejected candidate다.
+      `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path도
+      seq1/seq2/seq3가 `PUBSUB tcp/inproc 64B`
+      `-24.81% / -43.41%`, `-22.71% / -34.67%`,
+      `-24.42% / -41.68%`로 흔들려 rejected candidate가 됐다.
       `ROUTER` blocking envelope / `zlink_send_rid()` multipart
       routed-data view candidate도 first/rerun
       `ROUTER_ROUTER tcp/inproc 64B`
@@ -630,6 +642,10 @@ rejected candidate는 반드시 로그에 남긴다.
       `-25.77% / -40.89%`, `-23.12% / -40.39%`로
       accepted baseline `-23.63% / -39.84%`를 stable하게 넘지 못해
       rejected candidate가 됐다.
+      `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path도
+      seq1/seq2/seq3 `PUBSUB tcp/inproc 64B`
+      `-24.81% / -43.41%`, `-22.71% / -34.67%`,
+      `-24.42% / -41.68%`로 stable broad win이 아니었다.
 - [x] `test_router_mandatory_hwm`를 ctest에 등록하고
       `zlink_send_rid()` mandatory-HWM 회귀를 추가했다.
 - [x] `test_public_inproc_router_send_rid_multipart_blocking()`으로

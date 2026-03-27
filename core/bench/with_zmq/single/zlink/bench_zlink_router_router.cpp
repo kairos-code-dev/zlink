@@ -50,7 +50,6 @@ inline bool perform_router_router_handshake (void *router1, void *router2)
                                  zlink_msg_data (&parts[0]), "PING", 4) == 0;
                 if (parts) {
                     zlink_multipart_close (parts, part_count);
-                    free (parts);
                 }
             } else if (rc < 0) {
                 const int err = zlink_errno ();
@@ -93,12 +92,10 @@ inline bool perform_router_router_handshake (void *router1, void *router2)
         || std::memcmp (zlink_msg_data (&pong_parts[0]), "PONG", 4) != 0) {
         if (pong_parts) {
             zlink_multipart_close (pong_parts, pong_part_count);
-            free (pong_parts);
         }
         return false;
     }
     zlink_multipart_close (pong_parts, pong_part_count);
-    free (pong_parts);
 
     return true;
 }
@@ -131,7 +128,6 @@ inline int recv_router_header_flags (void *socket,
     if (source_rid.size == 0 || part_count != 1) {
         if (parts) {
             zlink_multipart_close (parts, part_count);
-            free (parts);
         }
         return -1;
     }
@@ -150,7 +146,6 @@ inline int recv_router_header_flags (void *socket,
     }
 
     zlink_multipart_close (parts, part_count);
-    free (parts);
 
     if (header_ok_out)
         *header_ok_out = header_ok;

@@ -103,6 +103,66 @@ struct pubsub_recv_loop_t
     std::thread thread;
 };
 
+inline int recv_pubsub_metric_header_flags (
+  void *sub_socket_,
+  pubsub_recv_state_t *state_,
+  int flags_,
+  perf_single_metric::header_t *header_out_)
+{
+    if (!sub_socket_ || !state_ || !header_out_)
+        return -1;
+
+    zlink_msg_t topic_msg;
+    if (zlink_msg_init (&topic_msg) != 0)
+        return -1;
+
+    const int topic_rc =
+      zlink_msg_recv (&topic_msg, sub_socket_, static_cast<zlink_send_flags_t> (flags_));
+    if (topic_rc < 0) {
+        const int err = zlink_errno ();
+        zlink_msg_close (&topic_msg);
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
+
+    zlink_msg_t payload_msg;
+    if (zlink_msg_init (&payload_msg) != 0) {
+        zlink_msg_close (&topic_msg);
+        return -1;
+    }
+
+    const int payload_rc =
+      zlink_msg_recv (&payload_msg, sub_socket_, static_cast<zlink_send_flags_t> (flags_));
+    if (payload_rc < 0) {
+        const int err = zlink_errno ();
+        zlink_msg_close (&payload_msg);
+        zlink_msg_close (&topic_msg);
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
+
+    const size_t topic_len = zlink_msg_size (&topic_msg);
+    const bool topic_ok =
+      topic_len == std::strlen (k_pubsub_topic)
+      && std::memcmp (zlink_msg_data (&topic_msg), k_pubsub_topic, topic_len)
+           == 0;
+    const size_t actual_size = zlink_msg_size (&payload_msg);
+    const bool size_ok = actual_size == state_->payload_size;
+    const bool header_ok =
+      topic_ok && size_ok
+      && perf_single_metric::decode_payload_header (
+        zlink_msg_data (&payload_msg), actual_size, header_out_)
+      && header_out_->run_id == state_->run_id
+      && header_out_->msg_size == state_->msg_size;
+
+    zlink_msg_close (&payload_msg);
+    zlink_msg_close (&topic_msg);
+
+    return header_ok ? 1 : -1;
+}
+
 inline void close_parts (zlink_msg_t *parts_, size_t part_count_)
 {
     if (!parts_)
@@ -322,35 +382,15 @@ void start_pubsub_recv_loop (pubsub_recv_loop_t *loop_)
         loop_->ready.store (true, std::memory_order_release);
 
         while (!loop_->stop.load (std::memory_order_acquire)) {
-            char topic[256];
-            std::memset (topic, 0, sizeof (topic));
-            size_t topic_len = sizeof (topic);
-            zlink_msg_t *parts = NULL;
-            size_t part_count = 0;
-
-            const int rc = zlink_subscribe (
-              loop_->sub_socket,
-              NULL,
-              &parts,
-              &part_count,
-              topic,
-              &topic_len,
-              0);
-            if (rc == 0) {
-                perf_single_metric::header_t header;
-                const bool header_ok = decode_pubsub_metric_header (
-                  loop_->state,
-                  topic,
-                  topic_len,
-                  parts,
-                  part_count,
-                  &header);
-                close_parts (parts, part_count);
-                free (parts);
-                if (header_ok)
-                    account_pubsub_metric_header (loop_->state, header);
+            perf_single_metric::header_t header;
+            const int rc = recv_pubsub_metric_header_flags (
+              loop_->sub_socket, loop_->state, 0, &header);
+            if (rc > 0) {
+                account_pubsub_metric_header (loop_->state, header);
                 continue;
             }
+            if (rc == 0)
+                continue;
 
             const int err = zlink_errno ();
             if (err == EINTR || err == EAGAIN)

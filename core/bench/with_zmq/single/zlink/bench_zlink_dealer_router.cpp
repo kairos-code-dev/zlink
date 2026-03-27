@@ -35,10 +35,8 @@ inline int recv_router_header_flags (void *router,
     }
 
     if (source_rid.size == 0 || part_count != 1) {
-        if (parts) {
-            zlink_multipart_close (parts, part_count);
-            free (parts);
-        }
+        if (parts)
+            ::zlink_multipart_close (parts, part_count);
         return -1;
     }
 
@@ -55,8 +53,7 @@ inline int recv_router_header_flags (void *router,
         }
     }
 
-    zlink_multipart_close (parts, part_count);
-    free (parts);
+    ::zlink_multipart_close (parts, part_count);
 
     if (!size_ok)
         return -1;
@@ -233,8 +230,7 @@ inline bool run_oneway_phase (void *dealer,
             if (payload_size > 0)
                 memcpy (::zlink_msg_data (&part), payload->data (),
                         payload_size);
-            if (::zlink_send (
-                  dealer, &part, 1, static_cast<zlink_send_flags_t> (0))
+            if (::zlink_send (dealer, &part, 1, static_cast<zlink_send_flags_t> (0))
                 < 0) {
                 ::zlink_msg_close (&part);
                 send_failed = true;
@@ -265,8 +261,7 @@ inline bool run_oneway_phase (void *dealer,
             if (payload_size > 0)
                 memcpy (::zlink_msg_data (&part), payload->data (),
                         payload_size);
-            if (::zlink_send (
-                  dealer, &part, 1, static_cast<zlink_send_flags_t> (0))
+            if (::zlink_send (dealer, &part, 1, static_cast<zlink_send_flags_t> (0))
                 < 0) {
                 ::zlink_msg_close (&part);
                 send_failed = true;

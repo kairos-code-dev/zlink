@@ -168,7 +168,6 @@ inline bool relay_router_once (void *server,
 
     if (parts) {
         zlink_multipart_close (parts, part_count);
-        free (parts);
     }
 
     if (id_len == 0)

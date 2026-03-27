@@ -42,12 +42,11 @@ inline int recv_single_part_header_flags (
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink_routing_id_t source_rid;
-    source_rid.size = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_recv (
-      socket, &source_rid, &parts, &part_count,
+    size_t topic_len = 0;
+    const int rc = ::zlink_subscribe (
+      socket, NULL, &parts, &part_count, NULL, &topic_len,
       static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
@@ -55,12 +54,9 @@ inline int recv_single_part_header_flags (
             return 0;
         return -1;
     }
-
-    if (source_rid.size != 0 || part_count != 1) {
-        if (parts) {
-            zlink_multipart_close (parts, part_count);
-            free (parts);
-        }
+    if (part_count != 1) {
+        if (parts)
+            ::zlink_multipart_close (parts, part_count);
         return -1;
     }
 
@@ -77,8 +73,7 @@ inline int recv_single_part_header_flags (
         }
     }
 
-    zlink_multipart_close (parts, part_count);
-    free (parts);
+    ::zlink_multipart_close (parts, part_count);
 
     if (!size_ok)
         return -1;
@@ -235,8 +230,8 @@ inline bool run_oneway_phase (void *pub_socket,
             if (payload_size > 0)
                 memcpy (::zlink_msg_data (&part), payload->data (),
                         payload_size);
-            if (::zlink_send (
-                  pub_socket, &part, 1, static_cast<zlink_send_flags_t> (0))
+            if (::zlink_publish (pub_socket, "", &part, 1,
+                                 static_cast<zlink_send_flags_t> (0))
                 < 0) {
                 ::zlink_msg_close (&part);
                 send_failed = true;
@@ -267,8 +262,8 @@ inline bool run_oneway_phase (void *pub_socket,
             if (payload_size > 0)
                 memcpy (::zlink_msg_data (&part), payload->data (),
                         payload_size);
-            if (::zlink_send (
-                  pub_socket, &part, 1, static_cast<zlink_send_flags_t> (0))
+            if (::zlink_publish (pub_socket, "", &part, 1,
+                                 static_cast<zlink_send_flags_t> (0))
                 < 0) {
                 ::zlink_msg_close (&part);
                 send_failed = true;

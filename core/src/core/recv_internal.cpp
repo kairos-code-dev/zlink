@@ -12,6 +12,56 @@
 #include <climits>
 #include <string.h>
 
+int zlink::recv_msg_socket (socket_base_t *socket_,
+                            int type_,
+                            zlink_msg_t *msg_,
+                            int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    switch (type_) {
+        case ZLINK_CORE_SOCKET_SUB:
+        case ZLINK_CORE_SOCKET_XSUB:
+            if (socket_->sub_dispatch_active ()) {
+                errno = EBUSY;
+                return -1;
+            }
+            break;
+
+        case ZLINK_CORE_SOCKET_XPUB:
+            if (socket_->xpub_dispatch_active ()) {
+                errno = EBUSY;
+                return -1;
+            }
+            break;
+
+        case ZLINK_CORE_SOCKET_STREAM:
+            if (socket_->stream_dispatch_active ()) {
+                errno = EBUSY;
+                return -1;
+            }
+            break;
+
+        default:
+            if (socket_->socket_msg_dispatch_active ()) {
+                errno = EBUSY;
+                return -1;
+            }
+            break;
+    }
+
+    const int rc = socket_->recv (reinterpret_cast<msg_t *> (msg_), flags_);
+    if (rc < 0)
+        return -1;
+
+    const size_t size = zlink_msg_size (msg_);
+    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
+                                                                   : INT_MAX);
+}
+
 int zlink::recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
 {
     socket_base_t *socket = static_cast<socket_base_t *> (socket_);
@@ -20,29 +70,27 @@ int zlink::recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
         return -1;
     }
 
-    if (socket->socket_msg_dispatch_active ()) {
+    return recv_msg_socket (socket, socket->socket_type (), msg_, flags_);
+}
+
+int zlink::recv_msg_routed_socket (socket_base_t *socket_,
+                                   zlink_msg_t *msg_,
+                                   zlink_routing_id_t *source_rid_out_,
+                                   int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (socket_->socket_msg_dispatch_active ()) {
         errno = EBUSY;
         return -1;
     }
 
-    const int type = socket->socket_type ();
-
-    if ((type == ZLINK_CORE_SOCKET_SUB || type == ZLINK_CORE_SOCKET_XSUB) && socket->sub_dispatch_active ()) {
-        errno = EBUSY;
-        return -1;
-    }
-
-    if (type == ZLINK_CORE_SOCKET_XPUB && socket->xpub_dispatch_active ()) {
-        errno = EBUSY;
-        return -1;
-    }
-
-    if (type == ZLINK_CORE_SOCKET_STREAM && socket->stream_dispatch_active ()) {
-        errno = EBUSY;
-        return -1;
-    }
-
-    const int rc = socket->recv (reinterpret_cast<msg_t *> (msg_), flags_);
+    const int rc =
+      socket_->recv_routed (reinterpret_cast<msg_t *> (msg_), source_rid_out_,
+                            flags_);
     if (rc < 0)
         return -1;
 
@@ -62,27 +110,43 @@ int zlink::recv_msg_routed_internal (void *socket_,
         return -1;
     }
 
-    if (socket->socket_msg_dispatch_active ()) {
-        errno = EBUSY;
-        return -1;
-    }
-
     const int type = socket->socket_type ();
-
     if (type != ZLINK_CORE_SOCKET_ROUTER) {
         errno = ENOTSUP;
         return -1;
     }
 
-    const int rc =
-      socket->recv_routed (reinterpret_cast<msg_t *> (msg_), source_rid_out_,
-                           flags_);
-    if (rc < 0)
-        return -1;
+    return recv_msg_routed_socket (socket, msg_, source_rid_out_, flags_);
+}
 
-    const size_t size = zlink_msg_size (msg_);
-    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
-                                                                   : INT_MAX);
+int zlink::recv_followup_msg_socket (socket_base_t *socket_, zlink_msg_t *msg_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int rc = socket_->recv (reinterpret_cast<msg_t *> (msg_),
+                                  ZLINK_DONTWAIT);
+    if (rc >= 0) {
+        const size_t size = zlink_msg_size (msg_);
+        return static_cast<int> (
+          size < static_cast<size_t> (INT_MAX) ? size : INT_MAX);
+    }
+
+    if (errno == EAGAIN || errno == EINTR)
+        errno = EPROTO;
+    return -1;
+}
+
+int zlink::recv_followup_msg_internal (void *socket_, zlink_msg_t *msg_)
+{
+    socket_base_t *socket = static_cast<socket_base_t *> (socket_);
+    if (!socket || !socket->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return recv_followup_msg_socket (socket, msg_);
 }
 
 int zlink::recv_buffer_internal (void *socket_,

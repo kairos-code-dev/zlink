@@ -79,7 +79,6 @@ bool recv_rtt_message(void *socket, char *id_buf, size_t id_cap,
     if (source_rid.size == 0 || part_count == 0) {
         if (parts) {
             zlink_multipart_close(parts, part_count);
-            free(parts);
         }
         return false;
     }
@@ -94,7 +93,6 @@ bool recv_rtt_message(void *socket, char *id_buf, size_t id_cap,
                     payload_len);
     }
     zlink_multipart_close(parts, part_count);
-    free(parts);
 
     if (payload_len < 16)
         return false;

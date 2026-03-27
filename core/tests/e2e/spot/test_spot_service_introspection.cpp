@@ -576,7 +576,6 @@ static bool wait_for_subscribe_payload (void *subject_,
     }
     for (size_t i = 0; i < part_count; ++i)
         zlink_msg_close (&parts[i]);
-    free (parts);
     return got_topic == expected_topic_ && got_payload == expected_payload_;
 }
 
@@ -617,7 +616,6 @@ static bool wait_for_subscribe_payload_parts (void *subject_,
     }
     for (size_t i = 0; i < part_count; ++i)
         zlink_msg_close (&parts[i]);
-    free (parts);
 
     return got_topic == expected_topic_ && part_count == 2
            && got_part_a == expected_part_a_ && got_part_b == expected_part_b_;

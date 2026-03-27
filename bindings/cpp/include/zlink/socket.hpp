@@ -28,7 +28,6 @@ inline void close_message_array (zlink_msg_t *parts_, size_t part_count_) noexce
     if (!parts_)
         return;
     zlink_multipart_close (parts_, part_count_);
-    std::free (parts_);
 }
 
 inline bool is_common_string_option (socket_option option_) noexcept
@@ -147,7 +146,6 @@ inline int assign_parts_from_native (zlink_msg_t *parts_native_,
         }
     }
 
-    std::free (parts_native_);
     parts_.swap (tmp);
     return 0;
 }

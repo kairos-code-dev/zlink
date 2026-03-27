@@ -312,7 +312,6 @@ void test_pubsub_generic_surface_accepts_raw_prefix_filters_and_raw_publish ()
     TEST_ASSERT_EQUAL_UINT64 (4, zlink_msg_size (&parts[0]));
     TEST_ASSERT_EQUAL_MEMORY ("drop", zlink_msg_data (&parts[0]), 4);
     zlink_multipart_close (parts, part_count);
-    free (parts);
 
     close_zero_linger (sub);
     close_zero_linger (pub);

@@ -220,7 +220,6 @@ recv_status_t receive_router_reply(router_client_state_t *state,
     if (!parts || part_count == 0) {
         if (parts) {
             zlink_multipart_close(parts, part_count);
-            free(parts);
         }
         return recv_status_fatal;
     }
@@ -231,7 +230,6 @@ recv_status_t receive_router_reply(router_client_state_t *state,
                                                zlink_msg_size(&parts[0]),
                                                &header);
     zlink_multipart_close(parts, part_count);
-    free(parts);
 
     slot->inflight = false;
     if (header_ok

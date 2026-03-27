@@ -503,7 +503,6 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
         napi_set_element(env, arr, static_cast<uint32_t>(i), buf);
     }
     zlink_multipart_close(parts, count);
-    free(parts);
 
     napi_value obj;
     napi_create_object(env, &obj);

@@ -2,7 +2,6 @@
 
 #include "utils/precompiled.hpp"
 
-#include <vector>
 #include <string.h>
 #include <stdlib.h>
 
@@ -11,6 +10,7 @@
 #include "api/socket_message_api_internal.hpp"
 #include "core/msg.hpp"
 #include "core/recv_internal.hpp"
+#include "core/recv_tls_view.hpp"
 
 namespace
 {
@@ -78,127 +78,93 @@ int copy_routing_id_frame (const zlink_msg_t &frame_,
     return 0;
 }
 
-int relocate_msg_to_output (zlink_msg_t *src_, zlink_msg_t *dst_)
+int drain_followup_frames (void *socket_, zlink_msg_t *frame_)
 {
-    if (!src_ || !dst_) {
+    if (!socket_ || !frame_) {
         errno = EFAULT;
         return -1;
     }
 
-    zlink::msg_t *src = reinterpret_cast<zlink::msg_t *> (src_);
-    if (!src->check ()) {
+    zlink::socket_base_t *socket =
+      static_cast<zlink::socket_base_t *> (socket_);
+    if (!socket || !socket->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
 
-    *reinterpret_cast<zlink::msg_t *> (dst_) = *src;
-    if (src->init () != 0) {
-        zlink_msg_close (dst_);
-        errno = EFAULT;
-        return -1;
+    bool more = frame_has_more (*frame_);
+    zlink_msg_close (frame_);
+    while (more) {
+        zlink_msg_t next;
+        zlink_msg_init (&next);
+        if (zlink::recv_followup_msg_socket (socket, &next) < 0) {
+            zlink_msg_close (&next);
+            return -1;
+        }
+        more = frame_has_more (next);
+        zlink_msg_close (&next);
     }
 
-    return 0;
-}
-
-int move_single_part_to_output (zlink_msg_t *src_,
-                                zlink_msg_t **parts_out_,
-                                size_t *part_count_out_)
-{
-    if (!src_ || !parts_out_ || !part_count_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink_msg_t *parts =
-      static_cast<zlink_msg_t *> (malloc (sizeof (zlink_msg_t)));
-    if (!parts) {
-        errno = ENOMEM;
-        return -1;
-    }
-    if (relocate_msg_to_output (src_, parts) != 0) {
-        free (parts);
-        return -1;
-    }
-
-    *parts_out_ = parts;
-    *part_count_out_ = 1;
     errno = 0;
     return 0;
 }
 
-int collect_recv_frames (socket_handle_t handle_,
-                         zlink_msg_t *first_frame_,
-                         std::vector<zlink_msg_t> *frames_out_)
+int export_payload_sequence (void *socket_,
+                             zlink_msg_t *first_payload_,
+                             zlink_msg_t **parts_out_,
+                             size_t *part_count_out_)
 {
-    if (!handle_.socket || !first_frame_ || !frames_out_) {
+    if (!socket_ || !first_payload_ || !parts_out_ || !part_count_out_) {
         errno = EFAULT;
         return -1;
     }
 
-    frames_out_->clear ();
-    frames_out_->push_back (*first_frame_);
+    zlink::socket_base_t *socket =
+      static_cast<zlink::socket_base_t *> (socket_);
+    if (!socket || !socket->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
 
-    while (frame_has_more (frames_out_->back ())) {
-        zlink_msg_t frame;
-        zlink_msg_init (&frame);
-        if (zlink::recv_msg_internal (handle_.socket, &frame, 0) < 0) {
-            zlink_msg_close (&frame);
-            close_recv_parts (frames_out_->data (), frames_out_->size ());
-            frames_out_->clear ();
+    if (!frame_has_more (*first_payload_))
+        return zlink::recv_tls_view::export_single (first_payload_, parts_out_,
+                                                    part_count_out_);
+
+    zlink_msg_t current;
+    zlink_msg_init (&current);
+    if (zlink_msg_move (&current, first_payload_) != 0) {
+        zlink_msg_close (&current);
+        errno = EFAULT;
+        return -1;
+    }
+
+    while (true) {
+        const bool more = frame_has_more (current);
+        if (zlink::recv_tls_view::push (&current) != 0) {
+            const int saved_errno = errno;
+            (void) drain_followup_frames (socket_, &current);
+            zlink::recv_tls_view::abort ();
+            errno = saved_errno;
             return -1;
         }
-        frames_out_->push_back (frame);
-    }
 
-    return 0;
-}
+        if (!more)
+            return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
 
-int export_recv_frames (std::vector<zlink_msg_t> *frames_,
-                        size_t payload_offset_,
-                        zlink_msg_t **parts_out_,
-                        size_t *part_count_out_)
-{
-    if (!frames_ || !parts_out_ || !part_count_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    const size_t payload_count =
-      frames_->size () > payload_offset_ ? frames_->size () - payload_offset_ : 0;
-    if (payload_count == 0) {
-        *parts_out_ = NULL;
-        *part_count_out_ = 0;
-        errno = 0;
-        return 0;
-    }
-
-    zlink_msg_t *parts = static_cast<zlink_msg_t *> (
-      malloc (payload_count * sizeof (zlink_msg_t)));
-    if (!parts) {
-        close_recv_parts (frames_->data (), frames_->size ());
-        frames_->clear ();
-        errno = ENOMEM;
-        return -1;
-    }
-
-    for (size_t i = 0; i < payload_count; ++i) {
-        if (relocate_msg_to_output (&(*frames_)[i + payload_offset_], &parts[i])
-            != 0) {
-            for (size_t j = 0; j < i; ++j)
-                zlink_msg_close (&parts[j]);
-            free (parts);
-            close_recv_parts (frames_->data (), frames_->size ());
-            frames_->clear ();
+        zlink_msg_t next;
+        zlink_msg_init (&next);
+        if (zlink::recv_followup_msg_socket (socket, &next) < 0) {
+            zlink_msg_close (&next);
+            zlink::recv_tls_view::abort ();
+            return -1;
+        }
+        if (zlink_msg_move (&current, &next) != 0) {
+            zlink_msg_close (&next);
+            zlink::recv_tls_view::abort ();
             errno = EFAULT;
             return -1;
         }
     }
-
-    *parts_out_ = parts;
-    *part_count_out_ = payload_count;
-    errno = 0;
-    return 0;
 }
 
 int recv_socket_subscribe_parts (socket_handle_t handle_,
@@ -220,8 +186,8 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
     if (validate_recv_flags (flags_) != 0)
         return -1;
 
-    *parts_out_ = NULL;
-    *part_count_out_ = 0;
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+        return -1;
     if (source_rid_out_)
         memset (source_rid_out_, 0, sizeof (*source_rid_out_));
 
@@ -233,7 +199,7 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
 
     zlink_msg_t topic_frame;
     zlink_msg_init (&topic_frame);
-    if (zlink::recv_msg_internal (handle_.socket, &topic_frame, flags_) < 0) {
+    if (zlink::recv_msg_socket (handle_.socket, type, &topic_frame, flags_) < 0) {
         zlink_msg_close (&topic_frame);
         return -1;
     }
@@ -254,22 +220,15 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
 
     zlink_msg_t payload_frame;
     zlink_msg_init (&payload_frame);
-    if (zlink::recv_msg_internal (handle_.socket, &payload_frame, 0) < 0) {
+    if (zlink::recv_followup_msg_socket (handle_.socket, &payload_frame) < 0) {
         zlink_msg_close (&payload_frame);
         zlink_msg_close (&topic_frame);
         return -1;
     }
     zlink_msg_close (&topic_frame);
 
-    if (!frame_has_more (payload_frame))
-        return move_single_part_to_output (&payload_frame, parts_out_,
-                                           part_count_out_);
-
-    std::vector<zlink_msg_t> frames;
-    if (collect_recv_frames (handle_, &payload_frame, &frames) != 0)
-        return -1;
-
-    return export_recv_frames (&frames, 0, parts_out_, part_count_out_);
+    return export_payload_sequence (handle_.socket, &payload_frame, parts_out_,
+                                    part_count_out_);
 }
 
 int recv_socket_parts (socket_handle_t handle_,
@@ -289,8 +248,8 @@ int recv_socket_parts (socket_handle_t handle_,
     if (validate_recv_flags (flags_) != 0)
         return -1;
 
-    *parts_out_ = NULL;
-    *part_count_out_ = 0;
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+        return -1;
     if (source_rid_out_)
         memset (source_rid_out_, 0, sizeof (*source_rid_out_));
 
@@ -309,13 +268,13 @@ int recv_socket_parts (socket_handle_t handle_,
     zlink_msg_t first;
     zlink_msg_init (&first);
     if (type == ZLINK_CORE_SOCKET_ROUTER && source_rid_out_) {
-        if (zlink::recv_msg_routed_internal (
+        if (zlink::recv_msg_routed_socket (
               handle_.socket, &first, source_rid_out_, flags_)
             < 0) {
             zlink_msg_close (&first);
             return -1;
         }
-    } else if (zlink::recv_msg_internal (handle_.socket, &first, flags_) < 0) {
+    } else if (zlink::recv_msg_socket (handle_.socket, type, &first, flags_) < 0) {
         zlink_msg_close (&first);
         return -1;
     }
@@ -329,30 +288,30 @@ int recv_socket_parts (socket_handle_t handle_,
             errno = 0;
             return 0;
         }
-        return move_single_part_to_output (&first, parts_out_, part_count_out_);
+        return zlink::recv_tls_view::export_single (&first, parts_out_,
+                                                    part_count_out_);
     }
 
-    std::vector<zlink_msg_t> frames;
-    if (collect_recv_frames (handle_, &first, &frames) != 0)
-        return -1;
-
-    size_t payload_offset = 0;
     if (strip_recv_routing_id) {
-        if (frames.empty ()) {
-            errno = EFAULT;
-            return -1;
-        }
-
         if (type == ZLINK_CORE_SOCKET_STREAM && source_rid_out_)
-            copy_routing_id_frame (frames[0], source_rid_out_);
+            copy_routing_id_frame (first, source_rid_out_);
 
-        payload_offset = routed_router_payload ? 0 : 1;
-        if (!routed_router_payload)
-            zlink_msg_close (&frames[0]);
+        if (!routed_router_payload) {
+            zlink_msg_close (&first);
+
+            zlink_msg_t payload;
+            zlink_msg_init (&payload);
+            if (zlink::recv_followup_msg_socket (handle_.socket, &payload) < 0) {
+                zlink_msg_close (&payload);
+                return -1;
+            }
+            return export_payload_sequence (handle_.socket, &payload, parts_out_,
+                                            part_count_out_);
+        }
     }
 
-    return export_recv_frames (&frames, payload_offset, parts_out_,
-                               part_count_out_);
+    return export_payload_sequence (handle_.socket, &first, parts_out_,
+                                    part_count_out_);
 }
 
 } // namespace
@@ -384,7 +343,9 @@ int zlink_socket_xpub_recv_internal (void *socket_,
 
     zlink_msg_t msg;
     zlink_msg_init (&msg);
-    if (zlink::recv_msg_internal (handle.socket, &msg, flags_) < 0) {
+    if (zlink::recv_msg_socket (
+          handle.socket, ZLINK_CORE_SOCKET_XPUB, &msg, flags_)
+        < 0) {
         zlink_msg_close (&msg);
         return -1;
     }

@@ -55,7 +55,6 @@ bool handle_router_once(void *server, char *id_buf, size_t id_cap,
     if (source_rid.size == 0 || part_count == 0) {
         if (parts) {
             zlink_multipart_close(parts, part_count);
-            free(parts);
         }
         return false;
     }
@@ -71,7 +70,6 @@ bool handle_router_once(void *server, char *id_buf, size_t id_cap,
     }
 
     zlink_multipart_close(parts, part_count);
-    free(parts);
 
     zlink_msg_t reply_parts[2];
     if (zlink_msg_init_size (&reply_parts[0], id_len) != 0)

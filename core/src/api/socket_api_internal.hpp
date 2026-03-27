@@ -15,6 +15,13 @@ struct socket_handle_t
     zlink::socket_base_t *socket;
 };
 
+static inline socket_handle_t make_socket_handle (zlink::socket_base_t *socket_)
+{
+    socket_handle_t handle;
+    handle.socket = socket_;
+    return handle;
+}
+
 static inline zlink::socket_base_t *try_as_socket (void *s_)
 {
     if (!s_)
@@ -26,8 +33,7 @@ static inline zlink::socket_base_t *try_as_socket (void *s_)
 
 static inline socket_handle_t as_socket_handle (void *s_)
 {
-    socket_handle_t handle;
-    handle.socket = NULL;
+    socket_handle_t handle = make_socket_handle (NULL);
 
     if (!s_) {
         errno = EFAULT;
@@ -40,8 +46,7 @@ static inline socket_handle_t as_socket_handle (void *s_)
         return handle;
     }
 
-    handle.socket = s;
-    return handle;
+    return make_socket_handle (s);
 }
 
 static inline bool is_stream_type (socket_handle_t handle_)

@@ -623,7 +623,6 @@ inline int recv_single_part_message(void *socket_,
     if (source_rid.size != 0 || part_count != 1) {
         if (parts) {
             zlink_multipart_close(parts, part_count);
-            free(parts);
         }
         errno = EPROTO;
         return -1;
@@ -632,7 +631,6 @@ inline int recv_single_part_message(void *socket_,
     const size_t msg_size = zlink_msg_size(&parts[0]);
     if (msg_size > buffer_size_) {
         zlink_multipart_close(parts, part_count);
-        free(parts);
         errno = EMSGSIZE;
         return -1;
     }
@@ -640,7 +638,6 @@ inline int recv_single_part_message(void *socket_,
     if (msg_size > 0)
         std::memcpy(buffer_, zlink_msg_data(&parts[0]), msg_size);
     zlink_multipart_close(parts, part_count);
-    free(parts);
     return static_cast<int>(msg_size);
 }
 

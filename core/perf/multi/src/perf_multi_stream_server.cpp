@@ -482,11 +482,9 @@ bool process_stream_recv_parts (const zlink_routing_id_t *rid,
         const bool ok = process_stream_chunk (rid, &parts[i]);
         (void) zlink_msg_close (&parts[i]);
         if (!ok) {
-            free (parts);
             return false;
         }
     }
-    free (parts);
     return !g_callback_failed.load (std::memory_order_acquire);
 }
 

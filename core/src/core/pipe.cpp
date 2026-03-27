@@ -330,7 +330,6 @@ bool zlink::pipe_t::check_write ()
 bool zlink::pipe_t::write (const msg_t *msg_)
 {
     scoped_fast_lock_t lock (_out_sync);
-
     if (unlikely (!_out_active || _state != active))
         return false;
 

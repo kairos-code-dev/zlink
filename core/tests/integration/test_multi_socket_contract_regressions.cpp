@@ -98,7 +98,6 @@ void recv_parts_expect_payload (void *socket_,
     TEST_ASSERT_EQUAL_MEMORY (expected_payload_, zlink_msg_data (&parts[0]),
                               std::strlen (expected_payload_));
     zlink_multipart_close (parts, part_count);
-    free (parts);
 }
 
 void send_single_payload (void *socket_, const char *payload_)
@@ -389,7 +388,6 @@ void recv_subscribe_expect_topic_and_payload (void *sub_,
                               payload_.size ());
 
     zlink_multipart_close (parts, part_count);
-    free (parts);
 }
 
 void recv_subscribe_expect_payload_without_topic_copy (
@@ -410,7 +408,6 @@ void recv_subscribe_expect_payload_without_topic_copy (
                               payload_.size ());
 
     zlink_multipart_close (parts, part_count);
-    free (parts);
 }
 
 void recv_subscribe_expect_payload_parts_without_topic_copy (
@@ -435,7 +432,6 @@ void recv_subscribe_expect_payload_parts_without_topic_copy (
                               part_b_.size ());
 
     zlink_multipart_close (parts, part_count);
-    free (parts);
 }
 
 bool try_recv_subscribe_expect_topic_and_payload_dontwait (
@@ -464,7 +460,6 @@ bool try_recv_subscribe_expect_topic_and_payload_dontwait (
                               payload_.size ());
 
     zlink_multipart_close (parts, part_count);
-    free (parts);
     return true;
 }
 

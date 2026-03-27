@@ -180,7 +180,6 @@ void close_recv_parts(zlink_msg_t *parts, size_t part_count)
     if (!parts)
         return;
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 
 napi_value create_buffer_copy_or_empty(napi_env env, const void *data, size_t len)

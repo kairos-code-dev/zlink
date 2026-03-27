@@ -94,7 +94,6 @@ inline int recv_one_message (void *socket,
     }
     if (parts) {
         zlink_multipart_close (parts, part_count);
-        free (parts);
     }
 
     return 1;

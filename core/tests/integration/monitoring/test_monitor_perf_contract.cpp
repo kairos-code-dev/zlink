@@ -356,7 +356,6 @@ void recv_pubsub_perf_payload_expect_success (void *client_,
     TEST_ASSERT_EQUAL_MEMORY (payload_, zlink_msg_data (&parts[0]),
                               strlen (payload_));
     zlink_multipart_close (parts, part_count);
-    free (parts);
 }
 
 bool wait_perf_pubsub_callback_payload (const char *payload_, int timeout_ms_)

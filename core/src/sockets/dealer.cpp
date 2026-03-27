@@ -100,10 +100,7 @@ int zlink::dealer_t::xsend (msg_t *msg_)
 int zlink::dealer_t::xrecv (msg_t *msg_)
 {
     pipe_t *pipe = NULL;
-    const int rc = recvpipe (msg_, &pipe);
-    if (rc == 0)
-        store_last_recv_source_rid (pipe);
-    return rc;
+    return recvpipe (msg_, &pipe);
 }
 
 bool zlink::dealer_t::xhas_in ()

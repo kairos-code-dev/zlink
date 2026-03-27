@@ -89,7 +89,6 @@ inline recv_result_t receive_one_message (
     if (part_count < 1) {
         if (parts) {
             zlink_multipart_close (parts, part_count);
-            free (parts);
         }
         return recv_fatal;
     }
@@ -117,7 +116,6 @@ inline recv_result_t receive_one_message (
     }
 
     zlink_multipart_close (parts, part_count);
-    free (parts);
     return recv_ok;
 }
 

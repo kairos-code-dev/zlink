@@ -594,6 +594,8 @@ def run_single_test(
 ) -> RunOutcome:
     binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name, base_env, libzmq_lib_dir, zlink_lib_dir)
+    if binary_name == "comp_zlink_pubsub":
+        env["PERF_RECV_MODE"] = "recv"
     timeout_sec = max(60, int(os.environ.get("BENCH_SINGLE_TIMEOUT_SECONDS", "120")))
 
     try:

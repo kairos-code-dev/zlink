@@ -104,13 +104,11 @@ inline bool relay_router_once (void *server)
 
     const int send_rc = ::zlink_send_rid (server, &source_rid, parts, part_count, 0);
     if (send_rc >= 0) {
-        free (parts);
         return true;
     }
 
     const int err = zlink_errno ();
     zlink_multipart_close (parts, part_count);
-    free (parts);
     return err == EAGAIN || err == EINTR;
 }
 

@@ -38,7 +38,6 @@ void test_public_inproc_pair_send_single_part ()
     TEST_ASSERT_EQUAL_MEMORY (payload, zlink_msg_data (&parts[0]),
                               sizeof (payload) - 1);
     zlink_multipart_close (parts, part_count);
-    free (parts);
 }
 
 void test_public_inproc_pair_send_multipart_blocking ()
@@ -77,7 +76,6 @@ void test_public_inproc_pair_send_multipart_blocking ()
     TEST_ASSERT_EQUAL_MEMORY (body, zlink_msg_data (&received[1]),
                               sizeof (body) - 1);
     zlink_multipart_close (received, part_count);
-    free (received);
 }
 
 void test_public_inproc_router_send_rid_blocking ()
@@ -110,7 +108,6 @@ void test_public_inproc_router_send_rid_blocking ()
     TEST_ASSERT_EQUAL_MEMORY (routing_id, source_rid.data,
                               sizeof (routing_id) - 1);
     zlink_multipart_close (received, part_count);
-    free (received);
 
     zlink_msg_t reply;
     const char reply_payload[] = "pong";
@@ -130,7 +127,26 @@ void test_public_inproc_router_send_rid_blocking ()
     TEST_ASSERT_EQUAL_MEMORY (reply_payload, zlink_msg_data (&reply_parts[0]),
                               sizeof (reply_payload) - 1);
     zlink_multipart_close (reply_parts, reply_count);
-    free (reply_parts);
+}
+
+void test_public_inproc_pair_send_failure_consumes_all_parts ()
+{
+    void *right = test_context_socket (ZLINK_SOCKET_PAIR);
+
+    zlink_msg_t parts[2];
+    const char header[] = "head";
+    const char body[] = "body";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&parts[0], sizeof (header) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&parts[1], sizeof (body) - 1));
+    memcpy (zlink_msg_data (&parts[0]), header, sizeof (header) - 1);
+    memcpy (zlink_msg_data (&parts[1]), body, sizeof (body) - 1);
+
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_send (right, parts, 2,
+                                                   ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&parts[1]));
 }
 
 int main (void)
@@ -140,6 +156,7 @@ int main (void)
     UNITY_BEGIN ();
     RUN_TEST (test_public_inproc_pair_send_single_part);
     RUN_TEST (test_public_inproc_pair_send_multipart_blocking);
+    RUN_TEST (test_public_inproc_pair_send_failure_consumes_all_parts);
     RUN_TEST (test_public_inproc_router_send_rid_blocking);
     return UNITY_END ();
 }

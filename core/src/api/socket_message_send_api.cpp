@@ -47,6 +47,35 @@ int validate_send_flags (int flags_)
     return 0;
 }
 
+bool is_singlepart_fast_socket_type (int type_)
+{
+    return type_ == ZLINK_CORE_SOCKET_PAIR || type_ == ZLINK_CORE_SOCKET_DEALER;
+}
+
+int send_socket_singlepart_fast (socket_handle_t handle_,
+                                 zlink_msg_t *msg_,
+                                 zlink_send_flags_t flags_)
+{
+    if (!handle_.socket || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (validate_send_flags (flags_) != 0)
+        return -1;
+
+    zlink::msg_t *core_msg = reinterpret_cast<zlink::msg_t *> (msg_);
+    if (!core_msg->check ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (handle_.socket->send (core_msg, flags_ & ZLINK_DONTWAIT) != 0)
+        return -1;
+
+    errno = 0;
+    return 0;
+}
+
 bool parse_stream_routing_id (const zlink_routing_id_t *rid_,
                               uint32_t *routing_id_out_)
 {
@@ -183,6 +212,14 @@ int send_socket_unrouted_parts (socket_handle_t handle_,
         return -1;
     }
 
+    if (part_count_ == 1) {
+        const int rc = s_sendmsg (handle_, &parts_[0], flags_ & ZLINK_DONTWAIT);
+        if (rc < 0)
+            return -1;
+        errno = 0;
+        return 0;
+    }
+
     return zlink::logical_multipart_send (handle_.socket, parts_, part_count_,
                                           flags_);
 }
@@ -211,6 +248,16 @@ int send_socket_routed_parts (socket_handle_t handle_,
     if (type != ZLINK_CORE_SOCKET_ROUTER) {
         errno = ENOTSUP;
         return -1;
+    }
+
+    if (part_count_ == 1) {
+        const int rc = handle_.socket->send_routed (
+          target_rid_, reinterpret_cast<zlink::msg_t *> (&parts_[0]),
+          flags_ & ZLINK_DONTWAIT);
+        if (rc != 0)
+            return -1;
+        errno = 0;
+        return 0;
     }
 
     return zlink::logical_multipart_send_routed (handle_.socket, target_rid_,
@@ -339,6 +386,37 @@ int zlink_socket_publish_internal (void *socket_,
       (flags_ & ZLINK_DONTWAIT) == 0);
 }
 
+int zlink_msg_send (zlink_msg_t *msg_, void *s_, zlink_send_flags_t flags_)
+{
+    if (!s_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::socket_base_t *socket = try_as_socket (s_);
+    if (socket) {
+        socket_handle_t handle = make_socket_handle (socket);
+        if (validate_send_flags (flags_) != 0)
+            return -1;
+        return s_sendmsg (handle, msg_, flags_);
+    }
+
+    return zlink_send (s_, msg_, 1, flags_);
+}
+
+int zlink_msg_send_rid (zlink_msg_t *msg_,
+                        void *s_,
+                        const zlink_routing_id_t *target_rid_,
+                        zlink_send_flags_t flags_)
+{
+    if (!s_ || !msg_ || !target_rid_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return zlink_send_rid (s_, target_rid_, msg_, 1, flags_);
+}
+
 int zlink_send (void *s_,
                 zlink_msg_t *parts_,
                 size_t part_count_,
@@ -349,8 +427,15 @@ int zlink_send (void *s_,
         return -1;
     }
 
-    if (try_as_socket (s_))
-        return zlink_socket_send_internal (s_, parts_, part_count_, flags_);
+    zlink::socket_base_t *socket = try_as_socket (s_);
+    if (socket) {
+        socket_handle_t handle = make_socket_handle (socket);
+        if (part_count_ == 1
+            && is_singlepart_fast_socket_type (socket->socket_type ())) {
+            return send_socket_singlepart_fast (handle, &parts_[0], flags_);
+        }
+        return send_socket_parts (handle, NULL, parts_, part_count_, flags_);
+    }
 
     return send_service_or_fault (s_, parts_, part_count_, flags_);
 }
@@ -366,9 +451,11 @@ int zlink_publish (void *subject_,
         return -1;
     }
 
-    if (try_as_socket (subject_))
-        return zlink_socket_publish_internal (subject_, topic_id_, parts_,
-                                              part_count_, flags_);
+    zlink::socket_base_t *socket = try_as_socket (subject_);
+    if (socket)
+        return publish_socket_parts (make_socket_handle (socket), topic_id_,
+                                     parts_, part_count_, flags_,
+                                     (flags_ & ZLINK_DONTWAIT) == 0);
 
     return publish_service_or_fault (subject_, topic_id_, parts_, part_count_,
                                      flags_);
@@ -385,9 +472,10 @@ int zlink_send_rid (void *s_,
         return -1;
     }
 
-    if (try_as_socket (s_))
-        return zlink_socket_send_rid_internal (s_, target_rid_, parts_,
-                                               part_count_, flags_);
+    zlink::socket_base_t *socket = try_as_socket (s_);
+    if (socket)
+        return send_socket_parts (make_socket_handle (socket), target_rid_,
+                                  parts_, part_count_, flags_);
 
     return send_rid_service_or_fault (s_, target_rid_, parts_, part_count_,
                                       flags_);

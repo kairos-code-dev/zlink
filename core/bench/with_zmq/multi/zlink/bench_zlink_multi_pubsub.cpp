@@ -20,14 +20,40 @@ inline unsigned long long wallclock_now_us ()
 multi_send_result_t send_pub_blocking (void *pub,
                                        const std::vector<char> &buffer)
 {
-    if (zlink_send (pub, buffer.data (), buffer.size (), 0) >= 0)
+    zlink_msg_t msg;
+    if (zlink_msg_init_size (&msg, buffer.size ()) != 0)
+        return multi_send_error;
+    if (!buffer.empty ())
+        std::memcpy (zlink_msg_data (&msg), &buffer[0], buffer.size ());
+    if (zlink_msg_send (&msg, pub, 0) >= 0)
         return multi_send_ok;
     const int err = zlink_errno ();
+    zlink_msg_close (&msg);
     if (err == EAGAIN || err == EINTR)
         return multi_send_would_block;
     if (err == ETERM || err == ENOTSOCK)
         return multi_send_error;
     return multi_send_error;
+}
+
+int recv_sub_message (void *sub,
+                      std::vector<char> &recv_buf,
+                      zlink_send_flags_t flags_)
+{
+    zlink_msg_t msg;
+    zlink_msg_init (&msg);
+    const int rc = zlink_msg_recv (&msg, sub, flags_);
+    if (rc < 0) {
+        zlink_msg_close (&msg);
+        return -1;
+    }
+
+    const size_t copy_size =
+      std::min (recv_buf.size (), zlink_msg_size (&msg));
+    if (copy_size > 0)
+        std::memcpy (&recv_buf[0], zlink_msg_data (&msg), copy_size);
+    zlink_msg_close (&msg);
+    return rc;
 }
 
 int recv_batch_subscribers (const std::vector<void *> &subs,
@@ -56,9 +82,7 @@ int recv_batch_subscribers (const std::vector<void *> &subs,
         const size_t idx = (rr_cursor + i) % sub_count;
         if ((poll_items[idx].revents & ZLINK_POLLIN) == 0)
             continue;
-        if (zlink_recv (
-              subs[idx], recv_buf.data (), recv_buf.size (), ZLINK_DONTWAIT)
-            < 0) {
+        if (recv_sub_message (subs[idx], recv_buf, ZLINK_DONTWAIT) < 0) {
             const int err = zlink_errno ();
             if (err == EAGAIN || err == EINTR)
                 continue;
@@ -72,8 +96,8 @@ int recv_batch_subscribers (const std::vector<void *> &subs,
         bool got_any = false;
         for (size_t i = 0; i < sub_count && received < recv_batch; ++i) {
             const size_t idx = (rr_cursor + i) % sub_count;
-            const int rc = zlink_recv (
-              subs[idx], recv_buf.data (), recv_buf.size (), ZLINK_DONTWAIT);
+            const int rc =
+              recv_sub_message (subs[idx], recv_buf, ZLINK_DONTWAIT);
             if (rc >= 0) {
                 ++received;
                 got_any = true;
@@ -129,8 +153,8 @@ void drain_subscribers_queues (const std::vector<void *> &subs,
         for (size_t i = 0; i < sub_count; ++i) {
             const size_t idx = (rr_cursor + i) % sub_count;
             while (true) {
-                const int rc = zlink_recv (
-                  subs[idx], recv_buf.data (), recv_buf.size (), ZLINK_DONTWAIT);
+                const int rc =
+                  recv_sub_message (subs[idx], recv_buf, ZLINK_DONTWAIT);
                 if (rc >= 0) {
                     got_any = true;
                     rr_cursor = (idx + 1) % sub_count;
@@ -290,8 +314,8 @@ double measure_pubsub_latency_us (void *ctx,
     }
 
     const int linger_ms = 0;
-    set_sockopt_int (pub, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    set_sockopt_int (sub, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int (pub, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
+    set_sockopt_int (sub, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (pub, hwm);
     apply_benchmark_hwm (sub, hwm);
     zlink_set_subscription (sub, "");
@@ -329,9 +353,7 @@ double measure_pubsub_latency_us (void *ctx,
     int received = 0;
     double lat_sum_us = 0.0;
     for (int i = 0; i < lat_count; ++i) {
-        while (zlink_recv (
-                 sub, recv_buf.data (), recv_buf.size (), ZLINK_DONTWAIT)
-               >= 0) {
+        while (recv_sub_message (sub, recv_buf, ZLINK_DONTWAIT) >= 0) {
         }
         if (zlink_errno () != EAGAIN && zlink_errno () != EINTR)
             continue;
@@ -340,8 +362,15 @@ double measure_pubsub_latency_us (void *ctx,
         if (buffer.size () >= sizeof (send_ts_us))
             std::memcpy (buffer.data (), &send_ts_us, sizeof (send_ts_us));
 
-        if (zlink_send (pub, buffer.data (), buffer.size (), 0) < 0)
+        zlink_msg_t send_msg;
+        if (zlink_msg_init_size (&send_msg, buffer.size ()) != 0)
             continue;
+        if (!buffer.empty ())
+            std::memcpy (zlink_msg_data (&send_msg), &buffer[0], buffer.size ());
+        if (zlink_msg_send (&send_msg, pub, 0) < 0) {
+            zlink_msg_close (&send_msg);
+            continue;
+        }
 
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::milliseconds (
@@ -359,7 +388,7 @@ double measure_pubsub_latency_us (void *ctx,
                 || (item[0].revents & ZLINK_POLLIN) == 0)
                 continue;
 
-            const int rc = zlink_recv (sub, recv_buf.data (), recv_buf.size (), 0);
+            const int rc = recv_sub_message (sub, recv_buf, 0);
             if (rc < 0)
                 continue;
 
@@ -420,8 +449,9 @@ void run_multi_pubsub (const std::string &transport,
     const int pubsub_hwm = resolve_bench_count ("BENCH_MULTI_PUBSUB_HWM", 5000);
     const int sndtimeo_ms = resolve_bench_count ("BENCH_MULTI_SNDTIMEO_MS", 5000);
     const int rcvtimeo_ms = resolve_bench_count ("BENCH_MULTI_RCVTIMEO_MS", 5000);
-    set_sockopt_int (pub, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    set_sockopt_int (pub, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int (pub, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
+    set_sockopt_int (pub, ZLINK_OPT_SNDTIMEO, sndtimeo_ms,
+                     "ZLINK_OPT_SNDTIMEO");
     apply_benchmark_hwm (pub, pubsub_hwm);
 
     std::vector<void *> subs (settings.clients, NULL);
@@ -434,8 +464,10 @@ void run_multi_pubsub (const std::string &transport,
             return;
         }
         zlink_set_subscription (subs[i], "");
-        set_sockopt_int (subs[i], ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-        set_sockopt_int (subs[i], ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
+        set_sockopt_int (subs[i], ZLINK_OPT_LINGER, linger_ms,
+                         "ZLINK_OPT_LINGER");
+        set_sockopt_int (subs[i], ZLINK_OPT_RCVTIMEO, rcvtimeo_ms,
+                         "ZLINK_OPT_RCVTIMEO");
         apply_benchmark_hwm (subs[i], pubsub_hwm);
     }
 
@@ -470,10 +502,11 @@ void run_multi_pubsub (const std::string &transport,
         }
 
         poll_timeout_ms = resolve_bench_count ("BENCH_PGM_POLL_TIMEOUT_MS", 50);
-        set_sockopt_int (pub, ZLINK_SNDTIMEO, poll_timeout_ms, "ZLINK_SNDTIMEO");
+        set_sockopt_int (pub, ZLINK_OPT_SNDTIMEO, poll_timeout_ms,
+                         "ZLINK_OPT_SNDTIMEO");
         for (void *sub : subs) {
             set_sockopt_int (
-              sub, ZLINK_RCVTIMEO, poll_timeout_ms, "ZLINK_RCVTIMEO");
+              sub, ZLINK_OPT_RCVTIMEO, poll_timeout_ms, "ZLINK_OPT_RCVTIMEO");
         }
     } else {
         poll_timeout_ms = resolve_bench_count ("BENCH_PUBSUB_POLL_TIMEOUT_MS", 50);

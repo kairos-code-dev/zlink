@@ -334,6 +334,51 @@ ZLINK_EXPORT int zlink_msg_refcnt (const zlink_msg_t *msg_);
 ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
                                      const char *property_);
 
+/**
+ * @brief Send a single message frame directly on a socket.
+ *
+ * This is the fast path for single-frame socket traffic. Use multipart send
+ * APIs when you need explicit part arrays or service-handle payload shapes.
+ *
+ * On success, ownership is transferred to the callee exactly as with
+ * `zlink_send(..., part_count_=1, ...)`.
+ */
+ZLINK_EXPORT int zlink_msg_send (zlink_msg_t *msg_,
+                                 void *s_,
+                                 zlink_send_flags_t flags_);
+
+/**
+ * @brief Send a single message frame to a routed peer.
+ *
+ * This is the single-frame counterpart of `zlink_send_rid()`.
+ */
+ZLINK_EXPORT int zlink_msg_send_rid (zlink_msg_t *msg_,
+                                     void *s_,
+                                     const zlink_routing_id_t *target_rid_,
+                                     zlink_send_flags_t flags_);
+
+/**
+ * @brief Receive a single message frame directly from a socket.
+ *
+ * This fast path is intended for socket traffic whose payload shape is a
+ * single frame. Use `zlink_recv()` / `zlink_subscribe()` when you need the
+ * canonical multipart receive contract.
+ */
+ZLINK_EXPORT int zlink_msg_recv (zlink_msg_t *msg_,
+                                 void *s_,
+                                 zlink_send_flags_t flags_);
+
+/**
+ * @brief Receive a single routed message frame and its source routing id.
+ *
+ * This fast path is intended for routed socket traffic whose payload shape is
+ * a single frame.
+ */
+ZLINK_EXPORT int zlink_msg_recv_rid (zlink_msg_t *msg_,
+                                     void *s_,
+                                     zlink_routing_id_t *source_rid_out_,
+                                     zlink_send_flags_t flags_);
+
 /******************************************************************************/
 /*  0MQ socket definition.                                                    */
 /******************************************************************************/
@@ -754,9 +799,9 @@ ZLINK_EXPORT int zlink_socket_attach_discovery (void *socket_,
 /**
  * @brief Send a multipart message on a socket or handle.
  *
- * Ownership of all parts is transferred to the callee on success.
- * On failure, ownership remains with the caller unless a narrower contract is
- * documented for a specific handle family.
+ * Ownership of all parts is transferred to the callee when the send attempt
+ * begins. On any return path the input parts must be treated as moved-from
+ * message handles and must not be reused by the caller.
  *
  * This is the canonical public send API for non-directed sends.
  * Public multipart send does not use ZLINK_SNDMORE; part boundaries are
@@ -770,9 +815,9 @@ ZLINK_EXPORT int zlink_send (void *s_,
 /**
  * @brief Send a multipart message to a specific peer routing id.
  *
- * Ownership of all parts is transferred to the callee on success.
- * On failure, ownership remains with the caller unless a narrower contract is
- * documented for a specific handle family.
+ * Ownership of all parts is transferred to the callee when the send attempt
+ * begins. On any return path the input parts must be treated as moved-from
+ * message handles and must not be reused by the caller.
  */
 ZLINK_EXPORT int zlink_send_rid (void *s_,
                                  const zlink_routing_id_t *target_rid_,
@@ -787,10 +832,12 @@ ZLINK_EXPORT int zlink_send_rid (void *s_,
  * The returned payload shape must match the callback payload shape for the
  * same socket or handle family.
  *
- * On success, ownership of the returned parts array and all contained
- * `zlink_msg_t` instances is transferred to the caller. The caller must close
- * each part with `zlink_msg_close()` and then free the array itself with
- * `free()`.
+ * On success, ownership of the returned `zlink_msg_t` payload instances is
+ * transferred to the caller, but the `parts_out_` array itself is a
+ * thread-local view owned by the library. The caller must close each part with
+ * `zlink_msg_close()` (or `zlink_multipart_close()`), must not call `free()`
+ * on `parts_out_`, and must not retain the view across the next recv-like call
+ * on the same thread.
  */
 ZLINK_EXPORT int zlink_recv (void *s_,
                              zlink_routing_id_t *source_rid_out_,

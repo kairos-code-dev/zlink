@@ -1172,6 +1172,13 @@ rejected candidate는 반드시 로그에 남긴다.
       first/rerun `ROUTER_ROUTER tcp/inproc 64B`
       `-58.62% / -30.04%`, `-55.12% / -29.06%`로
       stable broad win이 아니어서 current code에는 남기지 않았다.
+      이어서 `bench_zlink_router_router.cpp`에
+      `PERF_SINGLE_ZLINK_RAW_MSG_API=1` routed raw-msg probe를 추가해
+      default `-58.12% / -27.77%`,
+      raw probe `-54.07% / -27.78%`를 확인했다.
+      즉 current `ROUTER_ROUTER` 잔여 gap은 aggregate wrapper 한 겹보다
+      `router.cpp` core routed ordering / `out_pipe` admission 차이가 더 큰
+      축일 가능성이 높다.
 - [x] 이번 단계 send-path 변경 뒤 `PAIR`/`DEALER_DEALER` raw/public 분리를
       다시 기록했다.
 - [x] broader single / multi smoke까지 통과하는 안정 지점을 남겼다.

@@ -15,6 +15,12 @@
   `producer-side steady-state send/publication`이다.
 - high-HWM probe에서도 `PAIR`, `DEALER_DEALER`, `PUBSUB` 64B 격차가 크게
   남았으므로, queue가 차지 않아도 드는 send/publication 고정비를 우선 본다.
+- current kept `PUBSUB` delta는
+  `xsub` receiver-drain specialization으로 유지 중이고,
+  guide 기준 다음 미완료 항목은 `ROUTER_ROUTER` routed path differential이다.
+- current `ROUTER_ROUTER` raw-msg probe는 default 대비
+  `tcp +4.05`%p, `inproc -0.01`%p 수준만 움직였으므로,
+  routed/public aggregate wrapper alone을 1차 본체로 두지 않는다.
 
 ### 0.2 Current Hypothesis
 
@@ -25,6 +31,12 @@
   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
   / [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
   의 send-path serialization 조합에 더 가깝다.
+- `ROUTER_ROUTER` current differential은
+  [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+  / [`core/src/api/socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+  aggregate wrapper 자체보다는,
+  [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
+  의 routed send/recv ordering과 `out_pipe` admission/flush에 더 가깝다.
 
 ### 0.3 Kept Delta
 
@@ -38,6 +50,7 @@
 - `PAIR` 전용 no-sync lifecycle CAS fast path
 - `fast_mutex` common-path TID-lazy 후보
 - 새 broad evidence 없이 `dist/xpub/pipe` local helper만 반복 추가하는 탐색
+- `ROUTER_ROUTER` raw/public aggregate wrapper alone을 1차 원인으로 보는 해석
 
 ### 0.5 Do Not Revisit
 
@@ -48,11 +61,16 @@
 
 ### 0.6 Next Exact Step
 
-- restart 시 `libzmq` 대응 send/publication path를 먼저 읽고,
-  `public lifecycle coordinator`와 `pipe send-path serialization` 중 어느
-  구조가 현재 common differential의 더 큰 본체인지 재확인한다.
-- `PUBSUB`는 local helper를 누적하기보다 sender publication과 `XSUB`
-  receiver-drain differential을 먼저 분리한다.
+- restart 시 `libzmq`의
+  [`router.cpp`](/home/hep7/project/kairos/libzmq/src/router.cpp) /
+  [`socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+  대응 구현을 먼저 읽고,
+  `ROUTER_ROUTER` current gap이 routed prefix/HWM micro-elision이 아니라
+  어떤 routed send/recv ordering 차이에서 커지는지 재확인한다.
+- `ROUTER_ROUTER`는 raw-msg probe가 small win만 준 상태이므로,
+  local routed helper나 aggregate wrapper elision을 더 누적하기보다
+  routed multipart lifecycle, `out_pipe` admission/flush,
+  prefetch 기반 routed recv ordering differential을 먼저 분리한다.
 
 ## 1. 범위
 

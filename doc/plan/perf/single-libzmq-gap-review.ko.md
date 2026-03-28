@@ -34,6 +34,14 @@
 - `PUBSUB`는 공통 send 축만으로 설명하면 안 된다. latest acceptable
   방향은 `XSUB receiver-drain specialization`과 sender-side publication
   differential을 분리해서 보는 것이다.
+- current `PUBSUB` retained delta는
+  `xsub` empty-subscription accept-all fast path와 requested-only
+  `last_recv_source_rid` capture scope 조합으로 유지 중이고,
+  guide 기준 다음 미완료 항목은 `ROUTER_ROUTER` routed path differential이다.
+- current `ROUTER_ROUTER` raw-msg probe는 default 대비
+  `tcp +4.05`%p, `inproc -0.01`%p 수준만 움직였다.
+  즉 routed/public aggregate wrapper만으로는 current router gap의 본체를
+  설명하기 어렵다.
 
 ### 0.2 Current Hypothesis
 
@@ -49,6 +57,14 @@
 - `echo`가 괜찮고 `oneway`에서만 더 밀리는 건 단순 `send API`가 아니라
   producer가 지속적으로 앞서가는 operating regime에서의 send/publication
   고정비로 해석한다.
+- `ROUTER_ROUTER`의 current 잔여 gap은
+  [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+  /
+  [`core/src/api/socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+  의 aggregate wrapper만이 아니라,
+  [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
+  의 `out_pipe` admission/flush와 routed recv ordering 쪽이 더 큰 축일
+  가능성이 높다.
 
 ### 0.3 Kept Delta
 
@@ -65,6 +81,7 @@
 - `PAIR` 전용 no-sync lifecycle CAS fast path
 - `fast_mutex` common-path TID-lazy 후보
 - 새 증거 없이 `dist/xpub/pipe` local helper만 반복 추가하는 탐색
+- `ROUTER_ROUTER` raw/public aggregate wrapper만이 본체라는 해석
 
 ### 0.5 Do Not Revisit
 
@@ -77,12 +94,14 @@
 
 ### 0.6 Next Exact Step
 
-- restart 시 먼저 `libzmq`의 대응 send/publication path를 다시 읽고,
-  `public lifecycle coordinator`와 `pipe send-path serialization` 중 어느
-  의미 단위가 현재 common differential을 더 크게 만들고 있는지 재확인한다.
-- `PUBSUB`는 local helper를 바로 추가하지 말고, sender publication과
-  `XSUB` receiver-drain 중 어느 쪽이 latest gap을 더 지배하는지 먼저
-  분리한다.
+- restart 시 먼저 `/home/hep7/project/kairos/libzmq/src/router.cpp`와
+  `/home/hep7/project/kairos/libzmq/src/socket_base.cpp`를 다시 읽고,
+  current `ROUTER_ROUTER` gap이 routed prefix/HWM micro-elision이 아니라
+  어떤 routed send/recv ordering 차이에서 커지는지 재확인한다.
+- `ROUTER_ROUTER`는 raw-msg probe가 small win만 준 상태이므로,
+  routed-data view나 aggregate wrapper elision을 다시 반복하지 말고
+  routed multipart lifecycle, `out_pipe` admission/flush,
+  prefetch 기반 routed recv ordering 차이를 먼저 분리한다.
 - 새 iteration은 이 summary가 stale하지 않은지 먼저 확인하고, stale하면
   코드 수정 전에 이 블록부터 갱신한다.
 
@@ -4411,3 +4430,64 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
     `fast_mutex` helper 표면의 TID 조회 순서 하나로 설명하긴 어렵다.
   - 이 후보는 rejected로 남기고, 현재 kept delta는 section 60의
     same-lock recursive `check_hwm()` 제거까지만 유지한다.
+
+## 62. 2026-03-28 `ROUTER_ROUTER` raw-msg probe 로그
+
+- 작업한 가설
+  - current `ROUTER_ROUTER` gap의 큰 일부가
+    [`core/bench/with_zmq/single/zlink/bench_zlink_router_router.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_router_router.cpp)
+    의 aggregate `zlink_send()` / `zlink_recv()` surface라면,
+    single-frame routed fast path인 `zlink_msg_send_rid()` /
+    `zlink_msg_recv_rid()`로 probe 했을 때 gap이 크게 줄어야 한다고 봤다.
+  - 목적은 accepted baseline을 바로 바꾸는 게 아니라,
+    current `ROUTER_ROUTER` 미완료 항목의 상위 축이
+    aggregate wrapper인지 `router.cpp` core ordering인지 먼저 분리하는 것이었다.
+- candidate family
+  - semantic probe / validation surface split
+- high-leverage 근거
+  - 이전 `ROUTER` micro-elision은 모두 noise 수준이었고,
+    current review도 residual을 `public/aggregate differential`로 의심하고
+    있었으므로, 더 작은 helper 전에 surface-level 분리가 우선이었다.
+- 참고한 `libzmq` 대응 파일
+  - [`libzmq/src/router.cpp`](/home/hep7/project/kairos/libzmq/src/router.cpp)
+  - [`libzmq/src/socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+- `claude` consult 여부와 핵심 조언
+  - `claude --help`는 통과했다.
+  - prompt 인자 방식 `claude -p`는
+    `Input must be provided either through stdin or as a prompt argument when using --print`
+    오류로 실패했다.
+  - stdin 재시도도 30초 이상 usable output 없이 대기만 해
+    이번 단계는 advisory unavailable로 기록한다.
+- 수정한 파일 경로
+  - 유지:
+    - [`core/bench/with_zmq/single/zlink/bench_zlink_router_router.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_router_router.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_raw_probe_default_seq`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_raw_probe_raw_seq`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_134724_codex_20260328_router_raw_probe_default_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_134724_codex_20260328_router_raw_probe_default_seq.txt)
+  - [`perf_linux_20260328_134753_codex_20260328_router_raw_probe_raw_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_134753_codex_20260328_router_raw_probe_raw_seq.txt)
+- 핵심 수치
+  - default `ROUTER_ROUTER tcp/inproc 64B`
+    - `-58.12% / -27.77%`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1` probe
+    - `-54.07% / -27.78%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `bench_zlink_router_router.cpp` routed raw-msg probe support
+  - 원복
+    - 없음
+- 해석
+  - routed raw-msg fast path는 `tcp`를 약 `+4.05`%p 줄였지만
+    `inproc`는 사실상 변하지 않았다.
+  - 즉 current `ROUTER_ROUTER` gap의 본체를
+    aggregate `zlink_send()` / `zlink_recv()` wrapper만으로 설명하긴 어렵다.
+  - 다음 단계는 local wrapper elision을 더 파는 것이 아니라,
+    `router.cpp`의 `out_pipe` admission/flush와
+    prefetch 기반 routed recv ordering 차이를 더 직접 분리하는 쪽이 맞다.
+- 다음 iteration 우선순위
+  - `ROUTER_ROUTER`는 raw/public aggregate wrapper elision을
+    1차 후보로 다시 올리지 않는다.
+  - next hypothesis는 `router.cpp` routed send/recv core ordering,
+    특히 `out_pipe` admission/flush와 routed recv prefetch differential이다.

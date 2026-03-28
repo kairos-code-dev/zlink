@@ -219,5 +219,8 @@ core/tests/scenario/**/result/
 # Refactor execution logs
 core/tools/refactor/logs/
 
+# Perf Ralph-loop runtime logs and supervisor state
+doc/plan/perf/logs/
+
 # Clangd cache
 core/.cache/

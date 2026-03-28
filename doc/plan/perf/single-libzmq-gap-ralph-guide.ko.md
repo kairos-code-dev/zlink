@@ -26,12 +26,18 @@
   와
   [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
   를 둘 다 다시 읽는 것으로 시작한다.
+- iteration 시작 시에는 긴 본문보다 각 문서 상단의 `Current Operating
+  Summary` 블록을 먼저 읽는다.
+- summary 블록이 최신 kept delta, 현재 가설, 배제 family, 다음 exact step을
+  반영하지 못하면, 코드 수정이나 bench 실행 전에 먼저 summary를 갱신한다.
 - 다만 로그 문서는 기본적으로 최신 요약/피벗/현재 작업 레지스터부터 읽는다.
   오래된 rejected candidate 구간은 현재 가설을 검증하는 데 필요할 때만
   역참조한다.
 - 둘 중 하나라도 현재 코드/해석/우선순위와 어긋나면 즉시 갱신한다.
 - 실제 변경이 없더라도, iteration 결과가 두 문서의 현재 내용과 일치하는지
   확인하지 않으면 다음 iteration으로 넘어가면 안 된다.
+- 짧은 summary가 긴 로그보다 우선한다. 긴 로그는 summary를 갱신하거나
+  현재 가설을 검증할 근거가 필요할 때만 깊게 읽는다.
 - 별도 main/master/gap/residual/spec 문서는 추가로 만들지 않는다.
 - 이 루프의 기본 동작은 `--max-iterations 0`, 즉 목표 완료까지 무한 반복이다.
 - 반복 횟수를 제한하고 싶을 때만 명시적으로 `--max-iterations <N>`을 넘긴다.
@@ -161,6 +167,22 @@ raw/public 분리를 다시 찍는다.
     변경이 없음을 확인한다.
 13. 아직 stop condition을 못 만족하면 다음 미해결 가설로 반복한다.
 
+### 6.1 단계별 commit / push
+
+- 유지하기로 결정한 변경 묶음 하나를 한 단계로 본다.
+- 각 단계는 아래를 모두 만족한 뒤 바로 commit 하고 push 한다.
+  - 필요한 코드/테스트/문서 갱신 완료
+  - targeted bench와 필요한 smoke 검증 완료
+  - [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+    와
+    [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
+    갱신 완료
+- 한 commit 에 여러 단계 변경을 섞지 않는다.
+- 실험했다가 버린 변경은 commit 하지 않는다.
+- push 가 끝난 뒤 commit hash 와 검증 결과 파일 경로를
+  [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+  에 남긴다.
+
 ### 6.2 guide 재작성 트리거
 
 - 같은 패턴에서 같은 계열 후보가 `2`개 이상 연속으로 rejected candidate가 되면,
@@ -213,21 +235,6 @@ raw/public 분리를 다시 찍는다.
 - 위 셋 중 아무것도 만들지 못하면,
   그 후보는 더 미세하게 파지 말고 rejected candidate로 기록한 뒤 종료한다.
 
-### 6.1 단계별 commit / push
-
-- 유지하기로 결정한 변경 묶음 하나를 한 단계로 본다.
-- 각 단계는 아래를 모두 만족한 뒤 바로 commit 하고 push 한다.
-  - 필요한 코드/테스트/문서 갱신 완료
-  - targeted bench와 필요한 smoke 검증 완료
-  - [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
-    와
-    [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
-    갱신 완료
-- 한 commit 에 여러 단계 변경을 섞지 않는다.
-- 실험했다가 버린 변경은 commit 하지 않는다.
-- push 가 끝난 뒤 commit hash 와 검증 결과 파일 경로를
-  [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
-  에 남긴다.
 - push 없이 다음 단계로 넘어가면 안 된다.
 
 ## 7. 작업 순서 우선순위
@@ -242,6 +249,12 @@ raw/public 분리를 다시 찍는다.
    - `tcp` 대 `inproc`
    - single 대 multi
    - default HWM 대 변경된 HWM
+   - supplementary high-HWM probe
+     [`perf_linux_20260328_124815.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_124815.txt)
+     에서는 `hwm/sndhwm/rcvhwm = 1000000`인데도 `PAIR`, `PUBSUB`,
+     `DEALER_DEALER` 64B gap이 `-22% ~ -39%`로 크게 남았다.
+     따라서 current loop는 `backpressure only` 가설을 기본값으로 두지 않고,
+     queue가 차지 않아도 남는 steady-state hot-path 고정비를 먼저 의심한다.
 3. `PUBSUB` semantic map 이후에만
    - semantic differential
    - core publication/lifecycle residual

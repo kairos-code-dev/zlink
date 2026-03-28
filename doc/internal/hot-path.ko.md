@@ -7,6 +7,53 @@
 > 이 문서는 "어디가 hot path인지", "무엇을 넣으면 안 되는지", "성능개선 중 어떤
 > 규칙으로 문서를 갱신할지"를 짧고 명시적으로 유지한다.
 
+## 0. Current Operating Summary
+
+### 0.1 Current State
+
+- 현재 공통 gap의 상위 해석은 `backpressure-only`가 아니라
+  `producer-side steady-state send/publication`이다.
+- high-HWM probe에서도 `PAIR`, `DEALER_DEALER`, `PUBSUB` 64B 격차가 크게
+  남았으므로, queue가 차지 않아도 드는 send/publication 고정비를 우선 본다.
+
+### 0.2 Current Hypothesis
+
+- `libzmq` 대비 common differential은
+  [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+  / [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  의 public lifecycle coordinator와
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  / [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
+  의 send-path serialization 조합에 더 가깝다.
+
+### 0.3 Kept Delta
+
+- current kept 공통 delta는
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  의 recursive `check_hwm()` elide다.
+
+### 0.4 Rejected Families
+
+- `backpressure/HWM`만을 1차 원인으로 보는 해석
+- `PAIR` 전용 no-sync lifecycle CAS fast path
+- `fast_mutex` common-path TID-lazy 후보
+- 새 broad evidence 없이 `dist/xpub/pipe` local helper만 반복 추가하는 탐색
+
+### 0.5 Do Not Revisit
+
+- high-HWM probe를 뒤집는 새 증거 없이 `wakeup latency`를 1차 원인으로 다시
+  올리지 않는다.
+- broad win 없이 특정 pattern 하나만 좋아지는 helper-level 후보를 계속
+  누적하지 않는다.
+
+### 0.6 Next Exact Step
+
+- restart 시 `libzmq` 대응 send/publication path를 먼저 읽고,
+  `public lifecycle coordinator`와 `pipe send-path serialization` 중 어느
+  구조가 현재 common differential의 더 큰 본체인지 재확인한다.
+- `PUBSUB`는 local helper를 누적하기보다 sender publication과 `XSUB`
+  receiver-drain differential을 먼저 분리한다.
+
 ## 1. 범위
 
 현재 1차 범위는 `with_zmq single` 상대 비교에서 gap이 가장 직접적으로 드러나는
@@ -81,6 +128,55 @@ public send/recv 경로다.
   single-subscriber `dist` helper를 더 얹는 문제가 아니라,
   `xsub` receiver steady-state와 `inproc` backpressure differential이
   실제로 얼마나 남는지 더 좁게 구분하는 쪽이다.
+- 추가 high-HWM single probe
+  [`perf_linux_20260328_124815.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_124815.txt)
+  에서는 `hwm/sndhwm/rcvhwm = 1000000`인데도
+  `PAIR 64B tcp/ipc/inproc -33.07% / -30.34% / -30.77%`,
+  `PUBSUB -38.93% / -22.86% / -34.66%`,
+  `DEALER_DEALER -34.54% / -27.66% / -28.64%`였다.
+  즉 current gap의 본체를 `HWM` 도달과 backpressure wakeup 하나로
+  설명하긴 어렵고, queue가 차지 않아도 남는 steady-state per-message
+  고정비를 우선 본다.
+- 이 high-HWM 결과와 `echo ~= 동등, oneway = 격차` 패턴을 합치면,
+  current 공통 differential의 최우선 해석은
+  `backpressure-only`가 아니라
+  `producer-side steady-state send/publication`이다.
+  현재 가장 유력한 공통 축은
+  [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+  /
+  [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  의 public lifecycle coordinator와
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  /
+  [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
+  의 send-path serialization 비용이다.
+- libzmq 대응 위치는
+  [`libzmq/src/socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp),
+  [`libzmq/src/pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)이다.
+  libzmq는 non-thread-safe send에서 optional lock이 사실상 no-op이고,
+  steady-state pipe write/flush가 lock-free SPSC queue 위에서 동작한다.
+  반면 zlink는 same-ordering을 더 비싼 lifecycle/serialization 구조로
+  유지하고 있어 current oneway gap이 transport 전반에서 같이 드러난다.
+- 2026-03-28 no-sync public send admission CAS fast path probe는
+  unit/integration contract는 지켰지만
+  focused `PAIR/DEALER` bench에서 broad win으로 이어지지 않아 원복했다.
+  따라서 current next step은 `PAIR` 전용 no-sync tweak보다
+  sync 소켓까지 포함하는 broader lifecycle/serialization 설계 차이를
+  더 직접 겨냥하는 것이다.
+- 같은 날 `pipe::check_write_status()`, `write()`, `write_and_flush()`에서
+  `_out_sync`를 이미 잡은 뒤 `check_hwm()`이 다시 recursive lock을 한 번 더
+  밟는 구조를 `check_hwm_unlocked()`로 바꾼 candidate는 keep했다.
+  focused `PAIR/DEALER` 64B에서
+  `PAIR tcp +3.80`%p, `DEALER_DEALER tcp/inproc +2.04`%p / `+1.16`%p
+  수준의 회복이 있었고,
+  이는 current send-path differential에
+  same-lock recursive bookkeeping이 실제 비용 축이라는 신호다.
+- 반면 `fast_mutex` common unlocked path에서 owner==0일 때
+  TID 조회를 늦추는 candidate는 clean rerun에서
+  `PAIR tcp`를 크게 악화시켜 원복했다.
+  현재 differential을 `fast_mutex` helper 표면 하나로 보는 건 맞지 않고,
+  다음 단계는 다시 broader lifecycle / same-ordering serialization 구조를
+  겨냥해야 한다.
 - earlier `perf_pubsub.cpp` auxiliary surface의 추가 HWM sweep
   `16/64/256/1000`도 크게 흔들렸지만, 이 값은 current acceptance surface의
   primary baseline이 아니다.

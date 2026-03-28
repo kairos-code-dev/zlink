@@ -323,7 +323,7 @@ zlink::pipe_write_status_t zlink::pipe_t::check_write_status ()
     if (unlikely (!_out_active || _state != active))
         return pipe_write_inactive;
 
-    const bool full = !check_hwm ();
+    const bool full = !check_hwm_unlocked ();
 
     if (unlikely (full)) {
         _out_active = false;
@@ -342,7 +342,7 @@ bool zlink::pipe_t::write (const msg_t *msg_)
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    const bool full = !check_hwm ();
+    const bool full = !check_hwm_unlocked ();
     if (unlikely (full)) {
         _out_active = false;
         return false;
@@ -378,7 +378,7 @@ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    const bool full = !check_hwm ();
+    const bool full = !check_hwm_unlocked ();
     if (unlikely (full)) {
         _out_active = false;
         return false;

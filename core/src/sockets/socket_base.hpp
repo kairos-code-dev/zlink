@@ -43,12 +43,25 @@ class pipe_t;
 class io_thread_t;
 class discovery_t;
 class socket_discovery_attachment_t;
+class socket_base_t;
 typedef void (*spot_sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
                                         const char *topic_,
                                         size_t topic_len_,
                                         zlink_msg_t *parts_,
                                         size_t part_count_,
                                         void *userdata_);
+
+class socket_recv_source_rid_scope_t
+{
+  public:
+    socket_recv_source_rid_scope_t (socket_base_t *socket_, bool enabled_);
+    ~socket_recv_source_rid_scope_t ();
+
+  private:
+    socket_base_t *_prev_socket;
+    bool _prev_enabled;
+};
+
 class socket_base_t : public own_t,
                       public array_item_t<>,
                       public i_poll_events,
@@ -127,6 +140,7 @@ class socket_base_t : public own_t,
     static void *current_socket_msg_dispatch_subject ();
     static bool current_socket_msg_dispatch_source_rid (
       zlink_routing_id_t *out_);
+    bool recv_source_rid_capture_requested () const;
     void invoke_send_ready_handler_for_testing ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int sub_dispatch_start (spot_sub_io_handler_fn callback_,

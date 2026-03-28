@@ -50,19 +50,58 @@ transport에 따라 다시 엇갈렸으므로, 더 이상 "`public wrapper penal
 - 2026-03-28 `dist_t` one-matching-pipe fast path가
   `PUBSUB tcp 64B`를 `-37.57%` 근처에서 `-24.23%`, rerun `-26.00%`까지
   회복시켰다. 즉 distributor loop/index/deactivate work는 실제 hot-path
-  비용 축이다.
-- 다만 같은 라운드의 `PUBSUB inproc 64B`는 `-42.51%`,
-  multi `pubsub tcp 64B`는 `-26.97%`여서 publication/lifecycle differential을
-  전부 설명하진 못한다.
-- 2026-03-28 semantic/backpressure rerun에서
-  default single `PUBSUB tcp/inproc 64B`는 `-27.04% / -42.08%`,
-  `XPUB_NODROP=0` probe는 `+0.22% / -23.71%`,
-  `HWM=16` probe는 `+9.40% / +25.10%`였다.
-- latest multi `pubsub tcp 64B` rerun은
-  default HWM `-17.24%`, `HWM=16 -20.30%`였다.
-- 즉 current `PUBSUB` 잔여 gap은 single-subscriber dist helper를 더 얹는
-  문제라기보다, default HWM + `XPUB_NODROP=1` publication/backpressure
-  differential을 single/multi로 분리해 봐야 하는 상태다.
+  비용 축이었다.
+- current HEAD는 그 위에 `xsub` empty-subscription accept-all fast path와
+  requested-only `last_recv_source_rid` capture를 결합해
+  isolated first/rerun `PUBSUB tcp/inproc 64B`
+  `-9.40% / -20.35%`, `-10.43% / -21.59%`,
+  broader single `PUBSUB tcp/inproc 64B -11.57% / -20.78%`,
+  multi `pubsub tcp 64B +9.25%`, rerun `+8.25%`까지 회복했다.
+- 즉 current `PUBSUB` 잔여 gap은 generic single-subscriber dist helper를 더
+  얹는 문제가 아니라, retained `xsub` receiver-drain specialization 이후에도
+  남아 있는 `inproc` differential과 다른 pattern의 routed path를 분리해 보는
+  상태다.
+- 다만 2026-03-28 재확인에서
+  `comp_zlink_pubsub`는 실제로
+  [`core/perf/single/src/perf_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pubsub.cpp)
+  를 빌드하고,
+  paired `comp_std_zmq_pubsub`는
+  [`core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp)
+  를 빌드한다.
+- 즉 current `PUBSUB` single 비교는
+  zlink 쪽 `topic="bench"` + delivery-ready monitor gate +
+  `zlink_msg_recv()` 2회 경로와
+  libzmq 쪽 payload-only single-part raw path를 직접 비교하고 있다.
+- 따라서 guide에 적힌 aligned no-topic interpretation과
+  그 위에 쌓인 current `PUBSUB` single semantic map은
+  surface realignment 전까지 provisional로 취급해야 한다.
+- 이후 same-day realignment에서 `comp_zlink_pubsub`를 실제
+  [`core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp)
+  로 되돌리고 receiver를 `zlink_msg_recv()` single-part path로 맞췄다.
+- surface realignment 직후 historical single `PUBSUB tcp/inproc 64B`는
+  `-15.29% / -24.92%`,
+  `XPUB_NODROP=0` probe는 `-0.00% / -0.64%`,
+  `HWM=16` probe는 `-16.17% / +47.89%`였다.
+- historical multi `pubsub tcp 64B`는 default `-29.83%`,
+  `BENCH_MULTI_PUBSUB_HWM=16 -22.22%`였다.
+- 다만 2026-03-28 current retained-code direct recheck에서는
+  single `PUBSUB tcp/inproc 64B`가
+  seq1 `-21.73% / -19.43%`,
+  rerun `-22.44% / -31.08%`,
+  `XPUB_NODROP=0` probe는 `-0.06% / +0.04%`,
+  latest multi `pubsub tcp 64B`는 `-22.75%`였다.
+- 위 값은 current `xsub` retained delta 직전 baseline으로 유지한다.
+- 그 뒤 current HEAD는 `xsub` empty-subscription accept-all fast path와
+  requested-only `last_recv_source_rid` capture를 결합해
+  isolated first/rerun `PUBSUB tcp/inproc 64B`
+  `-9.40% / -20.35%`, `-10.43% / -21.59%`,
+  broader single `PUBSUB tcp/inproc 64B -11.57% / -20.78%`,
+  multi `pubsub tcp 64B +9.25%`, rerun `+8.25%`까지 회복했다.
+- 즉 surface mismatch 자체가 same-day `PUBSUB tcp` gap의 큰 일부였다는
+  결론은 유지되고, current source-of-truth는 위 recheck를 baseline으로 삼아
+  그 위에 retained `xsub` receiver-drain specialization이 올라간 상태다.
+- realigned 기준에서도 `PUBSUB inproc`과 `ROUTER_ROUTER` routed path의
+  잔여 gap은 남아 있지만, multi regression은 current HEAD에서 해소됐다.
 
 즉 지금 결과는 더 정확히 말하면:
 
@@ -613,7 +652,7 @@ raw 재측정:
 | `PAIR` | `zlink_send(parts,1)` + `zlink_recv(&parts,&count)` | `send_exact(buffer)` + `zlink_msg_recv(msg)` |
 | `DEALER_DEALER` | `zlink_send(parts,1)` + `zlink_recv(&parts,&count)` | `send_exact(buffer)` + `zlink_msg_recv(msg)` |
 | `DEALER_ROUTER` | `zlink_send(parts,1)` + `zlink_recv(source_rid,&parts,&count)` | `send_exact(buffer)` + `zlink_msg_recv()` 2회 |
-| `PUBSUB` | `zlink_publish(NULL, &part,1)` + `zlink_recv(&parts,&count)` | `send_exact(buffer)` + `zlink_msg_recv(msg)` |
+| `PUBSUB` | `zlink_publish(NULL, &part,1)` + `zlink_msg_recv(msg)` | `send_exact(buffer)` + `zlink_msg_recv(msg)` |
 | `ROUTER_ROUTER` | `zlink_send(parts,2)` + `zlink_recv(source_rid,&parts,&count)` | `zlink_send(..., "RID", SNDMORE)` + `zlink_send(..., payload)` + `zlink_msg_recv()` 2회 |
 
 의미는 명확하다.
@@ -3172,7 +3211,7 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
     - `snd_pending_max`: `9 / 20`
     - `rcv_pending_max`: `15 / 28`
   - direct `test_xpub_nodrop`
-    - ctest surface에는 여전히 없음
+    - 당시 ctest surface에는 없었음
     - repeated direct run은 PASS와
       `Assertion failed: check() (.../msg.cpp:559)`,
       `Bad address (.../xsub.cpp:56/68)`,
@@ -3189,10 +3228,891 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
     더 잘 맞는다.
   - `XPUB_NODROP=0`와 `HWM=16` 모두 `snd_pending_max`를 크게 낮췄고,
     특히 `HWM=16`은 `tcp/inproc` 둘 다 sign flip을 만들었다.
-  - direct `test_xpub_nodrop`는 current workspace에서 ctest gate가 아니라
-    stale/unregistered flake diagnostic으로 취급해야 한다.
+  - direct `test_xpub_nodrop`는 이 시점 기준으로는 ctest gate가 아니라
+    stale/unregistered flake diagnostic이었다.
 - 다음 iteration 우선순위
   - `PUBSUB`는 sender backlog/publication 누적을 줄이는
     `pipe`/publication 축 code candidate만 다시 올린다.
   - direct `test_xpub_nodrop`는 gate로 승격하지 않고 auxiliary diagnostic으로만
     유지한다.
+
+## 44. 2026-03-28 single-matching `XPUB_NODROP=1` one-lock helper rejected 로그
+
+- 작업한 가설 1개
+  - current `PUBSUB` single-subscriber default-HWM `XPUB_NODROP=1` 경로의 큰
+    비용 축이 `_dist.check_hwm()`와 실제 `write/flush` 사이의 이중
+    `_out_sync` 진입이라면, single-matching steady-state에서 이를 one-lock
+    helper로 합치면 sender backlog/publication 누적을 줄일 수 있다고 봤다.
+- candidate family 1개
+  - pattern-specific code candidate
+- high-leverage / semantic probe 근거
+  - guide의 첫 미완료 항목이 default HWM + `XPUB_NODROP=1`
+    publication/backpressure differential의 actual code candidate였고,
+    queue-probe 결과도 sender backlog 누적이 핵심 축임을 가리켰다.
+- 참고한 `libzmq` 대응 파일
+  - [`src/xpub.cpp`](/home/hep7/project/kairos/libzmq/src/xpub.cpp)
+  - [`src/dist.cpp`](/home/hep7/project/kairos/libzmq/src/dist.cpp)
+  - [`src/pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)
+- `claude` consult 여부와 핵심 조언
+  - consult 수행.
+  - top hypothesis는 single-subscriber `NODROP` path의 double lock cost라는
+    advisory를 받았다.
+  - 다만 same-family `nodrop fusion`이 이미 correctness ambiguity를 만든 적이
+    있으므로, targeted gate를 고정하지 않은 채 local-search drift로
+    되풀이되면 안 된다는 경고도 함께 받았다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+    - [`core/src/sockets/dist.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.hpp)
+    - [`core/src/sockets/dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+    - [`core/src/sockets/xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+- 실행한 명령
+  - `claude --help`
+  - `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink --add-dir /home/hep7/project/kairos/libzmq`
+  - `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_single_pipe_nodrop_fused`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_single_pipe_nodrop_fused_rerun`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_single_pipe_nodrop_fused_seq3`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_fused_guardrail_public`
+    - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_fused_guardrail_raw`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_fused_broader_single`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1 | tee doc/plan/perf/logs/pubsub_fused_20260328/multi_pubsub.log`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1 | tee doc/plan/perf/logs/pubsub_fused_20260328/multi_pubsub_rerun.log`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 3 | tee doc/plan/perf/logs/pubsub_fused_20260328/multi_pubsub_runs3.log`
+  - 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_095809_codex_20260328_pubsub_single_pipe_nodrop_fused.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_095809_codex_20260328_pubsub_single_pipe_nodrop_fused.txt)
+  - [`perf_linux_20260328_095843_codex_20260328_pubsub_single_pipe_nodrop_fused_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_095843_codex_20260328_pubsub_single_pipe_nodrop_fused_rerun.txt)
+  - [`perf_linux_20260328_095916_codex_20260328_pubsub_single_pipe_nodrop_fused_seq3.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_095916_codex_20260328_pubsub_single_pipe_nodrop_fused_seq3.txt)
+  - [`perf_linux_20260328_095957_codex_20260328_pubsub_fused_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_095957_codex_20260328_pubsub_fused_guardrail_public.txt)
+  - [`perf_linux_20260328_100037_codex_20260328_pubsub_fused_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_100037_codex_20260328_pubsub_fused_guardrail_raw.txt)
+  - [`perf_linux_20260328_100117_codex_20260328_pubsub_fused_broader_single.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_100117_codex_20260328_pubsub_fused_broader_single.txt)
+  - [`multi_pubsub.log`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/pubsub_fused_20260328/multi_pubsub.log)
+  - [`multi_pubsub_rerun.log`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/pubsub_fused_20260328/multi_pubsub_rerun.log)
+  - [`multi_pubsub_runs3.log`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/pubsub_fused_20260328/multi_pubsub_runs3.log)
+- 핵심 수치
+  - isolated single `PUBSUB tcp/inproc 64B`
+    - seq1: `-27.73% / -38.36%`
+    - seq2: `-20.44% / -38.87%`
+    - seq3: `-12.75% / -38.71%`
+  - broader single
+    - `PAIR tcp/inproc 64B`: `-15.37% / -19.27%`
+    - `PUBSUB tcp/inproc 64B`: `-21.12% / -26.31%`
+    - `DEALER_DEALER tcp/inproc 64B`: `-15.61% / -23.86%`
+    - `DEALER_ROUTER tcp/inproc 64B`: `-19.54% / -23.27%`
+    - `ROUTER_ROUTER tcp/inproc 64B`: `-58.54% / -25.23%`
+  - raw/public guardrail
+    - `PAIR` public→raw `tcp/inproc`: `-27.95% -> -34.15%`, `-21.32% -> -24.18%`
+    - `DEALER_DEALER` public→raw `tcp/inproc`: `-30.30% -> -22.31%`, `-23.02% -> -31.53%`
+  - multi `pubsub tcp 64B`
+    - first: `-25.93%`
+    - rerun: `-21.63%`
+    - `--runs 3`: `-25.68%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - single-matching `XPUB_NODROP=1` one-lock helper 전부
+- 해석
+  - single과 broader single은 분명히 반응했지만, multi `pubsub tcp`가
+    latest baseline `-17.24%`를 안정적으로 지키지 못했다.
+  - raw/public guardrail도 `PAIR`/`DEALER_DEALER`에서 mixed여서
+    send-path side effect 해석을 다시 넓혔다.
+  - 따라서 이 candidate family는 keep-worthy stable broad win이 아니고,
+    current code에는 남기지 않는다.
+  - 한편 `core/build`를 `-DZLINK_BUILD_TESTS=ON`으로 재configure한 뒤에는
+    `test_xpub_nodrop`가 ctest surface에 포함됐고 targeted ctest rerun도 통과했다.
+    direct binary flake는 이제 historical auxiliary diagnostic으로만 둔다.
+- 다음 iteration 우선순위
+  - `PUBSUB`는 same-family one-lock fusion이나 또 다른 local
+    `xpub/dist` helper 반복으로 내려가지 않는다.
+  - 다음 code candidate는 default HWM multi guardrail을 깨지 않는
+    sender backlog/publication differential이어야 한다.
+  - targeted gate는 direct binary보다
+    `test_multi_socket_contract_regressions`,
+    `test_public_inproc_multipart_send`,
+    `test_pubsub_filter_xpub`,
+    `test_xpub_nodrop` ctest 조합을 우선 쓴다.
+
+## 45. 2026-03-28 `pipe` HWM precheck / sparse queue-probe semantic probe 로그
+
+- 작업한 가설 1개
+  - same-family `xpub/dist` helper를 반복하지 않고도
+    default-HWM `PUBSUB` backlog 비용을 줄이려면,
+    `pipe::check_hwm()`의 `_out_sync` precheck 고정비나
+    queue-probe 측정 surface 두께가 더 큰 축일 수 있다고 봤다.
+- candidate family 1개
+  - broad `pipe` precheck candidate + semantic probe
+- high-leverage / semantic probe 근거
+  - guide가 same-family one-lock fusion과 local `xpub/dist` helper 반복을
+    금지하고 있었고, current next step을
+    `inproc` transport-specific differential 또는 measurement-surface 분리로
+    좁히도록 요구했다.
+- 참고한 `libzmq` 대응 파일
+  - [`src/xpub.cpp`](/home/hep7/project/kairos/libzmq/src/xpub.cpp)
+  - [`src/dist.cpp`](/home/hep7/project/kairos/libzmq/src/dist.cpp)
+  - [`src/pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)
+  - [`src/ctx.cpp`](/home/hep7/project/kairos/libzmq/src/ctx.cpp)
+- `claude` consult 여부와 핵심 조언
+  - `claude --help`는 성공했다.
+  - 그러나 non-interactive `claude -p` advisory 호출은
+    stdin prompt 전달 방식과 `timeout 20s` 재시도 둘 다 응답 없이 종료돼
+    이번 iteration에서는 unavailable로 기록한다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+- 실행한 명령
+  - `claude --help`
+  - `timeout 20s bash -lc 'cat ... | claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink'`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_default_prepatch`
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_default_atomic_hwm`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_default_atomic_hwm_rerun`
+  - 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `PERF_SINGLE_QUEUE_SAMPLE_MS=100000 python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_queueprobe_sparse`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_101818_codex_20260328_pubsub_default_prepatch.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_101818_codex_20260328_pubsub_default_prepatch.txt)
+  - [`perf_linux_20260328_102223_codex_20260328_pubsub_default_atomic_hwm.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_102223_codex_20260328_pubsub_default_atomic_hwm.txt)
+  - [`perf_linux_20260328_102254_codex_20260328_pubsub_default_atomic_hwm_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_102254_codex_20260328_pubsub_default_atomic_hwm_rerun.txt)
+  - [`perf_linux_20260328_102635_codex_20260328_pubsub_queueprobe_sparse.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_102635_codex_20260328_pubsub_queueprobe_sparse.txt)
+- 핵심 수치
+  - current baseline single `PUBSUB tcp/inproc 64B`
+    - `-25.63% / -37.06%`
+  - rejected `pipe` HWM precheck candidate
+    - first: `-26.71% / -34.02%`
+    - rerun: `-23.86% / -37.64%`
+  - sparse queue-probe semantic run
+    - `-27.48% / -35.63%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `pipe` HWM precheck atomic candidate 전부
+- 해석
+  - `pipe::check_hwm()` precheck 고정비를 줄이는 broad candidate는
+    `tcp`/`inproc`가 서로 엇갈려 stable broad win을 만들지 못했다.
+  - 따라서 이 candidate family는 current code에 남기지 않는다.
+  - 반면 sparse queue-probe run도 broad sign flip이나 큰 회복을 만들지 못해,
+    current `PUBSUB` 잔여 gap의 본체를 measurement-surface probe overhead로
+    설명하진 않는다.
+  - 즉 current next step은 queue-sample tweak가 아니라
+    default HWM + `XPUB_NODROP=1` 조건의
+    `inproc` transport-specific sender backlog/publication differential이다.
+
+## 46. 2026-03-28 `inproc PUBSUB` peer-progress publication cadence / HWM-full peer snapshot refresh 로그
+
+- 작업한 가설 2개
+  - 가설 A:
+    default-HWM `inproc PUBSUB`에서 sender backlog가 과하게 쌓이는 이유가
+    peer read progress publication cadence가 너무 느려서 stale credit가 오래
+    유지되기 때문일 수 있다.
+  - 가설 B:
+    cadence 자체보다 `check_hwm()`이 cached `_peers_msgs_read`만 보고
+    full로 들어가는 순간 stale peer progress를 직접 refresh하지 못하는 점이
+    더 직접적인 잔여 cost일 수 있다.
+- candidate family 2개
+  - `inproc PUBSUB` peer-progress notify interval tighten
+  - `inproc PUBSUB` HWM-full peer snapshot refresh
+- high-leverage / semantic probe 근거
+  - same-day semantic map에서 default HWM / `XPUB_NODROP=1` 조건의
+    `snd_pending_max`가 `tcp/inproc 924 / 1560` 수준으로 컸고,
+    `HWM=16` probe가 single에서 강한 회복을 보였으므로
+    current differential을 "default-HWM stale progress / blocked retry 진입"
+    쪽에서 먼저 좁히는 것이 타당했다.
+- 수정한 파일 경로
+  - 두 candidate 모두 실험 후 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+    - [`core/src/sockets/socket_base_endpoint.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_endpoint.cpp)
+    - [`core/src/core/ctx_inproc_registry.cpp`](/home/hep7/project/kairos/zlink/core/src/core/ctx_inproc_registry.cpp)
+- 실행한 명령
+  - candidate A 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_inproc_progress64`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+  - candidate B 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_hwm_refresh`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+  - 두 candidate 원복 후
+    - `cmake --build core/build -j$(nproc)`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_103800_codex_20260328_pubsub_inproc_progress64.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_103800_codex_20260328_pubsub_inproc_progress64.txt)
+  - [`perf_linux_20260328_104042_codex_20260328_pubsub_hwm_refresh.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_104042_codex_20260328_pubsub_hwm_refresh.txt)
+  - multi smoke는 두 번 모두 Python runner가 새 report 파일을 남기지 않았고
+    콘솔 결과만 확인했다.
+- 핵심 수치
+  - candidate A: peer-progress notify interval tighten
+    - single `PUBSUB tcp/inproc 64B`: `-22.42% / -37.17%`
+    - queue probe `snd_pending_max`: `963 / 178`
+    - queue probe `rcv_pending_max`: `189 / 1125`
+    - multi `pubsub tcp 64B`: `-26.38%`
+  - candidate B: HWM-full peer snapshot refresh
+    - single `PUBSUB tcp/inproc 64B`: `-22.84% / -38.24%`
+    - queue probe `snd_pending_max`: `918 / 1342`
+    - queue probe `rcv_pending_max`: `438 / 695`
+    - multi `pubsub tcp 64B`: `-22.78%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `inproc PUBSUB` peer-progress notify interval tighten candidate
+    - `inproc PUBSUB` HWM-full peer snapshot refresh candidate
+- 해석
+  - candidate A는 sender backlog 분포는 크게 바꿨지만
+    `inproc` throughput 자체는 same-day baseline `-37.06%`에서
+    유의미하게 회복시키지 못했고, 대신 `rcv_pending_max`가 커져
+    backlog 위치만 옮긴 형태에 가까웠다.
+  - candidate B도 stale peer progress를 full-path에서 직접 refresh했지만
+    `inproc`는 `-38.24%`로 더 나빠졌고, default-HWM 잔여 gap을
+    "cached peer read snapshot 하나"로 설명하진 못했다.
+  - 두 candidate 모두 contract regression은 없었지만
+    keep-worthy broad win도 아니어서 current code에는 남기지 않는다.
+  - 따라서 current next step은
+    sender progress publication cadence나 stale peer snapshot refresh가 아니라,
+    default HWM + `XPUB_NODROP=1` 조건에서
+    `inproc` receiver drain / blocked-retry differential을
+    더 직접 분리하는 쪽이다.
+- 다음 iteration 우선순위
+  - `PUBSUB`는 queue-probe surface tweak나 `pipe::check_hwm()` broad candidate를
+    다시 반복하지 않는다.
+  - next code candidate는 `inproc` 쪽 sender backlog/publication differential을
+    직접 줄이는 방향으로만 올린다.
+
+## 47. 2026-03-28 `comp_zlink_pubsub` single surface realignment 로그
+
+- 작업한 가설
+  - current `PUBSUB` single gap 해석의 선행조건은
+    `comp_zlink_pubsub`와 `comp_std_zmq_pubsub`가 같은 비교 surface를
+    타는 것이다.
+  - 그런데 current build는 zlink 쪽만
+    `perf_pubsub.cpp` topic-aware + delivery-ready monitor path를 써서
+    same-day `PUBSUB` 해석이 흔들리고 있었다.
+- `libzmq` reference / build wiring 확인
+  - `compile_commands.json` 확인 결과
+    `comp_zlink_pubsub`는
+    [`core/perf/single/src/perf_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/perf/single/src/perf_pubsub.cpp)
+    를 빌드했고,
+    paired `comp_std_zmq_pubsub`는
+    [`core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp)
+    를 빌드했다.
+  - 즉 zlink 쪽은 `topic="bench"` +
+    delivery-ready monitor gate +
+    `zlink_msg_recv()` 2회,
+    libzmq 쪽은 payload-only `send_exact()` + `zmq_msg_recv()` single-part였다.
+- `claude` consult
+  - `claude --help`는 통과했다.
+  - non-interactive advisory는
+    `cat <<'EOF' | claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink ...`
+    를 두 번 시도했지만 응답 없이 멈춰 unavailable로 기록한다.
+- 수정한 파일 경로
+  - [`core/bench/with_zmq/CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/CMakeLists.txt)
+  - [`core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp)
+- 실행한 명령
+  - surface mismatch 확인
+    - `python3 - <<'PY' ... compile_commands.json ... PY`
+    - `./core/build/bin/comp_zlink_pubsub zlink tcp 64`
+    - `./core/build/bin/comp_zlink_pubsub zlink inproc 64`
+  - surface realignment 적용 후
+    - `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_surface_realign`
+    - `PERF_SINGLE_PUBSUB_XPUB_NODROP=0 python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_surface_realign_nodrop0`
+    - `PERF_SINGLE_HWM=16 python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_surface_realign_hwm16`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 BENCH_MULTI_PUBSUB_HWM=16 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_105258_codex_20260328_pubsub_surface_realign.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_105258_codex_20260328_pubsub_surface_realign.txt)
+  - [`perf_linux_20260328_105409_codex_20260328_pubsub_surface_realign_nodrop0.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_105409_codex_20260328_pubsub_surface_realign_nodrop0.txt)
+  - [`perf_linux_20260328_105409_codex_20260328_pubsub_surface_realign_hwm16.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_105409_codex_20260328_pubsub_surface_realign_hwm16.txt)
+  - multi rerun은 Python runner가 새 report 파일을 남기지 않았고
+    콘솔 결과만 확인했다.
+- 핵심 수치
+  - realigned default single `PUBSUB tcp/inproc 64B`
+    - `-15.29% / -24.92%`
+  - realigned `XPUB_NODROP=0` probe
+    - `-0.00% / -0.64%`
+  - realigned `HWM=16` probe
+    - `-16.17% / +47.89%`
+  - multi `pubsub tcp 64B`
+    - default: `-29.83%`
+    - `BENCH_MULTI_PUBSUB_HWM=16`: `-22.22%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `comp_zlink_pubsub` source retarget
+    - `bench_zlink_pubsub.cpp` receiver `zlink_msg_recv()` single-part realignment
+  - 원복
+    - 없음
+- 해석
+  - same-day `PUBSUB tcp` gap의 큰 일부는
+    zlink 쪽만 더 무거운 topic-aware + monitor-gated surface를 타던
+    measurement mismatch였다.
+  - realignment 뒤 `PUBSUB tcp 64B`는 `-27%`대에서 `-15.29%`까지 바로 회복됐다.
+  - 그러나 `XPUB_NODROP=0`이 여전히 거의 sign flip을 만들고,
+    default multi는 `-29.83%`로 크게 남는다.
+  - 즉 low-HWM single win이나 surface mismatch correction만으로는
+    current `PUBSUB` 잔여 gap을 끝낼 수 없고,
+    next step은 realigned surface 기준의
+    default HWM + `XPUB_NODROP=1` publication/backpressure differential이다.
+  - 또한 current realigned `with_zmq single` surface는
+    earlier `perf_pubsub.cpp` queue-probe 지표를 직접 내보내지 않으므로,
+    old queue metrics는 auxiliary diagnostic으로만 유지한다.
+
+## 48. 2026-03-28 `PUBSUB` delivery-ready lazy tracking 후보 폐기 로그
+
+- 작업한 가설
+  - realigned single `PUBSUB` baseline에서 남은 `tcp` 차이는 이미
+    `dist_t` one-matching-pipe helper가 일부 줄였으므로,
+    current `default HWM + XPUB_NODROP=1` 잔여 gap 중 일부는
+    `XPUB/XSUB` delivery-ready ready-count recompute를
+    monitor가 실제로 구독할 때만 수행하도록 좁히면 더 줄어들 수 있다.
+  - 동시에 late monitor reopen / snapshot contract를 회귀 테스트로 묶어 두면,
+    이후 publication candidate에서도 monitor-ready semantic drift를
+    더 빨리 잡을 수 있다.
+- `libzmq` reference / guide 확인
+  - current guide와 hot-path는 이미
+    "delivery-ready bookkeeping은 secondary, publication/ordering이 primary"로
+    정렬돼 있었고, 이 후보는 그 가정을 다시 한 번 falsify하는 좁은 검증이다.
+  - `/home/hep7/project/kairos/libzmq/src/xpub.cpp`,
+    `/home/hep7/project/kairos/libzmq/src/dist.cpp`,
+    `/home/hep7/project/kairos/libzmq/src/pipe.cpp`를 다시 읽고
+    `PUBSUB` ready-count 유지와 publication work를 비교했다.
+- `claude` consult
+  - `claude --help`는 통과했다.
+  - 앞선 same-family 단계에서 남긴 non-interactive advisory 시도는
+    응답 없이 멈춰 unavailable로 기록했고,
+    이번 후보 자체는 same-family narrow falsification이라
+    그 unavailable 상태를 그대로 이어서 기록한다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/sockets/socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+    - [`core/src/sockets/socket_base.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.cpp)
+    - [`core/src/sockets/socket_base_monitor.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_monitor.cpp)
+    - [`core/src/sockets/xpub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.hpp)
+    - [`core/src/sockets/xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+    - [`core/src/sockets/xsub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.hpp)
+    - [`core/src/sockets/xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+  - 유지:
+    - [`core/tests/integration/monitoring/test_monitor_socket_contract.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_socket_contract.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_delivery_ready_lazy_default`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_delivery_ready_lazy_broader_single`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_delivery_ready_lazy_rerun`
+  - candidate 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_111321_codex_20260328_pubsub_delivery_ready_lazy_default.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_111321_codex_20260328_pubsub_delivery_ready_lazy_default.txt)
+  - [`perf_linux_20260328_111416_codex_20260328_delivery_ready_lazy_broader_single.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_111416_codex_20260328_delivery_ready_lazy_broader_single.txt)
+  - [`perf_linux_20260328_111611_codex_20260328_pubsub_delivery_ready_lazy_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_111611_codex_20260328_pubsub_delivery_ready_lazy_rerun.txt)
+  - multi smoke는 Python runner가 새 report 파일을 남기지 않았고
+    콘솔 결과만 확인했다.
+- 핵심 수치
+  - isolated first run `PUBSUB tcp/inproc 64B`
+    - `-14.47% / -23.50%`
+  - isolated rerun `PUBSUB tcp/inproc 64B`
+    - `-14.44% / -29.17%`
+  - broader single
+    - `PAIR tcp/inproc 64B`: `-14.33% / -23.38%`
+    - `PUBSUB tcp/inproc 64B`: `-15.52% / -28.17%`
+    - `DEALER_DEALER tcp/inproc 64B`: `-15.15% / -22.46%`
+    - `DEALER_ROUTER tcp/inproc 64B`: `-26.49% / -21.13%`
+    - `ROUTER_ROUTER tcp/inproc 64B`: `-57.21% / -28.95%`
+  - multi `pubsub tcp 64B`
+    - `-20.48%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `test_pubsub_delivery_ready_snapshot_and_reopen_after_ready()`
+      monitor contract regression
+  - 원복
+    - `xpub/xsub` delivery-ready lazy tracking candidate
+- 해석
+  - isolated `tcp` first run은 accepted realigned baseline `-15.29%`보다
+    약간 좋아졌지만, same-command rerun에서 `inproc`가 `-29.17%`로 다시
+    무너졌고 broader single에서도 `PUBSUB inproc`가 `-28.17%`로 악화됐다.
+  - multi `pubsub tcp 64B -20.48%`도 latest accepted multi baseline
+    `-17.24%` 또는 realigned default `-29.83%` 해석을 좁히는 stable broad win으로
+    보기 어렵다. 즉 현재 후보는 `tcp` isolated improvement 하나만 보였을 뿐,
+    general acceptance를 만족하지 못했다.
+  - 따라서 current `PUBSUB` 잔여 gap을
+    no-monitor delivery-ready bookkeeping 하나로 설명하진 않는다.
+    이 계열 후보는 rejected candidate로 남기고 소스 변경은 원복한다.
+  - 다만 late monitor reopen / snapshot 계약은
+    future `PUBSUB` publication candidate에서도 깨질 수 있으므로,
+    새 regression test는 current code에 유지한다.
+- 다음 iteration 우선순위
+  - `PUBSUB`은 delivery-ready bookkeeping lazy gate 계열을 더 파지 않는다.
+  - next code candidate는 여전히 realigned surface 기준
+    default HWM multi guardrail을 깨지 않는
+    `inproc` receiver drain / blocked-retry differential 쪽이다.
+
+## 49. 2026-03-28 `pipe::process_activate_write()` already-active fast path 폐기 로그
+
+- 작업한 가설
+  - current realigned `PUBSUB` 미완료 항목의 핵심은
+    default HWM + `XPUB_NODROP=1` 아래 `inproc` sender backlog/publication
+    differential이다.
+  - libzmq `pipe_t::process_activate_write()`는 잠금 없이
+    peer progress와 `_out_active`를 갱신하는 반면,
+    zlink는 every `activate_write` command마다 `_out_sync`를 잡는다.
+  - `inproc`에서는 receiver drain이 빠르고 `_lwm`마다 activation이 자주 오므로,
+    이미 active인 steady state에서만 lock을 건너뛰어도
+    `inproc` blocked-retry 진입 전후 비용을 줄일 수 있다고 봤다.
+- `libzmq` reference / advisory
+  - `/home/hep7/project/kairos/libzmq/src/pipe.cpp`를 다시 읽고
+    `process_activate_write()` / `check_hwm()` / `flush()` 차이를 대조했다.
+  - 이번 라운드의 `claude -p` non-interactive advisory는
+    prompt 전달 오류(`Input must be provided either through stdin or as a prompt argument when using --print`)로
+    usable output을 얻지 못해 unavailable로 기록한다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_activate_write_active_fastpath`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_activate_write_active_fastpath_rerun`
+  - candidate 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_112849_codex_20260328_pubsub_activate_write_active_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_112849_codex_20260328_pubsub_activate_write_active_fastpath.txt)
+  - [`perf_linux_20260328_112920_codex_20260328_pubsub_activate_write_active_fastpath_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_112920_codex_20260328_pubsub_activate_write_active_fastpath_rerun.txt)
+- 핵심 수치
+  - first run `PUBSUB tcp/inproc 64B`
+    - `-9.53% / -28.30%`
+  - rerun `PUBSUB tcp/inproc 64B`
+    - `-22.77% / -24.83%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `pipe::process_activate_write()` already-active fast path
+- 해석
+  - first run은 `tcp`가 크게 좋아졌지만 목표였던 `inproc`가
+    accepted realigned baseline `-24.92%`보다 오히려 나빠졌다.
+  - rerun에서는 반대로 `inproc`가 baseline 근처까지 회복했지만
+    `tcp`가 `-22.77%`로 크게 악화됐다.
+  - 즉 current candidate는 same command rerun만으로도 방향이 뒤집혀
+    stable isolated win조차 만들지 못했다.
+  - 따라서 current `PUBSUB` 잔여 gap을
+    already-active `activate_write` lock 하나로 설명하진 않는다.
+    이 candidate는 rejected로 남기고 원복한다.
+- 다음 iteration 우선순위
+  - `PUBSUB`은 activation command consumer의 already-active micro helper를
+    같은 계열로 계속 파지 않는다.
+  - next hypothesis는 여전히
+    default HWM + `XPUB_NODROP=1` 아래 `inproc` blocked-retry /
+    receiver-drain differential을 더 상위 의미 단위에서 다시 보는 쪽이다.
+
+## 50. 2026-03-28 `pipe::read()` peer read-progress direct publish 폐기 로그
+
+- 작업한 가설
+  - current `PUBSUB` 미완료 항목의 남은 차이는 default HWM +
+    `XPUB_NODROP=1`에서 `inproc` receiver drain이 `_lwm` 경계마다 만드는
+    `activate_write` publication / consume differential일 수 있다.
+  - 이미 writer peer가 active 상태라면 `pipe::read()`가 `_msgs_read`를
+    peer `_peers_msgs_read`로 직접 publish하고 command queue의
+    `activate_write`를 건너뛰어도 steady-state blocked-retry overhead를
+    줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `ctest --test-dir core/build --output-on-failure -V -R '^test_xpub_nodrop$' -j1`
+  - candidate 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+- 핵심 결과
+  - candidate 적용 상태
+    - `test_monitor_socket_contract`, `test_multi_socket_contract_regressions`,
+      `test_public_inproc_multipart_send`, `test_pubsub_filter_xpub` 통과
+    - `test_xpub_nodrop`는
+      `/home/hep7/project/kairos/zlink/core/tests/integration/test_xpub_nodrop.cpp:383:test:PASS`
+      출력 뒤 `***Timeout 10.01 sec`로 종료 정리 단계에서 hang
+  - candidate 원복 상태
+    - 동일 ctest 묶음 전부 통과
+    - `test_xpub_nodrop` 단독도 `0.75 sec` 내 통과
+- 해석
+  - `activate_write` command 자체는 peer progress 반영만이 아니라
+    object mailbox ordering과 shutdown/teardown invariants에도 걸려 있었다.
+  - `pipe::read()`에서 direct publish로 command를 우회하는 현재 형태는
+    performance run에 들어가기 전에 integration teardown regression을 만들었다.
+  - 따라서 current `PUBSUB` 잔여 gap을
+    `_lwm` boundary direct peer-progress publish 하나로 설명하진 않는다.
+    이 candidate는 safety regression으로 rejected하고 원복한다.
+- 다음 iteration 우선순위
+  - `PUBSUB`은 `pipe::read()`에서 command publication을 우회하는
+    direct peer-progress shortcut을 계속 파지 않는다.
+  - next hypothesis는 여전히
+    default HWM multi guardrail을 깨지 않는
+    `inproc` receiver-drain / blocked-retry differential의 다른 의미 단위다.
+
+## 51. 2026-03-28 `xsub::xrecv()` last-recv source-rid snapshot 제거 로그
+
+- 작업한 가설
+  - current `PUBSUB` 잔여 gap은 sender backlog/publication 쪽으로 보였지만,
+    그 역면에는 `inproc` receiver drain 자체가 libzmq보다 무거운 문제도 있다.
+  - zlink [`xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+    는 every matching recv마다 `store_last_recv_source_rid(pipe)`를 호출하지만,
+    current single `PUBSUB` surface는 `zlink_msg_recv()`만 써서
+    source rid를 전혀 요구하지 않는다.
+  - 따라서 `SUB/XSUB` normal recv hot path에서 source-rid snapshot을 걷으면
+    receiver drain이 가벼워져 default HWM + `XPUB_NODROP=1`에서
+    blocked-retry differential을 줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/sockets/xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop|test_socket_with_handler)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_xsub_skip_last_recv_source_rid`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_xsub_skip_last_recv_source_rid_rerun`
+  - candidate 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop|test_socket_with_handler)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_114210_codex_20260328_pubsub_xsub_skip_last_recv_source_rid.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_114210_codex_20260328_pubsub_xsub_skip_last_recv_source_rid.txt)
+  - [`perf_linux_20260328_114239_codex_20260328_pubsub_xsub_skip_last_recv_source_rid_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_114239_codex_20260328_pubsub_xsub_skip_last_recv_source_rid_rerun.txt)
+- 핵심 수치
+  - first run `PUBSUB tcp/inproc 64B`
+    - `-20.13% / -28.12%`
+  - rerun `PUBSUB tcp/inproc 64B`
+    - `-19.83% / -23.68%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `xsub::xrecv()` matching recv의 `last_recv_source_rid` snapshot 제거
+- 해석
+  - receiver drain 쪽 미세 고정비를 줄이는 방향 자체는 맞아서
+    rerun `inproc`는 accepted baseline `-24.92%`보다 소폭 회복했다.
+  - 하지만 같은 candidate에서 `tcp`가 first/rerun 모두
+    `-20%` 안팎으로 baseline `-15.29%`보다 더 나빠졌고,
+    first `inproc`도 `-28.12%`로 불안정했다.
+  - 즉 current `PUBSUB` 잔여 gap을
+    `xsub` normal recv의 source-rid snapshot 하나로 설명하진 않는다.
+    이 candidate는 receiver-drain evidence는 줬지만 keep-worthy broad win은
+    아니므로 원복한다.
+- 다음 iteration 우선순위
+  - `PUBSUB`은 `xsub::xrecv()` source-rid snapshot elision 계열을
+    그대로 유지 후보로 올리지 않는다.
+  - next hypothesis는 여전히
+    default HWM multi guardrail을 깨지 않는
+    `inproc` receiver-drain / blocked-retry differential의 다른 의미 단위다.
+
+## 52. 2026-03-28 `xsub` empty-subscription accept-all fast path 로그
+
+- 작업한 가설
+  - current aligned single `PUBSUB` bench는 `SUB`에 empty subscription `""`를
+    걸고 no-topic payload를 받는다.
+  - 이 steady-state에서는 `xsub::match()`가 trie를 통해 결국 항상 true를
+    돌려주므로, empty subscription이 살아 있는 동안은
+    receiver-side `match()` 자체를 건너뛰어도 semantics를 유지할 수 있다.
+  - 따라서 `xsub`가 empty subscription presence를 직접 추적해
+    accept-all fast path를 타면 `inproc` receiver drain을 줄여
+    default HWM + `XPUB_NODROP=1` blocked-retry differential을
+    더 직접 좁힐 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/sockets/xsub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.hpp)
+    - [`core/src/sockets/xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_socket_with_handler|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_xsub_accept_all`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_xsub_accept_all_rerun`
+  - candidate 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_socket_with_handler|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_114624_codex_20260328_pubsub_xsub_accept_all.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_114624_codex_20260328_pubsub_xsub_accept_all.txt)
+  - [`perf_linux_20260328_114646_codex_20260328_pubsub_xsub_accept_all_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_114646_codex_20260328_pubsub_xsub_accept_all_rerun.txt)
+- 핵심 수치
+  - first run `PUBSUB tcp/inproc 64B`
+    - `-16.33% / -20.00%`
+  - rerun `PUBSUB tcp/inproc 64B`
+    - `-15.20% / -27.16%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `xsub` empty-subscription accept-all fast path
+- 해석
+  - first run은 `tcp`가 baseline `-15.29%`에 근접하고 `inproc`가
+    `-20.00%`까지 회복해, current receiver-drain 후보 중 가장 그럴듯한
+    신호를 줬다.
+  - 하지만 same-command rerun에서 `inproc`가 `-27.16%`로 baseline 아래로
+    다시 떨어져 stable isolated win을 유지하지 못했다.
+  - 즉 empty subscription steady-state의 trie `match()` cost는
+    current `PUBSUB` 잔여 gap의 일부 축이긴 하지만, 이것 하나만으로는
+    keep-worthy acceptance를 만들지 못했다.
+  - 따라서 이 candidate도 원복하고 rejected evidence로만 남긴다.
+- 다음 iteration 우선순위
+  - `PUBSUB`은 `xsub` empty-subscription accept-all fast path를
+    그대로 유지 후보로 올리지 않는다.
+  - next hypothesis는 여전히
+    default HWM multi guardrail을 깨지 않는
+    `inproc` receiver-drain / blocked-retry differential의 다른 의미 단위다.
+
+## 53. 2026-03-28 current retained-code baseline recheck + recv-mode busy-bit guard 로그
+
+- 작업한 가설
+  - guide의 현재 `PUBSUB` baseline 숫자가 current retained code와 어긋나면,
+    다음 후보 판정 자체가 흔들린다.
+  - 먼저 current retained code를 direct recheck하고,
+    recv-side mode guard 비용을 cached busy-bit 하나로 줄이면
+    `zlink_msg_recv()` / `xrecv` steady-state 비용을 좁힐 수 있다고 봤다.
+- `claude` consult
+  - `claude --help`는 통과했다.
+  - 그러나 이번 단계의 non-interactive `claude -p` 호출은
+    `Input must be provided either through stdin or as a prompt argument when using --print`
+    오류로 usable advisory를 얻지 못해 unavailable로 기록한다.
+- 수정한 파일 경로
+  - 유지:
+    - [`core/tests/integration/test_socket_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_socket_with_handler.cpp)
+  - 실험 후 원복:
+    - [`core/src/core/recv_internal.cpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_internal.cpp)
+    - [`core/src/sockets/socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+    - [`core/src/sockets/socket_base_dispatch.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_dispatch.cpp)
+    - [`core/src/sockets/socket_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.hpp)
+    - [`core/src/sockets/stream.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/stream.cpp)
+    - [`core/src/sockets/xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+    - [`core/src/sockets/xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+- 실행한 명령
+  - current baseline recheck
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_current_baseline`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_current_baseline_rerun`
+    - `PERF_SINGLE_PUBSUB_XPUB_NODROP=0 python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_current_nodrop0`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_recv_mode_busy_default`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_recv_mode_busy_rerun`
+  - candidate 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_115253_codex_20260328_pubsub_current_baseline.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_115253_codex_20260328_pubsub_current_baseline.txt)
+  - [`perf_linux_20260328_115322_codex_20260328_pubsub_current_baseline_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_115322_codex_20260328_pubsub_current_baseline_rerun.txt)
+  - [`perf_linux_20260328_115345_codex_20260328_pubsub_current_nodrop0.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_115345_codex_20260328_pubsub_current_nodrop0.txt)
+  - [`perf_linux_20260328_120014_codex_20260328_pubsub_recv_mode_busy_default.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_120014_codex_20260328_pubsub_recv_mode_busy_default.txt)
+  - [`perf_linux_20260328_120037_codex_20260328_pubsub_recv_mode_busy_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_120037_codex_20260328_pubsub_recv_mode_busy_rerun.txt)
+- 핵심 수치
+  - current retained-code baseline
+    - seq1 `PUBSUB tcp/inproc 64B`: `-21.73% / -19.43%`
+    - rerun `PUBSUB tcp/inproc 64B`: `-22.44% / -31.08%`
+    - `XPUB_NODROP=0`: `-0.06% / +0.04%`
+    - latest multi `pubsub tcp 64B`: `-22.75%`
+  - rejected recv-mode busy-bit candidate
+    - first `PUBSUB tcp/inproc 64B`: `-16.20% / -27.20%`
+    - rerun `PUBSUB tcp/inproc 64B`: `-20.29% / -32.27%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `test_socket_with_handler`의 `zlink_msg_recv(...)=EBUSY` contract regression
+  - 원복
+    - recv-mode busy-bit cached guard candidate 전부
+- 해석
+  - guide가 들고 있던 `-15.29% / -24.92%`, multi `-29.83%`는
+    surface realignment 당시 historical anchor로는 유효하지만,
+    current retained code direct recheck 기준 source-of-truth로는 stale했다.
+  - `XPUB_NODROP=0` probe가 current code에서도 거의 sign flip이라,
+    현재 `PUBSUB` 잔여 gap의 큰 축이 default HWM + `XPUB_NODROP=1`
+    publication/backpressure differential이라는 해석은 유지된다.
+  - recv-mode busy-bit candidate는 first run `tcp`만 좋아 보였지만
+    rerun `inproc`가 baseline보다 다시 나빠져 stable broad win이 아니었다.
+  - 따라서 current next step은 recv mode specialization을 그대로 밀기보다,
+    default-HWM multi guardrail을 깨지 않는
+    `inproc` receiver-drain / blocked-retry differential의 다른 의미 단위를
+    다시 찾는 쪽이다.
+
+## 54. 2026-03-28 no-topic single-part `zlink_publish` fast path rejected 로그
+
+- 작업한 가설
+  - current aligned single `PUBSUB` bench가 실제로
+    `zlink_publish(NULL, &part, 1)` single-part payload path를 타므로,
+    `PUB/XPUB`에서 topic 없는 단일 publish는 logical multipart helper 대신
+    direct send로 보내면 current execution baseline을 줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_publish_singlepart_fastpath`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_publish_singlepart_fastpath_rerun`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_121215_codex_20260328_pubsub_publish_singlepart_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_121215_codex_20260328_pubsub_publish_singlepart_fastpath.txt)
+  - [`perf_linux_20260328_121215_codex_20260328_pubsub_publish_singlepart_fastpath_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_121215_codex_20260328_pubsub_publish_singlepart_fastpath_rerun.txt)
+- 핵심 수치
+  - first `PUBSUB tcp/inproc 64B`
+    - `-16.16% / -28.59%`
+  - rerun `PUBSUB tcp/inproc 64B`
+    - `-15.30% / -34.26%`
+  - multi `pubsub tcp 64B`
+    - first `-31.41%`
+    - rerun `-25.50%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - no-topic single-part `zlink_publish` fast path 전부
+- 해석
+  - single `tcp`는 current baseline보다 좋아 보였지만
+    rerun `inproc`가 `-34.26%`로 current baseline `-31.08%`보다 더 나빠졌다.
+  - multi `pubsub tcp`도 `-31.41%`, `-25.50%`로 current baseline `-22.75%`를
+    안정적으로 지키지 못했다.
+  - 따라서 current `PUBSUB` 잔여 gap을 publish API front-end helper 하나로
+    설명하진 않는다. 이 candidate는 keep-worthy broad win이 아니어서 원복한다.
+
+## 55. 2026-03-28 `pipe` `activate_read` pending dedupe rejected 로그
+
+- 작업한 가설
+  - current `PUBSUB` 잔여 gap의 일부는 default HWM + `XPUB_NODROP=1`
+    steady-state에서 같은 pipe pair로 `activate_read`가 중복 publication되는
+    비용일 수 있다.
+  - mailbox ordering은 그대로 두고 pending command만 dedupe하면
+    `inproc` blocked-retry differential을 줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - 실험 후 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_activate_read_dedupe`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_activate_read_dedupe_rerun`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+  - candidate 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_121552_codex_20260328_pubsub_activate_read_dedupe.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_121552_codex_20260328_pubsub_activate_read_dedupe.txt)
+  - [`perf_linux_20260328_121552_codex_20260328_pubsub_activate_read_dedupe_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_121552_codex_20260328_pubsub_activate_read_dedupe_rerun.txt)
+- 핵심 수치
+  - first `PUBSUB tcp/inproc 64B`
+    - `-27.06% / -29.49%`
+  - rerun `PUBSUB tcp/inproc 64B`
+    - `-35.43% / -20.57%`
+  - multi `pubsub tcp 64B`
+    - `-32.15%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `activate_read` pending dedupe candidate 전부
+- 해석
+  - same-command rerun만으로 `tcp`/`inproc` 방향이 크게 갈렸고,
+    multi `pubsub tcp`도 current baseline보다 더 나빠졌다.
+  - 즉 current `PUBSUB` 잔여 gap을 `activate_read` duplicate command 하나로
+    설명하진 않는다. 이 candidate도 keep-worthy broad win이 아니어서 원복한다.
+
+## 56. 2026-03-28 retained `xsub` receiver-drain specialization 로그
+
+- 작업한 가설
+  - section 51, 52에서 각각 본
+    `xsub::xrecv()` source-rid snapshot 제거와
+    empty-subscription accept-all fast path는
+    current recheck baseline `-22.44% / -31.08%` 대비 개선 신호가 있었다.
+  - 두 후보를 contract-safe 형태로 다시 묶으면,
+    empty-prefix steady-state의 trie `match()`와
+    normal recv의 unnecessary source-rid snapshot을 함께 줄이면서도
+    `spot_sub_t::recv()`가 실제 source-rid를 요구할 때만 그 비용을 지불하게
+    만들 수 있다고 봤다.
+- `claude` consult
+  - `claude --help`는 통과했다.
+  - 이번 단계의 non-interactive `claude -p`는
+    `Input must be provided either through stdin or as a prompt argument when using --print`
+    오류와 stdin 재시도 무응답으로 usable advisory를 얻지 못해
+    unavailable로 기록한다.
+- 수정한 파일 경로
+  - 유지:
+    - [`core/src/sockets/xsub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.hpp)
+    - [`core/src/sockets/xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+    - [`core/src/sockets/socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+    - [`core/src/sockets/socket_base_dispatch.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_dispatch.cpp)
+    - [`core/src/services/spot/spot_sub_recv.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub_recv.cpp)
+  - 기존 유지 regression 재확인:
+    - [`core/tests/integration/test_socket_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_socket_with_handler.cpp)
+    - [`core/tests/integration/monitoring/test_monitor_socket_contract.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_socket_contract.cpp)
+- 실행한 명령
+  - candidate 적용 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop|test_spot_pubsub_scenario)$' -j1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand_rerun`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xsub_accept_all_rid_store_broader_single`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+    - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_123151_codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_123151_codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand.txt)
+  - [`perf_linux_20260328_123215_codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_123215_codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand_rerun.txt)
+  - [`perf_linux_20260328_123242_codex_20260328_xsub_accept_all_rid_store_broader_single.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_123242_codex_20260328_xsub_accept_all_rid_store_broader_single.txt)
+  - multi `pubsub` smoke는 이번 runner stdout에서만 수치를 확인했고,
+    별도 report 파일 경로는 확인하지 못했다.
+- 핵심 수치
+  - isolated first/rerun `PUBSUB tcp/inproc 64B`
+    - `-9.40% / -20.35%`
+    - `-10.43% / -21.59%`
+  - broader single `PAIR/PUBSUB/DEALER_DEALER/DEALER_ROUTER/ROUTER_ROUTER`
+    `tcp/inproc 64B`
+    - `-16.64% / -21.71%`
+    - `-11.57% / -20.78%`
+    - `-26.40% / -21.90%`
+    - `-24.17% / -18.30%`
+    - `-55.78% / -21.48%`
+  - multi `pubsub tcp 64B`
+    - first `+9.25%`
+    - rerun `+8.25%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `xsub` empty-subscription accept-all fast path
+    - requested-only `last_recv_source_rid` capture scope
+  - 원복
+    - 없음
+- 해석
+  - section 51, 52의 individual signal을 contract-safe 형태로 결합하자,
+    current recheck baseline `-22.44% / -31.08%`, multi `-22.75%` 대비
+    `PUBSUB tcp`와 multi `pubsub`가 크게 회복했다.
+  - `spot_sub_t::recv()`는 caller가 `source_rid_out`을 넘길 때만
+    `last_recv_source_rid`를 저장하므로, normal `XSUB` steady-state에서
+    source-rid snapshot 비용을 지우면서 public/spot contract는 유지한다.
+  - broader single에서는 `PAIR inproc`만 accepted rerun snapshot 대비
+    약 `4.49`%p 나빠졌지만, guide guardrail `5%` 안쪽이다.
+    다른 non-target 패턴은 유지 가능 범위거나 개선됐다.
+  - 따라서 이 조합은 current retained `PUBSUB` delta로 승격한다.
+- 다음 iteration 우선순위
+  - `PUBSUB`은 같은 family의 또 다른 local `xpub/dist` micro helper를
+    반복하지 않는다.
+  - next priority는 guide의 다음 미완료 항목인
+    `ROUTER_ROUTER` routed path differential이다.

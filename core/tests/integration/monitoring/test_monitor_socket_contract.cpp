@@ -63,6 +63,22 @@ struct socket_monitor_probe_t
     zlink_monitor_event_t error_event;
 };
 
+struct delivery_ready_value_probe_t
+{
+    delivery_ready_value_probe_t () :
+        error_seen (false),
+        event_count (0),
+        last_value (0)
+    {
+    }
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool error_seen;
+    size_t event_count;
+    uint64_t last_value;
+};
+
 struct pair_callback_probe_t
 {
     pair_callback_probe_t () : socket (NULL), request_calls (0), reply_calls (0)
@@ -173,6 +189,25 @@ void socket_monitor_handler (const zlink_monitor_event_t *event_, void *userdata
     probe->cv.notify_all ();
 }
 
+void delivery_ready_value_handler (const zlink_monitor_event_t *event_,
+                                   void *userdata_)
+{
+    delivery_ready_value_probe_t *probe =
+      static_cast<delivery_ready_value_probe_t *> (userdata_);
+    if (!probe || !event_)
+        return;
+
+    std::lock_guard<std::mutex> lock (probe->mutex);
+    if (event_->event == ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED) {
+        probe->last_value = event_->value;
+        ++probe->event_count;
+    } else if (event_->event == ZLINK_EVENT_MONITOR_STOPPED
+               || event_->event == ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL) {
+        probe->error_seen = true;
+    }
+    probe->cv.notify_all ();
+}
+
 bool wait_for_pubsub_delivery_ready_callback (socket_monitor_probe_t *pub_probe_,
                                               socket_monitor_probe_t *sub_probe_,
                                               int timeout_ms_)
@@ -219,6 +254,26 @@ bool wait_for_monitor_ready_callback (socket_monitor_probe_t *probe_,
           return probe_->ready_seen || probe_->error_seen;
       })
            && probe_->ready_seen && !probe_->error_seen;
+}
+
+bool wait_for_pub_delivery_ready_value (delivery_ready_value_probe_t *probe_,
+                                        uint64_t expected_value_,
+                                        int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    const bool signaled = probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_, expected_value_]() {
+          return probe_->error_seen
+                 || (probe_->event_count > 0
+                     && probe_->last_value == expected_value_);
+      });
+    return signaled && !probe_->error_seen
+           && probe_->event_count > 0
+           && probe_->last_value == expected_value_;
 }
 
 bool wait_for_monitor_ready_recv (void *monitor_, int timeout_ms_)
@@ -1395,6 +1450,76 @@ void test_pubsub_ready_with_monitor_callback_and_socket_callback ()
     run_pubsub_ready_matrix (monitor_callback_mode, socket_callback_mode);
 }
 
+void test_pubsub_delivery_ready_snapshot_and_reopen_after_ready ()
+{
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+    configure_pair_socket (pub);
+    configure_pair_socket (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "topic"));
+
+    zlink_socket_monitor_open_options_t sub_ready_opts;
+    memset (&sub_ready_opts, 0, sizeof (sub_ready_opts));
+    sub_ready_opts.events = ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED;
+    void *sub_ready_monitor = zlink_socket_monitor_open (sub, &sub_ready_opts);
+    TEST_ASSERT_NOT_NULL (sub_ready_monitor);
+    configure_pair_socket (sub_ready_monitor);
+
+    zlink_socket_monitor_open_options_t pub_ready_opts;
+    memset (&pub_ready_opts, 0, sizeof (pub_ready_opts));
+    pub_ready_opts.events = ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED;
+    void *pub_ready_monitor = zlink_socket_monitor_open (pub, &pub_ready_opts);
+    TEST_ASSERT_NOT_NULL (pub_ready_monitor);
+    configure_pair_socket (pub_ready_monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (pub, "inproc://monitor_pubsub_ready_reopen"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (sub, "inproc://monitor_pubsub_ready_reopen"));
+    TEST_ASSERT_TRUE (
+      wait_for_pubsub_delivery_ready_recv (pub_ready_monitor, sub_ready_monitor,
+                                           3000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_ready_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&sub_ready_monitor));
+
+    zlink_socket_monitor_open_options_t snapshot_opts;
+    memset (&snapshot_opts, 0, sizeof (snapshot_opts));
+    snapshot_opts.events = 0;
+    void *snapshot_monitor = zlink_socket_monitor_open (pub, &snapshot_opts);
+    TEST_ASSERT_NOT_NULL (snapshot_monitor);
+    configure_pair_socket (snapshot_monitor);
+
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_snapshot (snapshot_monitor,
+                                                       &snapshot));
+    TEST_ASSERT_EQUAL_UINT64 (1, snapshot.ready_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&snapshot_monitor));
+
+    zlink_socket_monitor_open_options_t late_pub_opts;
+    memset (&late_pub_opts, 0, sizeof (late_pub_opts));
+    late_pub_opts.events = ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED;
+    void *late_pub_monitor = zlink_socket_monitor_open (pub, &late_pub_opts);
+    TEST_ASSERT_NOT_NULL (late_pub_monitor);
+    configure_pair_socket (late_pub_monitor);
+
+    delivery_ready_value_probe_t late_pub_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_monitor_handler (
+      late_pub_monitor, &delivery_ready_value_handler, &late_pub_probe));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (sub, "topic"));
+    TEST_ASSERT_TRUE (
+      wait_for_pub_delivery_ready_value (&late_pub_probe, 0, 3000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&late_pub_monitor));
+    test_context_socket_close_zero_linger (sub);
+    test_context_socket_close_zero_linger (pub);
+}
+
 void test_stream_ready_with_monitor_recv_and_socket_recv ()
 {
     run_stream_ready_matrix (monitor_recv_mode, socket_recv_mode);
@@ -1436,6 +1561,7 @@ int main ()
     RUN_TEST (test_pubsub_ready_with_monitor_recv_and_socket_callback);
     RUN_TEST (test_pubsub_ready_with_monitor_callback_and_socket_recv);
     RUN_TEST (test_pubsub_ready_with_monitor_callback_and_socket_callback);
+    RUN_TEST (test_pubsub_delivery_ready_snapshot_and_reopen_after_ready);
     RUN_TEST (test_stream_ready_with_monitor_recv_and_socket_recv);
     RUN_TEST (test_stream_ready_with_monitor_recv_and_socket_callback);
     RUN_TEST (test_stream_ready_with_monitor_callback_and_socket_recv);

@@ -119,6 +119,10 @@ class xsub_t : public socket_base_t
     //  of multipart message.
     bool _process_subscribe;
 
+    //  Bench-aligned SUB steady state subscribes to the empty prefix. In that
+    //  state every first frame matches, so we can skip trie lookup on recv.
+    bool _has_empty_subscription;
+
     std::atomic<bool> _dispatch_active;
     std::atomic<spot_sub_io_handler_fn> _dispatch_callback;
     std::atomic<void *> _dispatch_userdata;

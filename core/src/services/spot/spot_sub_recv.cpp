@@ -250,6 +250,8 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
         int rc = 0;
         zlink_msg_t topic_frame;
         zlink_msg_init (&topic_frame);
+        zlink::socket_recv_source_rid_scope_t source_rid_scope (
+          socket, source_rid_out_ != NULL);
         rc = socket->recv (reinterpret_cast<msg_t *> (&topic_frame), flags_);
         if (rc != 0) {
             zlink_msg_close (&topic_frame);

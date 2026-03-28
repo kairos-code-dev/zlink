@@ -109,6 +109,22 @@ void test_raw_socket_receive_callback_contracts ()
                            ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
+    zlink_msg_t msg;
+    zlink_msg_init (&msg);
+    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, pair, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, dealer, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, router, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, stream, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, sub, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, xsub, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    zlink_msg_close (&msg);
+
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_poller_add (poller, pair, pair, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());

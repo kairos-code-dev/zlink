@@ -103,6 +103,7 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_send (false),
     _more_recv (false),
     _process_subscribe (false),
+    _has_empty_subscription (false),
     _dispatch_active (false),
     _dispatch_callback (NULL),
     _dispatch_userdata (NULL),
@@ -285,6 +286,8 @@ int zlink::xsub_t::xsend (msg_t *msg_)
             size = size - 1;
         }
         _subscriptions.add (data, size);
+        if (size == 0)
+            _has_empty_subscription = true;
         _process_subscribe = true;
         const int rc = _dist.send_to_all (msg_);
         refresh_delivery_ready_state (endpoint_uri_pair_t ());
@@ -298,6 +301,8 @@ int zlink::xsub_t::xsend (msg_t *msg_)
         }
         _process_subscribe = true;
         const bool rm_result = _subscriptions.rm (data, size);
+        if (size == 0 && rm_result)
+            _has_empty_subscription = false;
         if (rm_result || _verbose_unsubs) {
             const int rc = _dist.send_to_all (msg_);
             refresh_delivery_ready_state (endpoint_uri_pair_t ());
@@ -413,9 +418,11 @@ int zlink::xsub_t::xrecv (msg_t *msg_)
 
         //  Check whether the message matches at least one subscription.
         //  Non-initial parts of the message are passed
+        const bool first_part = !_more_recv;
         if (_more_recv || !options.filter || match (msg_)) {
             _more_recv = (msg_->flags () & msg_t::more) != 0;
-            store_last_recv_source_rid (pipe);
+            if (first_part && recv_source_rid_capture_requested ())
+                store_last_recv_source_rid (pipe);
             return 0;
         }
 
@@ -669,6 +676,9 @@ int zlink::xsub_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
 bool zlink::xsub_t::match (msg_t *msg_)
 {
+    if (!options.invert_matching && _has_empty_subscription)
+        return true;
+
     const bool matching = _subscriptions.check (
       static_cast<unsigned char *> (msg_->data ()), msg_->size ());
 

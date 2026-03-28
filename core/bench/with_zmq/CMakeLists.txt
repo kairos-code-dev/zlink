@@ -134,7 +134,7 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     if(ZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES)
         # --- zlink (current) ---
         add_zlink_bench_single(comp_zlink_pair single/zlink/bench_zlink_pair.cpp)
-        add_zlink_bench_single(comp_zlink_pubsub ../../perf/single/src/perf_pubsub.cpp)
+        add_zlink_bench_single(comp_zlink_pubsub single/zlink/bench_zlink_pubsub.cpp)
         add_zlink_bench_single(comp_zlink_dealer_dealer single/zlink/bench_zlink_dealer_dealer.cpp)
         add_zlink_bench_single(comp_zlink_dealer_router single/zlink/bench_zlink_dealer_router.cpp)
         add_zlink_bench_single(comp_zlink_router_router ../../perf/single/src/perf_router_router.cpp)

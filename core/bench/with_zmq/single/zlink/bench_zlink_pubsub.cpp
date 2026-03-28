@@ -42,39 +42,37 @@ inline int recv_single_part_header_flags (
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    const int rc = ::zlink_recv (
-      socket, NULL, &parts, &part_count,
-      static_cast<zlink_send_flags_t> (flags));
+    zlink_msg_t msg;
+    if (::zlink_msg_init (&msg) != 0)
+        return -1;
+
+    const int rc = ::zlink_msg_recv (&msg, socket,
+                                     static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
+        ::zlink_msg_close (&msg);
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
-    if (part_count != 1) {
-        if (parts)
-            ::zlink_multipart_close (parts, part_count);
-        return -1;
-    }
 
-    const size_t actual_size = zlink_msg_size (&parts[0]);
+    const size_t actual_size = zlink_msg_size (&msg);
     const bool size_ok = actual_size == expected_size;
+    const bool has_more = bench_msg_has_more (msg);
     bool header_ok = false;
 
-    if (size_ok) {
+    if (size_ok && !has_more) {
         if (header_out) {
             header_ok = perf_single_metric::decode_payload_header (
-              zlink_msg_data (&parts[0]), actual_size, header_out);
+              zlink_msg_data (&msg), actual_size, header_out);
         } else {
             header_ok = true;
         }
     }
 
-    ::zlink_multipart_close (parts, part_count);
+    ::zlink_msg_close (&msg);
 
-    if (!size_ok)
+    if (!size_ok || has_more)
         return -1;
 
     if (header_ok_out)

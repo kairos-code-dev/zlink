@@ -13,6 +13,8 @@ thread_local zlink::pipe_t *g_current_socket_msg_dispatch_pipe = NULL;
 thread_local void *g_current_socket_msg_dispatch_subject = NULL;
 thread_local zlink_routing_id_t g_current_socket_msg_dispatch_source_rid;
 thread_local bool g_current_socket_msg_dispatch_source_rid_valid = false;
+thread_local zlink::socket_base_t *g_current_recv_source_rid_socket = NULL;
+thread_local bool g_current_recv_source_rid_enabled = false;
 
 static void copy_routing_id (zlink_routing_id_t *out_,
                              const zlink::blob_t &routing_id_)
@@ -25,6 +27,27 @@ static void copy_routing_id (zlink_routing_id_t *out_,
     if (copy_size > 0)
         memcpy (out_->data, routing_id_.data (), copy_size);
 }
+}
+
+zlink::socket_recv_source_rid_scope_t::socket_recv_source_rid_scope_t (
+  socket_base_t *socket_, bool enabled_) :
+    _prev_socket (g_current_recv_source_rid_socket),
+    _prev_enabled (g_current_recv_source_rid_enabled)
+{
+    g_current_recv_source_rid_socket = socket_;
+    g_current_recv_source_rid_enabled = enabled_;
+}
+
+zlink::socket_recv_source_rid_scope_t::~socket_recv_source_rid_scope_t ()
+{
+    g_current_recv_source_rid_socket = _prev_socket;
+    g_current_recv_source_rid_enabled = _prev_enabled;
+}
+
+bool zlink::socket_base_t::recv_source_rid_capture_requested () const
+{
+    return g_current_recv_source_rid_enabled
+           && g_current_recv_source_rid_socket == this;
 }
 
 int zlink::socket_base_t::stream_dispatch_msg_from_io (msg_t *msg_,

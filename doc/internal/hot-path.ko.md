@@ -48,27 +48,46 @@ public send/recv 경로다.
 - 반면 같은 라운드의 `PUBSUB inproc 64B`는 `-42.51%`,
   multi `pubsub tcp 64B`는 `-26.97%`라서 publication/lifecycle differential은
   아직 남아 있다.
-- 2026-03-28 single zlink `PUBSUB` bench는
-  `zlink_publish(NULL, &part, 1)` + `zlink_recv(...)` no-topic payload-only
-  경로로 정렬했다.
-- aligned first run/rerun은 `tcp -24.51% / -23.17%`,
-  `inproc -41.79% / -44.68%`였다.
-- 이어서 semantic/backpressure map을 다시 찍자 default benchmark 조건
-  single `PUBSUB 64B`는 `tcp -27.04%`, `inproc -42.08%`였다.
-- 같은 code에서 `XPUB_NODROP=0` probe는
-  `tcp +0.22%`, `inproc -23.71%`였고,
-  `HWM=16` probe는 `tcp +9.40%`, `inproc +25.10%`였다.
-- latest multi `pubsub tcp 64B` rerun은
-  default HWM `-17.24%`, `HWM=16 -20.30%`였다.
-- 따라서 current `PUBSUB` 잔여 gap의 본체는 single-subscriber dist helper를
-  더 얹는 문제가 아니라, default HWM + `XPUB_NODROP=1` 조건의
-  publication/backpressure differential을 single/multi로 나눠 보는 쪽이다.
-- 추가 HWM sweep `16/64/256/1000`에서도
-  single `PUBSUB tcp/inproc 64B`가
-  `+12.34% / +5.19%`, `-32.19% / -38.29%`,
-  `-22.05% / -39.03%`, `-28.83% / -45.87%`로 크게 흔들렸다.
-- 즉 current `PUBSUB` gap은 여전히 HWM/backpressure 축에 민감하지만,
-  monotonic queue-depth 하나로 바로 환원되진 않는다.
+- 이후 `compile_commands.json` 확인으로 current build target mismatch를
+  잡아냈고,
+  [`core/bench/with_zmq/CMakeLists.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/CMakeLists.txt)
+  `comp_zlink_pubsub`를
+  [`core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp)
+  기준으로 다시 연결했다.
+- 현재 realigned single `PUBSUB` surface는
+  `zlink_publish(NULL, &part, 1)` + `zlink_msg_recv()` single-part payload
+  경로다.
+- surface realignment 직후 historical single `PUBSUB 64B`는
+  `tcp -15.29%`, `inproc -24.92%`였다.
+- 같은 realigned surface의 historical probe에서
+  `XPUB_NODROP=0`은 `tcp -0.00%`, `inproc -0.64%`였고,
+  `HWM=16`은 `tcp -16.17%`, `inproc +47.89%`였다.
+- historical multi `pubsub tcp 64B`는
+  default HWM `-29.83%`,
+  `BENCH_MULTI_PUBSUB_HWM=16 -22.22%`였다.
+- 다만 2026-03-28 current retained-code direct recheck에서는
+  single `PUBSUB 64B`가 seq1 `tcp/inproc -21.73% / -19.43%`,
+  rerun `-22.44% / -31.08%`였고,
+  `XPUB_NODROP=0` probe는 `-0.06% / +0.04%`,
+  latest multi `pubsub tcp 64B`는 `-22.75%`였다.
+- 그 뒤 current retained delta는
+  `xsub` empty-subscription accept-all fast path와
+  requested-only `last_recv_source_rid` capture를 결합한
+  receiver-drain specialization으로 옮겨갔고,
+  isolated first/rerun `PUBSUB 64B`는
+  `tcp/inproc -9.40% / -20.35%`, `-10.43% / -21.59%`,
+  multi `pubsub tcp 64B`는 `+9.25%`, rerun `+8.25%`까지 회복했다.
+- 따라서 current `PUBSUB` 잔여 gap의 본체는
+  single-subscriber `dist` helper를 더 얹는 문제가 아니라,
+  `xsub` receiver steady-state와 `inproc` backpressure differential이
+  실제로 얼마나 남는지 더 좁게 구분하는 쪽이다.
+- earlier `perf_pubsub.cpp` auxiliary surface의 추가 HWM sweep
+  `16/64/256/1000`도 크게 흔들렸지만, 이 값은 current acceptance surface의
+  primary baseline이 아니다.
+- current `PUBSUB` gap은 여전히 HWM/backpressure 축에 민감하지만,
+  우선 해석은 realigned surface의 `XPUB_NODROP=0` sign flip과
+  retained `xsub` receiver-drain delta 이후에도 남아 있는
+  `inproc` differential에 둔다.
 - 2026-03-28 single comparison report가 queue probe 지표를 저장하도록
   갱신된 뒤 default `PUBSUB tcp/inproc 64B`는
   `snd_pending_max 654 / 1450`,
@@ -81,9 +100,46 @@ public send/recv 경로다.
 - 즉 current `inproc` differential은 receiver latency보다
   default HWM + `XPUB_NODROP=1` 조건에서 sender backlog가 더 크게 누적되는
   쪽과 더 잘 맞는다.
-- 따라서 next `PUBSUB` step은 또 다른 `xpub/dist` micro helper 추가보다
-  validation surface와 `inproc` transport-specific `pipe` cost를 먼저
-  분리하는 쪽이어야 한다.
+- 다만 above queue metrics는 earlier `perf_pubsub.cpp` auxiliary surface에서
+  얻은 값이고, current realigned `bench_zlink_pubsub.cpp` acceptance surface는
+  이 지표를 직접 내보내지 않는다.
+- 같은 날 `pipe::check_hwm()` precheck atomic candidate는
+  same-day baseline `PUBSUB tcp/inproc 64B -25.63% / -37.06%` 대비
+  first `-26.71% / -34.02%`, rerun `-23.86% / -37.64%`로 엇갈려
+  stable broad win이 아니어서 현재 코드에는 없다.
+- `PERF_SINGLE_QUEUE_SAMPLE_MS=100000` sparse queue-probe semantic run도
+  `PUBSUB tcp/inproc 64B -27.48% / -35.63%`여서
+  current gap의 본체를 queue-probe overhead로 설명하진 못했다.
+- `inproc PUBSUB` peer-progress notify interval tighten candidate도
+  single `PUBSUB tcp/inproc 64B -22.42% / -37.17%`,
+  multi `pubsub tcp 64B -26.38%`로 keep-worthy delta가 아니었고,
+  sender backlog를 줄이는 대신 receiver backlog를 키우는 쪽으로 움직였다.
+- `inproc PUBSUB` HWM-full peer snapshot refresh candidate도
+  single `PUBSUB tcp/inproc 64B -22.84% / -38.24%`여서
+  current gap을 cached peer progress 하나로 설명하진 못했다.
+- 최근 recv-mode busy-bit cached guard candidate도
+  first/rerun `PUBSUB tcp/inproc 64B`
+  `-16.20% / -27.20%`, `-20.29% / -32.27%`로
+  first-run `tcp`만 좋아 보이고 rerun `inproc`이 다시 나빠져
+  stable broad win이 아니었다.
+- no-topic single-part `zlink_publish` fast path도
+  first/rerun `PUBSUB tcp/inproc 64B`
+  `-16.16% / -28.59%`, `-15.30% / -34.26%`,
+  multi `pubsub tcp 64B -31.41%`, rerun `-25.50%`로
+  single/multi를 함께 지키지 못해 현재 코드에는 없다.
+- `pipe` `activate_read` pending dedupe candidate도
+  first/rerun `PUBSUB tcp/inproc 64B`
+  `-27.06% / -29.49%`, `-35.43% / -20.57%`,
+  multi `pubsub tcp 64B -32.15%`로 rejected candidate가 됐다.
+- 다만 current retained code는 위 rejected candidate들과 달리
+  `xsub` empty-subscription accept-all fast path와
+  requested-only source-rid capture를 결합해
+  isolated first/rerun `PUBSUB tcp/inproc 64B`
+  `-9.40% / -20.35%`, `-10.43% / -21.59%`,
+  multi `pubsub tcp 64B +9.25%`, rerun `+8.25%`를 만들었다.
+- 따라서 next overall step은 `PUBSUB` 계열 micro helper를 더 파는 것이 아니라,
+  current retained `PUBSUB` delta를 유지한 채
+  `ROUTER_ROUTER` routed path differential로 우선순위를 넘기는 것이다.
 - 즉 empty-topic frame/topic-aware recv surface mismatch는 실제로 있었지만,
   현재 `PUBSUB` 잔여 gap을 그 차이 하나로 설명할 수는 없다.
 - 이후 2026-03-28 same-handle concurrent `PUB` publish regression
@@ -113,10 +169,10 @@ public send/recv 경로다.
 즉 현재 측정은 raw transport core만 비교하는 것이 아니라,
 `zlink`의 public API cost를 함께 포함한다.
 
-특히 `PUBSUB` single은 no-topic payload-only 비교를 하면서도
-현재는 `NULL topic + zlink_recv()` payload-only 경로로 정렬돼 있다.
-따라서 현재 남은 `PUBSUB` single gap은 이전 empty-topic mismatch보다
-publication/lifecycle/distribution differential을 더 직접적으로 반영한다.
+특히 `PUBSUB` single은 현재
+`NULL topic + zlink_msg_recv()` payload-only 경로로 realign됐다.
+따라서 current `PUBSUB` single gap은 이전 build-target mismatch보다
+publication/lifecycle/backpressure differential을 더 직접적으로 반영한다.
 
 이 문서의 hot path도 그 기준으로 정의한다.
 
@@ -313,21 +369,25 @@ transport-specific probe 없이 건너뛰지 않는다.
    - 현재 `process_commands(0, true)`는 libzmq와 거의 같은 구조다
    - `counter-only` 치환은 현재 보류다
 6. `zlink_recv()`의 남은 routed/strip/multipart export 경로를 더 얇게 만든다
-7. `recv_internal.cpp` mode guard 비용을 steady-state mode specialization 쪽으로
-   줄인다
+7. `recv_internal.cpp` mode guard 비용은 busy-bit specialization 후보가
+   stable broad win이 아니었으므로, 지금은 publication/backpressure 정리 뒤의
+   보조 가설로만 둔다
 8. `PUBSUB` semantic/backpressure map은 current code 기준으로 다시 정리됐다.
-   - default single aligned rerun:
-     `tcp/inproc -27.04% / -42.08%`
-   - `XPUB_NODROP=0` probe:
-     `tcp/inproc +0.22% / -23.71%`
-   - `HWM=16` probe:
-     `tcp/inproc +9.40% / +25.10%`
+   - surface realignment 직후 historical default single:
+     `tcp/inproc -15.29% / -24.92%`
+   - current retained-code recheck:
+     seq1 `tcp/inproc -21.73% / -19.43%`,
+     rerun `-22.44% / -31.08%`
+   - current `XPUB_NODROP=0` probe:
+     `tcp/inproc -0.06% / +0.04%`
+   - historical `HWM=16` probe:
+     `tcp/inproc -16.17% / +47.89%`
    - queue probe report:
      default `snd_pending_max 654 / 1450`,
      `XPUB_NODROP=0 508 / 946`,
      `HWM=16 9 / 20`
-   - latest multi `pubsub tcp 64B` rerun:
-     default `-17.24%`, `HWM=16 -20.30%`
+   - latest multi `pubsub tcp 64B` recheck:
+     default `-22.75%`
    즉 low-HWM single win이나 `XPUB_NODROP=0` sign flip을 acceptance로
    오해하면 안 된다. current next work는
    default HWM + `XPUB_NODROP=1` publication/backpressure differential이고,
@@ -425,6 +485,20 @@ transport-specific probe 없이 건너뛰지 않는다.
      `inproc`은 semantic-map baseline보다 더 나빠졌다
    - 즉 current `PUBSUB` 잔여 gap을
      `activate_write` publication channel mismatch 하나로 설명하진 않는다
+22. `pipe/dist/xpub` single-matching `XPUB_NODROP=1` one-lock helper
+   - single-subscriber default-HWM path에서 `_dist.check_hwm()`와
+     actual `write/flush` 사이의 double `_out_sync` 진입을
+     one-lock helper로 합쳐 봤지만,
+     isolated seq1/seq2/seq3 `PUBSUB tcp/inproc 64B`가
+     `-27.73% / -38.36%`, `-20.44% / -38.87%`, `-12.75% / -38.71%`로
+     흔들렸다
+   - broader single `PUBSUB tcp/inproc`는 `-21.12% / -26.31%`까지
+     회복했지만, multi `pubsub tcp 64B` first/rerun/`--runs 3`가
+     `-25.93%`, `-21.63%`, `-25.68%`로 latest baseline `-17.24%`를
+     안정적으로 지키지 못했다
+   - 즉 current `PUBSUB` 잔여 gap을
+     "single-pipe NODROP precheck와 write를 한 lock으로 합치자" 하나로
+     설명하진 않는다
 
 이 항목들은 최근 A/B 실험이나 current code invariant 기준으로
 이미 역효과가 확인됐거나 correctness risk가 높다.
@@ -465,6 +539,10 @@ transport-specific probe 없이 건너뛰지 않는다.
 - same-thread `activate_write` mailbox 정렬도 같은 이유로
   rejected candidate다. mailbox wakeup 채널과 retry wait를 맞추려는
   방향은 타당했지만, current acceptance에서는 broad win을 만들지 못했다.
+- `pipe/dist/xpub` single-matching `XPUB_NODROP=1` one-lock helper도
+  같은 이유로 rejected candidate다. single steady-state와 broader single은
+  일부 회복했지만, current acceptance에서는 multi `pubsub tcp` baseline을
+  안정적으로 지키지 못했다.
 
 ## 9. 현재 반영된 개선
 
@@ -506,6 +584,13 @@ transport-specific probe 없이 건너뛰지 않는다.
   / [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
   에 one-matching-pipe `PUBSUB` send fast path와
   index-stable deactivate helper 추가
+- [`xsub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.hpp)
+  / [`xsub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xsub.cpp)
+  에 empty-subscription accept-all fast path 추가
+- [`socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+  / [`socket_base_dispatch.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_dispatch.cpp)
+  / [`spot_sub_recv.cpp`](/home/hep7/project/kairos/zlink/core/src/services/spot/spot_sub_recv.cpp)
+  에 requested-only `last_recv_source_rid` capture scope 추가
 - [`test_public_inproc_multipart_send.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_public_inproc_multipart_send.cpp)
   에 `DEALER` single/multipart/concurrent send 회귀 추가
 - [`test_multi_socket_contract_regressions.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_multi_socket_contract_regressions.cpp)
@@ -544,15 +629,30 @@ transport-specific probe 없이 건너뛰지 않는다.
   일반 `lb_t` loop와 fairness bookkeeping을 반복하지 않도록 줄였다
 - `PUBSUB`처럼 matching/active pipe가 하나뿐인 steady-state는
   일반 `dist_t` loop와 pipe index lookup을 반복하지 않도록 줄였다
+- realigned `PUBSUB` steady-state `SUB/XSUB`는 empty subscription이 살아 있을 때
+  trie `match()` 대신 accept-all fast path를 사용한다
+- `xsub::xrecv()`는 normal steady-state에서 더 이상 항상
+  `last_recv_source_rid` snapshot을 저장하지 않고,
+  `spot_sub_t::recv()`처럼 caller가 실제 source-rid를 요청할 때만
+  그 비용을 지불한다
 - `PAIR`/`DEALER_DEALER` raw/public 분리는 send-side 변경 뒤 매번 다시 찍는
   guardrail이고, 현재도 pattern/transport에 따라 방향이 엇갈린다
 - `ROUTER` mandatory-HWM 회귀는 이제 standalone source file만 존재하는 게 아니라
   ctest lane에서 실제 실행되고, prefix-frame 경로와 `zlink_send_rid()` 경로를
   같이 검증한다
-- `PUBSUB`는 dist-only non-recursive HWM check 이후 isolated first/rerun이
-  `tcp/inproc -25.76% / -39.88%`, `-19.48% / -39.31%`,
-  broader single rerun이 `-23.63% / -39.84%`,
-  multi `pubsub tcp 64B`가 `-16.65%`였다
+- current `PUBSUB` accepted delta는 dist-only non-recursive HWM check와
+  one-matching-pipe send fast path 위에
+  `xsub` receiver-drain specialization까지 포함한다
+- 위 current HEAD 기준 isolated first/rerun은
+  `PUBSUB tcp/inproc -9.40% / -20.35%`,
+  `-10.43% / -21.59%`였다
+- 같은 delta의 broader single은
+  `PAIR tcp/inproc -16.64% / -21.71%`,
+  `PUBSUB tcp/inproc -11.57% / -20.78%`,
+  `DEALER_DEALER tcp/inproc -26.40% / -21.90%`,
+  `DEALER_ROUTER tcp/inproc -24.17% / -18.30%`,
+  `ROUTER_ROUTER tcp/inproc -55.78% / -21.48%`였다
+- multi `pubsub tcp 64B` smoke는 `+9.25%`, rerun `+8.25%`였다
 
 현재 quick 결과 해석:
 
@@ -561,14 +661,12 @@ transport-specific probe 없이 건너뛰지 않는다.
   - `DEALER_DEALER tcp 64B`: `libzmq 3765.72 Kmsg/s`,
     `zlink 3180.02 Kmsg/s`, `-15.55%`
 - `2026-03-28 PUBSUB` quick run 기준
-  - `PUBSUB tcp 64B`: `libzmq 3180.04 Kmsg/s`, `zlink 2409.49 Kmsg/s`,
-    `-24.23%`
-  - `PUBSUB tcp 64B` rerun: `libzmq 3309.57 Kmsg/s`,
-    `zlink 2448.99 Kmsg/s`, `-26.00%`
-  - `PUBSUB inproc 64B` rerun: `libzmq 3874.20 Kmsg/s`,
-    `zlink 2227.44 Kmsg/s`, `-42.51%`
-  - multi `pubsub tcp 64B`: `libzmq 6094.02 Kmsg/s`,
-    `zlink 4450.16 Kmsg/s`, `-26.97%`
+  - `PUBSUB tcp 64B`: `-9.40%`
+  - `PUBSUB tcp 64B` rerun: `-10.43%`
+  - `PUBSUB inproc 64B`: `-20.35%`
+  - `PUBSUB inproc 64B` rerun: `-21.59%`
+  - multi `pubsub tcp 64B`: `+9.25%`
+  - multi `pubsub tcp 64B` rerun: `+8.25%`
 
 따라서 현재 해석은:
 
@@ -582,9 +680,11 @@ transport-specific probe 없이 건너뛰지 않는다.
   current code 기준으로 의미 있는 병목 축이다
 - `zlink_multipart_close()` 이후 TLS slot release 최적화도 steady-state recv
   비용을 낮추는 데 실제로 기여한다
+- `xsub` empty-subscription steady-state와 source-rid snapshot은
+  current `PUBSUB` gap의 실제 hot-path 축이었다
 - 하지만 남은 전체 gap을 혼자 설명하는 축은 아니다
-- `PUBSUB inproc`과 multi `pubsub`가 아직 크게 남아 있으므로,
-  send-side lifecycle/backpressure/publication differential은 계속 추적해야 한다
+- current `PUBSUB tcp`와 multi `pubsub`는 크게 줄었지만,
+  `PUBSUB inproc`과 `ROUTER_ROUTER` routed path는 여전히 다음 우선순위다
 - `PAIR`는 `xsend()`가 `pipe::write_and_flush()`만 타고 별도 `lb/dist`
   상태를 건드리지 않으므로, public send sync를 반드시 같이 잡아야 하는지
   따로 볼 여지가 있다
@@ -739,6 +839,81 @@ transport-specific probe 없이 건너뛰지 않는다.
     통째로 건너뛰고 monitor open 시 count를 priming해도 accepted baseline보다
     나빠졌다. current `PUBSUB` gap은 no-monitor ready bookkeeping 하나로
     설명되지 않는다.
+- `xpub/xsub` delivery-ready lazy tracking + reopen snapshot regression
+  - [`perf_linux_20260328_111321_codex_20260328_pubsub_delivery_ready_lazy_default.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_111321_codex_20260328_pubsub_delivery_ready_lazy_default.txt)
+  - [`perf_linux_20260328_111416_codex_20260328_delivery_ready_lazy_broader_single.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_111416_codex_20260328_delivery_ready_lazy_broader_single.txt)
+  - [`perf_linux_20260328_111611_codex_20260328_pubsub_delivery_ready_lazy_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_111611_codex_20260328_pubsub_delivery_ready_lazy_rerun.txt)
+  - isolated first `PUBSUB tcp/inproc 64B`: `-14.47% / -23.50%`
+  - isolated rerun `PUBSUB tcp/inproc 64B`: `-14.44% / -29.17%`
+  - broader single `PUBSUB tcp/inproc 64B`: `-15.52% / -28.17%`
+  - broader single `ROUTER_ROUTER tcp/inproc 64B`: `-57.21% / -28.95%`
+  - multi `pubsub tcp 64B`: `-20.48%`
+  - 결론: late monitor reopen / snapshot correctness는
+    [`test_monitor_socket_contract.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/monitoring/test_monitor_socket_contract.cpp)
+    의 `test_pubsub_delivery_ready_snapshot_and_reopen_after_ready()`로
+    고정할 가치가 있었지만, ready-count recompute를 monitor 구독 시에만
+    lazy하게 수행하는 candidate 자체는 `tcp` isolated improvement만 보이고
+    `inproc` rerun, broader single, multi guardrail을 동시에 지키지 못했다.
+    current `PUBSUB` 잔여 gap은 delivery-ready tracking lazy gate 하나로
+    설명되지 않는다.
+- `pipe::process_activate_write()` already-active fast path
+  - [`perf_linux_20260328_112849_codex_20260328_pubsub_activate_write_active_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_112849_codex_20260328_pubsub_activate_write_active_fastpath.txt)
+  - [`perf_linux_20260328_112920_codex_20260328_pubsub_activate_write_active_fastpath_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_112920_codex_20260328_pubsub_activate_write_active_fastpath_rerun.txt)
+  - first `PUBSUB tcp/inproc 64B`: `-9.53% / -28.30%`
+  - rerun `PUBSUB tcp/inproc 64B`: `-22.77% / -24.83%`
+  - 결론: `activate_write` consumer에서 already-active steady-state lock만
+    건너뛰어도 libzmq와의 차이가 줄어들 것 같았지만, 실제로는 `tcp`와
+    `inproc`가 first/rerun에서 서로 엇갈렸다. current `PUBSUB` 잔여 gap을
+    activation command consumer micro helper 하나로 설명하진 않는다.
+- `pipe::read()` peer read-progress direct publish
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop)$' -j1`
+  - `ctest --test-dir core/build --output-on-failure -V -R '^test_xpub_nodrop$' -j1`
+  - candidate 적용 상태에서
+    `test_xpub_nodrop`가
+    `/home/hep7/project/kairos/zlink/core/tests/integration/test_xpub_nodrop.cpp:383:test:PASS`
+    뒤 `***Timeout 10.01 sec`로 hang했고, 원복 후 동일 묶음이 다시 통과했다
+  - 결론: `_lwm` boundary에서 peer `_peers_msgs_read`를 직접 publish해
+    `activate_write` command를 우회하는 발상은 receiver-drain differential에
+    닿아 있었지만, 실제 current code에서는 teardown invariant를 깨뜨렸다.
+    current `PUBSUB` 잔여 gap은 command publication shortcut 하나로
+    설명되지 않는다.
+- `xsub::xrecv()` last-recv source-rid snapshot 제거
+  - [`perf_linux_20260328_114210_codex_20260328_pubsub_xsub_skip_last_recv_source_rid.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_114210_codex_20260328_pubsub_xsub_skip_last_recv_source_rid.txt)
+  - [`perf_linux_20260328_114239_codex_20260328_pubsub_xsub_skip_last_recv_source_rid_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_114239_codex_20260328_pubsub_xsub_skip_last_recv_source_rid_rerun.txt)
+  - first/rerun `PUBSUB tcp/inproc 64B`: `-20.13% / -28.12%`,
+    `-19.83% / -23.68%`
+  - 결론: `xsub` normal recv에서 routed-source snapshot을 걷자
+    current recheck baseline `-22.44% / -31.08%` 대비
+    `tcp/inproc` 모두 개선 신호가 있었다.
+    다만 broader single / multi acceptance와 `spot` source-rid contract를
+    함께 확인하지 못해 이 형태 단독으로는 retained delta가 되지 못했다.
+- `xsub` empty-subscription accept-all fast path
+  - [`perf_linux_20260328_114624_codex_20260328_pubsub_xsub_accept_all.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_114624_codex_20260328_pubsub_xsub_accept_all.txt)
+  - [`perf_linux_20260328_114646_codex_20260328_pubsub_xsub_accept_all_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_114646_codex_20260328_pubsub_xsub_accept_all_rerun.txt)
+  - first/rerun `PUBSUB tcp/inproc 64B`: `-16.33% / -20.00%`,
+    `-15.20% / -27.16%`
+  - 결론: empty subscription steady-state의 trie `match()`를 걷자
+    first run은 current `PUBSUB` receiver-drain 후보 중 가장 좋은 신호를
+    보였고, current recheck baseline `-22.44% / -31.08%` 대비
+    rerun도 `tcp/inproc` 모두 회복했다.
+    다만 broader single / multi guardrail과 contract-safe integration을
+    함께 확인하기 전에는 단독 retained delta로 삼지 않았다.
+- retained `xsub` receiver-drain specialization
+  - [`perf_linux_20260328_123151_codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_123151_codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand.txt)
+  - [`perf_linux_20260328_123215_codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_123215_codex_20260328_pubsub_xsub_accept_all_rid_store_on_demand_rerun.txt)
+  - [`perf_linux_20260328_123242_codex_20260328_xsub_accept_all_rid_store_broader_single.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_123242_codex_20260328_xsub_accept_all_rid_store_broader_single.txt)
+  - isolated first/rerun `PUBSUB tcp/inproc 64B`: `-9.40% / -20.35%`,
+    `-10.43% / -21.59%`
+  - broader single `PAIR/PUBSUB/DEALER_DEALER/DEALER_ROUTER/ROUTER_ROUTER`
+    `tcp/inproc 64B`:
+    `-16.64% / -21.71%`, `-11.57% / -20.78%`,
+    `-26.40% / -21.90%`, `-24.17% / -18.30%`,
+    `-55.78% / -21.48%`
+  - multi `pubsub tcp 64B` stdout first/rerun: `+9.25%`, `+8.25%`
+  - 결론: empty-subscription steady-state trie match 제거와
+    requested-only source-rid capture를 함께 묶어야
+    current `spot`/public contract를 유지하면서 receiver-drain broad win이 된다.
+    이 조합은 current `PUBSUB tcp`와 multi를 크게 줄였으므로 retained delta다.
 - current accepted `dist` helper 위 `XPUB` all-attached empty-prefix
   `send_to_all()` v2
   - [`perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt)

@@ -4468,6 +4468,7 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
 - 생성된 결과 파일 경로
   - [`perf_linux_20260328_134724_codex_20260328_router_raw_probe_default_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_134724_codex_20260328_router_raw_probe_default_seq.txt)
   - [`perf_linux_20260328_134753_codex_20260328_router_raw_probe_raw_seq.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_134753_codex_20260328_router_raw_probe_raw_seq.txt)
+  - pushed commit: `ec465323748dd6fa16ca6e6b733460775fab8ce8`
 - 핵심 수치
   - default `ROUTER_ROUTER tcp/inproc 64B`
     - `-58.12% / -27.77%`

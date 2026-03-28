@@ -21,6 +21,9 @@
   는 authority가 아니라 지속 로그다.
 - [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
   는 hot-path 계약 문서다.
+- historical regression source는 아래 두 문서다.
+  - [with-zmq-regression-bisect-report.ko.md](/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/perf/with-zmq-regression-bisect-report.ko.md)
+  - [with-zmq-regression-bisect-log.ko.md](/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/perf/with-zmq-regression-bisect-log.ko.md)
 - 각 iteration은
   [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
   와
@@ -148,7 +151,9 @@ raw/public 분리를 다시 찍는다.
    기본 순서는 최신 pivot/요약/현재 작업 레지스터 우선이며,
    오래된 로그 구간은 현재 가설과 직접 관련될 때만 다시 읽는다.
 3. 두 문서를 기준으로 현재 top hypothesis 하나만 고른다.
-4. 필요한 경우 `/home/hep7/project/kairos/libzmq` 대응 구현을 먼저 읽고,
+4. historical concrete change map을 사용할 때는 위 bisect report/log도
+   먼저 확인한다.
+5. 필요한 경우 `/home/hep7/project/kairos/libzmq` 대응 구현을 먼저 읽고,
    현재 후보의 semantic / ordering / hot-path work 차이를 짧게 정리한다.
    특히 next round 시작점은 아래 historical concrete change map이다.
    - `ff0140e5`: `pipe::_out_sync` steady-state serialization 추가
@@ -157,22 +162,22 @@ raw/public 분리를 다시 찍는다.
    - `9b91234c`: bench hot-loop activation + `PERF_SINGLE_MAX_INFLIGHT` 제거
    새 iteration은 이 4개 변화 중 어느 의미가 current HEAD까지 남아 있는지
    먼저 짧게 정리한 뒤에만 code candidate를 선택한다.
-5. 새 단계나 새 candidate family로 넘어가기 전에는 `claude` 의견도 한 번
+6. 새 단계나 새 candidate family로 넘어가기 전에는 `claude` 의견도 한 번
    수렴한다. 목적은 authority를 바꾸는 것이 아니라, 현재 가설을 다른 시각에서
    검토해 local search drift를 막는 것이다.
-6. `core/`와 `core/tests/`를 우선 수정한다.
-7. [`core/build/`](/home/hep7/project/kairos/zlink/core/build)로 빌드한다.
-8. 영향 패턴의 targeted single 벤치를 먼저 돌린다.
-9. 의미 있는 개선이 보이면 raw/public 분리를 다시 확인한다.
-10. 개선이 유지될 때만 broader single, 필요한 multi smoke를 수행한다.
-11. 결과 파일 경로, 숫자, 해석, 배제한 가설을
+7. `core/`와 `core/tests/`를 우선 수정한다.
+8. [`core/build/`](/home/hep7/project/kairos/zlink/core/build)로 빌드한다.
+9. 영향 패턴의 targeted single 벤치를 먼저 돌린다.
+10. 의미 있는 개선이 보이면 raw/public 분리를 다시 확인한다.
+11. 개선이 유지될 때만 broader single, 필요한 multi smoke를 수행한다.
+12. 결과 파일 경로, 숫자, 해석, 배제한 가설을
    [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
    에 기록한다.
-12. 현재 iteration 결과가
+13. 현재 iteration 결과가
     [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
     와도 일치하도록 계약/주의점/우선순위/배제 후보를 반영하거나,
     변경이 없음을 확인한다.
-13. 아직 stop condition을 못 만족하면 다음 미해결 가설로 반복한다.
+14. 아직 stop condition을 못 만족하면 다음 미해결 가설로 반복한다.
 
 ### 6.1 단계별 commit / push
 
@@ -623,6 +628,9 @@ rejected candidate는 반드시 로그에 남긴다.
     [`perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt),
     [`perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt)
     로 다시 남겼다
+  - `pipe.cpp` `write()/write_and_flush()/check_write_status()`는 current tree에서
+    `_out_sync` 아래 generic `check_hwm_unlocked()`를 사용해 recursive
+    `check_hwm()` 재진입을 이미 피한다
   - `lb.cpp` one-active-pipe `DEALER` send fast path
   - `pipe.cpp` / `dist.cpp` `PUBSUB` publication path의
     dist-only non-recursive HWM check helper
@@ -704,6 +712,35 @@ rejected candidate는 반드시 로그에 남긴다.
   - `socket_runtime.cpp` `unlock_public_api_sync_and_leave()` 단독 CAS fast path는
     raw는 좋아졌지만 public rerun에서 `DEALER_DEALER tcp/inproc`이
     `-27.23% / -30.85%`로 다시 흔들려 원복
+  - `socket_runtime.cpp` `public_api_sync` fast-mutex split candidate도
+    public `PAIR tcp/inproc 64B -32.03% / -29.11%`,
+    `DEALER_DEALER tcp/inproc -19.33% / -31.37%`로
+    `PAIR`와 `DEALER_DEALER inproc`을 accepted baseline보다 더 악화시켜 원복
+  - `pipe.hpp` / `pipe.cpp` hot send-only non-recursive lock split도
+    public `PAIR tcp/inproc 64B -17.14% / -34.56%`,
+    `DEALER_DEALER tcp/inproc -13.65% / -19.47%`,
+    raw `PAIR tcp/inproc -8.61% / -25.46%`,
+    `DEALER_DEALER tcp/inproc -20.69% / -21.15%`로
+    `PAIR inproc` absolute throughput을 크게 무너뜨려 broad win이 아니어서 원복
+  - `socket_runtime.hpp` / `socket_runtime.cpp`
+    send-side lifecycle/scope hot-path header-inline codegen-only candidate도
+    public `PAIR tcp/inproc 64B -21.70% / -23.83%`,
+    `DEALER_DEALER tcp/inproc -10.64% / -17.99%`,
+    raw `PAIR tcp/inproc -11.65% / -27.25%`,
+    `DEALER_DEALER tcp/inproc -8.99% / -25.87%`로
+    `PAIR` public/raw와 `DEALER_DEALER inproc raw`가 함께 흔들려 원복
+  - `socket_public_send_scope_t` constructor lazy-sync acquire candidate도
+    public `PAIR tcp/inproc -9.29% / -27.64%`,
+    `DEALER_DEALER tcp/inproc -26.48% / -25.53%`,
+    raw `PAIR tcp/inproc -13.68% / -25.35%`,
+    `DEALER_DEALER tcp/inproc -25.66% / -19.94%`로
+    `PAIR tcp`만 좋아지고 broad win을 만들지 못해 원복
+  - `pipe.cpp` flush notify-outside-`_out_sync` candidate도
+    public `PAIR tcp/inproc -16.34% / -25.54%`,
+    `DEALER_DEALER tcp/inproc -26.94% / -23.32%`,
+    raw `PAIR tcp/inproc -30.05% / -18.28%`,
+    `DEALER_DEALER tcp/inproc -7.24% / -17.59%`로
+    public baseline과 raw/public guardrail을 함께 지키지 못해 원복
   - `socket_runtime.cpp` `PAIR` no-sync send scope enter+leave fast path도
     raw는 일부 회복했지만 public seq에서 `PAIR tcp/inproc`이
     `-37.97% / -32.71%`로 다시 벌어져 원복
@@ -787,6 +824,14 @@ rejected candidate는 반드시 로그에 남긴다.
     raw `PAIR tcp/inproc -9.47% / -20.90%`,
     `DEALER_DEALER tcp/inproc -28.00% / -26.50%`로
     raw/public guardrail과 broad win을 함께 만족시키지 못해 원복
+  - `socket_base_msg.cpp` `DEALER` direct single-part admission-only +
+    `lb.cpp` send-state lock candidate도
+    public `PAIR tcp/inproc -6.31% / -30.93%`,
+    `DEALER_DEALER tcp/inproc -15.36% / -21.40%`,
+    raw `PAIR tcp/inproc -9.37% / -35.69%`,
+    `DEALER_DEALER tcp/inproc -11.45% / -32.76%`로
+    `DEALER` public은 회복했지만 raw/public guardrail과 `PAIR inproc`이 함께
+    흔들려 stable broad win이 아니어서 원복
   - `XPUB` prechecked no-HWM-recheck도
     isolated first run은 `PUBSUB tcp/inproc 64B -21.70% / -35.47%`로
     둘 다 좋아졌지만, clean rerun `PUBSUB inproc 64B`가 `-41.46%`로
@@ -803,24 +848,43 @@ rejected candidate는 반드시 로그에 남긴다.
     `-24.42% / -41.68%`로 흔들려 stable broad win이 아니어서 원복
 - 현재 코드/문서 정합 메모
   - `pipe.cpp`의 `write()`, `write_and_flush()`, `check_write_status()`는
-    `_out_sync`를 잡은 뒤 `check_hwm()`에서 같은 recursive fast mutex를
-    한 번 더 재진입한다.
-  - 따라서 문서에 적힌 "`write+flush`로 final-part lock 2회 -> 1회"는
-    현재 코드에서는 아직 완전히 성립하지 않는다.
-  - 다만 2026-03-28 `check_hwm_locked()` helper A/B는 `PAIR`/raw guardrail이
-    섞여 keep-worthy broad win으로 남지 못했다.
-  - 이 재진입은 계속 cost-axis 후보로 보되, 현재는 active delta가 아니라
-    generic 확대 후보로만 유지한다.
-  - 다만 2026-03-28 `pipe.cpp` / `dist.cpp` dist-only
-    non-recursive HWM check는 isolated first/rerun과
-    broader single rerun, multi `pubsub tcp`까지 current code 기준
-    keep-worthy broad win을 만들었다.
-  - 따라서 current accepted delta는 generic helper rollout이 아니라
-    `PUBSUB` publication path에 한정한 narrow pipe work 축소다.
+    current tree에서 `_out_sync` lock scope 안의
+    `check_hwm_unlocked()`를 사용한다.
+  - 따라서 generic recursive `check_hwm()` elide는 더 이상 pending candidate가
+    아니라 current code에 이미 반영된 kept common delta다.
+  - 별도 `pipe.cpp` / `dist.cpp` dist-only non-recursive HWM check는
+    above generic helper 위에 얹힌 `PUBSUB` publication-specific retained delta로
+    계속 유지한다.
+  - 2026-03-28 `socket_base_msg.cpp` `DEALER` direct single-part
+    admission-only + `lb.cpp` send-state lock candidate는
+    `DEALER` public isolated win을 만들었지만
+    raw/public guardrail과 `PAIR inproc`를 함께 지키지 못해 current code에는 없다.
   - 2026-03-28 `socket_runtime.cpp` lifecycle atomic CAS fast path A/B도
     `DEALER` raw 회복과 `PAIR`/public 흔들림이 엇갈렸다.
   - 따라서 send-side lifecycle/backpressure 첫 우선순위는 유지하되,
     현재 문서 기준으로 keep-worthy 공통 atomic fast path는 아직 없다.
+  - 같은 날 `socket_runtime.cpp` `public_api_sync` fast-mutex split candidate도
+    public `PAIR tcp/inproc -32.03% / -29.11%`,
+    `DEALER_DEALER tcp/inproc -19.33% / -31.37%`로
+    broad win이 아니어서 현재 코드에는 남아 있지 않다.
+  - 같은 날 `pipe.hpp` / `pipe.cpp` hot send-only non-recursive lock split도
+    public `PAIR tcp/inproc -17.14% / -34.56%`,
+    raw `PAIR tcp/inproc -8.61% / -25.46%`로
+    특히 `PAIR inproc` absolute throughput이 크게 떨어져
+    현재 코드에는 남아 있지 않다.
+  - 같은 날 `socket_runtime.hpp` / `socket_runtime.cpp`
+    send-side lifecycle/scope hot-path header-inline codegen-only candidate도
+    public `PAIR tcp/inproc -21.70% / -23.83%`,
+    raw `PAIR tcp/inproc -11.65% / -27.25%`로
+    broad win이 아니어서 현재 코드에는 남아 있지 않다.
+  - 같은 날 `socket_public_send_scope_t` constructor lazy-sync acquire
+    candidate도 `PAIR tcp -9.29%`만 회복하고
+    `PAIR inproc -27.64%`, `DEALER_DEALER tcp/inproc -26.48% / -25.53%`로
+    broad win이 아니어서 현재 코드에는 남아 있지 않다.
+  - 같은 날 `pipe.cpp` flush notify-outside-`_out_sync` candidate도
+    public `PAIR tcp/inproc -16.34% / -25.54%`,
+    raw `PAIR tcp/inproc -30.05% / -18.28%`로
+    broad win이 아니어서 현재 코드에는 남아 있지 않다.
   - 같은 날 `PAIR` no-sync send scope 전용 enter+leave / leave-only fast path도
     각각 raw/public guardrail 또는 `DEALER` broad guardrail을 만족시키지 못해
     현재 코드에는 남아 있지 않다.
@@ -1046,6 +1110,72 @@ rejected candidate는 반드시 로그에 남긴다.
   - multi `dealer_dealer tcp 64B`: `-29.55%`
   - multi `pubsub tcp 64B`: `-22.75%`
 
+- [x] common send-side structural round의 guide/review/hot-path 우선순위와
+      diagnostic 해석을 다시 정렬했다.
+      `socket_runtime.cpp` `public_api_sync` fast-mutex split candidate는
+      public `PAIR tcp/inproc 64B -32.03% / -29.11%`,
+      `DEALER_DEALER tcp/inproc -19.33% / -31.37%`로
+      `PAIR`와 `DEALER_DEALER inproc`을 accepted baseline보다 더 악화시켜
+      원복했다.
+      같은 축의 `pipe.hpp` / `pipe.cpp` hot send-only non-recursive lock split도
+      public `PAIR tcp/inproc 64B -17.14% / -34.56%`,
+      `DEALER_DEALER tcp/inproc -13.65% / -19.47%`,
+      raw `PAIR tcp/inproc -8.61% / -25.46%`,
+      `DEALER_DEALER tcp/inproc -20.69% / -21.15%`로
+      `PAIR inproc` absolute throughput을 크게 무너뜨려 원복했다.
+      같은 축의 `socket_runtime.hpp` / `socket_runtime.cpp`
+      send-side lifecycle/scope hot-path header-inline codegen-only candidate도
+      public `PAIR tcp/inproc 64B -21.70% / -23.83%`,
+      `DEALER_DEALER tcp/inproc -10.64% / -17.99%`,
+      raw `PAIR tcp/inproc -11.65% / -27.25%`,
+      `DEALER_DEALER tcp/inproc -8.99% / -25.87%`로
+      broad win이 아니어서 원복했다.
+      이어서 `socket_public_send_scope_t` constructor lazy-sync acquire도
+      public `PAIR tcp/inproc -9.29% / -27.64%`,
+      `DEALER_DEALER tcp/inproc -26.48% / -25.53%`,
+      raw `PAIR tcp/inproc -13.68% / -25.35%`,
+      `DEALER_DEALER tcp/inproc -25.66% / -19.94%`로
+      broad win이 아니어서 원복했다.
+      이어서 `pipe.cpp` flush notify-outside-`_out_sync` candidate도
+      public `PAIR tcp/inproc -16.34% / -25.54%`,
+      `DEALER_DEALER tcp/inproc -26.94% / -23.32%`,
+      raw `PAIR tcp/inproc -30.05% / -18.28%`,
+      `DEALER_DEALER tcp/inproc -7.24% / -17.59%`로
+      broad win이 아니어서 원복했다.
+      이어서 `PAIR`까지 public send scope를 넓히고
+      `pipe` serialized write를 같은 exclusion으로 합치려는 candidate도
+      직렬 rerun public `PAIR tcp/inproc -24.15% / -27.75%`,
+      `DEALER_DEALER tcp/inproc -20.80% / -19.17%`,
+      raw `PAIR tcp/inproc -8.40% / -22.59%`,
+      `DEALER_DEALER tcp/inproc -5.92% / -20.81%`로
+      `PAIR` public이 accepted baseline보다 더 악화돼 원복했다.
+      이어서 `socket_runtime.cpp` `public_api_state` exact-state fast path도
+      public `PAIR tcp/inproc -14.49% / -31.80%`,
+      `DEALER_DEALER tcp/inproc -12.85% / -21.98%`,
+      raw `PAIR tcp/inproc -12.00% / -24.87%`,
+      `DEALER_DEALER tcp/inproc -23.71% / -16.20%`로
+      `PAIR inproc` public과 `DEALER tcp` raw가 함께 흔들려 원복했다.
+      따라서 guide 재작성 트리거가 다시 걸렸고,
+      current iteration에서는 code patch 전에 요구된
+      guide/review/hot-path 우선순위 재정렬과
+      diagnostic 해석 갱신을 먼저 끝냈다.
+- [ ] `a819ea3a` send admission/CAS 의미 단위 structural prep를
+      current code에 retained change로 남긴다.
+      current `socket_base_msg.cpp` / `socket_runtime.cpp` /
+      `multipart_send_txn.cpp` send path는
+      public inflight admission, same-handle send serialization,
+      retry 시 sync unlock/relock, logical multipart scope reuse가
+      `socket_public_send_scope_t`와 direct send helpers에 함께 엉켜 있다.
+      다음 단계는 rejected micro-tweak family를 다시 파는 것이 아니라,
+      위 의미 단위를 code-level 경계로 먼저 분리하는 retained structural prep다.
+      최소 범위는
+      `socket_runtime.hpp/.cpp` admission/sync phase,
+      `socket_base_msg.cpp` direct send/retry runner,
+      `multipart_send_txn.cpp` shared send-scope reuse를
+      같은 contract 아래에서 다시 정리하는 것이다.
+      이 단계는 same-handle concurrent send/publish 회귀와
+      `PAIR` / `DEALER_DEALER` public/raw guardrail을 유지한 채
+      current tree에 남길 수 있어야 한다.
 - [x] same-handle concurrent `PUB` publish contract regression
       (`test_pubsub_publish_is_safe_from_multiple_threads`)을 고치고
       logical multipart send scope를 재검증했다.
@@ -1053,9 +1183,11 @@ rejected candidate는 반드시 로그에 남긴다.
       소진했다. `public_api_state` CAS fast path, `PAIR` no-sync send scope,
       idle send-ready retry gate, generic same-thread `send_activate_read()`
       direct delivery 모두 keep-worthy broad win을 만들지 못했다.
-      따라서 common lifecycle/backpressure 축은 새 근거가 나올 때만 다시 올리고,
-      actual next code 후보는 pattern-specific `pipe`/`PUBSUB` publication 축과
-      `ROUTER_ROUTER` 전용 differential 정리로 넘긴다.
+      따라서 helper-level common lifecycle/backpressure 축은
+      새 근거가 나올 때만 다시 올리고,
+      actual next code 후보는 여전히 common send-side structural round
+      (`a819ea3a` admission/CAS 의미 단위 + `_out_sync` steady-state duty)
+      안에서 고른다.
 - [x] `pipe` send/publication 경로에서 ordering을 유지한 채 lock 안 work를 줄였다.
 - [x] single `PUBSUB` comparison surface를 current guide 계약에 맞는
       no-topic payload-only binary까지 다시 정렬했다.

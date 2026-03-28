@@ -6,6 +6,10 @@
 >
 > 이 문서는 "어디가 hot path인지", "무엇을 넣으면 안 되는지", "성능개선 중 어떤
 > 규칙으로 문서를 갱신할지"를 짧고 명시적으로 유지한다.
+>
+> historical regression source:
+> [with-zmq-regression-bisect-report.ko.md](/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/perf/with-zmq-regression-bisect-report.ko.md),
+> [with-zmq-regression-bisect-log.ko.md](/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/perf/with-zmq-regression-bisect-log.ko.md)
 
 ## 0. Current Operating Summary
 
@@ -26,7 +30,64 @@
   public `PAIR tcp/inproc -21.29% / -33.25%`,
   `DEALER_DEALER tcp/inproc -23.62% / -25.85%`로 broad win이 아니어서
   원복했다.
-- 즉 next step은 helper-level micro tuning이 아니라
+- 이어서 `lb.cpp` send-state lock + `DEALER` single-part admission-only
+  probe도 시도했지만,
+  public `DEALER_DEALER tcp/inproc -15.36% / -21.40%`까지는 회복한 반면
+  raw `-11.45% / -32.76%`와 unchanged `PAIR inproc` public/raw
+  `-30.93% / -35.69%`가 함께 흔들려 stable broad win이 아니어서 원복했다.
+- 이어서 `socket_runtime.cpp` `public_api_sync`를
+  CAS spin 대신 fast-mutex wait로 분리하는 structural candidate도
+  시도했지만,
+  public `PAIR tcp/inproc -32.03% / -29.11%`,
+  `DEALER_DEALER tcp/inproc -19.33% / -31.37%`로
+  accepted baseline보다 더 나빠져 원복했다.
+- 이어서 `pipe.cpp` hot send만 non-recursive lock으로 분리하고
+  rare lifecycle/teardown은 기존 recursive `_out_sync`에 남기는
+  structural candidate도 시도했지만,
+  public `PAIR tcp/inproc -17.14% / -34.56%`,
+  `DEALER_DEALER tcp/inproc -13.65% / -19.47%`,
+  raw `PAIR tcp/inproc -8.61% / -25.46%`,
+  `DEALER_DEALER tcp/inproc -20.69% / -21.15%`로
+  `PAIR inproc` absolute throughput이 크게 무너져 원복했다.
+- 이어서 `socket_runtime.hpp` / `socket_runtime.cpp`의
+  send-side lifecycle/scope hot path를 header inline으로 옮긴
+  codegen-only candidate도 시도했지만,
+  public `PAIR tcp/inproc -21.70% / -23.83%`,
+  `DEALER_DEALER tcp/inproc -10.64% / -17.99%`,
+  raw `PAIR tcp/inproc -11.65% / -27.25%`,
+  `DEALER_DEALER tcp/inproc -8.99% / -25.87%`로
+  `PAIR` public/raw와 `DEALER_DEALER inproc raw`가 함께 무너져 원복했다.
+- 이어서 `socket_public_send_scope_t` constructor에서
+  `public_api_sync`를 lazy acquire하는 candidate도 시도했지만,
+  public `PAIR tcp/inproc -9.29% / -27.64%`,
+  `DEALER_DEALER tcp/inproc -26.48% / -25.53%`,
+  raw `PAIR tcp/inproc -13.68% / -25.35%`,
+  `DEALER_DEALER tcp/inproc -25.66% / -19.94%`로
+  `PAIR tcp`만 좋아지고 broad win을 지키지 못해 원복했다.
+- 이어서 `pipe.cpp` `write_and_flush()/flush()`에서
+  `send_activate_read()` publish를 `_out_sync` 밖으로 미루는 candidate도
+  시도했지만,
+  public `PAIR tcp/inproc -16.34% / -25.54%`,
+  `DEALER_DEALER tcp/inproc -26.94% / -23.32%`,
+  raw `PAIR tcp/inproc -30.05% / -18.28%`,
+  `DEALER_DEALER tcp/inproc -7.24% / -17.59%`로
+  helper-level local tweak 이상을 만들지 못해 원복했다.
+- 이어서 `PAIR`까지 public send scope를 넓히고
+  `pipe::write()/write_and_flush()` lock을 합치려는
+  `single exclusion boundary merge` candidate도 시도했지만,
+  직렬 rerun public `PAIR tcp/inproc -24.15% / -27.75%`,
+  `DEALER_DEALER tcp/inproc -20.80% / -19.17%`,
+  raw `PAIR tcp/inproc -8.40% / -22.59%`,
+  `DEALER_DEALER tcp/inproc -5.92% / -20.81%`로
+  `PAIR` public이 accepted baseline보다 더 악화돼 원복했다.
+- 이어서 `socket_runtime.cpp` `public_api_state` exact-state fast path
+  (`0 -> 1`, `1 -> 0`, `1|sync -> 1/0`) candidate도 분리해서 시도했지만,
+  public `PAIR tcp/inproc -14.49% / -31.80%`,
+  `DEALER_DEALER tcp/inproc -12.85% / -21.98%`,
+  raw `PAIR tcp/inproc -12.00% / -24.87%`,
+  `DEALER_DEALER tcp/inproc -23.71% / -16.20%`로
+  `PAIR inproc` public과 `DEALER tcp` raw가 함께 흔들려 원복했다.
+- 즉 next step은 helper-level micro tuning이나 codegen-only inlining이 아니라
   `socket_base_t::send()` public admission/lock 의미 단위와
   `pipe::_out_sync` serialization 의미 단위를 더 큰 구조로 다시 보는 것이다.
 - 이 판단은 별도 bisect 결과와도 맞물린다.
@@ -149,7 +210,15 @@
 - `socket_base_msg.cpp` common send prep fast path bundle
 - lifecycle atomic memory-order 완화
 - `_out_sync` hot send non-recursive scope
+- `pipe` hot send-only non-recursive lock split
+- `socket_runtime.hpp/.cpp` send-scope/lifecycle header-inline codegen-only candidate
+- `socket_public_send_scope_t` constructor lazy-sync acquire candidate
+- `pipe.cpp` flush notify-outside-`_out_sync` candidate
+- `PAIR` public send scope + `pipe` exclusion merge candidate
+- `socket_runtime.cpp` `public_api_state` exact-state fast path candidate
 - direct single-part `send_scope` initial unlock + relock-around-`xsend()`
+- `DEALER` single-part admission-only + `lb_t` send-state lock
+- `public_api_sync` fast-mutex split
 
 ### 0.5 Do Not Revisit
 
@@ -175,8 +244,12 @@
   `ff0140e5` 이후 `_out_sync` steady-state duty,
   `98e7d324/9b91234c` 이후 public multipart/sender-regime 흔적을
   차례로 검토하는 방식으로 시작한다.
-- current round에서 helper-level send micro-tuning은 broad win을 만들지 못했으므로,
+- current round에서 helper-level send micro-tuning과 codegen-only inlining은
+  broad win을 만들지 못했으므로,
   다음 step은 작은 branch/helper를 더 누적하는 것이 아니다.
+- 같은 이유로 `PAIR` public send scope + `pipe` exclusion merge와
+  `public_api_state` exact-state fast path도
+  broad fix family에서 내린 상태로 유지한다.
 - invariant map 단계는 끝났다. restart 시에는
   [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
   /
@@ -186,9 +259,31 @@
   `dealer_inproc_send_profile_20260328.txt`
   진단 로그부터 다시 읽는다.
 - next step은 helper-level micro tuning이 아니라,
-  1) `socket_base_t::send()` admission/scope construct cost를 줄이는 후보와
-  2) `_out_sync` no-op이 아니라 unlocked helper 위에서 hot send와 rare
+  1) guide/review/hot-path 우선순위를 먼저 다시 정렬하고,
+  2) current code의 `socket_public_send_scope_t`와 direct send helpers에서
+  inflight admission, same-handle send serialization,
+  retry unlock/relock, logical multipart scope reuse를 code-level 경계로
+  다시 분리하는 retained structural prep를 먼저 남기고,
+  3) 그 위에서 `socket_base_t::send()` admission/scope construct cost를
+  줄이는 후보와
+  4) `_out_sync` no-op이 아니라 unlocked helper 위에서 hot send와 rare
   teardown 경계를 더 분리하는 후보를 세우는 것이다.
+- `DEALER` one-active `lb_t` mutable state를 local lock으로 감싸고
+  direct single-part send를 admission-only로 내리는 family는
+  새 broad evidence 없이 다시 올리지 않는다.
+- `public_api_sync` wait primitive만 fast-mutex로 바꾸는 family도
+  새 broad evidence 없이 다시 올리지 않는다.
+- `pipe` hot send만 non-recursive lock으로 분리하는 family도
+  새 broad evidence 없이 다시 올리지 않는다.
+- `socket_public_send_scope_t` constructor lazy-sync acquire family도
+  새 broad evidence 없이 다시 올리지 않는다.
+- flush notify placement 같은 helper-level `_out_sync` local tweak도
+  새 broad evidence 없이 다시 올리지 않는다.
+- `PAIR`까지 public send scope를 넓혀
+  `pipe` exclusion을 합치는 family도 새 broad evidence 없이 다시 올리지
+  않는다.
+- `public_api_state` exact-state CAS shortcut family도
+  새 broad evidence 없이 다시 올리지 않는다.
 - `ROUTER_ROUTER` / `PUBSUB` local helper는
   공통 send-side residual을 한 단계 더 줄인 뒤 다시 본다.
 

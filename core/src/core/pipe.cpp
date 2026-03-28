@@ -348,11 +348,7 @@ bool zlink::pipe_t::write (const msg_t *msg_)
         return false;
     }
 
-    const bool more = (msg_->flags () & msg_t::more) != 0;
-    const bool is_routing_id = msg_->is_routing_id ();
-    _out_pipe->write (*msg_, more);
-    if (!more && !is_routing_id)
-        _msgs_written++;
+    write_message_unlocked (msg_);
 
     return true;
 }
@@ -363,11 +359,7 @@ bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    const bool more = (msg_->flags () & msg_t::more) != 0;
-    const bool is_routing_id = msg_->is_routing_id ();
-    _out_pipe->write (*msg_, more);
-    if (!more && !is_routing_id)
-        _msgs_written++;
+    write_message_unlocked (msg_);
 
     return true;
 }
@@ -385,13 +377,10 @@ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
     }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    const bool is_routing_id = msg_->is_routing_id ();
-    _out_pipe->write (*msg_, more);
-    if (!more && !is_routing_id)
-        _msgs_written++;
+    write_message_unlocked (msg_);
 
-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
-        send_activate_read (_peer);
+    if (!more)
+        flush_unlocked ();
 
     return true;
 }
@@ -407,11 +396,7 @@ bool zlink::pipe_t::write_no_recursive_hwm_check (const msg_t *msg_)
         return false;
     }
 
-    const bool more = (msg_->flags () & msg_t::more) != 0;
-    const bool is_routing_id = msg_->is_routing_id ();
-    _out_pipe->write (*msg_, more);
-    if (!more && !is_routing_id)
-        _msgs_written++;
+    write_message_unlocked (msg_);
 
     return true;
 }
@@ -428,13 +413,10 @@ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
     }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    const bool is_routing_id = msg_->is_routing_id ();
-    _out_pipe->write (*msg_, more);
-    if (!more && !is_routing_id)
-        _msgs_written++;
+    write_message_unlocked (msg_);
 
-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
-        send_activate_read (_peer);
+    if (!more)
+        flush_unlocked ();
 
     return true;
 }
@@ -443,27 +425,14 @@ void zlink::pipe_t::rollback () const
 {
     scoped_optional_fast_lock_t lock (
       const_cast<fast_mutex_t *> (&_out_sync));
-    //  Remove incomplete message from the outbound pipe.
-    msg_t msg;
-    if (_out_pipe) {
-        while (_out_pipe->unwrite (&msg)) {
-            zlink_assert (msg.flags () & msg_t::more);
-            const int rc = msg.close ();
-            errno_assert (rc == 0);
-        }
-    }
+    rollback_unlocked ();
 }
 
 void zlink::pipe_t::flush ()
 {
     // Hot path: single-part send flushes on every completed message.
     scoped_fast_lock_t lock (_out_sync);
-    //  The peer does not exist anymore at this point.
-    if (_state == term_ack_sent)
-        return;
-
-    if (_out_pipe && !_out_pipe->flush ())
-        send_activate_read (_peer);
+    flush_unlocked ();
 }
 
 void zlink::pipe_t::process_activate_read ()
@@ -649,7 +618,7 @@ void zlink::pipe_t::set_nodelay ()
     _delay = false;
 
     if (_state == waiting_for_delimiter) {
-        rollback ();
+        rollback_unlocked ();
         _out_pipe = NULL;
         send_pipe_term_ack (_peer);
         _state = term_ack_sent;
@@ -684,7 +653,7 @@ void zlink::pipe_t::terminate (bool delay_)
     //  'terminate'. We can act as if all the pending messages were read.
     else if (_state == waiting_for_delimiter && !_delay) {
         //  Drop any unfinished outbound messages.
-        rollback ();
+        rollback_unlocked ();
         _out_pipe = NULL;
         send_pipe_term_ack (_peer);
         _state = term_ack_sent;
@@ -709,14 +678,14 @@ void zlink::pipe_t::terminate (bool delay_)
 
     if (_out_pipe) {
         //  Drop any unfinished outbound messages.
-        rollback ();
+        rollback_unlocked ();
 
         //  Write the delimiter into the pipe. Note that watermarks are not
         //  checked; thus the delimiter can be written even when the pipe is full.
         msg_t msg;
         msg.init_delimiter ();
         _out_pipe->write (msg, false);
-        flush ();
+        flush_unlocked ();
     }
     pipe_debug_log (this, "terminate-end", _state, _delay,
                     _endpoint_pair.identifier ().c_str ());
@@ -760,7 +729,7 @@ void zlink::pipe_t::process_delimiter ()
     if (_state == active)
         _state = delimiter_received;
     else {
-        rollback ();
+        rollback_unlocked ();
         _out_pipe = NULL;
         send_pipe_term_ack (_peer);
         _state = term_ack_sent;
@@ -859,10 +828,10 @@ void zlink::pipe_t::send_disconnect_msg ()
     scoped_fast_lock_t lock (_out_sync);
     if (_disconnect_msg.size () > 0 && _out_pipe) {
         // Rollback any incomplete message in the pipe, and push the disconnect message.
-        rollback ();
+        rollback_unlocked ();
 
         _out_pipe->write (_disconnect_msg, false);
-        flush ();
+        flush_unlocked ();
         _disconnect_msg.init ();
     }
 }
@@ -885,6 +854,38 @@ void zlink::pipe_t::send_hiccup_msg (const std::vector<unsigned char> &hiccup_)
         errno_assert (rc == 0);
 
         _out_pipe->write (msg, false);
-        flush ();
+        flush_unlocked ();
     }
+}
+
+void zlink::pipe_t::write_message_unlocked (const msg_t *msg_)
+{
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool is_routing_id = msg_->is_routing_id ();
+    _out_pipe->write (*msg_, more);
+    if (!more && !is_routing_id)
+        _msgs_written++;
+}
+
+void zlink::pipe_t::rollback_unlocked () const
+{
+    //  Remove incomplete message from the outbound pipe.
+    msg_t msg;
+    if (_out_pipe) {
+        while (_out_pipe->unwrite (&msg)) {
+            zlink_assert (msg.flags () & msg_t::more);
+            const int rc = msg.close ();
+            errno_assert (rc == 0);
+        }
+    }
+}
+
+void zlink::pipe_t::flush_unlocked ()
+{
+    //  The peer does not exist anymore at this point.
+    if (_state == term_ack_sent)
+        return;
+
+    if (_out_pipe && !_out_pipe->flush ())
+        send_activate_read (_peer);
 }

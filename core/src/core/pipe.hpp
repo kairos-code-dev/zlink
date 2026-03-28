@@ -180,6 +180,14 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Handler for delimiter read from the pipe.
     void process_delimiter ();
 
+    //  These helpers require `_out_sync` to be held already. They define the
+    //  coupled outbound invariants that future `_out_sync` refactors must
+    //  preserve: `_out_pipe` lifetime, `_state`, `_out_active`, and
+    //  `_peers_msgs_read` move together across write/flush/terminate paths.
+    void write_message_unlocked (const msg_t *msg_);
+    void rollback_unlocked () const;
+    void flush_unlocked ();
+
     //  Constructor is private. Pipe can only be created using
     //  pipepair function.
     pipe_t (object_t *parent_,
@@ -197,6 +205,8 @@ class pipe_t ZLINK_FINAL : public object_t,
     ~pipe_t () ZLINK_OVERRIDE;
 
     //  Underlying pipes for both directions.
+    //  `_out_pipe`, `_state`, `_out_active`, and `_peers_msgs_read` are a
+    //  single outbound state cluster guarded by `_out_sync`.
     upipe_t *_in_pipe;
     upipe_t *_out_pipe;
 

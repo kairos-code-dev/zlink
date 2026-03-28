@@ -263,7 +263,15 @@ raw/public 분리를 다시 찍는다.
    의 send admission/lock과
    [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
    의 `_out_sync` 아래 same-ordering redundant work 축소다.
-   다음 랄프루프는 이 추상을 바로 helper-level로 내리지 말고,
+   2026-03-28 current tree에는
+   [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+   /
+   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+   의
+   `write_message_unlocked()/rollback_unlocked()/flush_unlocked()` helper로
+   `_out_active`, `_peers_msgs_read`, `_state`, `_out_pipe`
+   outbound invariant map이 이미 고정돼 있다.
+   다음 랄프루프는 이 추상을 다시 적는 단계가 아니라,
    먼저 `a819ea3a` send admission/CAS와 `ff0140e5` `_out_sync`
    steady-state duty를 current HEAD에서 어떻게 줄일 수 있는지 보는 데서
    시작한다.
@@ -600,6 +608,21 @@ rejected candidate는 반드시 로그에 남긴다.
 ## 12. 현재 작업 레지스터
 
 - 현재 유지 중인 latest delta
+  - `pipe.hpp` / `pipe.cpp` `_out_sync` invariant map을
+    `write_message_unlocked()/rollback_unlocked()/flush_unlocked()` helper로
+    고정했고, `set_nodelay()/terminate()/process_delimiter()/
+    send_disconnect_msg()/send_hiccup_msg()`의 recursive
+    `rollback()/flush()` 의존을 제거했다
+  - temporary direct instrumentation 로그
+    [`pair_inproc_send_profile_20260328.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/pair_inproc_send_profile_20260328.txt),
+    [`dealer_inproc_send_profile_20260328.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/dealer_inproc_send_profile_20260328.txt)
+    에서는 `process_commands`보다 `send scope construct`와
+    `pipe_write_and_flush`가 더 큰 steady-state cost 축으로 남았음을 확인했고,
+    계측 patch는 측정 뒤 원복했다
+  - above refactor의 targeted public/raw guardrail은
+    [`perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt),
+    [`perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt)
+    로 다시 남겼다
   - `lb.cpp` one-active-pipe `DEALER` send fast path
   - `pipe.cpp` / `dist.cpp` `PUBSUB` publication path의
     dist-only non-recursive HWM check helper
@@ -856,9 +879,12 @@ rejected candidate는 반드시 로그에 남긴다.
     `process_activate_write()`, `process_activate_read()`, `process_hiccup()`,
     `process_pipe_term*()`와 same-thread direct `activate_write` publish도
     함께 직렬화한다.
-  - 따라서 다음 iteration은 lock 범위 micro tweak를 다시 넣기 전에,
-    `_out_sync`가 보호하는 `_out_active`, `_peers_msgs_read`, `_state`,
-    `_out_pipe` invariant map을 먼저 적는 것으로 시작한다.
+  - 2026-03-28 current tree는 위 invariant를
+    `write_message_unlocked()/rollback_unlocked()/flush_unlocked()` helper와
+    `pipe.hpp` 주석으로 이미 고정했다.
+  - 따라서 다음 iteration은 invariant map을 다시 쓰는 것이 아니라,
+    send admission/scope construct와 `pipe write_and_flush` steady-state cost를
+    실제로 줄이는 structural candidate에서 시작한다.
   - 같은 날 `router.cpp` routed send의 prefix/HWM second-check elimination은
     `ROUTER_ROUTER tcp/inproc 64B`를 `-55.19% / -25.05%`까지밖에
     못 줄였고 broad win이 아니어서 현재 코드에는 없다.
@@ -1299,3 +1325,6 @@ rejected candidate는 반드시 로그에 남긴다.
 - [x] 이번 단계 send-path 변경 뒤 `PAIR`/`DEALER_DEALER` raw/public 분리를
       다시 기록했다.
 - [x] broader single / multi smoke까지 통과하는 안정 지점을 남겼다.
+- [x] `_out_sync` invariant map을 current tree의 unlocked helper로 반영하고,
+      direct instrumentation 결과를 다음 structural candidate의 기준선으로
+      남겼다.

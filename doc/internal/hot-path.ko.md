@@ -39,7 +39,8 @@
   `xsub` receiver-drain specialization으로 유지 중이다.
 - guide checklist 기준 `ROUTER` routed path differential 정리 단계는 끝났고,
   current next step은 common send-side structural round를 위한
-  `_out_sync` invariant map이다.
+  retained invariant helper 경계를 바탕으로 structural candidate를 다시
+  세우는 것이다.
 - 2026-03-28 current recheck에서 `ROUTER_ROUTER` single 64B default는
   `tcp/inproc -56.84% / -28.68%`,
   raw-msg probe는 `-58.04% / -23.52%`였다.
@@ -67,7 +68,32 @@
 - 또 `_out_sync`는 `write()/flush()` hot path만이 아니라
   `process_activate_write()`, `process_activate_read()`, `process_hiccup()`,
   `process_pipe_term*()`와 same-thread direct `activate_write` publish까지
-  함께 물고 있으므로, 다음 structural step은 먼저 invariant map을 적어야 한다.
+  함께 물고 있었다. 그래서 이번 structural round는 invariant map을 먼저
+  code-level helper 경계로 고정하는 것부터 시작했다.
+- 2026-03-28 invariant round에서는
+  [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  /
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  에
+  `write_message_unlocked()/rollback_unlocked()/flush_unlocked()` helper를 남겨
+  `_out_active`, `_peers_msgs_read`, `_state`, `_out_pipe` outbound cluster를
+  code-level invariant로 고정했다.
+- 같은 refactor는 `set_nodelay()`, `terminate()`, `process_delimiter()`,
+  `send_disconnect_msg()`, `send_hiccup_msg()`의 recursive
+  `rollback()/flush()` 의존을 제거했다. 즉 current tree는
+  future non-recursive `_out_sync` candidate가 기대는 helper 경계를 이미
+  갖고 있다.
+- same day temporary direct instrumentation
+  (`pair_inproc_send_profile_20260328.txt`,
+  `dealer_inproc_send_profile_20260328.txt`; patch는 측정 뒤 원복)에서는
+  `PAIR` / `DEALER_DEALER` inproc 모두 `process_commands initial ~56 ticks`
+  보다 `send scope construct ~1266/1314 ticks`,
+  `xsend initial ~731/774 ticks`,
+  `pipe_write_and_flush ~576/613 ticks`가 훨씬 컸다.
+- 즉 current next step은 invariant map 작성이 아니라,
+  위 retained helper 경계를 기준으로
+  `send admission/scope construct`와 `pipe write/flush serialization`
+  구조를 실제로 줄이는 structural candidate다.
 
 ### 0.2 Current Hypothesis
 
@@ -103,6 +129,11 @@
 - current kept 공통 delta는
   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
   의 recursive `check_hwm()` elide다.
+- current kept structural prep은
+  [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  /
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  의 `_out_sync` unlocked helper refactor다.
 
 ### 0.4 Rejected Families
 
@@ -146,13 +177,18 @@
   차례로 검토하는 방식으로 시작한다.
 - current round에서 helper-level send micro-tuning은 broad win을 만들지 못했으므로,
   다음 step은 작은 branch/helper를 더 누적하는 것이 아니다.
-- 그 전에 `_out_sync`가 실제로 어떤 cross-command state를 보호하는지
-  invariant map과 `PAIR inproc 64B` 계측 한 번으로 send admission vs pipe
-  serialization 비중을 먼저 나눈다.
-- next step은
-  `socket_base_t::send()` admission/sync lifecycle의 구조 차이와
-  `pipe` send-path serialization 구조 차이를
-  더 큰 단위로 직접 줄이는 설계 후보를 세우는 것이다.
+- invariant map 단계는 끝났다. restart 시에는
+  [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  /
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  의 unlocked helper 경계와
+  `pair_inproc_send_profile_20260328.txt`,
+  `dealer_inproc_send_profile_20260328.txt`
+  진단 로그부터 다시 읽는다.
+- next step은 helper-level micro tuning이 아니라,
+  1) `socket_base_t::send()` admission/scope construct cost를 줄이는 후보와
+  2) `_out_sync` no-op이 아니라 unlocked helper 위에서 hot send와 rare
+  teardown 경계를 더 분리하는 후보를 세우는 것이다.
 - `ROUTER_ROUTER` / `PUBSUB` local helper는
   공통 send-side residual을 한 단계 더 줄인 뒤 다시 본다.
 

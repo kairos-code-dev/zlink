@@ -70,8 +70,27 @@
   `process_activate_write()`, `process_activate_read()`, `process_hiccup()`,
   `process_pipe_term*()`와 same-thread direct `activate_write` publish도 함께
   직렬화한다.
-- 따라서 다음 structural step은 lock 범위 local tweak를 더 넣는 것이 아니라,
-  `_out_sync`가 보호하는 invariant를 먼저 적는 쪽이다.
+- 2026-03-28 invariant round에서는
+  [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  /
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  에
+  `write_message_unlocked()/rollback_unlocked()/flush_unlocked()` helper를
+  retained change로 남겨 `_out_active`, `_peers_msgs_read`, `_state`,
+  `_out_pipe` outbound cluster를 code-level invariant로 고정했다.
+- 같은 refactor는 `set_nodelay()`, `terminate()`, `process_delimiter()`,
+  `send_disconnect_msg()`, `send_hiccup_msg()`의 recursive
+  `rollback()/flush()` 의존을 제거했다.
+- same day temporary direct instrumentation
+  (`pair_inproc_send_profile_20260328.txt`,
+  `dealer_inproc_send_profile_20260328.txt`; patch는 측정 뒤 원복)에서는
+  `PAIR` / `DEALER_DEALER` inproc 모두 `process_commands initial ~56 ticks`
+  보다 `send scope construct ~1266/1314 ticks`,
+  `xsend initial ~731/774 ticks`,
+  `pipe_write_and_flush ~576/613 ticks`가 훨씬 컸다.
+- 해석: `process_commands`는 current primary cost axis가 아니고,
+  `pipe_write_and_flush`가 `xsend()` 내부 대부분을 차지하며,
+  `send scope construct`도 same-order steady-state에서 큰 고정비로 남아 있다.
 - `PUBSUB`는 공통 send 축만으로 설명하면 안 된다. latest acceptable
   방향은 `XSUB receiver-drain specialization`과 sender-side publication
   differential을 분리해서 보는 것이다.
@@ -79,8 +98,8 @@
   `xsub` empty-subscription accept-all fast path와 requested-only
   `last_recv_source_rid` capture scope 조합으로 유지 중이다.
 - guide checklist 기준 `ROUTER` routed path differential 정리 단계는 끝났고,
-  current next step은 common send-side structural round를 위한
-  `_out_sync` invariant map이다.
+  current next step은 위 invariant helper 경계를 바탕으로
+  common send-side structural candidate를 다시 세우는 것이다.
 - 2026-03-28 current recheck에서 `ROUTER_ROUTER` single 64B default는
   `tcp/inproc -56.84% / -28.68%`,
   raw-msg probe는 `-58.04% / -23.52%`였다.
@@ -163,6 +182,10 @@
   `check_hwm_unlocked()`를 사용하는
   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
   변경은 현재 keep 상태다.
+- [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  /
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  의 `_out_sync` unlocked helper refactor도 current tree에 유지한다.
 - 2026-03-28 direct send-side candidate bundle에서 시도한
   `socket_base_msg.cpp` / `socket_runtime.cpp` / `pipe.cpp` 추가 성능 후보는
   모두 reject되어 current tree에는 남아 있지 않다.
@@ -225,14 +248,20 @@
 - 따라서 `ROUTER_ROUTER` local sender cache, final-part one-lock helper,
   routed recv local state/source-rid cache 같은 rejected family는
   common send-side pass가 끝나기 전까지 다시 올리지 않는다.
-- 다음 iteration은 코드 수정 전에 아래 둘부터 한다.
-  1. `_out_sync`가 보호하는 `_out_active`, `_peers_msgs_read`, `_state`,
-     `_out_pipe` invariant를
-     `write/flush/check_write_status/process_activate_write/
-     process_activate_read/process_hiccup/process_pipe_term*`
-     기준으로 먼저 적는다.
-  2. 그 다음 `PAIR inproc 64B` profiling 또는 직접 계측 한 번으로
-     admission 쪽과 pipe 쪽 비중을 다시 자른다.
+- invariant map과 direct 계측 단계는 끝났다.
+- 다음 iteration은 code patch 전에
+  `pair_inproc_send_profile_20260328.txt` /
+  `dealer_inproc_send_profile_20260328.txt`
+  진단 로그와
+  [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  /
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  의 unlocked helper 경계를 먼저 다시 읽는다.
+- 실제 코드 적용 우선순위는 아래 순서다.
+  1. `socket_base_t::send()` / `socket_public_send_scope_t`의
+     admission/scope construct cost를 줄이는 structural candidate
+  2. `_out_sync` no-op이 아니라 unlocked helper 위에서 hot send와 rare
+     teardown 경계를 더 분리하는 structural candidate
 - 새 iteration은 이 summary가 stale하지 않은지 먼저 확인하고, stale하면
   코드 수정 전에 이 블록부터 갱신한다.
 
@@ -5020,12 +5049,12 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - [`libzmq/src/socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
   - [`libzmq/src/pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)
 - `claude` consult 여부와 핵심 조언
-  - stdin 기반 `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
-    consult는 usable advisory를 반환했다.
-  - 핵심 조언은 current search가 같은 abstraction layer의 local tweak를
-    반복하고 있으니, 다음 step은 `_out_sync`가 보호하는 invariant와
-    `PAIR inproc 64B` profiling으로 send admission vs pipe serialization
-    비중을 먼저 가르라는 것이었다.
+  - `claude --help`는 통과했지만 stdin 기반
+    `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
+    consult는 응답 없이 멈춰 unusable이었다.
+  - 따라서 이번 단계의 advisory는 unavailable로 기록하고,
+    invariant map + direct instrumentation을 authority 문서와 bench/test로
+    직접 채웠다.
 - 수정한 파일 경로
   - bench A/B 뒤 원복:
     - [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
@@ -5065,3 +5094,89 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - 먼저 `_out_sync`가 보호하는 `_out_active`, `_peers_msgs_read`, `_state`,
     `_out_pipe` invariant를 write/flush/activate/hiccup/term 경로 기준으로
     정리한다.
+
+## 69. 2026-03-28 `_out_sync` invariant map retained + direct instrumentation 로그
+
+- 작업한 가설
+  - common send-side structural round로 넘어가기 전에,
+    `_out_sync`가 보호하는 outbound state cluster를 code-level invariant로
+    먼저 고정해야 다음 후보가 helper-level local tweak로 다시 흩어지지 않는다.
+  - 동시에 `PAIR` / `DEALER_DEALER inproc 64B` direct instrumentation 한 번으로
+    `send admission/scope construct`와 `pipe serialization` 중 어느 쪽이 더
+    두꺼운지 coarse split이 필요했다.
+- candidate family
+  - common differential structural prep + semantic probe
+- high-leverage 근거
+  - current residual 본체는 `process_commands` 호출 빈도보다
+    public send scope와 `pipe::_out_sync` steady-state duty일 가능성이 높았고,
+    다음 structural candidate가 의존할 invariant boundary가 먼저 필요했다.
+- 참고한 `libzmq` 대응 파일
+  - [`libzmq/src/socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+  - [`libzmq/src/pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)
+- `claude` consult 여부와 핵심 조언
+  - `claude --help`는 통과했다.
+  - stdin 기반 `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
+    consult는 응답 없이 멈춰 unusable이었으므로 unavailable로 기록한다.
+- 수정한 파일 경로
+  - 유지
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  - 계측 뒤 원복
+    - [`core/src/utils/clock.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/clock.hpp)
+    - [`core/src/utils/clock.cpp`](/home/hep7/project/kairos/zlink/core/src/utils/clock.cpp)
+    - [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+- 실행한 명령
+  - `claude --help`
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_router_mandatory_hwm|test_socket_with_handler)$' -j1`
+  - `ZLINK_SEND_PROFILE_PATH=... python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_inproc_profiled`
+  - `ZLINK_SEND_PROFILE_PATH=... python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_inproc_profiled`
+  - instrumentation patch 원복 뒤
+    `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_router_mandatory_hwm|test_socket_with_handler)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pipe_invariant_refactor_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pipe_invariant_refactor_raw`
+- 생성된 결과 파일 경로
+  - [`pair_inproc_send_profile_20260328.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/pair_inproc_send_profile_20260328.txt)
+  - [`dealer_inproc_send_profile_20260328.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/dealer_inproc_send_profile_20260328.txt)
+  - [`perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt)
+  - [`perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt)
+- 핵심 수치
+  - `PAIR inproc` profile avg ticks
+    - `socket_scope_construct 1265.60`
+    - `socket_xsend_initial 731.46`
+    - `pipe_write_and_flush 575.93`
+    - `socket_process_commands_initial 56.37`
+  - `DEALER_DEALER inproc` profile avg ticks
+    - `socket_scope_construct 1313.89`
+    - `socket_xsend_initial 774.33`
+    - `pipe_write_and_flush 613.33`
+    - `socket_process_commands_initial 56.28`
+  - public guardrail
+    - `PAIR tcp/inproc -12.44% / -17.04%`
+    - `DEALER_DEALER tcp/inproc -11.19% / -18.11%`
+  - raw guardrail
+    - `PAIR tcp/inproc -24.04% / -17.10%`
+    - `DEALER_DEALER tcp/inproc -32.25% / -23.04%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `pipe.hpp` / `pipe.cpp` unlocked helper refactor
+  - 원복
+    - temporary direct instrumentation patch
+- 해석
+  - 계측 patch가 absolute throughput 자체는 크게 흔들었으므로 acceptance에는
+    쓰지 않는다. 다만 same-run 내부 비중은 `process_commands`보다
+    `send scope construct`와 `pipe_write_and_flush`가 훨씬 두껍다는 점을
+    충분히 보여준다.
+  - pair와 dealer의 coarse split이 비슷하므로, current 잔여 gap은
+    단순 `public_api_sync` 한 비트보다
+    public send scope 전체와 `pipe` final-part serialization을 같이 봐야 한다.
+  - unlocked helper refactor는 keep-worthy perf delta가 아니라
+    다음 structural candidate가 의존할 invariant boundary를 current tree에
+    고정한 retained structural prep이다.
+- 다음 iteration 우선순위
+  - `_out_sync` invariant map 작성 자체는 다시 하지 않는다.
+  - `socket_base_t::send()` / `socket_public_send_scope_t`의
+    admission/scope construct cost를 줄이는 structural candidate부터 본다.
+  - 그 다음 unlocked helper 위에서 hot send와 rare teardown 경계를 더
+    분리하는 `_out_sync` structural candidate를 본다.

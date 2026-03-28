@@ -87,6 +87,14 @@
   raw `PAIR tcp/inproc -12.00% / -24.87%`,
   `DEALER_DEALER tcp/inproc -23.71% / -16.20%`로
   `PAIR inproc` public과 `DEALER tcp` raw가 함께 흔들려 원복했다.
+- 이어서 `DEALER` / `ROUTER` existing public send sync를
+  caller-owned exclusion으로 재사용하는 `send_serialized` helper candidate도
+  시도했지만,
+  public `PAIR tcp/inproc -13.23% / -17.01%`,
+  `DEALER_DEALER tcp/inproc -23.74% / -31.19%`,
+  raw `PAIR tcp/inproc -18.50% / -22.98%`,
+  `DEALER_DEALER tcp/inproc -20.96% / -23.13%`로
+  broad win이 아니어서 원복했다.
 - 즉 next step은 helper-level micro tuning이나 codegen-only inlining이 아니라
   `socket_base_t::send()` public admission/lock 의미 단위와
   `pipe::_out_sync` serialization 의미 단위를 더 큰 구조로 다시 보는 것이다.
@@ -186,9 +194,77 @@
   `DEALER_DEALER tcp/inproc -9.53% / -19.49%`로 `tcp`만 회복했고,
   raw `PAIR inproc -34.78%`, `DEALER_DEALER inproc -21.83%`,
   `DEALER_DEALER raw tcp timeout`까지 깨져 broad win이 아니어서 원복했다.
-- 즉 current next step은 coordinator state repack을 반복하는 것이 아니라,
+- 이어서 `pipe.cpp` `process_activate_write()` already-active
+  peer-progress snapshot split candidate도 시도했지만,
+  targeted public/raw rerun은
+  `PAIR tcp/inproc -13.02% / -17.35%`, `-9.67% / -19.42%`,
+  `DEALER_DEALER tcp/inproc -14.66% / -18.53%`, `-8.19% / -19.85%`까지
+  회복했어도 broader single에서
+  `DEALER_DEALER inproc -29.32%`, `DEALER_ROUTER inproc -30.93%`,
+  partial `ROUTER_ROUTER tcp -52.69%`와
+  `comp_zlink_router_router zlink inproc 64` hang을 만들어 원복했다.
+- 이어서 같은 family의 `process_activate_write()` atomic peer-progress
+  publish candidate도 시도했지만,
+  targeted public
+  `PAIR tcp/inproc -22.80% / -18.39%`,
+  `DEALER_DEALER tcp/inproc -35.30% / -19.86%`,
+  raw `PAIR tcp/inproc -23.83% / -31.74%`,
+  `DEALER_DEALER tcp/inproc -11.45% / -15.34%`로
+  targeted stage부터 broad win이 아니어서 원복했다.
+- 이어서 `DEALER` / `ROUTER`처럼 existing public send sync가 이미 잡힌
+  caller에서만 `pipe` send lock을 건너뛰는
+  `send_serialized` helper candidate도 시도했지만,
+  public `PAIR tcp/inproc -13.23% / -17.01%`,
+  `DEALER_DEALER tcp/inproc -23.74% / -31.19%`,
+  raw `PAIR tcp/inproc -18.50% / -22.98%`,
+  `DEALER_DEALER tcp/inproc -20.96% / -23.13%`로
+  current public send exclusion이 `_out_sync` steady-state duty를 대신하지
+  못했다.
+- 이어서 `DEALER` same-handle send serialization을
+  `public_api_sync` 밖 external recursive mutex +
+  external `socket_public_send_scope_t` serialized scope로 옮기는
+  candidate도 시도했지만,
+  public `PAIR tcp/inproc -9.23% / -16.03%`,
+  `DEALER_DEALER tcp/inproc -13.09% / -32.97%`,
+  raw `PAIR tcp/inproc -13.88% / -26.40%`,
+  `DEALER_DEALER tcp/inproc -24.35% / -33.20%`로
+  targeted stage부터 broad win이 아니어서 원복했다.
+- 이어서 existing public send sync가 이미 잡힌 `DEALER` caller에서
+  final `write+flush`만 `_out_sync` 밖 pipe hot-send lease로 보내고
+  rare `_out_pipe` mutation이 inflight send를 기다리게 하는
+  candidate도 시도했지만,
+  targeted public `PAIR tcp/inproc -28.83% / -19.45%`,
+  `DEALER_DEALER tcp/inproc -15.40% / -22.79%`로
+  public stage부터 broad win이 아니어서 원복했다.
+- 이어서
+  [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
+  native recursive pthread primitive replacement도 시도했지만,
+  build 완료 뒤 rerun한 stream/contract smoke는 통과했어도
+  public `PAIR tcp/inproc -27.78% / -17.52%`,
+  `DEALER_DEALER tcp/inproc +3.72% / -21.03%`,
+  raw `PAIR tcp/inproc -13.25% / -21.63%`,
+  `DEALER_DEALER tcp/inproc -7.74% / -15.86%`로
+  unchanged control인 `PAIR public tcp`와 raw `PAIR inproc` guardrail을
+  함께 지키지 못해 원복했다.
+- latest stdin 기반 `claude -p` consult는 `claude --help`까지는
+  통과했지만 latest retry도 `timeout 90s`로 종료돼 usable advisory를
+  얻지 못했다.
+- 즉 current next step은 coordinator state repack이나 peer-progress
+  snapshot/publish family, caller-owned `send_serialized` helper family,
+  `DEALER` external send-state mutex / external `send_serialized` scope
+  family, existing public-send-sync-held pipe hot-send lease / outpipe
+  lifetime split family,
+  `fast_mutex.hpp` native recursive pthread primitive replacement family를
+  반복하는 것이 아니라,
   retained send boundary prep과 `_out_sync` unlocked helper 경계를 함께 써서
-  hot send / rare teardown duty를 직접 가르는 structural round다.
+  send scope construct + pipe serialization duty를 함께 줄이는 structural
+  round였지만, 위 다섯 family가 연속 reject되면서 guide 6.2 reset 조건도
+  충족했다.
+  따라서 immediate next step은 또 다른 local hot-path patch가 아니라,
+  guide/review/hot-path를 먼저 다시 정렬하고
+  historical `a819ea3a` admission floor 대
+  `ff0140e5` pipe floor를 current residual direct cause 기준으로
+  다시 분리하는 것이다.
 
 ### 0.2 Current Hypothesis
 
@@ -259,6 +335,14 @@
 - `pipe.cpp` flush notify-outside-`_out_sync` candidate
 - `PAIR` public send scope + `pipe` exclusion merge candidate
 - `socket_runtime.cpp` `public_api_state` exact-state fast path candidate
+- `pipe.cpp` `process_activate_write()` atomic peer-progress publish candidate
+- `dealer.cpp` / `router.cpp` existing public-send-sync-held
+  `pipe` `send_serialized` helper candidate
+- `socket_runtime.cpp` / `dealer.cpp` `DEALER` external send-state mutex +
+  external `send_serialized` scope candidate
+- `pipe.cpp` / `lb.cpp` / `dealer.cpp` existing public-send-sync-held pipe
+  hot-send lease / outpipe lifetime split candidate
+- `fast_mutex.hpp` native recursive pthread primitive replacement candidate
 - direct single-part `send_scope` initial unlock + relock-around-`xsend()`
 - `DEALER` single-part admission-only + `lb_t` send-state lock
 - `public_api_sync` fast-mutex split
@@ -271,6 +355,14 @@
   올리지 않는다.
 - broad win 없이 특정 pattern 하나만 좋아지는 helper-level 후보를 계속
   누적하지 않는다.
+- `process_activate_write()` snapshot / atomic peer-progress publish family,
+  existing public-send-sync-held `send_serialized` helper family,
+  `DEALER` external send-state mutex / external `send_serialized` scope
+  family,
+  existing public-send-sync-held pipe hot-send lease / outpipe lifetime split
+  family,
+  `fast_mutex.hpp` native recursive pthread primitive replacement family는
+  새 broad evidence 없이 다시 올리지 않는다.
 
 ### 0.6 Next Exact Step
 
@@ -304,14 +396,19 @@
   `dealer_inproc_send_profile_20260328.txt`
   진단 로그부터 다시 읽는다.
 - next step은 helper-level micro tuning이 아니라,
-  1) guide/review/hot-path 우선순위를 먼저 다시 정렬하고,
+  1) common send-side structural family 다섯 계열이 연속 reject됐다는 사실을
+     guide/review/hot-path summary에 먼저 반영하고,
   2) current code가 `send_direct_with_retry()` /
      `socket_public_send_scope_t::should_hold_sync_during_retry()` /
      `socket_base_t::direct_send_needs_public_api_sync()` boundary까지는
      retained prep으로 확보했으므로,
-     그 위에서 `_out_sync` no-op이 아니라 unlocked helper 기준으로
-     hot send와 rare teardown/outpipe lifetime 경계를 더 직접 가르는
-     structural candidate를 먼저 세우는 것이다.
+     caller-owned send serialization reuse를 반복하지 않고
+     historical `a819ea3a` admission floor와
+     `ff0140e5` pipe floor를 current residual direct cause 기준으로 먼저
+     다시 쓴다.
+  3) 그 다음에야 serial current-tree `PAIR` / `DEALER_DEALER`
+     public/raw refresh를 다시 찍고,
+  4) above reset이 끝난 뒤에만 new structural candidate를 다시 세우는 것이다.
 - 방금 reject된 coordinator state split family는 새 broad evidence 없이
   다시 올리지 않는다.
 - `DEALER` one-active `lb_t` mutable state를 local lock으로 감싸고
@@ -324,6 +421,21 @@
 - `socket_public_send_scope_t` constructor lazy-sync acquire family도
   새 broad evidence 없이 다시 올리지 않는다.
 - flush notify placement 같은 helper-level `_out_sync` local tweak도
+  새 broad evidence 없이 다시 올리지 않는다.
+- `process_activate_write()` snapshot / atomic peer-progress publish family도
+  새 broad evidence 없이 다시 올리지 않는다.
+- `DEALER` / `ROUTER` existing public send sync를
+  `pipe::_out_sync` 대용 exclusion으로 재사용하는
+  `send_serialized` helper family도 새 broad evidence 없이 다시 올리지 않는다.
+- `DEALER` same-handle send serialization을
+  `public_api_sync` 밖 external recursive mutex +
+  external `socket_public_send_scope_t` serialized scope로 옮기는 family도
+  새 broad evidence 없이 다시 올리지 않는다.
+- existing public send sync가 이미 잡힌 caller에서
+  final `write+flush`만 `_out_sync` 밖 hot-send lease로 보내고
+  rare `_out_pipe` mutation이 inflight send를 기다리게 하는 family도
+  새 broad evidence 없이 다시 올리지 않는다.
+- `fast_mutex.hpp` native recursive pthread primitive replacement family도
   새 broad evidence 없이 다시 올리지 않는다.
 - `PAIR`까지 public send scope를 넓혀
   `pipe` exclusion을 합치는 family도 새 broad evidence 없이 다시 올리지

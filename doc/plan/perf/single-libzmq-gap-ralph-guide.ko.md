@@ -280,6 +280,67 @@ raw/public 분리를 다시 찍는다.
    먼저 `a819ea3a` send admission/CAS와 `ff0140e5` `_out_sync`
    steady-state duty를 current HEAD에서 어떻게 줄일 수 있는지 보는 데서
    시작한다.
+   가장 최근
+   `pipe.hpp` / `pipe.cpp` `process_activate_write()` already-active
+   peer-progress snapshot split candidate는
+   targeted `PAIR` / `DEALER_DEALER` public/raw rerun까지는 회복했지만,
+   broader single `DEALER_DEALER inproc -29.32%`,
+   `DEALER_ROUTER inproc -30.93%`, partial `ROUTER_ROUTER tcp -52.69%`와
+   `comp_zlink_router_router zlink inproc 64` hang을 만들어 원복했다.
+   같은 family의 `process_activate_write()` atomic peer-progress publish
+   candidate도 targeted public
+   `PAIR tcp/inproc -22.80% / -18.39%`,
+   `DEALER_DEALER tcp/inproc -35.30% / -19.86%`,
+   raw `PAIR tcp/inproc -23.83% / -31.74%`,
+   `DEALER_DEALER tcp/inproc -11.45% / -15.34%`로
+   targeted stage부터 keep-worthy broad win이 아니어서 원복했다.
+   이어서 `DEALER` same-handle send serialization을
+   `public_api_sync` 밖 external recursive mutex +
+   external `socket_public_send_scope_t` serialized scope로 옮기는
+   candidate도 시도했지만,
+   public `PAIR tcp/inproc -9.23% / -16.03%`,
+   `DEALER_DEALER tcp/inproc -13.09% / -32.97%`,
+   raw `PAIR tcp/inproc -13.88% / -26.40%`,
+   `DEALER_DEALER tcp/inproc -24.35% / -33.20%`로
+   targeted stage부터 keep-worthy broad win이 아니어서 원복했다.
+   이어서 existing public send sync가 이미 잡힌 `DEALER` caller에서
+   final `write+flush`만 `_out_sync` 밖 pipe hot-send lease로 보내고
+   rare `_out_pipe` mutation이 inflight send를 기다리게 하는 candidate도
+   시도했지만,
+   targeted public `PAIR tcp/inproc -28.83% / -19.45%`,
+   `DEALER_DEALER tcp/inproc -15.40% / -22.79%`로
+   public stage부터 keep-worthy broad win이 아니어서 원복했다.
+   이어서
+   [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
+   recursive `fast_mutex_t`를 native recursive pthread mutex로 바꾸는
+   primitive replacement candidate도 시도했지만,
+   stream/contract smoke는 rebuild 뒤 통과했어도,
+   targeted public `PAIR tcp/inproc -27.78% / -17.52%`,
+   `DEALER_DEALER tcp/inproc +3.72% / -21.03%`,
+   raw `PAIR tcp/inproc -13.25% / -21.63%`,
+   `DEALER_DEALER tcp/inproc -7.74% / -15.86%`로
+   unchanged control인 `PAIR public tcp`와 raw `PAIR inproc` guardrail을
+   함께 지키지 못해 원복했다.
+   따라서 다음 라운드는
+   `process_activate_write()` peer-progress family,
+   existing public-send-sync-held `send_serialized` helper family,
+   `DEALER` external send-state mutex / external send-serialized scope family,
+   existing public-send-sync-held pipe hot-send lease / outpipe lifetime split
+   family,
+   `fast_mutex.hpp` native recursive pthread primitive replacement family를
+   반복하지 않고,
+   send-scope construct + pipe serialization 구조를 함께 다시 고른다.
+   다만 2026-03-28 현재 이 common send-side structural family는
+   `process_activate_write()` snapshot/atomic,
+   existing public-send-sync-held `send_serialized`,
+   `DEALER` external send-state mutex/external serialized scope,
+   existing public-send-sync-held hot-send lease/outpipe lifetime split,
+   `fast_mutex.hpp` native recursive pthread primitive replacement까지
+   연속 rejected count가 6.2 trigger를 넘겼다.
+   따라서 immediate next round는 또 다른 local code patch가 아니라,
+   guide/review/hot-path 우선순위를 먼저 다시 쓰고
+   historical `a819ea3a` admission floor와 `ff0140e5` pipe floor를
+   current residual direct cause 관점에서 다시 분리하는 데서 시작한다.
 3. 현재 accepted `PAIR` / `DEALER` 공통 delta를 기준선으로 유지하고,
    broad win 근거 없는 공통 미세 후보는 다시 파지 않는다.
 4. `PUBSUB`는 code optimization 전에 semantic/backpressure map을 먼저 만든다.
@@ -640,6 +701,17 @@ rejected candidate는 반드시 로그에 남긴다.
     [`perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_public.txt),
     [`perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_raw.txt)
     로 남겼다
+  - common send-side structural round는
+    `process_activate_write()` snapshot/atomic,
+    existing public-send-sync-held `send_serialized`,
+    `DEALER` external send-state mutex/external serialized scope,
+    existing public-send-sync-held hot-send lease/outpipe lifetime split,
+    `fast_mutex.hpp` native recursive pthread primitive replacement까지
+    다섯 계열이 연속 reject되어 6.2 guide 재작성 trigger가 켜졌다.
+    따라서 다음 iteration은 또 다른 hot-path patch가 아니라
+    guide/review/hot-path summary 재정렬과
+    historical `a819ea3a` admission floor 대 `ff0140e5` pipe floor
+    분리부터 시작한다
   - `pipe.cpp` `write()/write_and_flush()/check_write_status()`는 current tree에서
     `_out_sync` 아래 generic `check_hwm_unlocked()`를 사용해 recursive
     `check_hwm()` 재진입을 이미 피한다
@@ -728,6 +800,14 @@ rejected candidate는 반드시 로그에 남긴다.
     public `PAIR tcp/inproc 64B -32.03% / -29.11%`,
     `DEALER_DEALER tcp/inproc -19.33% / -31.37%`로
     `PAIR`와 `DEALER_DEALER inproc`을 accepted baseline보다 더 악화시켜 원복
+  - `fast_mutex.hpp` native recursive `pthread_mutex` primitive replacement도
+    stream/contract smoke는 통과했지만,
+    public `PAIR tcp/inproc -27.78% / -17.52%`,
+    `DEALER_DEALER tcp/inproc +3.72% / -21.03%`,
+    raw `PAIR tcp/inproc -13.25% / -21.63%`,
+    `DEALER_DEALER tcp/inproc -7.74% / -15.86%`로
+    unchanged control인 `PAIR public tcp`와 raw `PAIR inproc` guardrail을
+    함께 지키지 못해 원복
   - `pipe.hpp` / `pipe.cpp` hot send-only non-recursive lock split도
     public `PAIR tcp/inproc 64B -17.14% / -34.56%`,
     `DEALER_DEALER tcp/inproc -13.65% / -19.47%`,
@@ -760,6 +840,57 @@ rejected candidate는 반드시 로그에 남긴다.
     `DEALER_DEALER inproc -21.83%`,
     `DEALER_DEALER raw tcp timeout`까지 깨져 broad win과 raw/public
     guardrail을 지키지 못해 원복
+  - `pipe.hpp` / `pipe.cpp`
+    `process_activate_write()` already-active peer-progress snapshot split도
+    targeted public rerun
+    `PAIR tcp/inproc -13.02% / -17.35%`,
+    `DEALER_DEALER tcp/inproc -14.66% / -18.53%`,
+    raw rerun
+    `PAIR tcp/inproc -9.67% / -19.42%`,
+    `DEALER_DEALER tcp/inproc -8.19% / -19.85%`까지는 회복했지만,
+    broader single
+    `PAIR tcp/inproc -8.43% / -21.82%`,
+    `PUBSUB tcp/inproc -18.27% / -15.75%`,
+    `DEALER_DEALER tcp/inproc -11.48% / -29.32%`,
+    `DEALER_ROUTER tcp/inproc -19.84% / -30.93%`,
+    partial `ROUTER_ROUTER tcp -52.69%`와
+    `comp_zlink_router_router zlink inproc 64` hang까지 생겨
+    broad win이 아니어서 원복
+  - `pipe.hpp` / `pipe.cpp`
+    `process_activate_write()` atomic peer-progress publish candidate도
+    targeted public
+    `PAIR tcp/inproc -22.80% / -18.39%`,
+    `DEALER_DEALER tcp/inproc -35.30% / -19.86%`,
+    raw
+    `PAIR tcp/inproc -23.83% / -31.74%`,
+    `DEALER_DEALER tcp/inproc -11.45% / -15.34%`로
+    targeted stage부터 broad win이 아니어서 원복
+  - `pipe.hpp` / `pipe.cpp` / `lb.hpp` / `lb.cpp` / `dealer.cpp` / `router.cpp`
+    existing public-send-sync-held `send_serialized` pipe helper candidate도
+    public `PAIR tcp/inproc -13.23% / -17.01%`,
+    `DEALER_DEALER tcp/inproc -23.74% / -31.19%`,
+    raw `PAIR tcp/inproc -18.50% / -22.98%`,
+    `DEALER_DEALER tcp/inproc -20.96% / -23.13%`로
+    `PAIR` / `DEALER` public/raw guardrail과 broader public single
+    (`DEALER_ROUTER tcp/inproc -29.36% / -28.30%`,
+    `ROUTER_ROUTER tcp/inproc -55.88% / -22.76%`)을 함께 지키지 못해 원복
+  - `socket_runtime.hpp` / `socket_runtime.cpp` / `socket_base.hpp` /
+    `socket_base_api.cpp` / `socket_base_msg.cpp` /
+    `multipart_send_txn.cpp` / `dealer.hpp` / `dealer.cpp`
+    `DEALER` external send-state mutex + external `send_serialized` scope
+    candidate도
+    public `PAIR tcp/inproc -9.23% / -16.03%`,
+    `DEALER_DEALER tcp/inproc -13.09% / -32.97%`,
+    raw `PAIR tcp/inproc -13.88% / -26.40%`,
+    `DEALER_DEALER tcp/inproc -24.35% / -33.20%`로
+    targeted stage부터 `PAIR` / `DEALER` public/raw guardrail을 함께 지키지
+    못해 원복
+  - `pipe.hpp` / `pipe.cpp` / `lb.hpp` / `lb.cpp` / `dealer.cpp`
+    existing public-send-sync-held pipe hot-send lease / outpipe lifetime
+    split candidate도
+    targeted public `PAIR tcp/inproc -28.83% / -19.45%`,
+    `DEALER_DEALER tcp/inproc -15.40% / -22.79%`로
+    public stage부터 broad win이 아니어서 원복
   - `socket_runtime.cpp` `PAIR` no-sync send scope enter+leave fast path도
     raw는 일부 회복했지만 public seq에서 `PAIR tcp/inproc`이
     `-37.97% / -32.71%`로 다시 벌어져 원복
@@ -914,6 +1045,13 @@ rejected candidate는 반드시 로그에 남긴다.
     `send_routed()`에서 initial `process_commands()` 바깥으로
     public sync를 빼는 후보도 `PAIR`/`DEALER` public broad win이 아니었고,
     raw/public guardrail도 다시 엇갈려 현재 코드에는 남아 있지 않다.
+  - 같은 날 `pipe.hpp` / `pipe.cpp` / `lb.hpp` / `lb.cpp` /
+    `dealer.cpp` / `router.cpp` existing public-send-sync-held
+    `send_serialized` pipe helper candidate도
+    `PAIR` / `DEALER` public/raw guardrail과 broader public single을 함께
+    만족시키지 못해 현재 코드에는 남아 있지 않다.
+    current tree에는 `pipe` caller-owned send-serialized helper나
+    `DEALER` / `ROUTER`의 `_out_sync` elision 경로가 없다.
   - 2026-03-28 baseline 재검증에서
     `test_pubsub_publish_is_safe_from_multiple_threads`가
     `part_count Expected 1 Was 2`로 반복 실패했고,
@@ -1209,29 +1347,184 @@ rejected candidate는 반드시 로그에 남긴다.
       `PAIR` public과 `DEALER inproc` raw가 함께 악화돼 원복했다.
       즉 `a819ea3a` 잔여 비용을 public lifecycle coordinator state packing
       하나로 줄이는 family는 keep-worthy broad win이 아니었다.
-- [ ] retained send admission boundary prep + `_out_sync` unlocked helper 위에서
-      actual common send-side structural candidate의 다음 라운드를 진행한다.
-      current tree는
+- [x] retained send admission boundary prep + `_out_sync` unlocked helper 위에서
+      actual common send-side structural candidate의 다음 라운드를 진행했다.
+      current tree의
       `send_direct_with_retry()` /
       `socket_public_send_scope_t::should_hold_sync_during_retry()` /
       `socket_base_t::direct_send_needs_public_api_sync()` 경계와
-      `pipe` unlocked helper 경계를 둘 다 갖고 있다.
-      다음 단계는 public_api coordinator repack을 반복하지 않고,
-      `_out_pipe` lifetime / `_out_active` / `_state` / peer wakeup publish가
-      steady-state `write_and_flush`와 어디서 분리될 수 있는지
-      `libzmq` 대응 구현 기준으로 다시 고르는 것이다.
-      가장 최근 `pipe.cpp` / `pair.cpp` / `lb.cpp`
-      final non-routing payload flush helper candidate도
-      public `PAIR tcp/inproc -12.51% / -26.39%`,
-      `DEALER_DEALER tcp/inproc -9.53% / -19.49%`,
-      raw `PAIR inproc -34.78%`,
-      `DEALER_DEALER inproc -21.83%`,
-      raw tcp `no_data/timeout`로 broad win이 아니어서 원복했다.
-      즉 payload-only/local helper family는 더 누적하지 않는다.
-      새 family 직전 stdin 기반 `claude -p` consult도 다시 `timeout 50s`로
-      usable advisory를 못 얻었으므로,
-      다음 stage 시작 시 libzmq pass 뒤 한 번 더 시도하되
-      실패하면 unavailable로 기록하고 bench/test authority로 계속 진행한다.
+      `pipe` helper 경계를 유지한 채,
+      `pipe.hpp` / `pipe.cpp`
+      `process_activate_write()` already-active peer-progress snapshot split을
+      시도했다.
+      targeted ctest
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup)$' -j1`
+      는 통과했고,
+      targeted public rerun은
+      `PAIR tcp/inproc -13.02% / -17.35%`,
+      `DEALER_DEALER tcp/inproc -14.66% / -18.53%`,
+      raw rerun은
+      `PAIR tcp/inproc -9.67% / -19.42%`,
+      `DEALER_DEALER tcp/inproc -8.19% / -19.85%`까지 회복했다.
+      하지만 broader single에서
+      `PAIR tcp/inproc -8.43% / -21.82%`,
+      `PUBSUB tcp/inproc -18.27% / -15.75%`,
+      `DEALER_DEALER tcp/inproc -11.48% / -29.32%`,
+      `DEALER_ROUTER tcp/inproc -19.84% / -30.93%`,
+      partial `ROUTER_ROUTER tcp -52.69%`가 나왔고,
+      `comp_zlink_router_router zlink inproc 64` hang까지 생겨 원복했다.
+      따라서 peer-progress snapshot-only split family는 keep-worthy broad win이
+      아니었다.
+- [x] send admission boundary prep + `_out_sync` unlocked helper 위의 다음
+      common send-side structural round에서,
+      existing public send sync가 이미 잡힌 `DEALER` / `ROUTER`
+      caller만 `pipe` send serialization을 대신 맡도록 내리는
+      `send_serialized` helper candidate를 검증했다.
+      `libzmq` `socket_base.cpp` / `pipe.cpp` / `lb.cpp` / `pair.cpp`
+      reference pass와 stdin 기반 `claude -p` consult 뒤,
+      `pipe.hpp` / `pipe.cpp` / `lb.hpp` / `lb.cpp` / `dealer.cpp` /
+      `router.cpp`에 candidate를 올렸다.
+      targeted ctest
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_router_multiple_dealers|test_stream_send_blocking_wakeup)$' -j1`
+      는 통과했지만,
+      broader public single은
+      `PAIR tcp/inproc -13.23% / -17.01%`,
+      `DEALER_DEALER tcp/inproc -23.74% / -31.19%`,
+      `DEALER_ROUTER tcp/inproc -29.36% / -28.30%`,
+      `ROUTER_ROUTER tcp/inproc -55.88% / -22.76%`,
+      raw guardrail은
+      `PAIR tcp/inproc -18.50% / -22.98%`,
+      `DEALER_DEALER tcp/inproc -20.96% / -23.13%`로
+      broad win이 아니어서 원복했다.
+- [x] 다음 common send-side structural round는
+      `process_activate_write()` peer-progress family와
+      existing public-send-sync-held `send_serialized` pipe helper family를
+      반복하지 않고,
+      current code에서도 public send sync가 `_out_sync` steady-state duty를
+      대체하지 못한다는 점을 전제로
+      `DEALER` same-handle send serialization을 `public_api_sync` 밖
+      external recursive mutex +
+      external `socket_public_send_scope_t` serialized scope로 옮기는
+      후보 하나만 골라 검증했다.
+      `libzmq` `socket_base.cpp` / `pipe.cpp` / `lb.cpp` / `pair.cpp`
+      reference pass 뒤 stdin 기반 `claude -p` consult는
+      `timeout 60s`로 종료돼 unusable로 기록했고,
+      `socket_runtime.hpp` / `socket_runtime.cpp` /
+      `socket_base.hpp` / `socket_base_api.cpp` /
+      `socket_base_msg.cpp` / `multipart_send_txn.cpp` /
+      `dealer.hpp` / `dealer.cpp` /
+      `unittest_socket_runtime.cpp`에 candidate를 올렸다.
+      targeted ctest
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm)$' -j1`
+      는 통과했지만,
+      public는
+      `PAIR tcp/inproc -9.23% / -16.03%`,
+      `DEALER_DEALER tcp/inproc -13.09% / -32.97%`,
+      raw는
+      `PAIR tcp/inproc -13.88% / -26.40%`,
+      `DEALER_DEALER tcp/inproc -24.35% / -33.20%`로
+      targeted stage부터 broad win이 아니어서 전부 원복했다.
+- [x] 다음 common send-side structural round는
+      guide/review가 current code priority로 둔
+      `hot send` 대 `rare teardown/outpipe lifetime` duty split을
+      existing public send sync가 이미 잡힌 `DEALER` caller에서만
+      final `write+flush` hot-send lease로 시도했다.
+      `pair_inproc_send_profile_20260328.txt` /
+      `dealer_inproc_send_profile_20260328.txt` 재독해와
+      `libzmq` `socket_base.cpp` / `pipe.cpp` / `lb.cpp` / `pair.cpp`
+      reference pass 뒤,
+      `pipe.hpp` / `pipe.cpp` / `lb.hpp` / `lb.cpp` / `dealer.cpp` /
+      `socket_base.hpp`에 candidate를 올렸다.
+      targeted ctest
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm)$' -j1`
+      는 통과했지만,
+      targeted public
+      `PAIR tcp/inproc -28.83% / -19.45%`,
+      `DEALER_DEALER tcp/inproc -15.40% / -22.79%`로
+      public stage부터 broad win이 아니어서
+      raw guardrail로 승격하지 않고 전부 원복했다.
+- [x] 다음 common send-side structural round는
+      `process_activate_write()` peer-progress family,
+      existing public-send-sync-held `send_serialized` pipe helper family,
+      `DEALER` external send-state mutex / external send-serialized scope
+      family,
+      existing public-send-sync-held pipe hot-send lease / outpipe lifetime
+      split family를 반복하지 않고,
+      current code에서도 public send sync나 caller-owned serialization reuse가
+      `_out_sync` steady-state duty를 대체하지 못한다는 점을 전제로
+      `send scope construct + pipe serialization` 의미 단위를 다른 구조로
+      다시 가르는 후보 하나만 고른다.
+      시작은 current kept boundary
+      (`send_direct_with_retry()` /
+      `socket_public_send_scope_t::should_hold_sync_during_retry()` /
+      `socket_base_t::direct_send_needs_public_api_sync()` /
+      `_out_sync` unlocked helper)
+      와 guide/review/hot-path summary 재독해로 한다.
+      이번 라운드의 구체 후보로
+      [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
+      의 recursive `fast_mutex_t` primitive replacement를 검증했다.
+      `claude --help`는 통과했지만 stdin 기반 `claude -p` consult는
+      응답 없이 끝났고 prompt 인자 재시도는
+      `Input must be provided either through stdin or as a prompt argument`
+      오류로 usable advisory를 얻지 못해 unavailable로 기록했다.
+      candidate code는 `fast_mutex.hpp`와
+      `unittest_socket_runtime.cpp`에만 올렸고,
+      `cmake --build core/build -j$(nproc)` 뒤
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      gate를 재실행해 통과를 확인했다.
+      initial parallel ctest는 build와 겹쳐
+      `test_stream_send_blocking_wakeup`에서
+      `libzlink.so.5 file too short` loader race를 냈지만,
+      build 완료 뒤 동일 gate rerun은 전부 통과했다.
+      targeted public은
+      `PAIR tcp/inproc -27.78% / -17.52%`,
+      `DEALER_DEALER tcp/inproc +3.72% / -21.03%`,
+      raw는
+      `PAIR tcp/inproc -13.25% / -21.63%`,
+      `DEALER_DEALER tcp/inproc -7.74% / -15.86%`였고,
+      unchanged control인 `PAIR public tcp`와 raw `PAIR inproc` guardrail을
+      함께 지키지 못해 전부 원복했다.
+- [x] 다음 common send-side structural round는
+      `process_activate_write()` peer-progress family,
+      existing public-send-sync-held `send_serialized` pipe helper family,
+      `DEALER` external send-state mutex / external send-serialized scope
+      family,
+      existing public-send-sync-held pipe hot-send lease / outpipe lifetime
+      split family,
+      `fast_mutex.hpp` native recursive pthread primitive replacement family를
+      반복하지 않고,
+      current code에서도 public send sync나 caller-owned serialization reuse가
+      `_out_sync` steady-state duty를 대체하지 못한다는 점을 전제로
+      `send scope construct + pipe serialization` 의미 단위를 다른 구조로
+      다시 가르는 후보 하나만 고른다.
+      시작은 current kept boundary
+      (`send_direct_with_retry()` /
+      `socket_public_send_scope_t::should_hold_sync_during_retry()` /
+      `socket_base_t::direct_send_needs_public_api_sync()` /
+      `_out_sync` unlocked helper)
+      와 guide/review/hot-path summary 재독해로 한다는 규칙까지는 유지하되,
+      2026-03-28 current tree에서는 above family 다섯 계열이 연속 reject되어
+      6.2 guide 재작성 trigger가 이미 켜졌음을 확인했다.
+      따라서 immediate next step은 또 다른 local code patch가 아니라
+      guide/review/hot-path 우선순위를 먼저 다시 정렬하는 쪽으로
+      source-of-truth를 고쳤다.
+      `claude --help`는 통과했지만 stdin 기반
+      `timeout 90s claude -p --permission-mode bypassPermissions ...`
+      consult는 다시 timeout으로 끝나 latest advisory는 unavailable로 남겼다.
+      current tree 검증으로
+      `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      는 통과했다.
+      concurrent public/raw baseline refresh도 한 번 돌려 결과 파일은 남겼지만,
+      두 run을 겹쳐 띄운 탓에 baseline authority로는 쓰지 않고
+      noisy diagnostic artifact로만 취급한다.
+      이 단계의 실제 다음 exact step은
+      historical `ff0140e5 -> a819ea3a -> 98e7d324 -> 9b91234c`
+      map과 current retained boundary를 다시 붙여
+      current residual direct cause를
+      `admission floor` 대 `pipe floor`로 먼저 재서술한 뒤,
+      serial current-tree public/raw refresh를 거쳐
+      새 broad hypothesis를 다시 여는 것이다.
 - [x] same-handle concurrent `PUB` publish contract regression
       (`test_pubsub_publish_is_safe_from_multiple_threads`)을 고치고
       logical multipart send scope를 재검증했다.

@@ -753,6 +753,13 @@ rejected candidate는 반드시 로그에 남긴다.
     raw `PAIR tcp/inproc -30.05% / -18.28%`,
     `DEALER_DEALER tcp/inproc -7.24% / -17.59%`로
     public baseline과 raw/public guardrail을 함께 지키지 못해 원복
+  - `pipe.cpp` / `pair.cpp` / `lb.cpp` final non-routing payload flush helper도
+    public `PAIR tcp/inproc -12.51% / -26.39%`,
+    `DEALER_DEALER tcp/inproc -9.53% / -19.49%`로 `tcp`만 회복했고,
+    raw `PAIR inproc -34.78%`,
+    `DEALER_DEALER inproc -21.83%`,
+    `DEALER_DEALER raw tcp timeout`까지 깨져 broad win과 raw/public
+    guardrail을 지키지 못해 원복
   - `socket_runtime.cpp` `PAIR` no-sync send scope enter+leave fast path도
     raw는 일부 회복했지만 public seq에서 `PAIR tcp/inproc`이
     `-37.97% / -32.71%`로 다시 벌어져 원복
@@ -1187,17 +1194,41 @@ rejected candidate는 반드시 로그에 남긴다.
       같은 contract 아래에서 다시 정리했고,
       same-handle concurrent send/publish 회귀와
       `PAIR` / `DEALER_DEALER` public/raw guardrail도 다시 확인했다.
-- [ ] retained send admission boundary prep 위에서
-      actual common send-side structural candidate를 다시 고른다.
-      current tree는 이제
+- [x] retained send admission boundary prep 위에서
+      actual common send-side structural candidate를 다시 골랐다.
+      `socket_runtime.hpp/.cpp`
+      `public_api_inflight/public_api_closing/public_api_sync` split candidate를
+      시도했지만,
+      targeted ctest
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm)$' -j1`
+      는 통과한 반면,
+      public `PAIR tcp/inproc -24.72% / -26.53%`,
+      `DEALER_DEALER tcp/inproc -19.44% / -22.01%`,
+      raw `PAIR tcp/inproc -9.25% / -17.70%`,
+      `DEALER_DEALER tcp/inproc -17.73% / -31.95%`로
+      `PAIR` public과 `DEALER inproc` raw가 함께 악화돼 원복했다.
+      즉 `a819ea3a` 잔여 비용을 public lifecycle coordinator state packing
+      하나로 줄이는 family는 keep-worthy broad win이 아니었다.
+- [ ] retained send admission boundary prep + `_out_sync` unlocked helper 위에서
+      actual common send-side structural candidate의 다음 라운드를 진행한다.
+      current tree는
       `send_direct_with_retry()` /
       `socket_public_send_scope_t::should_hold_sync_during_retry()` /
-      `socket_base_t::direct_send_needs_public_api_sync()` 경계까지는
-      code-level로 고정했다.
-      다음 단계는 이 prep 위에서
-      `a819ea3a` admission/CAS 의미 단위를 실제로 줄이는 후보와,
-      필요하면 그 다음 `_out_sync` duty candidate를 다시 고르는 것이다.
-      새 family 직전 `claude -p` consult는 `timeout 50s`로
+      `socket_base_t::direct_send_needs_public_api_sync()` 경계와
+      `pipe` unlocked helper 경계를 둘 다 갖고 있다.
+      다음 단계는 public_api coordinator repack을 반복하지 않고,
+      `_out_pipe` lifetime / `_out_active` / `_state` / peer wakeup publish가
+      steady-state `write_and_flush`와 어디서 분리될 수 있는지
+      `libzmq` 대응 구현 기준으로 다시 고르는 것이다.
+      가장 최근 `pipe.cpp` / `pair.cpp` / `lb.cpp`
+      final non-routing payload flush helper candidate도
+      public `PAIR tcp/inproc -12.51% / -26.39%`,
+      `DEALER_DEALER tcp/inproc -9.53% / -19.49%`,
+      raw `PAIR inproc -34.78%`,
+      `DEALER_DEALER inproc -21.83%`,
+      raw tcp `no_data/timeout`로 broad win이 아니어서 원복했다.
+      즉 payload-only/local helper family는 더 누적하지 않는다.
+      새 family 직전 stdin 기반 `claude -p` consult도 다시 `timeout 50s`로
       usable advisory를 못 얻었으므로,
       다음 stage 시작 시 libzmq pass 뒤 한 번 더 시도하되
       실패하면 unavailable로 기록하고 bench/test authority로 계속 진행한다.

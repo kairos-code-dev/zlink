@@ -172,6 +172,23 @@
   `DEALER_DEALER tcp/inproc -20.22% / -20.81%`였다.
   즉 keep-worthy perf delta는 아니지만, 구조 경계를 current tree에 남기지
   못할 정도의 새 broad regression도 아니었다.
+- 같은 boundary 위 `socket_runtime.hpp/.cpp`
+  `public_api_inflight/public_api_closing/public_api_sync` split candidate도
+  시도했지만,
+  public `PAIR tcp/inproc -24.72% / -26.53%`,
+  `DEALER_DEALER tcp/inproc -19.44% / -22.01%`,
+  raw `PAIR tcp/inproc -9.25% / -17.70%`,
+  `DEALER_DEALER tcp/inproc -17.73% / -31.95%`로
+  `PAIR` public과 `DEALER inproc` raw가 함께 악화돼 원복했다.
+- 이어서 `pipe.cpp` / `pair.cpp` / `lb.cpp` final non-routing payload
+  flush helper도 시도했지만,
+  public `PAIR tcp/inproc -12.51% / -26.39%`,
+  `DEALER_DEALER tcp/inproc -9.53% / -19.49%`로 `tcp`만 회복했고,
+  raw `PAIR inproc -34.78%`, `DEALER_DEALER inproc -21.83%`,
+  `DEALER_DEALER raw tcp timeout`까지 깨져 broad win이 아니어서 원복했다.
+- 즉 current next step은 coordinator state repack을 반복하는 것이 아니라,
+  retained send boundary prep과 `_out_sync` unlocked helper 경계를 함께 써서
+  hot send / rare teardown duty를 직접 가르는 structural round다.
 
 ### 0.2 Current Hypothesis
 
@@ -245,6 +262,8 @@
 - direct single-part `send_scope` initial unlock + relock-around-`xsend()`
 - `DEALER` single-part admission-only + `lb_t` send-state lock
 - `public_api_sync` fast-mutex split
+- `socket_runtime.hpp/.cpp`
+  `public_api_inflight/public_api_closing/public_api_sync` split candidate
 
 ### 0.5 Do Not Revisit
 
@@ -287,13 +306,14 @@
 - next step은 helper-level micro tuning이 아니라,
   1) guide/review/hot-path 우선순위를 먼저 다시 정렬하고,
   2) current code가 `send_direct_with_retry()` /
-  `socket_public_send_scope_t::should_hold_sync_during_retry()` /
-  `socket_base_t::direct_send_needs_public_api_sync()` boundary까지는
-  retained prep으로 확보했으므로,
-  그 위에서 `socket_base_t::send()` admission/scope construct cost를
-  실제로 줄이는 후보와
-  3) `_out_sync` no-op이 아니라 unlocked helper 위에서 hot send와 rare
-  teardown 경계를 더 분리하는 후보를 세우는 것이다.
+     `socket_public_send_scope_t::should_hold_sync_during_retry()` /
+     `socket_base_t::direct_send_needs_public_api_sync()` boundary까지는
+     retained prep으로 확보했으므로,
+     그 위에서 `_out_sync` no-op이 아니라 unlocked helper 기준으로
+     hot send와 rare teardown/outpipe lifetime 경계를 더 직접 가르는
+     structural candidate를 먼저 세우는 것이다.
+- 방금 reject된 coordinator state split family는 새 broad evidence 없이
+  다시 올리지 않는다.
 - `DEALER` one-active `lb_t` mutable state를 local lock으로 감싸고
   direct single-part send를 admission-only로 내리는 family는
   새 broad evidence 없이 다시 올리지 않는다.

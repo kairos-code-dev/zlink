@@ -47,6 +47,57 @@ void store_dispatch_source_rid (zlink_routing_id_t *rid_,
         memcpy (rid_->data, msg_->data (), size);
     *valid_ = true;
 }
+
+void copy_source_rid_from_blob (const zlink::blob_t &routing_id_,
+                                zlink_routing_id_t *out_)
+{
+    if (!out_)
+        return;
+
+    const size_t size = routing_id_.size () < sizeof (out_->data)
+                          ? routing_id_.size ()
+                          : sizeof (out_->data);
+    out_->size = static_cast<uint8_t> (size);
+    if (size > 0)
+        memcpy (out_->data, routing_id_.data (), size);
+}
+
+void copy_source_rid_from_msg (const zlink::msg_t &msg_,
+                               zlink_routing_id_t *out_)
+{
+    if (!out_)
+        return;
+
+    const size_t size = msg_.size () < sizeof (out_->data) ? msg_.size ()
+                                                            : sizeof (out_->data);
+    out_->size = static_cast<uint8_t> (size);
+    if (size > 0)
+        memcpy (out_->data, const_cast<zlink::msg_t &> (msg_).data (), size);
+}
+
+void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
+                                  zlink_routing_id_t *out_)
+{
+    if (!out_) {
+        return;
+    }
+
+    out_->size = 0;
+    if (!pipe_)
+        return;
+
+    const zlink::blob_t &routing_id = pipe_->get_routing_id ();
+    if (routing_id.size () > 0) {
+        copy_source_rid_from_blob (routing_id, out_);
+        return;
+    }
+
+    zlink::pipe_t *peer = pipe_->get_peer ();
+    if (!peer)
+        return;
+
+    copy_source_rid_from_blob (peer->get_routing_id (), out_);
+}
 }
 
 static bool router_debug_enabled ()
@@ -466,12 +517,13 @@ int zlink::router_t::xrecv (msg_t *msg_)
 int zlink::router_t::xrecv_routed (msg_t *msg_,
                                    zlink_routing_id_t *source_rid_out_)
 {
-    if (source_rid_out_)
-        memset (source_rid_out_, 0, sizeof (*source_rid_out_));
-
     if (_prefetched) {
-        if (_current_in && source_rid_out_)
-            resolve_socket_msg_source_rid (_current_in, source_rid_out_);
+        if (source_rid_out_) {
+            if (_prefetched_id.size () > 0)
+                copy_source_rid_from_msg (_prefetched_id, source_rid_out_);
+            else
+                copy_router_pipe_source_rid (_current_in, source_rid_out_);
+        }
 
         const int rc = msg_->move (_prefetched_msg);
         errno_assert (rc == 0);
@@ -503,10 +555,10 @@ int zlink::router_t::xrecv_routed (msg_t *msg_,
     if (!_more_in) {
         _current_in = pipe;
         if (source_rid_out_)
-            resolve_socket_msg_source_rid (pipe, source_rid_out_);
+            copy_router_pipe_source_rid (pipe, source_rid_out_);
         _routing_id_sent = true;
     } else if (_current_in && source_rid_out_) {
-        resolve_socket_msg_source_rid (_current_in, source_rid_out_);
+        copy_router_pipe_source_rid (_current_in, source_rid_out_);
     }
 
     _more_in = (msg_->flags () & msg_t::more) != 0;

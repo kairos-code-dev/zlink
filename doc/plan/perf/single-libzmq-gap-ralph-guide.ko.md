@@ -150,6 +150,13 @@ raw/public 분리를 다시 찍는다.
 3. 두 문서를 기준으로 현재 top hypothesis 하나만 고른다.
 4. 필요한 경우 `/home/hep7/project/kairos/libzmq` 대응 구현을 먼저 읽고,
    현재 후보의 semantic / ordering / hot-path work 차이를 짧게 정리한다.
+   특히 next round 시작점은 아래 historical concrete change map이다.
+   - `ff0140e5`: `pipe::_out_sync` steady-state serialization 추가
+   - `a819ea3a`: `socket_base_t::send()` public admission/CAS 추가
+   - `98e7d324`: public multipart `zlink_send/zlink_recv` 도입
+   - `9b91234c`: bench hot-loop activation + `PERF_SINGLE_MAX_INFLIGHT` 제거
+   새 iteration은 이 4개 변화 중 어느 의미가 current HEAD까지 남아 있는지
+   먼저 짧게 정리한 뒤에만 code candidate를 선택한다.
 5. 새 단계나 새 candidate family로 넘어가기 전에는 `claude` 의견도 한 번
    수렴한다. 목적은 authority를 바꾸는 것이 아니라, 현재 가설을 다른 시각에서
    검토해 local search drift를 막는 것이다.
@@ -241,9 +248,28 @@ raw/public 분리를 다시 찍는다.
 
 현재 우선순위는 아래 순서를 유지한다.
 
-1. 현재 accepted `PAIR` / `DEALER` 공통 delta를 기준선으로 유지하고,
+1. historical first direct cause는
+   `raw send_exact/zlink_msg_recv -> public zlink_send/zlink_recv` surface
+   전환이라는 bisect 결론을 기준선으로 유지한다.
+   이 가설을 뒤집는 새 증거가 없으면, 랄프루프는 다시 "wrapper가 본체인지"
+   를 처음부터 재탐색하지 않는다.
+   다만 이 historical collapse를 만든 실제 hot-path 변화는
+   `ff0140e5`, `a819ea3a`, `98e7d324`, `9b91234c`의 조합이라는 점을
+   함께 유지한다.
+2. current first-priority implementation target은
+   [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+   /
+   [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+   의 send admission/lock과
+   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+   의 `_out_sync` 아래 same-ordering redundant work 축소다.
+   다음 랄프루프는 이 추상을 바로 helper-level로 내리지 말고,
+   먼저 `a819ea3a` send admission/CAS와 `ff0140e5` `_out_sync`
+   steady-state duty를 current HEAD에서 어떻게 줄일 수 있는지 보는 데서
+   시작한다.
+3. 현재 accepted `PAIR` / `DEALER` 공통 delta를 기준선으로 유지하고,
    broad win 근거 없는 공통 미세 후보는 다시 파지 않는다.
-2. `PUBSUB`는 code optimization 전에 semantic/backpressure map을 먼저 만든다.
+4. `PUBSUB`는 code optimization 전에 semantic/backpressure map을 먼저 만든다.
    최소 분리 축은 아래 네 가지다.
    - `XPUB_NODROP=1` 대 `0` 진단 probe
    - `tcp` 대 `inproc`
@@ -255,17 +281,19 @@ raw/public 분리를 다시 찍는다.
      `DEALER_DEALER` 64B gap이 `-22% ~ -39%`로 크게 남았다.
      따라서 current loop는 `backpressure only` 가설을 기본값으로 두지 않고,
      queue가 차지 않아도 남는 steady-state hot-path 고정비를 먼저 의심한다.
-3. `PUBSUB` semantic map 이후에만
+5. `PUBSUB` semantic map 이후에만
    - semantic differential
    - core publication/lifecycle residual
    을 분리해 다음 code candidate를 고른다.
-4. `ROUTER_ROUTER`는 `PUBSUB` semantic map이 끝난 뒤에 본다.
-5. 남아 있는 recv-side routed / strip / multipart export 경로는 마지막 단계로 둔다.
+6. `ROUTER_ROUTER`는 common send-side pass와 `PUBSUB` semantic map이 끝난
+   뒤에 본다.
+7. 남아 있는 recv-side routed / strip / multipart export 경로는 마지막 단계로 둔다.
 
-2026-03-28 현재 send-side lifecycle / backpressure 공통 fast-path 후보는
-keep-worthy delta를 만들지 못해 actual implementation 우선순위에서 내렸다.
+2026-03-28 현재 loop는 `ROUTER` local helper나 `PUBSUB` local helper보다,
+이분 탐색이 잡아낸 common residual:
+`send admission/lock + pipe serialization`을 먼저 본다.
 새로운 broad win 근거가 나오기 전까지는 raw/public guardrail과 broader single
-acceptance를 동시에 만족한 pattern-specific publication/routed 후보만 올린다.
+acceptance를 동시에 만족한 공통 send-side 후보만 먼저 올린다.
 
 현재 가이드의 기본 원칙은 아래와 같다.
 
@@ -692,6 +720,27 @@ rejected candidate는 반드시 로그에 남긴다.
   - `socket_message_recv_api.cpp` / `router.cpp` routed recv
     source-rid zero-elision도 `ROUTER_ROUTER tcp/inproc 64B`가
     `-58.34%` / `-33.47%`로 더 흔들려 원복
+  - `pipe.cpp` / `router.cpp` `xsend_routed()` final-part one-lock helper도
+    first complete run `ROUTER_ROUTER tcp/inproc 64B -54.37% / -23.05%`,
+    transport-split rerun `tcp -57.14%`, `inproc -29.36%`로
+    zlink absolute throughput이 `tcp ~1.21Mmsg/s`, `inproc ~2.41Mmsg/s`
+    수준에서 거의 못 움직여 원복
+  - `router.cpp` same-target routed send cache와
+    `pipe.cpp` final-part one-lock helper combo도
+    default `ROUTER_ROUTER tcp/inproc 64B -58.18% / -23.12%`,
+    raw `-53.09% / -23.25%`,
+    `DEALER_ROUTER tcp/inproc -30.17% / -25.42%`였지만,
+    direct `comp_zlink_router_router` absolute throughput이
+    `tcp 1214300.00`, `inproc 2419754.40 msg/s`로 baseline 수준에 머물러
+    keep-worthy delta가 아니어서 원복
+  - `router.cpp` routed recv current-in/source-rid cache와
+    lazy prefetched-id prepare도
+    default `ROUTER_ROUTER tcp/inproc 64B -57.01% / -22.77%`,
+    raw `-52.96% / -20.99%`,
+    `DEALER_ROUTER tcp/inproc -27.89% / -30.42%`였지만,
+    direct `comp_zlink_router_router` absolute throughput이
+    `tcp 1211724.60`, `inproc 2408252.00 msg/s`로 baseline 수준에 머물러
+    keep-worthy delta가 아니어서 원복
   - `xpub.cpp` / `xsub.cpp` `xwrite_activated()` delivery-ready refresh 제거도
     single `PUBSUB tcp/inproc 64B`가 `-27.31%` / `-44.93%`로
     baseline보다 악화돼 원복
@@ -708,6 +757,13 @@ rejected candidate는 반드시 로그에 남긴다.
     rerun `PAIR inproc 64B`가 `-21.18%`로 흔들리고
     serial guardrail의 `DEALER_DEALER inproc 64B` public/raw가
     `-31.36%` / `-30.57%`로 무너져 원복
+  - `socket_base_msg.cpp` direct single-part `send()` / `send_routed()`
+    initial public sync unlock + relock-around-`xsend()` candidate도
+    public `PAIR tcp/inproc 64B -21.29% / -33.25%`,
+    `DEALER_DEALER tcp/inproc -23.62% / -25.85%`,
+    raw `PAIR tcp/inproc -9.47% / -20.90%`,
+    `DEALER_DEALER tcp/inproc -28.00% / -26.50%`로
+    raw/public guardrail과 broad win을 함께 만족시키지 못해 원복
   - `XPUB` prechecked no-HWM-recheck도
     isolated first run은 `PUBSUB tcp/inproc 64B -21.70% / -35.47%`로
     둘 다 좋아졌지만, clean rerun `PUBSUB inproc 64B`가 `-41.46%`로
@@ -748,6 +804,10 @@ rejected candidate는 반드시 로그에 남긴다.
   - 같은 날 `socket_base_msg.cpp` retry loop에서
     installed-but-idle send-ready handler까지 sync 유지 범위를 넓히는 후보도
     serial public/raw guardrail을 만족시키지 못해 현재 코드에는 남아 있지 않다.
+  - 같은 날 `socket_base_msg.cpp` direct single-part `send()` /
+    `send_routed()`에서 initial `process_commands()` 바깥으로
+    public sync를 빼는 후보도 `PAIR`/`DEALER` public broad win이 아니었고,
+    raw/public guardrail도 다시 엇갈려 현재 코드에는 남아 있지 않다.
   - 2026-03-28 baseline 재검증에서
     `test_pubsub_publish_is_safe_from_multiple_threads`가
     `part_count Expected 1 Was 2`로 반복 실패했고,
@@ -792,6 +852,13 @@ rejected candidate는 반드시 로그에 남긴다.
     `zlink_send_rid()` mandatory-HWM subcase도 함께 돈다.
   - `ctest --test-dir core/build --output-on-failure -R '^(test_router_mandatory_hwm|test_public_inproc_multipart_send|test_router_multiple_dealers|test_stream_send_blocking_wakeup)$' -j1`
     는 현재 다시 통과한다.
+  - current `pipe::_out_sync`는 `write()/flush()` hot path만이 아니라
+    `process_activate_write()`, `process_activate_read()`, `process_hiccup()`,
+    `process_pipe_term*()`와 same-thread direct `activate_write` publish도
+    함께 직렬화한다.
+  - 따라서 다음 iteration은 lock 범위 micro tweak를 다시 넣기 전에,
+    `_out_sync`가 보호하는 `_out_active`, `_peers_msgs_read`, `_state`,
+    `_out_pipe` invariant map을 먼저 적는 것으로 시작한다.
   - 같은 날 `router.cpp` routed send의 prefix/HWM second-check elimination은
     `ROUTER_ROUTER tcp/inproc 64B`를 `-55.19% / -25.05%`까지밖에
     못 줄였고 broad win이 아니어서 현재 코드에는 없다.
@@ -800,6 +867,27 @@ rejected candidate는 반드시 로그에 남긴다.
     `-58.34% / -33.47%`로 더 흔들려 현재 코드에는 없다.
   - 따라서 current `ROUTER` 잔여 gap은 routed prefix/HWM recheck나
     source-rid zero-fill 제거 같은 micro-elision 하나로 설명되지 않는다.
+  - 같은 날 `socket_message_send_api.cpp` blocking `ROUTER` send는 이미
+    routing-id envelope를 `send_routed()` one-part path로 접어 보낸다는 것을
+    다시 확인했고,
+    `pipe.cpp` / `router.cpp` `xsend_routed()` final-part one-lock helper도
+    complete run과 transport-split rerun에서 zlink 절대 throughput을
+    거의 못 움직여 현재 코드에는 없다.
+  - 따라서 current `ROUTER` 잔여 gap은 send wrapper 한 겹이나
+    `xsend_routed()` final-part micro-fusion보다 routed recv ordering 또는
+    공통 `_out_sync` serialization floor를 더 직접 분리해야 한다.
+  - 같은 날 `router.cpp` routed recv current-in/source-rid cache와
+    lazy prefetched-id prepare도 default/raw relative diff는 일부 좋아 보였지만,
+    direct `comp_zlink_router_router` absolute throughput이
+    `tcp 1211724.60`, `inproc 2408252.00 msg/s`로 baseline 수준에 머물러
+    현재 코드에는 없다.
+  - 대신
+    `test_public_inproc_router_recv_multipart_with_source_rid_blocking()`과
+    `test_public_inproc_router_msg_recv_rid_keeps_source_rid_across_reset()`
+    회귀는 남겨 current routed recv/source-rid contract를 고정했다.
+  - 따라서 current `ROUTER` next step은 local recv-state/source-rid cache를
+    다시 누적하는 것이 아니라, 실제 prefetch ordering 차이와
+    `recv_routed()` export path를 더 직접 분리하는 쪽이다.
   - 같은 날 `xpub.cpp` / `xsub.cpp` `xwrite_activated()`의
     delivery-ready refresh 제거도 single `PUBSUB tcp/inproc 64B`가
     `-27.31% / -44.93%`로 나빠져 현재 코드에는 없다.
@@ -1166,19 +1254,48 @@ rejected candidate는 반드시 로그에 남긴다.
       `zlink_send_rid()` mandatory-HWM 회귀를 추가했다.
 - [x] `test_public_inproc_router_send_rid_multipart_blocking()`으로
       `zlink_send_rid()` multipart blocking contract를 회귀에 추가했다.
-- [ ] `ROUTER_ROUTER` routed path를 패턴 전용으로 본다.
+- [x] `test_public_inproc_router_recv_multipart_with_source_rid_blocking()`으로
+      `zlink_recv()` routed multipart source-rid contract를 회귀에 추가했다.
+- [x] `test_public_inproc_router_msg_recv_rid_keeps_source_rid_across_reset()`으로
+      `zlink_msg_recv_rid()` multipart reset 뒤 source-rid 유지 contract를
+      회귀에 추가했다.
+- [x] `ROUTER_ROUTER` routed path를 패턴 전용으로 본다.
       `socket_message_send_api.cpp` / `multipart_send_txn.cpp` /
       `socket_base_msg.cpp` / `router.cpp` routed-data view candidate도
       first/rerun `ROUTER_ROUTER tcp/inproc 64B`
       `-58.62% / -30.04%`, `-55.12% / -29.06%`로
       stable broad win이 아니어서 current code에는 남기지 않았다.
-      이어서 `bench_zlink_router_router.cpp`에
-      `PERF_SINGLE_ZLINK_RAW_MSG_API=1` routed raw-msg probe를 추가해
-      default `-58.12% / -27.77%`,
-      raw probe `-54.07% / -27.78%`를 확인했다.
-      즉 current `ROUTER_ROUTER` 잔여 gap은 aggregate wrapper 한 겹보다
-      `router.cpp` core routed ordering / `out_pipe` admission 차이가 더 큰
-      축일 가능성이 높다.
+      이어서 latest recheck에서
+      `ROUTER_ROUTER` default/raw는
+      `tcp/inproc -56.84% / -28.68%`,
+      `-58.04% / -23.52%`였고,
+      `DEALER_ROUTER` current recheck도
+      `tcp/inproc -30.83% / -31.56%`였다.
+      같은 blocking default path에서
+      `pipe.cpp` / `router.cpp` `xsend_routed()` final-part one-lock helper도
+      first complete run `-54.37% / -23.05%`,
+      transport-split rerun `tcp -57.14%`, `inproc -29.36%`로
+      zlink 절대 throughput을 거의 못 움직여 current code에는 남기지 않았다.
+      latest same-target routed send cache + one-lock combo도
+      direct `comp_zlink_router_router` absolute throughput을
+      `tcp 1214300.00`, `inproc 2419754.40 msg/s`로 거의 못 움직여
+      current code에는 남기지 않았다.
+      이어서 `router.cpp` routed recv current-in/source-rid cache와
+      lazy prefetched-id prepare도
+      default `ROUTER_ROUTER tcp/inproc -57.01% / -22.77%`,
+      raw `-52.96% / -20.99%`,
+      `DEALER_ROUTER tcp/inproc -27.89% / -30.42%`였지만,
+      direct `comp_zlink_router_router` absolute throughput이
+      `tcp 1211724.60`, `inproc 2408252.00 msg/s`로 baseline 수준에 머물러
+      current code에는 남기지 않았다.
+      대신 routed recv/source-rid contract는
+      `test_public_inproc_router_recv_multipart_with_source_rid_blocking()`과
+      `test_public_inproc_router_msg_recv_rid_keeps_source_rid_across_reset()`
+      회귀로 고정했다.
+      즉 current `ROUTER_ROUTER` 잔여 gap은 aggregate wrapper 한 겹이나
+      send-side local cache / final-part micro-fusion / local recv-state cache보다
+      routed recv ordering, `recv_routed()` source-rid export,
+      공통 `_out_sync` serialization floor 차이가 더 큰 축일 가능성이 높다.
 - [x] 이번 단계 send-path 변경 뒤 `PAIR`/`DEALER_DEALER` raw/public 분리를
       다시 기록했다.
 - [x] broader single / multi smoke까지 통과하는 안정 지점을 남겼다.

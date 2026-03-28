@@ -478,6 +478,122 @@ void test_public_inproc_router_send_rid_multipart_blocking ()
     zlink_multipart_close (reply_recv, reply_count);
 }
 
+void test_public_inproc_router_recv_multipart_with_source_rid_blocking ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+
+    const char routing_id[] = "D4";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (dealer, routing_id, sizeof (routing_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (
+      router, "inproc://public_inproc_router_recv_rid_multipart_blocking"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (
+      dealer, "inproc://public_inproc_router_recv_rid_multipart_blocking"));
+
+    zlink_msg_t outbound_parts[2];
+    const char head[] = "head";
+    const char body[] = "body";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&outbound_parts[0], sizeof (head) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&outbound_parts[1], sizeof (body) - 1));
+    memcpy (zlink_msg_data (&outbound_parts[0]), head, sizeof (head) - 1);
+    memcpy (zlink_msg_data (&outbound_parts[1]), body, sizeof (body) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (dealer, outbound_parts, 2, 0));
+
+    zlink_routing_id_t source_rid;
+    zlink_msg_t *received = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_recv (router, &source_rid, &received, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (routing_id) - 1, source_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (routing_id, source_rid.data,
+                              sizeof (routing_id) - 1);
+    TEST_ASSERT_EQUAL_UINT64 (2, part_count);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (head) - 1, zlink_msg_size (&received[0]));
+    TEST_ASSERT_EQUAL_MEMORY (head, zlink_msg_data (&received[0]),
+                              sizeof (head) - 1);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (body) - 1, zlink_msg_size (&received[1]));
+    TEST_ASSERT_EQUAL_MEMORY (body, zlink_msg_data (&received[1]),
+                              sizeof (body) - 1);
+    zlink_multipart_close (received, part_count);
+}
+
+void test_public_inproc_router_msg_recv_rid_keeps_source_rid_across_reset ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+
+    const char routing_id[] = "D5";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (dealer, routing_id, sizeof (routing_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (
+      router, "inproc://public_inproc_router_msg_recv_rid_reset_blocking"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (
+      dealer, "inproc://public_inproc_router_msg_recv_rid_reset_blocking"));
+
+    zlink_msg_t multipart[2];
+    const char head[] = "head";
+    const char body[] = "body";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&multipart[0], sizeof (head) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&multipart[1], sizeof (body) - 1));
+    memcpy (zlink_msg_data (&multipart[0]), head, sizeof (head) - 1);
+    memcpy (zlink_msg_data (&multipart[1]), body, sizeof (body) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (dealer, multipart, 2, 0));
+
+    zlink_msg_t first;
+    zlink_msg_t second;
+    zlink_routing_id_t source_rid_a;
+    zlink_routing_id_t source_rid_b;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&first));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&second));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_recv_rid (&first, router, &source_rid_a, 0));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (routing_id) - 1, source_rid_a.size);
+    TEST_ASSERT_EQUAL_MEMORY (routing_id, source_rid_a.data,
+                              sizeof (routing_id) - 1);
+    TEST_ASSERT_TRUE (test_msg_has_more (&first));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (head) - 1, zlink_msg_size (&first));
+    TEST_ASSERT_EQUAL_MEMORY (head, zlink_msg_data (&first), sizeof (head) - 1);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_recv_rid (&second, router, &source_rid_b, 0));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (routing_id) - 1, source_rid_b.size);
+    TEST_ASSERT_EQUAL_MEMORY (routing_id, source_rid_b.data,
+                              sizeof (routing_id) - 1);
+    TEST_ASSERT_FALSE (test_msg_has_more (&second));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (body) - 1, zlink_msg_size (&second));
+    TEST_ASSERT_EQUAL_MEMORY (body, zlink_msg_data (&second),
+                              sizeof (body) - 1);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&first));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&second));
+
+    zlink_msg_t single;
+    const char payload[] = "ping";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_init_size (&single, sizeof (payload) - 1));
+    memcpy (zlink_msg_data (&single), payload, sizeof (payload) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (dealer, &single, 1, 0));
+
+    zlink_msg_t followup;
+    zlink_routing_id_t source_rid_c;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&followup));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_recv_rid (&followup, router, &source_rid_c, 0));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (routing_id) - 1, source_rid_c.size);
+    TEST_ASSERT_EQUAL_MEMORY (routing_id, source_rid_c.data,
+                              sizeof (routing_id) - 1);
+    TEST_ASSERT_FALSE (test_msg_has_more (&followup));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (payload) - 1, zlink_msg_size (&followup));
+    TEST_ASSERT_EQUAL_MEMORY (payload, zlink_msg_data (&followup),
+                              sizeof (payload) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&followup));
+}
+
 void test_public_inproc_pair_send_failure_consumes_all_parts ()
 {
     void *right = test_context_socket (ZLINK_SOCKET_PAIR);
@@ -667,5 +783,9 @@ int main (void)
     RUN_TEST (test_public_inproc_router_send_rid_blocking);
     RUN_TEST (test_public_inproc_router_send_envelope_blocking);
     RUN_TEST (test_public_inproc_router_send_rid_multipart_blocking);
+    RUN_TEST (
+      test_public_inproc_router_recv_multipart_with_source_rid_blocking);
+    RUN_TEST (
+      test_public_inproc_router_msg_recv_rid_keeps_source_rid_across_reset);
     return UNITY_END ();
 }

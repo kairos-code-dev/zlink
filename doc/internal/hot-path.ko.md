@@ -15,12 +15,59 @@
   `producer-side steady-state send/publication`이다.
 - high-HWM probe에서도 `PAIR`, `DEALER_DEALER`, `PUBSUB` 64B 격차가 크게
   남았으므로, queue가 차지 않아도 드는 send/publication 고정비를 우선 본다.
+- 2026-03-28 direct recheck에서
+  `socket_base_msg.cpp` common send prep fast path,
+  lifecycle atomic memory-order 완화,
+  `_out_sync` hot send non-recursive scope
+  후보는 모두 broad win을 만들지 못했다.
+- 이어서 direct single-part `send()` / `send_routed()`에서
+  public sync를 initial `process_commands()` 바깥으로 빼고
+  `xsend()` 주변에서만 다시 잡는 probe도
+  public `PAIR tcp/inproc -21.29% / -33.25%`,
+  `DEALER_DEALER tcp/inproc -23.62% / -25.85%`로 broad win이 아니어서
+  원복했다.
+- 즉 next step은 helper-level micro tuning이 아니라
+  `socket_base_t::send()` public admission/lock 의미 단위와
+  `pipe::_out_sync` serialization 의미 단위를 더 큰 구조로 다시 보는 것이다.
+- 이 판단은 별도 bisect 결과와도 맞물린다.
+  historical hot-path를 실제로 바꾼 concrete change는
+  `ff0140e5`(`pipe::_out_sync`),
+  `a819ea3a`(`socket_base_t::send()` public admission/CAS),
+  `98e7d324`(public multipart `zlink_send/zlink_recv`),
+  `9b91234c`(bench hot-loop activation + `PERF_SINGLE_MAX_INFLIGHT` 제거)다.
 - current kept `PUBSUB` delta는
-  `xsub` receiver-drain specialization으로 유지 중이고,
-  guide 기준 다음 미완료 항목은 `ROUTER_ROUTER` routed path differential이다.
-- current `ROUTER_ROUTER` raw-msg probe는 default 대비
-  `tcp +4.05`%p, `inproc -0.01`%p 수준만 움직였으므로,
-  routed/public aggregate wrapper alone을 1차 본체로 두지 않는다.
+  `xsub` receiver-drain specialization으로 유지 중이다.
+- guide checklist 기준 `ROUTER` routed path differential 정리 단계는 끝났고,
+  current next step은 common send-side structural round를 위한
+  `_out_sync` invariant map이다.
+- 2026-03-28 current recheck에서 `ROUTER_ROUTER` single 64B default는
+  `tcp/inproc -56.84% / -28.68%`,
+  raw-msg probe는 `-58.04% / -23.52%`였다.
+- 즉 current routed/public aggregate wrapper 차이는 `inproc`에서만
+  제한적으로 움직였고, `tcp` 본체를 설명하지 못한다.
+- current `DEALER_ROUTER` single 64B recheck도
+  `tcp/inproc -30.83% / -31.56%`라서,
+  current `ROUTER` 잔여 gap은 recv/public 쪽에도 이미 큰 고정비가 남아 있다.
+- current blocking `ROUTER` send는 이미 `send_routed()` one-part path를 타고,
+  같은 `xsend_routed()` final-part hot path에서 ready check +
+  `write+flush` one-lock helper를 넣어도 zlink absolute throughput은
+  `tcp ~1.21Mmsg/s`, `inproc ~2.41Mmsg/s` 근처에 머물렀다.
+- same-target routed send cache + final-part one-lock combo도
+  direct `comp_zlink_router_router` absolute throughput을
+  `tcp 1214300.00`, `inproc 2419754.40 msg/s` 수준에서 못 움직여
+  keep-worthy delta가 아니었다.
+- 이어서 tried한 routed recv current-in/source-rid cache + lazy
+  prefetched-id prepare도 direct `comp_zlink_router_router` absolute throughput을
+  `tcp 1211724.60`, `inproc 2408252.00 msg/s` 수준에서 못 움직여
+  keep-worthy delta가 아니었다.
+- 대신 current routed recv/source-rid contract는
+  `test_public_inproc_router_recv_multipart_with_source_rid_blocking()`과
+  `test_public_inproc_router_msg_recv_rid_keeps_source_rid_across_reset()`
+  회귀로 고정했다.
+- 또 `_out_sync`는 `write()/flush()` hot path만이 아니라
+  `process_activate_write()`, `process_activate_read()`, `process_hiccup()`,
+  `process_pipe_term*()`와 same-thread direct `activate_write` publish까지
+  함께 물고 있으므로, 다음 structural step은 먼저 invariant map을 적어야 한다.
 
 ### 0.2 Current Hypothesis
 
@@ -36,7 +83,20 @@
   / [`core/src/api/socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
   aggregate wrapper 자체보다는,
   [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
-  의 routed send/recv ordering과 `out_pipe` admission/flush에 더 가깝다.
+  의 routed recv ordering과, 그 아래
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  / [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
+  공통 send serialization floor에 더 가깝다.
+- current `DEALER_ROUTER` recheck를 합치면 next step은
+  same-target routed send local cache보다
+  `recv_routed()` / source-rid export / prefetch ordering differential을 먼저
+  분리하는 쪽이다.
+- 다음 랄프루프는 이 common differential을 추상적으로 다시 추정하지 말고,
+  위 historical concrete change 4개를 기준 입력으로 삼아
+  현재 HEAD까지 남아 있는 의미 단위만 다시 좁힌다.
+- local recv-state/source-rid cache나 lazy prefetched-id prepare도
+  absolute throughput을 못 움직였으므로, next step은 그보다 더 아래
+  ordering/export work를 직접 가르는 쪽이다.
 
 ### 0.3 Kept Delta
 
@@ -51,6 +111,14 @@
 - `fast_mutex` common-path TID-lazy 후보
 - 새 broad evidence 없이 `dist/xpub/pipe` local helper만 반복 추가하는 탐색
 - `ROUTER_ROUTER` raw/public aggregate wrapper alone을 1차 원인으로 보는 해석
+- `ROUTER_ROUTER` `xsend_routed()` final-part one-lock helper
+- `ROUTER_ROUTER` same-target routed send cache + final-part one-lock combo
+- `ROUTER_ROUTER` routed recv current-in/source-rid cache + lazy prefetched-id
+  prepare
+- `socket_base_msg.cpp` common send prep fast path bundle
+- lifecycle atomic memory-order 완화
+- `_out_sync` hot send non-recursive scope
+- direct single-part `send_scope` initial unlock + relock-around-`xsend()`
 
 ### 0.5 Do Not Revisit
 
@@ -62,15 +130,31 @@
 ### 0.6 Next Exact Step
 
 - restart 시 `libzmq`의
-  [`router.cpp`](/home/hep7/project/kairos/libzmq/src/router.cpp) /
-  [`socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+  [`socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp) /
+  [`pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)
   대응 구현을 먼저 읽고,
-  `ROUTER_ROUTER` current gap이 routed prefix/HWM micro-elision이 아니라
-  어떤 routed send/recv ordering 차이에서 커지는지 재확인한다.
-- `ROUTER_ROUTER`는 raw-msg probe가 small win만 준 상태이므로,
-  local routed helper나 aggregate wrapper elision을 더 누적하기보다
-  routed multipart lifecycle, `out_pipe` admission/flush,
-  prefetch 기반 routed recv ordering differential을 먼저 분리한다.
+  `socket_base_t::send()` public admission/lock과
+  `pipe::_out_sync` serialization이 어떤 의미 단위에서 갈라지는지
+  다시 분리한다.
+- 이때 시작점은
+  `ff0140e5 -> a819ea3a -> 98e7d324 -> 9b91234c`
+  순서의 historical change map이어야 한다.
+- 즉 다음 라운드는
+  `a819ea3a` 이후 send admission/CAS의 현재 잔재,
+  `ff0140e5` 이후 `_out_sync` steady-state duty,
+  `98e7d324/9b91234c` 이후 public multipart/sender-regime 흔적을
+  차례로 검토하는 방식으로 시작한다.
+- current round에서 helper-level send micro-tuning은 broad win을 만들지 못했으므로,
+  다음 step은 작은 branch/helper를 더 누적하는 것이 아니다.
+- 그 전에 `_out_sync`가 실제로 어떤 cross-command state를 보호하는지
+  invariant map과 `PAIR inproc 64B` 계측 한 번으로 send admission vs pipe
+  serialization 비중을 먼저 나눈다.
+- next step은
+  `socket_base_t::send()` admission/sync lifecycle의 구조 차이와
+  `pipe` send-path serialization 구조 차이를
+  더 큰 단위로 직접 줄이는 설계 후보를 세우는 것이다.
+- `ROUTER_ROUTER` / `PUBSUB` local helper는
+  공통 send-side residual을 한 단계 더 줄인 뒤 다시 본다.
 
 ## 1. 범위
 

@@ -28,20 +28,92 @@
 - `HWM/sndhwm/rcvhwm = 1000000` probe에서도 `PAIR`, `DEALER_DEALER`,
   `PUBSUB` 64B 격차가 크게 남았으므로, queue가 차지 않아도 드는 공통
   per-message 비용이 본체일 가능성이 높다.
+- 별도 bisect worktree 기준으로 historical first direct cause는
+  `9b91234c`의 raw `send_exact/zlink_msg_recv` -> public
+  `zlink_send/zlink_recv` surface 전환이고,
+  first buildable bad는 `77550a0a`다.
+- 다만 이 historical first collapse는 `9b91234c` 하나로 끝나지 않는다.
+  실제 hot-path를 바꾼 concrete 변화는
+  `ff0140e5`(`pipe::_out_sync`),
+  `a819ea3a`(`socket_base_t::send()` public admission/CAS),
+  `98e7d324`(public multipart `zlink_send/zlink_recv`),
+  `9b91234c`(bench hot-loop activation + `PERF_SINGLE_MAX_INFLIGHT` 제거)다.
+- 즉 historical first collapse는 단순 core 미세 비용보다
+  single-frame one-way payload를 public multipart contract로 밀어 넣고,
+  sender pacing regime까지 더 aggressive하게 바꾸면서 생긴
+  `send-side materialize + public admission/CAS + pipe serialization +
+  recv-side export/free`의 조합으로 보는 것이 가장 정확하다.
+- 다만 current HEAD residual gap은 이 예전 recv heap-export 문제 하나로는
+  설명되지 않고, current raw-msg diagnostic도 일관된 broad win을 못 만들었다.
+  따라서 현재 우선순위는 다시 `send-side public admission +
+  pipe serialization` 공통축이다.
 - 최근 keep된 공통 delta는
   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
   의 recursive `check_hwm()` elide다.
+- 2026-03-28 direct send-side candidate bundle 재검증에서는
+  `socket_base_msg.cpp`, `socket_runtime.cpp`, `pipe.cpp`를 직접 수정해
+  broad win을 노렸지만, keep할 성능개선 코드는 나오지 않았다.
+- 이어서 2026-03-28 direct single-part send scope narrowing probe에서
+  `send()` / `send_routed()` public sync를 initial `process_commands()`
+  바깥으로 빼고 `xsend()` 주변에서만 다시 잡도록 바꿔 봤지만,
+  public `PAIR tcp/inproc -21.29% / -33.25%`,
+  `DEALER_DEALER tcp/inproc -23.62% / -25.85%`로 broad win이 아니었다.
+- 같은 probe의 raw/public guardrail도
+  `PAIR raw tcp/inproc -9.47% / -20.90%`와
+  `DEALER_DEALER raw tcp/inproc -28.00% / -26.50%`로 다시 엇갈려
+  keep-worthy delta가 아니어서 원복했다.
+- 즉 최근 직접 코드 라운드의 의미는 "새 개선이 남았다"가 아니라
+  "`send()` prep micro-tuning, lifecycle atomic memory-order 완화,
+  `_out_sync` hot send non-recursive scope는 current residual gap의
+  keep-worthy 해법이 아니다"를 확정한 데 있다.
+- 또 current `pipe::_out_sync`는 `write()/flush()` hot path만이 아니라
+  `process_activate_write()`, `process_activate_read()`, `process_hiccup()`,
+  `process_pipe_term*()`와 same-thread direct `activate_write` publish도 함께
+  직렬화한다.
+- 따라서 다음 structural step은 lock 범위 local tweak를 더 넣는 것이 아니라,
+  `_out_sync`가 보호하는 invariant를 먼저 적는 쪽이다.
 - `PUBSUB`는 공통 send 축만으로 설명하면 안 된다. latest acceptable
   방향은 `XSUB receiver-drain specialization`과 sender-side publication
   differential을 분리해서 보는 것이다.
 - current `PUBSUB` retained delta는
   `xsub` empty-subscription accept-all fast path와 requested-only
-  `last_recv_source_rid` capture scope 조합으로 유지 중이고,
-  guide 기준 다음 미완료 항목은 `ROUTER_ROUTER` routed path differential이다.
-- current `ROUTER_ROUTER` raw-msg probe는 default 대비
-  `tcp +4.05`%p, `inproc -0.01`%p 수준만 움직였다.
-  즉 routed/public aggregate wrapper만으로는 current router gap의 본체를
-  설명하기 어렵다.
+  `last_recv_source_rid` capture scope 조합으로 유지 중이다.
+- guide checklist 기준 `ROUTER` routed path differential 정리 단계는 끝났고,
+  current next step은 common send-side structural round를 위한
+  `_out_sync` invariant map이다.
+- 2026-03-28 current recheck에서 `ROUTER_ROUTER` single 64B default는
+  `tcp/inproc -56.84% / -28.68%`,
+  raw-msg probe는 `-58.04% / -23.52%`였다.
+- 즉 current raw/public aggregate wrapper 차이는 `inproc`에서만
+  `+5.16`%p 정도 움직였고, `tcp`는 오히려 `-1.20`%p 더 나빠졌다.
+- 같은 recheck의 zlink absolute throughput은 대체로
+  `tcp ~1.21Mmsg/s`, `inproc ~2.42Mmsg/s`였다.
+- current `DEALER_ROUTER` single 64B recheck도
+  `tcp/inproc -30.83% / -31.56%`라서,
+  current `ROUTER` 잔여 gap은 sender-only가 아니라 routed recv/public 쪽에도
+  이미 큰 고정비가 남아 있다.
+- current blocking `ROUTER` send는
+  [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+  에서 이미 routing-id envelope를 `send_routed()` one-part path로 접어 보낸다.
+- 같은 `xsend_routed()` final-part hot path에서 ready check와
+  `write+flush`를 one-lock helper로 합쳐도 zlink absolute throughput은
+  대체로 `tcp ~1.21Mmsg/s`, `inproc ~2.41Mmsg/s`에 머물렀다.
+  즉 current `ROUTER_ROUTER` 잔여 gap을 send wrapper나 routed final-part
+  micro-fusion 하나로 설명할 수는 없다.
+- 같은 날 same-target routed send cache + final-part one-lock combo도
+  relative diff는 `libzmq` baseline 흔들림에 따라 일부 좋아 보였지만,
+  direct `comp_zlink_router_router` absolute throughput이
+  `tcp 1214300.00`, `inproc 2419754.40 msg/s`로 baseline 수준에 머물러
+  keep-worthy delta가 아니었다.
+- 이어서 tried한 routed recv current-in/source-rid cache + lazy
+  prefetched-id prepare도 default/raw relative diff는 일부 회복했지만,
+  direct `comp_zlink_router_router` absolute throughput이
+  `tcp 1211724.60`, `inproc 2408252.00 msg/s`로 baseline 수준에 머물러
+  keep-worthy delta가 아니었다.
+- 대신 current code에는
+  `test_public_inproc_router_recv_multipart_with_source_rid_blocking()`과
+  `test_public_inproc_router_msg_recv_rid_keeps_source_rid_across_reset()`
+  회귀만 남겨 routed recv/source-rid contract를 고정했다.
 
 ### 0.2 Current Hypothesis
 
@@ -54,6 +126,15 @@
   +
   [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
   의 send-path serialization이다.
+- current first-priority implementation target은
+  `socket_base_t::send()` public admission/lock 계층과
+  `pipe::_out_sync` 아래 same-ordering work다.
+- 다음 랄프루프는 이 추상을 다시 처음부터 추정하지 말고,
+  bisect가 특정한 historical concrete change 4개를 먼저 입력으로 둔다.
+  즉 `ff0140e5 -> a819ea3a -> 98e7d324 -> 9b91234c` 축을 기준으로
+  어떤 의미가 현재 HEAD까지 남아 있는지부터 본다.
+- `recv parts_out` heap-return/export는 historical first collapse의 직접
+  원인이었지만, current residual gap의 1순위는 아니다.
 - `echo`가 괜찮고 `oneway`에서만 더 밀리는 건 단순 `send API`가 아니라
   producer가 지속적으로 앞서가는 operating regime에서의 send/publication
   고정비로 해석한다.
@@ -63,8 +144,18 @@
   [`core/src/api/socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
   의 aggregate wrapper만이 아니라,
   [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
-  의 `out_pipe` admission/flush와 routed recv ordering 쪽이 더 큰 축일
-  가능성이 높다.
+  의 routed recv ordering과, 그 아래
+  [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  /
+  [`core/src/utils/fast_mutex.hpp`](/home/hep7/project/kairos/zlink/core/src/utils/fast_mutex.hpp)
+  공통 serialization floor가 더 큰 축일 가능성이 높다.
+- 다만 current recheck의 `DEALER_ROUTER`가 이미 `-30%`대이므로,
+  next step은 same-target routed send local cache보다
+  `recv_routed()` / routed source-rid export / prefetch ordering differential을
+  먼저 분리하는 쪽이 더 우선이다.
+- 같은 이유로 routed recv local state/source-rid cache나 lazy
+  prefetched-id prepare를 다시 올리기보다, 그 아래 실제 ordering 차이와
+  export path work를 더 직접 가르는 쪽이 맞다.
 
 ### 0.3 Kept Delta
 
@@ -72,6 +163,9 @@
   `check_hwm_unlocked()`를 사용하는
   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
   변경은 현재 keep 상태다.
+- 2026-03-28 direct send-side candidate bundle에서 시도한
+  `socket_base_msg.cpp` / `socket_runtime.cpp` / `pipe.cpp` 추가 성능 후보는
+  모두 reject되어 current tree에는 남아 있지 않다.
 - `PUBSUB` 계열은 latest acceptable path에서 `XSUB` receiver-drain
   specialization을 우선 검토 대상으로 둔다.
 
@@ -82,6 +176,12 @@
 - `fast_mutex` common-path TID-lazy 후보
 - 새 증거 없이 `dist/xpub/pipe` local helper만 반복 추가하는 탐색
 - `ROUTER_ROUTER` raw/public aggregate wrapper만이 본체라는 해석
+- `ROUTER_ROUTER` `xsend_routed()` final-part one-lock helper
+- `ROUTER_ROUTER` same-target routed send cache + final-part one-lock combo
+- `ROUTER_ROUTER` routed recv current-in/source-rid cache + lazy prefetched-id
+  prepare
+- `socket_base_msg.cpp` direct single-part `send_scope` initial unlock +
+  relock-around-`xsend()` candidate
 
 ### 0.5 Do Not Revisit
 
@@ -94,14 +194,45 @@
 
 ### 0.6 Next Exact Step
 
-- restart 시 먼저 `/home/hep7/project/kairos/libzmq/src/router.cpp`와
-  `/home/hep7/project/kairos/libzmq/src/socket_base.cpp`를 다시 읽고,
-  current `ROUTER_ROUTER` gap이 routed prefix/HWM micro-elision이 아니라
-  어떤 routed send/recv ordering 차이에서 커지는지 재확인한다.
-- `ROUTER_ROUTER`는 raw-msg probe가 small win만 준 상태이므로,
-  routed-data view나 aggregate wrapper elision을 다시 반복하지 말고
-  routed multipart lifecycle, `out_pipe` admission/flush,
-  prefetch 기반 routed recv ordering 차이를 먼저 분리한다.
+- restart 시 먼저 bisect 결론을 기준으로
+  `historical first direct cause`와 `current residual direct cause`를 분리해
+  읽는다.
+- historical axis는 `9b91234c` surface shift만이 아니라,
+  `ff0140e5` / `a819ea3a` / `98e7d324` / `9b91234c` 네 변화를
+  concrete input으로 유지한다.
+- current HEAD에서는 아래 순서로 본다.
+  1. `a819ea3a` 이후 `socket_base_t::send()` public admission/lock 의미가
+     현재 어떻게 남아 있는지
+  2. `ff0140e5` 이후 `pipe::_out_sync`가 steady-state send-path에서
+     어떤 ordering/serialization을 떠안고 있는지
+  3. `98e7d324` / `9b91234c`의 public multipart/sender-regime 전환이
+     current raw/public residual에 어떤 흔적을 남기는지
+- 실제 코드 적용 우선순위는 아래 순서다.
+  1. [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+     /
+     [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+     의 send admission/lock 의미 단위 재설계
+  2. [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+     의 `_out_sync` 아래 same-ordering redundant work 축소
+  3. 그 다음에야 `PUBSUB` / `ROUTER` pattern-specific 잔여 gap
+- helper-level send micro-tuning(`send()` common prep fast path, lifecycle
+  memory-order 완화, `_out_sync` hot send non-recursive scope)은 최근
+  direct candidate bundle에서 이미 reject되었으므로, 새 structural 근거 없이
+  다시 올리지 않는다.
+- same 이유로 direct single-part `send()` / `send_routed()`에서
+  sync를 initial `process_commands()` 바깥으로 빼는 local tweak도
+  current broad fix 후보에서 내린다.
+- 따라서 `ROUTER_ROUTER` local sender cache, final-part one-lock helper,
+  routed recv local state/source-rid cache 같은 rejected family는
+  common send-side pass가 끝나기 전까지 다시 올리지 않는다.
+- 다음 iteration은 코드 수정 전에 아래 둘부터 한다.
+  1. `_out_sync`가 보호하는 `_out_active`, `_peers_msgs_read`, `_state`,
+     `_out_pipe` invariant를
+     `write/flush/check_write_status/process_activate_write/
+     process_activate_read/process_hiccup/process_pipe_term*`
+     기준으로 먼저 적는다.
+  2. 그 다음 `PAIR inproc 64B` profiling 또는 직접 계측 한 번으로
+     admission 쪽과 pipe 쪽 비중을 다시 자른다.
 - 새 iteration은 이 summary가 stale하지 않은지 먼저 확인하고, stale하면
   코드 수정 전에 이 블록부터 갱신한다.
 
@@ -4492,3 +4623,445 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
     1차 후보로 다시 올리지 않는다.
   - next hypothesis는 `router.cpp` routed send/recv core ordering,
     특히 `out_pipe` admission/flush와 routed recv prefetch differential이다.
+
+## 63. 2026-03-28 `xsend_routed()` final-part one-lock helper 로그
+
+- 작업한 가설
+  - current blocking `ROUTER` default send는
+    [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+    에서 이미 routing-id envelope를 `send_routed()` one-part path로 접는다.
+  - 따라서 current `ROUTER_ROUTER` send hot path에서 남은 작은 차이가
+    `router.cpp`의 ready check와
+    [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+    final `write+flush` 사이의 이중 lock acquisition이라면,
+    둘을 one-lock helper로 합쳤을 때 zlink absolute throughput이 바로
+    올라야 한다고 봤다.
+- candidate family
+  - pattern-specific core routed send path
+- high-leverage 근거
+  - raw-msg probe가 wrapper 본체 가설을 약화시켰고, blocking default send가 이미
+    `send_routed()` one-part path를 타는 상태라면 다음 차이는
+    `xsend_routed()` + `pipe` final-part hot path 자체여야 했다.
+- 참고한 `libzmq` 대응 파일
+  - [`libzmq/src/router.cpp`](/home/hep7/project/kairos/libzmq/src/router.cpp)
+  - [`libzmq/src/socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+- `claude` consult 여부와 핵심 조언
+  - `claude --help`는 통과했다.
+  - stdin 기반 `claude -p --permission-mode bypassPermissions --add-dir ...`
+    호출은 응답을 반환했다.
+  - 핵심 조언은 current `ROUTER_ROUTER` residual을 local helper보다
+    공통 `_out_sync` per-message lock floor와 routed recv ordering 쪽으로
+    먼저 보라는 것이었다.
+- 수정한 파일 경로
+  - bench A/B 뒤 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+    - [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
+- 실행한 명령
+  - `claude --help | head -n 40`
+  - `printf '...' | claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
+  - `cmake --build core/build -j$(nproc)`
+  - `./core/build/bin/test_router_mandatory_hwm`
+  - `./core/build/bin/test_public_inproc_multipart_send`
+  - `./core/build/bin/test_router_multiple_dealers`
+  - `./core/build/bin/test_multi_socket_contract_regressions`
+  - `./core/build/bin/test_stream_send_blocking_wakeup`
+  - `./core/build/bin/test_transport_matrix`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_one_lock_routed_send`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp --runs 1 --build-dir core/build --results-tag codex_20260328_router_one_lock_routed_send_tcp_only`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_one_lock_routed_send_inproc_only`
+  - `timeout 30s ./core/build/bin/comp_zlink_router_router zlink inproc 64`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_140326_codex_20260328_router_one_lock_routed_send.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_140326_codex_20260328_router_one_lock_routed_send.txt)
+  - [`perf_linux_20260328_140651_codex_20260328_router_one_lock_routed_send_tcp_only.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_140651_codex_20260328_router_one_lock_routed_send_tcp_only.txt)
+  - [`perf_linux_20260328_140708_codex_20260328_router_one_lock_routed_send_inproc_only.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_140708_codex_20260328_router_one_lock_routed_send_inproc_only.txt)
+- 핵심 수치
+  - first complete run `ROUTER_ROUTER tcp/inproc 64B`
+    - `-54.37% / -23.05%`
+  - transport-split rerun
+    - `tcp -57.14%`
+    - `inproc -29.36%`
+  - same runs의 zlink absolute throughput은
+    - `tcp 1203.40 ~ 1210.70 Kmsg/s`
+    - `inproc 2412.64 ~ 2416.74 Kmsg/s`
+  - direct binary 확인
+    - `comp_zlink_router_router zlink inproc 64`:
+      `2415126.40 msg/s`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `xsend_routed()` final-part ready-check + `write+flush` one-lock helper 전부
+- 해석
+  - diff 값은 libzmq baseline 흔들림에 따라 약간 좋아 보일 때가 있었지만,
+    zlink absolute throughput 자체는 current baseline 수준에서 거의
+    움직이지 않았다.
+  - 즉 current `ROUTER_ROUTER` residual을
+    `xsend_routed()` final-part micro-fusion 하나로 설명하긴 어렵다.
+  - raw-msg probe와 이 결과를 합치면, current next step은 send wrapper나
+    routed final-part helper를 더 파는 것이 아니라
+    routed recv prefetch ordering differential과 공통 `_out_sync`
+    serialization floor를 분리하는 쪽이다.
+- 다음 iteration 우선순위
+  - `ROUTER_ROUTER`에서는 aggregate wrapper elision과
+    `xsend_routed()` final-part micro-fusion을 다시 올리지 않는다.
+  - next hypothesis는 routed recv prefetch ordering differential과
+    공통 `_out_sync` floor의 비중을 더 직접 가르는 probe다.
+
+## 64. 2026-03-28 same-target routed send cache + one-lock combo rejected 로그
+
+- 작업한 가설
+  - 2026-03-28 current recheck에서 `DEALER_ROUTER`는 이미
+    `tcp/inproc -30.83% / -31.56%`였지만,
+    `ROUTER_ROUTER`는 `-56.84% / -28.68%`라서
+    `tcp`에서는 `ROUTER` sender 전용 비용이 추가로 크게 남아 있다고 봤다.
+  - 따라서 `router.cpp` same-target routed send cache와
+    `pipe.cpp` final-part one-lock helper를 묶으면
+    routed lookup + ready-check + write/flush hot path를 한 번에 줄일 수 있다고
+    가정했다.
+- candidate family
+  - pattern-specific core routed send path
+- high-leverage 근거
+  - raw-msg probe와 earlier one-lock helper는 각각 단독으로 broad win이
+    아니었지만, current recheck는 sender-only differential이 `tcp`에서
+    여전히 크다는 새 증거를 줬다.
+- 참고한 `libzmq` 대응 파일
+  - [`libzmq/src/router.cpp`](/home/hep7/project/kairos/libzmq/src/router.cpp)
+  - [`libzmq/src/socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+- `claude` consult 여부와 핵심 조언
+  - `claude --help`는 통과했다.
+  - `claude -p` prompt 인자 호출은
+    `Input must be provided either through stdin or as a prompt argument when using --print`
+    오류로 실패했다.
+  - stdin 기반 재시도는 60초 이상 응답이 없어 advisory를 얻지 못했고,
+    이번 iteration에서는 unavailable로 기록한다.
+- 수정한 파일 경로
+  - bench A/B 뒤 원복:
+    - [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+    - [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+    - [`core/src/sockets/router.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.hpp)
+    - [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
+    - [`core/tests/integration/test_router_multiple_dealers.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_router_multiple_dealers.cpp)
+- 실행한 명령
+  - `claude --help`
+  - `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink "..."`
+  - `cat <<'EOF' | claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink ... EOF`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_router_recheck_default`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_router_recheck_raw`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_router_sender_split_recheck`
+  - `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_router_multiple_dealers|test_router_mandatory_hwm|test_public_inproc_multipart_send|test_stream_send_blocking_wakeup)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns ROUTER_ROUTER,DEALER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_sender_cache_combo_default`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_sender_cache_combo_raw`
+  - `timeout 30s ./core/build/bin/comp_zlink_router_router zlink tcp 64`
+  - `timeout 30s ./core/build/bin/comp_zlink_router_router zlink inproc 64`
+  - `timeout 30s ./core/build/bin/comp_zlink_dealer_router zlink tcp 64`
+  - `timeout 30s ./core/build/bin/comp_zlink_dealer_router zlink inproc 64`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_141636_codex_20260328_router_router_recheck_default.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_141636_codex_20260328_router_router_recheck_default.txt)
+  - [`perf_linux_20260328_141636_codex_20260328_router_router_recheck_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_141636_codex_20260328_router_router_recheck_raw.txt)
+  - [`perf_linux_20260328_141742_codex_20260328_dealer_router_sender_split_recheck.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_141742_codex_20260328_dealer_router_sender_split_recheck.txt)
+  - [`perf_linux_20260328_142545_codex_20260328_router_sender_cache_combo_default.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_142545_codex_20260328_router_sender_cache_combo_default.txt)
+  - [`perf_linux_20260328_142545_codex_20260328_router_sender_cache_combo_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_142545_codex_20260328_router_sender_cache_combo_raw.txt)
+- 핵심 수치
+  - current recheck baseline
+    - `ROUTER_ROUTER` default `tcp/inproc -56.84% / -28.68%`
+    - `ROUTER_ROUTER` raw `tcp/inproc -58.04% / -23.52%`
+    - `DEALER_ROUTER` default `tcp/inproc -30.83% / -31.56%`
+  - combo candidate
+    - default `ROUTER_ROUTER tcp/inproc -58.18% / -23.12%`
+    - raw `ROUTER_ROUTER tcp/inproc -53.09% / -23.25%`
+    - default `DEALER_ROUTER tcp/inproc -30.17% / -25.42%`
+  - direct zlink absolute throughput
+    - `ROUTER_ROUTER tcp`: `1214300.00 msg/s`
+    - `ROUTER_ROUTER inproc`: `2419754.40 msg/s`
+    - `DEALER_ROUTER tcp`: `2894032.50 msg/s`
+    - `DEALER_ROUTER inproc`: `3101483.50 msg/s`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - same-target routed send cache
+    - routed final-part one-lock helper combo
+    - handover regression wiring attempt
+- 해석
+  - relative diff만 보면 `inproc`가 좋아진 것처럼 보였지만,
+    direct `comp_zlink_*` absolute throughput은 current baseline 수준에서
+    사실상 움직이지 않았다.
+  - 즉 이번 combo candidate는 `libzmq` baseline 흔들림을 이용한 착시였고,
+    current `ROUTER_ROUTER` 잔여 gap을 실제로 줄이지 못했다.
+  - same-target routed send local cache와 final-part lock fusion은
+    current source-of-truth에서 rejected family로 내려도 된다.
+- 다음 iteration 우선순위
+  - `ROUTER_ROUTER`에서는 same-target routed send cache,
+    aggregate wrapper elision, final-part one-lock helper를 다시 올리지 않는다.
+  - next hypothesis는 `recv_routed()` source-rid export와
+    routed recv prefetch ordering differential을 먼저 분리하고,
+    그 뒤에도 `tcp ~1.21Mmsg/s` cap이 남으면 공통 `_out_sync`
+    serialization floor를 다시 직접 재는 것이다.
+
+## 65. 2026-03-28 routed recv state/source-rid cache rejected 로그
+
+- 작업한 가설
+  - current `ROUTER_ROUTER` 잔여 gap이 send-side local helper보다
+    `recv_routed()` source-rid export와 prefetch ordering 차이에 더 가깝다면,
+    `router.cpp`에서 prefetched path와 normal path의 current-in/source-rid
+    해석을 한 번으로 모으고 prefetched routing-id 준비를 lazy하게 미루면
+    `xrecv()`, `xrecv_routed()`, `xhas_in()` 사이의 중복 work를 줄일 수 있다고
+    봤다.
+- candidate family
+  - pattern-specific routed recv state/export path
+- high-leverage 근거
+  - raw/public aggregate wrapper, final-part one-lock helper,
+    same-target routed send cache가 모두 direct absolute throughput을
+    거의 못 움직였기 때문에, next cost center를 routed recv ordering /
+    source-rid export 쪽에서 직접 좁혀야 했다.
+- 참고한 `libzmq` 대응 파일
+  - [`libzmq/src/router.cpp`](/home/hep7/project/kairos/libzmq/src/router.cpp)
+  - [`libzmq/src/socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+- `claude` consult 여부와 핵심 조언
+  - stdin 기반 `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
+    consult는 usable advisory를 반환했다.
+  - 핵심 조언은 prefetched/non-prefetched source-rid resolution을 한 번으로
+    모으는 방향은 시도할 가치가 있지만, keep 여부는 반드시 multipart
+    source-rid contract와 direct absolute throughput으로 판정하라는 것이었다.
+- 수정한 파일 경로
+  - bench A/B 뒤 원복:
+    - [`core/src/sockets/router.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.hpp)
+    - [`core/src/sockets/router.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/router.cpp)
+  - 유지:
+    - [`core/tests/integration/test_public_inproc_multipart_send.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_public_inproc_multipart_send.cpp)
+- 실행한 명령
+  - `printf '...' | claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_monitor_socket_contract|test_router_multiple_dealers|test_router_mandatory_hwm|test_stream_send_blocking_wakeup)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns ROUTER_ROUTER,DEALER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_recv_state_cache_default`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_router_recv_state_cache_raw`
+  - `timeout 30s ./core/build/bin/comp_zlink_router_router zlink tcp 64`
+  - `timeout 30s ./core/build/bin/comp_zlink_router_router zlink inproc 64`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_144258_codex_20260328_router_recv_state_cache_default.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_144258_codex_20260328_router_recv_state_cache_default.txt)
+  - [`perf_linux_20260328_144258_codex_20260328_router_recv_state_cache_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_144258_codex_20260328_router_recv_state_cache_raw.txt)
+- 핵심 수치
+  - default candidate
+    - `DEALER_ROUTER tcp/inproc -27.89% / -30.42%`
+    - `ROUTER_ROUTER tcp/inproc -57.01% / -22.77%`
+  - raw candidate
+    - `ROUTER_ROUTER tcp/inproc -52.96% / -20.99%`
+  - direct zlink absolute throughput
+    - `ROUTER_ROUTER tcp`: `1211724.60 msg/s`
+    - `ROUTER_ROUTER inproc`: `2408252.00 msg/s`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - `test_public_inproc_router_recv_multipart_with_source_rid_blocking()`
+    - `test_public_inproc_router_msg_recv_rid_keeps_source_rid_across_reset()`
+  - 원복
+    - routed recv current-in/source-rid cache
+    - lazy prefetched-id prepare
+- 해석
+  - relative diff만 보면 raw `inproc`가 다소 좋아진 것처럼 보였지만,
+    direct `comp_zlink_router_router` absolute throughput은 previous baseline
+    `tcp ~1.21Mmsg/s`, `inproc ~2.42Mmsg/s` 수준에서 사실상 움직이지 않았다.
+  - 즉 이번 candidate도 `libzmq` baseline 흔들림에 따른 noise였고,
+    current `ROUTER_ROUTER` 잔여 gap을 실제로 줄이지 못했다.
+  - routed recv contract regression 두 개는 useful guardrail이므로 keep한다.
+- 다음 iteration 우선순위
+  - `ROUTER_ROUTER`에서는 local recv-state/source-rid cache나
+    lazy prefetched-id prepare를 다시 올리지 않는다.
+  - next hypothesis는 routed recv prefetch ordering differential과
+    `recv_routed()` source-rid export path 자체를 더 직접 분리하는 것이다.
+
+## 66. 2026-03-28 bisect 반영 후 실제 코드 적용 후보
+
+- 결론 요약
+  - historical first direct cause는 `9b91234c`의
+    raw `send_exact/zlink_msg_recv` -> public `zlink_send/zlink_recv`
+    surface shift다.
+  - current residual direct cause는
+    `socket_base_t::send()` public admission/lock과
+    `pipe::_out_sync` send-path serialization 조합에 더 가깝다.
+  - 따라서 next code candidate는 `ROUTER`/`PUBSUB` local helper보다
+    공통 send-side 비용을 먼저 겨냥해야 한다.
+
+- 바로 적용해서 볼 가치가 큰 순서
+  1. [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+     의 `socket_base_t::send()` / `send_routed()` steady-state fast path
+     - ordinary blocking one-way send에서
+       `socket_public_api_scope_t` /
+       `socket_public_api_lock_scope_t`
+       비용을 더 줄일 수 있는지 본다
+     - retry/HWM 경로보다 queue가 안 차도 매 메시지마다 드는 admission/lock
+       고정비를 먼저 겨냥한다
+  2. [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+     의 public lifecycle coordinator
+     - `public_api_state`, `enter_public_api`,
+       `begin_close_or_fail_busy`, sync lock state 전이를 더 싼 의미 단위로
+       합칠 수 있는지 본다
+     - 단, thread-safe contract 약화는 금지
+  3. [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+     의 `_out_sync` 아래 same-ordering redundant work 추가 축소
+     - current kept delta인 recursive `check_hwm()` elide와 같은 방향으로
+       lock 자체를 제거하지 않고 lock 아래 중복 work를 더 줄인다
+     - `write`, `write_and_flush`, `flush`, activation 판단/prepare 경로를
+       다시 본다
+  4. [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+     의 single-part public send fast path 회귀 방지
+     - historical first collapse가 public multipart contract 강제에서 시작된 만큼,
+       current HEAD에서 one-part send가 다시 clone/materialize 쪽으로
+       새지 않도록 guardrail을 둔다
+  5. [`core/src/core/multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+     의 single-part fallback residual 확인
+     - single-frame one-way가 실제로 multipart txn helper를 다시 타는 residual이
+       없는지 재확인한다
+
+- 현재 우선순위를 낮춰야 하는 것
+  - `recv parts_out` heap-return/export 추가 미세튜닝
+  - `PUBSUB` / `ROUTER` local helper 반복
+  - `backpressure/HWM`만을 본체로 보는 재탐색
+
+- 다음 적용 기준
+  - `PAIR`, `DEALER_DEALER` `64B tcp/inproc`에서 broad win이 보여야 keep
+  - send-path를 건드렸으면 raw/public guardrail을 반드시 다시 찍는다
+  - direct absolute throughput이 안 움직이면 relative diff만 좋아 보여도
+    rejected candidate로 내린다
+
+## 67. 2026-03-28 direct send-side candidate bundle probe
+
+- 기준
+  - manual direct baseline
+    - [`perf_linux_20260328_manual_direct_baseline.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_manual_direct_baseline.txt)
+    - `PAIR tcp/inproc`: `3214.07 / 3283.74 Kmsg/s`
+    - `DEALER_DEALER tcp/inproc`: `3272.14 / 3182.09 Kmsg/s`
+
+- candidate 1
+  - 내용
+    - `socket_base_msg.cpp`: common `send()` / `send_routed()`에서
+      `reset_flags/reset_metadata` fast path 시도
+    - `socket_runtime.cpp`: lifecycle atomic memory-order 완화 시도
+    - `pair.cpp`, `lb.cpp`: single-part likely branch 시도
+  - 결과
+    - [`perf_linux_20260328_manual_direct_candidate1.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_manual_direct_candidate1.txt)
+    - `PAIR tcp/inproc`: `3147.88 / 3241.36 Kmsg/s`
+    - `DEALER_DEALER tcp/inproc`: `3273.01 / 3119.22 Kmsg/s`
+  - 판정
+    - `DEALER_DEALER tcp` relative diff만 좋아 보였지만 absolute zlink throughput은
+      baseline과 사실상 동일했고 `PAIR`, `inproc`은 미세 악화였다.
+    - broad win 아님. reject.
+
+- candidate 2
+  - 내용
+    - candidate 1에서 lifecycle atomic memory-order 완화만 원복
+    - `send()` common prep fast path + `PAIR/LB` likely branch만 유지
+  - 결과
+    - [`perf_linux_20260328_manual_direct_candidate2.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_manual_direct_candidate2.txt)
+    - `PAIR tcp/inproc`: `3228.26 / 3231.54 Kmsg/s`
+    - `DEALER_DEALER tcp/inproc`: `3207.91 / 3184.23 Kmsg/s`
+    - raw/public guardrail:
+      [`perf_linux_20260328_manual_direct_candidate2_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_manual_direct_candidate2_raw.txt)
+      - `PAIR raw tcp/inproc`: `3267.84 / 2725.91 Kmsg/s`
+      - `DEALER_DEALER raw tcp/inproc`: `3238.08 / 3231.58 Kmsg/s`
+  - 판정
+    - public wrapper penalty를 줄이는 broad win이 아니었다.
+    - common `send()` prep micro-tuning은 current residual direct cause로 보기 어렵다.
+    - reject.
+
+- candidate 3
+  - 내용
+    - `fast_mutex.hpp`, `pipe.cpp`
+    - `_out_sync`는 유지하되
+      `check_write_status()/write()/write_and_flush()` 계열만
+      non-recursive lock scope로 내리는 probe
+  - 결과
+    - [`perf_linux_20260328_manual_direct_candidate3_pipe_norec.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_manual_direct_candidate3_pipe_norec.txt)
+    - `PAIR tcp/inproc`: `3091.67 / 3158.45 Kmsg/s`
+    - `DEALER_DEALER tcp/inproc`: `3189.38 / 3135.08 Kmsg/s`
+  - 판정
+    - common one-way absolute throughput이 분명히 내려갔다.
+    - `_out_sync` 아래 owner/depth bookkeeping 자체를 이런 식으로 건드리는 건
+      current 구조에선 broad win이 아니다.
+    - reject.
+
+- keep / revert
+  - keep
+    - 없음
+  - revert
+    - `send()` common prep fast path bundle
+    - lifecycle atomic memory-order 완화
+    - `_out_sync` hot send non-recursive scope
+  - current tree 상태
+    - 위 세 후보는 모두 원복됐다.
+    - 즉 이번 라운드 이후 current tree에 남아 있는 성능개선 코드는 없다.
+
+- 현재 해석
+  - `1~3` 후보는 모두 current residual direct cause를 직접 겨냥했지만,
+    공통 broad win을 만들지 못했다.
+  - 그래서 next step은 `helper-level micro tuning`이 아니라
+    `socket_base_t::send()` public admission/lock 의미 단위와
+    `pipe::_out_sync` serialization 의미 단위를 더 큰 구조로 다시 보는 것이다.
+
+## 68. 2026-03-28 direct single-part send scope narrowing rejected 로그
+
+- 작업한 가설
+  - `a819ea3a` 이후 current `send()` / `send_routed()`는
+    `socket_public_send_scope_t`가 initial `process_commands()` 전부터
+    public sync를 잡고 들어간다.
+  - direct single-part public send에서는 이 widened sync scope가
+    공통 잔여 비용일 수 있으므로, admission은 유지하되
+    sync를 `xsend()` / `xsend_routed()` 주변에서만 다시 잡으면
+    `PAIR` / `DEALER_DEALER` broad win이 나올 수 있다고 봤다.
+- candidate family
+  - common direct send admission/lock scope
+- high-leverage 근거
+  - `ff0140e5` / `a819ea3a` / `98e7d324` / `9b91234c` historical map 중
+    current tree에 가장 직접적으로 남아 있는 구조 차이는
+    public admission/lock widened scope와 `_out_sync` serialization이기 때문이다.
+- 참고한 `libzmq` 대응 파일
+  - [`libzmq/src/socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+  - [`libzmq/src/pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)
+- `claude` consult 여부와 핵심 조언
+  - stdin 기반 `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
+    consult는 usable advisory를 반환했다.
+  - 핵심 조언은 current search가 같은 abstraction layer의 local tweak를
+    반복하고 있으니, 다음 step은 `_out_sync`가 보호하는 invariant와
+    `PAIR inproc 64B` profiling으로 send admission vs pipe serialization
+    비중을 먼저 가르라는 것이었다.
+- 수정한 파일 경로
+  - bench A/B 뒤 원복:
+    - [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+- 실행한 명령
+  - `claude --help`
+  - `printf '...' | claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_socket_with_handler|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_monitor_socket_contract|test_router_mandatory_hwm|test_router_multiple_dealers)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_direct_send_scope_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_direct_send_scope_raw`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_160033_codex_20260328_direct_send_scope_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_160033_codex_20260328_direct_send_scope_public.txt)
+  - [`perf_linux_20260328_160113_codex_20260328_direct_send_scope_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_160113_codex_20260328_direct_send_scope_raw.txt)
+- 핵심 수치
+  - public
+    - `PAIR tcp/inproc -21.29% / -33.25%`
+    - `DEALER_DEALER tcp/inproc -23.62% / -25.85%`
+  - raw
+    - `PAIR tcp/inproc -9.47% / -20.90%`
+    - `DEALER_DEALER tcp/inproc -28.00% / -26.50%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - direct single-part `send()` / `send_routed()` initial sync unlock
+    - relock-around-`xsend()` local tweak
+- 해석
+  - `PAIR raw tcp`는 좋아졌지만 public `PAIR inproc`와 `DEALER_DEALER`
+    public/raw가 함께 무너져 broad win이 아니었다.
+  - 즉 current residual gap을 direct single-part send scope narrowing 하나로
+    설명할 수는 없고, same layer의 local tweak를 더 반복할 이유도 약하다.
+  - next step은 `_out_sync` hot path가 실제로 어떤 cross-command state를
+    보호하는지 invariant map을 먼저 적고, 그 뒤 structural 후보를 고르는 것이다.
+- 다음 iteration 우선순위
+  - `send()` / `send_routed()` direct single-part scope narrowing은
+    다시 올리지 않는다.
+  - 먼저 `_out_sync`가 보호하는 `_out_active`, `_peers_msgs_read`, `_state`,
+    `_out_pipe` invariant를 write/flush/activate/hiccup/term 경로 기준으로
+    정리한다.

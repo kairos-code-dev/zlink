@@ -1,0 +1,4325 @@
+OpenAI Codex v0.116.0 (research preview)
+--------
+workdir: /home/hep7/project/kairos/zlink
+model: gpt-5.4
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019d314a-5ce2-77f2-973a-cbace6ebcf4f
+--------
+user
+/home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
+
+작업 목표:
+- /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md
+  이 문서의 남은 작업과 실제 구현 내용을 중단 없이 끝까지 진행한다.
+
+작업 규칙:
+- 현재 실행의 유일한 기준 문서는 실행 가이드다.
+- 이 실행은 단일 문서 체계로 운영한다. 명시 요청이 없으면 main/master/gap/spec/residual/보조 계획 문서를 새로 만들지 않는다.
+- 필요한 계획, 작업 레지스터, 체크리스트, 종료 조건은 모두 실행 가이드 한 파일에 유지한다.
+- 실행 가이드와 별도 계획 문서로 분산돼 있던 내용이 보이면 실행 가이드로 먼저 합친다.
+- 별도 보조 계획서를 유지하거나 참조 체인을 늘리는 방식으로 작업을 진행하지 않는다.
+
+- 각 작업 묶음을 끝낼 때마다 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
+- 실행 가이드 체크리스트가 green이어도 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 실행 가이드와 현재 코드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
+- 실행 가이드의 현재 파일 내용이 source of truth다. 명시적으로 요청받지 않은 한 실행 가이드 자체의 git diff나 삭제된 legacy 문서 diff를 근거로 판단하지 않는다.
+- git status 에서 보이는 삭제된 legacy 문서나 과거 계획 문서는 현재 실행 범위의 근거가 아니다. unrelated 변경처럼 취급하고 현재 가이드와 현재 코드만 본다.
+- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
+- core/build/ 만 사용한다.
+- 장시간 gate가 필요하면 ./core/tools/ralphloop/run_execution_gate_loop.sh --logs-dir /home/hep7/project/kairos/zlink/doc/plan/perf/logs/codex_execution_guide_loop_20260327_232512/gate --label single_libzmq_gap_perf --count 1 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 1보다 더 크게 올릴 수 있다.
+- 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
+- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- 가이드에 단계별 commit / push 규칙이 있으면 그대로 따른다.
+- unrelated 변경은 commit/push에 섞지 않는다. 현재 단계 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
+- push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남길 수 있으면 남긴다.
+- routine한 판단은 사용자에게 묻지 말고 스스로 진행한다.
+- 정말 필요한 사용자 결정이 아니면 멈추지 않는다.
+- stress/lane/perf/functional regression은 구현 완료를 증명하는 보조 수단이지 구현 내용 자체를 대체하지 않는다.
+- 테스트 통과만으로 실행 가이드의 실제 구현 내용이 반영됐다고 추정하지 않는다.
+
+종료 판정 규칙:
+- 실행 가이드 기준으로 더 이상 미적용 사항이 없고 다음에 할 작업이 전혀 없을 때만 정확히 아래 한 줄만 출력한다.
+미적용 사항이 없습니다.
+
+- 사용자 결정 없이는 더 진행할 수 없는 blocker가 있을 때만 정확히 아래 형식 한 줄만 출력한다.
+사용자 입력 필요: <한 줄 이유>
+
+- 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
+계속 진행 필요
+
+warning: Codex could not find system bubblewrap at /usr/bin/bwrap. Please install bubblewrap with your package manager. Codex will use the vendored bubblewrap in the meantime.
+mcp startup: no servers
+codex
+팀장님 요청 기준은 실행 가이드 한 파일을 source of truth로 두고, 첫 미완료 항목부터 실제 코드 반영과 검증까지 계속 진행하는 것입니다. 먼저 현재 가이드 내용, 작업 트리 상태, 관련 코드 위치를 확인해 남은 첫 항목과 현재 구현 상태를 맞춰 보겠습니다.
+exec
+/bin/bash -lc "pwd && git status --short && printf '\\n--- GUIDE ---\\n' && sed -n '1,260p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink
+?? doc/plan/perf/logs/
+
+--- GUIDE ---
+# `single-libzmq` 성능 수렴 Ralph 실행 가이드
+
+## 1. 목적
+
+이 가이드는
+[single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+를 지속 로그로 유지하면서,
+[`core/bench/with_zmq/`](/home/hep7/project/kairos/zlink/core/bench/with_zmq)
+를 기준 검증 surface로 사용해
+`zlink`의 상대 성능을 `libzmq`와 비슷한 수준까지 끌어올리는 반복 작업을
+끝까지 수행하기 위한 유일한 실행 문서다.
+
+이 문서는 계획서와 실행서를 분리하지 않는다.
+현재 iteration의 우선순위, 검증 규칙, 종료 조건, 로그 유지 규칙은 모두
+이 문서 하나에 고정한다.
+
+exec
+/bin/bash -lc "rg -n \"single-libzmq|libzmq gap|thread-safe|perf\" /home/hep7/project/kairos/zlink/core /home/hep7/project/kairos/zlink/doc/plan/perf -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:1:# `single-libzmq` 성능 수렴 Ralph 실행 가이드
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:6:[single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:20:- [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:25:  [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:42:- `doc/plan/perf/` 로그와 실행 가이드
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:47:- `core/perf/`와 `core/bench/`를 성능 숫자 맞추기용 우회 수단으로 수정하는 것
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:49:- thread-safe 계약을 약화하는 최적화
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:52:bench/perf 코드는 측정 surface다. 수정은 아래 둘 중 하나일 때만 허용한다.
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:55:2. 사용자가 bench/perf 코드 변경을 명시적으로 요구했을 때
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:65:- [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:66:- loop runtime 로그는 [`doc/plan/perf/logs/`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:131:2. [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:142:   [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:156:  - [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:163:  [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:187:- thread-safe contract를 약화하거나 우회해서 성능을 맞추지 않는다.
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:198:bash -n doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh \
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:204:./doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh --help
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:208:./doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh --init-only
+/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:217:./doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh
+codex
+가이드 앞부분은 확인했습니다. 이제 실행 가이드의 작업 레지스터, 체크리스트, 상태표를 끝까지 읽고 첫 미완료 항목을 특정한 뒤, review와 hot-path 문서가 현재 코드와 맞는지도 같이 대조하겠습니다.
+exec
+/bin/bash -lc "sed -n '261,620p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+### 9.4 broader single acceptance
+
+```bash
+python3 core/bench/with_zmq/single/run_comparison.py \
+  --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER \
+  --msg-sizes 64 \
+  --transport tcp,inproc \
+  --runs 1 \
+  --build-dir core/build \
+  --results-tag <tag>
+```
+
+### 9.5 multi smoke
+
+```bash
+BENCH_TRANSPORTS=tcp \
+BENCH_MSG_SIZES=64 \
+BENCH_MULTI_WARMUP_SECONDS=1 \
+BENCH_MULTI_DURATION_SECONDS=3 \
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# `single` 상대 성능 격차 재분석 메모
+
+> 이 문서는
+> [`single-libzmq-gap-ralph-guide.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md)
+> 가 참조하는 지속 로그 파일이다.
+>
+> 랄프루프를 돌리는 동안 이 파일에는 최소한 아래를 계속 갱신한다.
+>
+> - 최신 가설과 배제된 가설
+> - 실제 실행 명령
+> - 결과 파일 경로
+> - 현재 best / latest throughput 비교
+> - 다음 iteration 우선순위
+
+> 범위: [`core/bench/with_zmq/single/`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single)
+> 기준의 `zlink` 대 `libzmq` 상대 성능 차이
+>
+> 목적: 현재 남아 있는 격차가 `core` 엔진 자체 회귀인지,
+> 아니면 benchmark surface 차이와 public API 비용이 섞인 결과인지
+> 현재 코드 기준으로 다시 정리한다.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+# Hot Path 계약 메모
+
+> 목적: 성능개선 작업과 리팩토링이 동시에 진행될 때,
+> small-message steady-state hot path가 무의식적으로 두꺼워지는 일을 막기 위한
+> 내부 계약 문서다.
+>
+> 이 문서는 "어디가 hot path인지", "무엇을 넣으면 안 되는지", "성능개선 중 어떤
+> 규칙으로 문서를 갱신할지"를 짧고 명시적으로 유지한다.
+
+## 1. 범위
+
+현재 1차 범위는 `with_zmq single` 상대 비교에서 gap이 가장 직접적으로 드러나는
+public send/recv 경로다.
+
+- [`core/src/api/socket_message_send_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_send_api.cpp)
+- [`core/src/api/socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+- [`core/src/core/recv_internal.cpp`](/home/hep7/project/kairos/zlink/core/src/core/recv_internal.cpp)
+- [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+- [`core/src/sockets/pair.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/pair.cpp)
+- [`core/src/sockets/dealer.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dealer.cpp)
+exec
+/bin/bash -lc "sed -n '620,820p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+      direct delivery 모두 keep-worthy broad win을 만들지 못했다.
+      따라서 common lifecycle/backpressure 축은 새 근거가 나올 때만 다시 올리고,
+      actual next code 후보는 pattern-specific `pipe`/`PUBSUB` publication 축과
+      `ROUTER_ROUTER` 전용 differential 정리로 넘긴다.
+- [x] `pipe` send/publication 경로에서 ordering을 유지한 채 lock 안 work를 줄였다.
+- [x] single `PUBSUB` no-topic bench surface를 현재 계약에 맞게 다시 정렬했다.
+- [ ] `PUBSUB` publish/distribution path를 single-subscriber win에서
+      inproc/multi까지 확장한다.
+      current accepted `dist` helper 위
+      `XPUB` all-attached empty-prefix `send_to_all()` v2도
+      sequential seq1/seq2 `PUBSUB tcp/inproc 64B`
+      `-25.77% / -40.89%`, `-23.12% / -40.39%`로
+      accepted baseline `-23.63% / -39.84%`를 stable하게 넘지 못해
+      rejected candidate가 됐다.
+      `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path도
+      seq1/seq2/seq3 `PUBSUB tcp/inproc 64B`
+      `-24.81% / -43.41%`, `-22.71% / -34.67%`,
+      `-24.42% / -41.68%`로 stable broad win이 아니었다.
+      `dist.cpp` final-part same-thread `send_activate_read()` inline wakeup도
+      isolated `PUBSUB tcp/inproc 64B`가 `-25.70% / -42.49%`로
+exec
+/bin/bash -lc "sed -n '261,420p' /home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+1. `PAIR`/`DEALER_DEALER` raw/public 분리는 완료됐지만,
+   public penalty를 고정 상수처럼 취급하지 않고 serial guardrail로 유지한다
+2. `socket_base_t::send()`의 public lifecycle fast path는
+   current code 기준 keep-worthy 공통 delta가 없어 actual 구현 우선순위에서
+   내린다. 새 broad win 근거가 생길 때만 다시 올린다
+3. blocking retry 공통 gate도 현재는 같은 상태다
+   - `enter_public_api()` 자체보다 `public_api_sync` 재획득 또는
+     retry-side sync 유지 실패가 비용이라는 해석은 유지한다
+   - 다만 2026-03-28 current code 기준 keep-worthy 공통 retry delta는 없다
+   - `activate_write` 자체는 zlink가 같은-thread에서 즉시
+     `process_command()`를 호출하므로 publication이 더 늦다고 단정하지 않는다
+   - 따라서 actual next work는 공통 retry gate 자체보다
+     pattern-specific publication/wakeup differential 쪽이다
+4. send-side `pipe_t`는 전체 lock 제거가 아니라
+   activation/flush ordering을 유지한 채 lock 안의 work를 줄이는 방향으로 본다
+5. `socket_base_t::send()`의 send-side throttle은 보조 후보로만 본다
+   - 현재 `process_commands(0, true)`는 libzmq와 거의 같은 구조다
+   - `counter-only` 치환은 현재 보류다
+6. `zlink_recv()`의 남은 routed/strip/multipart export 경로를 더 얇게 만든다
+codex
+현재 체크리스트 기준 첫 미완료는 `PUBSUB publish/distribution path를 single-subscriber win에서 inproc/multi까지 확장`입니다. 다음으로 관련 구현부(`dist.cpp`, `xpub.cpp`, `pipe.cpp`, 회귀 테스트`)와 review 최신 로그를 대조해서 현재 accepted delta 위에 남은 실제 비용 축을 좁히겠습니다.
+Plan update
+실행 가이드의 첫 미완료 항목부터 순서대로 진행합니다. 먼저 PUBSUB publication 경로의 현재 구현과 최신 로그를 대조하고, keep-worthy 후보를 구현·검증한 뒤 문서와 검증 기록을 갱신합니다.
+  → 실행 가이드·review·hot-path와 현재 PUBSUB 관련 코드를 대조해 첫 미완료 항목의 실제 남은 구현 범위를 확정한다
+  • PUBSUB publication/distribution 경로의 pattern-specific 개선을 core/core/tests 범위에서 구현한다
+  • core/build로 빌드 후 targeted single, raw/public guardrail, broader single, multi smoke를 실행해 keep-worthy 여부를 판정한다
+  • 결과에 맞춰 실행 가이드·review·hot-path를 갱신하고 단계별 commit/push 가능 상태를 정리한다
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/core/dist.cpp" in /home/hep7/project/kairos/zlink exited 2 in 0ms:
+sed: can't read core/src/core/dist.cpp: No such file or directory
+exec
+/bin/bash -lc "sed -n '1,320p' core/src/sockets/xpub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+#include <string.h>
+
+#include "sockets/xpub.hpp"
+#include "core/pipe.hpp"
+#include "utils/err.hpp"
+#include "core/msg.hpp"
+#include "utils/macros.hpp"
+#include "utils/generic_mtrie_impl.hpp"
+
+zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    socket_base_t (parent_, tid_, sid_),
+    _verbose_subs (false),
+    _verbose_unsubs (false),
+    _more_send (false),
+    _more_recv (false),
+    _process_subscribe (false),
+    _lossy (true),
+exec
+/bin/bash -lc "rg -n \"match\\(|activated\\(|check_hwm_locked|write_no_hwm_check|send_to_all|empty_prefix|ready_count|monitor|delivery_ready|write_activated|single_pipe|single matching|dist-only|no_recursive|non-recursive|match_all\" core/src/core/dist.cpp core/src/sockets/xpub.cpp core/src/core/pipe.cpp core/src/sockets/socket_base_msg.cpp core/src/api/multipart_send_txn.cpp core/tests -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink exited 2 in 0ms:
+rg: core/src/core/dist.cpp: No such file or directory (os error 2)
+rg: core/src/api/multipart_send_txn.cpp: No such file or directory (os error 2)
+core/src/core/pipe.cpp:360:bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
+core/src/core/pipe.cpp:399:bool zlink::pipe_t::write_no_recursive_hwm_check (const msg_t *msg_)
+core/src/core/pipe.cpp:419:bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+core/src/core/pipe.cpp:500:        _sink->write_activated (this);
+core/src/sockets/xpub.cpp:28:    _delivery_ready_peer_count (0)
+core/src/sockets/xpub.cpp:45:bool zlink::xpub_t::compute_delivery_ready_state () const
+core/src/sockets/xpub.cpp:47:    return compute_delivery_ready_count () > 0;
+core/src/sockets/xpub.cpp:57:uint32_t zlink::xpub_t::compute_delivery_ready_count () const
+core/src/sockets/xpub.cpp:67:void zlink::xpub_t::refresh_delivery_ready_state (
+core/src/sockets/xpub.cpp:70:    const uint32_t ready_count = compute_delivery_ready_count ();
+core/src/sockets/xpub.cpp:72:      _delivery_ready_peer_count.exchange (ready_count,
+core/src/sockets/xpub.cpp:74:    if (previous == ready_count)
+core/src/sockets/xpub.cpp:77:    emit_socket_monitor_value_event (ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED,
+core/src/sockets/xpub.cpp:78:                                     ready_count, endpoint_uri_pair_);
+core/src/sockets/xpub.cpp:81:uint32_t zlink::xpub_t::monitor_ready_count () const
+core/src/sockets/xpub.cpp:83:    return _delivery_ready_peer_count.load (std::memory_order_acquire);
+core/src/sockets/xpub.cpp:99:        refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
+core/src/sockets/xpub.cpp:215:        refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
+exec
+/bin/bash -lc "sed -n '320,520p' core/src/sockets/xpub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        //  care of by the manual call above. subscriptions is the real mtrie,
+        //  so the pipe must be removed from there or it will be left over.
+        _subscriptions.rm (pipe_, stub, static_cast<void *> (NULL), false);
+
+        // In case the pipe is currently set as last we must clear it to prevent
+        // subscriptions from being re-added.
+        if (pipe_ == _last_pipe) {
+            _last_pipe = NULL;
+        }
+    } else {
+        //  Remove the pipe from the trie. If there are topics that nobody
+        //  is interested in anymore, send corresponding unsubscriptions
+        //  upstream.
+        _subscriptions.rm (pipe_, send_unsubscription, this, !_verbose_unsubs);
+    }
+
+    _dist.pipe_terminated (pipe_);
+    refresh_delivery_ready_state (endpoint_pair);
+}
+
+exec
+/bin/bash -lc "rg --files core/src | rg '/dist\\.(cpp|hpp)"'$|/pipe'"\\.(cpp|hpp)"'$|multipart_send_txn|xpub'"\\.(cpp|hpp)"'$'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/sockets/dist.cpp
+core/src/sockets/dist.hpp
+core/src/sockets/xpub.cpp
+core/src/sockets/xpub.hpp
+core/src/core/pipe.cpp
+core/src/core/multipart_send_txn.cpp
+core/src/core/pipe.hpp
+core/src/core/multipart_send_txn.hpp
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/core/dist.cpp || sed -n '1,260p' core/src/dist.cpp || sed -n '1,260p' core/src/sockets/dist.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+sed: can't read core/src/core/dist.cpp: No such file or directory
+sed: can't read core/src/dist.cpp: No such file or directory
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+#include "sockets/dist.hpp"
+#include "core/pipe.hpp"
+#include "utils/err.hpp"
+#include "core/msg.hpp"
+#include "utils/likely.hpp"
+
+zlink::dist_t::dist_t () :
+    _matching (0), _active (0), _eligible (0), _more (false)
+{
+}
+
+zlink::dist_t::~dist_t ()
+{
+    zlink_assert (_pipes.empty ());
+}
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/sockets/dist.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_DIST_HPP_INCLUDED__
+#define __ZLINK_DIST_HPP_INCLUDED__
+
+#include <vector>
+
+#include "utils/array.hpp"
+#include "utils/macros.hpp"
+
+namespace zlink
+{
+class pipe_t;
+class msg_t;
+
+//  Class manages a set of outbound pipes. It sends each messages to
+//  each of them.
+class dist_t
+{
+  public:
+exec
+/bin/bash -lc "sed -n '300,470p' core/src/core/pipe.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    //  If delimiter was read, start termination process of the pipe.
+    if (msg_->is_delimiter ()) {
+        process_delimiter ();
+        return false;
+    }
+
+    if (!(msg_->flags () & msg_t::more) && !msg_->is_routing_id ())
+        _msgs_read++;
+
+    if (_lwm > 0 && _msgs_read % _lwm == 0)
+        send_activate_write (_peer, _msgs_read);
+
+    return true;
+}
+
+bool zlink::pipe_t::check_write ()
+{
+    return check_write_status () == pipe_write_ready;
+}
+
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/core/pipe.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_PIPE_HPP_INCLUDED__
+#define __ZLINK_PIPE_HPP_INCLUDED__
+
+#include <atomic>
+
+#include "core/ypipe_base.hpp"
+#include "utils/config.hpp"
+#include "core/object.hpp"
+#include "utils/stdint.hpp"
+#include "utils/array.hpp"
+#include "utils/blob.hpp"
+#include "core/options.hpp"
+#include "core/endpoint.hpp"
+#include "core/msg.hpp"
+#include "utils/fast_mutex.hpp"
+
+namespace zlink
+{
+exec
+/bin/bash -lc 'tail -n 220 /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+  - discarded overlap run:
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_rerun`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean_rerun`
+  - keep 판정에 사용한 sequential rerun:
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1`
+    - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2`
+  - 원복 후
+    - `cmake --build core/build -j$(nproc)`
+    - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+- 생성된 결과 파일 경로
+  - discarded overlap run:
+    - [`perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2.txt)
+    - [`perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_rerun.txt)
+    - [`perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean.txt)
+    - [`perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean_rerun.txt)
+  - keep 판정에 사용한 sequential rerun:
+    - [`perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt)
+    - [`perf_linux_20260328_060332_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_060332_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2.txt)
+exec
+/bin/bash -lc 'git remote -v && git branch --show-current' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+origin	git@github.com-kairos:kairos-code-dev/zlink.git (fetch)
+origin	git@github.com-kairos:kairos-code-dev/zlink.git (push)
+main
+exec
+/bin/bash -lc 'git log --oneline --decorate -n 12' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+4bb2ed4e (HEAD -> main, origin/main) docs: sync perf execution guide after rejected pubsub wakeup trial
+7305b1df docs: log rejected pubsub bookkeeping candidate
+efc97d1b test: retain router send_rid multipart regression
+00745c5e perf: tighten pubsub pipe work and router hwm coverage
+28dda334 docs: record multipart publish fix push hash
+754ee608 fix: serialize logical multipart publish scope
+9b281b14 docs: record pubsub surface alignment stage hash
+d03f56dd perf: align single pubsub no-topic bench surface
+a76711fe docs: log rejected lifecycle perf candidates
+cbb9acde docs: record pubsub dist stage hash
+af020ce4 perf: narrow pubsub dist hot path
+db6a196b perf: narrow DEALER single-pipe send hot path
+codex
+최근 로그 기준으로 `PUBSUB` 쪽 rejected 후보는 이미 문서에 반영돼 있고, 현재 코드 HEAD도 그 상태와 맞습니다. 이제 accepted delta가 정확히 무엇인지 commit diff와 현재 `dist/xpub/pipe` 구조를 읽어 다음 pattern-specific 후보를 설계하겠습니다.
+exec
+/bin/bash -lc "git show --stat --patch af020ce4 -- core/src/sockets/dist.cpp core/src/core/pipe.cpp core/src/sockets/xpub.cpp core/tests | sed -n '1,260p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+commit af020ce489617b2b88f5d32697806f995ed8008f
+Author: kairos-code-dev <ulalax@kairoscode.dev>
+Date:   Sat Mar 28 00:37:05 2026 +0900
+
+    perf: narrow pubsub dist hot path
+---
+ core/src/sockets/dist.cpp                          |  38 ++--
+ .../test_multi_socket_contract_regressions.cpp     | 196 +++++++++++++++++++++
+ 2 files changed, 223 insertions(+), 11 deletions(-)
+
+diff --git a/core/src/sockets/dist.cpp b/core/src/sockets/dist.cpp
+index e0bb79fb..8067c939 100644
+--- a/core/src/sockets/dist.cpp
++++ b/core/src/sockets/dist.cpp
+@@ -152,9 +152,19 @@ void zlink::dist_t::distribute (msg_t *msg_)
+         return;
+     }
+ 
++    // Hot path: PUB/XPUB single-subscriber steady state keeps exactly one
++    // matching pipe. Avoid the generic distributor loop, refcount churn, and
+exec
+/bin/bash -lc 'rg -n "PUBSUB|pubsub|dist helper|send_to_all|one-matching-pipe|non-recursive HWM|accepted baseline|publication" /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md | tail -n 80' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+2352:    실제 우선순위는 `pipe` publication/order와 wakeup differential 쪽으로 둔다.
+2355:  - guide 순서대로 다른 `pipe`/publication actual cost 후보를 본다.
+2407:  - guide 순서대로 다른 `pipe`/publication actual cost 후보를 본다.
+2456:  - guide 순서대로 다른 `pipe`/publication actual cost 후보를 계속 본다.
+2465:    줄이면 `PUBSUB` publication cost를 더 낮추고, 특히 single/multi `tcp`
+2475:  - `cmake --build core/build -j$(nproc) --target libzlink comp_zlink_pubsub`
+2476:  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+2477:  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck`
+2478:  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun`
+2479:  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public`
+2480:  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw`
+2482:  - [`perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt)
+2483:  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt)
+2484:  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt)
+2485:  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt)
+2487:  - `PUBSUB` isolated first/rerun
+2501:  - first run에서는 accepted baseline 대비 `PUBSUB tcp/inproc`가 둘 다 좋아져
+2503:  - 하지만 clean rerun에서 `PUBSUB inproc 64B`가 `-41.46%`로 다시 내려가
+2504:    current accepted baseline `-39.84%`보다 나빠졌다.
+2505:  - raw/public guardrail 자체는 무너지지 않았지만, single accepted baseline을
+exec
+/bin/bash -lc "git show --stat --patch 00745c5e -- core/src/sockets/dist.cpp core/src/core/pipe.cpp core/src/sockets/xpub.cpp core/tests | sed -n '1,320p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+commit 00745c5e8533487e12037bcf6d8706579f812d0d
+Author: kairos-code-dev <ulalax@kairoscode.dev>
+Date:   Sat Mar 28 05:10:44 2026 +0900
+
+    perf: tighten pubsub pipe work and router hwm coverage
+---
+ core/src/core/pipe.cpp                             | 48 ++++++++++++
+ core/src/sockets/dist.cpp                          |  3 +-
+ core/tests/CMakeLists.txt                          |  1 +
+ .../integration/test_router_mandatory_hwm.cpp      | 85 ++++++++++++++++++++++
+ 4 files changed, 136 insertions(+), 1 deletion(-)
+
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index ea4df83b..df03f9f6 100644
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -396,6 +396,49 @@ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+     return true;
+ }
+ 
+exec
+/bin/bash -lc "sed -n '2440,2520p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    - `DEALER_DEALER tcp/inproc`: `-19.70% / -30.57%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `pair.cpp` final-part `write_and_flush_no_recursive_hwm_check()` 적용
+- 해석
+  - isolated first run에서는 `PAIR tcp 64B`가 `-8.49%`까지 회복돼
+    candidate처럼 보였지만, rerun에서 `PAIR inproc 64B`가 `-21.18%`로
+    다시 흔들렸다.
+  - 더 중요한 건 serial guardrail에서 `DEALER_DEALER inproc 64B` public이
+    `-31.36%`, raw가 `-30.57%`로 크게 무너졌다는 점이다.
+  - 즉 final-part helper를 `PAIR`에만 좁게 꽂아도 broad win이 아니라
+    `inproc`/guardrail 변동을 키웠다. current code에는 남기지 않는다.
+- 다음 iteration 우선순위
+  - `PAIR` final-part no-recursive helper도 rejected candidate로 유지한다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보를 계속 본다.
+
+## 32. 2026-03-28 `XPUB` prechecked no-HWM-recheck 로그
+
+exec
+/bin/bash -lc "git show cbb9acde --stat --patch -- core/src/sockets/dist.cpp core/src/core/pipe.cpp core/src/sockets/xpub.cpp | sed -n '1,260p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc "git show 4bb2ed4e --stat --patch -- doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md doc/internal/hot-path.ko.md doc/plan/perf/single-libzmq-gap-review.ko.md | sed -n '1,260p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+commit 4bb2ed4e7bf60e664a4cdbfec7c41feb177fed93
+Author: kairos-code-dev <ulalax@kairoscode.dev>
+Date:   Sat Mar 28 06:53:43 2026 +0900
+
+    docs: sync perf execution guide after rejected pubsub wakeup trial
+---
+ doc/internal/hot-path.ko.md                       | 24 ++++++++---
+ doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md | 52 ++++++++++-------------
+ doc/plan/perf/single-libzmq-gap-review.ko.md      | 46 ++++++++++++++++++++
+ 3 files changed, 86 insertions(+), 36 deletions(-)
+
+diff --git a/doc/internal/hot-path.ko.md b/doc/internal/hot-path.ko.md
+index dd96c124..aabe27e1 100644
+--- a/doc/internal/hot-path.ko.md
++++ b/doc/internal/hot-path.ko.md
+@@ -262,13 +262,16 @@ steady-state single-part recv hot path:
+ 1. `PAIR`/`DEALER_DEALER` raw/public 분리는 완료됐지만,
+    public penalty를 고정 상수처럼 취급하지 않고 serial guardrail로 유지한다
+ 2. `socket_base_t::send()`의 public lifecycle fast path는
+-   steady-state에서 더 적은 atomic으로 합치는 설계 후보로 본다
+codex
+다음 후보를 좁히려면 zlink와 libzmq의 `XPUB/dist/pipe` 차이를 직접 대조하는 편이 빠릅니다. 로컬에 있는 upstream 참조 구현과 벤치 surface를 같이 읽어서, 이전 rejected 후보들과 겹치지 않는 실제 differential을 찾겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/libzmq/src/xpub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+#include <string.h>
+
+#include "xpub.hpp"
+#include "pipe.hpp"
+#include "err.hpp"
+#include "msg.hpp"
+#include "macros.hpp"
+#include "generic_mtrie_impl.hpp"
+
+zmq::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    socket_base_t (parent_, tid_, sid_),
+    _verbose_subs (false),
+    _verbose_unsubs (false),
+    _more_send (false),
+    _more_recv (false),
+    _process_subscribe (false),
+    _only_first_subscribe (false),
+exec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/libzmq/src/dist.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,260p' core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp && printf '\\n---\\n' && sed -n '1,260p' core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/bench_common_zlink.hpp"
+#include "../common/perf_single_metric_header.hpp"
+#include <zlink.h>
+#include <algorithm>
+#include <atomic>
+#include <cstdlib>
+#include <cstring>
+#include <thread>
+#include <vector>
+
+namespace {
+
+inline int resolve_pubsub_xpub_nodrop_opt ()
+{
+    const char *env = std::getenv ("PERF_SINGLE_PUBSUB_XPUB_NODROP");
+    if (!env || !*env)
+        return 1;
+
+    if (std::strcmp (env, "1") == 0 || std::strcmp (env, "true") == 0
+        || std::strcmp (env, "TRUE") == 0 || std::strcmp (env, "on") == 0
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+#include "dist.hpp"
+#include "pipe.hpp"
+#include "err.hpp"
+#include "msg.hpp"
+#include "likely.hpp"
+
+zmq::dist_t::dist_t () :
+    _matching (0), _active (0), _eligible (0), _more (false)
+{
+}
+
+zmq::dist_t::~dist_t ()
+{
+    zmq_assert (_pipes.empty ());
+}
+
+void zmq::dist_t::attach (pipe_t *pipe_)
+exec
+/bin/bash -lc "sed -n '1,360p' core/src/api/socket_message_send_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include <climits>
+
+#include "api/service_api_internal.hpp"
+#include "api/socket_api_internal.hpp"
+#include "api/socket_message_api_internal.hpp"
+#include "core/msg.hpp"
+#include "core/multipart_send_txn.hpp"
+#include "utils/err.hpp"
+#include "utils/likely.hpp"
+
+namespace
+{
+int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)
+{
+    if ((!parts_ && part_count_ > 0) || part_count_ == 0) {
+        errno = EFAULT;
+exec
+/bin/bash -lc "rg -n \"zlink_publish\\(|send_socket|publish|logical multipart|public send scope|send_socket_unrouted_parts|send_socket_routed_parts|send_publication|topic\" core/src/api/socket_message_send_api.cpp core/src/core/multipart_send_txn.cpp core/src/sockets/socket_base_msg.cpp core/src/sockets/pub.cpp core/src/sockets/xpub.cpp core/src/sockets/dist.cpp core/tests -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/sockets/xpub.cpp:181:                //  reuse the same buffer and prefix a 0/1 byte to the topic, with
+core/src/sockets/xpub.cpp:330:        //  Remove the pipe from the trie. If there are topics that nobody
+core/src/core/multipart_send_txn.cpp:75:static int send_publish_once (zlink::socket_base_t *socket_,
+core/src/core/multipart_send_txn.cpp:76:                              const char *topic_,
+core/src/core/multipart_send_txn.cpp:82:    if (!topic_) {
+core/src/core/multipart_send_txn.cpp:91:    zlink::msg_t topic_msg;
+core/src/core/multipart_send_txn.cpp:92:    const size_t topic_size = strlen (topic_);
+core/src/core/multipart_send_txn.cpp:93:    if (topic_msg.init_size (topic_size) != 0)
+core/src/core/multipart_send_txn.cpp:96:    if (topic_size > 0)
+core/src/core/multipart_send_txn.cpp:97:        memcpy (topic_msg.data (), topic_, topic_size);
+core/src/core/multipart_send_txn.cpp:100:    if (socket_->send_scoped (&topic_msg,
+core/src/core/multipart_send_txn.cpp:105:        (void) topic_msg.close ();
+core/src/core/multipart_send_txn.cpp:109:    (void) topic_msg.close ();
+core/src/core/multipart_send_txn.cpp:166:struct publish_attempt_arg_t
+core/src/core/multipart_send_txn.cpp:168:    const char *topic;
+core/src/core/multipart_send_txn.cpp:195:static int attempt_send_publish (zlink::socket_base_t *socket_,
+core/src/core/multipart_send_txn.cpp:202:    const publish_attempt_arg_t *arg =
+core/src/core/multipart_send_txn.cpp:203:      static_cast<const publish_attempt_arg_t *> (arg_);
+core/src/core/multipart_send_txn.cpp:204:    return send_publish_once (socket_, arg->topic, parts_, part_count_, flags_,
+core/src/core/multipart_send_txn.cpp:291:int zlink::logical_multipart_publish (socket_base_t *socket_,
+exec
+/bin/bash -lc "sed -n '1,320p' core/src/core/multipart_send_txn.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "core/multipart_send_txn.hpp"
+
+#include "core/msg.hpp"
+#include "sockets/socket_base.hpp"
+
+namespace
+{
+static void consume_frames_from (zlink_msg_t *parts_,
+                                 size_t start_index_,
+                                 size_t part_count_)
+{
+    for (size_t i = start_index_; i < part_count_; ++i) {
+        zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (&parts_[i]);
+        if (!msg->check ())
+            continue;
+
+exec
+/bin/bash -lc "sed -n '1710,1815p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc 'rg -n "no-topic single-part|direct-send fallback|single-part public fast path|no-topic public fast path|payload-only" /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+617:  `zlink_publish(NULL, &part, 1)` + `zlink_recv()` no-topic payload-only
+1225:    - `socket_message_send_api.cpp` single-part public fast path의
+1733:    `zlink_publish(NULL, &part, 1)` + `zlink_recv()` no-topic payload-only
+1758:    - single zlink `PUBSUB` bench의 no-topic payload-only surface alignment
+1779:## 22. 2026-03-28 no-topic single-part `PUBSUB` public fast path 로그
+1784:  - no-topic single-part publish만 `socket->send()` direct fast path로 좁히면
+1802:    - `socket_message_send_api.cpp` no-topic single-part `PUBSUB` public fast path
+1813:    `zlink_recv(..., &parts, &part_count)` payload-only raw multipart surface다.
+1928:    - no-topic single-part direct-send fallback 잠깐 추가한 rerun:
+1943:    - `multipart_send_txn.cpp` no-topic single-part direct-send fallback
+1949:    no-topic single-part direct-send fallback도 추가 회복을 만들지 못했다.
+ succeeded in 0ms:
+- 해석
+  - `DEALER_DEALER tcp` public은 stop condition 안쪽까지 회복됐지만,
+    같은 serial run에서 `PAIR inproc` public이 `-24.33%`,
+    `DEALER_DEALER inproc` public이 `-32.86%`로 크게 흔들렸다.
+  - raw도 `DEALER_DEALER tcp/inproc`가 `-27.29% / -24.59%`여서 broad win이 아니다.
+  - 즉 "installed-but-idle send-ready handler 때문에 retry sync를 너무 자주 푼다"
+    는 해석은 현재 코드 기준 상위 공통 cost axis로 채택할 수 없다.
+  - send-ready callback contract를 깨지 않고 retry gate를 이 조건으로 좁히는
+    방향은 rejected candidate로 둔다.
+- 다음 iteration 우선순위
+  - blocking retry에서 send-ready handler presence를 armed-state로 좁히는
+    방향은 다시 시도하지 않는다.
+  - send-side lifecycle/backpressure 축은 다른 구조적 후보가 실제로 남는지
+    더 좁게 대조한 뒤, keep-worthy 공통 후보가 더 없으면
+    `pipe` ordering/work 축소와 `PUBSUB` 잔여 publication 축으로 넘긴다.
+
+## 21. 2026-03-28 single `PUBSUB` no-topic surface alignment 로그
+
+- 작업한 가설
+  - current single `PUBSUB` zlink bench가
+exec
+/bin/bash -lc "sed -n '1815,1885p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    좁게 적용하면 single `PUBSUB` recv-side cost를 줄일 수 있다.
+- 수정한 파일 경로
+  - [`socket_message_recv_api.cpp`](/home/hep7/project/kairos/zlink/core/src/api/socket_message_recv_api.cpp)
+  - [`test_socket_with_handler.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_socket_with_handler.cpp)
+  - 위 두 파일은 rerun 확인 후 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^test_socket_with_handler$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_sub_raw_multipart_recv_fastpath`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_sub_raw_multipart_recv_fastpath_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_030652_pubsub_sub_raw_multipart_recv_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_030652_pubsub_sub_raw_multipart_recv_fastpath.txt)
+  - [`perf_linux_20260328_030723_pubsub_sub_raw_multipart_recv_fastpath_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_030723_pubsub_sub_raw_multipart_recv_fastpath_rerun.txt)
+- 핵심 수치
+  - first run
+    - `PUBSUB tcp 64B`: `3308.89 Kmsg/s` vs `2294.20 Kmsg/s`, `-30.67%`
+    - `PUBSUB inproc 64B`: `3896.50 Kmsg/s` vs `2280.61 Kmsg/s`, `-41.47%`
+  - rerun
+    - `PUBSUB tcp 64B`: `3318.78 Kmsg/s` vs `2431.17 Kmsg/s`, `-26.74%`
+    - `PUBSUB inproc 64B`: `4255.17 Kmsg/s` vs `2098.59 Kmsg/s`, `-50.68%`
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/sockets/pub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+#include "sockets/pub.hpp"
+#include "core/pipe.hpp"
+#include "utils/err.hpp"
+#include "core/msg.hpp"
+
+zlink::pub_t::pub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    xpub_t (parent_, tid_, sid_)
+{
+    options.type = ZLINK_CORE_SOCKET_PUB;
+}
+
+zlink::pub_t::~pub_t ()
+{
+}
+
+void zlink::pub_t::xattach_pipe (pipe_t *pipe_,
+                               bool subscribe_to_all_,
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/sockets/pub.hpp && printf '\\n---\\n' && sed -n '1,220p' /home/hep7/project/kairos/libzmq/src/pub.hpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,220p' /home/hep7/project/kairos/libzmq/src/pub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+#include "pub.hpp"
+#include "pipe.hpp"
+#include "err.hpp"
+#include "msg.hpp"
+
+zmq::pub_t::pub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    xpub_t (parent_, tid_, sid_)
+{
+    options.type = ZMQ_PUB;
+}
+
+zmq::pub_t::~pub_t ()
+{
+}
+
+void zmq::pub_t::xattach_pipe (pipe_t *pipe_,
+                               bool subscribe_to_all_,
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_PUB_HPP_INCLUDED__
+#define __ZLINK_PUB_HPP_INCLUDED__
+
+#include "sockets/xpub.hpp"
+
+namespace zlink
+{
+class ctx_t;
+class io_thread_t;
+class socket_base_t;
+class msg_t;
+
+class pub_t ZLINK_FINAL : public xpub_t
+{
+  public:
+    pub_t (zlink::ctx_t *parent_,
+           uint32_t tid_,
+           int sid_);
+exec
+/bin/bash -lc "sed -n '1890,1965p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+- 작업한 가설
+  - baseline HEAD는 same-handle concurrent `PUB` publish에서
+    topic frame과 payload frame이 interleave되어
+    `test_pubsub_publish_is_safe_from_multiple_threads`가
+    `part_count Expected 1 Was 2`로 반복 실패했다.
+  - `socket_base_t::send()` 단위가 아니라 logical multipart publish/send
+    전체를 하나의 public send scope로 묶어야 이 contract를 복구할 수 있다.
+- 수정한 파일 경로
+  - [`multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+  - [`socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+  - [`socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_contract_scope_public`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_contract_scope_public_nosinglefast`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_public_contract_scope`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --pattern PAIR --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pair_raw_contract_scope`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_dealer_public_contract_scope`
+exec
+/bin/bash -lc "sed -n '1965,2015p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    `PUBSUB`의 no-topic/topic-aware 공통 publication cost를 더 줄일 수 있다.
+- 수정한 파일 경로
+  - [`socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+  - [`socket_base_monitor.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_monitor.cpp)
+  - [`xpub.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.hpp)
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+  - [`test_multi_socket_contract_regressions.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_multi_socket_contract_regressions.cpp)
+  - 위 다섯 파일은 bench A/B 확인 뒤 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_socket_with_handler|test_pubsub_filter_xpub|test_monitor_perf_contract)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_match_all_public`
+  - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_match_all_guardrail_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_match_all_guardrail_raw`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_xpub_match_all_broader_single`
+  - 원복 후 `cmake --build core/build -j$(nproc) --target test_multi_socket_contract_regressions test_socket_with_handler test_pubsub_filter_xpub test_monitor_perf_contract`
+  - 원복 후 `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_socket_with_handler|test_pubsub_filter_xpub|test_monitor_perf_contract)$' -j1`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_040146_codex_20260328_xpub_match_all_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_040146_codex_20260328_xpub_match_all_public.txt)
+exec
+/bin/bash -lc 'rg -n "same-handle concurrent|logical multipart publish scope|direct-send fallback|multipart publish contract fix" /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+742:- same-handle concurrent send regression은 계속 통과한다.
+1284:    - same-handle concurrent `PUB` publish regression
+1889:## 25. 2026-03-28 logical multipart publish contract fix 로그
+1892:  - baseline HEAD는 same-handle concurrent `PUB` publish에서
+1928:    - no-topic single-part direct-send fallback 잠깐 추가한 rerun:
+1943:    - `multipart_send_txn.cpp` no-topic single-part direct-send fallback
+1946:    수정 없이는 same-handle concurrent `PUB` publish contract가 깨진다.
+1949:    no-topic single-part direct-send fallback도 추가 회복을 만들지 못했다.
+exec
+/bin/bash -lc "sed -n '260,520p' core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+            }
+            if (payload_size > 0)
+                memcpy (::zlink_msg_data (&part), payload->data (),
+                        payload_size);
+            if (::zlink_publish (pub_socket, NULL, &part, 1,
+                                 static_cast<zlink_send_flags_t> (0))
+                < 0) {
+                ::zlink_msg_close (&part);
+                send_failed = true;
+                break;
+            }
+        }
+    }
+
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
+
+    sender_done.store (true, std::memory_order_release);
+    receiver_thread.join ();
+
+exec
+/bin/bash -lc "rg -n \"resolve_pubsub_xpub_nodrop_opt|XPUB_NODROP|nodrop|send_all_data_option|send_all_data\" core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp core/src/sockets/xpub.cpp core/src/sockets/xpub.hpp core/src/api/socket_api.cpp core/include/zlink.h -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp:13:inline int resolve_pubsub_xpub_nodrop_opt ()
+core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp:15:    const char *env = std::getenv ("PERF_SINGLE_PUBSUB_XPUB_NODROP");
+core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp:323:    const int xpub_nodrop_opt = resolve_pubsub_xpub_nodrop_opt ();
+core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp:324:    set_pub_opt_int (pub.get (), ZLINK_PUB_OPT_NODROP, xpub_nodrop_opt,
+core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp:12:inline int resolve_pubsub_xpub_nodrop_opt ()
+core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp:14:    const char *env = std::getenv ("PERF_SINGLE_PUBSUB_XPUB_NODROP");
+core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp:289:    const int xpub_nodrop_opt = resolve_pubsub_xpub_nodrop_opt ();
+core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp:290:    set_sockopt_int (pub.get (), ZLINK_XPUB_NODROP, xpub_nodrop_opt,
+core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp:291:                     "ZLINK_XPUB_NODROP");
+core/src/sockets/xpub.cpp:21:    _send_all_data (false),
+core/src/sockets/xpub.cpp:233:        || option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE || option_ == ZLINK_INTERNAL_OPT_XPUB_NODROP
+core/src/sockets/xpub.cpp:249:        } else if (option_ == ZLINK_INTERNAL_OPT_XPUB_NODROP)
+core/src/sockets/xpub.cpp:253:    } else if (option_ == send_all_data_option) {
+core/src/sockets/xpub.cpp:259:        _send_all_data = (*static_cast<const int *> (optval_) != 0);
+core/src/sockets/xpub.cpp:355:    if (_send_all_data && !_manual && !options.invert_matching) {
+core/src/sockets/xpub.hpp:29:        send_all_data_option = 0x7f010001
+core/src/sockets/xpub.hpp:99:    bool _send_all_data;
+exec
+/bin/bash -lc "sed -n '260,520p' core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    return true;
+}
+
+} // namespace
+
+void run_pubsub (const std::string &transport,
+                 size_t msg_size,
+                 const std::string &lib_name)
+{
+    if (!transport_available (transport))
+        return;
+
+    auto print_fail_no_queue = [&] () {
+        print_fail_result (lib_name, "PUBSUB", transport, msg_size);
+    };
+
+    ctx_guard_t ctx;
+    if (!ctx.valid ()) {
+        print_fail_no_queue ();
+        return;
+exec
+/bin/bash -lc "sed -n '1320,1385p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+  - [`perf_linux_20260328_004716_pubsub_single_pipe_nodrop_write_fusion.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_004716_pubsub_single_pipe_nodrop_write_fusion.txt)
+  - [`perf_linux_20260328_004750_pubsub_single_pipe_nodrop_write_fusion_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_004750_pubsub_single_pipe_nodrop_write_fusion_rerun.txt)
+- 핵심 수치
+  - first run
+    - `PUBSUB tcp 64B`: `3674.19 Kmsg/s` vs `2414.00 Kmsg/s`, `-34.30%`
+    - `PUBSUB inproc 64B`: `3806.91 Kmsg/s` vs `2405.61 Kmsg/s`, `-36.81%`
+  - rerun
+    - `PUBSUB tcp 64B`: `3766.63 Kmsg/s` vs `2405.39 Kmsg/s`, `-36.14%`
+    - `PUBSUB inproc 64B`: `3971.62 Kmsg/s` vs `2176.55 Kmsg/s`, `-45.20%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - 없음
+  - 원복
+    - `XPUB` single matching `nodrop` HWM+write fusion helper 전부
+- 해석
+  - first run에서 `inproc`만 좋아 보였지만 rerun에서 그 이득도 사라졌다.
+  - 반대로 `tcp`는 두 번 모두 accepted baseline보다 명확히 나빠졌다.
+  - 따라서 이 후보는 keep-worthy broad win이 아니며 rejected candidate로 둔다.
+  - 위 해석에서 "failed write가 pipe inactive 전이까지 함께 일으켜
+    tcp publication/wakeup 쪽을 더 비싸게 만들었을 가능성"은 현재 코드 기반
+exec
+/bin/bash -lc 'ls -1t core/bench/with_zmq/results/single/report | head -n 40' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+perf_linux_20260328_064859_codex_20260328_pubsub_dist_same_thread_activate_read.txt
+perf_linux_20260328_063722_codex_20260328_pubsub_dist_single_pipe_bookkeeping_seq3.txt
+perf_linux_20260328_063651_codex_20260328_pubsub_dist_single_pipe_bookkeeping_rerun.txt
+perf_linux_20260328_063622_codex_20260328_pubsub_dist_single_pipe_bookkeeping.txt
+perf_linux_20260328_062105_codex_20260328_router_routed_data_view_rerun.txt
+perf_linux_20260328_062033_codex_20260328_router_routed_data_view.txt
+perf_linux_20260328_060332_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq2.txt
+perf_linux_20260328_060304_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_seq1.txt
+perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean_rerun.txt
+perf_linux_20260328_060234_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_clean.txt
+perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2.txt
+perf_linux_20260328_060145_codex_20260328_xpub_empty_prefix_send_all_fastpath_v2_rerun.txt
+perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt
+perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt
+perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt
+perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt
+perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_public.txt
+perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_guardrail_raw.txt
+perf_linux_20260328_054325_codex_20260328_pair_no_recursive_flush_rerun.txt
+perf_linux_20260328_054250_codex_20260328_pair_no_recursive_flush.txt
+exec
+/bin/bash -lc 'rg -n "accepted baseline|broader single rerun|current accepted baseline|multi `pubsub tcp 64B`는 `-16.65%`|multi `pubsub tcp 64B`" /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/bin/bash: line 1: pubsub: command not found
+/bin/bash: line 1: -16.65%: command not found
+/bin/bash: line 1: pubsub: command not found
+55:  multi `pubsub tcp 64B`는 `-26.97%`여서 publication/lifecycle differential을
+157:- `multi recv DEALER_DEALER tcp 64B`
+160:- `multi recv ROUTER_ROUTER tcp 64B`
+1119:    - multi `dealer_dealer tcp 64B`
+1135:  - 반대로 `inproc`, `DEALER_ROUTER`, multi guardrail은 아직 미달이다.
+1278:  - multi `pubsub tcp 64B`
+1292:  - 반면 `PUBSUB inproc`와 multi `pubsub`는 여전히 크게 미달이라,
+1336:  - 반대로 `tcp`는 두 번 모두 accepted baseline보다 명확히 나빠졌다.
+1775:    single-subscriber win의 `inproc`/multi 확장 여부를 직접 보는 것이다.
+1988:  - multi smoke는 Python runner가 새 report 파일을 남기지 않았고 콘솔 결과만 확인했다.
+1993:  - multi smoke `pubsub tcp 64B`
+2013:  - empty-prefix trie-match 제거는 isolated `PUBSUB tcp`와 multi `pubsub tcp`
+2061:  - clean first/rerun 모두 current accepted baseline보다 낫지 않았다.
+2263:  - multi smoke는 Python runner가 새 report 파일을 남기지 않았고 콘솔 결과만 확인했다.
+2271:  - multi smoke `pubsub tcp 64B`
+2273:  - broader single rerun acceptance
+2293:    `dist` 전용 좁은 적용은 isolated first/rerun, multi `pubsub`,
+exec
+/bin/bash -lc "sed -n '1,220p' core/bench/with_zmq/results/single/report/perf_linux_20260328_050636_codex_20260328_pubsub_dist_no_recursive_hwm_broader_single_rerun.txt" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+## Effective Options (single)
+- runs: 1
+- duration_seconds: 5
+- latency_seconds: 5
+- timeout_seconds: 120
+- sndtimeo_ms: 200
+- recvtimeo_ms: 200
+- hwm: 1000
+- sndhwm: 1000
+- rcvhwm: 1000
+- io_threads: 0
+- xpub_nodrop: 1
+- patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER
+- transports: tcp,inproc
+- msg_sizes: 64
+- build_dir: /home/hep7/project/kairos/zlink/core/build/bin
+
+## PATTERN: PAIR
+  > Benchmarking libzmq for PAIR...
+exec
+/bin/bash -lc 'ls -1t core/bench/with_zmq/results/multi/report | head -n 20' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+perf_linux_20260328_002837_pubsub_dist_single_pipe_fastpath_multi.txt
+perf_linux_20260327_202518_aggcheck.txt
+perf_linux_20260327_202452.txt
+perf_linux_20260327_202353.txt
+perf_linux_20260327_201739.txt
+perf_linux_20260327_192302.txt
+perf_linux_20260327_192128.txt
+perf_linux_20260327_191835.txt
+perf_linux_20260327_191541.txt
+perf_linux_20260327_191248.txt
+perf_linux_20260327_144709.txt
+perf_linux_20260327_144538.txt
+perf_linux_20260327_144408.txt
+perf_linux_20260327_144238.txt
+perf_linux_20260327_141124.txt
+perf_linux_20260327_141114.txt
+perf_linux_20260327_141057.txt
+perf_linux_20260327_115922.txt
+perf_linux_20260327_115750.txt
+perf_linux_20260327_115455.txt
+exec
+/bin/bash -lc "sed -n '1,220p' core/bench/with_zmq/results/multi/report/perf_linux_20260328_002837_pubsub_dist_single_pipe_fastpath_multi.txt || true" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+=== Running multi benchmark: pubsub ===
+    warmup=1s duration=3s runs=1 transports=tcp
+
+--- Pattern: pubsub ---
+
+## PATTERN: MULTI_PUBSUB
+  > Benchmarking libzmq for MULTI_PUBSUB...
+  > Benchmarking zlink for MULTI_PUBSUB...
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   6094.02 Kmsg/s |   4450.16 Kmsg/s |   -26.97% |
+| 64B    | Latency    |       1634.33 ms |       1442.19 ms |   +11.76% |
+codex
+현재 후보를 문서만으로 찍기엔 중복 실험 위험이 있어서, 가벼운 도구 가용성부터 확인합니다. `perf`나 유사 측정기가 있으면 기존 bench surface 위에서 좁게 계측하고, 없으면 코드 차이 기반으로 바로 다음 후보를 선택하겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/sockets/socket_base_msg.cpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,260p' /home/hep7/project/kairos/libzmq/src/socket_base.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+#include <new>
+#include <string>
+#include <algorithm>
+#include <limits>
+
+#include "macros.hpp"
+
+#if defined ZMQ_HAVE_WINDOWS
+#if defined _MSC_VER
+#if defined _WIN32_WCE
+#include <cmnintrin.h>
+#else
+#include <intrin.h>
+#endif
+#endif
+#else
+#include <unistd.h>
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "sockets/socket_base.hpp"
+#include "utils/err.hpp"
+#include "utils/likely.hpp"
+
+int zlink::socket_base_t::send (msg_t *msg_, int flags_)
+{
+    // Hot path: every public single-part send pays this steady-state cost.
+    // Keep lifecycle/backpressure logic correct, but avoid thickening the
+    // success path with new work that is not contract-critical.
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
+    const bool needs_public_api_sync =
+      options.type != ZLINK_CORE_SOCKET_PAIR;
+    socket_public_send_scope_t send_scope (lifecycle, needs_public_api_sync);
+    if (!send_scope.acquired ())
+        return -1;
+
+exec
+/bin/bash -lc 'which perf || true
+which valgrind || true
+which heaptrack || true
+which strace || true' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/usr/bin/valgrind
+exec
+/bin/bash -lc "sed -n '1180,1315p' /home/hep7/project/kairos/libzmq/src/socket_base.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+    //  Find the endpoints range (if any) corresponding to the endpoint_uri_pair_ string.
+    const std::pair<endpoints_t::iterator, endpoints_t::iterator> range =
+      _endpoints.equal_range (resolved_endpoint_uri);
+    if (range.first == range.second) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    for (endpoints_t::iterator it = range.first; it != range.second; ++it) {
+        //  If we have an associated pipe, terminate it.
+        if (it->second.second != NULL)
+            it->second.second->terminate (false);
+        term_child (it->second.first);
+    }
+    _endpoints.erase (range.first, range.second);
+
+    if (options.reconnect_stop & ZMQ_RECONNECT_STOP_AFTER_DISCONNECT) {
+        _disconnected = true;
+    }
+exec
+/bin/bash -lc "rg -n \"int zmq::socket_base_t::send \\(|process_commands \\(0, true\\)|xsend \\(msg_\\)\" /home/hep7/project/kairos/libzmq/src/socket_base.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+1204:int zmq::socket_base_t::send (msg_t *msg_, int flags_)
+1221:    int rc = process_commands (0, true);
+1236:    rc = xsend (msg_);
+1274:        rc = xsend (msg_);
+exec
+/bin/bash -lc "sed -n '1,260p' core/bench/with_zmq/single/common/bench_common_zlink.hpp && printf '\\n---\\n' && sed -n '1,260p' core/bench/with_zmq/single/common/bench_common.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#ifndef BENCH_COMMON_ZLINK_HPP
+#define BENCH_COMMON_ZLINK_HPP
+
+#include <chrono>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <cstring>
+#include <iostream>
+#include <iomanip>
+#include <thread>
+#include <fstream>
+#include <climits>
+#include <zlink.h>
+#include "../../../../src/core/msg.hpp"
+
+typedef struct zlink_peer_info_t
+exec
+/bin/bash -lc "rg -n \"run_standard_bench_main|Usage:|argc\" core/bench/with_zmq/single/common -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/bench/with_zmq/single/common/bench_common_zlink.hpp:977:inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+core/bench/with_zmq/single/common/bench_common_zlink.hpp:978:    if (argc_ < 4)
+core/bench/with_zmq/single/common/bench_common.hpp:1117:inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+core/bench/with_zmq/single/common/bench_common.hpp:1118:    if (argc_ < 4)
+exec
+/bin/bash -lc "rg -n \"run_standard_bench_main\" core/bench/with_zmq -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/bench/with_zmq/single/zlink/bench_zlink_pubsub.cpp:408:    return run_standard_bench_main (argc, argv, run_pubsub);
+core/bench/with_zmq/single/common/bench_common_zlink.hpp:977:inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+core/bench/with_zmq/single/zmq/bench_zmq_pubsub.cpp:374:    return run_standard_bench_main (argc, argv, run_pubsub);
+core/bench/with_zmq/single/common/bench_common.hpp:1117:inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+core/bench/with_zmq/common/bench_common_zlink.hpp:328:inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_)
+core/bench/with_zmq/single/zlink/bench_zlink_dealer_dealer.cpp:430:    return run_standard_bench_main (argc, argv, run_dealer_dealer);
+core/bench/with_zmq/single/zlink/bench_zlink_dealer_router.cpp:400:    return run_standard_bench_main (argc, argv, run_dealer_router);
+core/bench/with_zmq/single/zlink/bench_zlink_router_router.cpp:511:    return run_standard_bench_main (argc, argv, run_router_router);
+core/bench/with_zmq/common/bench_common.hpp:325:inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_)
+core/bench/with_zmq/single/zmq/bench_zmq_dealer_dealer.cpp:351:    return run_standard_bench_main (argc, argv, run_dealer_dealer);
+core/bench/with_zmq/single/zmq/bench_zmq_pair.cpp:360:    return run_standard_bench_main (argc, argv, run_pair);
+core/bench/with_zmq/single/zmq/bench_zmq_dealer_router.cpp:378:    return run_standard_bench_main (argc, argv, run_dealer_router);
+core/bench/with_zmq/single/zmq/bench_zmq_router_router.cpp:449:    return run_standard_bench_main (argc, argv, run_router_router);
+core/bench/with_zmq/single/zlink/bench_zlink_pair.cpp:435:    return run_standard_bench_main (argc, argv, run_pair);
+core/bench/with_zmq/multi/zlink/bench_zlink_multi_stream.cpp:2849:    return run_standard_bench_main (argc, argv, run_multi_stream);
+core/bench/with_zmq/multi/zmq/bench_zmq_multi_dealer_dealer.cpp:467:    return run_standard_bench_main (argc, argv, run_multi_dealer_dealer);
+core/bench/with_zmq/multi/zlink/bench_zlink_multi_pubsub.cpp:599:    return run_standard_bench_main (argc, argv, run_multi_pubsub);
+core/bench/with_zmq/multi/common/bench_common.hpp:723:inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_)
+core/bench/with_zmq/multi/zmq/bench_zmq_multi_stream.cpp:1272:    return run_standard_bench_main (argc, argv, run_multi_stream);
+core/bench/with_zmq/multi/zmq/bench_zmq_multi_pubsub.cpp:565:    return run_standard_bench_main (argc, argv, run_multi_pubsub);
+exec
+/bin/bash -lc "sed -n '960,1045p' core/bench/with_zmq/single/common/bench_common_zlink.hpp && printf '\\n---\\n' && sed -n '1100,1185p' core/bench/with_zmq/single/common/bench_common.hpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc 'ls core/build/bin/comp_zlink_pubsub core/build/bin/comp_zmq_pubsub' in /home/hep7/project/kairos/zlink exited 2 in 0ms:
+core/build/bin/comp_zlink_pubsub
+ls: cannot access 'core/build/bin/comp_zmq_pubsub': No such file or directory
+ succeeded in 0ms:
+    apply_single_send_timeout(connect_socket_, transport_);
+
+    settle();
+    return true;
+}
+
+inline int resolve_bench_count(const char *env_name, int default_value) {
+    if (const char *env = std::getenv(env_name)) {
+        errno = 0;
+        const long override = std::strtol(env, NULL, 10);
+        if (errno == 0 && override > 0)
+            return static_cast<int>(override);
+    }
+    return default_value;
+}
+
+template <typename RunFn>
+inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+    if (argc_ < 4)
+        return 1;
+codex
+벤치 바이너리 구조는 확인됐습니다. `zlink` 쪽은 바로 계측 가능하고, `libzmq` 쪽 바이너리 이름만 한 번 더 확인해서 동일한 조건으로 callgrind를 좁게 비교해 보겠습니다.
+exec
+/bin/bash -lc "sed -n '1,220p' core/bench/with_zmq/multi/zlink/bench_zlink_multi_pubsub.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+#include "../common/bench_common_zlink.hpp"
+#include "../common/bench_common_multi.hpp"
+#include <zlink.h>
+#include <vector>
+#include <cerrno>
+#include <algorithm>
+#include <chrono>
+#include <cstring>
+
+namespace {
+
+inline unsigned long long wallclock_now_us ()
+{
+    const auto now =
+      std::chrono::time_point_cast<std::chrono::microseconds> (
+        std::chrono::system_clock::now ());
+    return static_cast<unsigned long long> (now.time_since_epoch ().count ());
+}
+
+multi_send_result_t send_pub_blocking (void *pub,
+exec
+/bin/bash -lc "ls core/build/bin | rg 'pubsub|zmq|zlink'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+bench_rc_zmq_client
+bench_rc_zmq_server
+comp_src_pubsub_client
+comp_src_pubsub_server
+comp_std_zmq_dealer_dealer
+comp_std_zmq_dealer_router
+comp_std_zmq_multi_dealer_dealer
+comp_std_zmq_multi_dealer_dealer_client
+comp_std_zmq_multi_dealer_dealer_server
+comp_std_zmq_multi_dealer_router
+comp_std_zmq_multi_dealer_router_client
+comp_std_zmq_multi_dealer_router_server
+comp_std_zmq_multi_pubsub
+comp_std_zmq_multi_pubsub_client
+comp_std_zmq_multi_pubsub_server
+comp_std_zmq_multi_router_router
+comp_std_zmq_multi_router_router_client
+comp_std_zmq_multi_router_router_server
+comp_std_zmq_multi_stream
+comp_std_zmq_multi_stream_client
+exec
+/bin/bash -lc 'PERF_SINGLE_WARMUP_SECONDS=1 PERF_SINGLE_DURATION_SECONDS=1 PERF_SINGLE_LATENCY_SECONDS=1 valgrind --tool=callgrind --callgrind-out-file=doc/plan/perf/logs/callgrind_pubsub_zlink.out core/build/bin/comp_zlink_pubsub zlink tcp 64 >/tmp/callgrind_pubsub_zlink.stdout 2>/tmp/callgrind_pubsub_zlink.stderr; status=$?; echo STATUS:$status; tail -n 40 /tmp/callgrind_pubsub_zlink.stderr' in /home/hep7/project/kairos/zlink succeeded in 2.49s:
+STATUS:0
+==946324== Callgrind, a call-graph generating cache profiler
+==946324== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==946324== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
+==946324== Command: core/build/bin/comp_zlink_pubsub zlink tcp 64
+==946324== 
+==946324== For interactive control, run 'callgrind_control -h'.
+==946324== 
+==946324== Events    : Ir
+==946324== Collected : 427660838
+==946324== 
+==946324== I   refs:      427,660,838
+codex
+`valgrind/callgrind`는 사용 가능합니다. 먼저 `zlink` `PUBSUB tcp 64B` 한 번을 계측했고, 같은 조건의 `libzmq`도 찍은 뒤 상위 비용 함수를 바로 대조하겠습니다.
+exec
+/bin/bash -lc "callgrind_annotate --tree=both --threshold=1 doc/plan/perf/logs/callgrind_pubsub_zmq.out | sed -n '1,220p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+Use of uninitialized value $events in string ne at /usr/bin/callgrind_annotate line 465.
+Line 0: missing events line
+exec
+/bin/bash -lc 'PERF_SINGLE_WARMUP_SECONDS=1 PERF_SINGLE_DURATION_SECONDS=1 PERF_SINGLE_LATENCY_SECONDS=1 valgrind --tool=callgrind --callgrind-out-file=doc/plan/perf/logs/callgrind_pubsub_zmq.out core/build/bin/comp_std_zmq_pubsub standard tcp 64 >/tmp/callgrind_pubsub_zmq.stdout 2>/tmp/callgrind_pubsub_zmq.stderr; status=$?; echo STATUS:$status; tail -n 40 /tmp/callgrind_pubsub_zmq.stderr' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "callgrind_annotate --tree=both --threshold=1 doc/plan/perf/logs/callgrind_pubsub_zlink.out | sed -n '1,220p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--------------------------------------------------------------------------------
+Profile data file 'doc/plan/perf/logs/callgrind_pubsub_zlink.out' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 109113470
+Trigger: Program termination
+Profiled target:  core/build/bin/comp_zlink_pubsub zlink tcp 64 (PID 946324, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       1
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+ succeeded in 3.01s:
+STATUS:0
+==946492== Callgrind, a call-graph generating cache profiler
+==946492== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==946492== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
+==946492== Command: core/build/bin/comp_std_zmq_pubsub standard tcp 64
+==946492== 
+==946492== For interactive control, run 'callgrind_control -h'.
+==946492== 
+==946492== Events    : Ir
+==946492== Collected : 417975000
+==946492== 
+==946492== I   refs:      417,975,000
+exec
+/bin/bash -lc "callgrind_annotate --tree=both --threshold=1 doc/plan/perf/logs/callgrind_pubsub_zmq.out | sed -n '1,220p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--------------------------------------------------------------------------------
+Profile data file 'doc/plan/perf/logs/callgrind_pubsub_zmq.out' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 107597521
+Trigger: Program termination
+Profiled target:  core/build/bin/comp_std_zmq_pubsub standard tcp 64 (PID 946492, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       1
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+exec
+/bin/bash -lc "callgrind_annotate --tree=both --threshold=0.5 doc/plan/perf/logs/callgrind_pubsub_zlink.out | sed -n '1,320p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--------------------------------------------------------------------------------
+Profile data file 'doc/plan/perf/logs/callgrind_pubsub_zlink.out' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 109113470
+Trigger: Program termination
+Profiled target:  core/build/bin/comp_zlink_pubsub zlink tcp 64 (PID 946324, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       0.5
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+exec
+/bin/bash -lc "callgrind_annotate --tree=both --threshold=0.5 doc/plan/perf/logs/callgrind_pubsub_zmq.out | sed -n '1,320p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--------------------------------------------------------------------------------
+Profile data file 'doc/plan/perf/logs/callgrind_pubsub_zmq.out' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 107597521
+Trigger: Program termination
+Profiled target:  core/build/bin/comp_std_zmq_pubsub standard tcp 64 (PID 946492, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       0.5
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+exec
+/bin/bash -lc 'addr2line -Cfpe core/bench/with_zmq/libzmq/libzmq_dist/linux-x64/lib/libzmq.so 0x4891800 0x488eba0' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+?? ??:0
+?? ??:0
+exec
+/bin/bash -lc 'addr2line -Cfpe core/build/lib/libzlink.so.5.2.5 0x48c5ee0 0x48c4340 0x48c5e60 0x48c8c30 0x48c3cd0' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+?? ??:0
+?? ??:0
+?? ??:0
+?? ??:0
+?? ??:0
+exec
+/bin/bash -lc "readelf -Ws core/build/lib/libzlink.so.5.2.5 | rg 'msg_t::close|0x00000000048c|shared_message_memory_allocator|msg_t::size'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+   373: 00000000000ef840    49 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator10deallocateEv
+   434: 00000000000ef880    18 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocatorD2Ev
+   585: 00000000000ef8d0     9 FUNC    GLOBAL DEFAULT   14 _ZNK5zlink31shared_message_memory_allocator4sizeEv
+   924: 00000000000ef790   114 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocatorC1Emmm
+   987: 00000000000ef8f0    58 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator6resizeEm
+  1084: 00000000000ef810    36 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator5clearEv
+  1303: 00000000000ef940    59 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator19set_allocation_sizeEm
+  1310: 00000000000ef8e0    12 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator4dataEv
+  1432: 00000000000f09b0   120 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator12call_dec_refEPvS1_
+  1524: 00000000000ef8a0    18 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator7releaseEv
+  1911: 00000000003d94a8    24 OBJECT  GLOBAL DEFAULT   23 _ZTIN5zlink14decoder_base_tINS_13zmp_decoder_tENS_31shared_message_memory_allocatorEEE
+  1924: 00000000000ef750    60 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocatorC2Emm
+  1971: 00000000000f1050   288 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator8allocateEv
+  1984: 00000000000ef880    18 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocatorD1Ev
+  2058: 00000000000ef700    80 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocatorC2Em
+  2145: 000000000034ad00    83 OBJECT  GLOBAL DEFAULT   16 _ZTSN5zlink14decoder_base_tINS_13zmp_decoder_tENS_31shared_message_memory_allocatorEEE
+  2579: 00000000000ef8c0    12 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocator7inc_refEv
+  3076: 00000000000ef790   114 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocatorC2Emmm
+  3572: 00000000000ef750    60 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocatorC1Emm
+  3618: 00000000000ef700    80 FUNC    GLOBAL DEFAULT   14 _ZN5zlink31shared_message_memory_allocatorC1Em
+exec
+/bin/bash -lc "printf '%s\\n' '--- zlink stdout ---'; cat /tmp/callgrind_pubsub_zlink.stdout; printf '%s\\n' '--- zmq stdout ---'; cat /tmp/callgrind_pubsub_zmq.stdout" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--- zlink stdout ---
+RESULT,zlink,PUBSUB,tcp,64,throughput,26606.00
+RESULT,zlink,PUBSUB,tcp,64,bandwidth,1.70
+RESULT,zlink,PUBSUB,tcp,64,latency,39072.75
+RESULT,zlink,PUBSUB,tcp,64,latency_p95,63245.25
+RESULT,zlink,PUBSUB,tcp,64,latency_p99,75825.45
+RESULT,zlink,PUBSUB,tcp,64,snd_pending_max,721.00
+RESULT,zlink,PUBSUB,tcp,64,rcv_pending_max,0.00
+RESULT,zlink,PUBSUB,tcp,64,rcv_pending_end,0.00
+--- zmq stdout ---
+RESULT,standard,PUBSUB,tcp,64,throughput,51939.00
+RESULT,standard,PUBSUB,tcp,64,bandwidth,3.32
+RESULT,standard,PUBSUB,tcp,64,latency,28224.22
+RESULT,standard,PUBSUB,tcp,64,latency_p95,43852.00
+RESULT,standard,PUBSUB,tcp,64,latency_p99,48288.00
+exec
+/bin/bash -lc "callgrind_annotate --auto=yes --inclusive=yes --threshold=0.1 doc/plan/perf/logs/callgrind_pubsub_zlink.out | sed -n '1,260p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--------------------------------------------------------------------------------
+Profile data file 'doc/plan/perf/logs/callgrind_pubsub_zlink.out' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 109113470
+Trigger: Program termination
+Profiled target:  core/build/bin/comp_zlink_pubsub zlink tcp 64 (PID 946324, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       0.1
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+exec
+/bin/bash -lc "callgrind_annotate --auto=yes --inclusive=yes --threshold=0.1 doc/plan/perf/logs/callgrind_pubsub_zmq.out | sed -n '1,260p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--------------------------------------------------------------------------------
+Profile data file 'doc/plan/perf/logs/callgrind_pubsub_zmq.out' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 107597521
+Trigger: Program termination
+Profiled target:  core/build/bin/comp_std_zmq_pubsub standard tcp 64 (PID 946492, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       0.1
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+exec
+/bin/bash -lc "sed -n '300,520p' /home/hep7/project/kairos/libzmq/src/pipe.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        _sink->hiccuped (this);
+}
+
+void zmq::pipe_t::process_pipe_term ()
+{
+    zmq_assert (_state == active || _state == delimiter_received
+                || _state == term_req_sent1);
+
+    //  This is the simple case of peer-induced termination. If there are no
+    //  more pending messages to read, or if the pipe was configured to drop
+    //  pending messages, we can move directly to the term_ack_sent state.
+    //  Otherwise we'll hang up in waiting_for_delimiter state till all
+    //  pending messages are read.
+    if (_state == active) {
+        if (_delay)
+            _state = waiting_for_delimiter;
+        else {
+            _state = term_ack_sent;
+            _out_pipe = NULL;
+            send_pipe_term_ack (_peer);
+exec
+/bin/bash -lc "diff -u /home/hep7/project/kairos/libzmq/src/pipe.cpp core/src/core/pipe.cpp | sed -n '300,520p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
++{
++    // Hot path: PAIR/DEALER steady-state send reaches this path for every
++    // message. Keep changes here tightly justified against thread-safe pipe
++    // state transitions.
++    scoped_fast_lock_t lock (_out_sync);
+     if (unlikely (!_out_active || _state != active))
+         return false;
+ 
+     const bool full = !check_hwm ();
++    if (unlikely (full)) {
++        _out_active = false;
++        return false;
++    }
++
++    const bool more = (msg_->flags () & msg_t::more) != 0;
++    const bool is_routing_id = msg_->is_routing_id ();
++    _out_pipe->write (*msg_, more);
++    if (!more && !is_routing_id)
++        _msgs_written++;
++
+exec
+/bin/bash -lc "diff -u /home/hep7/project/kairos/libzmq/src/xpub.cpp core/src/sockets/xpub.cpp | sed -n '1,260p'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+--- /home/hep7/project/kairos/libzmq/src/xpub.cpp	2026-02-19 11:53:40.842208592 +0900
++++ core/src/sockets/xpub.cpp	2026-03-28 06:04:21.487466428 +0900
+@@ -1,57 +1,103 @@
+ /* SPDX-License-Identifier: MPL-2.0 */
+ 
+-#include "precompiled.hpp"
++#include "utils/precompiled.hpp"
+ #include <string.h>
+ 
+-#include "xpub.hpp"
+-#include "pipe.hpp"
+-#include "err.hpp"
+-#include "msg.hpp"
+-#include "macros.hpp"
+-#include "generic_mtrie_impl.hpp"
++#include "sockets/xpub.hpp"
++#include "core/pipe.hpp"
++#include "utils/err.hpp"
++#include "core/msg.hpp"
++#include "utils/macros.hpp"
+exec
+/bin/bash -lc "sed -n '1240,1305p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+- 작업한 가설
+  - `PUBSUB` steady-state에서 matching pipe가 하나뿐이면
+    generic `dist_t` distributor loop와 pipe index lookup을 건너뛰는 것만으로도
+    zlink-only send differential을 줄일 수 있다.
+- 수정한 파일 경로
+  - [`dist.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.hpp)
+  - [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+  - [`test_multi_socket_contract_regressions.cpp`](/home/hep7/project/kairos/zlink/core/tests/integration/test_multi_socket_contract_regressions.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_socket_with_handler|test_multi_socket_contract_regressions)$' -j1`
+  - `ctest --test-dir core/build --output-on-failure -R '^test_pubsub_filter_xpub$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_dist_single_pipe_fastpath`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_dist_single_pipe_fastpath_rerun`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pair_dealer_guardrail_public_after_pubsub_dist_seq`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pair_dealer_guardrail_raw_after_pubsub_dist_seq`
+  - `./core/bench/with_zmq/run_benchmarks_multi.sh --reuse-build --pattern pubsub --msg-sizes 64 --transports tcp --runs 1 --warmup 1 --duration 3 --results-tag pubsub_dist_single_pipe_fastpath_multi`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_002158_pubsub_dist_single_pipe_fastpath.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_002158_pubsub_dist_single_pipe_fastpath.txt)
+  - [`perf_linux_20260328_002301_pubsub_dist_single_pipe_fastpath_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_002301_pubsub_dist_single_pipe_fastpath_rerun.txt)
+exec
+/bin/bash -lc "sed -n '2240,2305p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+- 작업한 가설
+  - generic `check_hwm_locked()` rollout은 `PAIR`/raw guardrail 때문에
+    유지하지 못했지만, 실제 publication hot path는 `dist_t::write_at()` 쪽이다.
+  - `PUBSUB` path에만 한정해 `pipe`의 recursive HWM self-reentry를 줄이면
+    generic rollout의 부작용 없이 publication cost를 더 줄일 수 있다고 봤다.
+- 수정한 파일 경로
+  - [`pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
+  - [`pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
+  - [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_monitor_perf_contract|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_public_inproc_multipart_send)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_no_recursive_hwm`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_no_recursive_hwm_rerun`
+  - `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py pubsub --build-dir core/build --runs 1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_no_recursive_hwm_broader_single`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_dist_no_recursive_hwm_broader_single_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_050237_codex_20260328_pubsub_dist_no_recursive_hwm.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_050237_codex_20260328_pubsub_dist_no_recursive_hwm.txt)
+exec
+/bin/bash -lc 'rg -n "-16.65%|16.65|multi `pubsub tcp 64B`" /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md' in /home/hep7/project/kairos/zlink exited 2 in 0ms:
+/bin/bash: line 1: pubsub: command not found
+rg: unrecognized flag -1
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/sockets/socket_base.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_SOCKET_BASE_HPP_INCLUDED__
+#define __ZLINK_SOCKET_BASE_HPP_INCLUDED__
+
+#include <string>
+#include <map>
+#include <stdarg.h>
+#include <atomic>
+#include <deque>
+#include <set>
+#include <mutex>
+#include <vector>
+
+#include "core/own.hpp"
+#include "utils/array.hpp"
+#include "utils/blob.hpp"
+#include "utils/stdint.hpp"
+#include "core/poller.hpp"
+#include "core/i_poll_events.hpp"
+exec
+/bin/bash -lc "rg -n \"socket_public_send_scope_t|public_api_sync|enter_public_api|send_ready_handler_active|send_scoped\" core/src/sockets/socket_base.hpp core/src/sockets/socket_runtime.hpp core/src/sockets/socket_runtime.cpp core/src/sockets/socket_base_msg.cpp -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/sockets/socket_base_msg.cpp:15:    const bool needs_public_api_sync =
+core/src/sockets/socket_base_msg.cpp:17:    socket_public_send_scope_t send_scope (lifecycle, needs_public_api_sync);
+core/src/sockets/socket_base_msg.cpp:21:    return send_scoped (msg_, flags_, send_scope);
+core/src/sockets/socket_base_msg.cpp:24:int zlink::socket_base_t::send_scoped (msg_t *msg_,
+core/src/sockets/socket_base_msg.cpp:26:                                       socket_public_send_scope_t &send_scope)
+core/src/sockets/socket_base_msg.cpp:79:      send_scope.sync_locked () && !send_ready_handler_active ();
+core/src/sockets/socket_base_msg.cpp:114:    socket_public_send_scope_t send_scope (lifecycle, true);
+core/src/sockets/socket_base_msg.cpp:125:  socket_public_send_scope_t &send_scope)
+core/src/sockets/socket_base_msg.cpp:178:      send_scope.sync_locked () && !send_ready_handler_active ();
+core/src/sockets/socket_base_msg.cpp:225:int zlink::socket_base_t::rollback_scoped (socket_public_send_scope_t &scope_)
+core/src/sockets/socket_runtime.cpp:17:const uint32_t public_api_sync_bit = 0x40000000u;
+core/src/sockets/socket_runtime.cpp:19:  ~(public_api_closing_bit | public_api_sync_bit);
+core/src/sockets/socket_runtime.cpp:328:bool zlink::socket_lifecycle_coordinator_t::enter_public_api ()
+core/src/sockets/socket_runtime.cpp:342:bool zlink::socket_lifecycle_coordinator_t::enter_public_api_and_lock_sync ()
+core/src/sockets/socket_runtime.cpp:346:          expected, 1u | public_api_sync_bit, std::memory_order_acq_rel,
+core/src/sockets/socket_runtime.cpp:351:    if (!enter_public_api ())
+core/src/sockets/socket_runtime.cpp:354:    lock_public_api_sync ();
+core/src/sockets/socket_runtime.cpp:367:    if (!enter_public_api ())
+core/src/sockets/socket_runtime.cpp:417:bool zlink::socket_lifecycle_coordinator_t::public_api_sync_held () const
+core/src/sockets/socket_runtime.cpp:420:            & public_api_sync_bit)
+exec
+/bin/bash -lc "rg -n \"same-handle concurrent|multiple threads|safe from multiple threads|send\\(|zlink_msg_send\\(|thread-safe\" core/tests -g '"'!core/build/**'"' | head -n 200" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/tests/README.md:74:- `10`은 thread-safe stress의 기본/최소 반복 횟수다.
+core/tests/README.md:139:- `run_thread_safe_contract_stress.sh` repeats the selected thread-safe
+core/tests/README.md:156:  runs the same monitor/SPOT thread-safe regression lane against that build
+core/tests/run_thread_safe_contract_tsan.sh:24:Configure a TSAN build and run the thread-safe contract regression lane.
+core/tests/run_thread_safe_contract_stress.sh:24:Run thread-safe contract regression cases repeatedly via CTest.
+core/tests/run_thread_safe_contract_perf.sh:19:Run thread-safe scaling contract cases via CTest.
+core/tests/testutil_unity.hpp:359:// CAUTION: this function is not thread-safe, and may only be used from the
+core/tests/testutil_unity.hpp:364:// CAUTION: this function is not thread-safe, and may only be used from the
+core/tests/testutil_unity.hpp:370:// CAUTION: this function is not thread-safe, and may only be used from the
+core/tests/integration/test_thread_safe_contract_policy.cpp:164:                         "can be called concurrently from multiple threads");
+core/tests/integration/test_thread_safe_contract_policy.cpp:173:    assert_text_absent (overview_ko, "모든 operational API 동일 강도 thread-safe");
+core/tests/integration/test_stream_threadsafe.cpp:1384:// Regression: send_msg from multiple app threads is thread-safe
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/api/message_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include "protocol/metadata.hpp"
+#include "core/msg.hpp"
+#include "core/recv_tls_view.hpp"
+
+int zlink_msg_init (zlink_msg_t *msg_)
+{
+    return (reinterpret_cast<zlink::msg_t *> (msg_))->init ();
+}
+
+int zlink_msg_init_size (zlink_msg_t *msg_, size_t size_)
+{
+    return (reinterpret_cast<zlink::msg_t *> (msg_))->init_size (size_);
+}
+
+int zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_, size_t size_)
+{
+exec
+/bin/bash -lc "rg -n \"zlink_msg_send\\(|int zlink_msg_send|msg_send\" core/src -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/api/socket_message_send_api.cpp:456:int zlink_msg_send (zlink_msg_t *msg_, void *s_, zlink_send_flags_t flags_)
+core/src/api/socket_message_send_api.cpp:474:int zlink_msg_send_rid (zlink_msg_t *msg_,
+exec
+/bin/bash -lc "sed -n '430,520p' core/src/api/socket_message_send_api.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    zlink_send_flags_t flags_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+
+    return send_socket_parts (handle, target_rid_, parts_, part_count_, flags_);
+}
+
+int zlink_socket_publish_internal (void *socket_,
+                                   const char *topic_id_,
+                                   zlink_msg_t *parts_,
+                                   size_t part_count_,
+                                   zlink_send_flags_t flags_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+exec
+/bin/bash -lc "sed -n '1,220p' core/tests/integration/test_thread_safe_contract_policy.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "testutil.hpp"
+#include "testutil_unity.hpp"
+
+#include <stdio.h>
+#include <string>
+
+#ifndef TEST_REPO_ROOT
+#define TEST_REPO_ROOT ""
+#endif
+
+#ifndef TEST_ZLINK_HEADER_PATH
+#define TEST_ZLINK_HEADER_PATH ""
+#endif
+
+namespace
+{
+std::string read_text_file (const char *path_)
+{
+exec
+/bin/bash -lc "sed -n '1360,1465p' core/tests/integration/test_stream_threadsafe.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+        TEST_ASSERT_EQUAL_INT (0, probe.parse_errors);
+        TEST_ASSERT_TRUE (probe.queue.empty ());
+        TEST_ASSERT_GREATER_THAN_INT (0, probe.enqueued_messages);
+        TEST_ASSERT_EQUAL_INT (probe.enqueued_messages, probe.processed_messages);
+    }
+    TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      sent_messages.load (std::memory_order_acquire), probe.processed_messages);
+
+    g_queued_worker_probe = NULL;
+    test_context_socket_close_zero_linger (server);
+#endif
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Regression: reattach after detach must work
+///////////////////////////////////////////////////////////////////////////////
+
+void test_stream_reattach_after_detach ()
+{
+exec
+/bin/bash -lc "sed -n '1305,1365p' /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    `check_hwm()` precheck와 실제 `write`를 같은 pipe lock 안으로 합치면
+    `zlink_publish(topic, payload)`의 prefix/payload send differential을
+    더 줄일 수 있다.
+- 수정한 파일 경로
+  - [`dist.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.hpp)
+  - [`dist.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/dist.cpp)
+  - [`xpub.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/xpub.cpp)
+  - 위 세 파일은 bench 확인 후 모두 원복했다.
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(test_multi_socket_contract_regressions|test_pubsub_filter_xpub)$' -j1`
+  - `./core/build/bin/test_xpub_nodrop`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_single_pipe_nodrop_write_fusion`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_single_pipe_nodrop_write_fusion_rerun`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_004716_pubsub_single_pipe_nodrop_write_fusion.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_004716_pubsub_single_pipe_nodrop_write_fusion.txt)
+  - [`perf_linux_20260328_004750_pubsub_single_pipe_nodrop_write_fusion_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_004750_pubsub_single_pipe_nodrop_write_fusion_rerun.txt)
+- 핵심 수치
+  - first run
+    - `PUBSUB tcp 64B`: `3674.19 Kmsg/s` vs `2414.00 Kmsg/s`, `-34.30%`
+exec
+/bin/bash -lc 'rg -n "single_pipe_nodrop_write_fusion|nodrop fusion|prechecked" /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+1301:## 13. 2026-03-28 XPUB single-pipe nodrop fusion 로그
+1317:  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_single_pipe_nodrop_write_fusion`
+1318:  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag pubsub_single_pipe_nodrop_write_fusion_rerun`
+1320:  - [`perf_linux_20260328_004716_pubsub_single_pipe_nodrop_write_fusion.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_004716_pubsub_single_pipe_nodrop_write_fusion.txt)
+1321:  - [`perf_linux_20260328_004750_pubsub_single_pipe_nodrop_write_fusion_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_004750_pubsub_single_pipe_nodrop_write_fusion_rerun.txt)
+2458:## 32. 2026-03-28 `XPUB` prechecked no-HWM-recheck 로그
+2464:  - normal matching path에서만 prechecked send helper로 second HWM check를
+2477:  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck`
+2478:  - `python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun`
+2479:  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public`
+2480:  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw`
+2482:  - [`perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055013_codex_20260328_pubsub_prechecked_no_hwm_recheck.txt)
+2483:  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_rerun.txt)
+2484:  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_public.txt)
+2485:  - [`perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_055049_codex_20260328_pubsub_prechecked_no_hwm_recheck_guardrail_raw.txt)
+2499:    - `XPUB` prechecked no-HWM-recheck helper 전부
+2511:  - `XPUB` prechecked no-HWM-recheck도 rejected candidate로 유지한다.
+exec
+/bin/bash -lc "git log --oneline --grep 'nodrop' -n 5" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+codex
+현재 `pipe` publication 경로를 다시 보니, accepted delta 뒤에도 final-part flush가 `send_activate_read()` 같은 외부 work를 `_out_sync` 안에서 수행합니다. 같은-thread inline wakeup 실험과는 다른 축이라서, 이번엔 command semantics는 그대로 두고 lock 안 work만 줄이는 좁은 후보로 가겠습니다.
+exec
+/bin/bash -lc "sed -n '1,260p' core/src/core/object.hpp" in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "sed -n '1,260p' core/src/core/object.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_OBJECT_HPP_INCLUDED__
+#define __ZLINK_OBJECT_HPP_INCLUDED__
+
+#include <string>
+
+#include "core/endpoint.hpp"
+#include "utils/macros.hpp"
+#include "utils/stdint.hpp"
+
+namespace zlink
+{
+struct i_engine;
+struct endpoint_t;
+struct command_t;
+class ctx_t;
+class pipe_t;
+class socket_base_t;
+class session_base_t;
+ succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+#include <string.h>
+#include <stdarg.h>
+
+#include "core/object.hpp"
+#include "core/ctx.hpp"
+#include "utils/err.hpp"
+#include "core/pipe.hpp"
+#include "core/io_thread.hpp"
+#include "core/session_base.hpp"
+#include "sockets/socket_base.hpp"
+
+zlink::object_t::object_t (ctx_t *ctx_, uint32_t tid_) : _ctx (ctx_), _tid (tid_)
+{
+}
+
+zlink::object_t::object_t (object_t *parent_) :
+    _ctx (parent_->_ctx), _tid (parent_->_tid)
+exec
+/bin/bash -lc "rg -n \"send_activate_read\\(|process_activate_read\\(|process_command\\(|same-thread\" core/src/core/object.cpp core/src/core/object.hpp core/src/core/pipe.cpp -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink exited 1 in 0ms:
+
+exec
+/bin/bash -lc "sed -n '260,420p' core/src/core/object.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    cmd.destination = destination_;
+    cmd.type = command_t::activate_read;
+    send_command (cmd);
+}
+
+void zlink::object_t::send_activate_write (pipe_t *destination_,
+                                         uint64_t msgs_read_)
+{
+    command_t cmd;
+    cmd.destination = destination_;
+    cmd.type = command_t::activate_write;
+    cmd.args.activate_write.msgs_read = msgs_read_;
+    if (destination_->get_tid () == _tid)
+        destination_->process_command (cmd);
+    else
+        send_command (cmd);
+}
+
+void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+{
+exec
+/bin/bash -lc "sed -n '260,420p' /home/hep7/project/kairos/libzmq/src/object.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    command_t cmd;
+    cmd.destination = destination_;
+    cmd.type = command_t::activate_read;
+    send_command (cmd);
+}
+
+void zmq::object_t::send_activate_write (pipe_t *destination_,
+                                         uint64_t msgs_read_)
+{
+    command_t cmd;
+    cmd.destination = destination_;
+    cmd.type = command_t::activate_write;
+    cmd.args.activate_write.msgs_read = msgs_read_;
+    send_command (cmd);
+}
+
+void zmq::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+{
+    command_t cmd;
+    cmd.destination = destination_;
+codex
+`send_activate_read()`는 현재도 normal command enqueue이고 same-thread direct delivery가 아닙니다. 그래서 이번 수정은 mailbox semantics를 건드리지 않고, final-part/flush 경로에서 `_out_sync`가 잡힌 채 외부 command enqueue를 수행하던 부분만 lock 밖으로 빼는 형태로 진행합니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/core/pipe.cpp
+@@ -376,2 +376,3 @@
+ {
++    pipe_t *activate_read_peer = NULL;
+     scoped_fast_lock_t lock (_out_sync);
+@@ -393,4 +394,8 @@
+     if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
+ 
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
++
+     return true;
+@@ -420,2 +425,3 @@
+ {
++    pipe_t *activate_read_peer = NULL;
+     scoped_fast_lock_t lock (_out_sync);
+@@ -436,4 +442,8 @@
+     if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
+ 
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
++
+     return true;
+@@ -458,2 +468,3 @@
+ {
++    pipe_t *activate_read_peer = NULL;
+     // Hot path: single-part send flushes on every completed message.
+@@ -465,3 +476,7 @@
+     if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
++
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+apply_patch(auto_approved=true) exited 0 in 13ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/core/pipe.cpp
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..e81bee7c4686d1dda68b06876d67357b272a23d4
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,6 +374,7 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
++    pipe_t *activate_read_peer = NULL;
+     scoped_fast_lock_t lock (_out_sync);
+     if (unlikely (!_out_active || _state != active))
+         return false;
+@@ -391,8 +392,12 @@
+         _msgs_written++;
+ 
+     if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
+ 
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
++
+     return true;
+ }
+ 
+@@ -418,6 +423,7 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
++    pipe_t *activate_read_peer = NULL;
+     scoped_fast_lock_t lock (_out_sync);
+     if (unlikely (!_out_active || _state != active))
+         return false;
+@@ -434,8 +440,12 @@
+         _msgs_written++;
+ 
+     if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
+ 
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
++
+     return true;
+ }
+ 
+@@ -456,6 +466,7 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
++    pipe_t *activate_read_peer = NULL;
+     // Hot path: single-part send flushes on every completed message.
+     scoped_fast_lock_t lock (_out_sync);
+     //  The peer does not exist anymore at this point.
+@@ -463,7 +474,11 @@
+         return;
+ 
+     if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
++
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..e81bee7c4686d1dda68b06876d67357b272a23d4
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,6 +374,7 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
++    pipe_t *activate_read_peer = NULL;
+     scoped_fast_lock_t lock (_out_sync);
+     if (unlikely (!_out_active || _state != active))
+         return false;
+@@ -391,8 +392,12 @@
+         _msgs_written++;
+ 
+     if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
+ 
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
++
+     return true;
+ }
+ 
+@@ -418,6 +423,7 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
++    pipe_t *activate_read_peer = NULL;
+     scoped_fast_lock_t lock (_out_sync);
+     if (unlikely (!_out_active || _state != active))
+         return false;
+@@ -434,8 +440,12 @@
+         _msgs_written++;
+ 
+     if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
+ 
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
++
+     return true;
+ }
+ 
+@@ -456,6 +466,7 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
++    pipe_t *activate_read_peer = NULL;
+     // Hot path: single-part send flushes on every completed message.
+     scoped_fast_lock_t lock (_out_sync);
+     //  The peer does not exist anymore at this point.
+@@ -463,7 +474,11 @@
+         return;
+ 
+     if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
++
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+exec
+/bin/bash -lc "sed -n '1,220p' core/src/utils/fast_mutex.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZLINK_FAST_MUTEX_HPP_INCLUDED__
+#define __ZLINK_FAST_MUTEX_HPP_INCLUDED__
+
+#include "utils/err.hpp"
+#include "utils/macros.hpp"
+
+#if defined(ZLINK_HAVE_WINDOWS) && !defined(ZLINK_USE_CV_IMPL_PTHREADS)
+
+#include "utils/mutex.hpp"
+
+namespace zlink
+{
+typedef mutex_t fast_mutex_t;
+}
+
+#elif defined ZLINK_HAVE_VXWORKS
+
+#include "utils/mutex.hpp"
+exec
+/bin/bash -lc "rg -n \"class scoped_fast_lock_t|struct scoped_fast_lock_t|unlock \\(\" core/src/utils/fast_mutex.hpp core/src/utils -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/utils/fast_mutex.hpp:86:    inline void unlock ()
+core/src/utils/fast_mutex.hpp:97:        int rc = pthread_mutex_unlock (&_mutex);
+core/src/utils/fast_mutex.hpp:127:struct scoped_fast_lock_t
+core/src/utils/fast_mutex.hpp:134:    ~scoped_fast_lock_t () { _mutex.unlock (); }
+core/src/utils/fast_mutex.hpp:153:            _mutex->unlock ();
+core/src/utils/condition_variable.hpp:140:        mutex_->unlock ();
+core/src/utils/err.cpp:417:    mtx.unlock ();
+core/src/utils/dbuffer.hpp:56:            _sync.unlock ();
+core/src/utils/fast_mutex.hpp:86:    inline void unlock ()
+core/src/utils/fast_mutex.hpp:97:        int rc = pthread_mutex_unlock (&_mutex);
+core/src/utils/fast_mutex.hpp:127:struct scoped_fast_lock_t
+core/src/utils/fast_mutex.hpp:134:    ~scoped_fast_lock_t () { _mutex.unlock (); }
+core/src/utils/fast_mutex.hpp:153:            _mutex->unlock ();
+core/src/utils/mutex.hpp:28:    void unlock () { LeaveCriticalSection (&_cs); }
+core/src/utils/mutex.hpp:67:    inline void unlock () { semGive (_semId); }
+core/src/utils/mutex.hpp:122:    inline void unlock ()
+core/src/utils/mutex.hpp:124:        int rc = pthread_mutex_unlock (&_mutex);
+core/src/utils/mutex.hpp:147:    ~scoped_lock_t () { _mutex.unlock (); }
+core/src/utils/mutex.hpp:167:            _mutex->unlock ();
+core/src/utils/atomic_ptr.hpp:84:    _sync.unlock ();
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..e81bee7c4686d1dda68b06876d67357b272a23d4
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,6 +374,7 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
++    pipe_t *activate_read_peer = NULL;
+     scoped_fast_lock_t lock (_out_sync);
+     if (unlikely (!_out_active || _state != active))
+         return false;
+@@ -391,8 +392,12 @@
+         _msgs_written++;
+ 
+     if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
+ 
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
++
+     return true;
+ }
+ 
+@@ -418,6 +423,7 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
++    pipe_t *activate_read_peer = NULL;
+     scoped_fast_lock_t lock (_out_sync);
+     if (unlikely (!_out_active || _state != active))
+         return false;
+@@ -434,8 +440,12 @@
+         _msgs_written++;
+ 
+     if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
+ 
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
++
+     return true;
+ }
+ 
+@@ -456,6 +466,7 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
++    pipe_t *activate_read_peer = NULL;
+     // Hot path: single-part send flushes on every completed message.
+     scoped_fast_lock_t lock (_out_sync);
+     //  The peer does not exist anymore at this point.
+@@ -463,7 +474,11 @@
+         return;
+ 
+     if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        activate_read_peer = _peer;
++
++    lock.unlock ();
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+codex
+`scoped_fast_lock_t`가 수동 `unlock()`을 지원하지 않아서 방금 넣은 해제 호출은 정리해야 합니다. lock 범위를 명시적인 블록으로 바꿔서 같은 의도를 유지하도록 바로 수정합니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/core/pipe.cpp
+@@ -377,22 +377,23 @@
+     pipe_t *activate_read_peer = NULL;
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        activate_read_peer = _peer;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    lock.unlock ();
+     if (activate_read_peer)
+@@ -426,21 +427,22 @@
+     pipe_t *activate_read_peer = NULL;
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        activate_read_peer = _peer;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    lock.unlock ();
+     if (activate_read_peer)
+@@ -469,12 +471,13 @@
+     pipe_t *activate_read_peer = NULL;
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        activate_read_peer = _peer;
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    lock.unlock ();
+     if (activate_read_peer)
+apply_patch(auto_approved=true) exited 0 in 13ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/core/pipe.cpp
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+codex
+`pipe.cpp`에서 final-part/flush 경로의 command enqueue를 lock 밖으로 빼는 좁은 변경을 넣었습니다. 이제 `core/build`로 빌드하고, `PUBSUB` 관련 회귀를 먼저 돌린 뒤 targeted single bench로 keep-worthy인지 판정하겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j$(nproc)' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(test_xpub_nodrop|test_multi_socket_contract_regressions|test_pubsub_filter_xpub|test_monitor_perf_contract|test_monitor_socket_contract|test_public_inproc_multipart_send)$'"' -j1" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+ succeeded in 2.31s:
+1/5 Test  #4: test_monitor_socket_contract .............   Passed    0.27 sec
+    Start  5: test_monitor_perf_contract
+2/5 Test  #5: test_monitor_perf_contract ...............   Passed    0.27 sec
+    Start 17: test_multi_socket_contract_regressions
+3/5 Test #17: test_multi_socket_contract_regressions ...   Passed    0.32 sec
+    Start 18: test_public_inproc_multipart_send
+4/5 Test #18: test_public_inproc_multipart_send ........   Passed    0.01 sec
+    Start 21: test_pubsub_filter_xpub
+5/5 Test #21: test_pubsub_filter_xpub ..................   Passed    1.53 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Label Time Summary:
+integration    =   2.40 sec*proc (5 tests)
+serial         =   2.40 sec*proc (5 tests)
+
+Total Test time (real) =   2.41 sec
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+codex
+회귀는 먼저 통과했습니다. 빌드는 아직 링크 후반이라 끝나는 대로 `PUBSUB` targeted single을 먼저 찍고, 개선 신호가 있으면 raw/public과 multi까지 확장하겠습니다.
+ succeeded in 23.13s:
+[ 10%] Building CXX object core/CMakeFiles/objects.dir/src/core/pipe.cpp.o
+[ 49%] Built target objects
+[ 49%] Linking CXX shared library ../lib/libzlink.so
+[ 49%] Linking CXX static library ../lib/libzlink.a
+[ 49%] Built target libzlink-static
+[ 50%] Built target testutil-static
+[ 51%] Linking CXX executable ../../../bin/unittest_mtrie
+[ 51%] Linking CXX executable ../../../bin/unittest_zmp_decoder
+[ 51%] Linking CXX executable ../../../bin/unittest_ypipe
+[ 51%] Linking CXX executable ../../../bin/unittest_raw_decoder
+[ 51%] Linking CXX executable ../../../bin/unittest_radix_tree
+[ 51%] Linking CXX executable ../../../bin/unittest_msg_view
+[ 52%] Linking CXX executable ../../../bin/unittest_spot_data_plane_protocol
+[ 52%] Linking CXX executable ../../../bin/unittest_poller
+[ 52%] Linking CXX executable ../../../bin/unittest_service_mode_policy
+[ 52%] Linking CXX executable ../../../bin/unittest_ctx_runtime
+[ 53%] Linking CXX executable ../../../bin/unittest_ip_resolver
+[ 53%] Linking CXX executable ../../../bin/unittest_service_runtime_base
+[ 53%] Linking CXX executable ../../../bin/unittest_spot_data_plane_budget
+[ 53%] Linking CXX executable ../../../bin/unittest_typed_option
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+exec
+/bin/bash -lc 'python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_flush_command_outside_lock' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+codex
+targeted single `PUBSUB`를 먼저 찍는 중입니다. 이 수치가 accepted baseline을 넘으면 바로 rerun과 raw/public, multi로 확장하고, 못 넘으면 같은 자리에서 원복 후 다음 후보로 넘어가겠습니다.
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+ succeeded in 23.92s:
+  > Benchmarking zlink for PUBSUB...
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3439.26 Kmsg/s |   2546.85 Kmsg/s |   -25.95% |
+| 64B    | Latency    |         59.06 ms |          0.07 ms |   +99.88% |
+  > Benchmarking libzmq for PUBSUB...
+  > Benchmarking zlink for PUBSUB...
+### Transport: inproc
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   4065.12 Kmsg/s |   2131.53 Kmsg/s |   -47.57% |
+| 64B    | Latency    |          0.01 ms |          0.01 ms |    -4.80% |
+
+Saved result file: /home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_070256_codex_20260328_pubsub_flush_command_outside_lock.txt
+file update:
+diff --git a/core/src/core/pipe.cpp b/core/src/core/pipe.cpp
+index df03f9f663df8a729da547967bf213b4974ec844..fce2edc9f692dc19b60c922fdf9091dba736fb93
+--- a/core/src/core/pipe.cpp
++++ b/core/src/core/pipe.cpp
+@@ -374,24 +374,30 @@
+ 
+ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
+ 
+-    const bool full = !check_hwm ();
+-    if (unlikely (full)) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool full = !check_hwm ();
++        if (unlikely (full)) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
++
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -418,23 +424,29 @@
+ 
+ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
+ {
+-    scoped_fast_lock_t lock (_out_sync);
+-    if (unlikely (!_out_active || _state != active))
+-        return false;
++    pipe_t *activate_read_peer = NULL;
++    {
++        scoped_fast_lock_t lock (_out_sync);
++        if (unlikely (!_out_active || _state != active))
++            return false;
++
++        if (unlikely (!check_hwm_unlocked ())) {
++            _out_active = false;
++            return false;
++        }
+ 
+-    if (unlikely (!check_hwm_unlocked ())) {
+-        _out_active = false;
+-        return false;
+-    }
++        const bool more = (msg_->flags () & msg_t::more) != 0;
++        const bool is_routing_id = msg_->is_routing_id ();
++        _out_pipe->write (*msg_, more);
++        if (!more && !is_routing_id)
++            _msgs_written++;
+ 
+-    const bool more = (msg_->flags () & msg_t::more) != 0;
+-    const bool is_routing_id = msg_->is_routing_id ();
+-    _out_pipe->write (*msg_, more);
+-    if (!more && !is_routing_id)
+-        _msgs_written++;
++        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ 
+     return true;
+ }
+@@ -456,14 +468,20 @@
+ 
+ void zlink::pipe_t::flush ()
+ {
+-    // Hot path: single-part send flushes on every completed message.
+-    scoped_fast_lock_t lock (_out_sync);
+-    //  The peer does not exist anymore at this point.
+-    if (_state == term_ack_sent)
+-        return;
++    pipe_t *activate_read_peer = NULL;
++    {
++        // Hot path: single-part send flushes on every completed message.
++        scoped_fast_lock_t lock (_out_sync);
++        //  The peer does not exist anymore at this point.
++        if (_state == term_ack_sent)
++            return;
++
++        if (_out_pipe && !_out_pipe->flush ())
++            activate_read_peer = _peer;
++    }
+ 
+-    if (_out_pipe && !_out_pipe->flush ())
+-        send_activate_read (_peer);
++    if (activate_read_peer)
++        send_activate_read (activate_read_peer);
+ }
+ 
+ void zlink::pipe_t::process_activate_read ()
+
+codex
+이 후보는 바로 탈락입니다. isolated `PUBSUB`가 `tcp -25.95%`, `inproc -47.57%`로 accepted baseline보다 둘 다 나빠져서 keep-worthy 근거가 없습니다. 원복하고, 가이드 첫 미완료 항목 안에서 다음 publication 후보로 넘어가겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/core/pipe.cpp
+@@ -376,26 +376,20 @@
+ {
+-    pipe_t *activate_read_peer = NULL;
+-    {
+-        scoped_fast_lock_t lock (_out_sync);
+-        if (unlikely (!_out_active || _state != active))
+-            return false;
+-
+-        const bool full = !check_hwm ();
+-        if (unlikely (full)) {
+-            _out_active = false;
+-            return false;
+-        }
+-
+-        const bool more = (msg_->flags () & msg_t::more) != 0;
+-        const bool is_routing_id = msg_->is_routing_id ();
+-        _out_pipe->write (*msg_, more);
+-        if (!more && !is_routing_id)
+-            _msgs_written++;
++    scoped_fast_lock_t lock (_out_sync);
++    if (unlikely (!_out_active || _state != active))
++        return false;
+ 
+-        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-            activate_read_peer = _peer;
++    const bool full = !check_hwm ();
++    if (unlikely (full)) {
++        _out_active = false;
++        return false;
+     }
+ 
+-    if (activate_read_peer)
+-        send_activate_read (activate_read_peer);
++    const bool more = (msg_->flags () & msg_t::more) != 0;
++    const bool is_routing_id = msg_->is_routing_id ();
++    _out_pipe->write (*msg_, more);
++    if (!more && !is_routing_id)
++        _msgs_written++;
++
++    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++        send_activate_read (_peer);
+ 
+@@ -426,26 +420,20 @@
+ {
+-    pipe_t *activate_read_peer = NULL;
+-    {
+-        scoped_fast_lock_t lock (_out_sync);
+-        if (unlikely (!_out_active || _state != active))
+-            return false;
++    scoped_fast_lock_t lock (_out_sync);
++    if (unlikely (!_out_active || _state != active))
++        return false;
+ 
+-        if (unlikely (!check_hwm_unlocked ())) {
+-            _out_active = false;
+-            return false;
+-        }
+-
+-        const bool more = (msg_->flags () & msg_t::more) != 0;
+-        const bool is_routing_id = msg_->is_routing_id ();
+-        _out_pipe->write (*msg_, more);
+-        if (!more && !is_routing_id)
+-            _msgs_written++;
+-
+-        if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
+-            activate_read_peer = _peer;
++    if (unlikely (!check_hwm_unlocked ())) {
++        _out_active = false;
++        return false;
+     }
+ 
+-    if (activate_read_peer)
+-        send_activate_read (activate_read_peer);
++    const bool more = (msg_->flags () & msg_t::more) != 0;
++    const bool is_routing_id = msg_->is_routing_id ();
++    _out_pipe->write (*msg_, more);
++    if (!more && !is_routing_id)
++        _msgs_written++;
+ 
++    if (!more && _state != term_ack_sent && _out_pipe && !_out_pipe->flush ())
++        send_activate_read (_peer);
++
+     return true;
+@@ -470,16 +458,10 @@
+ {
+-    pipe_t *activate_read_peer = NULL;
+-    {
+-        // Hot path: single-part send flushes on every completed message.
+-        scoped_fast_lock_t lock (_out_sync);
+-        //  The peer does not exist anymore at this point.
+-        if (_state == term_ack_sent)
+-            return;
++    // Hot path: single-part send flushes on every completed message.
++    scoped_fast_lock_t lock (_out_sync);
++    //  The peer does not exist anymore at this point.
++    if (_state == term_ack_sent)
++        return;
+ 
+-        if (_out_pipe && !_out_pipe->flush ())
+-            activate_read_peer = _peer;
+-    }
+-
+-    if (activate_read_peer)
+-        send_activate_read (activate_read_peer);
++    if (_out_pipe && !_out_pipe->flush ())
++        send_activate_read (_peer);
+ }
+apply_patch(auto_approved=true) exited 0 in 4ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/core/pipe.cpp
+exec
+/bin/bash -lc "sed -n '220,360p' core/src/core/pipe.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+    //  Last received peer's msgs_read. The actual number in the peer
+    //  can be higher at the moment.
+    uint64_t _peers_msgs_read;
+
+    //  The pipe object on the other side of the pipepair.
+    pipe_t *_peer;
+
+    //  Sink to send events to.
+    i_pipe_events *_sink;
+
+    //  States of the pipe endpoint:
+    //  active: common state before any termination begins,
+    //  delimiter_received: delimiter was read from pipe before
+    //      term command was received,
+    //  waiting_for_delimiter: term command was already received
+    //      from the peer but there are still pending messages to read,
+    //  term_ack_sent: all pending messages were already read and
+    //      all we are waiting for is ack from the peer,
+    //  term_req_sent1: 'terminate' was explicitly called by the user,
+exec
+/bin/bash -lc "rg -n \"_peers_msgs_read|_out_active|_in_active|check_hwm_unlocked|process_activate_write\" core/src/core/pipe.hpp core/src/core/pipe.cpp -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/core/pipe.hpp:173:    void process_activate_write (uint64_t msgs_read_) ZLINK_OVERRIDE;
+core/src/core/pipe.hpp:203:    bool _in_active;
+core/src/core/pipe.hpp:204:    bool _out_active;
+core/src/core/pipe.hpp:223:    uint64_t _peers_msgs_read;
+core/src/core/pipe.hpp:271:    bool check_hwm_unlocked () const;
+core/src/core/pipe.cpp:106:    _in_active (true),
+core/src/core/pipe.cpp:107:    _out_active (true),
+core/src/core/pipe.cpp:115:    _peers_msgs_read (0),
+core/src/core/pipe.cpp:198:    if (_msgs_written <= _peers_msgs_read)
+core/src/core/pipe.cpp:200:    return _msgs_written - _peers_msgs_read;
+core/src/core/pipe.cpp:254:    if (unlikely (!_in_active))
+core/src/core/pipe.cpp:261:        _in_active = false;
+core/src/core/pipe.cpp:280:    if (unlikely (!_in_active))
+core/src/core/pipe.cpp:287:            _in_active = false;
+core/src/core/pipe.cpp:323:    if (unlikely (!_out_active || _state != active))
+core/src/core/pipe.cpp:329:        _out_active = false;
+core/src/core/pipe.cpp:342:    if (unlikely (!_out_active || _state != active))
+core/src/core/pipe.cpp:347:        _out_active = false;
+core/src/core/pipe.cpp:363:    if (unlikely (!_out_active || _state != active))
+core/src/core/pipe.cpp:378:    if (unlikely (!_out_active || _state != active))
+exec
+/bin/bash -lc "sed -n '740,840p' core/src/core/pipe.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    //     result in lock-step filling of the queue - if a single message is
+    //     read from a full queue, writer thread is resumed to write exactly one
+    //     message to the queue and go back to sleep immediately. This would
+    //     result in low performance.
+    //
+    //  Given the 3. it would be good to keep HWM and LWM as far apart as
+    //  possible to reduce the thread switching overhead to almost zero.
+    //  Let's make LWM 1/2 of HWM.
+    const int result = (hwm_ + 1) / 2;
+
+    return result;
+}
+
+void zlink::pipe_t::process_delimiter ()
+{
+    scoped_fast_lock_t lock (_out_sync);
+    pipe_debug_log (this, "process_delimiter", _state, _delay,
+                    _endpoint_pair.identifier ().c_str ());
+    zlink_assert (_state == active || _state == waiting_for_delimiter);
+
+codex
+방금 후보는 원복했고, 다음 후보를 헛짚지 않기 위해 existing bench surface에서 한 가지 분리 측정만 더 합니다. `XPUB_NODROP=0`으로 backpressure 경로 비중이 얼마나 줄어드는지 보면, 다음 작업을 HWM/retry 쪽으로 둘지 아니면 steady-state publication 쪽으로 둘지 더 정확히 정할 수 있습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j$(nproc) --target libzlink comp_zlink_pubsub comp_std_zmq_pubsub' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc 'PERF_SINGLE_PUBSUB_XPUB_NODROP=0 python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_nodrop_off_probe' in /home/hep7/project/kairos/zlink succeeded in 5.97s:
+[  0%] Building CXX object core/CMakeFiles/objects.dir/src/core/pipe.cpp.o
+[100%] Built target objects
+[100%] Linking CXX shared library ../lib/libzlink.so
+[100%] Built target libzlink
+[100%] Built target objects
+[100%] Built target libzlink
+[100%] Linking CXX executable ../../../bin/comp_zlink_pubsub
+[100%] Built target comp_zlink_pubsub
+[100%] Built target comp_std_zmq_pubsub
+ succeeded in 27.87s:
+  > Benchmarking zlink for PUBSUB...
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    491.75 Kmsg/s |   1220.95 Kmsg/s |  +148.29% |
+| 64B    | Latency    |          0.99 ms |          0.10 ms |   +89.48% |
+  > Benchmarking libzmq for PUBSUB...
+  > Benchmarking zlink for PUBSUB...
+### Transport: inproc
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   2435.37 Kmsg/s |   2150.38 Kmsg/s |   -11.70% |
+| 64B    | Latency    |          0.02 ms |          0.02 ms |   +35.86% |
+
+Saved result file: /home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_070416_codex_20260328_pubsub_nodrop_off_probe.txt
+codex
+`XPUB_NODROP=0` probe 결과가 꽤 분명합니다. `PUBSUB inproc 64B`가 `-11.70%`까지 좁아져서, 남은 큰 격차의 본체는 steady-state match보다 HWM/backpressure 복귀 쪽이라는 근거가 강해졌습니다. 기존 rejected 후보와 겹치지 않는 다음 축으로, zlink만의 same-thread `activate_write` direct processing 차이를 libzmq 쪽 semantics에 맞춰 A/B해 보겠습니다.
+exec
+/bin/bash -lc 'rg -n "activate_write publication|send_activate_write|same-thread.*activate_write|publication itself" doc/plan/perf/single-libzmq-gap-review.ko.md doc/internal/hot-path.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+doc/internal/hot-path.ko.md:37:- backpressure 분석에서는 `activate_write publication`과
+doc/plan/perf/single-libzmq-gap-review.ko.md:109:  `send_activate_write(_peer, _msgs_read)`를 보내는 구조도 동일하다.
+doc/plan/perf/single-libzmq-gap-review.ko.md:110:- zlink의 [`object_t::send_activate_write()`](/home/hep7/project/kairos/zlink/core/src/core/object.cpp)
+doc/plan/perf/single-libzmq-gap-review.ko.md:113:  즉 "activate_write publication 자체가 zlink에서 더 늦다"는 가설은 현재
+exec
+/bin/bash -lc "sed -n '90,170p' doc/plan/perf/single-libzmq-gap-review.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+여기에 2026-03-28 `dist_t` one-matching-pipe fast path 결과를 합치면,
+현재 `PUBSUB` 해석은 더 좁혀진다.
+
+- monitor-ready bookkeeping은 secondary다.
+- 반면 single-subscriber steady-state의 distributor loop/index/deactivate
+  work는 실제 비용 축이다.
+- 그런데 `inproc`와 multi가 여전히 크게 남으므로, publication/backpressure와
+  pattern-specific 잔여 비용이 함께 남아 있다고 본다.
+
+### 1.2 backpressure / wakeup 경로에 대한 현재 판정
+
+`echo`와 `oneway` 차이를 더 좁히기 위해 `HWM 도달 -> activate_write ->
+sender 복귀` 경로를 zlink/libzmq 코드 기준으로 다시 대조했다.
+
+현재 확정 가능한 점은 다음과 같다.
+
+- `pipe_t::compute_lwm()`는 zlink와 libzmq가 동일하다.
+  - 둘 다 `LWM = (HWM + 1) / 2`
+- `pipe_t::read()`에서 `_msgs_read % _lwm == 0`일 때
+  `send_activate_write(_peer, _msgs_read)`를 보내는 구조도 동일하다.
+exec
+/bin/bash -lc "sed -n '26,80p' doc/internal/hot-path.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+- `DEALER_DEALER`
+
+이 둘은 pattern-specific framing이 가장 적어서 공통 원인과 공통 회귀를 보기
+가장 좋다.
+
+보조 해석 규칙:
+
+- `echo`는 거의 동등한데 `oneway`에서만 gap이 커지면
+  recv보다 send-side publication/backpressure 쪽을 먼저 본다.
+- `echo`는 round-trip pace 때문에 queue/HWM 경로가 덜 드러나고,
+  `oneway`는 success path와 backpressure 복귀 비용이 그대로 드러난다.
+- backpressure 분석에서는 `activate_write publication`과
+  `sender retry consumption`을 분리해서 본다.
+  현재 코드는 후자 쪽이 더 유력하다.
+- `PUBSUB`의 delivery-ready monitor bookkeeping은 steady-state에서
+  건너뛰어도 bench 수치가 거의 움직이지 않았다.
+  현재 `PUBSUB` gap의 상위 축은 monitor-ready 계산보다
+  publication/ordering 경로에 더 가깝다.
+- 다만 2026-03-28 `dist_t` one-matching-pipe fast path를 넣자
+  `PUBSUB tcp 64B`가 `-24.23%`, rerun에서 `-26.00%`까지 즉시 회복됐다.
+codex
+핵심 차이를 하나 더 찾았습니다. zlink는 same-thread `send_activate_write()`를 직접 `process_command()`로 처리하는데, libzmq는 mailbox command를 보내서 blocking sender의 `process_commands(timeout,false)`를 깨웁니다. 이 차이라면 `nodrop` backpressure에서만 gap이 커지는 현재 관측과 정확히 맞아떨어집니다. `process_commands()` 대기 방식만 확인하고, 맞으면 이 축으로 바로 A/B하겠습니다.
+exec
+/bin/bash -lc "rg -n \"process_commands \\(|mailbox|recv_command|wait|timeout\" core/src/sockets/socket_base.cpp core/src/sockets/socket_base_msg.cpp core/src/sockets/socket_base.hpp /home/hep7/project/kairos/libzmq/src/socket_base.cpp -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/sockets/socket_base.hpp:21:#include "core/i_mailbox.hpp"
+core/src/sockets/socket_base.hpp:69:    //  Returns the mailbox associated with this socket.
+core/src/sockets/socket_base.hpp:70:    i_mailbox *get_mailbox () const;
+core/src/sockets/socket_base.hpp:291:    int start_async_mailbox_processing (io_thread_t *io_thread_);
+core/src/sockets/socket_base.hpp:292:    void stop_async_mailbox_processing ();
+core/src/sockets/socket_base.hpp:293:    void wait_async_quiesced (int timeout_ms_);
+core/src/sockets/socket_base.hpp:469:    //  Processes commands sent to this socket (if any). If timeout is -1,
+core/src/sockets/socket_base.hpp:473:    int process_commands (int timeout_, bool throttle_);
+core/src/sockets/socket_base.hpp:474:    void inc_mailbox_ref ();
+core/src/sockets/socket_base.hpp:475:    void dec_mailbox_ref ();
+core/src/sockets/socket_base.hpp:477:    void process_async_mailbox ();
+core/src/sockets/socket_base.hpp:478:    static void reaper_mailbox_handler (void *arg_);
+core/src/sockets/socket_base.hpp:479:    static void reaper_mailbox_pre_post (void *arg_);
+core/src/sockets/socket_base.hpp:480:    static void async_mailbox_handler (void *arg_);
+core/src/sockets/socket_base.hpp:481:    static void async_mailbox_pre_post (void *arg_);
+core/src/sockets/socket_base.hpp:495:    //  Socket's mailbox object.
+core/src/sockets/socket_base.hpp:496:    i_mailbox *_mailbox;
+core/src/sockets/socket_base.cpp:10:#include "core/mailbox.hpp"
+core/src/sockets/socket_base.cpp:89:    if (s->_mailbox == NULL) {
+core/src/sockets/socket_base.cpp:120:    mailbox_t *m = new (std::nothrow) mailbox_t ();
+exec
+/bin/bash -lc "sed -n '420,560p' core/src/sockets/socket_base.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc "sed -n '1360,1515p' /home/hep7/project/kairos/libzmq/src/socket_base.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    //  we are able to fetch a message.
+    bool block = (_ticks != 0);
+    while (true) {
+        if (unlikely (process_commands (block ? timeout : 0, false) != 0)) {
+            return -1;
+        }
+        rc = xrecv (msg_);
+        if (rc == 0) {
+            _ticks = 0;
+            break;
+        }
+        if (unlikely (errno != EAGAIN)) {
+            return -1;
+        }
+        block = true;
+        if (timeout > 0) {
+            timeout = static_cast<int> (end - _clock.now_ms ());
+            if (timeout <= 0) {
+                errno = EAGAIN;
+                return -1;
+exec
+/bin/bash -lc 'rg -n "int zlink::socket_base_t::process_commands" core/src/sockets/socket_base.cpp' in /home/hep7/project/kairos/zlink exited 1 in 0ms:
+
+exec
+/bin/bash -lc "sed -n '460,560p' core/src/sockets/socket_base.hpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    //  Check whether transport protocol, as specified in connect or
+    //  bind, is available and compatible with the socket type.
+    int check_protocol (const std::string &protocol_) const;
+
+    //  Register the pipe with this socket.
+    void attach_pipe (zlink::pipe_t *pipe_,
+                      bool subscribe_to_all_ = false,
+                      bool locally_initiated_ = false);
+
+    //  Processes commands sent to this socket (if any). If timeout is -1,
+    //  returns only after at least one command was processed.
+    //  If throttle argument is true, commands are processed at most once
+    //  in a predefined time period.
+    int process_commands (int timeout_, bool throttle_);
+    void inc_mailbox_ref ();
+    void dec_mailbox_ref ();
+    void finalize_destroy ();
+    void process_async_mailbox ();
+    static void reaper_mailbox_handler (void *arg_);
+    static void reaper_mailbox_pre_post (void *arg_);
+exec
+/bin/bash -lc "sed -n '520,640p' core/src/sockets/socket_base.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc "sed -n '700,820p' core/src/sockets/socket_base.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+exec
+/bin/bash -lc "rg -n \"process_commands \\(int timeout_\" core/src -g '"'!core/build/**'"'" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+core/src/sockets/socket_base_lifecycle.cpp:61:int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
+core/src/sockets/socket_base.hpp:473:    int process_commands (int timeout_, bool throttle_);
+exec
+/bin/bash -lc "wc -l core/src/sockets/socket_base.cpp && sed -n '1,260p' core/src/sockets/socket_base.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+250 core/src/sockets/socket_base.cpp
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include <algorithm>
+#include <new>
+
+#include "sockets/socket_base.hpp"
+#include "core/ctx.hpp"
+#include "core/mailbox.hpp"
+#include "utils/err.hpp"
+#include "utils/random.hpp"
+
+#include "sockets/pair.hpp"
+#include "sockets/pub.hpp"
+#include "sockets/sub.hpp"
+#include "sockets/dealer.hpp"
+#include "sockets/router.hpp"
+#include "sockets/stream.hpp"
+exec
+/bin/bash -lc "sed -n '1,180p' core/src/sockets/socket_base_lifecycle.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "utils/precompiled.hpp"
+
+#include <boost/asio.hpp>
+
+#include "core/io_thread.hpp"
+#include "core/mailbox.hpp"
+#include "sockets/socket_base.hpp"
+
+void zlink::socket_base_t::reaper_mailbox_handler (void *arg_)
+{
+    socket_base_t *self = static_cast<socket_base_t *> (arg_);
+    self->in_event ();
+    self->dec_mailbox_ref ();
+}
+
+void zlink::socket_base_t::reaper_mailbox_pre_post (void *arg_)
+{
+    socket_base_t *self = static_cast<socket_base_t *> (arg_);
+exec
+/bin/bash -lc "sed -n '180,320p' core/src/sockets/socket_base_lifecycle.cpp" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+
+void zlink::socket_base_t::update_pipe_options (int option_)
+{
+    if (option_ == ZLINK_INTERNAL_OPT_SNDHWM
+        || option_ == ZLINK_INTERNAL_OPT_RCVHWM) {
+        for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
+             i != size; ++i) {
+            pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
+            pipe->set_hwms (options.rcvhwm, options.sndhwm);
+            pipe->send_hwms_to_peer (options.sndhwm, options.rcvhwm);
+        }
+    }
+}
+
+void zlink::socket_base_t::process_destroy ()
+{
+    lifecycle_coordinator ().mark_destroyed ();
+}
+
+void zlink::socket_base_t::in_event ()
+codex
+same-thread `activate_write` direct path는 blocking sender를 mailbox로 깨우지 못할 가능성이 큽니다. 이번 A/B는 가장 좁게, `object_t::send_activate_write()`를 libzmq처럼 항상 mailbox command로 보내도록 되돌려서 nodrop backpressure 경로만 확인합니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/core/object.cpp
+@@ -271,6 +271,3 @@
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+apply_patch(auto_approved=true) exited 0 in 6ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/core/object.cpp
+file update:
+diff --git a/core/src/core/object.cpp b/core/src/core/object.cpp
+index f9a3b047ffb85e81f6802bba89c151224d1a5afa..abc2492fb57ccc427740659a1b49900a75c34279
+--- a/core/src/core/object.cpp
++++ b/core/src/core/object.cpp
+@@ -269,10 +269,7 @@
+     cmd.destination = destination_;
+     cmd.type = command_t::activate_write;
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+ 
+ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+
+file update:
+diff --git a/core/src/core/object.cpp b/core/src/core/object.cpp
+index f9a3b047ffb85e81f6802bba89c151224d1a5afa..abc2492fb57ccc427740659a1b49900a75c34279
+--- a/core/src/core/object.cpp
++++ b/core/src/core/object.cpp
+@@ -269,10 +269,7 @@
+     cmd.destination = destination_;
+     cmd.type = command_t::activate_write;
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+ 
+ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+
+codex
+`activate_write` 경로를 mailbox semantics로 맞췄습니다. 이건 wakeup publication 자체를 늦추는 게 아니라, blocking sender가 실제로 `process_commands(timeout,false)`에서 깨어날 수 있게 만드는 쪽이라서, 관련 회귀를 먼저 확인한 뒤 `PUBSUB` targeted single로 바로 보겠습니다.
+exec
+/bin/bash -lc 'cmake --build core/build -j$(nproc) --target libzlink comp_zlink_pubsub comp_std_zmq_pubsub test_xpub_nodrop test_multi_socket_contract_regressions test_monitor_perf_contract test_monitor_socket_contract test_pubsub_filter_xpub' in /home/hep7/project/kairos/zlinkexec
+/bin/bash -lc "ctest --test-dir core/build --output-on-failure -R '"'^(test_xpub_nodrop|test_multi_socket_contract_regressions|test_monitor_perf_contract|test_monitor_socket_contract|test_pubsub_filter_xpub)$'"' -j1" in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/core/object.cpp b/core/src/core/object.cpp
+index f9a3b047ffb85e81f6802bba89c151224d1a5afa..abc2492fb57ccc427740659a1b49900a75c34279
+--- a/core/src/core/object.cpp
++++ b/core/src/core/object.cpp
+@@ -269,10 +269,7 @@
+     cmd.destination = destination_;
+     cmd.type = command_t::activate_write;
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+ 
+ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+
+ succeeded in 2.16s:
+1/4 Test  #4: test_monitor_socket_contract .............   Passed    0.27 sec
+    Start  5: test_monitor_perf_contract
+2/4 Test  #5: test_monitor_perf_contract ...............   Passed    0.23 sec
+    Start 17: test_multi_socket_contract_regressions
+3/4 Test #17: test_multi_socket_contract_regressions ...   Passed    0.28 sec
+    Start 21: test_pubsub_filter_xpub
+4/4 Test #21: test_pubsub_filter_xpub ..................   Passed    1.52 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+integration    =   2.30 sec*proc (4 tests)
+serial         =   2.30 sec*proc (4 tests)
+
+Total Test time (real) =   2.30 sec
+ exited 2 in 5.81s:
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/core/object.cpp.o
+[100%] Built target objects
+[100%] Linking CXX shared library ../lib/libzlink.so
+[100%] Built target libzlink
+[100%] Built target objects
+[100%] Built target libzlink
+[100%] Linking CXX executable ../../../bin/comp_zlink_pubsub
+[100%] Built target comp_zlink_pubsub
+[100%] Built target comp_std_zmq_pubsub
+gmake: *** No rule to make target 'test_xpub_nodrop'.  Stop.
+file update:
+diff --git a/core/src/core/object.cpp b/core/src/core/object.cpp
+index f9a3b047ffb85e81f6802bba89c151224d1a5afa..abc2492fb57ccc427740659a1b49900a75c34279
+--- a/core/src/core/object.cpp
++++ b/core/src/core/object.cpp
+@@ -269,10 +269,7 @@
+     cmd.destination = destination_;
+     cmd.type = command_t::activate_write;
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+ 
+ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+
+exec
+/bin/bash -lc 'python3 core/bench/with_zmq/single/run_comparison.py --pattern PUBSUB --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_pubsub_activate_write_mailbox' in /home/hep7/project/kairos/zlinkfile update:
+diff --git a/core/src/core/object.cpp b/core/src/core/object.cpp
+index f9a3b047ffb85e81f6802bba89c151224d1a5afa..abc2492fb57ccc427740659a1b49900a75c34279
+--- a/core/src/core/object.cpp
++++ b/core/src/core/object.cpp
+@@ -269,10 +269,7 @@
+     cmd.destination = destination_;
+     cmd.type = command_t::activate_write;
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+ 
+ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+
+codex
+이번 A/B가 맞으면 `nodrop`가 켜진 상태에서 특히 `inproc`가 반응해야 합니다. targeted single 결과가 accepted baseline을 넘기면 곧바로 rerun, raw/public, broader single, multi 순서로 확장하겠습니다.
+file update:
+diff --git a/core/src/core/object.cpp b/core/src/core/object.cpp
+index f9a3b047ffb85e81f6802bba89c151224d1a5afa..abc2492fb57ccc427740659a1b49900a75c34279
+--- a/core/src/core/object.cpp
++++ b/core/src/core/object.cpp
+@@ -269,10 +269,7 @@
+     cmd.destination = destination_;
+     cmd.type = command_t::activate_write;
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+ 
+ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+
+file update:
+diff --git a/core/src/core/object.cpp b/core/src/core/object.cpp
+index f9a3b047ffb85e81f6802bba89c151224d1a5afa..abc2492fb57ccc427740659a1b49900a75c34279
+--- a/core/src/core/object.cpp
++++ b/core/src/core/object.cpp
+@@ -269,10 +269,7 @@
+     cmd.destination = destination_;
+     cmd.type = command_t::activate_write;
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+ 
+ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+
+ succeeded in 23.85s:
+  > Benchmarking zlink for PUBSUB...
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3309.96 Kmsg/s |   2595.99 Kmsg/s |   -21.57% |
+| 64B    | Latency    |         61.03 ms |          0.07 ms |   +99.89% |
+  > Benchmarking libzmq for PUBSUB...
+  > Benchmarking zlink for PUBSUB...
+### Transport: inproc
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   4100.76 Kmsg/s |   2158.35 Kmsg/s |   -47.37% |
+| 64B    | Latency    |          0.01 ms |          0.03 ms |   -99.92% |
+
+Saved result file: /home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_070627_codex_20260328_pubsub_activate_write_mailbox.txt
+file update:
+diff --git a/core/src/core/object.cpp b/core/src/core/object.cpp
+index f9a3b047ffb85e81f6802bba89c151224d1a5afa..abc2492fb57ccc427740659a1b49900a75c34279
+--- a/core/src/core/object.cpp
++++ b/core/src/core/object.cpp
+@@ -269,10 +269,7 @@
+     cmd.destination = destination_;
+     cmd.type = command_t::activate_write;
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    if (destination_->get_tid () == _tid)
+-        destination_->process_command (cmd);
+-    else
+-        send_command (cmd);
++    send_command (cmd);
+ }
+ 
+ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
+
+codex
+`activate_write` mailbox candidate도 keep-worthy가 아닙니다. `PUBSUB tcp`는 `-21.57%`로 약간 좋아졌지만 핵심인 `inproc`가 `-47.37%`로 더 나빠져 broad win이 아닙니다. 코드는 baseline으로 원복하고, 이번 두 개의 rejected 후보와 `nodrop=0` probe를 실행 로그에 반영하겠습니다.
+file update
+M /home/hep7/project/kairos/zlink/core/src/core/object.cpp
+@@ -271,3 +271,6 @@
+     cmd.args.activate_write.msgs_read = msgs_read_;
+-    send_command (cmd);
++    if (destination_->get_tid () == _tid)
++        destination_->process_command (cmd);
++    else
++        send_command (cmd);
+ }
+apply_patch(auto_approved=true) exited 0 in 5ms:
+Success. Updated the following files:
+M /home/hep7/project/kairos/zlink/core/src/core/object.cpp
+exec
+/bin/bash -lc 'cmake --build core/build -j$(nproc) --target libzlink comp_zlink_pubsub comp_std_zmq_pubsub' in /home/hep7/project/kairos/zlink succeeded in 6.03s:
+[  2%] Building CXX object core/CMakeFiles/objects.dir/src/core/object.cpp.o
+[100%] Built target objects
+[100%] Linking CXX shared library ../lib/libzlink.so
+[100%] Built target libzlink
+[100%] Built target objects
+[100%] Built target libzlink
+[100%] Linking CXX executable ../../../bin/comp_zlink_pubsub
+[100%] Built target comp_zlink_pubsub
+[100%] Built target comp_std_zmq_pubsub
+exec
+/bin/bash -lc 'tail -n 60 doc/plan/perf/single-libzmq-gap-review.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    - 없음
+  - 원복
+    - `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path
+- 해석
+  - seq2만 보면 `tcp/inproc`가 둘 다 accepted baseline보다 좋아 보여
+    candidate처럼 보였지만, seq1과 seq3가 다시 baseline 아래로 내려갔다.
+  - 즉 current accepted `dist` helper 위에 single-pipe bookkeeping만 더 줄여도
+    stable broad win은 아니었다.
+  - 따라서 current `PUBSUB` 잔여 gap을 `match()/activated()` index/swap
+    bookkeeping 하나로 설명하진 않는다.
+- 다음 iteration 우선순위
+  - current accepted `dist` helper만 유지한다.
+  - guide 순서대로 다른 `pipe`/publication actual cost 후보나
+    더 큰 `ROUTER_ROUTER` public/aggregate differential을 본다.
+
+## 36. 2026-03-28 `dist.cpp` final-part same-thread `send_activate_read()` inline wakeup 로그
+
+- 작업한 가설
+  - current accepted `dist` helper는 final-part `write_and_flush`까지는 줄였지만,
+    same-thread `PUBSUB inproc`에서는 flush 뒤 `send_activate_read()`가 여전히
+exec
+/bin/bash -lc 'git status --short' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+?? doc/plan/perf/logs/
+exec
+/bin/bash -lc 'rg -n "배제 유지 후보|current code/문서 정합 메모|PUBSUB publish/distribution path를 single-subscriber win에서|same-thread inline wakeup|activate_write" doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md doc/internal/hot-path.ko.md' in /home/hep7/project/kairos/zlink succeeded in 0ms:
+doc/internal/hot-path.ko.md:37:- backpressure 분석에서는 `activate_write publication`과
+doc/internal/hot-path.ko.md:271:   - `activate_write` 자체는 zlink가 같은-thread에서 즉시
+doc/internal/hot-path.ko.md:625:  - `dist.cpp` final-part same-thread inline wakeup:
+doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md:380:- 현재 배제 유지 후보
+exec
+/bin/bash -lc "sed -n '372,470p' doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    `-19.48% / -39.31%`
+  - same delta의 broader single rerun은
+    `PAIR tcp/inproc -18.89% / -17.22%`,
+    `PUBSUB tcp/inproc -23.63% / -39.84%`,
+    `DEALER_DEALER tcp/inproc -24.09% / -27.90%`,
+    `DEALER_ROUTER tcp/inproc -27.28% / -27.07%`,
+    `ROUTER_ROUTER tcp/inproc -54.97% / -30.77%`였다
+  - multi `pubsub tcp 64B`는 `-16.65%`까지 회복했다
+- 현재 배제 유지 후보
+  - `fq.cpp` one-active-pipe recv fast path
+  - `DEALER_DEALER inproc 64B`가 `-34.71%`로 악화돼 원복
+  - `object.cpp` same-thread `send_activate_read()` direct delivery
+  - generic 적용은 `PAIR inproc`만 일부 회복했지만
+    `DEALER_DEALER tcp 64B`를 `-25.06%`로 악화시켜 원복
+  - `PAIR` no-handler 전용 gate도 `PAIR tcp/inproc 64B`를
+    `-26.32%` / `-32.96%`로 악화시켜 원복
+  - `dist.cpp` final-part same-thread `send_activate_read()` inline wakeup도
+    isolated `PUBSUB tcp/inproc 64B`를 `-25.70% / -42.49%`로
+    accepted baseline 아래로 내려 원복
+  - `socket_message_send_api.cpp` single-part public fast path의
+exec
+/bin/bash -lc "sed -n '470,560p' doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+    섞여 keep-worthy broad win으로 남지 못했다.
+  - 이 재진입은 계속 cost-axis 후보로 보되, 현재는 active delta가 아니라
+    generic 확대 후보로만 유지한다.
+  - 다만 2026-03-28 `pipe.cpp` / `dist.cpp` dist-only
+    non-recursive HWM check는 isolated first/rerun과
+    broader single rerun, multi `pubsub tcp`까지 current code 기준
+    keep-worthy broad win을 만들었다.
+  - 따라서 current accepted delta는 generic helper rollout이 아니라
+    `PUBSUB` publication path에 한정한 narrow pipe work 축소다.
+  - 2026-03-28 `socket_runtime.cpp` lifecycle atomic CAS fast path A/B도
+    `DEALER` raw 회복과 `PAIR`/public 흔들림이 엇갈렸다.
+  - 따라서 send-side lifecycle/backpressure 첫 우선순위는 유지하되,
+    현재 문서 기준으로 keep-worthy 공통 atomic fast path는 아직 없다.
+  - 같은 날 `PAIR` no-sync send scope 전용 enter+leave / leave-only fast path도
+    각각 raw/public guardrail 또는 `DEALER` broad guardrail을 만족시키지 못해
+    현재 코드에는 남아 있지 않다.
+  - 같은 날 `socket_base_msg.cpp` retry loop에서
+    installed-but-idle send-ready handler까지 sync 유지 범위를 넓히는 후보도
+    serial public/raw guardrail을 만족시키지 못해 현재 코드에는 남아 있지 않다.
+  - 2026-03-28 baseline 재검증에서
+exec
+/bin/bash -lc "sed -n '260,300p' doc/internal/hot-path.ko.md" in /home/hep7/project/kairos/zlink succeeded in 0ms:
+현재 기준 다음 성능개선 순서는 아래가 맞다.
+
+1. `PAIR`/`DEALER_DEALER` raw/public 분리는 완료됐지만,
+   public penalty를 고정 상수처럼 취급하지 않고 serial guardrail로 유지한다
+2. `socket_base_t::send()`의 public lifecycle fast path는
+   current code 기준 keep-worthy 공통 delta가 없어 actual 구현 우선순위에서
+   내린다. 새 broad win 근거가 생길 때만 다시 올린다
+3. blocking retry 공통 gate도 현재는 같은 상태다
+   - `enter_public_api()` 자체보다 `public_api_sync` 재획득 또는
+     retry-side sync 유지 실패가 비용이라는 해석은 유지한다
+   - 다만 2026-03-28 current code 기준 keep-worthy 공통 retry delta는 없다
+   - `activate_write` 자체는 zlink가 같은-thread에서 즉시
+     `process_command()`를 호출하므로 publication이 더 늦다고 단정하지 않는다
+   - 따라서 actual next work는 공통 retry gate 자체보다
+     pattern-specific publication/wakeup differential 쪽이다
+4. send-side `pipe_t`는 전체 lock 제거가 아니라
+   activation/flush ordering을 유지한 채 lock 안의 work를 줄이는 방향으로 본다
+5. `socket_base_t::send()`의 send-side throttle은 보조 후보로만 본다
+   - 현재 `process_commands(0, true)`는 libzmq와 거의 같은 구조다
+   - `counter-only` 치환은 현재 보류다

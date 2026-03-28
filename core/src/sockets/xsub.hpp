@@ -77,6 +77,7 @@ class xsub_t : public socket_base_t
     static void
     send_subscription (unsigned char *data_, size_t size_, void *arg_);
     int dispatch_ready_messages ();
+    int dispatch_ready_messages_serialized ();
     int dispatch_message (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     void notify_dispatch_stopped ();
     void refresh_delivery_ready_state (
@@ -122,6 +123,8 @@ class xsub_t : public socket_base_t
     std::atomic<spot_sub_io_handler_fn> _dispatch_callback;
     std::atomic<void *> _dispatch_userdata;
     std::atomic<uint32_t> _dispatch_inflight;
+    std::atomic<bool> _dispatch_pending;
+    std::atomic<bool> _dispatch_draining;
     mutable std::mutex _dispatch_control_mu;
     mutable std::mutex _dispatch_inflight_mu;
     std::condition_variable _dispatch_inflight_cv;

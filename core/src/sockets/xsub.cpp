@@ -107,6 +107,8 @@ zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _dispatch_callback (NULL),
     _dispatch_userdata (NULL),
     _dispatch_inflight (0),
+    _dispatch_pending (false),
+    _dispatch_draining (false),
     _dispatch_parts (),
     _socket_dispatch_drop_message (false),
     _delivery_ready_count (0)
@@ -202,7 +204,7 @@ void zlink::xsub_t::xread_activated (pipe_t *pipe_)
 {
     _fq.activated (pipe_);
     if (_dispatch_active.load (std::memory_order_acquire))
-        dispatch_ready_messages ();
+        (void) dispatch_ready_messages_serialized ();
 }
 
 void zlink::xsub_t::xwrite_activated (pipe_t *pipe_)
@@ -468,7 +470,51 @@ bool zlink::xsub_t::xhas_in ()
 void zlink::xsub_t::xdispatch_io ()
 {
     if (_dispatch_active.load (std::memory_order_acquire))
-        dispatch_ready_messages ();
+        (void) dispatch_ready_messages_serialized ();
+}
+
+int zlink::xsub_t::dispatch_ready_messages_serialized ()
+{
+    _dispatch_pending.store (true, std::memory_order_release);
+
+    bool expected = false;
+    if (!_dispatch_draining.compare_exchange_strong (
+          expected, true, std::memory_order_acq_rel,
+          std::memory_order_acquire)) {
+        return 0;
+    }
+
+    int rc = 0;
+    for (;;) {
+        _dispatch_pending.store (false, std::memory_order_release);
+        rc = dispatch_ready_messages ();
+        if (rc != 0)
+            break;
+        if (!_dispatch_pending.exchange (false, std::memory_order_acq_rel))
+            break;
+    }
+
+    _dispatch_draining.store (false, std::memory_order_release);
+
+    if (_dispatch_pending.exchange (false, std::memory_order_acq_rel)) {
+        expected = false;
+        if (_dispatch_draining.compare_exchange_strong (
+              expected, true, std::memory_order_acq_rel,
+              std::memory_order_acquire)) {
+            for (;;) {
+                _dispatch_pending.store (false, std::memory_order_release);
+                rc = dispatch_ready_messages ();
+                if (rc != 0)
+                    break;
+                if (!_dispatch_pending.exchange (
+                      false, std::memory_order_acq_rel))
+                    break;
+            }
+            _dispatch_draining.store (false, std::memory_order_release);
+        }
+    }
+
+    return rc;
 }
 
 int zlink::xsub_t::dispatch_ready_messages ()

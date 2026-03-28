@@ -53,6 +53,37 @@ public send/recv 경로다.
   경로로 정렬했다.
 - aligned first run/rerun은 `tcp -24.51% / -23.17%`,
   `inproc -41.79% / -44.68%`였다.
+- 이어서 semantic/backpressure map을 다시 찍자 default benchmark 조건
+  single `PUBSUB 64B`는 `tcp -27.04%`, `inproc -42.08%`였다.
+- 같은 code에서 `XPUB_NODROP=0` probe는
+  `tcp +0.22%`, `inproc -23.71%`였고,
+  `HWM=16` probe는 `tcp +9.40%`, `inproc +25.10%`였다.
+- latest multi `pubsub tcp 64B` rerun은
+  default HWM `-17.24%`, `HWM=16 -20.30%`였다.
+- 따라서 current `PUBSUB` 잔여 gap의 본체는 single-subscriber dist helper를
+  더 얹는 문제가 아니라, default HWM + `XPUB_NODROP=1` 조건의
+  publication/backpressure differential을 single/multi로 나눠 보는 쪽이다.
+- 추가 HWM sweep `16/64/256/1000`에서도
+  single `PUBSUB tcp/inproc 64B`가
+  `+12.34% / +5.19%`, `-32.19% / -38.29%`,
+  `-22.05% / -39.03%`, `-28.83% / -45.87%`로 크게 흔들렸다.
+- 즉 current `PUBSUB` gap은 여전히 HWM/backpressure 축에 민감하지만,
+  monotonic queue-depth 하나로 바로 환원되진 않는다.
+- 2026-03-28 single comparison report가 queue probe 지표를 저장하도록
+  갱신된 뒤 default `PUBSUB tcp/inproc 64B`는
+  `snd_pending_max 654 / 1450`,
+  `rcv_pending_max 513 / 725`로 기록됐다.
+- 같은 report 형식에서 `XPUB_NODROP=0` probe는
+  `snd_pending_max 508 / 946`,
+  `rcv_pending_max 622 / 1017`,
+  `HWM=16` probe는 `snd_pending_max 9 / 20`,
+  `rcv_pending_max 15 / 28`였다.
+- 즉 current `inproc` differential은 receiver latency보다
+  default HWM + `XPUB_NODROP=1` 조건에서 sender backlog가 더 크게 누적되는
+  쪽과 더 잘 맞는다.
+- 따라서 next `PUBSUB` step은 또 다른 `xpub/dist` micro helper 추가보다
+  validation surface와 `inproc` transport-specific `pipe` cost를 먼저
+  분리하는 쪽이어야 한다.
 - 즉 empty-topic frame/topic-aware recv surface mismatch는 실제로 있었지만,
   현재 `PUBSUB` 잔여 gap을 그 차이 하나로 설명할 수는 없다.
 - 이후 2026-03-28 same-handle concurrent `PUB` publish regression
@@ -173,6 +204,10 @@ steady-state single-part recv hot path:
 5. `recv_internal.cpp`의 dispatch/mode guard
 6. `PUBSUB`/`ROUTER` 계열의 pattern-specific public surface 차이
 
+여기서 `PUBSUB inproc` 잔여 gap은 현재도 `tcp`보다 훨씬 크게 남으므로,
+`pipe_t`의 `fast_mutex_t`/publication ordering cost를
+transport-specific probe 없이 건너뛰지 않는다.
+
 반대로 현재 기준 상위 후보가 아닌 것은:
 
 - `surface mismatch` 자체를 현재 gap의 본체로 보는 해석
@@ -280,9 +315,25 @@ steady-state single-part recv hot path:
 6. `zlink_recv()`의 남은 routed/strip/multipart export 경로를 더 얇게 만든다
 7. `recv_internal.cpp` mode guard 비용을 steady-state mode specialization 쪽으로
    줄인다
-8. `PUBSUB`는 `dist_t` one-matching-pipe fast path를 기준선으로 유지한 채
-   empty-prefix trie match 제거보다 publication/lifecycle 잔여 gap을 더 줄인다.
-   `ROUTER`는 현재 `PUBSUB` publication 축 다음으로 별도 정리한다
+8. `PUBSUB` semantic/backpressure map은 current code 기준으로 다시 정리됐다.
+   - default single aligned rerun:
+     `tcp/inproc -27.04% / -42.08%`
+   - `XPUB_NODROP=0` probe:
+     `tcp/inproc +0.22% / -23.71%`
+   - `HWM=16` probe:
+     `tcp/inproc +9.40% / +25.10%`
+   - queue probe report:
+     default `snd_pending_max 654 / 1450`,
+     `XPUB_NODROP=0 508 / 946`,
+     `HWM=16 9 / 20`
+   - latest multi `pubsub tcp 64B` rerun:
+     default `-17.24%`, `HWM=16 -20.30%`
+   즉 low-HWM single win이나 `XPUB_NODROP=0` sign flip을 acceptance로
+   오해하면 안 된다. current next work는
+   default HWM + `XPUB_NODROP=1` publication/backpressure differential이고,
+   이 분리 없이 `dist.cpp` / `xpub.cpp` / `pipe publication` 미세 후보를
+   다시 추가하지 않는다.
+   `ROUTER`는 이 semantic map을 반영한 뒤 다음으로 별도 정리한다.
 
 ## 8.1 현재 보류/기각된 방향
 
@@ -359,6 +410,21 @@ steady-state single-part recv hot path:
      `-25.70% / -42.49%`로 accepted baseline보다 둘 다 나빠졌다
    - 즉 current `PUBSUB` 잔여 gap을 same-thread `activate_read`
      mailbox bounce 하나로 설명하진 않는다
+20. `XPUB` same first-part retry matching cache
+   - default HWM + `XPUB_NODROP=1` retry/publication differential을
+     좁히기 위해 same first-part `EAGAIN` retry에서 trie rematch를
+     cache해 봤지만 `PUBSUB tcp/inproc 64B`가
+     `-26.40% / -44.32%`로 `tcp`는 noise 수준,
+     `inproc`은 semantic-map baseline보다 악화됐다
+   - 즉 current `PUBSUB` 잔여 gap을 retry rematch elision 하나로
+     설명하진 않는다
+21. same-thread `activate_write` mailbox 정렬
+   - libzmq와 맞춰 same-thread `activate_write`도 mailbox command로
+     보내 봤지만 `PUBSUB tcp/inproc 64B`가
+     `-26.81% / -43.47%`로 `tcp`는 noise 수준,
+     `inproc`은 semantic-map baseline보다 더 나빠졌다
+   - 즉 current `PUBSUB` 잔여 gap을
+     `activate_write` publication channel mismatch 하나로 설명하진 않는다
 
 이 항목들은 최근 A/B 실험이나 current code invariant 기준으로
 이미 역효과가 확인됐거나 correctness risk가 높다.
@@ -393,6 +459,12 @@ steady-state single-part recv hot path:
   같은 이유로 rejected candidate다. seq2만 보면 좋아 보였지만
   seq1/seq3가 accepted baseline 아래로 다시 내려가
   stable broad win을 만들지 못했다.
+- `XPUB` same first-part retry matching cache도 같은 이유로
+  rejected candidate다. default retry path의 repeated rematch를 줄이려는
+  방향 자체는 맞지만, current acceptance에서는 `inproc`이 더 나빠졌다.
+- same-thread `activate_write` mailbox 정렬도 같은 이유로
+  rejected candidate다. mailbox wakeup 채널과 retry wait를 맞추려는
+  방향은 타당했지만, current acceptance에서는 broad win을 만들지 못했다.
 
 ## 9. 현재 반영된 개선
 

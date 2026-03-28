@@ -26,12 +26,19 @@
   와
   [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
   를 둘 다 다시 읽는 것으로 시작한다.
+- 다만 로그 문서는 기본적으로 최신 요약/피벗/현재 작업 레지스터부터 읽는다.
+  오래된 rejected candidate 구간은 현재 가설을 검증하는 데 필요할 때만
+  역참조한다.
 - 둘 중 하나라도 현재 코드/해석/우선순위와 어긋나면 즉시 갱신한다.
 - 실제 변경이 없더라도, iteration 결과가 두 문서의 현재 내용과 일치하는지
   확인하지 않으면 다음 iteration으로 넘어가면 안 된다.
 - 별도 main/master/gap/residual/spec 문서는 추가로 만들지 않는다.
 - 이 루프의 기본 동작은 `--max-iterations 0`, 즉 목표 완료까지 무한 반복이다.
 - 반복 횟수를 제한하고 싶을 때만 명시적으로 `--max-iterations <N>`을 넘긴다.
+- 같은 wrapper scope에 대해 supervisor는 하나만 유지한다.
+  새 실행을 시작할 때 같은 `guide + logs-dir + gate-label` 범위의 기존
+  supervisor와, 같은 wrapper scope에 남아 있는 child `codex exec`가 있으면
+  먼저 정리하고 새 세션으로 시작한다.
 
 ## 3. 범위
 
@@ -132,20 +139,79 @@ raw/public 분리를 다시 찍는다.
    와
    [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
    최신 상태를 둘 다 읽는다.
+   기본 순서는 최신 pivot/요약/현재 작업 레지스터 우선이며,
+   오래된 로그 구간은 현재 가설과 직접 관련될 때만 다시 읽는다.
 3. 두 문서를 기준으로 현재 top hypothesis 하나만 고른다.
-4. `core/`와 `core/tests/`를 우선 수정한다.
-5. [`core/build/`](/home/hep7/project/kairos/zlink/core/build)로 빌드한다.
-6. 영향 패턴의 targeted single 벤치를 먼저 돌린다.
-7. 의미 있는 개선이 보이면 raw/public 분리를 다시 확인한다.
-8. 개선이 유지될 때만 broader single, 필요한 multi smoke를 수행한다.
-9. 결과 파일 경로, 숫자, 해석, 배제한 가설을
+4. 필요한 경우 `/home/hep7/project/kairos/libzmq` 대응 구현을 먼저 읽고,
+   현재 후보의 semantic / ordering / hot-path work 차이를 짧게 정리한다.
+5. 새 단계나 새 candidate family로 넘어가기 전에는 `claude` 의견도 한 번
+   수렴한다. 목적은 authority를 바꾸는 것이 아니라, 현재 가설을 다른 시각에서
+   검토해 local search drift를 막는 것이다.
+6. `core/`와 `core/tests/`를 우선 수정한다.
+7. [`core/build/`](/home/hep7/project/kairos/zlink/core/build)로 빌드한다.
+8. 영향 패턴의 targeted single 벤치를 먼저 돌린다.
+9. 의미 있는 개선이 보이면 raw/public 분리를 다시 확인한다.
+10. 개선이 유지될 때만 broader single, 필요한 multi smoke를 수행한다.
+11. 결과 파일 경로, 숫자, 해석, 배제한 가설을
    [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
    에 기록한다.
-10. 현재 iteration 결과가
+12. 현재 iteration 결과가
     [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
     와도 일치하도록 계약/주의점/우선순위/배제 후보를 반영하거나,
     변경이 없음을 확인한다.
-11. 아직 stop condition을 못 만족하면 다음 미해결 가설로 반복한다.
+13. 아직 stop condition을 못 만족하면 다음 미해결 가설로 반복한다.
+
+### 6.2 guide 재작성 트리거
+
+- 같은 패턴에서 같은 계열 후보가 `2`개 이상 연속으로 rejected candidate가 되면,
+  다음 iteration은 코드 수정이 아니라 guide/review/hot-path 재정렬부터 시작한다.
+- 특히 `PUBSUB`에서 `dist.cpp`, `xpub.cpp`, `pipe publication` 미시 후보가
+  연속으로 broad win을 만들지 못하면, 더 좁은 local 후보를 계속 추가하지 않는다.
+- 이 경우 먼저 semantic/backpressure map을 다시 만든 뒤에만 다음 code candidate로
+  넘어간다.
+
+### 6.3 미세 후보 제한 규칙
+
+- 각 iteration의 top hypothesis는 아래 셋 중 하나여야 한다.
+  - 공통 differential을 겨냥한 high-leverage 후보
+  - semantic/backpressure/probe 분리 측정
+  - 이미 유지된 delta의 일반화 또는 계약 보강
+- 새 단계, 새 pattern family, 새 broad hypothesis로 넘어갈 때는
+  local patch 전에 `libzmq` reference pass와 `claude` consult를 둘 다 거친다.
+  둘 중 하나라도 건너뛰면 바로 코드 수정으로 넘어가지 않는다.
+- 공통 differential이나 pattern-specific core path를 건드릴 때는
+  local patch 전에 `/home/hep7/project/kairos/libzmq` 대응 구현을 먼저 읽는 것을 기본으로 한다.
+- 목적은 upstream 동작을 복제하는 것이 아니라,
+  현재 차이가 `semantic`, `ordering`, `hot-path work` 중 어디에 있는지
+  분리하는 reference oracle로 쓰는 것이다.
+- 아래 형태의 local tweak는 semantic map이나 broad hypothesis 없이
+  바로 top hypothesis로 올리지 않는다.
+  - bookkeeping / index / refresh 제거
+  - same-thread wakeup / direct delivery / zero-elision
+  - 특정 pattern 전용 small helper
+- 같은 계열 local tweak가 `2`개 연속 rejected 되면,
+  다음 iteration은 반드시 code patch가 아니라
+  `raw/public 재분리`, `semantic probe`, `우선순위 재작성` 중 하나여야 한다.
+- 유지된 code delta 없이 rejected candidate만 `3` iteration 연속 쌓이면,
+  루프는 자동으로 탐색 단계로 되돌아간다.
+  다음 iteration은 broad hypothesis를 다시 쓰기 전에는
+  미세 최적화 패치를 시작하면 안 된다.
+- `semantic probe` iteration에서는 기본적으로 `core/` hot-path 코드를 수정하지 않는다.
+  측정 surface 자체가 잘못됐다는 강한 증거가 있을 때만 측정 코드를 손댄다.
+- 즉 semantic probe iteration의 기본 산출물은
+  - 결과 파일
+  - gap 해석
+  - 다음 broad hypothesis
+  이 셋이어야 한다.
+
+### 6.4 단계 승격 규칙
+
+- 현재 후보가 다음 단계로 갈 수 있으려면 최소한 아래 중 하나를 만족해야 한다.
+  - accepted baseline 대비 stable broad win
+  - semantic differential을 가르는 sign flip 또는 큰 gap 축소
+  - correctness contract를 강화하면서 성능도 유지
+- 위 셋 중 아무것도 만들지 못하면,
+  그 후보는 더 미세하게 파지 말고 rejected candidate로 기록한 뒤 종료한다.
 
 ### 6.1 단계별 commit / push
 
@@ -168,15 +234,31 @@ raw/public 분리를 다시 찍는다.
 
 현재 우선순위는 아래 순서를 유지한다.
 
-1. send-side `pipe` publication / ordering 경로의 lock 안 work 축소
-2. `PUBSUB` publish / distribution path
-3. `ROUTER_ROUTER` routed path
-4. 남아 있는 recv-side routed / strip / multipart export 경로
+1. 현재 accepted `PAIR` / `DEALER` 공통 delta를 기준선으로 유지하고,
+   broad win 근거 없는 공통 미세 후보는 다시 파지 않는다.
+2. `PUBSUB`는 code optimization 전에 semantic/backpressure map을 먼저 만든다.
+   최소 분리 축은 아래 네 가지다.
+   - `XPUB_NODROP=1` 대 `0` 진단 probe
+   - `tcp` 대 `inproc`
+   - single 대 multi
+   - default HWM 대 변경된 HWM
+3. `PUBSUB` semantic map 이후에만
+   - semantic differential
+   - core publication/lifecycle residual
+   을 분리해 다음 code candidate를 고른다.
+4. `ROUTER_ROUTER`는 `PUBSUB` semantic map이 끝난 뒤에 본다.
+5. 남아 있는 recv-side routed / strip / multipart export 경로는 마지막 단계로 둔다.
 
 2026-03-28 현재 send-side lifecycle / backpressure 공통 fast-path 후보는
 keep-worthy delta를 만들지 못해 actual implementation 우선순위에서 내렸다.
 새로운 broad win 근거가 나오기 전까지는 raw/public guardrail과 broader single
 acceptance를 동시에 만족한 pattern-specific publication/routed 후보만 올린다.
+
+현재 가이드의 기본 원칙은 아래와 같다.
+
+- 먼저 더 큰 분리 실험으로 원인을 좁힌다.
+- 그 다음에만 local code candidate를 올린다.
+- broad win 근거가 없는 미세 후보는 같은 family에서 반복하지 않는다.
 
 naive lock 제거는 현재 배제된 후보로 유지한다.
 
@@ -187,6 +269,15 @@ naive lock 제거는 현재 배제된 후보로 유지한다.
 - thread-safe contract를 약화하거나 우회해서 성능을 맞추지 않는다.
 - bench 수치를 좋게 보이게 하려고 benchmark API surface를 비대칭으로 바꾸지 않는다.
 - 테스트 완화, sleep 추가, retry loop 추가로 문제를 숨기지 않는다.
+- `PUBSUB` semantic map을 다시 만들기 전에는
+  `dist.cpp` / `xpub.cpp` / `pipe publication` 미시 후보를 계속 반복하지 않는다.
+- 같은 계열 rejected candidate가 누적된 상태에서 guide 재작성 없이 루프를 재시작하지 않는다.
+- stable broad win 근거 없이 pattern-specific small helper만 계속 바꾸는 식의
+  local search를 허용하지 않는다.
+- semantic map이 끝나기 전에는 `accepted delta` 주변 helper를 더 얹는 방식의
+  additive local search도 허용하지 않는다.
+- `XPUB_NODROP=0/1` probe는 진단용으로만 사용한다.
+  동일 조건의 `libzmq` 비교 목표를 대신하는 acceptance 기준으로 쓰지 않는다.
 
 ## 9. 표준 명령
 
@@ -211,6 +302,10 @@ bash -n doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh \
 마지막 명령은 session/log 디렉터리 초기화만 확인하는 스모크다.
 이 경우 exit code `0`이 정상이다.
 
+동일한 `logs-dir + gate-label`로 이미 루프가 살아 있으면,
+wrapper는 같은 범위의 기존 supervisor와 남아 있는 child `codex exec`
+를 먼저 정리한 뒤 새 세션을 시작해야 한다.
+
 무한 반복 기본 동작으로 실제 루프를 시작하려면:
 
 ```bash
@@ -228,6 +323,68 @@ bash -n doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh \
 ```bash
 cmake --build core/build -j$(nproc)
 ```
+
+### 9.1.1 `libzmq` reference pass
+
+후보가 send/backpressure/publication/routed path를 건드릴 때는,
+패치 전에 아래처럼 upstream 대응 파일을 먼저 읽는다.
+
+예시 대응:
+
+- `PAIR` / `DEALER`
+  - `/home/hep7/project/kairos/libzmq/src/socket_base.cpp`
+  - `/home/hep7/project/kairos/libzmq/src/pipe.cpp`
+  - `/home/hep7/project/kairos/libzmq/src/lb.cpp`
+- `PUBSUB`
+  - `/home/hep7/project/kairos/libzmq/src/xpub.cpp`
+  - `/home/hep7/project/kairos/libzmq/src/dist.cpp`
+  - `/home/hep7/project/kairos/libzmq/src/pipe.cpp`
+- `ROUTER`
+  - `/home/hep7/project/kairos/libzmq/src/router.cpp`
+  - `/home/hep7/project/kairos/libzmq/src/socket_base.cpp`
+
+이 단계의 산출물은 "무엇이 다른가"를 아래 세 축으로 한 줄씩 남기는 것이다.
+
+- semantic 차이
+- ordering / wakeup 차이
+- hot-path work 차이
+
+이 정리를 하지 않고 local helper patch부터 시작하지 않는다.
+
+### 9.1.2 `claude` consult pass
+
+새 단계나 새 broad hypothesis를 시작하기 전에는 `claude` 의견도 한 번 받는다.
+다만 `claude` 의견은 어디까지나 참고용 advisory다. authority는 여전히
+이 guide, 현재 로그 문서, hot-path 계약 문서, 그리고 실제 bench/test 결과다.
+
+먼저 사용 가능 여부를 확인한다.
+
+```bash
+claude --help
+```
+
+그 다음 non-interactive 한 번 호출로 현재 가설을 검토하게 한다.
+예시는 아래 형식을 기본으로 한다.
+
+```bash
+claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink \
+  "다음 문서를 읽고 현재 top hypothesis와 다음 단계의 위험/누락을 짧게 검토해줘:
+  1) /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-ralph-guide.ko.md
+  2) /home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md
+  3) /home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md
+  필요하면 /home/hep7/project/kairos/libzmq 대응 구현도 참고하고,
+  local search drift 여부와 더 큰 병목 후보가 있는지 먼저 말해줘."
+```
+
+규칙:
+
+- `claude`는 조언 수집용 advisory다. authority는 여전히 이 guide와
+  실제 bench/test 결과다.
+- `claude` 의견이 현재 guide와 다르면, 바로 코드 패치부터 하지 말고
+  guide/review/hot-path를 먼저 갱신할지 판단한다.
+- `claude`가 unavailable이면 그 사실과 이유를 로그에 남기고 계속 진행한다.
+- `semantic probe` 단계에서는 `claude`에게도 local tweak 제안보다
+  broad hypothesis / semantic differential 위주 검토를 요청한다.
 
 ### 9.2 targeted single public
 
@@ -285,6 +442,51 @@ python3 core/bench/with_zmq/multi/run_comparison.py dealer_dealer \
 같은 형식으로 `dealer_router`, `router_router`, `pubsub`를 확인한다.
 `stream`은 필요한 경우에만 별도 smoke로 본다.
 
+### 9.5.1 `PUBSUB` semantic / backpressure probe
+
+기존 accepted baseline과 직접 비교할 때는 아래 두 probe를 먼저 찍는다.
+
+```bash
+python3 core/bench/with_zmq/single/run_comparison.py \
+  --pattern PUBSUB \
+  --msg-sizes 64 \
+  --transport tcp,inproc \
+  --runs 1 \
+  --build-dir core/build \
+  --results-tag <tag>
+```
+
+```bash
+PERF_SINGLE_PUBSUB_XPUB_NODROP=0 \
+python3 core/bench/with_zmq/single/run_comparison.py \
+  --pattern PUBSUB \
+  --msg-sizes 64 \
+  --transport tcp,inproc \
+  --runs 1 \
+  --build-dir core/build \
+  --results-tag <tag>
+```
+
+가능하면 같은 iteration에서 아래 multi smoke도 같이 남긴다.
+
+```bash
+BENCH_TRANSPORTS=tcp \
+BENCH_MSG_SIZES=64 \
+BENCH_MULTI_WARMUP_SECONDS=1 \
+BENCH_MULTI_DURATION_SECONDS=3 \
+python3 core/bench/with_zmq/multi/run_comparison.py pubsub \
+  --build-dir core/build --runs 1
+```
+
+여기서 `XPUB_NODROP=0`이 큰 폭의 sign flip이나 gap 축소를 만들면,
+다음 단계는 local code tweak가 아니라 semantic differential 정리다.
+
+주의:
+
+- `XPUB_NODROP=0/1`은 어디까지나 원인 분리용 probe다.
+- 최종 비교/종료 판정은 항상 default benchmark 조건, 즉 `libzmq`와 같은 비교 조건으로만 한다.
+- `NODROP`을 켰을 때만 좋아지는 후보는 acceptance 대상으로 올리지 않는다.
+
 ### 9.6 최종 aggregate artifact가 필요할 때만
 
 ```bash
@@ -317,6 +519,10 @@ python3 core/bench/with_zmq/multi/run_comparison.py dealer_dealer \
 에 최소한 아래를 남긴다.
 
 - 작업한 가설 1개
+- candidate family 1개
+- 왜 이 후보가 high-leverage 또는 semantic probe인지 한 줄 근거
+- 참고한 `libzmq` 대응 파일
+- `claude` consult 여부와 핵심 조언 1~3줄
 - 수정한 파일 경로
 - 실행한 명령
 - 생성된 결과 파일 경로
@@ -377,6 +583,8 @@ rejected candidate는 반드시 로그에 남긴다.
     `DEALER_ROUTER tcp/inproc -27.28% / -27.07%`,
     `ROUTER_ROUTER tcp/inproc -54.97% / -30.77%`였다
   - multi `pubsub tcp 64B`는 `-16.65%`까지 회복했다
+  - 단, `PUBSUB` family는 여기서 더 local tweak를 얹지 않고
+    semantic/backpressure map 완료 전까지 탐색을 동결한다
 - 현재 배제 유지 후보
   - `fq.cpp` one-active-pipe recv fast path
   - `DEALER_DEALER inproc 64B`가 `-34.71%`로 악화돼 원복
@@ -419,6 +627,11 @@ rejected candidate는 반드시 로그에 남긴다.
   - `socket_message_recv_api.cpp` `SUB/XSUB` raw multipart single-part recv
     fast path도 first/rerun이 `tcp -30.67% / -26.74%`,
     `inproc -41.47% / -50.68%`로 엇갈려 broad win이 아니어서 원복
+  - `multipart_send_txn.cpp` / `socket_base_msg.cpp`
+    no-topic single-part `PUBSUB` blocked retry sync release도
+    publish contract 회귀는 통과했지만
+    single `PUBSUB tcp/inproc 64B`가
+    `-38.21% / -36.11%`로 `tcp`가 크게 악화돼 원복
   - `xpub.cpp` all-attached empty-prefix `send_to_all()` fast path도
     isolated `PUBSUB tcp 64B -22.28%`, multi `pubsub tcp 64B -21.60%`까지는
     회복했지만 broader single `PUBSUB tcp/inproc`가
@@ -456,6 +669,12 @@ rejected candidate는 반드시 로그에 남긴다.
     isolated first run은 `PUBSUB tcp/inproc 64B -21.70% / -35.47%`로
     둘 다 좋아졌지만, clean rerun `PUBSUB inproc 64B`가 `-41.46%`로
     accepted baseline보다 다시 나빠져 원복
+  - `XPUB` same first-part retry matching cache도
+    `PUBSUB tcp/inproc 64B`가 `-26.40% / -44.32%`로
+    `tcp`는 noise 수준, `inproc`은 semantic-map baseline보다 더 나빠져 원복
+  - same-thread `activate_write` mailbox 정렬도
+    `PUBSUB tcp/inproc 64B`가 `-26.81% / -43.47%`로
+    `tcp`는 noise 수준, `inproc`은 semantic-map baseline보다 더 나빠져 원복
   - `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path도
     sequential seq1/seq2/seq3 `PUBSUB tcp/inproc 64B`가
     `-24.81% / -43.41%`, `-22.71% / -34.67%`,
@@ -563,6 +782,14 @@ rejected candidate는 반드시 로그에 남긴다.
     isolated first run은 `PUBSUB tcp/inproc 64B -21.70% / -35.47%`로
     둘 다 회복했지만, clean rerun `PUBSUB inproc 64B`가 `-41.46%`로
     accepted baseline보다 다시 나빠져 현재 코드에는 없다.
+  - 같은 날 `XPUB` same first-part retry matching cache도
+    `PUBSUB tcp/inproc 64B -26.40% / -44.32%`로
+    `tcp`는 noise 수준, `inproc`은 semantic-map baseline보다 더 나빠져
+    현재 코드에는 없다.
+  - 같은 날 same-thread `activate_write` mailbox 정렬도
+    `PUBSUB tcp/inproc 64B -26.81% / -43.47%`로
+    `tcp`는 noise 수준, `inproc`은 semantic-map baseline보다 더 나빠져
+    현재 코드에는 없다.
   - 같은 날 current accepted `dist` helper 위
     `XPUB` all-attached empty-prefix `send_to_all()` v2도
     sequential seq1/seq2 `PUBSUB tcp/inproc 64B`가
@@ -597,6 +824,47 @@ rejected candidate는 반드시 로그에 남긴다.
     `-24.51%` / `-41.79%`, rerun은 `-23.17%` / `-44.68%`였다.
   - 즉 empty-topic frame/topic-aware recv surface mismatch는 실제로 있었지만,
     이를 제거해도 `PUBSUB` 잔여 gap의 본체가 사라지지는 않는다.
+  - 2026-03-28 semantic/backpressure rerun에서
+    default single `PUBSUB tcp/inproc 64B`는
+    `-27.04% / -42.08%`였다.
+  - 같은 code에서 `XPUB_NODROP=0` probe는
+    `tcp/inproc +0.22% / -23.71%`,
+    `HWM=16` probe는 `tcp/inproc +9.40% / +25.10%`였다.
+  - latest multi `pubsub tcp 64B` rerun은
+    default HWM `-17.24%`, `HWM=16 -20.30%`였다.
+  - 따라서 current `PUBSUB` semantic map은 끝났고,
+    low-HWM single win을 multi/general acceptance로 쓰지 않는다.
+    actual next `PUBSUB` code 후보는
+    default HWM + `XPUB_NODROP=1` publication/backpressure differential이어야 한다.
+  - 추가 HWM sweep
+    (`codex_20260328_pubsub_hwm_probe_16/64/256/1000`)은
+    single `PUBSUB tcp/inproc 64B`가
+    `+12.34% / +5.19%`, `-32.19% / -38.29%`,
+    `-22.05% / -39.03%`, `-28.83% / -45.87%`였다.
+  - 즉 current `PUBSUB` gap은 여전히 HWM/backpressure 축에 민감하지만,
+    monotonic queue-depth 하나로 설명되진 않는다.
+  - 따라서 next `PUBSUB` iteration은 또 다른 `xpub/dist` micro helper가 아니라
+    direct `test_xpub_nodrop` baseline/ctest surface mismatch와
+    `inproc` transport-specific differential을 먼저 probe해야 한다.
+  - 같은 날 safe single-pipe `nodrop` fusion도 direct
+    `./core/build/bin/test_xpub_nodrop`에서
+    heap corruption / invalid msg assert로 바로 탈락해 현재 코드에는 없다.
+  - full revert 뒤 repeated direct `test_xpub_nodrop` run은
+    PASS와 abort가 섞였다.
+    `Assertion failed: check() (.../msg.cpp:559)`,
+    `Bad address (.../xsub.cpp:56/68)`,
+    `malloc(): corrupted top size`가 PASS 사이에 섞여 나와
+    deterministic baseline이 아니었다.
+  - `test_xpub_nodrop`는 현재 ctest surface에도 등록돼 있지 않으므로,
+    baseline을 다시 고정하기 전까지는 auxiliary diagnostic으로만 쓴다.
+  - single comparison report도 이제 queue probe 지표를 함께 저장한다.
+    default `PUBSUB tcp/inproc 64B`는
+    `snd_pending_max 654 / 1450`,
+    `rcv_pending_max 513 / 725`,
+    `XPUB_NODROP=0` probe는 `508 / 946`, `622 / 1017`,
+    `HWM=16` probe는 `9 / 20`, `15 / 28`이었다.
+    즉 current `inproc` differential은 receiver latency보다
+    sender backlog/publication 축으로 더 선명해졌다.
 - 아직 남은 핵심 미달
   - `PAIR tcp 64B`: `-18.89%`
   - `PAIR inproc 64B`: `-17.22%`
@@ -604,12 +872,12 @@ rejected candidate는 반드시 로그에 남긴다.
   - `DEALER_DEALER inproc 64B`: `-27.90%`
   - `DEALER_ROUTER tcp 64B`: `-27.28%`
   - `DEALER_ROUTER inproc 64B`: `-27.07%`
-  - `PUBSUB tcp 64B`: `-23.63%`
-  - `PUBSUB inproc 64B`: `-39.84%`
+  - `PUBSUB tcp 64B`: `-27.04%`
+  - `PUBSUB inproc 64B`: `-42.08%`
   - `ROUTER_ROUTER tcp 64B`: `-54.97%`
   - `ROUTER_ROUTER inproc 64B`: `-30.77%`
   - multi `dealer_dealer tcp 64B`: `-29.55%`
-  - multi `pubsub tcp 64B`: `-16.65%`
+  - multi `pubsub tcp 64B`: `-17.24%`
 
 - [x] same-handle concurrent `PUB` publish contract regression
       (`test_pubsub_publish_is_safe_from_multiple_threads`)을 고치고
@@ -623,14 +891,37 @@ rejected candidate는 반드시 로그에 남긴다.
       `ROUTER_ROUTER` 전용 differential 정리로 넘긴다.
 - [x] `pipe` send/publication 경로에서 ordering을 유지한 채 lock 안 work를 줄였다.
 - [x] single `PUBSUB` no-topic bench surface를 현재 계약에 맞게 다시 정렬했다.
-- [ ] `PUBSUB` publish/distribution path를 single-subscriber win에서
-      inproc/multi까지 확장한다.
+- [x] `PUBSUB` semantic/backpressure map을 다시 만들었다.
+      default single aligned rerun은
+      `PUBSUB tcp/inproc 64B -27.04% / -42.08%`,
+      `XPUB_NODROP=0` probe는 `+0.22% / -23.71%`,
+      `HWM=16` probe는 `+9.40% / +25.10%`였다.
+      latest multi `pubsub tcp 64B` rerun은
+      default HWM `-17.24%`, `HWM=16 -20.30%`였다.
+      즉 current gap의 큰 축은 single-subscriber helper 추가보다
+      default HWM + `XPUB_NODROP=1` publication/backpressure differential이다.
+- [x] single comparison report가 `PUBSUB` queue probe 지표를 저장하도록
+      갱신했다.
+      [`core/bench/with_zmq/single/run_comparison.py`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/single/run_comparison.py)가
+      `snd_pending_max` / `rcv_pending_max` / `rcv_pending_end`를 결과 파일에
+      남기도록 바뀌었고, default report는
+      `PUBSUB tcp/inproc 64B snd_pending_max 654 / 1450`,
+      `rcv_pending_max 513 / 725`를 저장했다.
+- [ ] `PUBSUB` default HWM + `XPUB_NODROP=1` publication/backpressure
+      differential을 pattern-specific code candidate로 줄인다.
+      `XPUB` same first-part retry matching cache도
+      `PUBSUB tcp/inproc 64B -26.40% / -44.32%`로
+      `tcp`는 noise 수준, `inproc`은 semantic-map baseline보다 더 나빠져
+      rejected candidate가 됐다.
+      same-thread `activate_write` mailbox 정렬도
+      `PUBSUB tcp/inproc 64B -26.81% / -43.47%`로
+      `tcp`는 noise 수준, `inproc`은 semantic-map baseline보다 더 나빠져
+      rejected candidate가 됐다.
       current accepted `dist` helper 위
       `XPUB` all-attached empty-prefix `send_to_all()` v2도
       sequential seq1/seq2 `PUBSUB tcp/inproc 64B`
       `-25.77% / -40.89%`, `-23.12% / -40.39%`로
-      accepted baseline `-23.63% / -39.84%`를 stable하게 넘지 못해
-      rejected candidate가 됐다.
+      accepted baseline을 stable하게 넘지 못해 rejected candidate가 됐다.
       `dist.cpp` single-pipe `match()/activated()` bookkeeping fast path도
       seq1/seq2/seq3 `PUBSUB tcp/inproc 64B`
       `-24.81% / -43.41%`, `-22.71% / -34.67%`,
@@ -638,6 +929,28 @@ rejected candidate는 반드시 로그에 남긴다.
       `dist.cpp` final-part same-thread `send_activate_read()` inline wakeup도
       isolated `PUBSUB tcp/inproc 64B`가 `-25.70% / -42.49%`로
       accepted baseline 아래라 rejected candidate가 됐다.
+      safe single-pipe `nodrop` fusion도 direct
+      `./core/build/bin/test_xpub_nodrop`에서
+      heap corruption / invalid msg assert로 bench 전에 rejected 됐다.
+      low-HWM single win과 `XPUB_NODROP=0` sign flip은 acceptance가 아니라
+      semantic probe 결과로만 유지한다.
+      추가 HWM sweep `16/64/256/1000`은
+      `+12.34% / +5.19%`, `-32.19% / -38.29%`,
+      `-22.05% / -39.03%`, `-28.83% / -45.87%`로 non-monotonic했다.
+      queue-probe report에서는 default / `XPUB_NODROP=0` / `HWM=16`이
+      `snd_pending_max tcp/inproc 654 / 1450`,
+      `508 / 946`, `9 / 20`이었다.
+      즉 current `inproc` 잔여 gap은 receiver latency보다
+      sender backlog/publication 누적과 더 잘 맞는다.
+      `test_xpub_nodrop`는 current workspace에서 ctest gate가 아니라
+      auxiliary diagnostic으로만 유지한다.
+      no-topic single-part `PUBSUB` blocked retry sync release도
+      publish contract 회귀는 통과했지만
+      single `PUBSUB tcp/inproc 64B`
+      `-38.21% / -36.11%`로 `tcp`가 크게 악화돼 rejected candidate가 됐다.
+      따라서 current next step은 또 다른 `xpub/dist` helper나
+      retry sync release가 아니라, sender backlog/publication 누적을 줄이는
+      `inproc` `pipe`/publication differential code candidate다.
 - [x] `test_router_mandatory_hwm`를 ctest에 등록하고
       `zlink_send_rid()` mandatory-HWM 회귀를 추가했다.
 - [x] `test_public_inproc_router_send_rid_multipart_blocking()`으로

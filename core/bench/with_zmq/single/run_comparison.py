@@ -462,6 +462,12 @@ def metric_or_none(metric_map: Dict[str, float], key: str):
         return None
 
 
+def format_queue_metric(value: Optional[float]) -> str:
+    if value is None:
+        return "N/A"
+    return f"{value:8.2f}"
+
+
 def build_transport_report_header_lines(transport: str) -> List[str]:
     size_w = 6
     metric_w = 10
@@ -516,7 +522,7 @@ def build_size_report_lines(
     else:
         l_diff_s = "N/A"
 
-    return [
+    lines = [
         (
             f"| {f'{size}B':<{size_w}} | {'Throughput':<{metric_w}} | {std_t_s:>{val_w}} | "
             f"{zlk_t_s:>{val_w}} | {t_diff_s:>{diff_w}} |"
@@ -526,6 +532,26 @@ def build_size_report_lines(
             f"{zlk_l_s:>{val_w}} | {l_diff_s:>{diff_w}} |"
         ),
     ]
+
+    queue_metric_specs = [
+        ("snd_pending_max", "SndPending"),
+        ("rcv_pending_max", "RcvPending"),
+        ("rcv_pending_end", "RcvEnd"),
+    ]
+    for metric_key, metric_label in queue_metric_specs:
+        std_metric = metric_or_none(std_data, f"{transport}|{size}|{metric_key}")
+        zlk_metric = metric_or_none(zlk_data, f"{transport}|{size}|{metric_key}")
+        if std_metric is None and zlk_metric is None:
+            continue
+        lines.append(
+            (
+                f"| {f'{size}B':<{size_w}} | {metric_label:<{metric_w}} | "
+                f"{format_queue_metric(std_metric):>{val_w}} | "
+                f"{format_queue_metric(zlk_metric):>{val_w}} | {'N/A':>{diff_w}} |"
+            )
+        )
+
+    return lines
 
 
 def build_pattern_report_lines(
@@ -576,8 +602,6 @@ def parse_result_line(line: str, transport: str, expected_size: int):
         return None
 
     if line_transport != transport or line_size != expected_size:
-        return None
-    if metric not in ("throughput", "latency"):
         return None
     return line_transport, line_size, metric, value
 
@@ -664,7 +688,7 @@ def collect_data(
         for sz in msg_sizes:
             if show_progress:
                 print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
-            metric_buckets: Dict[str, List[float]] = {"throughput": [], "latency": []}
+            metric_buckets: Dict[str, List[float]] = {}
             failed_runs = 0
             expected_throughput = f"{tr}|{sz}|throughput"
             expected_latency = f"{tr}|{sz}|latency"
@@ -728,17 +752,12 @@ def collect_data(
                         )
                     continue
 
-                metric_buckets["throughput"].append(results[expected_throughput])
-                metric_buckets["latency"].append(results[expected_latency])
+                for key, value in results.items():
+                    metric_buckets.setdefault(key, []).append(value)
 
-            if metric_buckets["throughput"]:
-                final_stats[expected_throughput] = statistics.median(
-                    metric_buckets["throughput"]
-                )
-            if metric_buckets["latency"]:
-                final_stats[expected_latency] = statistics.median(
-                    metric_buckets["latency"]
-                )
+            for key, values in metric_buckets.items():
+                if values:
+                    final_stats[key] = statistics.median(values)
 
             if show_progress:
                 if failed_runs:

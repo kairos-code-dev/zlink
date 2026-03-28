@@ -124,6 +124,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Writes and flushes with the same non-recursive HWM check variant.
     bool write_and_flush_no_recursive_hwm_check (const msg_t *msg_);
 
+
     //  Remove unfinished parts of the outbound message from the pipe.
     void rollback () const;
 

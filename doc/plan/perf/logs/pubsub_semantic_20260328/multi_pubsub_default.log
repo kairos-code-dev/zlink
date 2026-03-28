@@ -1,0 +1,10 @@
+
+## PATTERN: MULTI_PUBSUB
+  > Benchmarking libzmq for MULTI_PUBSUB...
+  > Benchmarking zlink for MULTI_PUBSUB...
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   5388.26 Kmsg/s |   4459.55 Kmsg/s |   -17.24% |
+| 64B    | Latency    |       1628.18 ms |       1505.50 ms |    +7.53% |

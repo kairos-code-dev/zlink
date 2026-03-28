@@ -15,6 +15,8 @@ INIT_ONLY=0
 MODEL_ARG=()
 CURRENT_JOB_PID=""
 DISPLAY_NAME="${RALPH_LOOP_DISPLAY_NAME:-$(basename "$0")}"
+SUPERVISOR_LOCK_DIR=""
+SESSION_SCOPE_ID=""
 CODEX_ARGS=(
   exec
   --dangerously-bypass-approvals-and-sandbox
@@ -62,6 +64,100 @@ is_nonnegative_integer() {
   [[ "${1}" =~ ^[0-9]+$ ]]
 }
 
+trim_whitespace() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "${value}"
+}
+
+sanitize_scope_token() {
+  local value="$1"
+  value="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')"
+  value="$(printf '%s' "${value}" | tr -cs 'a-z0-9._-' '_')"
+  value="${value##_}"
+  value="${value%%_}"
+  if [[ -z "${value}" ]]; then
+    value="default"
+  fi
+  printf '%s' "${value}"
+}
+
+load_supervisor_lock_field() {
+  local file_path="$1"
+  local key="$2"
+  sed -n "s/^${key}=//p" "${file_path}" | head -n 1
+}
+
+release_supervisor_lock() {
+  local owner_file
+  local lock_pid
+
+  if [[ -z "${SUPERVISOR_LOCK_DIR}" ]] || [[ ! -d "${SUPERVISOR_LOCK_DIR}" ]]; then
+    return 0
+  fi
+
+  owner_file="${SUPERVISOR_LOCK_DIR}/owner"
+  if [[ -f "${owner_file}" ]]; then
+    lock_pid="$(load_supervisor_lock_field "${owner_file}" pid)"
+    if [[ -n "${lock_pid}" ]] && [[ "${lock_pid}" != "$$" ]]; then
+      return 0
+    fi
+  fi
+
+  rm -rf "${SUPERVISOR_LOCK_DIR}"
+}
+
+acquire_supervisor_lock() {
+  local owner_file
+  local lock_pid
+  local lock_guide
+  local lock_started_at
+
+  SUPERVISOR_LOCK_DIR="${LOGS_DIR}/.${GATE_LABEL}.supervisor.lock"
+  owner_file="${SUPERVISOR_LOCK_DIR}/owner"
+
+  while true; do
+    if mkdir "${SUPERVISOR_LOCK_DIR}" 2>/dev/null; then
+      cat > "${owner_file}" <<EOF
+pid=$$
+display_name=${DISPLAY_NAME}
+guide=${GUIDE_PATH}
+started_at=$(date '+%Y-%m-%d %H:%M:%S %z')
+EOF
+      return 0
+    fi
+
+    if [[ ! -f "${owner_file}" ]]; then
+      echo "Supervisor lock exists without owner metadata: ${SUPERVISOR_LOCK_DIR}" >&2
+      echo "Remove the stale lock directory or wait for the active loop to exit." >&2
+      exit 1
+    fi
+
+    lock_pid="$(load_supervisor_lock_field "${owner_file}" pid)"
+    lock_guide="$(load_supervisor_lock_field "${owner_file}" guide)"
+    lock_started_at="$(load_supervisor_lock_field "${owner_file}" started_at)"
+
+    if [[ -n "${lock_pid}" ]] && kill -0 "${lock_pid}" 2>/dev/null; then
+      echo "=== Existing supervisor lock owner detected; terminating it first ==="
+      echo "Lock: ${SUPERVISOR_LOCK_DIR}"
+      echo "Owner pid: ${lock_pid}"
+      if [[ -n "${lock_started_at}" ]]; then
+        echo "Started at: ${lock_started_at}"
+      fi
+      if [[ -n "${lock_guide}" ]]; then
+        echo "Guide: ${lock_guide}"
+      fi
+      terminate_supervisor_run "${lock_pid}"
+      rm -rf "${SUPERVISOR_LOCK_DIR}"
+      continue
+    fi
+
+    echo "=== Detected stale supervisor lock; releasing it ==="
+    rm -rf "${SUPERVISOR_LOCK_DIR}"
+  done
+}
+
 terminate_process_tree() {
   local pid="$1"
   local child_pid
@@ -88,15 +184,110 @@ terminate_process_tree() {
   kill -KILL "${pid}" 2>/dev/null || true
 }
 
+terminate_process_group_if_safe() {
+  local pid="$1"
+  local pgid
+
+  if [[ -z "${pid}" ]] || ! kill -0 "${pid}" 2>/dev/null; then
+    return 0
+  fi
+
+  pgid="$(ps -o pgid= -p "${pid}" 2>/dev/null | head -n 1 || true)"
+  pgid="$(trim_whitespace "${pgid}")"
+  if [[ -z "${pgid}" ]]; then
+    return 0
+  fi
+
+  kill -CONT -- "-${pgid}" 2>/dev/null || true
+  kill -- "-${pgid}" 2>/dev/null || true
+  sleep 0.2
+  kill -KILL -- "-${pgid}" 2>/dev/null || true
+}
+
+terminate_supervisor_run() {
+  local pid="$1"
+
+  if [[ -z "${pid}" ]]; then
+    return 0
+  fi
+
+  terminate_process_group_if_safe "${pid}"
+  terminate_process_tree "${pid}"
+}
+
+terminate_existing_supervisors() {
+  local ps_line
+  local pid
+  local cmd
+
+  while IFS= read -r ps_line; do
+    [[ -z "${ps_line}" ]] && continue
+    ps_line="$(trim_whitespace "${ps_line}")"
+    pid="${ps_line%% *}"
+    cmd="${ps_line#* }"
+
+    if [[ -z "${pid}" ]] || [[ "${pid}" == "$$" ]]; then
+      continue
+    fi
+    if [[ "${cmd}" != *"run_codex_execution_guide_loop.sh"* ]]; then
+      continue
+    fi
+    if [[ "${cmd}" != *"--guide ${GUIDE_PATH}"* ]]; then
+      continue
+    fi
+    if [[ "${cmd}" != *"--logs-dir ${LOGS_DIR}"* ]]; then
+      continue
+    fi
+    if [[ "${cmd}" != *"--gate-label ${GATE_LABEL}"* ]]; then
+      continue
+    fi
+
+    echo "=== Existing Ralph loop supervisor detected; terminating it first ==="
+    echo "PID: ${pid}"
+    echo "CMD: ${cmd}"
+    terminate_supervisor_run "${pid}"
+  done < <(ps -eo pid=,args=)
+}
+
+terminate_existing_codex_children() {
+  local ps_line
+  local pid
+  local cmd
+
+  while IFS= read -r ps_line; do
+    [[ -z "${ps_line}" ]] && continue
+    ps_line="$(trim_whitespace "${ps_line}")"
+    pid="${ps_line%% *}"
+    cmd="${ps_line#* }"
+
+    if [[ -z "${pid}" ]] || [[ "${pid}" == "$$" ]]; then
+      continue
+    fi
+    if [[ "${cmd}" != *"codex exec"* ]]; then
+      continue
+    fi
+    if [[ "${cmd}" != *"${LOGS_DIR}/codex_execution_guide_loop_${SESSION_SCOPE_ID}_"* ]]; then
+      continue
+    fi
+
+    echo "=== Existing loop child process detected; terminating it first ==="
+    echo "PID: ${pid}"
+    echo "CMD: ${cmd}"
+    terminate_supervisor_run "${pid}"
+  done < <(ps -eo pid=,args=)
+}
+
 cleanup() {
   local exit_rc="${1:-$?}"
 
   trap - EXIT INT TERM HUP QUIT TSTP
 
   if [[ -n "${CURRENT_JOB_PID}" ]] && kill -0 "${CURRENT_JOB_PID}" 2>/dev/null; then
-    terminate_process_tree "${CURRENT_JOB_PID}"
+    terminate_supervisor_run "${CURRENT_JOB_PID}"
     wait "${CURRENT_JOB_PID}" 2>/dev/null || true
   fi
+
+  release_supervisor_lock
 
   exit "${exit_rc}"
 }
@@ -179,10 +370,15 @@ if ! is_nonnegative_integer "${MAX_ITERATIONS}"; then
   exit 1
 fi
 
+SESSION_SCOPE_ID="$(sanitize_scope_token "${DISPLAY_NAME}_${GATE_LABEL}")"
+
 mkdir -p "${LOGS_DIR}"
+terminate_existing_supervisors
+terminate_existing_codex_children
+acquire_supervisor_lock
 
 timestamp="$(date '+%Y%m%d_%H%M%S')"
-session_dir="${LOGS_DIR}/codex_execution_guide_loop_${timestamp}"
+session_dir="${LOGS_DIR}/codex_execution_guide_loop_${SESSION_SCOPE_ID}_${timestamp}"
 gate_dir="${session_dir}/gate"
 gate_status_file="${gate_dir}/${GATE_LABEL}.status"
 mkdir -p "${session_dir}"
@@ -199,6 +395,7 @@ Guide: ${GUIDE_PATH}
 Legacy secondary plan: ${MASTER_PLAN_PATH}
 Session dir: ${session_dir}
 Gate dir: ${gate_dir}
+Supervisor lock: ${SUPERVISOR_LOCK_DIR}
 Max iterations: ${max_iterations_display}
 Gate status file: ${gate_status_file}
 Stress count: ${STRESS_COUNT}

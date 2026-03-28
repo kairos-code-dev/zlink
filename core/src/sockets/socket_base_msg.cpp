@@ -6,15 +6,24 @@
 #include "utils/err.hpp"
 #include "utils/likely.hpp"
 
+namespace
+{
+void prepare_direct_send_message (zlink::msg_t *msg_, int flags_)
+{
+    msg_->reset_flags (zlink::msg_t::more);
+    if (flags_ & ZLINK_SNDMORE)
+        msg_->set_flags (zlink::msg_t::more);
+    msg_->reset_metadata ();
+}
+}
+
 int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 {
     // Hot path: every public single-part send pays this steady-state cost.
     // Keep lifecycle/backpressure logic correct, but avoid thickening the
     // success path with new work that is not contract-critical.
-    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
-    const bool needs_public_api_sync =
-      options.type != ZLINK_CORE_SOCKET_PAIR;
-    socket_public_send_scope_t send_scope (lifecycle, needs_public_api_sync);
+    socket_public_send_scope_t send_scope (
+      lifecycle_coordinator (), direct_send_needs_public_api_sync ());
     if (!send_scope.acquired ())
         return -1;
 
@@ -24,6 +33,46 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 int zlink::socket_base_t::send_scoped (msg_t *msg_,
                                        int flags_,
                                        socket_public_send_scope_t &send_scope)
+{
+    return send_direct_with_retry (NULL, msg_, flags_, send_scope);
+}
+
+int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
+                                       msg_t *msg_,
+                                       int flags_)
+{
+    socket_public_send_scope_t send_scope (
+      lifecycle_coordinator (), true);
+    if (!send_scope.acquired ())
+        return -1;
+
+    return send_routed_scoped (target_rid_, msg_, flags_, send_scope);
+}
+
+int zlink::socket_base_t::send_routed_scoped (
+  const zlink_routing_id_t *target_rid_,
+  msg_t *msg_,
+  int flags_,
+  socket_public_send_scope_t &send_scope)
+{
+    if (unlikely (!target_rid_)) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return send_direct_with_retry (target_rid_, msg_, flags_, send_scope);
+}
+
+bool zlink::socket_base_t::direct_send_needs_public_api_sync () const
+{
+    return options.type != ZLINK_CORE_SOCKET_PAIR;
+}
+
+int zlink::socket_base_t::send_direct_with_retry (
+  const zlink_routing_id_t *target_rid_,
+  msg_t *msg_,
+  int flags_,
+  socket_public_send_scope_t &send_scope)
 {
     zlink_assert (send_scope.acquired ());
 
@@ -41,12 +90,9 @@ int zlink::socket_base_t::send_scoped (msg_t *msg_,
     if (unlikely (rc != 0))
         return -1;
 
-    msg_->reset_flags (msg_t::more);
-    if (flags_ & ZLINK_SNDMORE)
-        msg_->set_flags (msg_t::more);
-    msg_->reset_metadata ();
+    prepare_direct_send_message (msg_, flags_);
 
-    rc = xsend (msg_);
+    rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
     if (rc == 0)
         return 0;
     if (unlikely (rc == -2)) {
@@ -76,121 +122,22 @@ int zlink::socket_base_t::send_scoped (msg_t *msg_,
     int timeout = options.sndtimeo;
     const uint64_t end = timeout < 0 ? 0 : (_clock.now_ms () + timeout);
     const bool hold_sync_during_retry =
-      send_scope.sync_locked () && !send_ready_handler_active ();
+      send_scope.should_hold_sync_during_retry (send_ready_handler_active ());
 
     if (!hold_sync_during_retry)
-        send_scope.unlock_sync ();
+        send_scope.release_sync_for_retry ();
 
     while (true) {
         rc = process_commands (timeout, false);
         if (unlikely (rc != 0))
             return -1;
         if (!hold_sync_during_retry)
-            send_scope.relock_sync ();
-        rc = xsend (msg_);
+            send_scope.reacquire_sync_after_retry ();
+        rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
         if (rc == 0)
             break;
         if (!hold_sync_during_retry)
-            send_scope.unlock_sync ();
-        if (unlikely (errno != EAGAIN))
-            return -1;
-        if (timeout > 0) {
-            timeout = static_cast<int> (end - _clock.now_ms ());
-            if (timeout <= 0) {
-                errno = EAGAIN;
-                return -1;
-            }
-        }
-    }
-
-    return 0;
-}
-
-int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
-                                       msg_t *msg_,
-                                       int flags_)
-{
-    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
-    socket_public_send_scope_t send_scope (lifecycle, true);
-    if (!send_scope.acquired ())
-        return -1;
-
-    return send_routed_scoped (target_rid_, msg_, flags_, send_scope);
-}
-
-int zlink::socket_base_t::send_routed_scoped (
-  const zlink_routing_id_t *target_rid_,
-  msg_t *msg_,
-  int flags_,
-  socket_public_send_scope_t &send_scope)
-{
-    zlink_assert (send_scope.acquired ());
-
-    if (unlikely (_ctx_terminated)) {
-        errno = ETERM;
-        return -1;
-    }
-
-    if (unlikely (!target_rid_ || !msg_ || !msg_->check ())) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    int rc = process_commands (0, true);
-    if (unlikely (rc != 0))
-        return -1;
-
-    msg_->reset_flags (msg_t::more);
-    if (flags_ & ZLINK_SNDMORE)
-        msg_->set_flags (msg_t::more);
-    msg_->reset_metadata ();
-
-    rc = xsend_routed (target_rid_, msg_);
-    if (rc == 0)
-        return 0;
-    if (unlikely (rc == -2)) {
-        if (!((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0)) {
-            rc = msg_->close ();
-            errno_assert (rc == 0);
-            rc = msg_->init ();
-            errno_assert (rc == 0);
-            return 0;
-        }
-    }
-    if (unlikely (errno != EAGAIN)) {
-        if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
-            if (errno == ENOTCONN || errno == EHOSTUNREACH
-                || errno == ETIMEDOUT) {
-                arm_send_ready_notification ();
-            }
-        }
-        return -1;
-    }
-
-    if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
-        arm_send_ready_notification ();
-        return -1;
-    }
-
-    int timeout = options.sndtimeo;
-    const uint64_t end = timeout < 0 ? 0 : (_clock.now_ms () + timeout);
-    const bool hold_sync_during_retry =
-      send_scope.sync_locked () && !send_ready_handler_active ();
-
-    if (!hold_sync_during_retry)
-        send_scope.unlock_sync ();
-
-    while (true) {
-        rc = process_commands (timeout, false);
-        if (unlikely (rc != 0))
-            return -1;
-        if (!hold_sync_during_retry)
-            send_scope.relock_sync ();
-        rc = xsend_routed (target_rid_, msg_);
-        if (rc == 0)
-            break;
-        if (!hold_sync_during_retry)
-            send_scope.unlock_sync ();
+            send_scope.release_sync_for_retry ();
         if (unlikely (errno != EAGAIN))
             return -1;
         if (timeout > 0) {

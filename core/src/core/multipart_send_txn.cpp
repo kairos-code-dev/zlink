@@ -205,12 +205,6 @@ static int attempt_send_publish (zlink::socket_base_t *socket_,
                               scope_);
 }
 
-static bool direct_send_needs_public_api_sync (
-  const zlink::socket_base_t *socket_)
-{
-    return socket_->socket_type () != ZLINK_CORE_SOCKET_PAIR;
-}
-
 }
 
 int zlink::logical_multipart_send (socket_base_t *socket_,
@@ -225,7 +219,7 @@ int zlink::logical_multipart_send (socket_base_t *socket_,
 
     zlink::socket_public_send_scope_t send_scope (
       socket_->lifecycle_coordinator (),
-      direct_send_needs_public_api_sync (socket_));
+      socket_->direct_send_needs_public_api_sync ());
     if (!send_scope.acquired ())
         return -1;
 
@@ -280,7 +274,7 @@ int zlink::logical_multipart_send_prefixed (socket_base_t *socket_,
     (void) route_ready_retry_ms_;
     zlink::socket_public_send_scope_t send_scope (
       socket_->lifecycle_coordinator (),
-      direct_send_needs_public_api_sync (socket_));
+      socket_->direct_send_needs_public_api_sync ());
     if (!send_scope.acquired ())
         return -1;
 

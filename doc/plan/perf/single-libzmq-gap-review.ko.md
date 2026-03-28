@@ -176,6 +176,24 @@
 - guide checklist 기준 `ROUTER` routed path differential 정리 단계는 끝났고,
   current next step은 위 invariant helper 경계를 바탕으로
   common send-side structural candidate를 다시 세우는 것이다.
+- 2026-03-28 retained structural prep에서는
+  [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+  plain/routed direct send retry를 `send_direct_with_retry()` 경계로 합쳤고,
+  [`core/src/sockets/socket_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.hpp)
+  /
+  [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  는 retry 시 sync 유지/해제/재획득 판단을
+  `socket_public_send_scope_t` helper로 다시 모았으며,
+  [`core/src/core/multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+  는 plain direct send scope 판단을
+  `socket_base_t::direct_send_needs_public_api_sync()` 하나로 재사용한다.
+- 위 prep의 targeted guardrail은 public
+  `PAIR tcp/inproc -14.85% / -21.37%`,
+  `DEALER_DEALER tcp/inproc -24.99% / -17.70%`,
+  raw `PAIR tcp/inproc -6.56% / -21.49%`,
+  `DEALER_DEALER tcp/inproc -20.22% / -20.81%`였다.
+  current retained baseline 대비 mixed/noise지만 keep을 막을 만큼의 새
+  broad regression은 확인하지 못했다.
 - 2026-03-28 current recheck에서 `ROUTER_ROUTER` single 64B default는
   `tcp/inproc -56.84% / -28.68%`,
   raw-msg probe는 `-58.04% / -23.52%`였다.
@@ -262,6 +280,14 @@
   /
   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
   의 `_out_sync` unlocked helper refactor도 current tree에 유지한다.
+- [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+  의 `send_direct_with_retry()` 경계,
+  [`core/src/sockets/socket_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.hpp)
+  /
+  [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  의 retry sync phase helper,
+  [`core/src/core/multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+  의 direct send scope 결정 재사용도 current kept structural prep이다.
 - 2026-03-28 direct send-side candidate bundle에서 시도한
   `socket_base_msg.cpp` / `socket_runtime.cpp` / `pipe.cpp` 추가 성능 후보는
   모두 reject되어 current tree에는 남아 있지 않다.
@@ -357,14 +383,14 @@
      `dealer_inproc_send_profile_20260328.txt` 기준으로
      `send scope construct`와 `pipe_write_and_flush`의 더 큰 의미 단위를
      다시 쓴다.
-  2. 그 다음 current code에서는 `socket_base_t::send()` /
-     `socket_public_send_scope_t` admission/scope construct를
-     바로 micro-tweak하지 말고,
-     public inflight admission, same-handle send serialization,
-     retry unlock/relock, logical multipart scope reuse를 code-level
-     경계로 다시 분리하는 retained structural prep
-  3. 위 prep 위에서 `a819ea3a` admission/CAS 의미 단위와
-     `ff0140e5` `_out_sync` steady-state duty를 다시 가르는
+  2. current code는
+     `send_direct_with_retry()` /
+     `socket_public_send_scope_t::should_hold_sync_during_retry()` /
+     `socket_base_t::direct_send_needs_public_api_sync()` 경계까지는
+     retained prep으로 확보했으므로,
+     다음 step은 이 boundary 위에서 `a819ea3a` admission/CAS 의미 단위를
+     실제로 바꾸는 structural candidate
+  3. 그 다음 `ff0140e5` `_out_sync` steady-state duty를 다시 가르는
      structural candidate
   4. 그 다음에야 `PUBSUB` / `ROUTER` pattern-specific 잔여 gap
 - 새 iteration은 이 summary가 stale하지 않은지 먼저 확인하고, stale하면
@@ -5810,3 +5836,74 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - `public_api_state` exact-state fast path family는 broad fix 후보에서 내린다.
   - guide 재작성 트리거를 유지한 채, 다음 round는 code patch 전에
     current summary와 direct profile 해석을 다시 정렬한다.
+
+## 78. 2026-03-28 send admission boundary retained structural prep 로그
+
+- 작업한 가설 1개
+  - common send-side actual candidate를 다시 올리기 전에,
+    `socket_public_send_scope_t`와 direct send helpers에 엉킨
+    public inflight admission, same-handle send serialization,
+    retry sync unlock/relock, logical multipart scope reuse를
+    code-level 경계로 먼저 분리해 두면
+    다음 `a819ea3a` / `_out_sync` structural round를 더 좁게 다룰 수 있다.
+- candidate family 1개
+  - retained send admission/sync meaning-boundary prep
+- high-leverage 또는 semantic probe 근거
+  - guide 재작성 뒤 첫 미완료 항목이 local tweak가 아니라
+    `send admission` 의미 단위 structural prep을 먼저 남기라는 것이었고,
+    current profile도 `send scope construct`와 `pipe_write_and_flush`를
+    다음 broad axis로 가리키고 있었다.
+- 참고한 `libzmq` 대응 파일
+  - [`socket_base.cpp`](/home/hep7/project/kairos/libzmq/src/socket_base.cpp)
+  - [`pipe.cpp`](/home/hep7/project/kairos/libzmq/src/pipe.cpp)
+- `claude` consult 여부와 핵심 조언 1~3줄
+  - `claude --help`는 통과했다.
+  - 새 family 직전 `timeout 50s claude -p ...` consult는
+    유효 응답 없이 종료돼 unavailable로 기록한다.
+  - 따라서 이번 단계 authority는 guide/review/hot-path와 실제 build/test/bench다.
+- 수정한 파일 경로
+  - [`core/src/sockets/socket_base.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base.hpp)
+  - [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+  - [`core/src/sockets/socket_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.hpp)
+  - [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  - [`core/src/core/multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+  - docs authority realignment push hash:
+    `67b4a4bcc0324dbe3c10bec51e1df9b6c8de1888`
+- 실행한 명령
+  - `cmake --build core/build -j$(nproc)`
+  - `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm)$' -j1`
+  - `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_send_scope_boundary_prep_public`
+  - `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_send_scope_boundary_prep_raw`
+- 생성된 결과 파일 경로
+  - [`perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_public.txt)
+  - [`perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_raw.txt)
+- 핵심 수치
+  - public
+    - `PAIR tcp/inproc -14.85% / -21.37%`
+    - `DEALER_DEALER tcp/inproc -24.99% / -17.70%`
+  - raw
+    - `PAIR tcp/inproc -6.56% / -21.49%`
+    - `DEALER_DEALER tcp/inproc -20.22% / -20.81%`
+- 유지한 변경 / 원복한 변경
+  - 유지
+    - direct send retry를 `send_direct_with_retry()` 경계로 통합
+    - retry sync hold/release/reacquire 판단을
+      `socket_public_send_scope_t` helper로 명시
+    - plain direct send scope 결정을
+      `socket_base_t::direct_send_needs_public_api_sync()`로 재사용
+  - 원복
+    - 없음
+- 해석
+  - 이번 단계는 keep-worthy perf delta를 노린 code candidate가 아니라,
+    다음 broad candidate를 더 좁게 다루기 위한 retained structural prep이다.
+  - public/raw pair+dealer guardrail은 current retained baseline 대비
+    mixed/noise였지만, 구조 변경을 버려야 할 만큼의 새 broad regression은
+    보이지 않았다.
+  - 따라서 current tree에는 이 prep을 남기고,
+    다음 단계부터는 이 boundary 위에서 실제 `a819ea3a` / `_out_sync`
+    candidate를 다시 고른다.
+- 다음 iteration 우선순위
+  - `send_direct_with_retry()` boundary 위에서
+    `a819ea3a` admission/CAS 의미 단위를 실제로 줄이는 후보를 먼저 고른다.
+  - 그 다음 필요하면 `_out_sync` duty candidate를 다시 올리되,
+    이미 reject된 helper-level family는 반복하지 않는다.

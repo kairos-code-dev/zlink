@@ -628,6 +628,18 @@ rejected candidate는 반드시 로그에 남긴다.
     [`perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt),
     [`perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt)
     로 다시 남겼다
+  - `socket_base.hpp` / `socket_base_msg.cpp` /
+    `socket_runtime.hpp` / `socket_runtime.cpp` /
+    `multipart_send_txn.cpp` retained structural prep으로
+    direct send retry를 `send_direct_with_retry()` 경계로 합쳤고,
+    retry sync hold/release/reacquire 판단을
+    `socket_public_send_scope_t` helper로 고정했으며,
+    plain direct send scope 결정을
+    `socket_base_t::direct_send_needs_public_api_sync()` 하나로 재사용한다
+  - 위 prep의 targeted public/raw guardrail은
+    [`perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_public.txt),
+    [`perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_182242_codex_20260328_send_scope_boundary_prep_raw.txt)
+    로 남겼다
   - `pipe.cpp` `write()/write_and_flush()/check_write_status()`는 current tree에서
     `_out_sync` 아래 generic `check_hwm_unlocked()`를 사용해 recursive
     `check_hwm()` 재진입을 이미 피한다
@@ -1159,23 +1171,36 @@ rejected candidate는 반드시 로그에 남긴다.
       current iteration에서는 code patch 전에 요구된
       guide/review/hot-path 우선순위 재정렬과
       diagnostic 해석 갱신을 먼저 끝냈다.
-- [ ] `a819ea3a` send admission/CAS 의미 단위 structural prep를
-      current code에 retained change로 남긴다.
+- [x] `a819ea3a` send admission/CAS 의미 단위 structural prep를
+      current code에 retained change로 남겼다.
       current `socket_base_msg.cpp` / `socket_runtime.cpp` /
       `multipart_send_txn.cpp` send path는
       public inflight admission, same-handle send serialization,
       retry 시 sync unlock/relock, logical multipart scope reuse가
       `socket_public_send_scope_t`와 direct send helpers에 함께 엉켜 있다.
-      다음 단계는 rejected micro-tweak family를 다시 파는 것이 아니라,
+      이번 단계에서는 rejected micro-tweak family를 다시 파는 대신,
       위 의미 단위를 code-level 경계로 먼저 분리하는 retained structural prep다.
-      최소 범위는
-      `socket_runtime.hpp/.cpp` admission/sync phase,
+      최소 범위였던
+      `socket_runtime.hpp/.cpp` retry sync phase,
       `socket_base_msg.cpp` direct send/retry runner,
       `multipart_send_txn.cpp` shared send-scope reuse를
-      같은 contract 아래에서 다시 정리하는 것이다.
-      이 단계는 same-handle concurrent send/publish 회귀와
-      `PAIR` / `DEALER_DEALER` public/raw guardrail을 유지한 채
-      current tree에 남길 수 있어야 한다.
+      같은 contract 아래에서 다시 정리했고,
+      same-handle concurrent send/publish 회귀와
+      `PAIR` / `DEALER_DEALER` public/raw guardrail도 다시 확인했다.
+- [ ] retained send admission boundary prep 위에서
+      actual common send-side structural candidate를 다시 고른다.
+      current tree는 이제
+      `send_direct_with_retry()` /
+      `socket_public_send_scope_t::should_hold_sync_during_retry()` /
+      `socket_base_t::direct_send_needs_public_api_sync()` 경계까지는
+      code-level로 고정했다.
+      다음 단계는 이 prep 위에서
+      `a819ea3a` admission/CAS 의미 단위를 실제로 줄이는 후보와,
+      필요하면 그 다음 `_out_sync` duty candidate를 다시 고르는 것이다.
+      새 family 직전 `claude -p` consult는 `timeout 50s`로
+      usable advisory를 못 얻었으므로,
+      다음 stage 시작 시 libzmq pass 뒤 한 번 더 시도하되
+      실패하면 unavailable로 기록하고 bench/test authority로 계속 진행한다.
 - [x] same-handle concurrent `PUB` publish contract regression
       (`test_pubsub_publish_is_safe_from_multiple_threads`)을 고치고
       logical multipart send scope를 재검증했다.

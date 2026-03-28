@@ -155,6 +155,23 @@
   위 retained helper 경계를 기준으로
   `send admission/scope construct`와 `pipe write/flush serialization`
   구조를 실제로 줄이는 structural candidate다.
+- 2026-03-28 retained structural prep으로
+  [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+  는 plain/routed direct send retry를 `send_direct_with_retry()`로 합쳤고,
+  [`core/src/sockets/socket_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.hpp)
+  /
+  [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  는 retry sync phase를 `socket_public_send_scope_t` helper로 다시 고정했으며,
+  [`core/src/core/multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+  는 plain direct send scope 결정을
+  `socket_base_t::direct_send_needs_public_api_sync()`로 재사용한다.
+- 위 prep의 targeted guardrail은 public
+  `PAIR tcp/inproc -14.85% / -21.37%`,
+  `DEALER_DEALER tcp/inproc -24.99% / -17.70%`,
+  raw `PAIR tcp/inproc -6.56% / -21.49%`,
+  `DEALER_DEALER tcp/inproc -20.22% / -20.81%`였다.
+  즉 keep-worthy perf delta는 아니지만, 구조 경계를 current tree에 남기지
+  못할 정도의 새 broad regression도 아니었다.
 
 ### 0.2 Current Hypothesis
 
@@ -195,6 +212,15 @@
   /
   [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
   의 `_out_sync` unlocked helper refactor다.
+- current kept send-boundary prep은
+  [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
+  의 `send_direct_with_retry()`,
+  [`core/src/sockets/socket_runtime.hpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.hpp)
+  /
+  [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
+  의 retry sync helper,
+  [`core/src/core/multipart_send_txn.cpp`](/home/hep7/project/kairos/zlink/core/src/core/multipart_send_txn.cpp)
+  의 direct send scope decision reuse다.
 
 ### 0.4 Rejected Families
 
@@ -260,13 +286,13 @@
   진단 로그부터 다시 읽는다.
 - next step은 helper-level micro tuning이 아니라,
   1) guide/review/hot-path 우선순위를 먼저 다시 정렬하고,
-  2) current code의 `socket_public_send_scope_t`와 direct send helpers에서
-  inflight admission, same-handle send serialization,
-  retry unlock/relock, logical multipart scope reuse를 code-level 경계로
-  다시 분리하는 retained structural prep를 먼저 남기고,
-  3) 그 위에서 `socket_base_t::send()` admission/scope construct cost를
-  줄이는 후보와
-  4) `_out_sync` no-op이 아니라 unlocked helper 위에서 hot send와 rare
+  2) current code가 `send_direct_with_retry()` /
+  `socket_public_send_scope_t::should_hold_sync_during_retry()` /
+  `socket_base_t::direct_send_needs_public_api_sync()` boundary까지는
+  retained prep으로 확보했으므로,
+  그 위에서 `socket_base_t::send()` admission/scope construct cost를
+  실제로 줄이는 후보와
+  3) `_out_sync` no-op이 아니라 unlocked helper 위에서 hot send와 rare
   teardown 경계를 더 분리하는 후보를 세우는 것이다.
 - `DEALER` one-active `lb_t` mutable state를 local lock으로 감싸고
   direct single-part send를 admission-only로 내리는 family는

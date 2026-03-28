@@ -498,6 +498,22 @@ zlink::socket_public_send_scope_t::~socket_public_send_scope_t ()
         _coordinator->leave_public_api ();
 }
 
+bool zlink::socket_public_send_scope_t::should_hold_sync_during_retry (
+  bool send_ready_handler_active_) const
+{
+    return _sync_locked && !send_ready_handler_active_;
+}
+
+void zlink::socket_public_send_scope_t::release_sync_for_retry ()
+{
+    unlock_sync ();
+}
+
+void zlink::socket_public_send_scope_t::reacquire_sync_after_retry ()
+{
+    relock_sync ();
+}
+
 void zlink::socket_public_send_scope_t::unlock_sync ()
 {
     if (!_entered || !_needs_sync || !_sync_locked)

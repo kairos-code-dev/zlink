@@ -363,6 +363,16 @@ class socket_base_t : public own_t,
                                           int flags_,
                                           bool fallback_on_missing_sndtimeo_);
 
+    // Direct public send currently shares one scope between single-part and
+    // logical multipart wrappers. Keep the admission/sync decision and the
+    // blocking retry runner behind one internal boundary so future structural
+    // candidates can change them independently.
+    bool direct_send_needs_public_api_sync () const;
+    int send_direct_with_retry (const zlink_routing_id_t *target_rid_,
+                                zlink::msg_t *msg_,
+                                int flags_,
+                                socket_public_send_scope_t &scope_);
+
     enum
     {
         monitor_queue_hwm = 4096,

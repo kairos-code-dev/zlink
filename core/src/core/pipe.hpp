@@ -267,7 +267,6 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     //  Routing id of the writer. Used uniquely by the reader side.
     blob_t _router_socket_routing_id;
-
     //  Routing id of the writer. Used uniquely by the reader side.
     int _server_socket_routing_id;
 

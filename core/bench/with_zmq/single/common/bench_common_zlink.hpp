@@ -438,13 +438,83 @@ inline int resolve_single_recv_timeout_ms()
 
 inline bool use_raw_msg_api_bench()
 {
-    const char *env = std::getenv("PERF_SINGLE_ZLINK_RAW_MSG_API");
-    if (!env || !*env)
-        return false;
+    return false;
+}
 
-    return std::strcmp(env, "1") == 0 || std::strcmp(env, "true") == 0
-           || std::strcmp(env, "TRUE") == 0 || std::strcmp(env, "on") == 0
-           || std::strcmp(env, "ON") == 0;
+inline int bench_send_single_part (void *socket_,
+                                   zlink_msg_t *msg_,
+                                   zlink_send_flags_t flags_)
+{
+    return ::zlink_send (socket_, msg_, 1, flags_);
+}
+
+inline int bench_send_single_part_routed (
+  void *socket_,
+  const zlink_routing_id_t *target_rid_,
+  zlink_msg_t *msg_,
+  zlink_send_flags_t flags_)
+{
+    return ::zlink_send_rid (socket_, target_rid_, msg_, 1, flags_);
+}
+
+inline int bench_recv_single_part (void *socket_,
+                                   zlink_msg_t *msg_,
+                                   zlink_send_flags_t flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = ::zlink_recv (socket_, NULL, &parts, &part_count, flags_);
+    if (rc != 0)
+        return -1;
+
+    if (!parts || part_count != 1) {
+        if (parts)
+            ::zlink_multipart_close (parts, part_count);
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    const int move_rc = ::zlink_msg_move (msg_, &parts[0]);
+    const int saved_errno = errno;
+    ::zlink_multipart_close (parts, part_count);
+    errno = saved_errno;
+    return move_rc;
+}
+
+inline int bench_recv_single_part_routed (void *socket_,
+                                          zlink_msg_t *msg_,
+                                          zlink_routing_id_t *source_rid_out_,
+                                          zlink_send_flags_t flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc =
+      ::zlink_recv (socket_, source_rid_out_, &parts, &part_count, flags_);
+    if (rc != 0)
+        return -1;
+
+    if (!parts || part_count != 1) {
+        if (parts)
+            ::zlink_multipart_close (parts, part_count);
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    const int move_rc = ::zlink_msg_move (msg_, &parts[0]);
+    const int saved_errno = errno;
+    ::zlink_multipart_close (parts, part_count);
+    errno = saved_errno;
+    return move_rc;
 }
 
 inline int resolve_single_pubsub_recv_timeout_ms()

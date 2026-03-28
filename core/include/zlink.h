@@ -334,51 +334,6 @@ ZLINK_EXPORT int zlink_msg_refcnt (const zlink_msg_t *msg_);
 ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
                                      const char *property_);
 
-/**
- * @brief Send a single message frame directly on a socket.
- *
- * This is the fast path for single-frame socket traffic. Use multipart send
- * APIs when you need explicit part arrays or service-handle payload shapes.
- *
- * On success, ownership is transferred to the callee exactly as with
- * `zlink_send(..., part_count_=1, ...)`.
- */
-ZLINK_EXPORT int zlink_msg_send (zlink_msg_t *msg_,
-                                 void *s_,
-                                 zlink_send_flags_t flags_);
-
-/**
- * @brief Send a single message frame to a routed peer.
- *
- * This is the single-frame counterpart of `zlink_send_rid()`.
- */
-ZLINK_EXPORT int zlink_msg_send_rid (zlink_msg_t *msg_,
-                                     void *s_,
-                                     const zlink_routing_id_t *target_rid_,
-                                     zlink_send_flags_t flags_);
-
-/**
- * @brief Receive a single message frame directly from a socket.
- *
- * This fast path is intended for socket traffic whose payload shape is a
- * single frame. Use `zlink_recv()` / `zlink_subscribe()` when you need the
- * canonical multipart receive contract.
- */
-ZLINK_EXPORT int zlink_msg_recv (zlink_msg_t *msg_,
-                                 void *s_,
-                                 zlink_send_flags_t flags_);
-
-/**
- * @brief Receive a single routed message frame and its source routing id.
- *
- * This fast path is intended for routed socket traffic whose payload shape is
- * a single frame.
- */
-ZLINK_EXPORT int zlink_msg_recv_rid (zlink_msg_t *msg_,
-                                     void *s_,
-                                     zlink_routing_id_t *source_rid_out_,
-                                     zlink_send_flags_t flags_);
-
 /******************************************************************************/
 /*  0MQ socket definition.                                                    */
 /******************************************************************************/

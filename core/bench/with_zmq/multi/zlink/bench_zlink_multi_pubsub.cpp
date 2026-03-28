@@ -25,7 +25,7 @@ multi_send_result_t send_pub_blocking (void *pub,
         return multi_send_error;
     if (!buffer.empty ())
         std::memcpy (zlink_msg_data (&msg), &buffer[0], buffer.size ());
-    if (zlink_msg_send (&msg, pub, 0) >= 0)
+    if (zlink_publish (pub, NULL, &msg, 1, 0) >= 0)
         return multi_send_ok;
     const int err = zlink_errno ();
     zlink_msg_close (&msg);
@@ -40,19 +40,23 @@ int recv_sub_message (void *sub,
                       std::vector<char> &recv_buf,
                       zlink_send_flags_t flags_)
 {
-    zlink_msg_t msg;
-    zlink_msg_init (&msg);
-    const int rc = zlink_msg_recv (&msg, sub, flags_);
-    if (rc < 0) {
-        zlink_msg_close (&msg);
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = zlink_recv (sub, NULL, &parts, &part_count, flags_);
+    if (rc < 0)
+        return -1;
+    if (!parts || part_count != 1) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
+        errno = EMSGSIZE;
         return -1;
     }
 
     const size_t copy_size =
-      std::min (recv_buf.size (), zlink_msg_size (&msg));
+      std::min (recv_buf.size (), zlink_msg_size (&parts[0]));
     if (copy_size > 0)
-        std::memcpy (&recv_buf[0], zlink_msg_data (&msg), copy_size);
-    zlink_msg_close (&msg);
+        std::memcpy (&recv_buf[0], zlink_msg_data (&parts[0]), copy_size);
+    zlink_multipart_close (parts, part_count);
     return rc;
 }
 
@@ -367,7 +371,7 @@ double measure_pubsub_latency_us (void *ctx,
             continue;
         if (!buffer.empty ())
             std::memcpy (zlink_msg_data (&send_msg), &buffer[0], buffer.size ());
-        if (zlink_msg_send (&send_msg, pub, 0) < 0) {
+        if (zlink_publish (pub, NULL, &send_msg, 1, 0) < 0) {
             zlink_msg_close (&send_msg);
             continue;
         }

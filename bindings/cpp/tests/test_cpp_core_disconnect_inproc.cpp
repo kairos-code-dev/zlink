@@ -12,12 +12,10 @@ void test_disconnect_inproc ()
     zlink::context_t ctx;
     zlink::socket_t pub_socket (ctx, zlink::socket_type::xpub);
     zlink::socket_t sub_socket (ctx, zlink::socket_type::sub);
+    int more = 0;
 
     assert (sub_socket.set (zlink::socket_option::subscribe, "foo", 3) == 0);
     assert (pub_socket.bind ("inproc://someInProcDescriptor") == 0);
-
-    int more = 0;
-    size_t more_size = sizeof (more);
 
     for (int iteration = 0;; ++iteration) {
         zlink_pollitem_t items[] = {
@@ -28,11 +26,9 @@ void test_disconnect_inproc ()
 
         if (items[1].revents & ZLINK_POLLIN) {
             for (more = 1; more;) {
-                zlink_msg_t msg;
-                assert (zlink_msg_init (&msg) == 0);
-                assert (zlink_msg_recv (&msg, pub_socket.handle (), 0) >= 0);
-                const char *buffer =
-                  static_cast<const char *> (zlink_msg_data (&msg));
+                zlink::message_t msg;
+                assert (pub_socket.recv (msg) == 0);
+                const char *buffer = static_cast<const char *> (msg.data ());
                 assert (buffer != NULL);
 
                 if (buffer[0] == 0) {
@@ -43,22 +39,15 @@ void test_disconnect_inproc ()
                     is_subscribed = true;
                 }
 
-                assert (zlink_getsockopt (
-                          pub_socket.handle (), ZLINK_RCVMORE, &more, &more_size)
-                        == 0);
-                assert (zlink_msg_close (&msg) == 0);
+                assert (pub_socket.get (zlink::socket_option::rcvmore, &more) == 0);
             }
         }
 
         if (items[0].revents & ZLINK_POLLIN) {
             for (more = 1; more;) {
-                zlink_msg_t msg;
-                assert (zlink_msg_init (&msg) == 0);
-                assert (zlink_msg_recv (&msg, sub_socket.handle (), 0) >= 0);
-                assert (zlink_getsockopt (
-                          sub_socket.handle (), ZLINK_RCVMORE, &more, &more_size)
-                        == 0);
-                assert (zlink_msg_close (&msg) == 0);
+                zlink::message_t msg;
+                assert (sub_socket.recv (msg) == 0);
+                assert (sub_socket.get (zlink::socket_option::rcvmore, &more) == 0);
             }
             ++publications_received;
         }

@@ -28,7 +28,7 @@ inline int recv_single_part_header_flags (
     if (zlink_msg_init (&msg) != 0)
         return -1;
 
-    const int rc = zlink_msg_recv (&msg, socket, flags);
+    const int rc = zmq_msg_recv (&msg, socket, flags);
     if (rc < 0) {
         const int err = zlink_errno ();
         zlink_msg_close (&msg);

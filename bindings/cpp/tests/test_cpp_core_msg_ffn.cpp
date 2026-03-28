@@ -45,7 +45,9 @@ void test_msg_init_ffn ()
 
     std::memcpy (hint, "hint", 4);
     assert (zlink_msg_init_data (&msg, data, sizeof (data), ffn, hint) == 0);
-    assert (zlink_msg_send (&msg, dealer.handle (), 0) >= 0);
+    zlink::message_t outbound;
+    assert (zlink_msg_move (outbound.handle (), &msg) == 0);
+    assert (dealer.send (outbound) == 0);
 
     char buf[255];
     std::memset (buf, 0, sizeof (buf));
@@ -54,18 +56,17 @@ void test_msg_init_ffn ()
     assert (std::memcmp (data, buf, 4) == 0);
     sleep_ms (300);
     assert (std::memcmp (hint, "freed", 5) == 0);
-    assert (zlink_msg_close (&msg) == 0);
-
     std::memcpy (hint, "hint", 4);
     assert (zlink_msg_init (&msg2) == 0);
     assert (zlink_msg_init_data (&msg, data, sizeof (data), ffn, hint) == 0);
     assert (zlink_msg_copy (&msg2, &msg) == 0);
-    assert (zlink_msg_send (&msg, dealer.handle (), 0) >= 0);
+    zlink::message_t outbound_copy;
+    assert (zlink_msg_move (outbound_copy.handle (), &msg) == 0);
+    assert (dealer.send (outbound_copy) == 0);
     assert (recv_with_timeout (router, buf, sizeof (buf), 2000) >= 0);
     assert (recv_with_timeout (router, buf, sizeof (buf), 2000) == 255);
     assert (std::memcmp (data, buf, 4) == 0);
     assert (zlink_msg_close (&msg2) == 0);
-    assert (zlink_msg_close (&msg) == 0);
     sleep_ms (300);
     assert (std::memcmp (hint, "freed", 5) == 0);
 }

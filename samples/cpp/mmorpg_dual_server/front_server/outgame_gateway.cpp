@@ -38,10 +38,6 @@ void OutgameGateway::send_request(const std::string& session_key, const std::str
 }
 
 int OutgameGateway::poll_responses() {
-    // Workaround: gateway_t::recv() has a bug where it checks
-    // `if (rc != 0)` instead of `if (rc < 0)` after zlink_msg_recv,
-    // which returns message size (positive) on success.
-    // We read directly from the gateway's ROUTER socket instead.
     int count = 0;
     void *router = zlink_gateway_router_socket_unsafe(gateway_.handle());
     if (!router)
@@ -58,41 +54,25 @@ int OutgameGateway::poll_responses() {
         if (prc <= 0 || !(items[0].revents & ZLINK_POLLIN))
             break;
 
-        // Read first frame (routing ID of the sender — the receiver/API server)
-        zlink_msg_t rid_msg;
-        zlink_msg_init(&rid_msg);
-        int rrc = zlink_msg_recv(&rid_msg, router, ZLINK_DONTWAIT);
+        zlink_routing_id_t source_rid;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        int rrc = zlink_recv(router, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
         if (rrc < 0) {
-            zlink_msg_close(&rid_msg);
             break;
         }
-        int more = zlink_msg_more(&rid_msg);
-        zlink_msg_close(&rid_msg);
-
-        if (!more)
-            continue; // No payload frames
-
-        // Read remaining data frames
-        std::vector<std::string> parts;
-        while (more) {
-            zlink_msg_t part;
-            zlink_msg_init(&part);
-            int pr = zlink_msg_recv(&part, router, ZLINK_DONTWAIT);
-            if (pr < 0) {
-                zlink_msg_close(&part);
-                break;
-            }
-            more = zlink_msg_more(&part);
-            parts.emplace_back(
-                static_cast<const char*>(zlink_msg_data(&part)),
-                zlink_msg_size(&part));
-            zlink_msg_close(&part);
+        std::vector<std::string> payload_parts;
+        for (size_t i = 0; i < part_count; ++i) {
+            payload_parts.emplace_back(
+                static_cast<const char*>(zlink_msg_data(&parts[i])),
+                zlink_msg_size(&parts[i]));
         }
+        zlink_multipart_close(parts, part_count);
 
         // Expect [internal_req_id][result]
-        if (parts.size() >= 2) {
-            const std::string& internal_id = parts[0];
-            const std::string& result = parts[1];
+        if (payload_parts.size() >= 2) {
+            const std::string& internal_id = payload_parts[0];
+            const std::string& result = payload_parts[1];
 
             auto it = pending_.find(internal_id);
             if (it != pending_.end() && response_handler_) {

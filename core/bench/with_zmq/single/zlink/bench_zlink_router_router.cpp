@@ -31,43 +31,19 @@ inline bool send_router_payload_flags(void *socket,
     if (!socket || !target_rid)
         return false;
 
-    const bool raw_msg_api = use_raw_msg_api_bench();
-    if (raw_msg_api) {
-        zlink_routing_id_t routing_id;
-        assign_routing_id(&routing_id, target_rid, target_rid_size);
+    zlink_routing_id_t routing_id;
+    assign_routing_id(&routing_id, target_rid, target_rid_size);
 
-        zlink_msg_t msg;
-        if (zlink_msg_init_size(&msg, payload_size) != 0)
-            return false;
-        if (payload_size > 0 && payload_data)
-            std::memcpy(zlink_msg_data(&msg), payload_data, payload_size);
-
-        const int rc = ::zlink_msg_send_rid(
-          &msg, socket, &routing_id, static_cast<zlink_send_flags_t>(flags));
-        if (rc < 0) {
-            zlink_msg_close(&msg);
-            return false;
-        }
-        return true;
-    }
-
-    zlink_msg_t parts[2];
-    if (zlink_msg_init_size(&parts[0], target_rid_size) != 0)
+    zlink_msg_t msg;
+    if (zlink_msg_init_size(&msg, payload_size) != 0)
         return false;
-    if (zlink_msg_init_size(&parts[1], payload_size) != 0) {
-        zlink_msg_close(&parts[0]);
-        return false;
-    }
-
-    std::memcpy(zlink_msg_data(&parts[0]), target_rid, target_rid_size);
     if (payload_size > 0 && payload_data)
-        std::memcpy(zlink_msg_data(&parts[1]), payload_data, payload_size);
+        std::memcpy(zlink_msg_data(&msg), payload_data, payload_size);
 
-    const int rc = ::zlink_send(
-      socket, parts, 2, static_cast<zlink_send_flags_t>(flags));
+    const int rc = bench_send_single_part_routed(
+      socket, &routing_id, &msg, static_cast<zlink_send_flags_t>(flags));
     if (rc < 0) {
-        zlink_msg_close(&parts[0]);
-        zlink_msg_close(&parts[1]);
+        zlink_msg_close(&msg);
         return false;
     }
     return true;
@@ -76,7 +52,6 @@ inline bool send_router_payload_flags(void *socket,
 inline bool perform_router_router_handshake (void *router1, void *router2)
 {
     bool connected = false;
-    const bool raw_msg_api = use_raw_msg_api_bench();
     const int handshake_timeout_ms =
       resolve_bench_count ("PERF_ROUTER_HANDSHAKE_TIMEOUT_MS", 3000);
     const auto deadline =
@@ -90,31 +65,6 @@ inline bool perform_router_router_handshake (void *router1, void *router2)
             const int err = zlink_errno ();
             if (err != EAGAIN && err != EINTR)
                 return false;
-        } else if (raw_msg_api) {
-            zlink_routing_id_t source_rid;
-            assign_routing_id (&source_rid, "", 0);
-            zlink_msg_t payload;
-            if (::zlink_msg_init (&payload) != 0)
-                return false;
-
-            const int rc = ::zlink_msg_recv_rid (
-              &payload, router1, &source_rid, ZLINK_DONTWAIT);
-            if (rc > 0) {
-                connected =
-                  source_rid.size == 7
-                  && std::memcmp (source_rid.data, "ROUTER2", 7) == 0
-                  && zlink_msg_size (&payload) == 4
-                  && !bench_msg_has_more (payload)
-                  && std::memcmp (zlink_msg_data (&payload), "PING", 4) == 0;
-            } else if (rc < 0) {
-                const int err = zlink_errno ();
-                zlink_msg_close (&payload);
-                if (err != EAGAIN && err != EINTR)
-                    return false;
-                goto handshake_retry_wait;
-            }
-
-            zlink_msg_close (&payload);
         } else {
             zlink_routing_id_t source_rid;
             source_rid.size = 0;
@@ -129,9 +79,8 @@ inline bool perform_router_router_handshake (void *router1, void *router2)
                             && zlink_msg_size (&parts[0]) == 4
                             && std::memcmp (
                                  zlink_msg_data (&parts[0]), "PING", 4) == 0;
-                if (parts) {
+                if (parts)
                     zlink_multipart_close (parts, part_count);
-                }
             } else if (rc < 0) {
                 const int err = zlink_errno ();
                 if (err != EAGAIN && err != EINTR)
@@ -151,25 +100,7 @@ handshake_retry_wait:
         return false;
     }
 
-    if (raw_msg_api) {
-        zlink_routing_id_t pong_rid;
-        assign_routing_id (&pong_rid, "", 0);
-        zlink_msg_t pong_payload;
-        if (::zlink_msg_init (&pong_payload) != 0)
-            return false;
-
-        const int pong_rc =
-          ::zlink_msg_recv_rid (&pong_payload, router2, &pong_rid, 0);
-        const bool ok = pong_rc > 0 && pong_rid.size == 7
-                        && std::memcmp (pong_rid.data, "ROUTER1", 7) == 0
-                        && zlink_msg_size (&pong_payload) == 4
-                        && !bench_msg_has_more (pong_payload)
-                        && std::memcmp (
-                             zlink_msg_data (&pong_payload), "PONG", 4) == 0;
-        zlink_msg_close (&pong_payload);
-        if (!ok)
-            return false;
-    } else {
+    {
         zlink_routing_id_t pong_rid;
         pong_rid.size = 0;
         zlink_msg_t *pong_parts = NULL;
@@ -180,9 +111,8 @@ handshake_retry_wait:
             || std::memcmp (pong_rid.data, "ROUTER1", 7) != 0
             || pong_part_count != 1 || zlink_msg_size (&pong_parts[0]) != 4
             || std::memcmp (zlink_msg_data (&pong_parts[0]), "PONG", 4) != 0) {
-            if (pong_parts) {
+            if (pong_parts)
                 zlink_multipart_close (pong_parts, pong_part_count);
-            }
             return false;
         }
         zlink_multipart_close (pong_parts, pong_part_count);
@@ -203,76 +133,38 @@ inline int recv_router_header_flags (void *socket,
     if (header_ok_out)
         *header_ok_out = false;
 
-    const bool raw_msg_api = use_raw_msg_api_bench ();
     bool header_ok = false;
     size_t actual_size = 0;
-
-    if (raw_msg_api) {
-        zlink_routing_id_t source_rid;
-        assign_routing_id (&source_rid, "", 0);
-        zlink_msg_t payload;
-        if (::zlink_msg_init (&payload) != 0)
-            return -1;
-
-        const int id_rc = ::zlink_msg_recv_rid (
-          &payload, socket, &source_rid,
-          static_cast<zlink_send_flags_t> (flags));
-        if (id_rc < 0) {
-            const int err = zlink_errno ();
-            zlink_msg_close (&payload);
-            if (err == EAGAIN || err == EINTR)
-                return 0;
-            return -1;
-        }
-        if (source_rid.size == 0 || bench_msg_has_more (payload)) {
-            zlink_msg_close (&payload);
-            return -1;
-        }
-
-        actual_size = zlink_msg_size (&payload);
-        if (actual_size == payload_size) {
-            if (header_out) {
-                header_ok = perf_single_metric::decode_payload_header (
-                  zlink_msg_data (&payload), actual_size, header_out);
-            } else {
-                header_ok = true;
-            }
-        }
-
-        zlink_msg_close (&payload);
-    } else {
-        zlink_routing_id_t source_rid;
-        source_rid.size = 0;
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        const int id_rc = ::zlink_recv (
-          socket, &source_rid, &parts, &part_count,
-          static_cast<zlink_send_flags_t> (flags));
-        if (id_rc < 0) {
-            const int err = zlink_errno ();
-            if (err == EAGAIN || err == EINTR)
-                return 0;
-            return -1;
-        }
-        if (source_rid.size == 0 || part_count != 1) {
-            if (parts) {
-                zlink_multipart_close (parts, part_count);
-            }
-            return -1;
-        }
-
-        actual_size = zlink_msg_size (&parts[0]);
-        if (actual_size == payload_size) {
-            if (header_out) {
-                header_ok = perf_single_metric::decode_payload_header (
-                  zlink_msg_data (&parts[0]), actual_size, header_out);
-            } else {
-                header_ok = true;
-            }
-        }
-
-        zlink_multipart_close (parts, part_count);
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int id_rc = ::zlink_recv (
+      socket, &source_rid, &parts, &part_count,
+      static_cast<zlink_send_flags_t> (flags));
+    if (id_rc < 0) {
+        const int err = zlink_errno ();
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
     }
+    if (source_rid.size == 0 || part_count != 1) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
+        return -1;
+    }
+
+    actual_size = zlink_msg_size (&parts[0]);
+    if (actual_size == payload_size) {
+        if (header_out) {
+            header_ok = perf_single_metric::decode_payload_header (
+              zlink_msg_data (&parts[0]), actual_size, header_out);
+        } else {
+            header_ok = true;
+        }
+    }
+
+    zlink_multipart_close (parts, part_count);
 
     if (header_ok_out)
         *header_ok_out = header_ok;

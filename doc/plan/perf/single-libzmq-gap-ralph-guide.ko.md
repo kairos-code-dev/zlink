@@ -4,26 +4,55 @@
 
 이 가이드는
 [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
-를 지속 로그로 유지하면서,
+의 `Current Operating Summary`를 current summary로 유지하고,
+상세 iteration 기록은
+[logs/iterations/](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/iterations)
+아래 개별 markdown 파일로 분리하면서,
 [`core/bench/with_zmq/`](/home/hep7/project/kairos/zlink/core/bench/with_zmq)
 를 기준 검증 surface로 사용해
 `zlink`의 상대 성능을 `libzmq`와 비슷한 수준까지 끌어올리는 반복 작업을
 끝까지 수행하기 위한 유일한 실행 문서다.
 
-이 문서는 계획서와 실행서를 분리하지 않는다.
-현재 iteration의 우선순위, 검증 규칙, 종료 조건, 로그 유지 규칙은 모두
-이 문서 하나에 고정한다.
+authority와 실행 규칙은 이 문서 하나에 고정한다.
+다만 상세 iteration 실험 기록은 `logs/iterations/` 아래 개별 파일로 분리해
+현재 우선순위와 과거 상세 히스토리를 섞지 않는다.
+
+이 작업에서 POSD는 설계 판단의 보조 원칙이지, 1차 목표를 대체하지 않는다.
+1차 목표는 historical good 수준에 가깝게 throughput을 회복하는 것이다.
+따라서 current contract와 correctness를 유지하는 범위 안에서는,
+더 빠르고 더 단순한 hot-path 구조 복원이 POSD 미학보다 우선한다.
 
 ## 2. 권한과 로그
 
 - 이 문서가 유일한 authority다.
 - [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
-  는 authority가 아니라 지속 로그다.
+  는 authority가 아니라 current summary + short review 로그다.
+- 상세 iteration 기록은
+  [logs/iterations/](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/iterations)
+  아래 개별 markdown 파일로 남긴다.
 - [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
   는 hot-path 계약 문서다.
 - historical regression source는 아래 두 문서다.
   - [with-zmq-regression-bisect-report.ko.md](/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/perf/with-zmq-regression-bisect-report.ko.md)
   - [with-zmq-regression-bisect-log.ko.md](/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/perf/with-zmq-regression-bisect-log.ko.md)
+- historical good reference oracle은
+  `/home/hep7/project/kairos/zlink-perf-regression-bisect` worktree의
+  2026-03-05 good 상태(`7bea9e3f`)다.
+  다음 structural round는 이 good state를 rollback 대상으로 보지 않고,
+  current HEAD가 어떤 의미 단위를 추가로 떠안았는지 비교하는 설계 기준으로
+  사용한다.
+- 이 reference oracle을 사용할 때도 current HEAD의 thread-safe 계약,
+  close/callback/public multipart 의미, 그리고 POSD 기반의 더 깊은 모듈
+  구조는 유지해야 한다.
+  즉 목표는 3/5 코드 복제가 아니라, 3/5가 갖고 있던 더 얇은 hot-path 의미를
+  current contract 안에서 복원하는 것이다.
+- 다만 위 원칙은 throughput 회복보다 우선하지 않는다.
+  POSD는 방향성일 뿐이고, current correctness/thread-safe/public contract를
+  깨지 않는 범위에서는 historical good 수준에 더 가까운 구조를 우선 채택한다.
+- 필요하면 `/home/hep7/project/kairos/zlink-perf-regression-bisect` worktree에서
+  같은 `with_zmq` single 조건을 다시 돌려 current HEAD와 비교/확인해도 된다.
+  다만 그 수치는 current HEAD acceptance 기준이 아니라,
+  reference oracle 확인용 diagnostic으로만 사용한다.
 - 각 iteration은
   [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
   와
@@ -33,14 +62,15 @@
   Summary` 블록을 먼저 읽는다.
 - summary 블록이 최신 kept delta, 현재 가설, 배제 family, 다음 exact step을
   반영하지 못하면, 코드 수정이나 bench 실행 전에 먼저 summary를 갱신한다.
-- 다만 로그 문서는 기본적으로 최신 요약/피벗/현재 작업 레지스터부터 읽는다.
-  오래된 rejected candidate 구간은 현재 가설을 검증하는 데 필요할 때만
-  역참조한다.
+- 새 iteration은 detailed iteration 로그를 처음부터 다시 읽지 않는다.
+  먼저 review/hot-path summary를 읽고,
+  특정 rejected family나 kept delta를 확인해야 할 때만
+  `logs/iterations/` 아래 해당 파일을 역참조한다.
 - 둘 중 하나라도 현재 코드/해석/우선순위와 어긋나면 즉시 갱신한다.
 - 실제 변경이 없더라도, iteration 결과가 두 문서의 현재 내용과 일치하는지
   확인하지 않으면 다음 iteration으로 넘어가면 안 된다.
-- 짧은 summary가 긴 로그보다 우선한다. 긴 로그는 summary를 갱신하거나
-  현재 가설을 검증할 근거가 필요할 때만 깊게 읽는다.
+- 짧은 summary가 긴 로그보다 우선한다.
+  상세 실험 기록은 `logs/iterations/` 아래에서만 관리한다.
 - 별도 main/master/gap/residual/spec 문서는 추가로 만들지 않는다.
 - 이 루프의 기본 동작은 `--max-iterations 0`, 즉 목표 완료까지 무한 반복이다.
 - 반복 횟수를 제한하고 싶을 때만 명시적으로 `--max-iterations <N>`을 넘긴다.
@@ -48,6 +78,9 @@
   새 실행을 시작할 때 같은 `guide + logs-dir + gate-label` 범위의 기존
   supervisor와, 같은 wrapper scope에 남아 있는 child `codex exec`가 있으면
   먼저 정리하고 새 세션으로 시작한다.
+- 이 wrapper의 기본 실행 모델은 `gpt-5.4`이고,
+  기본 `model_reasoning_effort`는 `medium`이다.
+  별도 override를 주지 않으면 이 조합으로 랄프루프가 돈다.
 
 ## 3. 범위
 
@@ -79,6 +112,8 @@ bench/perf 코드는 측정 surface다. 수정은 아래 둘 중 하나일 때�
 ### 4.2 주 로그 파일
 
 - [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+- 상세 iteration 로그:
+  [logs/iterations/](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/iterations)
 - loop runtime 로그는 [`doc/plan/perf/logs/`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs)
   아래에 쌓는다.
 
@@ -148,8 +183,9 @@ raw/public 분리를 다시 찍는다.
    와
    [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
    최신 상태를 둘 다 읽는다.
-   기본 순서는 최신 pivot/요약/현재 작업 레지스터 우선이며,
-   오래된 로그 구간은 현재 가설과 직접 관련될 때만 다시 읽는다.
+   기본 순서는 각 문서 상단 `Current Operating Summary` 우선이다.
+   상세 iteration 기록은 `logs/iterations/` 아래에서 현재 family와 직접 관련된
+   파일만 역참조한다.
 3. 두 문서를 기준으로 현재 top hypothesis 하나만 고른다.
 4. historical concrete change map을 사용할 때는 위 bisect report/log도
    먼저 확인한다.
@@ -162,6 +198,14 @@ raw/public 분리를 다시 찍는다.
    - `9b91234c`: bench hot-loop activation + `PERF_SINGLE_MAX_INFLIGHT` 제거
    새 iteration은 이 4개 변화 중 어느 의미가 current HEAD까지 남아 있는지
    먼저 짧게 정리한 뒤에만 code candidate를 선택한다.
+   그리고 code candidate는 반드시
+   `/home/hep7/project/kairos/zlink-perf-regression-bisect`
+   3/5 good state(`7bea9e3f`) 대비
+   `send entry / pipe duty / public surface / sender regime`
+   중 어떤 의미를 current contract 안에서 얇게 복원하는지까지 함께 적어야 한다.
+   필요하면 같은 단계에서 `zlink-perf-regression-bisect` worktree의
+   `with_zmq` single rerun으로 reference oracle 쪽 수치를 다시 확인하되,
+   그 결과는 acceptance가 아니라 원인 비교/설계 검증 근거로만 기록한다.
 6. 새 단계나 새 candidate family로 넘어가기 전에는 `claude` 의견도 한 번
    수렴한다. 목적은 authority를 바꾸는 것이 아니라, 현재 가설을 다른 시각에서
    검토해 local search drift를 막는 것이다.
@@ -170,14 +214,27 @@ raw/public 분리를 다시 찍는다.
 9. 영향 패턴의 targeted single 벤치를 먼저 돌린다.
 10. 의미 있는 개선이 보이면 raw/public 분리를 다시 확인한다.
 11. 개선이 유지될 때만 broader single, 필요한 multi smoke를 수행한다.
-12. 결과 파일 경로, 숫자, 해석, 배제한 가설을
+12. 상세 결과 파일 경로, 숫자, 해석, 배제한 가설은
+   [logs/iterations/](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/iterations)
+   아래 새 markdown 파일로 기록한다.
+13. 그 iteration의 kept/rejected 결론과 `Next Exact Step` 영향만
    [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
-   에 기록한다.
-13. 현재 iteration 결과가
+   상단 summary와 short review에 반영한다.
+14. 현재 iteration 결과가
     [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
     와도 일치하도록 계약/주의점/우선순위/배제 후보를 반영하거나,
     변경이 없음을 확인한다.
-14. 아직 stop condition을 못 만족하면 다음 미해결 가설로 반복한다.
+15. 아직 stop condition을 못 만족하면 다음 미해결 가설로 반복한다.
+
+- `guide/review/hot-path` reset iteration은 `6.2` trigger당 한 번만 허용한다.
+  현재 reset이 이미 review summary에 기록되어 있으면, 다음 iteration은
+  반드시 `core/` structural candidate patch 1개와 targeted guardrail을
+  포함해야 한다.
+- authority 문서들 사이에 실제 모순이 새로 생긴 경우를 제외하고,
+  문서만 수정하고 끝나는 iteration은 금지한다.
+- structural round의 code candidate는 한 iteration에 하나만 허용한다.
+  candidate를 고른 뒤에는 broad single 또는 targeted public/raw guardrail까지
+  돌려서 accept/reject를 결정해야 한다.
 
 ### 6.1 단계별 commit / push
 
@@ -203,6 +260,12 @@ raw/public 분리를 다시 찍는다.
   연속으로 broad win을 만들지 못하면, 더 좁은 local 후보를 계속 추가하지 않는다.
 - 이 경우 먼저 semantic/backpressure map을 다시 만든 뒤에만 다음 code candidate로
   넘어간다.
+- reset iteration이 한 번 끝나고
+  [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
+  summary에 새 `Next Exact Step`이 기록되면,
+  그 다음 iteration은 다시 reset을 반복하지 않는다.
+  그때부터는 반드시 `core/` structural patch 1개와 targeted guardrail을
+  수행해야 한다.
 
 ### 6.3 미세 후보 제한 규칙
 
@@ -265,9 +328,13 @@ raw/public 분리를 다시 찍는다.
    [`core/src/sockets/socket_base_msg.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_base_msg.cpp)
    /
    [`core/src/sockets/socket_runtime.cpp`](/home/hep7/project/kairos/zlink/core/src/sockets/socket_runtime.cpp)
-   의 send admission/lock과
+   kept boundary 위의 `xsend_initial` / public multipart-sender-regime ordering과
    [`core/src/core/pipe.cpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.cpp)
-   의 `_out_sync` 아래 same-ordering redundant work 축소다.
+   의 `_out_sync` 아래 same-ordering publication work,
+   그리고 routed/source-rid export differential이다.
+   `a819ea3a` admission floor는 historical input으로 유지하되,
+   latest send-scope split diagnostics 이후 immediate lifecycle fast-path
+   target에서는 내린다.
    2026-03-28 current tree에는
    [`core/src/core/pipe.hpp`](/home/hep7/project/kairos/zlink/core/src/core/pipe.hpp)
    /
@@ -277,9 +344,10 @@ raw/public 분리를 다시 찍는다.
    `_out_active`, `_peers_msgs_read`, `_state`, `_out_pipe`
    outbound invariant map이 이미 고정돼 있다.
    다음 랄프루프는 이 추상을 다시 적는 단계가 아니라,
-   먼저 `a819ea3a` send admission/CAS와 `ff0140e5` `_out_sync`
-   steady-state duty를 current HEAD에서 어떻게 줄일 수 있는지 보는 데서
-   시작한다.
+   먼저 `ff0140e5` `_out_sync` publication duty와
+   `98e7d324/9b91234c` public multipart-sender-regime 흔적,
+   routed/source-rid export differential을 current HEAD에서
+   어떻게 줄일 수 있는지 보는 데서 시작한다.
    가장 최근
    `pipe.hpp` / `pipe.cpp` `process_activate_write()` already-active
    peer-progress snapshot split candidate는
@@ -321,13 +389,41 @@ raw/public 분리를 다시 찍는다.
    `DEALER_DEALER tcp/inproc -7.74% / -15.86%`로
    unchanged control인 `PAIR public tcp`와 raw `PAIR inproc` guardrail을
    함께 지키지 못해 원복했다.
+   이어서 current kept boundary 위에서
+   common data-plane admission을 full public lifecycle coordinator 아래의
+   dedicated public send lease로 다시 가르는 structural candidate도
+   시도했지만,
+   authority public rerun
+   `PAIR tcp/inproc -15.65% / -25.43%`,
+   `DEALER_DEALER tcp/inproc -24.41% / -32.10%`로
+   baseline보다 더 악화돼 원복했다.
+   latest env-gated send-scope split diagnostics
+   [`pair_send_scope_profile_20260329.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/pair_send_scope_profile_20260329.txt)
+   /
+   [`dealer_send_scope_profile_20260329.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/dealer_send_scope_profile_20260329.txt)
+   에서는 no-sync `PAIR`
+   `enter_public_api/leave_public_api 49.70/50.01 ticks`,
+   sync-fast `DEALER_DEALER`
+   `enter_public_api_and_lock_sync_fast/unlock_public_api_sync_and_leave`
+   `49.66/49.67 ticks`,
+   ctor/dtor total `174.36/175.98`, `174.80/176.78`만 확인됐다.
+   즉 earlier `socket_scope_construct ~1266/1314 ticks` bucket은
+   lifecycle atomics 단독이 아니었고,
+   another admission-floor-only family를 immediate next candidate로
+   두면 안 된다.
    따라서 다음 라운드는
    `process_activate_write()` peer-progress family,
    existing public-send-sync-held `send_serialized` helper family,
    `DEALER` external send-state mutex / external send-serialized scope family,
    existing public-send-sync-held pipe hot-send lease / outpipe lifetime split
    family,
-   `fast_mutex.hpp` native recursive pthread primitive replacement family를
+   `fast_mutex.hpp` native recursive pthread primitive replacement family,
+   dedicated public send lease split family,
+   `public_api_inflight/public_api_closing/public_api_sync` split family,
+   shared `public_api_state` public/send inflight lane split family,
+   `public_api_sync` recursive mutex-backed split family,
+   plain final-part sender-regime split family,
+   `activate_write` progress-command coalesce family를
    반복하지 않고,
    send-scope construct + pipe serialization 구조를 함께 다시 고른다.
    다만 2026-03-28 현재 이 common send-side structural family는
@@ -335,12 +431,36 @@ raw/public 분리를 다시 찍는다.
    existing public-send-sync-held `send_serialized`,
    `DEALER` external send-state mutex/external serialized scope,
    existing public-send-sync-held hot-send lease/outpipe lifetime split,
-   `fast_mutex.hpp` native recursive pthread primitive replacement까지
-   연속 rejected count가 6.2 trigger를 넘겼다.
-   따라서 immediate next round는 또 다른 local code patch가 아니라,
-   guide/review/hot-path 우선순위를 먼저 다시 쓰고
-   historical `a819ea3a` admission floor와 `ff0140e5` pipe floor를
-   current residual direct cause 관점에서 다시 분리하는 데서 시작한다.
+   `fast_mutex.hpp` native recursive pthread primitive replacement,
+   dedicated public send lease split,
+   `public_api_inflight/public_api_closing/public_api_sync` split,
+   shared `public_api_state` public/send inflight lane split,
+   `public_api_sync` recursive mutex-backed split,
+   `pipe.cpp` final-part `write_and_flush()` lock-free snapshot split,
+   `pipe::_out_sync` plain non-recursive fast mutex split,
+   send-side layout regroup,
+   preflight-before-public-admission split,
+   stronger-gate `public_api_inflight/public_api_closing/public_api_sync`
+   split recheck,
+   plain final-part sender-regime split,
+   `activate_write` progress-command coalesce split까지
+   broad win을 만들지 못했다.
+   current implementation priority는 another lifecycle fast path가 아니라
+   `xsend_initial` / `pipe::_out_sync` publication floor와
+   `98e7d324/9b91234c` public multipart/sender-regime,
+   routed/source-rid export differential 쪽으로 내린다.
+   current kept boundary + direct profile reread와
+   serial current-tree public/raw refresh 재확인은 이미 다시 수행했다.
+   다만 late-session refresh/rerun이 earlier authority보다 더 낮은
+   session-local baseline을 반복했으므로,
+   immediate next round는 이 둘을 모두 guardrail로 유지한 채
+   새 broad hypothesis 하나를 다시 열고
+   new common send-side structural candidate 1개를 고르는 단계다.
+   signal이 섞이면 candidate keep/reject 전에
+   current-tree serial refresh를 먼저 다시 찍는다.
+   이때 candidate는 반드시
+   `7bea9e3f` good state 대비 무엇이 더 두꺼워졌는지 설명 가능해야 하며,
+   thread-safe 계약 약화나 POSD 위반을 대가로 삼으면 안 된다.
 3. 현재 accepted `PAIR` / `DEALER` 공통 delta를 기준선으로 유지하고,
    broad win 근거 없는 공통 미세 후보는 다시 파지 않는다.
 4. `PUBSUB`는 code optimization 전에 semantic/backpressure map을 먼저 만든다.
@@ -631,7 +751,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py pubsub \
 
 각 iteration 끝에는
 [single-libzmq-gap-review.ko.md](/home/hep7/project/kairos/zlink/doc/plan/perf/single-libzmq-gap-review.ko.md)
-에 최소한 아래를 남긴다.
+에 최소한 아래 short summary만 남긴다.
 
 - 작업한 가설 1개
 - candidate family 1개
@@ -640,13 +760,21 @@ python3 core/bench/with_zmq/multi/run_comparison.py pubsub \
 - `claude` consult 여부와 핵심 조언 1~3줄
 - 수정한 파일 경로
 - 실행한 명령
-- 생성된 결과 파일 경로
 - 핵심 수치
 - 유지한 변경 / 원복한 변경
 - 다음 iteration 우선순위
 
 rejected candidate는 반드시 로그에 남긴다.
 같은 실패 실험을 이유 없이 반복하지 않는다.
+
+상세 실험 기록은 항상
+[logs/iterations/](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/iterations)
+아래 새 markdown 파일로 남긴다.
+파일명은 `YYYYMMDD-HHMM-<short-family>.ko.md` 형식을 사용한다.
+
+새 iteration은 review 메인 파일의 오래된 본문을 처음부터 다시 읽지 않는다.
+먼저 summary를 읽고, 필요한 family가 있을 때만 해당 iteration 로그 파일을
+역참조한다.
 
 각 iteration 끝에는
 [hot-path.ko.md](/home/hep7/project/kairos/zlink/doc/internal/hot-path.ko.md)
@@ -673,6 +801,26 @@ rejected candidate는 반드시 로그에 남긴다.
 
 ## 12. 현재 작업 레지스터
 
+이 절은 **현재 활성 레지스터 요약만** 유지한다.
+상세 kept/rejected 실험 본문은
+[logs/iterations/](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/iterations)
+아래 개별 파일로 남기고, 새 iteration은 이 절 아래의 오래된 상세 본문을
+처음부터 다시 읽지 않는다.
+
+현재 활성 레지스터:
+- common residual direct cause는
+  `enter_public_api`가 포함된 common send scope construct floor와
+  `_out_sync` write/flush serialization floor의 조합이다.
+- next structural round는 `7bea9e3f` good reference oracle 대비
+  `send entry / pipe duty / public surface / sender regime`
+  중 무엇을 current contract 안에서 얇게 복원할지 설명 가능한
+  common candidate 하나만 고른다.
+- `ROUTER`/`PUBSUB` pattern-local family는 current common structural round가
+  끝나기 전까지 primary로 승격하지 않는다.
+
+아래 본문은 legacy reference/archival record다. current authority는 위 요약과
+상단 `Current Operating Summary`가 우선한다.
+
 - 현재 유지 중인 latest delta
   - `pipe.hpp` / `pipe.cpp` `_out_sync` invariant map을
     `write_message_unlocked()/rollback_unlocked()/flush_unlocked()` helper로
@@ -685,6 +833,16 @@ rejected candidate는 반드시 로그에 남긴다.
     에서는 `process_commands`보다 `send scope construct`와
     `pipe_write_and_flush`가 더 큰 steady-state cost 축으로 남았음을 확인했고,
     계측 patch는 측정 뒤 원복했다
+  - latest current-tree split instrumentation에서는
+    `pipe_write_and_flush`가 `PAIR/DEALER_DEALER inproc 64B`
+    `866.94/862.54 ticks`였고,
+    내부 bucket은 `lock 70.95/70.63`, `hwm 25.12/25.33`,
+    `write 38.50/38.98`, `flush 259.26/266.00`,
+    `flush outcome true=8840861/8740895`,
+    `false=539397/506441`였다.
+    즉 current `pipe serialization floor`의 본체는
+    false wakeup/no-op보다 successful publication/CAS path 쪽이었다.
+    이번 계측 patch도 측정 뒤 원복했다
   - above refactor의 targeted public/raw guardrail은
     [`perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt),
     [`perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt)
@@ -706,12 +864,187 @@ rejected candidate는 반드시 로그에 남긴다.
     existing public-send-sync-held `send_serialized`,
     `DEALER` external send-state mutex/external serialized scope,
     existing public-send-sync-held hot-send lease/outpipe lifetime split,
-    `fast_mutex.hpp` native recursive pthread primitive replacement까지
-    다섯 계열이 연속 reject되어 6.2 guide 재작성 trigger가 켜졌다.
-    따라서 다음 iteration은 또 다른 hot-path patch가 아니라
-    guide/review/hot-path summary 재정렬과
+    `fast_mutex.hpp` native recursive pthread primitive replacement,
+    dedicated public send lease split,
+    shared `public_api_state` public/send inflight lane split,
+    `public_api_sync` recursive mutex-backed split,
+    `pipe.cpp` final-part `write_and_flush()` lock-free snapshot split,
+    `pipe::_out_sync` plain non-recursive fast mutex split,
+    non-conflate out-pipe concrete `ypipe_t` fast path,
+    `ypipe_base.hpp` / `ypipe.hpp` / `ypipe_conflate.hpp`
+    combined write+publication split,
+    public API-boundary same-handle recursive mutex single-part fast path,
+    same-thread parked send admission lease,
+    `pipe.hpp` / `pipe.cpp` peer-progress refreshed HWM-credit cache split,
+    `activate_write` progress-command coalesce split,
+    `msg_t::init_size()/close()` small-lmsg pooled materialize/free,
+    send-side layout regroup,
+    preflight-before-public-admission split,
+    stronger-gate `public_api_inflight/public_api_closing/public_api_sync`
+    split recheck,
+    plain final-part sender-regime split까지
+    broad win을 만들지 못했다.
+    따라서 current next step은 이 rejected family를 반복하지 않고,
     historical `a819ea3a` admission floor 대 `ff0140e5` pipe floor
-    분리부터 시작한다
+    재분리 위에서
+    `98e7d324/9b91234c` public multipart/sender-regime 의미까지 함께 다시 본
+    뒤에만
+    새 broad hypothesis와 code family를 다시 고르는 것이다
+  - serial current-tree `PAIR` / `DEALER_DEALER` public/raw refresh
+    [`perf_linux_20260328_212318_codex_20260328_serial_refresh_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_212318_codex_20260328_serial_refresh_public.txt),
+    [`perf_linux_20260328_212402_codex_20260328_serial_refresh_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_212402_codex_20260328_serial_refresh_raw.txt)
+    에서는
+    `PAIR public/raw tcp -12.03% -> -8.63%, inproc -17.18% -> -23.67%`,
+    `DEALER_DEALER public/raw tcp -11.12% -> -12.06%, inproc -18.60% -> -20.63%`
+    였다.
+    즉 raw/public wrapper 제거는 `PAIR tcp`만 일부 회복하고 common broad win을
+    만들지 못했으며, `PAIR`(no public-api sync)와 `DEALER_DEALER`
+    (public-api sync held) 격차가 여전히 비슷하므로 dealer-only
+    `public_api_sync` reuse family도 현재 primary blocker가 아니다.
+    current residual direct cause는 wrapper나 dealer-only sync가 아니라
+    `enter_public_api`가 포함된 common send scope construct floor와
+    `_out_sync` write/flush serialization floor의 조합으로 다시 쓴다.
+  - late-session serial current-tree refresh +
+    rerun
+    [`perf_linux_20260328_232530_codex_20260328_post_recursive_sync_refresh_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_232530_codex_20260328_post_recursive_sync_refresh_public.txt),
+    [`perf_linux_20260328_232612_codex_20260328_post_recursive_sync_refresh_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_232612_codex_20260328_post_recursive_sync_refresh_raw.txt),
+    [`perf_linux_20260328_233054_codex_20260328_post_recursive_sync_refresh_public_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_233054_codex_20260328_post_recursive_sync_refresh_public_rerun.txt),
+    [`perf_linux_20260328_233133_codex_20260328_post_recursive_sync_refresh_raw_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_233133_codex_20260328_post_recursive_sync_refresh_raw_rerun.txt)
+    에서는
+    public first/rerun
+    `PAIR tcp/inproc -24.67% / -14.98% -> -27.72% / -18.03%`,
+    `DEALER_DEALER tcp/inproc -14.63% / -32.73% -> -21.31% / -32.12%`,
+    raw first/rerun
+    `PAIR tcp/inproc -23.51% / -23.04% -> -23.54% / -25.42%`,
+    `DEALER_DEALER tcp/inproc -32.68% / -34.30% -> -23.26% / -25.44%`였다.
+    즉 current session baseline 자체가 earlier authority보다 더 낮은 상태로
+    반복됐으므로,
+    다음 broad hypothesis/next candidate는 early authority와
+    current session low baseline을 둘 다 guardrail로 보고
+    signal이 섞이면 current-tree serial refresh를 먼저 다시 찍은 뒤에만
+    keep/reject를 결정한다
+  - `pipe.hpp` / `pipe.cpp` non-conflate out-pipe concrete `ypipe_t`
+    fast path candidate도 targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260329_002224_codex_20260329_pipe_concrete_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_002224_codex_20260329_pipe_concrete_public.txt)
+    `PAIR tcp/inproc -18.01% / -35.55%`,
+    `DEALER_DEALER tcp/inproc -15.12% / -24.02%`,
+    raw
+    [`perf_linux_20260329_002310_codex_20260329_pipe_concrete_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_002310_codex_20260329_pipe_concrete_raw.txt)
+    `PAIR tcp/inproc -8.81% / -28.27%`,
+    `DEALER_DEALER tcp/inproc -7.64% / -22.08%`로
+    public과 raw `inproc` guardrail을 함께 못 지켜 원복했다.
+    즉 current `pipe serialization floor`는
+    type-erased out-pipe `write()/flush()` dispatch 한 겹만 걷는 것으로는
+    설명되지 않는다
+  - 같은 `flush true` dominant signal 위에서
+    `ypipe_base.hpp` / `ypipe.hpp` / `ypipe_conflate.hpp`
+    combined write+publication candidate도
+    [`perf_linux_20260329_043927_codex_20260329_ypipe_write_publish_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_043927_codex_20260329_ypipe_write_publish_public.txt)
+    public `PAIR tcp/inproc -36.56% / -24.11%`,
+    `DEALER_DEALER tcp/inproc -10.62% / -18.47%`로
+    early authority와 session-local low baseline을 함께 못 지켜 원복했다.
+    즉 successful publication/CAS path가 더 크더라도,
+    same-ordering local `ypipe` helper fusion 하나만으로는 current
+    `pipe serialization floor`를 설명하지 못한다
+  - `socket_base_api.cpp` / `socket_base_msg.cpp` /
+    `socket_message_send_api.cpp` public API-boundary same-handle recursive
+    mutex single-part fast path candidate도 targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260329_005659_codex_20260329_api_locked_send_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_005659_codex_20260329_api_locked_send_public.txt)
+    `PAIR tcp/inproc -14.34% / -31.65%`,
+    `DEALER_DEALER tcp/inproc -13.44% / -24.93%`,
+    `ROUTER_ROUTER tcp/inproc -57.41% / -23.50%`,
+    raw
+    [`perf_linux_20260329_005807_codex_20260329_api_locked_send_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_005807_codex_20260329_api_locked_send_raw.txt)
+    `PAIR tcp/inproc -17.38% / -31.55%`,
+    `DEALER_DEALER tcp/inproc -11.26% / -19.57%`,
+    `ROUTER_ROUTER tcp/inproc -57.61% / -23.28%`로
+    public과 raw guardrail을 함께 못 지켜 원복했다.
+    즉 current `send scope construct floor`는
+    outer same-handle API mutex로만 대체해도 broad fix가 되지 않는다
+  - `socket_runtime.hpp` / `socket_runtime.cpp` /
+    `socket_base_msg.cpp` same-thread parked send admission lease candidate도
+    targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260329_012903_codex_20260329_send_parked_lease_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_012903_codex_20260329_send_parked_lease_public.txt)
+    `PAIR tcp/inproc -13.55% / -29.90%`,
+    `DEALER_DEALER tcp/inproc -23.40% / -22.04%`,
+    raw
+    [`perf_linux_20260329_012948_codex_20260329_send_parked_lease_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_012948_codex_20260329_send_parked_lease_raw.txt)
+    `PAIR tcp/inproc -24.41% / -23.24%`,
+    `DEALER_DEALER tcp/inproc -23.28% / -14.47%`로
+    targeted public/raw guardrail을 함께 못 지켜 원복했다.
+    즉 `a819ea3a` admission floor와 `9b91234c` sender-regime 흔적은
+    same-thread parked send handoff 하나로만은 broad fix가 되지 않는다
+  - `pipe.hpp` / `pipe.cpp` peer-progress refreshed HWM-credit cache
+    candidate도 targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260329_014653_pipe_hwm_credit_public_20260329.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_014653_pipe_hwm_credit_public_20260329.txt)
+    `PAIR tcp/inproc -15.04% / -24.43%`,
+    `DEALER_DEALER tcp/inproc -8.68% / -32.46%`,
+    raw
+    [`perf_linux_20260329_014732_pipe_hwm_credit_raw_20260329.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_014732_pipe_hwm_credit_raw_20260329.txt)
+    `PAIR tcp/inproc -20.98% / -20.36%`,
+    `DEALER_DEALER tcp/inproc -20.37% / -22.58%`로
+    targeted public/raw guardrail을 함께 못 지켜 원복했다.
+    즉 current `pipe serialization floor`는
+    steady-state `check_hwm()` arithmetic과 `_peers_msgs_read` refresh를
+    cached credit 하나로 다시 쓰는 local pipe-family만으로는
+    broad fix가 되지 않는다
+  - `core/src/core/msg.cpp` `msg_t::init_size()/close()` small-lmsg pooled
+    materialize/free candidate도 targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260329_022632_codex_20260329_msg_pool_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_022632_codex_20260329_msg_pool_public.txt)
+    `PAIR tcp/inproc -15.43% / -24.47%`,
+    `DEALER_DEALER tcp/inproc -32.71% / -35.28%`,
+    raw
+    [`perf_linux_20260329_022712_codex_20260329_msg_pool_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_022712_codex_20260329_msg_pool_raw.txt)
+    `PAIR tcp/inproc -33.38% / -25.71%`,
+    `DEALER_DEALER tcp/inproc -16.21% / -36.83%`로
+    `DEALER_DEALER` public과 raw `PAIR/DEALER` guardrail을 함께 못 지켜
+    원복했다.
+    즉 current residual은 `msg_t` small-lmsg heap pair 하나만 걷는다고
+    사라지지 않았고,
+    message-local allocator pool family도 broad fix가 되지 않는다
+  - `socket_runtime.hpp` / `pipe.hpp` / `pipe.cpp` send-side layout regroup
+    candidate도 targeted ctest는 통과했지만,
+    same-tag public/raw parallel diagnostic
+    [`perf_linux_20260329_024626_codex_20260329_send_layout_regroup_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_024626_codex_20260329_send_layout_regroup_public.txt),
+    [`perf_linux_20260329_024626_codex_20260329_send_layout_regroup_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_024626_codex_20260329_send_layout_regroup_raw.txt)
+    에서
+    public `PAIR tcp/inproc -14.64% / -25.65%`,
+    `DEALER_DEALER tcp/inproc -12.23% / -38.09%`,
+    raw `PAIR tcp/inproc -24.84% / -18.60%`,
+    `DEALER_DEALER tcp/inproc -22.59% / -19.83%`로
+    public/raw guardrail을 함께 못 지켜 원복했다.
+    즉 current residual은 lifecycle coordinator / pipe outbound hot-state의
+    layout regroup 하나만으로는 broad fix가 되지 않는다
+  - `socket_base.hpp` / `socket_base_msg.cpp`
+    preflight-before-public-admission candidate도
+    contract gate
+    (`test_thread_safe_contract_policy`, `test_monitor_perf_contract`,
+    `test_socket_with_handler`, `test_stream_threadsafe` 포함)는 통과했지만,
+    public
+    [`perf_linux_20260329_030207_codex_20260329_preflight_before_admission_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_030207_codex_20260329_preflight_before_admission_public.txt)
+    `PAIR tcp/inproc -26.28% / -26.58%`,
+    `DEALER_DEALER tcp/inproc -24.14% / -35.55%`로
+    public stage에서 early authority와 session-local low baseline을 함께
+    못 지켜 raw 없이 바로 원복했다.
+    즉 `a819ea3a` admission floor를 initial preflight 밖으로 미루는 것만으로는
+    broad fix가 되지 않고, close/send contract risk를 감수할 만큼의 이득도
+    없다
+  - `socket_runtime.hpp` / `socket_runtime.cpp`
+    `public_api_inflight/public_api_closing/public_api_sync`
+    split family를 stronger contract gate로 다시 확인했지만,
+    public
+    [`perf_linux_20260329_031939_codex_20260329_close_sync_state_split_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_031939_codex_20260329_close_sync_state_split_public.txt)
+    `PAIR tcp/inproc -17.22% / -24.11%`,
+    `DEALER_DEALER tcp/inproc -14.31% / -29.56%`로
+    early authority와 session-local low baseline을 함께 못 지켜
+    raw 없이 바로 원복했다.
+    즉 current residual은 public lifecycle coordinator state packing
+    하나를 stronger gate로 다시 확인해도 broad fix가 되지 않는다
   - `pipe.cpp` `write()/write_and_flush()/check_write_status()`는 current tree에서
     `_out_sync` 아래 generic `check_hwm_unlocked()`를 사용해 recursive
     `check_hwm()` 재진입을 이미 피한다
@@ -800,6 +1133,39 @@ rejected candidate는 반드시 로그에 남긴다.
     public `PAIR tcp/inproc 64B -32.03% / -29.11%`,
     `DEALER_DEALER tcp/inproc -19.33% / -31.37%`로
     `PAIR`와 `DEALER_DEALER inproc`을 accepted baseline보다 더 악화시켜 원복
+  - `socket_runtime.hpp` / `socket_runtime.cpp`
+    `public_api_inflight/public_api_closing/public_api_sync`
+    split family를 stronger contract gate로 다시 확인한 run도
+    public `PAIR tcp/inproc -17.22% / -24.11%`,
+    `DEALER_DEALER tcp/inproc -14.31% / -29.56%`로
+    early authority와 session-local low baseline을 함께 못 지켜 원복
+  - `socket_base_msg.cpp` / `pair.cpp` / `dealer.cpp` / `lb.cpp`
+    plain non-routed final-part sender-regime split candidate도
+    stronger contract gate는 통과했지만,
+    public `PAIR tcp/inproc -12.23% / -29.92%`,
+    `DEALER_DEALER tcp/inproc -11.44% / -34.04%`로
+    early authority와 session-local low baseline을 함께 못 지켜 원복
+  - `pipe.hpp` / `pipe.cpp` `_lwm` boundary `activate_write`
+    progress-command coalesce candidate도 targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260329_041240_codex_20260329_activate_write_coalesce_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_041240_codex_20260329_activate_write_coalesce_public.txt)
+    `PAIR tcp/inproc -10.58% / -34.54%`,
+    `DEALER_DEALER tcp/inproc -30.23% / -25.32%`로
+    early authority와 session-local low baseline을 함께 못 지켜
+    raw 없이 바로 원복했다.
+    즉 current residual은 `_lwm` boundary progress-command emission count
+    하나만 줄이는 local pipe tweak로는 broad fix가 되지 않는다
+  - `core/src/core/ypipe_base.hpp` / `core/src/core/ypipe.hpp` /
+    `core/src/core/ypipe_conflate.hpp` combined write+publication candidate도
+    targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260329_043927_codex_20260329_ypipe_write_publish_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_043927_codex_20260329_ypipe_write_publish_public.txt)
+    `PAIR tcp/inproc -36.56% / -24.11%`,
+    `DEALER_DEALER tcp/inproc -10.62% / -18.47%`로
+    early authority와 session-local low baseline을 함께 못 지켜
+    raw 없이 바로 원복했다.
+    즉 `flush true` dominant signal도
+    another local `ypipe` publication helper family를 정당화하지 않는다
   - `fast_mutex.hpp` native recursive `pthread_mutex` primitive replacement도
     stream/contract smoke는 통과했지만,
     public `PAIR tcp/inproc -27.78% / -17.52%`,
@@ -808,6 +1174,76 @@ rejected candidate는 반드시 로그에 남긴다.
     `DEALER_DEALER tcp/inproc -7.74% / -15.86%`로
     unchanged control인 `PAIR public tcp`와 raw `PAIR inproc` guardrail을
     함께 지키지 못해 원복
+  - `socket_runtime.hpp` / `socket_runtime.cpp`
+    dedicated public send lease split candidate도
+    targeted ctest는 통과했지만,
+    authority public rerun
+    `PAIR tcp/inproc -15.65% / -25.43%`,
+    `DEALER_DEALER tcp/inproc -24.41% / -32.10%`로
+    baseline보다 더 악화돼 원복
+  - `socket_runtime.hpp` / `socket_runtime.cpp`
+    shared `public_api_state` public/send inflight lane split candidate도
+    targeted ctest는 통과했지만,
+    same-tag public/raw parallel run
+    [`perf_linux_20260328_225749_codex_20260328_send_state_lane_split_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_225749_codex_20260328_send_state_lane_split_public.txt),
+    [`perf_linux_20260328_225749_codex_20260328_send_state_lane_split_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_225749_codex_20260328_send_state_lane_split_raw.txt)
+    는 noisy diagnostic으로만 두고,
+    authority public
+    [`perf_linux_20260328_225833_codex_20260328_send_state_lane_split_public_authority.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_225833_codex_20260328_send_state_lane_split_public_authority.txt)
+    `PAIR tcp/inproc -20.45% / -24.95%`,
+    `DEALER_DEALER tcp/inproc -23.79% / -23.41%`,
+    authority raw
+    [`perf_linux_20260328_225912_codex_20260328_send_state_lane_split_raw_authority.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_225912_codex_20260328_send_state_lane_split_raw_authority.txt)
+    `PAIR tcp/inproc -22.49% / -24.59%`,
+    `DEALER_DEALER tcp/inproc -10.46% / -19.57%`로
+    baseline보다 더 악화돼 원복
+  - `socket_runtime.hpp` / `socket_runtime.cpp`
+    `public_api_sync` recursive mutex-backed split candidate도
+    targeted ctest는 통과했지만,
+    same-tag public/raw parallel run
+    [`perf_linux_20260328_231525_codex_20260328_public_sync_recursive_mutex_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_231525_codex_20260328_public_sync_recursive_mutex_public.txt),
+    [`perf_linux_20260328_231525_codex_20260328_public_sync_recursive_mutex_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_231525_codex_20260328_public_sync_recursive_mutex_raw.txt)
+    는 noisy diagnostic으로만 두고,
+    authority public
+    [`perf_linux_20260328_231611_codex_20260328_public_sync_recursive_mutex_public_authority.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_231611_codex_20260328_public_sync_recursive_mutex_public_authority.txt)
+    `PAIR tcp/inproc -16.85% / -21.61%`,
+    `DEALER_DEALER tcp/inproc -18.65% / -36.20%`,
+    authority raw
+    [`perf_linux_20260328_231650_codex_20260328_public_sync_recursive_mutex_raw_authority.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_231650_codex_20260328_public_sync_recursive_mutex_raw_authority.txt)
+    `PAIR tcp/inproc -7.34% / -17.60%`,
+    `DEALER_DEALER tcp/inproc -18.83% / -34.78%`로
+    baseline보다 더 악화돼 원복
+  - `pipe.hpp` / `pipe.cpp`
+    final-part `write_and_flush()` lock-free snapshot candidate도
+    targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260328_234340_codex_20260328_pipe_write_flush_hot_snapshot_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_234340_codex_20260328_pipe_write_flush_hot_snapshot_public.txt)
+    `PAIR tcp/inproc -32.16% / -20.55%`,
+    `DEALER_DEALER tcp/inproc -9.76% / -23.34%`로
+    `PAIR`가 early authority와 session-local low baseline을 둘 다 못 지켜
+    public stage에서 원복
+  - `core/src/utils/fast_mutex.hpp` / `pipe.hpp` / `pipe.cpp`
+    `pipe::_out_sync` plain non-recursive fast mutex candidate도
+    `claude -p` consult는 `code 124` timeout으로 unavailable이었고,
+    targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260328_235615_codex_20260329_pipe_plain_mutex_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_235615_codex_20260329_pipe_plain_mutex_public.txt)
+    `PAIR tcp/inproc -22.34% / -24.82%`,
+    `DEALER_DEALER tcp/inproc -9.78% / -32.93%`로
+    `PAIR`와 `DEALER_DEALER inproc`이 both guardrail을 못 지켜
+    public stage에서 원복
+  - `pipe.hpp` / `pipe.cpp`
+    non-conflate out-pipe concrete `ypipe_t` fast path candidate도
+    targeted ctest는 통과했지만,
+    public
+    [`perf_linux_20260329_002224_codex_20260329_pipe_concrete_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_002224_codex_20260329_pipe_concrete_public.txt)
+    `PAIR tcp/inproc -18.01% / -35.55%`,
+    `DEALER_DEALER tcp/inproc -15.12% / -24.02%`,
+    raw
+    [`perf_linux_20260329_002310_codex_20260329_pipe_concrete_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_002310_codex_20260329_pipe_concrete_raw.txt)
+    `PAIR tcp/inproc -8.81% / -28.27%`,
+    `DEALER_DEALER tcp/inproc -7.64% / -22.08%`로
+    public과 raw `inproc` guardrail을 함께 못 지켜 원복
   - `pipe.hpp` / `pipe.cpp` hot send-only non-recursive lock split도
     public `PAIR tcp/inproc 64B -17.14% / -34.56%`,
     `DEALER_DEALER tcp/inproc -13.65% / -19.47%`,
@@ -821,6 +1257,20 @@ rejected candidate는 반드시 로그에 남긴다.
     raw `PAIR tcp/inproc -11.65% / -27.25%`,
     `DEALER_DEALER tcp/inproc -8.99% / -25.87%`로
     `PAIR` public/raw와 `DEALER_DEALER inproc raw`가 함께 흔들려 원복
+  - `socket_runtime.hpp` / `socket_runtime.cpp`
+    common data-plane admission boundary helper extraction candidate도
+    먼저 out-of-line helper 형태로
+    public `PAIR tcp/inproc -28.25% / -30.71%`,
+    `DEALER_DEALER tcp/inproc -15.00% / -22.13%`,
+    raw `PAIR tcp/inproc -25.53% / -22.57%`,
+    `DEALER_DEALER tcp/inproc -11.38% / -20.77%`로 흔들렸고,
+    helper를 header-inline + original branch shape로 다시 맞춘 뒤에도
+    public `PAIR tcp/inproc -21.50% / -14.91%`,
+    `DEALER_DEALER tcp/inproc -10.08% / -19.13%`,
+    raw `PAIR tcp/inproc -26.96% / -30.67%`,
+    `DEALER_DEALER tcp/inproc -22.43% / -21.11%`로
+    `PAIR` public/raw와 `DEALER_DEALER tcp raw` guardrail을 함께 지키지
+    못해 전부 원복했다
   - `socket_public_send_scope_t` constructor lazy-sync acquire candidate도
     public `PAIR tcp/inproc -9.29% / -27.64%`,
     `DEALER_DEALER tcp/inproc -26.48% / -25.53%`,
@@ -1017,6 +1467,48 @@ rejected candidate는 반드시 로그에 남긴다.
     public `PAIR tcp/inproc -32.03% / -29.11%`,
     `DEALER_DEALER tcp/inproc -19.33% / -31.37%`로
     broad win이 아니어서 현재 코드에는 남아 있지 않다.
+  - 같은 날 `socket_runtime.hpp` / `socket_runtime.cpp`
+    shared `public_api_state` public/send inflight lane split candidate도
+    authority public/raw가 모두 baseline보다 크게 악화돼 현재 코드에는 없다.
+  - 2026-03-29 stronger contract gate로 다시 확인한
+    `socket_runtime.hpp` / `socket_runtime.cpp`
+    `public_api_inflight/public_api_closing/public_api_sync`
+    split family도
+    public `PAIR tcp/inproc -17.22% / -24.11%`,
+    `DEALER_DEALER tcp/inproc -14.31% / -29.56%`로
+    early authority와 session-local low baseline을 함께 못 지켜
+    현재 코드에는 없다.
+  - 같은 날 `socket_base_msg.cpp` / `pair.cpp` / `dealer.cpp` / `lb.cpp`
+    plain non-routed final-part sender-regime split candidate도
+    public `PAIR tcp/inproc -12.23% / -29.92%`,
+    `DEALER_DEALER tcp/inproc -11.44% / -34.04%`로
+    early authority와 session-local low baseline을 함께 못 지켜
+    현재 코드에는 없다.
+  - 같은 날 `pipe.hpp` / `pipe.cpp` `_lwm` boundary `activate_write`
+    progress-command coalesce candidate도
+    public `PAIR tcp/inproc -10.58% / -34.54%`,
+    `DEALER_DEALER tcp/inproc -30.23% / -25.32%`로
+    early authority와 session-local low baseline을 함께 못 지켜
+    현재 코드에는 없다.
+  - 같은 날 `socket_runtime.hpp` / `socket_runtime.cpp`
+    `public_api_sync` recursive mutex-backed split candidate도
+    authority public/raw가 모두 baseline보다 크게 악화돼 현재 코드에는 없다.
+  - 같은 날 `pipe.hpp` / `pipe.cpp`
+    final-part `write_and_flush()` lock-free snapshot candidate도
+    public `PAIR tcp/inproc -32.16% / -20.55%`로
+    current guardrail을 못 지켜 현재 코드에는 없다.
+  - 같은 날 `core/src/utils/fast_mutex.hpp` / `pipe.hpp` / `pipe.cpp`
+    `pipe::_out_sync` plain non-recursive fast mutex candidate도
+    public `PAIR tcp/inproc -22.34% / -24.82%`,
+    `DEALER_DEALER tcp/inproc -9.78% / -32.93%`로
+    both guardrail을 못 지켜 현재 코드에는 없다.
+  - 같은 날 `pipe.hpp` / `pipe.cpp`
+    non-conflate out-pipe concrete `ypipe_t` fast path candidate도
+    public `PAIR tcp/inproc -18.01% / -35.55%`,
+    raw `PAIR tcp/inproc -8.81% / -28.27%`,
+    `DEALER_DEALER public/raw tcp/inproc -15.12% / -24.02%`,
+    `-7.64% / -22.08%`로
+    public과 raw `inproc` guardrail을 함께 못 지켜 현재 코드에는 없다.
   - 같은 날 `pipe.hpp` / `pipe.cpp` hot send-only non-recursive lock split도
     public `PAIR tcp/inproc -17.14% / -34.56%`,
     raw `PAIR tcp/inproc -8.61% / -25.46%`로
@@ -1117,12 +1609,43 @@ rejected candidate는 반드시 로그에 남긴다.
   - 같은 날 `socket_message_send_api.cpp` blocking `ROUTER` send는 이미
     routing-id envelope를 `send_routed()` one-part path로 접어 보낸다는 것을
     다시 확인했고,
+    같은 envelope fold를 `ZLINK_DONTWAIT` 경로까지 넓히는 candidate도
+    `core/bench/with_zmq/single/zlink/bench_zlink_router_router.cpp` active
+    phase가 여전히 blocking send를 쓴다는 점만 재확인한 채
+    [`perf_linux_20260329_053009_codex_20260329_router_public_nonblocking_envelope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_053009_codex_20260329_router_public_nonblocking_envelope.txt)
+    `ROUTER_ROUTER tcp/inproc -58.16% / -31.94%`로 더 나빠져 현재 코드에는
+    없다.
+    shared logical multipart entry-state reuse candidate도
+    [`perf_linux_20260329_054339_codex_20260329_multipart_sender_regime_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_054339_codex_20260329_multipart_sender_regime_public.txt)
+    first `-54.15% / -29.86%`,
+    [`perf_linux_20260329_054423_codex_20260329_multipart_sender_regime_public_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_054423_codex_20260329_multipart_sender_regime_public_rerun.txt)
+    rerun `-58.08% / -22.16%`로 relative diff만 흔들렸고, zlink 절대
+    throughput은 `tcp 1296.50 -> 1292.20`, `inproc 2572.46 -> 2574.88 msg/s`
+    수준에 머물러 현재 코드에는 없다.
+    `socket_base_msg.cpp` / `socket_message_recv_api.cpp`
+    routed source-rid zeroing-floor candidate도
+    concurrent public/raw run
+    [`perf_linux_20260329_055430_codex_20260329_router_recv_rid_zeroing_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_055430_codex_20260329_router_recv_rid_zeroing_public.txt),
+    [`perf_linux_20260329_055430_codex_20260329_router_recv_rid_zeroing_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_055430_codex_20260329_router_recv_rid_zeroing_raw.txt)
+    는 noisy diagnostic으로만 두고,
+    authority public
+    [`perf_linux_20260329_055517_codex_20260329_router_recv_rid_zeroing_public_authority.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_055517_codex_20260329_router_recv_rid_zeroing_public_authority.txt)
+    `-56.10% / -32.31%`,
+    authority raw
+    [`perf_linux_20260329_055548_codex_20260329_router_recv_rid_zeroing_raw_authority.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_055548_codex_20260329_router_recv_rid_zeroing_raw_authority.txt)
+    `-57.70% / -22.00%`로 broad win을 만들지 못했고,
+    zlink absolute throughput도 public `1297.34 / 2575.26`,
+    raw `1295.90 / 2570.82 Kmsg/s` 수준에 머물러 현재 코드에는 없다.
     `pipe.cpp` / `router.cpp` `xsend_routed()` final-part one-lock helper도
     complete run과 transport-split rerun에서 zlink 절대 throughput을
     거의 못 움직여 현재 코드에는 없다.
   - 따라서 current `ROUTER` 잔여 gap은 send wrapper 한 겹이나
-    `xsend_routed()` final-part micro-fusion보다 routed recv ordering 또는
-    공통 `_out_sync` serialization floor를 더 직접 분리해야 한다.
+    `xsend_routed()` final-part micro-fusion,
+    nonblocking envelope handshake fast path,
+    logical multipart entry-state reuse,
+    local source-rid zeroing-floor보다
+    routed recv ordering 또는 공통 `_out_sync` serialization floor를 더 직접
+    분리해야 한다.
   - 같은 날 `router.cpp` routed recv current-in/source-rid cache와
     lazy prefetched-id prepare도 default/raw relative diff는 일부 좋아 보였지만,
     direct `comp_zlink_router_router` absolute throughput이
@@ -1525,6 +2048,46 @@ rejected candidate는 반드시 로그에 남긴다.
       `admission floor` 대 `pipe floor`로 먼저 재서술한 뒤,
       serial current-tree public/raw refresh를 거쳐
       새 broad hypothesis를 다시 여는 것이다.
+- [x] serial current-tree `PAIR` / `DEALER_DEALER` public/raw refresh를
+      authority baseline으로 다시 찍고,
+      historical `a819ea3a` admission floor 대 `ff0140e5` pipe floor를
+      current residual direct cause 기준으로 다시 썼다.
+      `claude --help`는 통과했지만 prompt 인자 기반
+      `timeout 120s claude -p --permission-mode bypassPermissions ...`
+      consult는 응답 없이 종료돼 latest advisory는 unusable/unavailable로
+      기록했다.
+      serial public refresh는
+      `PAIR tcp/inproc -12.03% / -17.18%`,
+      `DEALER_DEALER tcp/inproc -11.12% / -18.60%`,
+      raw refresh는
+      `PAIR tcp/inproc -8.63% / -23.67%`,
+      `DEALER_DEALER tcp/inproc -12.06% / -20.63%`였다.
+      따라서 wrapper/raw surface 차이나 dealer-only `public_api_sync` reuse가
+      current common residual의 본체는 아니고,
+      next exact step은 current kept boundary 위에서
+      common data-plane admission을 full public lifecycle coordinator 아래의
+      더 얇은 steady-state lease로 내리는 structural family를 하나 골라
+      실제 `core/` patch와 targeted guardrail로 검증하는 것이다.
+- [x] current kept boundary 위 dedicated public send lease split
+      structural candidate를 검증하고 reject했다.
+      `socket_runtime.hpp` / `socket_runtime.cpp` /
+      `unittest_socket_runtime.cpp`에 candidate를 올렸고,
+      `claude --help`는 통과했지만 prompt 인자 기반 `claude -p`는
+      `Input must be provided either through stdin or as a prompt argument`
+      오류로 unusable이었으며,
+      stdin 기반 `timeout 120s claude -p ...` 재시도도 `code 124`로
+      끝나 latest advisory는 unavailable로 기록했다.
+      candidate 적용 뒤
+      `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      는 통과했다.
+      다만 same-tag public/raw parallel run
+      (`215617`, `215700`)은 noisy diagnostic으로만 두고,
+      single-process authority public rerun
+      `PAIR tcp/inproc -15.65% / -25.43%`,
+      `DEALER_DEALER tcp/inproc -24.41% / -32.10%`
+      ([`perf_linux_20260328_215743_codex_20260328_send_lease_public_authority.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_215743_codex_20260328_send_lease_public_authority.txt))
+      로 baseline보다 더 악화됨을 확인해 전부 원복했다.
 - [x] same-handle concurrent `PUB` publish contract regression
       (`test_pubsub_publish_is_safe_from_multiple_threads`)을 고치고
       logical multipart send scope를 재검증했다.
@@ -1783,6 +2346,22 @@ rejected candidate는 반드시 로그에 남긴다.
       first complete run `-54.37% / -23.05%`,
       transport-split rerun `tcp -57.14%`, `inproc -29.36%`로
       zlink 절대 throughput을 거의 못 움직여 current code에는 남기지 않았다.
+      이번 라운드의
+      `socket_message_send_api.cpp` public `ROUTER` nonblocking envelope
+      same-path fast path도
+      [`perf_linux_20260329_053009_codex_20260329_router_public_nonblocking_envelope.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_053009_codex_20260329_router_public_nonblocking_envelope.txt)
+      `ROUTER_ROUTER tcp/inproc -58.16% / -31.94%`로 accepted baseline보다 더
+      나빴고, active hot loop가 아니라 handshake path에만 걸려 current
+      code에는 남기지 않았다.
+      `socket_runtime.cpp` / `socket_base_msg.cpp` shared logical multipart
+      entry-state reuse candidate도
+      [`perf_linux_20260329_054339_codex_20260329_multipart_sender_regime_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_054339_codex_20260329_multipart_sender_regime_public.txt)
+      first `ROUTER_ROUTER tcp/inproc -54.15% / -29.86%`,
+      [`perf_linux_20260329_054423_codex_20260329_multipart_sender_regime_public_rerun.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_054423_codex_20260329_multipart_sender_regime_public_rerun.txt)
+      rerun `-58.08% / -22.16%`였지만,
+      zlink absolute throughput이
+      `tcp 1296.50 -> 1292.20`, `inproc 2572.46 -> 2574.88 msg/s`로 거의
+      안 움직여 current code에는 남기지 않았다.
       latest same-target routed send cache + one-lock combo도
       direct `comp_zlink_router_router` absolute throughput을
       `tcp 1214300.00`, `inproc 2419754.40 msg/s`로 거의 못 움직여
@@ -1803,9 +2382,406 @@ rejected candidate는 반드시 로그에 남긴다.
       send-side local cache / final-part micro-fusion / local recv-state cache보다
       routed recv ordering, `recv_routed()` source-rid export,
       공통 `_out_sync` serialization floor 차이가 더 큰 축일 가능성이 높다.
+- [x] `recv_routed()` routed source-rid zeroing-floor candidate를 검증하고
+      reject했다.
+      stdin 기반
+      `printf '...' | timeout 25s claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink --add-dir /home/hep7/project/kairos/libzmq`
+      consult는 usable output 없이 `code 124` timeout으로 끝나
+      advisory 없이 진행했다.
+      candidate는 `socket_base_msg.cpp` /
+      `socket_message_recv_api.cpp` /
+      `test_public_inproc_multipart_send.cpp`에만 올렸고,
+      targeted build/ctest
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_router_mandatory_hwm|test_stream_socket)$' -j1`
+      는 통과했다.
+      다만 concurrent public/raw diagnostic
+      `055430` pair는 noisy artifact로만 두고,
+      authority public
+      `ROUTER_ROUTER tcp/inproc -56.10% / -32.31%`,
+      authority raw
+      `-57.70% / -22.00%`로 broad win을 만들지 못했다.
+      zlink absolute throughput도 public `1297.34 / 2575.26`,
+      raw `1295.90 / 2570.82 Kmsg/s`로 기존 범위에 머물러
+      keep-worthy delta가 아니어서 전부 원복했다.
 - [x] 이번 단계 send-path 변경 뒤 `PAIR`/`DEALER_DEALER` raw/public 분리를
       다시 기록했다.
 - [x] broader single / multi smoke까지 통과하는 안정 지점을 남겼다.
 - [x] `_out_sync` invariant map을 current tree의 unlocked helper로 반영하고,
       direct instrumentation 결과를 다음 structural candidate의 기준선으로
       남겼다.
+- [x] same shared `public_api_state` 안에서 public/callback inflight와
+      direct send inflight를 separate lane으로 가르는 structural candidate를
+      검증하고 reject했다.
+      `claude --help`는 통과했지만 stdin 기반 `claude -p` consult는 다시
+      `code 124`로 끝나 unavailable로 기록했다.
+      candidate 적용 뒤
+      `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`,
+      `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R 'unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe' -j1`
+      는 통과했다.
+      same-tag public/raw parallel launch (`225749`)은 noisy diagnostic으로만
+      두고, authority public
+      `PAIR tcp/inproc -20.45% / -24.95%`,
+      `DEALER_DEALER tcp/inproc -23.79% / -23.41%`,
+      authority raw
+      `PAIR tcp/inproc -22.49% / -24.59%`,
+      `DEALER_DEALER tcp/inproc -10.46% / -19.57%`로
+      baseline보다 크게 악화돼 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `public_api_sync` wait primitive를 recursive mutex-backed sync로
+      다시 가르는 structural candidate를 검증하고 reject했다.
+      `claude --help`는 통과했지만 prompt argument 기반 `claude -p`는
+      `Input must be provided either through stdin or as a prompt argument when using --print`
+      오류로 unusable이었고, stdin 기반 `claude -p` 재시도도 `code 124`로
+      끝나 unavailable로 기록했다.
+      candidate는
+      `socket_runtime.hpp` / `socket_runtime.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      는 통과했다.
+      same-tag public/raw parallel launch (`231525`)은 noisy diagnostic으로만
+      두고, authority public
+      `PAIR tcp/inproc -16.85% / -21.61%`,
+      `DEALER_DEALER tcp/inproc -18.65% / -36.20%`,
+      authority raw
+      `PAIR tcp/inproc -7.34% / -17.60%`,
+      `DEALER_DEALER tcp/inproc -18.83% / -34.78%`로
+      baseline보다 크게 악화돼 전부 원복했다.
+      원복 뒤 첫 ctest는 build와 겹쳐
+      `libzlink.so.5: file too short` /
+      BAD_COMMAND를 냈지만,
+      build 완료 뒤 같은 gate rerun은 다시 통과했다.
+- [x] post-recursive current-tree serial public/raw refresh를 다시 찍고
+      late-session low baseline 반복 여부를 확인했다.
+      current code는 바꾸지 않았고,
+      `python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_post_recursive_sync_refresh_public`,
+      `PERF_SINGLE_ZLINK_RAW_MSG_API=1 python3 core/bench/with_zmq/single/run_comparison.py --patterns PAIR,DEALER_DEALER --msg-sizes 64 --transport tcp,inproc --runs 1 --build-dir core/build --results-tag codex_20260328_post_recursive_sync_refresh_raw`,
+      그리고 같은 조건 rerun
+      `codex_20260328_post_recursive_sync_refresh_public_rerun`,
+      `codex_20260328_post_recursive_sync_refresh_raw_rerun`
+      을 순차로 다시 실행했다.
+      first serial refresh는
+      public `PAIR tcp/inproc -24.67% / -14.98%`,
+      `DEALER_DEALER tcp/inproc -14.63% / -32.73%`,
+      raw `PAIR tcp/inproc -23.51% / -23.04%`,
+      `DEALER_DEALER tcp/inproc -32.68% / -34.30%`였고,
+      rerun도
+      public `PAIR tcp/inproc -27.72% / -18.03%`,
+      `DEALER_DEALER tcp/inproc -21.31% / -32.12%`,
+      raw `PAIR tcp/inproc -23.54% / -25.42%`,
+      `DEALER_DEALER tcp/inproc -23.26% / -25.44%`로
+      earlier authority보다 낮은 session-local baseline이 반복됐다.
+      따라서 next candidate는 21:23/21:24 authority baseline과
+      23:25/23:30 session-local low baseline을 둘 다 guardrail로 본다.
+- [x] `pipe.cpp` final-part `write_and_flush()` lock-free snapshot candidate를
+      검증하고 reject했다.
+      candidate는 `pipe.hpp` / `pipe.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      는 통과했다.
+      public
+      `perf_linux_20260328_234340_codex_20260328_pipe_write_flush_hot_snapshot_public.txt`
+      에서
+      `PAIR tcp/inproc -32.16% / -20.55%`,
+      `DEALER_DEALER tcp/inproc -9.76% / -23.34%`로
+      `PAIR`가 early authority와 session-local low baseline 둘 다 못 지켜
+      public stage에서 바로 reject했고 raw는 실행하지 않았다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `pipe::_out_sync` plain non-recursive fast mutex candidate를
+      검증하고 reject했다.
+      `claude -p` consult는 출력 없이 `code 124` timeout으로 끝나
+      unavailable로 기록했다.
+      candidate는 `core/src/utils/fast_mutex.hpp` / `pipe.hpp` /
+      `pipe.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260328_235615_codex_20260329_pipe_plain_mutex_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_235615_codex_20260329_pipe_plain_mutex_public.txt)
+      에서
+      `PAIR tcp/inproc -22.34% / -24.82%`,
+      `DEALER_DEALER tcp/inproc -9.78% / -32.93%`로
+      `PAIR`와 `DEALER_DEALER inproc`이 both guardrail을 못 지켜
+      public stage에서 바로 reject했고 raw는 실행하지 않았다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `pipe.hpp` / `pipe.cpp` non-conflate out-pipe concrete `ypipe_t`
+      fast path candidate를 검증하고 reject했다.
+      이번 candidate 전용 `claude` consult는 실행하지 못했고,
+      candidate는 `pipe.hpp` / `pipe.cpp`만 건드렸다.
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_ypipe|unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_002224_codex_20260329_pipe_concrete_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_002224_codex_20260329_pipe_concrete_public.txt)
+      `PAIR tcp/inproc -18.01% / -35.55%`,
+      `DEALER_DEALER tcp/inproc -15.12% / -24.02%`,
+      raw
+      [`perf_linux_20260329_002310_codex_20260329_pipe_concrete_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_002310_codex_20260329_pipe_concrete_raw.txt)
+      `PAIR tcp/inproc -8.81% / -28.27%`,
+      `DEALER_DEALER tcp/inproc -7.64% / -22.08%`로
+      public과 raw `inproc` guardrail을 함께 못 지켜 reject했고 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `socket_base_api.cpp` / `socket_base_msg.cpp` /
+      `socket_message_send_api.cpp` public API-boundary same-handle recursive
+      mutex single-part fast path candidate를 검증하고 reject했다.
+      `claude --help`는 통과했지만 prompt/ststdin 기반 `claude -p` consult는
+      여전히 unusable/unavailable이어서 이번 candidate 전용 advisory는
+      얻지 못했다.
+      candidate는 `socket_base.hpp` / `socket_base_api.cpp` /
+      `socket_base_msg.cpp` / `socket_message_send_api.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_thread_safe_contract_policy|test_monitor_perf_contract)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_005659_codex_20260329_api_locked_send_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_005659_codex_20260329_api_locked_send_public.txt)
+      `PAIR tcp/inproc -14.34% / -31.65%`,
+      `DEALER_DEALER tcp/inproc -13.44% / -24.93%`,
+      `ROUTER_ROUTER tcp/inproc -57.41% / -23.50%`,
+      raw
+      [`perf_linux_20260329_005807_codex_20260329_api_locked_send_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_005807_codex_20260329_api_locked_send_raw.txt)
+      `PAIR tcp/inproc -17.38% / -31.55%`,
+      `DEALER_DEALER tcp/inproc -11.26% / -19.57%`,
+      `ROUTER_ROUTER tcp/inproc -57.61% / -23.28%`로
+      `PAIR` / `DEALER_DEALER` `inproc`와 routed `ROUTER_ROUTER` guardrail을
+      함께 못 지켜 reject했고 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `socket_runtime.hpp` / `socket_runtime.cpp` /
+      `socket_base_msg.cpp` same-thread parked send admission lease candidate를
+      검증하고 reject했다.
+      `claude --help`는 통과했지만 stdin 기반
+      `timeout 120s claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink ...`
+      consult는 출력 없이 `code 124` timeout으로 끝나 usable advisory를
+      얻지 못했다.
+      candidate는 `socket_runtime.hpp` / `socket_runtime.cpp` /
+      `socket_base_msg.cpp` / `unittest_socket_runtime.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_thread_safe_contract_policy|test_monitor_perf_contract)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_012903_codex_20260329_send_parked_lease_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_012903_codex_20260329_send_parked_lease_public.txt)
+      `PAIR tcp/inproc -13.55% / -29.90%`,
+      `DEALER_DEALER tcp/inproc -23.40% / -22.04%`,
+      raw
+      [`perf_linux_20260329_012948_codex_20260329_send_parked_lease_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_012948_codex_20260329_send_parked_lease_raw.txt)
+      `PAIR tcp/inproc -24.41% / -23.24%`,
+      `DEALER_DEALER tcp/inproc -23.28% / -14.47%`로
+      targeted public/raw guardrail을 함께 못 지켜 reject했고 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `pipe.hpp` / `pipe.cpp` peer-progress refreshed HWM-credit cache
+      candidate를 검증하고 reject했다.
+      `claude --help`는 통과했지만 prompt/ststdin 기반
+      `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink`
+      consult는 출력 없이 `code 124` timeout으로 끝나 usable advisory를
+      얻지 못했다.
+      candidate는 `pipe.hpp` / `pipe.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_014653_pipe_hwm_credit_public_20260329.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_014653_pipe_hwm_credit_public_20260329.txt)
+      `PAIR tcp/inproc -15.04% / -24.43%`,
+      `DEALER_DEALER tcp/inproc -8.68% / -32.46%`,
+      raw
+      [`perf_linux_20260329_014732_pipe_hwm_credit_raw_20260329.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_014732_pipe_hwm_credit_raw_20260329.txt)
+      `PAIR tcp/inproc -20.98% / -20.36%`,
+      `DEALER_DEALER tcp/inproc -20.37% / -22.58%`로
+      targeted public/raw guardrail을 함께 못 지켜 reject했고 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      도 다시 통과했다.
+- [x] `core/src/core/msg.cpp` `msg_t::init_size()/close()` small-lmsg pooled
+      materialize/free candidate를 검증하고 reject했다.
+      이번 candidate 전용 `claude` consult는 실행하지 않았다.
+      candidate는 `core/src/core/msg.cpp` /
+      `core/tests/unittest/unittest_msg_pool.cpp` /
+      `core/tests/unittest/CMakeLists.txt`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_msg_pool|unittest_msg_view|test_public_inproc_multipart_send|test_multi_socket_contract_regressions)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_022632_codex_20260329_msg_pool_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_022632_codex_20260329_msg_pool_public.txt)
+      `PAIR tcp/inproc -15.43% / -24.47%`,
+      `DEALER_DEALER tcp/inproc -32.71% / -35.28%`,
+      raw
+      [`perf_linux_20260329_022712_codex_20260329_msg_pool_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_022712_codex_20260329_msg_pool_raw.txt)
+      `PAIR tcp/inproc -33.38% / -25.71%`,
+      `DEALER_DEALER tcp/inproc -16.21% / -36.83%`로
+      `DEALER_DEALER` public과 raw `PAIR/DEALER` guardrail을 함께 못 지켜
+      reject했고 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_msg_view|test_public_inproc_multipart_send|test_multi_socket_contract_regressions)$' -j1`
+      도 다시 통과했다.
+- [x] `socket_runtime.hpp` / `pipe.hpp` / `pipe.cpp` send-side layout regroup
+      candidate를 검증하고 reject했다.
+      `claude --help`는 통과했지만 stdin 기반
+      `timeout 120s claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink --add-dir /home/hep7/project/kairos/libzmq`
+      consult는 출력 없이 `code 124` timeout으로 끝나 usable advisory를
+      얻지 못했다.
+      candidate는 `socket_runtime.hpp` / `pipe.hpp` / `pipe.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe)$' -j1`
+      는 통과했다.
+      same-tag public/raw parallel diagnostic
+      [`perf_linux_20260329_024626_codex_20260329_send_layout_regroup_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_024626_codex_20260329_send_layout_regroup_public.txt)
+      `PAIR tcp/inproc -14.64% / -25.65%`,
+      `DEALER_DEALER tcp/inproc -12.23% / -38.09%`,
+      [`perf_linux_20260329_024626_codex_20260329_send_layout_regroup_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_024626_codex_20260329_send_layout_regroup_raw.txt)
+      `PAIR tcp/inproc -24.84% / -18.60%`,
+      `DEALER_DEALER tcp/inproc -22.59% / -19.83%`로
+      public/raw guardrail을 함께 못 지켜 reject했고 전부 원복했다.
+      원복 뒤 clean rebuild
+      `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `socket_base.hpp` / `socket_base_msg.cpp`
+      preflight-before-public-admission candidate를 검증하고 reject했다.
+      `claude --help`는 통과했지만 stdin 기반
+      `timeout 120s claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink --add-dir /home/hep7/project/kairos/libzmq`
+      consult는 끝까지 출력이 없었고 `code 124` timeout으로 종료됐다.
+      candidate는 `socket_base.hpp` / `socket_base_msg.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_thread_safe_contract_policy|test_monitor_perf_contract)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_030207_codex_20260329_preflight_before_admission_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_030207_codex_20260329_preflight_before_admission_public.txt)
+      `PAIR tcp/inproc -26.28% / -26.58%`,
+      `DEALER_DEALER tcp/inproc -24.14% / -35.55%`로
+      public stage에서 early authority와 session-local low baseline을 함께
+      못 지켜 raw 없이 바로 reject했고 전부 원복했다.
+      원복 뒤 clean rebuild
+      `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `socket_runtime.hpp` / `socket_runtime.cpp`
+      `public_api_inflight/public_api_closing/public_api_sync`
+      split family를 stronger contract gate로 다시 확인했지만 reject했다.
+      `claude --help`는 통과했지만 stdin 기반
+      `timeout 120s claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink --add-dir /home/hep7/project/kairos/libzmq`
+      consult는 끝까지 출력이 없었고 `code 124` timeout으로 종료됐다.
+      candidate는 `socket_runtime.hpp` / `socket_runtime.cpp` /
+      `unittest_socket_runtime.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_thread_safe_contract_policy|test_monitor_perf_contract)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_031939_codex_20260329_close_sync_state_split_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_031939_codex_20260329_close_sync_state_split_public.txt)
+      `PAIR tcp/inproc -17.22% / -24.11%`,
+      `DEALER_DEALER tcp/inproc -14.31% / -29.56%`로
+      public stage에서 early authority와 session-local low baseline을 함께
+      못 지켜 raw 없이 바로 reject했고 전부 원복했다.
+      원복 뒤 clean rebuild
+      `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `socket_base_msg.cpp` / `pair.cpp` / `dealer.cpp` / `lb.cpp`
+      plain non-routed final-part sender-regime split candidate를 검증하고
+      reject했다.
+      `claude --help`는 통과했지만 stdin 기반
+      `timeout 120s claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink --add-dir /home/hep7/project/kairos/libzmq`
+      consult는 끝까지 출력이 없었고 `code 124` timeout으로 종료됐다.
+      candidate는 `socket_base.hpp` / `socket_base_msg.cpp` / `pair.hpp` /
+      `pair.cpp` / `dealer.hpp` / `dealer.cpp` / `lb.hpp` / `lb.cpp`만
+      건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_thread_safe_contract_policy|test_monitor_perf_contract)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_034150_codex_20260329_plain_final_regime_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_034150_codex_20260329_plain_final_regime_public.txt)
+      `PAIR tcp/inproc -12.23% / -29.92%`,
+      `DEALER_DEALER tcp/inproc -11.44% / -34.04%`로
+      public stage에서 early authority와 session-local low baseline을 함께
+      못 지켜 raw 없이 바로 reject했고 전부 원복했다.
+      원복 뒤 clean rebuild
+      `cmake --build core/build -j$(nproc)`와 같은 ctest gate도
+      다시 통과했다.
+- [x] `pipe.hpp` / `pipe.cpp` `_lwm` boundary `activate_write`
+      progress-command coalesce candidate를 검증하고 reject했다.
+      `claude --help`는 통과했지만 stdin/prompt 기반
+      `claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink --add-dir /home/hep7/project/kairos/libzmq`
+      consult 시도들은 usable output 없이 멈췄고 short retry도
+      `code 124` timeout으로 끝났다.
+      candidate는 `pipe.hpp` / `pipe.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_xpub_nodrop)$' -j1`
+      는 통과했다.
+      public
+      [`perf_linux_20260329_041240_codex_20260329_activate_write_coalesce_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_041240_codex_20260329_activate_write_coalesce_public.txt)
+      `PAIR tcp/inproc -10.58% / -34.54%`,
+      `DEALER_DEALER tcp/inproc -30.23% / -25.32%`로
+      public stage에서 early authority와 session-local low baseline을 함께
+      못 지켜 raw 없이 바로 reject했고 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_xpub_nodrop)$' -j1`
+      도 다시 통과했다.
+- [x] current-tree `pipe_write_and_flush` split instrumentation으로
+      successful `flush` path dominance를 확인한 뒤,
+      `ypipe` combined write+publication candidate를 검증하고 reject했다.
+      direct current-tree instrumentation으로
+      `PAIR/DEALER_DEALER inproc 64B`
+      `pipe_write_and_flush total 866.94/862.54 ticks`,
+      `lock 70.95/70.63`, `hwm 25.12/25.33`, `write 38.50/38.98`,
+      `flush 259.26/266.00`,
+      `flush outcome true=8840861/8740895`,
+      `false=539397/506441`를 확인했고
+      temporary 계측 patch는 바로 원복했다.
+      이어서
+      `ypipe_base.hpp` / `ypipe.hpp` / `ypipe_conflate.hpp` /
+      `pipe.cpp` / `unittest_ypipe.cpp`에 candidate를 올렸고,
+      `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_ypipe|unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_router_multiple_dealers|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_thread_safe_contract_policy|test_monitor_perf_contract|test_xpub_nodrop)$' -j1`
+      는 통과했다.
+      하지만 public
+      [`perf_linux_20260329_043927_codex_20260329_ypipe_write_publish_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_043927_codex_20260329_ypipe_write_publish_public.txt)
+      `PAIR tcp/inproc -36.56% / -24.11%`,
+      `DEALER_DEALER tcp/inproc -10.62% / -18.47%`로
+      early authority와 session-local low baseline을 함께 못 지켜
+      raw 없이 바로 reject했고 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와
+      같은 ctest gate도 다시 통과했다.
+- [x] `pipe.cpp` `process_activate_read()` steady-state read-activation split
+      candidate를 검증하고 reject했다.
+      `claude --help`는 통과했지만 stdin 기반
+      `timeout 90s claude -p --permission-mode bypassPermissions --add-dir /home/hep7/project/kairos/zlink --add-dir /home/hep7/project/kairos/libzmq`
+      consult는 usable output 없이 `code 124` timeout으로 끝났다.
+      candidate는 `pipe.cpp`만 건드렸고,
+      적용 뒤 `cmake --build core/build -j$(nproc)`를 돌린 직후 첫
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_ypipe|unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_xpub_nodrop)$' -j1`
+      에서는 build overlap 때문에
+      `core/build/lib/libzlink.so.5: file too short` loader race가 났지만,
+      build 완료 뒤 같은 gate rerun은 통과했다.
+      이어서 public
+      [`perf_linux_20260329_045615_codex_20260329_recv_activation_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_045615_codex_20260329_recv_activation_public.txt)
+      `PAIR tcp/inproc -27.18% / -17.96%`,
+      `DEALER_DEALER tcp/inproc -22.07% / -18.31%`로
+      early authority와 session-local low baseline을 함께 못 지켜
+      raw 없이 바로 reject했고 전부 원복했다.
+      원복 뒤 `cmake --build core/build -j$(nproc)`와
+      같은 ctest gate도 다시 통과했다.
+- [x] env-gated send-scope split instrumentation으로
+      earlier `socket_scope_construct` bucket을 다시 갈라 보고 원복했다.
+      temporary instrumentation은 `socket_runtime.cpp` 한 파일에만 올렸고,
+      `cmake --build core/build -j$(nproc)`와
+      `ctest --test-dir core/build --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_stream_send_blocking_wakeup)$' -j1`
+      는 통과했다.
+      diagnostic profile은
+      [`pair_send_scope_profile_20260329.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/pair_send_scope_profile_20260329.txt)
+      /
+      [`dealer_send_scope_profile_20260329.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/dealer_send_scope_profile_20260329.txt)
+      에 남겼고,
+      no-sync `PAIR`
+      `enter_public_api/leave_public_api 49.70/50.01 ticks`,
+      sync-fast `DEALER_DEALER`
+      `enter_public_api_and_lock_sync_fast/unlock_public_api_sync_and_leave`
+      `49.66/49.67 ticks`,
+      ctor/dtor total `174.36/175.98`, `174.80/176.78`만 확인했다.
+      profiler-on comparison throughput은
+      [`perf_linux_20260329_051100_codex_20260329_pair_send_scope_profile.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_051100_codex_20260329_pair_send_scope_profile.txt)
+      /
+      [`perf_linux_20260329_051100_codex_20260329_dealer_send_scope_profile.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260329_051100_codex_20260329_dealer_send_scope_profile.txt)
+      에 남았지만 instrumentation overhead 때문에 authority로는 쓰지 않았다.
+      계측 patch는 바로 원복했고,
+      원복 뒤 `cmake --build core/build -j$(nproc)`와
+      같은 ctest gate도 다시 통과했다.

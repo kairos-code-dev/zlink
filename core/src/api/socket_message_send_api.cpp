@@ -453,37 +453,6 @@ int zlink_socket_publish_internal (void *socket_,
       (flags_ & ZLINK_DONTWAIT) == 0);
 }
 
-int zlink_msg_send (zlink_msg_t *msg_, void *s_, zlink_send_flags_t flags_)
-{
-    if (!s_ || !msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::socket_base_t *socket = try_as_socket (s_);
-    if (socket) {
-        socket_handle_t handle = make_socket_handle (socket);
-        if (validate_send_flags (flags_) != 0)
-            return -1;
-        return s_sendmsg (handle, msg_, flags_);
-    }
-
-    return zlink_send (s_, msg_, 1, flags_);
-}
-
-int zlink_msg_send_rid (zlink_msg_t *msg_,
-                        void *s_,
-                        const zlink_routing_id_t *target_rid_,
-                        zlink_send_flags_t flags_)
-{
-    if (!s_ || !msg_ || !target_rid_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    return zlink_send_rid (s_, target_rid_, msg_, 1, flags_);
-}
-
 int zlink_send (void *s_,
                 zlink_msg_t *parts_,
                 size_t part_count_,

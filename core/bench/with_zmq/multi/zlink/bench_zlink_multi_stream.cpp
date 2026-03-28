@@ -1444,15 +1444,12 @@ int enqueue_stream_payload_chunks (void *server,
     while (enqueued < relay_budget && pending_replies.size () < max_pending) {
         const int flags = enqueued == 0 ? 0 : ZLINK_DONTWAIT;
 
-        zlink_msg_t id_frame;
-        zlink_msg_t payload_frame;
-        zlink_msg_init (&id_frame);
-        zlink_msg_init (&payload_frame);
-
-        const int id_rc = zlink_msg_recv (&id_frame, server, flags);
-        if (id_rc < 0) {
-            zlink_msg_close (&id_frame);
-            zlink_msg_close (&payload_frame);
+        zlink_routing_id_t source_rid;
+        source_rid.size = 0;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        const int recv_rc = zlink_recv (server, &source_rid, &parts, &part_count, flags);
+        if (recv_rc < 0) {
             if (enqueued > 0
                 && (zlink_errno () == EAGAIN || zlink_errno () == EINTR))
                 break;
@@ -1460,41 +1457,30 @@ int enqueue_stream_payload_chunks (void *server,
                 return 0;
             return -1;
         }
-
-        const int data_rc = zlink_msg_recv (&payload_frame, server, flags);
-        if (data_rc < 0) {
-            zlink_msg_close (&id_frame);
-            zlink_msg_close (&payload_frame);
-            if (enqueued > 0
-                && (zlink_errno () == EAGAIN || zlink_errno () == EINTR))
-                break;
-            if (enqueued == 0 && zlink_errno () == EINTR)
-                return 0;
+        if (source_rid.size == 0 || !parts || part_count != 1) {
+            if (parts)
+                zlink_multipart_close (parts, part_count);
             return -1;
         }
 
         const char *payload_data =
-          static_cast<const char *> (zlink_msg_data (&payload_frame));
-        const size_t payload_size = zlink_msg_size (&payload_frame);
+          static_cast<const char *> (zlink_msg_data (&parts[0]));
+        const size_t payload_size = zlink_msg_size (&parts[0]);
 
         if (payload_size > 0
             && payload_data
             && !is_stream_event_payload (payload_data, payload_size)) {
-            const char *id_data =
-              static_cast<const char *> (zlink_msg_data (&id_frame));
-            const size_t id_size = zlink_msg_size (&id_frame);
-            if (id_data && id_size > 0) {
-                process_payload_chunk (
-                  std::string (id_data, id_size),
-                  payload_data,
-                  payload_size,
-                  true,
-                  send_requires_framed_payload);
-            }
+            process_payload_chunk (
+              std::string (
+                reinterpret_cast<const char *> (source_rid.data),
+                source_rid.size),
+              payload_data,
+              payload_size,
+              true,
+              send_requires_framed_payload);
         }
 
-        zlink_msg_close (&id_frame);
-        zlink_msg_close (&payload_frame);
+        zlink_multipart_close (parts, part_count);
     }
 
     return enqueued;
@@ -1972,67 +1958,54 @@ bool recv_one_stream_frame (void *server,
             continue;
 
         while (true) {
-            zlink_msg_t id_frame;
-            zlink_msg_t payload_frame;
-            zlink_msg_init (&id_frame);
-            zlink_msg_init (&payload_frame);
-
-            const int id_rc = zlink_msg_recv (&id_frame, server, ZLINK_DONTWAIT);
-            if (id_rc < 0) {
-                zlink_msg_close (&id_frame);
-                zlink_msg_close (&payload_frame);
+            zlink_routing_id_t source_rid;
+            source_rid.size = 0;
+            zlink_msg_t *parts = NULL;
+            size_t part_count = 0;
+            const int recv_rc =
+              zlink_recv (server, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
+            if (recv_rc < 0) {
                 if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
                     break;
                 return false;
             }
-
-            const int payload_rc =
-              zlink_msg_recv (&payload_frame, server, ZLINK_DONTWAIT);
-            if (payload_rc < 0) {
-                zlink_msg_close (&id_frame);
-                zlink_msg_close (&payload_frame);
-                if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
-                    break;
+            if (source_rid.size == 0 || !parts || part_count != 1) {
+                if (parts)
+                    zlink_multipart_close (parts, part_count);
                 return false;
             }
 
-            const size_t payload_size = zlink_msg_size (&payload_frame);
+            const size_t payload_size = zlink_msg_size (&parts[0]);
             const char *payload_data =
-              static_cast<const char *> (zlink_msg_data (&payload_frame));
+              static_cast<const char *> (zlink_msg_data (&parts[0]));
             if (payload_size > 0
                 && payload_data
                 && !is_stream_event_payload (payload_data, payload_size)) {
-                const char *id_data =
-                  static_cast<const char *> (zlink_msg_data (&id_frame));
-                const size_t id_size = zlink_msg_size (&id_frame);
-                if (id_data && id_size > 0) {
-                    std::string routing_id (id_data, id_size);
-                    if (extract_single_framed_payload (
-                          payload_data, payload_size, &payload_out)) {
-                        routing_id_out = routing_id;
-                        zlink_msg_close (&id_frame);
-                        zlink_msg_close (&payload_frame);
-                        return true;
-                    }
+                std::string routing_id (
+                  reinterpret_cast<const char *> (source_rid.data),
+                  source_rid.size);
+                if (extract_single_framed_payload (
+                      payload_data, payload_size, &payload_out)) {
+                    routing_id_out = routing_id;
+                    zlink_multipart_close (parts, part_count);
+                    return true;
+                }
 
-                    stream_buffer_t &stash = stashes[routing_id];
-                    std::vector<char> framed_payload;
-                    normalize_stream_reply_frame (
-                      payload_data, payload_size, &framed_payload);
-                    stash.append (
-                      framed_payload.empty () ? NULL : framed_payload.data (),
-                      framed_payload.size ());
-                    if (stream_decode_one_frame (stash, &payload_out)) {
-                        routing_id_out = routing_id;
-                        zlink_msg_close (&id_frame);
-                        zlink_msg_close (&payload_frame);
-                        return true;
-                    }
+                stream_buffer_t &stash = stashes[routing_id];
+                std::vector<char> framed_payload;
+                normalize_stream_reply_frame (
+                  payload_data, payload_size, &framed_payload);
+                stash.append (
+                  framed_payload.empty () ? NULL : framed_payload.data (),
+                  framed_payload.size ());
+                if (stream_decode_one_frame (stash, &payload_out)) {
+                    routing_id_out = routing_id;
+                    zlink_multipart_close (parts, part_count);
+                    return true;
                 }
             }
 
-            zlink_msg_close (&id_frame);
-            zlink_msg_close (&payload_frame);
+            zlink_multipart_close (parts, part_count);
         }
     }
 

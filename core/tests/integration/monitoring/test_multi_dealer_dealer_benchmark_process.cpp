@@ -363,11 +363,12 @@ void run_multi_dealer_dealer_tls_sequence_case ()
       start_process (client_path, client_args, common_env, client));
 
     const char *sizes[] = {"64", "256", "1024", "65536", "131072", "262144"};
+    TEST_ASSERT_TRUE_MESSAGE (
+      wait_for_stdout_prefix (client, "CLIENT_READY,64", 30000, NULL),
+      capture_case_debug_text (server, client).c_str ());
+    // Queue the full size sequence up front so the server cannot miss a later
+    // START window while the client is already advancing through the next size.
     for (size_t i = 0; i < sizeof (sizes) / sizeof (*sizes); ++i) {
-        const std::string ready_prefix = std::string ("CLIENT_READY,") + sizes[i];
-        TEST_ASSERT_TRUE_MESSAGE (
-          wait_for_stdout_prefix (client, ready_prefix.c_str (), 30000, NULL),
-          capture_case_debug_text (server, client).c_str ());
         write_stdin_line (
           server, (std::string ("START,") + sizes[i] + "\n").c_str ());
     }

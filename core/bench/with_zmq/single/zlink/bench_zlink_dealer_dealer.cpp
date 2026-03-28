@@ -21,69 +21,36 @@ inline int recv_single_part_header_flags (
     if (header_ok_out)
         *header_ok_out = false;
 
-    const bool raw_msg_api = use_raw_msg_api_bench ();
     bool header_ok = false;
     size_t actual_size = 0;
+    zlink_msg_t msg;
+    if (::zlink_msg_init (&msg) != 0)
+        return -1;
 
-    if (raw_msg_api) {
-        zlink_msg_t msg;
-        if (::zlink_msg_init (&msg) != 0)
-            return -1;
-
-        const int rc =
-          ::zlink_msg_recv (&msg, socket, static_cast<zlink_send_flags_t> (flags));
-        if (rc < 0) {
-            const int err = zlink_errno ();
-            ::zlink_msg_close (&msg);
-            if (err == EAGAIN || err == EINTR)
-                return 0;
-            return -1;
-        }
-
-        actual_size = zlink_msg_size (&msg);
-        const bool has_more = bench_msg_has_more (msg);
-        if (actual_size == expected_size && !has_more) {
-            if (header_out) {
-                header_ok = perf_single_metric::decode_payload_header (
-                  zlink_msg_data (&msg), actual_size, header_out);
-            } else {
-                header_ok = true;
-            }
-        }
-
+    const int rc =
+      bench_recv_single_part (socket, &msg, static_cast<zlink_send_flags_t> (flags));
+    if (rc < 0) {
+        const int err = zlink_errno ();
         ::zlink_msg_close (&msg);
-        if (has_more)
-            return -1;
-    } else {
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        const int rc = ::zlink_recv (
-          socket, NULL, &parts, &part_count,
-          static_cast<zlink_send_flags_t> (flags));
-        if (rc < 0) {
-            const int err = zlink_errno ();
-            if (err == EAGAIN || err == EINTR)
-                return 0;
-            return -1;
-        }
-        if (part_count != 1) {
-            if (parts)
-                ::zlink_multipart_close (parts, part_count);
-            return -1;
-        }
-
-        actual_size = zlink_msg_size (&parts[0]);
-        if (actual_size == expected_size) {
-            if (header_out) {
-                header_ok = perf_single_metric::decode_payload_header (
-                  zlink_msg_data (&parts[0]), actual_size, header_out);
-            } else {
-                header_ok = true;
-            }
-        }
-
-        ::zlink_multipart_close (parts, part_count);
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
     }
+
+    actual_size = zlink_msg_size (&msg);
+    const bool has_more = bench_msg_has_more (msg);
+    if (actual_size == expected_size && !has_more) {
+        if (header_out) {
+            header_ok = perf_single_metric::decode_payload_header (
+              zlink_msg_data (&msg), actual_size, header_out);
+        } else {
+            header_ok = true;
+        }
+    }
+
+    ::zlink_msg_close (&msg);
+    if (has_more)
+        return -1;
 
     const bool size_ok = actual_size == expected_size;
     if (!size_ok)
@@ -220,7 +187,6 @@ inline bool run_oneway_phase (void *sender,
         queue_probe->force_sample_send ();
 
     if (active_phase) {
-        const bool raw_msg_api = use_raw_msg_api_bench ();
         while (std::chrono::steady_clock::now () < deadline) {
             const uint64_t sent_ts = perf_single_metric::now_us ();
             if (!perf_single_metric::stamp_payload (payload->data (),
@@ -242,13 +208,8 @@ inline bool run_oneway_phase (void *sender,
             if (payload_size > 0)
                 memcpy (::zlink_msg_data (&part), payload->data (),
                         payload_size);
-            const int send_rc = raw_msg_api
-                                  ? ::zlink_msg_send (
-                                      &part, sender,
-                                      static_cast<zlink_send_flags_t> (0))
-                                  : ::zlink_send (
-                                      sender, &part, 1,
-                                      static_cast<zlink_send_flags_t> (0));
+            const int send_rc = bench_send_single_part (
+              sender, &part, static_cast<zlink_send_flags_t> (0));
             if (send_rc < 0) {
                 ::zlink_msg_close (&part);
                 send_failed = true;
@@ -258,7 +219,6 @@ inline bool run_oneway_phase (void *sender,
                 queue_probe->sample_send_if_due ();
         }
     } else {
-        const bool raw_msg_api = use_raw_msg_api_bench ();
         while (std::chrono::steady_clock::now () < deadline) {
             if (!perf_single_metric::stamp_payload (
                   payload->data (),
@@ -280,13 +240,8 @@ inline bool run_oneway_phase (void *sender,
             if (payload_size > 0)
                 memcpy (::zlink_msg_data (&part), payload->data (),
                         payload_size);
-            const int send_rc = raw_msg_api
-                                  ? ::zlink_msg_send (
-                                      &part, sender,
-                                      static_cast<zlink_send_flags_t> (0))
-                                  : ::zlink_send (
-                                      sender, &part, 1,
-                                      static_cast<zlink_send_flags_t> (0));
+            const int send_rc = bench_send_single_part (
+              sender, &part, static_cast<zlink_send_flags_t> (0));
             if (send_rc < 0) {
                 ::zlink_msg_close (&part);
                 send_failed = true;

@@ -16,4 +16,6 @@ exec "${ROOT_DIR}/core/tools/ralphloop/run_codex_execution_guide_loop.sh" \
   --logs-dir "${LOGS_DIR}" \
   --gate-label "${GATE_LABEL}" \
   --stress-count "${STRESS_COUNT}" \
+  --model "gpt-5.4" \
+  --reasoning-effort "medium" \
   "$@"

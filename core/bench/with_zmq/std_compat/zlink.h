@@ -532,17 +532,6 @@ inline int zlink_send (void *s_,
     return 0;
 }
 
-inline int zlink_msg_send (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_)
-{
-    if (!msg_) {
-        errno = EINVAL;
-        return -1;
-    }
-    return zmq_msg_send (msg_, s_, static_cast<int> (flags_));
-}
-
 inline int zlink_send_rid (void *s_,
                            const zlink_routing_id_t *target_rid_,
                            zlink_msg_t *parts_,
@@ -566,18 +555,6 @@ inline int zlink_send_rid (void *s_,
         return -1;
     }
     return zlink_send (s_, parts_, part_count_, flags_);
-}
-
-inline int zlink_msg_send_rid (zlink_msg_t *msg_,
-                               void *s_,
-                               const zlink_routing_id_t *target_rid_,
-                               zlink_send_flags_t flags_)
-{
-    if (!msg_) {
-        errno = EINVAL;
-        return -1;
-    }
-    return zlink_send_rid (s_, target_rid_, msg_, 1, flags_);
 }
 
 inline int zlink_recv (void *s_,
@@ -662,46 +639,6 @@ inline int zlink_recv (void *s_,
     *parts_out_ = payload_count > 0 ? &zlink_std_compat::recv_tls_parts ()[0] : NULL;
     *part_count_out_ = zlink_std_compat::recv_tls_count ();
     return 0;
-}
-
-inline int zlink_msg_recv (zlink_msg_t *msg_,
-                           void *s_,
-                           zlink_send_flags_t flags_)
-{
-    if (!msg_) {
-        errno = EINVAL;
-        return -1;
-    }
-    return zmq_msg_recv (msg_, s_, static_cast<int> (flags_));
-}
-
-inline int zlink_msg_recv_rid (zlink_msg_t *msg_,
-                               void *s_,
-                               zlink_routing_id_t *source_rid_out_,
-                               zlink_send_flags_t flags_)
-{
-    if (!msg_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    const int rc = zlink_recv (s_, source_rid_out_, &parts, &part_count, flags_);
-    if (rc < 0)
-        return -1;
-
-    if (!parts || part_count != 1) {
-        if (parts) {
-            zlink_multipart_close (parts, part_count);
-        }
-        errno = ENOTSUP;
-        return -1;
-    }
-
-    const int move_rc = zmq_msg_move (msg_, &parts[0]);
-    zmq_msg_close (&parts[0]);
-    return move_rc;
 }
 
 inline int zlink_publish (void *subject_,

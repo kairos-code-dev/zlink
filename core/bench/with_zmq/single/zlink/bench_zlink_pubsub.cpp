@@ -10,6 +10,134 @@
 
 namespace {
 
+static const char *k_pubsub_topic = "bench";
+
+inline void configure_pubsub_monitor_socket (void *monitor_)
+{
+    if (!monitor_)
+        return;
+
+    set_sockopt_int (monitor_, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
+    set_sockopt_int (monitor_, ZLINK_OPT_SNDHWM, 1000, "ZLINK_OPT_SNDHWM");
+    set_sockopt_int (monitor_, ZLINK_OPT_RCVHWM, 1000, "ZLINK_OPT_RCVHWM");
+}
+
+inline void *open_pubsub_monitor (void *socket_, uint64_t events_)
+{
+    if (!socket_ || events_ == 0)
+        return NULL;
+
+    zlink_socket_monitor_open_options_t opts;
+    std::memset (&opts, 0, sizeof (opts));
+    opts.events = events_;
+    void *monitor = zlink_socket_monitor_open (socket_, &opts);
+    if (!monitor)
+        return NULL;
+    configure_pubsub_monitor_socket (monitor);
+    return monitor;
+}
+
+inline bool pubsub_monitor_ready (
+  const zlink_socket_monitor_event_t &event_,
+  uint64_t success_event_)
+{
+    if (event_.event != success_event_)
+        return false;
+    return event_.value > 0;
+}
+
+inline bool wait_for_pubsub_monitor_event (void *monitor_,
+                                           uint64_t success_event_,
+                                           int timeout_ms_)
+{
+    if (!monitor_ || success_event_ == 0)
+        return false;
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
+        const long timeout_ms = static_cast<long> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - std::chrono::steady_clock::now ())
+            .count ());
+        const int poll_rc =
+          zlink_poll (&item, 1, timeout_ms > 0 ? timeout_ms : 1);
+        if (poll_rc < 0) {
+            if (errno == EINTR)
+                continue;
+            return false;
+        }
+        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        for (;;) {
+            zlink_socket_monitor_event_t event;
+            if (zlink_socket_monitor_recv (monitor_, &event) != 0) {
+                if (errno == EAGAIN || errno == EINTR)
+                    break;
+                return false;
+            }
+            if (pubsub_monitor_ready (event, success_event_))
+                return true;
+        }
+    }
+
+    return false;
+}
+
+inline bool setup_connected_pubsub_pair (void *pub_socket_,
+                                         void *sub_socket_,
+                                         const std::string &transport_,
+                                         const std::string &id_)
+{
+    if (!pub_socket_ || !sub_socket_)
+        return false;
+
+    apply_single_hwm (pub_socket_);
+    apply_single_hwm (sub_socket_);
+
+    if (zlink_set_subscription (sub_socket_, "") != 0)
+        return false;
+
+    std::string endpoint =
+      bind_and_resolve_endpoint (pub_socket_, transport_, id_);
+    if (endpoint.empty ())
+        return false;
+
+    void *sub_monitor = open_pubsub_monitor (
+      sub_socket_, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED);
+    if (!sub_monitor)
+        return false;
+    void *pub_monitor = open_pubsub_monitor (
+      pub_socket_, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED);
+    if (!pub_monitor) {
+        zlink_monitor_close (&sub_monitor);
+        return false;
+    }
+
+    if (!connect_checked (sub_socket_, endpoint)) {
+        zlink_monitor_close (&pub_monitor);
+        zlink_monitor_close (&sub_monitor);
+        return false;
+    }
+
+    apply_single_send_timeout (pub_socket_, transport_);
+    apply_single_send_timeout (sub_socket_, transport_);
+
+    const int timeout_ms =
+      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000);
+    const bool sub_ready = wait_for_pubsub_monitor_event (
+      sub_monitor, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, timeout_ms);
+    const bool pub_ready = wait_for_pubsub_monitor_event (
+      pub_monitor, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, timeout_ms);
+    zlink_monitor_close (&pub_monitor);
+    zlink_monitor_close (&sub_monitor);
+    return sub_ready && pub_ready;
+}
+
 inline int resolve_pubsub_xpub_nodrop_opt ()
 {
     const char *env = std::getenv ("PERF_SINGLE_PUBSUB_XPUB_NODROP");
@@ -42,37 +170,50 @@ inline int recv_single_part_header_flags (
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink_msg_t msg;
-    if (::zlink_msg_init (&msg) != 0)
-        return -1;
-
-    const int rc = ::zlink_msg_recv (&msg, socket,
-                                     static_cast<zlink_send_flags_t> (flags));
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic_id[256];
+    size_t topic_len = sizeof (topic_id);
+    const int rc = ::zlink_subscribe (
+      socket,
+      NULL,
+      &parts,
+      &part_count,
+      topic_id,
+      &topic_len,
+      static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
-        ::zlink_msg_close (&msg);
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
+    if (!parts || part_count != 1) {
+        if (parts)
+            ::zlink_multipart_close (parts, part_count);
+        return -1;
+    }
 
-    const size_t actual_size = zlink_msg_size (&msg);
+    const bool topic_ok =
+      topic_len == std::strlen (k_pubsub_topic)
+      && std::memcmp (topic_id, k_pubsub_topic, topic_len) == 0;
+    const size_t actual_size = zlink_msg_size (&parts[0]);
     const bool size_ok = actual_size == expected_size;
-    const bool has_more = bench_msg_has_more (msg);
+    const bool has_more = bench_msg_has_more (parts[0]);
     bool header_ok = false;
 
-    if (size_ok && !has_more) {
+    if (topic_ok && size_ok && !has_more) {
         if (header_out) {
             header_ok = perf_single_metric::decode_payload_header (
-              zlink_msg_data (&msg), actual_size, header_out);
+              zlink_msg_data (&parts[0]), actual_size, header_out);
         } else {
             header_ok = true;
         }
     }
 
-    ::zlink_msg_close (&msg);
+    ::zlink_multipart_close (parts, part_count);
 
-    if (!size_ok || has_more)
+    if (!topic_ok || !size_ok || has_more)
         return -1;
 
     if (header_ok_out)
@@ -227,7 +368,7 @@ inline bool run_oneway_phase (void *pub_socket,
             if (payload_size > 0)
                 memcpy (::zlink_msg_data (&part), payload->data (),
                         payload_size);
-            if (::zlink_publish (pub_socket, NULL, &part, 1,
+            if (::zlink_publish (pub_socket, k_pubsub_topic, &part, 1,
                                  static_cast<zlink_send_flags_t> (0))
                 < 0) {
                 ::zlink_msg_close (&part);
@@ -259,7 +400,7 @@ inline bool run_oneway_phase (void *pub_socket,
             if (payload_size > 0)
                 memcpy (::zlink_msg_data (&part), payload->data (),
                         payload_size);
-            if (::zlink_publish (pub_socket, NULL, &part, 1,
+            if (::zlink_publish (pub_socket, k_pubsub_topic, &part, 1,
                                  static_cast<zlink_send_flags_t> (0))
                 < 0) {
                 ::zlink_msg_close (&part);
@@ -322,8 +463,7 @@ void run_pubsub (const std::string &transport,
     set_pub_opt_int (pub.get (), ZLINK_PUB_OPT_NODROP, xpub_nodrop_opt,
                      "ZLINK_PUB_OPT_NODROP");
 
-    zlink_set_subscription (sub.get (), "");
-    if (!setup_connected_pair (
+    if (!setup_connected_pubsub_pair (
           pub.get (), sub.get (), transport, lib_name + "_pubsub")) {
         print_fail_no_queue ();
         return;

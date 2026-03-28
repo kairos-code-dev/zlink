@@ -56,42 +56,6 @@ int zlink_xpub_recv (void *s_,
                                             topic_id_len_, flags_);
 }
 
-int zlink_msg_recv (zlink_msg_t *msg_, void *s_, zlink_send_flags_t flags_)
-{
-    if (!s_ || !msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::socket_base_t *socket = try_as_socket (s_);
-    if (!socket) {
-        errno = ENOTSUP;
-        return -1;
-    }
-
-    return zlink::recv_msg_socket (socket, socket->socket_type (), msg_, flags_);
-}
-
-int zlink_msg_recv_rid (zlink_msg_t *msg_,
-                        void *s_,
-                        zlink_routing_id_t *source_rid_out_,
-                        zlink_send_flags_t flags_)
-{
-    if (!s_ || !msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::socket_base_t *socket = try_as_socket (s_);
-    if (!socket) {
-        errno = ENOTSUP;
-        return -1;
-    }
-
-    return zlink::recv_msg_routed_socket (socket, msg_, source_rid_out_,
-                                          flags_);
-}
-
 int zlink_recv (void *s_,
                 zlink_routing_id_t *source_rid_out_,
                 zlink_msg_t **parts_out_,

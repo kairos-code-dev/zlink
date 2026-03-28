@@ -13,6 +13,7 @@ GATE_LABEL="phase2_thread_safe_stress"
 STRESS_COUNT=1
 INIT_ONLY=0
 MODEL_ARG=()
+REASONING_EFFORT=""
 CURRENT_JOB_PID=""
 DISPLAY_NAME="${RALPH_LOOP_DISPLAY_NAME:-$(basename "$0")}"
 SUPERVISOR_LOCK_DIR=""
@@ -49,6 +50,7 @@ Options:
   --stress-count N      Default repeat count to pass to run_execution_gate_loop.sh
                         (default: ${STRESS_COUNT})
   --model MODEL         Pass --model MODEL to codex exec
+  --reasoning-effort E  Pass -c model_reasoning_effort=E to codex exec
   -h, --help            Show this help text
 
 Termination contract:
@@ -345,6 +347,10 @@ while [[ $# -gt 0 ]]; do
       MODEL_ARG=(--model "$2")
       shift 2
       ;;
+    --reasoning-effort)
+      REASONING_EFFORT="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -368,6 +374,11 @@ fi
 if ! is_nonnegative_integer "${MAX_ITERATIONS}"; then
   echo "--max-iterations must be a non-negative integer: ${MAX_ITERATIONS}" >&2
   exit 1
+fi
+
+REASONING_ARG=()
+if [[ -n "${REASONING_EFFORT}" ]]; then
+  REASONING_ARG=(-c "model_reasoning_effort=\"${REASONING_EFFORT}\"")
 fi
 
 SESSION_SCOPE_ID="$(sanitize_scope_token "${DISPLAY_NAME}_${GATE_LABEL}")"
@@ -543,7 +554,7 @@ EOF
 
   echo "=== Codex iteration ${iteration_label} start ($(date '+%Y-%m-%d %H:%M:%S %z')) ==="
   set +e
-  codex "${CODEX_ARGS[@]}" "${MODEL_ARG[@]}" \
+  codex "${CODEX_ARGS[@]}" "${MODEL_ARG[@]}" "${REASONING_ARG[@]}" \
     -o "${last_message}" \
     - < "${prompt_file}" 2>&1 | tee "${run_log}" &
   CURRENT_JOB_PID=$!

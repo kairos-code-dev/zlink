@@ -258,81 +258,48 @@ inline relay_status_t relay_stream_message_non_blocking (
     if (!server)
         return relay_error;
 
-    zlink_msg_t id_frame;
-    zlink_msg_t payload_frame;
-    zlink_msg_init (&id_frame);
-    zlink_msg_init (&payload_frame);
+    zlink_routing_id_t rid;
+    rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
 
-    int id_len = zlink_msg_recv (&id_frame, server, ZLINK_DONTWAIT);
-    while (id_len < 0 && zlink_errno () == EINTR)
-        id_len = zlink_msg_recv (&id_frame, server, ZLINK_DONTWAIT);
-    if (id_len < 0) {
+    int recv_rc = zlink_recv (server, &rid, &parts, &part_count, ZLINK_DONTWAIT);
+    while (recv_rc < 0 && zlink_errno () == EINTR)
+        recv_rc = zlink_recv (server, &rid, &parts, &part_count, ZLINK_DONTWAIT);
+    if (recv_rc < 0) {
         const int err = zlink_errno ();
-        (void) zlink_msg_close (&id_frame);
-        (void) zlink_msg_close (&payload_frame);
         if (err == EAGAIN || err == EINTR)
             return relay_idle;
         return relay_error;
     }
-
-    int more = 0;
-    size_t more_size = sizeof (more);
-    if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0
-        || !more) {
-        (void) zlink_msg_close (&id_frame);
-        (void) zlink_msg_close (&payload_frame);
+    if (rid.size == 0 || !parts || part_count != 1) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
         return relay_error;
     }
 
-    zlink_routing_id_t rid;
-    const bool rid_ok = extract_stream_routing_id (&id_frame, &rid);
-    bool ok = rid_ok;
-
-    while (true) {
-        int payload_len =
-          zlink_msg_recv (&payload_frame, server, ZLINK_DONTWAIT);
-        while (payload_len < 0 && zlink_errno () == EINTR)
-            payload_len =
-              zlink_msg_recv (&payload_frame, server, ZLINK_DONTWAIT);
-        if (payload_len < 0) {
-            const int err = zlink_errno ();
-            ok = (err == EAGAIN || err == EINTR);
-            break;
-        }
-
-        const unsigned char *payload = static_cast<const unsigned char *> (
-          zlink_msg_data (&payload_frame));
-        const size_t payload_size = zlink_msg_size (&payload_frame);
-        if (!is_stream_event_payload (payload, payload_size)) {
-            pending_stream_message_t request;
-            request.rid = rid;
-            if (zlink_msg_move (&request.payload, &payload_frame) != 0) {
+    bool ok = true;
+    const unsigned char *payload = static_cast<const unsigned char *> (
+      zlink_msg_data (&parts[0]));
+    const size_t payload_size = zlink_msg_size (&parts[0]);
+    if (!is_stream_event_payload (payload, payload_size)) {
+        pending_stream_message_t request;
+        request.rid = rid;
+        if (zlink_msg_move (&request.payload, &parts[0]) != 0) {
+            ok = false;
+        } else {
+            request.has_payload = true;
+            const send_status_t send_rc = try_send_stream_message (&request);
+            if (send_rc == send_blocked) {
+                ok = enqueue_pending_stream_message (
+                  pending, pending_capacity, pending_count, &request);
+            } else if (send_rc == send_fatal) {
                 ok = false;
-            } else {
-                request.has_payload = true;
-                const send_status_t send_rc =
-                  try_send_stream_message (&request);
-                if (send_rc == send_blocked) {
-                    ok = enqueue_pending_stream_message (
-                      pending, pending_capacity, pending_count, &request);
-                } else if (send_rc == send_fatal) {
-                    ok = false;
-                }
             }
         }
-
-        (void) zlink_msg_close (&payload_frame);
-        (void) zlink_msg_init (&payload_frame);
-
-        more = 0;
-        more_size = sizeof (more);
-        if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0
-            || !more)
-            break;
     }
 
-    (void) zlink_msg_close (&id_frame);
-    (void) zlink_msg_close (&payload_frame);
+    zlink_multipart_close (parts, part_count);
     return ok ? relay_progress : relay_error;
 }
 

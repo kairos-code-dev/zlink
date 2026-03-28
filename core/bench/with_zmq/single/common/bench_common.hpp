@@ -97,7 +97,6 @@ typedef zmq_pollitem_t zlink_pollitem_t;
 #define zlink_send zmq_send
 #define zlink_recv zmq_recv
 #define zlink_msg_init zmq_msg_init
-#define zlink_msg_recv zmq_msg_recv
 #define zlink_msg_close zmq_msg_close
 #define zlink_msg_size zmq_msg_size
 #define zlink_msg_data zmq_msg_data

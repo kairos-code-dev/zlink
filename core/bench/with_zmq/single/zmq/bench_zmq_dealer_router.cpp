@@ -23,7 +23,7 @@ inline int recv_router_header_flags (void *router,
     if (zlink_msg_init (&rid) != 0)
         return -1;
 
-    const int id_rc = zlink_msg_recv (&rid, router, flags);
+    const int id_rc = zmq_msg_recv (&rid, router, flags);
     if (id_rc < 0) {
         const int err = zlink_errno ();
         zlink_msg_close (&rid);
@@ -42,7 +42,7 @@ inline int recv_router_header_flags (void *router,
     if (zlink_msg_init (&payload) != 0)
         return -1;
 
-    if (zlink_msg_recv (&payload, router, 0) < 0) {
+    if (zmq_msg_recv (&payload, router, 0) < 0) {
         zlink_msg_close (&payload);
         return -1;
     }

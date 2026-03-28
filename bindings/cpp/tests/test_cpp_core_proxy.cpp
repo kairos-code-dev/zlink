@@ -1,4 +1,5 @@
 #include "test_helpers.hpp"
+#include <zlink/runtime.hpp>
 
 #if !defined(ZLINK_HAVE_WINDOWS)
 #include <signal.h>
@@ -9,12 +10,12 @@
 namespace {
 
 #if !defined(ZLINK_HAVE_WINDOWS)
-void connect_with_retry (void *socket_, const std::string &endpoint_)
+void connect_with_retry (zlink::socket_t &socket_, const std::string &endpoint_)
 {
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (3000);
     while (std::chrono::steady_clock::now () < deadline) {
-        if (zlink_connect (socket_, endpoint_.c_str ()) == 0)
+        if (socket_.connect (endpoint_) == 0)
             return;
         sleep_ms (10);
     }
@@ -24,25 +25,25 @@ void connect_with_retry (void *socket_, const std::string &endpoint_)
 [[noreturn]] void run_proxy_child (const std::string &frontend_ep_,
                                    const std::string &backend_ep_)
 {
-    void *ctx = zlink_ctx_new ();
-    if (!ctx)
+    zlink::context_t ctx;
+    if (!ctx.valid ())
         _exit (2);
 
-    void *frontend = zlink_socket (ctx, ZLINK_ROUTER, NULL);
-    void *backend = zlink_socket (ctx, ZLINK_DEALER, NULL);
-    if (!frontend || !backend)
+    zlink::socket_t frontend (ctx, zlink::socket_type::router);
+    zlink::socket_t backend (ctx, zlink::socket_type::dealer);
+    if (!frontend.valid () || !backend.valid ())
         _exit (3);
 
     const int linger = 0;
-    (void) zlink_setsockopt (frontend, ZLINK_LINGER, &linger, sizeof (linger));
-    (void) zlink_setsockopt (backend, ZLINK_LINGER, &linger, sizeof (linger));
+    (void) frontend.set (zlink::socket_option::linger, linger);
+    (void) backend.set (zlink::socket_option::linger, linger);
 
-    if (zlink_bind (frontend, frontend_ep_.c_str ()) != 0)
+    if (frontend.bind (frontend_ep_) != 0)
         _exit (4);
-    if (zlink_bind (backend, backend_ep_.c_str ()) != 0)
+    if (backend.bind (backend_ep_) != 0)
         _exit (5);
 
-    (void) zlink_proxy (frontend, backend, NULL);
+    (void) zlink::proxy (frontend, backend);
     _exit (0);
 }
 
@@ -59,59 +60,39 @@ void test_proxy_router_dealer_roundtrip ()
     if (pid == 0)
         run_proxy_child (frontend_ep, backend_ep);
 
-    void *ctx = zlink_ctx_new ();
-    assert (ctx != NULL);
+    zlink::context_t ctx;
+    assert (ctx.valid ());
 
-    void *client = zlink_socket (ctx, ZLINK_DEALER, NULL);
-    void *worker = zlink_socket (ctx, ZLINK_DEALER, NULL);
-    assert (client != NULL);
-    assert (worker != NULL);
+    zlink::socket_t client (ctx, zlink::socket_type::dealer);
+    zlink::socket_t worker (ctx, zlink::socket_type::dealer);
+    assert (client.valid ());
+    assert (worker.valid ());
 
     const int linger = 0;
-    assert (zlink_setsockopt (client, ZLINK_LINGER, &linger, sizeof (linger)) == 0);
-    assert (zlink_setsockopt (worker, ZLINK_LINGER, &linger, sizeof (linger)) == 0);
+    assert (client.set (zlink::socket_option::linger, linger) == 0);
+    assert (worker.set (zlink::socket_option::linger, linger) == 0);
 
     connect_with_retry (client, frontend_ep);
     connect_with_retry (worker, backend_ep);
 
     sleep_ms (200);
 
-    assert (zlink_send (client, "REQ", 3, 0) == 3);
+    assert (client.send ("REQ", 3) == 3);
 
-    zlink_msg_t identity;
-    zlink_msg_t payload;
-    assert (zlink_msg_init (&identity) == 0);
-    assert (zlink_msg_init (&payload) == 0);
+    zlink::message_t identity;
+    zlink::message_t payload;
+    assert (recv_msg_with_timeout (worker, identity, 2000) == 0);
+    assert (recv_msg_with_timeout (worker, payload, 2000) == 0);
+    assert (payload.size () == 3);
+    assert (std::memcmp (payload.data (), "REQ", 3) == 0);
 
-    assert (zlink_msg_recv (&identity, worker, 0) >= 0);
-    assert (zlink_msg_recv (&payload, worker, 0) >= 0);
-    assert (zlink_msg_size (&payload) == 3);
-    assert (std::memcmp (zlink_msg_data (&payload), "REQ", 3) == 0);
-
-    assert (zlink_msg_send (&identity, worker, ZLINK_SNDMORE) >= 0);
-    assert (zlink_send (worker, "REP", 3, 0) == 3);
+    assert (worker.send (identity, zlink::send_flag::sndmore) == 0);
+    assert (worker.send ("REP", 3) == 3);
 
     char reply[8];
-    int reply_rc = -1;
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (2000);
-    while (std::chrono::steady_clock::now () < deadline) {
-        reply_rc = zlink_recv (client, reply, sizeof (reply), ZLINK_DONTWAIT);
-        if (reply_rc >= 0)
-            break;
-        if (zlink_errno () != EAGAIN)
-            break;
-        sleep_ms (1);
-    }
-
+    const int reply_rc = recv_with_timeout (client, reply, sizeof (reply), 2000);
     assert (reply_rc == 3);
     assert (std::memcmp (reply, "REP", 3) == 0);
-
-    assert (zlink_msg_close (&payload) == 0);
-
-    assert (zlink_close (client) == 0);
-    assert (zlink_close (worker) == 0);
-    assert (zlink_ctx_term (ctx) == 0);
 
     (void) kill (pid, SIGTERM);
     int status = 0;

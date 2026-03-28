@@ -112,55 +112,44 @@ inline int recv_pubsub_metric_header_flags (
     if (!sub_socket_ || !state_ || !header_out_)
         return -1;
 
-    zlink_msg_t topic_msg;
-    if (zlink_msg_init (&topic_msg) != 0)
-        return -1;
-
-    const int topic_rc =
-      zlink_msg_recv (&topic_msg, sub_socket_, static_cast<zlink_send_flags_t> (flags_));
-    if (topic_rc < 0) {
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic_id[256];
+    size_t topic_len = sizeof (topic_id);
+    const int subscribe_rc = zlink_subscribe (
+      sub_socket_, NULL, &parts, &part_count, topic_id, &topic_len,
+      static_cast<zlink_send_flags_t> (flags_));
+    if (subscribe_rc < 0) {
         const int err = zlink_errno ();
-        zlink_msg_close (&topic_msg);
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
+    if (!parts || part_count != 1)
+        goto recv_fail;
 
-    zlink_msg_t payload_msg;
-    if (zlink_msg_init (&payload_msg) != 0) {
-        zlink_msg_close (&topic_msg);
-        return -1;
+    {
+        const bool topic_ok =
+          topic_len == std::strlen (k_pubsub_topic)
+          && std::memcmp (topic_id, k_pubsub_topic, topic_len) == 0;
+        const size_t actual_size = zlink_msg_size (&parts[0]);
+        const bool size_ok = actual_size == state_->payload_size;
+        const bool header_ok =
+          topic_ok && size_ok
+          && perf_single_metric::decode_payload_header (
+            zlink_msg_data (&parts[0]), actual_size, header_out_)
+          && header_out_->run_id == state_->run_id
+          && header_out_->msg_size == state_->msg_size;
+
+        zlink_multipart_close (parts, part_count);
+
+        return header_ok ? 1 : -1;
     }
 
-    const int payload_rc =
-      zlink_msg_recv (&payload_msg, sub_socket_, static_cast<zlink_send_flags_t> (flags_));
-    if (payload_rc < 0) {
-        const int err = zlink_errno ();
-        zlink_msg_close (&payload_msg);
-        zlink_msg_close (&topic_msg);
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
-    }
-
-    const size_t topic_len = zlink_msg_size (&topic_msg);
-    const bool topic_ok =
-      topic_len == std::strlen (k_pubsub_topic)
-      && std::memcmp (zlink_msg_data (&topic_msg), k_pubsub_topic, topic_len)
-           == 0;
-    const size_t actual_size = zlink_msg_size (&payload_msg);
-    const bool size_ok = actual_size == state_->payload_size;
-    const bool header_ok =
-      topic_ok && size_ok
-      && perf_single_metric::decode_payload_header (
-        zlink_msg_data (&payload_msg), actual_size, header_out_)
-      && header_out_->run_id == state_->run_id
-      && header_out_->msg_size == state_->msg_size;
-
-    zlink_msg_close (&payload_msg);
-    zlink_msg_close (&topic_msg);
-
-    return header_ok ? 1 : -1;
+recv_fail:
+    if (parts)
+        zlink_multipart_close (parts, part_count);
+    return -1;
 }
 
 inline void close_parts (zlink_msg_t *parts_, size_t part_count_)

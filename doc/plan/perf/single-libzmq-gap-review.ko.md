@@ -6730,6 +6730,8 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
     [`perf_linux_20260328_211244_codex_20260328_current_baseline_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_211244_codex_20260328_current_baseline_public.txt)
   - concurrent diagnostic only:
     [`perf_linux_20260328_211244_codex_20260328_current_baseline_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_211244_codex_20260328_current_baseline_raw.txt)
+  - pushed commit:
+    `d483418592dcab45c9ef5efe92b12d89f21eb37b`
 - 핵심 수치
   - authoritative baseline 갱신 없음
   - `cmake --build core/build -j$(nproc)` 성공

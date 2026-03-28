@@ -5141,6 +5141,8 @@ thread-safe 계약을 깨뜨리는 최적화는 이 단계의 후보가 아니�
   - [`dealer_inproc_send_profile_20260328.txt`](/home/hep7/project/kairos/zlink/doc/plan/perf/logs/diagnostics/dealer_inproc_send_profile_20260328.txt)
   - [`perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162242_codex_20260328_pipe_invariant_refactor_public.txt)
   - [`perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260328_162324_codex_20260328_pipe_invariant_refactor_raw.txt)
+- pushed commit
+  - `ea2527c3` (`refactor: codify pipe out-sync invariants`)
 - 핵심 수치
   - `PAIR inproc` profile avg ticks
     - `socket_scope_construct 1265.60`

@@ -198,7 +198,20 @@ private:
 
 inline int bench_io_threads()
 {
-    return parse_positive_env("PERF_IO_THREADS", 0);
+    const char *env = std::getenv("PERF_IO_THREADS");
+    if ((!env || !*env))
+        env = std::getenv("BENCH_IO_THREADS");
+    if (!env || !*env)
+        return 0;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(env, &end, 10);
+    if (errno != 0 || end == env || parsed <= 0)
+        return 0;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int>(parsed);
 }
 
 inline int bench_max_sockets()
@@ -207,7 +220,9 @@ inline int bench_max_sockets()
     if (explicit_max > 0)
         return explicit_max;
 
-    const int clients = parse_positive_env("PERF_MULTI_CLIENTS", 0);
+    int clients = parse_positive_env("PERF_MULTI_CLIENTS", 0);
+    if (clients <= 0)
+        clients = parse_positive_env("BENCH_MULTI_CLIENTS", 0);
     if (clients <= 0)
         return 0;
 
@@ -334,6 +349,8 @@ inline int bench_monitor_hwm()
         return monitor_hwm;
 
     const char *env = std::getenv("PERF_MULTI_MONITOR_HWM");
+    if (!env || !*env)
+        env = std::getenv("BENCH_MULTI_MONITOR_HWM");
     if (!env || !*env) {
         monitor_hwm = 1000;
         return monitor_hwm;
@@ -620,6 +637,10 @@ inline int bench_hwm_from_env(const char *name_, int default_hwm_)
         return default_hwm_;
 
     const char *value = std::getenv(name_);
+    if ((!value || !*value) && std::strcmp(name_, "PERF_MULTI_SNDHWM") == 0)
+        value = std::getenv("BENCH_MULTI_HWM");
+    if ((!value || !*value) && std::strcmp(name_, "PERF_MULTI_RCVHWM") == 0)
+        value = std::getenv("BENCH_MULTI_HWM");
     if (!value || !*value)
         return default_hwm_;
 
@@ -652,6 +673,14 @@ inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
         return default_ms_;
 
     const char *value = std::getenv(name_);
+    if ((!value || !*value)
+        && std::strcmp(name_, "PERF_MULTI_SNDTIMEO_MS") == 0) {
+        value = std::getenv("BENCH_MULTI_SNDTIMEO_MS");
+    }
+    if ((!value || !*value)
+        && std::strcmp(name_, "PERF_MULTI_RCVTIMEO_MS") == 0) {
+        value = std::getenv("BENCH_MULTI_RCVTIMEO_MS");
+    }
     if (!value || !*value)
         return default_ms_;
 

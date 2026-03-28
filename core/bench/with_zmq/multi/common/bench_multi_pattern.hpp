@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <zlink.h>
+#include "../../common/zlink_api_compat.hpp"
 
 struct multi_pattern_config_t
 {
@@ -23,8 +24,8 @@ inline multi_pattern_config_t multi_pattern_config_for_name (const char *pattern
     multi_pattern_config_t cfg;
     cfg.pattern = pattern;
     cfg.token = "multi";
-    cfg.server_socket_type = ZLINK_DEALER;
-    cfg.client_socket_type = ZLINK_DEALER;
+    cfg.server_socket_type = ZLINK_SOCKET_DEALER;
+    cfg.client_socket_type = ZLINK_SOCKET_DEALER;
     cfg.server_router_echo = false;
     cfg.client_router_send = false;
     cfg.pubsub_mode = false;
@@ -42,15 +43,15 @@ inline multi_pattern_config_t multi_pattern_config_for_name (const char *pattern
 
     if (std::strcmp (pattern, "MULTI_DEALER_ROUTER") == 0) {
         cfg.token = "dealer_router";
-        cfg.server_socket_type = ZLINK_ROUTER;
+        cfg.server_socket_type = ZLINK_SOCKET_ROUTER;
         cfg.server_router_echo = true;
         return cfg;
     }
 
     if (std::strcmp (pattern, "MULTI_ROUTER_ROUTER") == 0) {
         cfg.token = "router_router";
-        cfg.server_socket_type = ZLINK_ROUTER;
-        cfg.client_socket_type = ZLINK_ROUTER;
+        cfg.server_socket_type = ZLINK_SOCKET_ROUTER;
+        cfg.client_socket_type = ZLINK_SOCKET_ROUTER;
         cfg.server_router_echo = true;
         cfg.client_router_send = true;
         cfg.server_has_routing_id = true;
@@ -60,8 +61,8 @@ inline multi_pattern_config_t multi_pattern_config_for_name (const char *pattern
 
     if (std::strcmp (pattern, "MULTI_PUBSUB") == 0) {
         cfg.token = "pubsub";
-        cfg.server_socket_type = ZLINK_PUB;
-        cfg.client_socket_type = ZLINK_SUB;
+        cfg.server_socket_type = ZLINK_SOCKET_PUB;
+        cfg.client_socket_type = ZLINK_SOCKET_SUB;
         cfg.pubsub_mode = true;
         return cfg;
     }

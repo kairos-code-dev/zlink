@@ -43,13 +43,14 @@ inline int recv_single_part_header_flags (
         *header_ok_out = false;
 
     zlink_msg_t msg;
-    if (zlink_msg_init (&msg) != 0)
+    if (::zlink_msg_init (&msg) != 0)
         return -1;
 
-    const int rc = zlink_msg_recv (&msg, socket, flags);
+    const int rc = ::zlink_msg_recv (&msg, socket,
+                                     static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
-        zlink_msg_close (&msg);
+        ::zlink_msg_close (&msg);
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
@@ -57,7 +58,7 @@ inline int recv_single_part_header_flags (
 
     const size_t actual_size = zlink_msg_size (&msg);
     const bool size_ok = actual_size == expected_size;
-    const bool has_more = zlink_msg_more (&msg) != 0;
+    const bool has_more = bench_msg_has_more (msg);
     bool header_ok = false;
 
     if (size_ok && !has_more) {
@@ -69,7 +70,7 @@ inline int recv_single_part_header_flags (
         }
     }
 
-    zlink_msg_close (&msg);
+    ::zlink_msg_close (&msg);
 
     if (!size_ok || has_more)
         return -1;
@@ -88,7 +89,7 @@ inline bool run_oneway_phase (void *pub_socket,
                               uint32_t run_id,
                               uint64_t *seq,
                               perf_single_metric::phase_t phase,
-                              int warmup_count,
+                              int warmup_s,
                               int duration_s,
                               int recv_timeout_ms,
                               queue_probe_t *queue_probe,
@@ -100,10 +101,10 @@ inline bool run_oneway_phase (void *pub_socket,
 
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
-      active_phase
-        ? std::chrono::steady_clock::now ()
-            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
-        : std::chrono::steady_clock::time_point ();
+      std::chrono::steady_clock::now ()
+      + std::chrono::seconds (
+        active_phase ? (duration_s > 0 ? duration_s : 1)
+                     : (warmup_s > 0 ? warmup_s : 1));
     const auto drain_idle_limit = std::chrono::milliseconds (
       recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
@@ -205,17 +206,7 @@ inline bool run_oneway_phase (void *pub_socket,
         queue_probe->force_sample_send ();
 
     if (active_phase) {
-        const int max_inflight =
-          resolve_bench_count ("PERF_SINGLE_MAX_INFLIGHT", 256);
-        unsigned long long sent_active = 0;
         while (std::chrono::steady_clock::now () < deadline) {
-            while (max_inflight > 0
-                   && sent_active
-                        >= received.load (std::memory_order_relaxed)
-                             + static_cast<unsigned long long> (max_inflight)
-                   && std::chrono::steady_clock::now () < deadline) {
-                std::this_thread::yield ();
-            }
             const uint64_t sent_ts = perf_single_metric::now_us ();
             if (!perf_single_metric::stamp_payload (payload->data (),
                                                     payload_size,
@@ -223,17 +214,31 @@ inline bool run_oneway_phase (void *pub_socket,
                                                     phase,
                                                     msg_size,
                                                     (*seq)++,
-                                                    sent_ts)
-                || !send_exact (pub_socket, payload->data (), payload_size, 0)) {
+                                                    sent_ts)) {
                 send_failed = true;
                 break;
             }
-            ++sent_active;
+
+            zlink_msg_t part;
+            if (::zlink_msg_init_size (&part, payload_size) != 0) {
+                send_failed = true;
+                break;
+            }
+            if (payload_size > 0)
+                memcpy (::zlink_msg_data (&part), payload->data (),
+                        payload_size);
+            if (::zlink_publish (pub_socket, NULL, &part, 1,
+                                 static_cast<zlink_send_flags_t> (0))
+                < 0) {
+                ::zlink_msg_close (&part);
+                send_failed = true;
+                break;
+            }
             if (queue_probe)
                 queue_probe->sample_send_if_due ();
         }
     } else {
-        for (int i = 0; i < warmup_count; ++i) {
+        while (std::chrono::steady_clock::now () < deadline) {
             if (!perf_single_metric::stamp_payload (
                   payload->data (),
                   payload_size,
@@ -241,8 +246,23 @@ inline bool run_oneway_phase (void *pub_socket,
                   phase,
                   msg_size,
                   (*seq)++,
-                  perf_single_metric::now_us ())
-                || !send_exact (pub_socket, payload->data (), payload_size, 0)) {
+                  perf_single_metric::now_us ())) {
+                send_failed = true;
+                break;
+            }
+
+            zlink_msg_t part;
+            if (::zlink_msg_init_size (&part, payload_size) != 0) {
+                send_failed = true;
+                break;
+            }
+            if (payload_size > 0)
+                memcpy (::zlink_msg_data (&part), payload->data (),
+                        payload_size);
+            if (::zlink_publish (pub_socket, NULL, &part, 1,
+                                 static_cast<zlink_send_flags_t> (0))
+                < 0) {
+                ::zlink_msg_close (&part);
                 send_failed = true;
                 break;
             }
@@ -265,8 +285,7 @@ inline bool run_oneway_phase (void *pub_socket,
             || latency_builder.count () == 0 || !out_latency)
             return false;
         *out_latency = latency_builder.snapshot ();
-    } else if (received.load (std::memory_order_relaxed)
-               < static_cast<unsigned long long> (warmup_count)) {
+    } else if (received.load (std::memory_order_relaxed) == 0) {
         return false;
     }
 
@@ -292,18 +311,18 @@ void run_pubsub (const std::string &transport,
         return;
     }
 
-    socket_guard_t pub (ctx.get (), ZLINK_PUB);
-    socket_guard_t sub (ctx.get (), ZLINK_SUB);
+    socket_guard_t pub (ctx.get (), ZLINK_SOCKET_PUB);
+    socket_guard_t sub (ctx.get (), ZLINK_SOCKET_SUB);
     if (!pub.valid () || !sub.valid ()) {
         print_fail_no_queue ();
         return;
     }
 
     const int xpub_nodrop_opt = resolve_pubsub_xpub_nodrop_opt ();
-    set_sockopt_int (pub.get (), ZLINK_XPUB_NODROP, xpub_nodrop_opt,
-                     "ZLINK_XPUB_NODROP");
+    set_pub_opt_int (pub.get (), ZLINK_PUB_OPT_NODROP, xpub_nodrop_opt,
+                     "ZLINK_PUB_OPT_NODROP");
 
-    zlink_setsockopt (sub.get (), ZLINK_SUBSCRIBE, "", 0);
+    zlink_set_subscription (sub.get (), "");
     if (!setup_connected_pair (
           pub.get (), sub.get (), transport, lib_name + "_pubsub")) {
         print_fail_no_queue ();
@@ -311,8 +330,8 @@ void run_pubsub (const std::string &transport,
     }
 
     const int recv_timeout_ms = resolve_single_pubsub_recv_timeout_ms ();
-    set_sockopt_int (sub.get (), ZLINK_RCVTIMEO, recv_timeout_ms,
-                     "ZLINK_RCVTIMEO");
+    set_sockopt_int (sub.get (), ZLINK_OPT_RCVTIMEO, recv_timeout_ms,
+                     "ZLINK_OPT_RCVTIMEO");
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
@@ -327,7 +346,7 @@ void run_pubsub (const std::string &transport,
     uint64_t seq = 1;
 
     unsigned long long warmup_received = 0;
-    const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 1000);
+    const int warmup_s = resolve_single_warmup_seconds ();
     if (!run_oneway_phase (pub.get (),
                            sub.get (),
                            &payload,
@@ -336,7 +355,7 @@ void run_pubsub (const std::string &transport,
                            run_id,
                            &seq,
                            perf_single_metric::phase_warmup,
-                           warmup_count,
+                           warmup_s,
                            0,
                            recv_timeout_ms,
                            NULL,

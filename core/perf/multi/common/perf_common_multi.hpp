@@ -7,6 +7,36 @@
 #include <cstring>
 #include <string>
 
+inline const char *resolve_multi_env_value (const char *env_name,
+                                            const char *bench_name)
+{
+    if (env_name && *env_name) {
+        const char *value = std::getenv (env_name);
+        if (value && *value)
+            return value;
+    }
+
+    if (bench_name && *bench_name) {
+        const char *value = std::getenv (bench_name);
+        if (value && *value)
+            return value;
+    }
+
+    return NULL;
+}
+
+inline std::string derive_bench_multi_env_name (const char *env_name)
+{
+    if (!env_name || !*env_name)
+        return std::string ();
+
+    static const char prefix[] = "PERF_MULTI_";
+    if (std::strncmp (env_name, prefix, sizeof (prefix) - 1) != 0)
+        return std::string ();
+
+    return std::string ("BENCH_MULTI_") + (env_name + (sizeof (prefix) - 1));
+}
+
 struct multi_bench_settings_t
 {
     size_t clients;
@@ -26,7 +56,9 @@ inline int resolve_multi_int_env (const char *env_name,
     if (!env_name)
         return default_value;
 
-    const char *value = std::getenv (env_name);
+    const std::string bench_name = derive_bench_multi_env_name (env_name);
+    const char *value =
+      resolve_multi_env_value (env_name, bench_name.empty () ? NULL : bench_name.c_str ());
     if (!value || !*value)
         return default_value;
 

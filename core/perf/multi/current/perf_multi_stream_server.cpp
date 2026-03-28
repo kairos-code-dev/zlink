@@ -21,6 +21,9 @@
 #ifndef ZLINK_TCP_NODELAY
 #define ZLINK_TCP_NODELAY 26
 #endif
+#ifndef ZLINK_BACKLOG
+#define ZLINK_BACKLOG 19
+#endif
 
 namespace {
 
@@ -81,6 +84,53 @@ inline bool is_supported_transport (const std::string &transport)
 {
     return transport == "tcp" || transport == "tls" || transport == "ws"
            || transport == "wss";
+}
+
+inline int resolve_stream_socket_int_env (const char *bench_name,
+                                          int default_value,
+                                          int min_value)
+{
+    if (bench_name && *bench_name) {
+        const int parsed =
+          resolve_multi_int_env (bench_name, default_value, min_value);
+        if (parsed != default_value)
+            return parsed;
+    }
+
+    return default_value;
+}
+
+inline int resolve_stream_retry_backoff_us ()
+{
+    return resolve_stream_socket_int_env (
+      "BENCH_MULTI_STREAM_SEND_RETRY_BACKOFF_US", 20, 0);
+}
+
+inline int resolve_stream_tcp_nodelay ()
+{
+    return resolve_stream_socket_int_env ("BENCH_STREAM_TCP_NODELAY", 1, 0);
+}
+
+inline void apply_stream_server_tuning (void *server)
+{
+    if (!server)
+        return;
+
+    const int backlog =
+      resolve_stream_socket_int_env ("BENCH_STREAM_BACKLOG", 32768, 1);
+    const int sndbuf =
+      resolve_stream_socket_int_env ("BENCH_STREAM_SNDBUF", 262144, 0);
+    const int rcvbuf =
+      resolve_stream_socket_int_env ("BENCH_STREAM_RCVBUF", 262144, 0);
+    const int nodelay = resolve_stream_tcp_nodelay ();
+
+    set_sockopt_int (server, ZLINK_BACKLOG, backlog, "ZLINK_BACKLOG");
+    if (sndbuf > 0)
+        set_sockopt_int (server, ZLINK_SNDBUF, sndbuf, "ZLINK_SNDBUF");
+    if (rcvbuf > 0)
+        set_sockopt_int (server, ZLINK_RCVBUF, rcvbuf, "ZLINK_RCVBUF");
+    if (nodelay > 0)
+        set_sockopt_int (server, ZLINK_TCP_NODELAY, nodelay, "ZLINK_TCP_NODELAY");
 }
 
 inline std::string bind_server_endpoint (void *server,
@@ -175,7 +225,8 @@ inline bool send_stream_once (const zlink_routing_id_t *rid,
         return false;
 
     const int retry_limit = std::max (
-      1, resolve_multi_int_env ("PERF_MULTI_STREAM_SEND_RETRIES", 128, 1));
+      1, resolve_multi_int_env ("PERF_MULTI_STREAM_SEND_RETRIES", 256, 1));
+    const int retry_backoff_us = resolve_stream_retry_backoff_us ();
     for (int attempt = 0;
          attempt < retry_limit
          && !g_stop_requested.load (std::memory_order_acquire);
@@ -192,7 +243,12 @@ inline bool send_stream_once (const zlink_routing_id_t *rid,
         if (err == EINTR)
             continue;
         if (err == EAGAIN || err == ETIMEDOUT) {
-            std::this_thread::yield ();
+            if (retry_backoff_us > 0) {
+                std::this_thread::sleep_for (
+                  std::chrono::microseconds (retry_backoff_us));
+            } else {
+                std::this_thread::yield ();
+            }
             continue;
         }
         if (err == ECONNRESET || err == EHOSTUNREACH || err == ENOTCONN
@@ -362,6 +418,7 @@ int main (int argc, char **argv)
     const int linger_ms = 0;
     set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
+    apply_stream_server_tuning (server);
     const int io_timeout_ms = resolve_bench_count ("PERF_STREAM_TIMEOUT_MS", 5000);
     set_sockopt_int (server, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
     set_sockopt_int (server, ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");

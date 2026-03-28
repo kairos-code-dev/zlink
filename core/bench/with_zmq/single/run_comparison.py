@@ -30,7 +30,6 @@ DEFAULT_PATTERNS = [
     "DEALER_DEALER",
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
-    "ROUTER_ROUTER_POLL",
 ]
 
 PATTERN_COMPARISONS: List[Tuple[str, str, str]] = [
@@ -39,11 +38,6 @@ PATTERN_COMPARISONS: List[Tuple[str, str, str]] = [
     ("comp_std_zmq_dealer_dealer", "comp_zlink_dealer_dealer", "DEALER_DEALER"),
     ("comp_std_zmq_dealer_router", "comp_zlink_dealer_router", "DEALER_ROUTER"),
     ("comp_std_zmq_router_router", "comp_zlink_router_router", "ROUTER_ROUTER"),
-    (
-        "comp_std_zmq_router_router_poll",
-        "comp_zlink_router_router_poll",
-        "ROUTER_ROUTER_POLL",
-    ),
 ]
 
 if IS_WINDOWS:
@@ -337,6 +331,7 @@ def run_cmake_configure(cmake_build_dir: str) -> int:
         "-DBUILD_SHARED=ON",
         "-DBUILD_BENCHMARKS=ON",
         "-DZLINK_BUILD_BENCH_ZMQ=ON",
+        "-DZLINK_BUILD_WITH_ZMQ_ZLINK_BENCHES=ON",
         "-DZLINK_BUILD_BENCH_ZLINK=ON",
         "-DZLINK_BUILD_BENCH_BEAST=OFF",
     ]
@@ -411,7 +406,6 @@ def parse_pattern_arg(raw: str) -> List[str]:
         "DEALER_DEALER": "DEALER_DEALER",
         "DEALER_ROUTER": "DEALER_ROUTER",
         "ROUTER_ROUTER": "ROUTER_ROUTER",
-        "ROUTER_ROUTER_POLL": "ROUTER_ROUTER_POLL",
     }
 
     if token == "ALL":
@@ -468,6 +462,12 @@ def metric_or_none(metric_map: Dict[str, float], key: str):
         return None
 
 
+def format_queue_metric(value: Optional[float]) -> str:
+    if value is None:
+        return "N/A"
+    return f"{value:8.2f}"
+
+
 def build_transport_report_header_lines(transport: str) -> List[str]:
     size_w = 6
     metric_w = 10
@@ -522,7 +522,7 @@ def build_size_report_lines(
     else:
         l_diff_s = "N/A"
 
-    return [
+    lines = [
         (
             f"| {f'{size}B':<{size_w}} | {'Throughput':<{metric_w}} | {std_t_s:>{val_w}} | "
             f"{zlk_t_s:>{val_w}} | {t_diff_s:>{diff_w}} |"
@@ -532,6 +532,8 @@ def build_size_report_lines(
             f"{zlk_l_s:>{val_w}} | {l_diff_s:>{diff_w}} |"
         ),
     ]
+
+    return lines
 
 
 def build_pattern_report_lines(
@@ -583,8 +585,6 @@ def parse_result_line(line: str, transport: str, expected_size: int):
 
     if line_transport != transport or line_size != expected_size:
         return None
-    if metric not in ("throughput", "latency"):
-        return None
     return line_transport, line_size, metric, value
 
 
@@ -600,6 +600,8 @@ def run_single_test(
 ) -> RunOutcome:
     binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name, base_env, libzmq_lib_dir, zlink_lib_dir)
+    if binary_name == "comp_zlink_pubsub":
+        env["PERF_RECV_MODE"] = "recv"
     timeout_sec = max(60, int(os.environ.get("BENCH_SINGLE_TIMEOUT_SECONDS", "120")))
 
     try:
@@ -668,7 +670,7 @@ def collect_data(
         for sz in msg_sizes:
             if show_progress:
                 print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
-            metric_buckets: Dict[str, List[float]] = {"throughput": [], "latency": []}
+            metric_buckets: Dict[str, List[float]] = {}
             failed_runs = 0
             expected_throughput = f"{tr}|{sz}|throughput"
             expected_latency = f"{tr}|{sz}|latency"
@@ -732,17 +734,12 @@ def collect_data(
                         )
                     continue
 
-                metric_buckets["throughput"].append(results[expected_throughput])
-                metric_buckets["latency"].append(results[expected_latency])
+                for key, value in results.items():
+                    metric_buckets.setdefault(key, []).append(value)
 
-            if metric_buckets["throughput"]:
-                final_stats[expected_throughput] = statistics.median(
-                    metric_buckets["throughput"]
-                )
-            if metric_buckets["latency"]:
-                final_stats[expected_latency] = statistics.median(
-                    metric_buckets["latency"]
-                )
+            for key, values in metric_buckets.items():
+                if values:
+                    final_stats[key] = statistics.median(values)
 
             if show_progress:
                 if failed_runs:

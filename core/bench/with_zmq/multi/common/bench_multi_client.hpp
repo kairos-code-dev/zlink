@@ -4,8 +4,7 @@
 #include "bench_multi_pattern.hpp"
 #include "bench_multi_resource.hpp"
 #include "bench_common_multi.hpp"
-
-#include "../../../../perf/multi/common/perf_common.hpp"
+#include "bench_common_zlink.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -80,28 +79,21 @@ inline int recv_one_message (void *socket,
                              std::vector<char> &scratch,
                              int flags)
 {
-    const int rc = zlink_recv (socket, scratch.data (), scratch.size (), flags);
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc = recv_message_parts (
+      socket, &source_rid, &parts, &part_count,
+      static_cast<zlink_send_flags_t> (flags));
     if (rc < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
-
-    while (true) {
-        int more = 0;
-        size_t more_size = sizeof (more);
-        if (zlink_getsockopt (socket, ZLINK_RCVMORE, &more, &more_size) != 0)
-            break;
-        if (!more)
-            break;
-
-        const int next_rc = zlink_recv (socket, scratch.data (), scratch.size (), 0);
-        if (next_rc < 0) {
-            if (zlink_errno () == EINTR)
-                continue;
-            return -1;
-        }
+    if (parts) {
+        zlink_multipart_close (parts, part_count);
     }
 
     return 1;
@@ -114,24 +106,36 @@ inline multi_send_result_t send_echo_message (void *socket,
                                               size_t payload_size,
                                               bool blocking)
 {
-    const int base_flags = blocking ? 0 : ZLINK_DONTWAIT;
+    const zlink_send_flags_t base_flags =
+      blocking ? 0 : static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT);
 
     if (cfg.client_router_send) {
-        const int id_rc = zlink_send (
-          socket,
-          server_id.c_str (),
-          server_id.size (),
-          ZLINK_SNDMORE | base_flags);
+        zlink_msg_t parts[2];
+        if (zlink_msg_init_size (&parts[0], server_id.size ()) != 0)
+            return multi_send_error;
+        if (zlink_msg_init_size (&parts[1], payload_size) != 0) {
+            zlink_msg_close (&parts[0]);
+            return multi_send_error;
+        }
+        if (!server_id.empty ())
+            std::memcpy (
+              zlink_msg_data (&parts[0]), server_id.data (), server_id.size ());
+        if (payload_size > 0)
+            std::memcpy (
+              zlink_msg_data (&parts[1]), payload.data (), payload_size);
+        const int id_rc = ::zlink_send (socket, parts, 2, base_flags);
         const multi_send_result_t id_status = classify_send_result (id_rc);
         if (id_status != multi_send_ok)
             return id_status;
+        return id_status;
     }
 
-    const int payload_rc = zlink_send (
-      socket,
-      payload.data (),
-      payload_size,
-      base_flags);
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, payload_size) != 0)
+        return multi_send_error;
+    if (payload_size > 0)
+        std::memcpy (zlink_msg_data (&part), payload.data (), payload_size);
+    const int payload_rc = ::zlink_send (socket, &part, 1, base_flags);
     return classify_send_result (payload_rc);
 }
 
@@ -511,7 +515,8 @@ inline bool create_client_sockets (
 
     const int linger_ms = 0;
     for (size_t i = 0; i < sockets_out->size (); ++i) {
-        void *sock = zlink_socket (ctx.get (), cfg.client_socket_type);
+        void *sock = zlink_socket (
+          ctx.get (), static_cast<zlink_socket_type_t> (cfg.client_socket_type));
         if (!sock) {
             if (bench_debug_enabled ()) {
                 std::cerr << cfg.pattern
@@ -523,24 +528,22 @@ inline bool create_client_sockets (
             return false;
         }
 
-        set_sockopt_int (sock, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+        set_sockopt_int (sock, ZLINK_OPT_LINGER, linger_ms,
+                         "ZLINK_OPT_LINGER");
         apply_benchmark_hwm (sock, settings.hwm);
 
-        if (cfg.client_socket_type == ZLINK_ROUTER) {
+        if (cfg.client_socket_type == ZLINK_SOCKET_ROUTER) {
             char id_buf[32];
             const int id_len =
               std::snprintf (id_buf, sizeof (id_buf), "client_%zu", i);
             if (id_len > 0) {
-                zlink_setsockopt (
-                  sock,
-                  ZLINK_ROUTING_ID,
-                  id_buf,
-                  static_cast<size_t> (id_len));
+                zlink_set_routing_id (sock, id_buf,
+                                      static_cast<size_t> (id_len));
             }
         }
 
-        if (cfg.client_socket_type == ZLINK_SUB) {
-            zlink_setsockopt (sock, ZLINK_SUBSCRIBE, "", 0);
+        if (cfg.client_socket_type == ZLINK_SOCKET_SUB) {
+            zlink_set_subscription (sock, "");
         }
 
         if (!setup_tls_client (sock, transport)) {

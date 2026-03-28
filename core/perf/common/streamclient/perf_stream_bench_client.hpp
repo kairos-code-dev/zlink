@@ -250,6 +250,8 @@ class bench_client_t : public bench_client_iface_t
                 std::fflush (stdout);
                 if (!m.pass)
                     all_pass = false;
+                if ((i + 1) < opt.sizes.size ())
+                    run_size_transition_drain ();
             }
         }
 
@@ -370,21 +372,28 @@ class bench_client_t : public bench_client_iface_t
   private:
     int resolve_connect_batch_limit () const
     {
-        const char *raw = std::getenv ("PERF_MULTI_STREAM_CONNECT_BATCH");
-        if (raw && *raw) {
+        static const char *env_names[] = {
+            "BENCH_MULTI_CONNECT_CONCURRENCY",
+            "PERF_MULTI_CONNECT_CONCURRENCY",
+            "BENCH_MULTI_STREAM_CONNECT_BATCH",
+            "PERF_MULTI_STREAM_CONNECT_BATCH",
+        };
+        for (size_t i = 0; i < (sizeof (env_names) / sizeof (env_names[0])); ++i) {
+            const char *raw = std::getenv (env_names[i]);
+            if (!raw || !*raw)
+                continue;
+
             char *end = NULL;
             errno = 0;
             const long parsed = std::strtol (raw, &end, 10);
-            if (errno == 0 && end != raw && parsed > 0) {
-                if (parsed > INT_MAX)
-                    return INT_MAX;
-                return static_cast<int> (parsed);
-            }
+            if (errno != 0 || end == raw || parsed <= 0)
+                continue;
+
+            if (parsed > INT_MAX)
+                return INT_MAX;
+            return static_cast<int> (parsed);
         }
 
-        const std::string transport = perf_stream_common::lower_copy (opt.transport);
-        if (transport == "tcp")
-            return k_connect_batch;
         return std::min (k_connect_batch, 128);
     }
 
@@ -511,7 +520,9 @@ class bench_client_t : public bench_client_iface_t
         mode.store (phase_idle, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
 
-        const int drain_ms = std::max (0, opt.drain_ms);
+        int drain_ms = std::max (0, opt.drain_ms);
+        if (phase_size.load (std::memory_order_acquire) >= 65536)
+            drain_ms = std::max (drain_ms, 5000);
         if (drain_ms > 0) {
             const auto drain_deadline =
               std::chrono::steady_clock::now ()
@@ -530,6 +541,22 @@ class bench_client_t : public bench_client_iface_t
         }
 
         return true;
+    }
+
+    void run_size_transition_drain ()
+    {
+        const int drain_ms = std::max (0, opt.size_transition_drain_ms);
+        if (drain_ms <= 0)
+            return;
+
+        const auto drain_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (drain_ms);
+        while (std::chrono::steady_clock::now () < drain_deadline) {
+            if (outstanding_total.load (std::memory_order_relaxed) <= 0)
+                break;
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
     }
 
     void reset_measurement_counters ()

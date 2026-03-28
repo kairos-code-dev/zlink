@@ -131,6 +131,7 @@ inline int run_client_benchmark (const std::string &lib_name,
 
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         const size_t msg_size = msg_sizes[si];
+        std::cout << "CLIENT_READY," << msg_size << std::endl;
         if (!run_single_size_case (
               sockets,
               base_settings,
@@ -141,7 +142,7 @@ inline int run_client_benchmark (const std::string &lib_name,
             close_client_sockets (&sockets);
             return 1;
         }
-
+        std::cout << "CLIENT_DONE," << msg_size << std::endl;
     }
     close_client_sockets (&sockets);
     return 0;

@@ -15,6 +15,7 @@
 #include <cstring>
 #include <climits>
 #include <zlink.h>
+#include "../../common/zlink_api_compat.hpp"
 
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
@@ -151,7 +152,8 @@ class socket_guard_t {
 public:
     socket_guard_t() : _socket(NULL) {}
 
-    socket_guard_t(void *ctx_, int type_) : _socket(zlink_socket(ctx_, type_)) {}
+    socket_guard_t(void *ctx_, int type_) :
+        _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_))) {}
 
     ~socket_guard_t()
     {
@@ -202,19 +204,21 @@ inline int bench_monitor_hwm()
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 {
-    int events = ZLINK_EVENT_CONNECTION_READY;
-    void *monitor = zlink_socket_monitor_open(socket_, events);
+    zlink_socket_monitor_open_options_t opts;
+    std::memset(&opts, 0, sizeof(opts));
+    opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    void *monitor = zlink_socket_monitor_open(socket_, &opts);
     if (!monitor)
         return false;
 
     const int linger_ms = 0;
-    zlink_setsockopt(monitor, ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
+    zlink_set_option(monitor, ZLINK_OPT_LINGER, &linger_ms, sizeof(linger_ms));
     const int monitor_hwm = bench_monitor_hwm();
     if (monitor_hwm > 0) {
-        zlink_setsockopt(
-          monitor, ZLINK_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
-        zlink_setsockopt(
-          monitor, ZLINK_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
+        zlink_set_option(
+          monitor, ZLINK_OPT_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
+        zlink_set_option(
+          monitor, ZLINK_OPT_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
     }
     out_.owner = socket_;
     out_.monitor = monitor;
@@ -259,16 +263,11 @@ inline int poll_connect_ready_count(connect_monitor_t &monitor_)
     if (!monitor_.monitor)
         return 0;
 
-    int ready = 0;
-    for (;;) {
-        zlink_monitor_event_t ev;
-        if (zlink_monitor_recv(monitor_.monitor, &ev, ZLINK_DONTWAIT) != 0)
-            break;
-        if (ev.event == ZLINK_EVENT_CONNECTION_READY) {
-            ++ready;
-        }
-    }
-    return ready;
+    zlink_monitor_snapshot_t snapshot;
+    std::memset(&snapshot, 0, sizeof(snapshot));
+    if (zlink_monitor_snapshot(monitor_.monitor, &snapshot) != 0)
+        return 0;
+    return static_cast<int>(snapshot.ready_count);
 }
 
 inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
@@ -305,7 +304,7 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
         if (rc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
             continue;
 
-        ready += static_cast<size_t>(poll_connect_ready_count(monitor_));
+        ready = static_cast<size_t>(poll_connect_ready_count(monitor_));
         if (ready >= expected_ready_)
             return true;
     }
@@ -327,10 +326,11 @@ inline bool wait_connect_ready_unique(connect_monitor_t &monitor_,
         bool progress = false;
         for (;;) {
             zlink_monitor_event_t ev;
-            if (zlink_monitor_recv(monitor_.monitor, &ev, ZLINK_DONTWAIT) != 0)
+            if (zlink_socket_monitor_recv(monitor_.monitor, &ev) != 0)
                 break;
 
-            if (ev.event == ZLINK_EVENT_CONNECTION_READY) {
+            if (ev.event == ZLINK_EVENT_CONNECTION_READY_CHANGED
+                && ev.value != 0) {
                 if (ev.remote_addr[0] != '\0') {
                     peers.insert(std::string(ev.remote_addr));
                 } else {
@@ -386,18 +386,16 @@ inline bool wait_all_connect_ready(std::vector<connect_monitor_t> &monitors,
 
 inline void close_connect_monitor(connect_monitor_t &monitor_)
 {
-    if (monitor_.owner)
-        zlink_socket_monitor(monitor_.owner, NULL, 0);
     if (monitor_.monitor)
-        zlink_close(monitor_.monitor);
+        zlink_monitor_close(&monitor_.monitor);
     monitor_.owner = NULL;
-    monitor_.monitor = NULL;
 }
 
-inline bool set_sockopt_int(void *socket_, int option_, int value_,
+inline bool set_sockopt_int(void *socket_, zlink_option_t option_, int value_,
                             const char *name_)
 {
-    const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
+    const int rc =
+      zlink_set_option(socket_, option_, &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -406,7 +404,7 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_getsockopt(socket_, option_, &out, &out_size);
+        const int grc = zlink_get_option(socket_, option_, &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -420,8 +418,10 @@ inline void apply_benchmark_hwm(void *socket_, int inflight_)
     if (inflight_ <= 0)
         return;
 
-    set_sockopt_int(socket_, ZLINK_SNDHWM, inflight_, "ZLINK_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_RCVHWM, inflight_, "ZLINK_RCVHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, inflight_,
+                    "ZLINK_OPT_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, inflight_,
+                    "ZLINK_OPT_RCVHWM");
 }
 
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
@@ -452,8 +452,10 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport)
       bench_timeout_ms_from_env("BENCH_MULTI_SNDTIMEO_MS", 5000);
     const int rcvtimeo_ms =
       bench_timeout_ms_from_env("BENCH_MULTI_RCVTIMEO_MS", 5000);
-    set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
-    set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, sndtimeo_ms,
+                    "ZLINK_OPT_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, rcvtimeo_ms,
+                    "ZLINK_OPT_RCVTIMEO");
 }
 
 inline std::string transport_from_endpoint(const std::string &endpoint)
@@ -476,6 +478,33 @@ inline std::string make_endpoint(const std::string &transport,
     return "tcp://127.0.0.1:*";
 }
 
+inline std::string make_fixed_endpoint(const std::string &transport, int port)
+{
+    const std::string host = "127.0.0.1";
+    const std::string port_str = std::to_string(port);
+    if (transport == "ws")
+        return "ws://" + host + ":" + port_str;
+    if (transport == "wss")
+        return "wss://" + host + ":" + port_str;
+    if (transport == "tls")
+        return "tls://" + host + ":" + port_str;
+    return "tcp://" + host + ":" + port_str;
+}
+
+inline bool setup_tls_server(void *socket_, const std::string &transport)
+{
+    if (transport != "tls" && transport != "wss")
+        return true;
+    return zlink_set_tls_server(socket_, NULL, NULL, 0) == 0;
+}
+
+inline bool setup_tls_client(void *socket_, const std::string &transport)
+{
+    if (transport != "tls" && transport != "wss")
+        return true;
+    return zlink_set_tls_client(socket_, NULL, "localhost", 1) == 0;
+}
+
 inline std::string bind_and_resolve_endpoint(void *socket_,
                                              const std::string &transport,
                                              const std::string &id)
@@ -490,9 +519,10 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_getsockopt(socket_, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
+        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                             &size)
             != 0) {
-            std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
+            std::cerr << "getsockopt(ZLINK_SOCKOPT_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();
         }
@@ -565,6 +595,51 @@ inline bool setup_connected_pair(void *bind_socket_,
     apply_debug_timeouts(connect_socket_, transport_);
     settle();
     return true;
+}
+
+inline int recv_message_parts(void *socket_,
+                              zlink_routing_id_t *source_rid_out_,
+                              zlink_msg_t **parts_out_,
+                              size_t *part_count_out_,
+                              zlink_send_flags_t flags_)
+{
+    return zlink_recv(
+      socket_, source_rid_out_, parts_out_, part_count_out_, flags_);
+}
+
+inline int recv_single_part_message(void *socket_,
+                                    void *buffer_,
+                                    size_t buffer_size_,
+                                    zlink_send_flags_t flags_)
+{
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const int rc =
+      zlink_recv(socket_, &source_rid, &parts, &part_count, flags_);
+    if (rc < 0)
+        return -1;
+
+    if (source_rid.size != 0 || part_count != 1) {
+        if (parts) {
+            zlink_multipart_close(parts, part_count);
+        }
+        errno = EPROTO;
+        return -1;
+    }
+
+    const size_t msg_size = zlink_msg_size(&parts[0]);
+    if (msg_size > buffer_size_) {
+        zlink_multipart_close(parts, part_count);
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    if (msg_size > 0)
+        std::memcpy(buffer_, zlink_msg_data(&parts[0]), msg_size);
+    zlink_multipart_close(parts, part_count);
+    return static_cast<int>(msg_size);
 }
 
 template <typename StepFn>

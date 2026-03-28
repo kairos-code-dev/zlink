@@ -15,6 +15,15 @@
 #include <fstream>
 #include <climits>
 #include <zlink.h>
+#include "../../common/zlink_api_compat.hpp"
+#include "../../../../src/core/msg.hpp"
+
+inline bool bench_msg_has_more(const zlink_msg_t &msg_)
+{
+    return (reinterpret_cast<const zlink::msg_t *>(&msg_)->flags()
+            & zlink::msg_t::more)
+           != 0;
+}
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -28,20 +37,6 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
-#endif
-
-// --- TLS Socket Options ---
-#ifndef ZLINK_TLS_CERT
-#define ZLINK_TLS_CERT 95
-#endif
-#ifndef ZLINK_TLS_KEY
-#define ZLINK_TLS_KEY 96
-#endif
-#ifndef ZLINK_TLS_CA
-#define ZLINK_TLS_CA 97
-#endif
-#ifndef ZLINK_TLS_HOSTNAME
-#define ZLINK_TLS_HOSTNAME 100
 #endif
 
 // --- Configuration ---
@@ -83,27 +78,25 @@ inline int parse_positive_env(const char *name_, int default_value_)
     return static_cast<int>(parsed);
 }
 
-inline int parse_positive_env_pair(const char *primary_name_,
-                                   const char *legacy_name_,
-                                   int default_value_)
+inline int parse_positive_env_or_default(const char *name_, int default_value_)
 {
-    const int primary = parse_positive_env(primary_name_, 0);
-    if (primary > 0)
-        return primary;
-    return parse_positive_env(legacy_name_, default_value_);
+    return parse_positive_env(name_, default_value_);
 }
 
 inline int resolve_single_duration_seconds()
 {
-    return parse_positive_env_pair("PERF_SINGLE_DURATION_SECONDS",
-                                   "PERF_SINGLE_DURATION_SECONDS", 2);
+    return parse_positive_env_or_default("PERF_SINGLE_DURATION_SECONDS", 2);
+}
+
+inline int resolve_single_warmup_seconds()
+{
+    return parse_positive_env_or_default("PERF_SINGLE_WARMUP_SECONDS", 2);
 }
 
 inline int resolve_single_latency_duration_seconds()
 {
     const int base = resolve_single_duration_seconds();
-    return parse_positive_env_pair("PERF_SINGLE_LATENCY_SECONDS",
-                                   "PERF_SINGLE_LATENCY_SECONDS", base);
+    return parse_positive_env_or_default("PERF_SINGLE_LATENCY_SECONDS", base);
 }
 
 inline size_t resolve_single_latency_sample_cap()
@@ -225,7 +218,7 @@ private:
 
 inline int bench_io_threads()
 {
-    return parse_positive_env("PERF_IO_THREADS", 0);
+    return parse_positive_env("PERF_IO_THREADS", 1);
 }
 
 inline int bench_max_sockets()
@@ -292,7 +285,8 @@ private:
 class socket_guard_t {
 public:
     socket_guard_t() : _socket(NULL) {}
-    socket_guard_t(void *ctx_, int type_) : _socket(zlink_socket(ctx_, type_)) {}
+    socket_guard_t(void *ctx_, int type_) :
+        _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_))) {}
     ~socket_guard_t() {
         if (_socket)
             zlink_close(_socket);
@@ -380,152 +374,15 @@ inline void print_result(const std::string& lib_type,
       lib_type, pattern, transport, size, throughput, latency, latency, latency);
 }
 
-inline bool send_exact(void *socket_,
-                       const void *data_,
-                       size_t size_,
-                       int flags_ = 0)
-{
-    if (!socket_)
-        return false;
-    return zlink_send(socket_, data_, size_, flags_) == static_cast<int>(size_);
-}
-
-inline bool recv_exact(void *socket_,
-                       void *data_,
-                       size_t size_,
-                       int flags_ = 0)
-{
-    if (!socket_)
-        return false;
-    return zlink_recv(socket_, data_, size_, flags_) == static_cast<int>(size_);
-}
-
-inline int recv_single_part_msg_flags(void *socket_,
-                                      size_t expected_size_,
-                                      int flags_)
-{
-    if (!socket_)
-        return -1;
-
-    zlink_msg_t msg;
-    if (zlink_msg_init(&msg) != 0)
-        return -1;
-
-    const int rc = zlink_msg_recv(&msg, socket_, flags_);
-    if (rc < 0) {
-        const int err = zlink_errno();
-        zlink_msg_close(&msg);
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
-    }
-
-    const bool size_ok = zlink_msg_size(&msg) == expected_size_;
-    const bool has_more = zlink_msg_more(&msg) != 0;
-    zlink_msg_close(&msg);
-    if (!size_ok || has_more)
-        return -1;
-    return 1;
-}
-
-inline int recv_two_part_msg_flags(void *socket_,
-                                   size_t payload_size_,
-                                   std::vector<char> *routing_id_out_,
-                                   int flags_)
-{
-    if (!socket_)
-        return -1;
-
-    zlink_msg_t routing_id;
-    if (zlink_msg_init(&routing_id) != 0)
-        return -1;
-
-    const int id_rc = zlink_msg_recv(&routing_id, socket_, flags_);
-    if (id_rc < 0) {
-        const int err = zlink_errno();
-        zlink_msg_close(&routing_id);
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
-    }
-
-    if (zlink_msg_more(&routing_id) == 0) {
-        zlink_msg_close(&routing_id);
-        return -1;
-    }
-
-    if (routing_id_out_) {
-        const size_t id_size = zlink_msg_size(&routing_id);
-        routing_id_out_->clear();
-        if (id_size > 0) {
-            const char *id_data =
-              static_cast<const char *>(zlink_msg_data(&routing_id));
-            routing_id_out_->assign(id_data, id_data + id_size);
-        }
-    }
-
-    zlink_msg_close(&routing_id);
-
-    zlink_msg_t payload;
-    if (zlink_msg_init(&payload) != 0)
-        return -1;
-
-    if (zlink_msg_recv(&payload, socket_, 0) < 0) {
-        zlink_msg_close(&payload);
-        return -1;
-    }
-
-    const bool payload_ok = zlink_msg_size(&payload) == payload_size_;
-    const bool payload_has_more = zlink_msg_more(&payload) != 0;
-    zlink_msg_close(&payload);
-    if (!payload_ok || payload_has_more)
-        return -1;
-    return 1;
-}
-
-inline bool drain_socket_nonblocking(void *socket_)
-{
-    if (!socket_)
-        return true;
-
-    char discard[256];
-    int frame_guard = 0;
-    const int frame_limit = 65536;
-    while (frame_guard < frame_limit) {
-        const int rc = zlink_recv(
-          socket_, discard, sizeof(discard), ZLINK_DONTWAIT);
-        if (rc < 0) {
-            const int err = zlink_errno();
-            return err == EAGAIN || err == EINTR;
-        }
-
-        ++frame_guard;
-        int more = 0;
-        size_t more_size = sizeof(more);
-        if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size) != 0)
-            return false;
-        while (more != 0 && frame_guard < frame_limit) {
-            if (zlink_recv(socket_, discard, sizeof(discard), 0) < 0)
-                return false;
-            ++frame_guard;
-            more_size = sizeof(more);
-            if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size)
-                != 0) {
-                return false;
-            }
-        }
-    }
-    return false;
-}
-
 inline bool bench_debug_enabled() {
     static const bool enabled = std::getenv("PERF_DEBUG") != nullptr;
     return enabled;
 }
 
-inline bool set_sockopt_int(void *socket_, int option_, int value_,
+inline bool set_sockopt_int(void *socket_, zlink_option_t option_, int value_,
                             const char *name_) {
-    const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
+    const int rc =
+      zlink_set_option(socket_, option_, &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -533,10 +390,24 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zlink_getsockopt(socket_, option_, &out, &out_size);
+        const int grc = zlink_get_option(socket_, option_, &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
+    }
+    return rc == 0;
+}
+
+inline bool set_pub_opt_int (void *socket_,
+                             zlink_pub_option_t option_,
+                             int value_,
+                             const char *name_)
+{
+    const int rc =
+      zlink_set_pub_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "set_pub_option(" << name_ << ") failed: "
+                  << zlink_strerror (zlink_errno ()) << std::endl;
     }
     return rc == 0;
 }
@@ -548,8 +419,18 @@ inline int resolve_single_send_timeout_ms()
 
 inline int resolve_single_recv_timeout_ms()
 {
-    return parse_positive_env_pair("PERF_SINGLE_RCVTIMEO_MS",
-                                   "PERF_SINGLE_PUBSUB_RCVTIMEO_MS", 200);
+    return parse_positive_env_or_default("PERF_SINGLE_RCVTIMEO_MS", 200);
+}
+
+inline bool use_raw_msg_api_bench()
+{
+    const char *env = std::getenv("PERF_SINGLE_ZLINK_RAW_MSG_API");
+    if (!env || !*env)
+        return false;
+
+    return std::strcmp(env, "1") == 0 || std::strcmp(env, "true") == 0
+           || std::strcmp(env, "TRUE") == 0 || std::strcmp(env, "on") == 0
+           || std::strcmp(env, "ON") == 0;
 }
 
 inline int resolve_single_pubsub_recv_timeout_ms()
@@ -750,8 +631,8 @@ inline void apply_single_hwm(void *socket_)
 
     const int sndhwm = resolve_single_socket_hwm(true);
     const int rcvhwm = resolve_single_socket_hwm(false);
-    set_sockopt_int(socket_, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
 inline void apply_single_send_timeout(void *socket_,
@@ -763,7 +644,8 @@ inline void apply_single_send_timeout(void *socket_,
         return;
 
     const int timeout_ms = resolve_single_send_timeout_ms();
-    set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, timeout_ms,
+                    "ZLINK_OPT_SNDTIMEO");
 }
 
 inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
@@ -771,8 +653,10 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
         return;
     if (transport == "tcp" || transport == "ws") {
         const int timeout_ms = 2000;
-        set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
-        set_sockopt_int(socket_, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+        set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, timeout_ms,
+                        "ZLINK_OPT_SNDTIMEO");
+        set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, timeout_ms,
+                        "ZLINK_OPT_RCVTIMEO");
     }
 }
 
@@ -947,14 +831,12 @@ inline bool setup_tls_server(void* socket, const std::string& transport) {
     static std::string cert_path = write_temp_cert(test_certs::server_cert_pem, "server_cert");
     static std::string key_path = write_temp_cert(test_certs::server_key_pem, "server_key");
 
-    if (zlink_setsockopt(socket, ZLINK_TLS_CERT, cert_path.c_str(), cert_path.size()) != 0) {
+    if (zlink_set_tls_server(
+          socket, cert_path.c_str(), key_path.c_str(), 0)
+        != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_CERT: " << zlink_strerror(zlink_errno()) << std::endl;
-        return false;
-    }
-    if (zlink_setsockopt(socket, ZLINK_TLS_KEY, key_path.c_str(), key_path.size()) != 0) {
-        if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_KEY: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set TLS server options: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     return true;
@@ -967,20 +849,10 @@ inline bool setup_tls_client(void* socket, const std::string& transport) {
     static std::string ca_path = write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
     static const char* hostname = "localhost";
 
-    if (zlink_setsockopt(socket, ZLINK_TLS_CA, ca_path.c_str(), ca_path.size()) != 0) {
+    if (zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0) != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_CA: " << zlink_strerror(zlink_errno()) << std::endl;
-        return false;
-    }
-    if (zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, hostname, strlen(hostname)) != 0) {
-        if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_HOSTNAME: " << zlink_strerror(zlink_errno()) << std::endl;
-        return false;
-    }
-    int trust_system = 0;
-    if (zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system)) != 0) {
-        if (bench_debug_enabled())
-            std::cerr << "Failed to set ZLINK_TLS_TRUST_SYSTEM: " << zlink_strerror(zlink_errno()) << std::endl;
+            std::cerr << "Failed to set TLS client options: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     return true;
@@ -1002,8 +874,10 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zlink_getsockopt(socket_, ZLINK_LAST_ENDPOINT, last_endpoint, &size) != 0) {
-            std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
+        if (zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
+                             &size)
+            != 0) {
+            std::cerr << "getsockopt(ZLINK_SOCKOPT_LAST_ENDPOINT) failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();
         }

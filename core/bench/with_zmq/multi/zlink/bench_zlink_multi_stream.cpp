@@ -2,6 +2,7 @@
 #include "../common/bench_common_multi.hpp"
 #include "../common/stream_frame.hpp"
 #include <zlink.h>
+#include "../../common/zlink_api_compat.hpp"
 #include <algorithm>
 #include <cerrno>
 #include <climits>
@@ -34,8 +35,8 @@ using socket_t = int;
 static const socket_t INVALID_SOCKET_FD = -1;
 #endif
 
-#ifndef ZLINK_STREAM
-#define ZLINK_STREAM 11
+#ifndef ZLINK_SOCKET_STREAM
+#define ZLINK_SOCKET_STREAM ((zlink_socket_type_t) 0x1008)
 #endif
 
 #ifndef ZLINK_TCP_NODELAY
@@ -161,17 +162,21 @@ bool stream_dispatch_supported ()
     return true;
 }
 
-int on_stream_attach_bridge (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+void on_stream_attach_bridge (const zlink_routing_id_t *rid_,
+                              zlink_msg_t *parts_,
+                              size_t part_count_,
+                              void *)
 {
     zlink_stream_on_packets_fn callback = g_stream_attach_bridge_callback;
-    if (!callback || !rid_ || !msg_)
-        return 0;
-    return callback (rid_, msg_, 1);
+    if (callback && rid_ && parts_ && part_count_ > 0)
+        (void) callback (rid_, &parts_[0], 1);
+    for (size_t i = 1; i < part_count_; ++i)
+        (void) zlink_msg_close (&parts_[i]);
 }
 
-int stream_attach_compat (void *socket_,
-                          zlink_stream_on_packets_fn callback,
-                          int flags)
+int stream_attach_dispatch (void *socket_,
+                            zlink_stream_on_packets_fn callback,
+                            int flags)
 {
     if (!socket_ || !callback) {
         errno = EINVAL;
@@ -182,16 +187,17 @@ int stream_attach_compat (void *socket_,
         return zlink_stream_attach_len32be (socket_, callback);
 
     g_stream_attach_bridge_callback = callback;
-    const int rc = zlink_stream_attach_raw (socket_, on_stream_attach_bridge);
+    const int rc = zlink_recv_handler (socket_, &on_stream_attach_bridge, NULL);
     if (rc != 0)
         g_stream_attach_bridge_callback = NULL;
     return rc;
 }
 
-int stream_detach_compat (void *socket_)
+int stream_detach_dispatch (void *socket_)
 {
+    LIBZLINK_UNUSED (socket_);
     g_stream_attach_bridge_callback = NULL;
-    return zlink_stream_detach (socket_);
+    return 0;
 }
 
 enum recv_sender_frame_status_t
@@ -403,7 +409,7 @@ bool start_stream_len32be_dispatch_slot (void *socket_,
     dispatch.socket = socket_;
     dispatch.running.store (true, std::memory_order_release);
     *slot = &dispatch;
-    if (stream_attach_compat (socket_, callback, dispatch_flags)
+    if (stream_attach_dispatch (socket_, callback, dispatch_flags)
         != 0) {
         dispatch.running.store (false, std::memory_order_release);
         dispatch.socket = NULL;
@@ -420,7 +426,7 @@ void stop_stream_len32be_dispatch_slot (stream_len32be_dispatch_t &dispatch,
     if (!dispatch.running.exchange (false, std::memory_order_acq_rel))
         return;
     if (dispatch.socket)
-        (void) stream_detach_compat (dispatch.socket);
+        (void) stream_detach_dispatch (dispatch.socket);
     {
         std::lock_guard<std::mutex> guard (dispatch.lock);
         dispatch.packets.clear ();
@@ -1027,7 +1033,7 @@ bool setup_sender_zlink (stream_sender_state_t &sender,
         return true;
 
     sender.mode = stream_sender_zlink;
-    void *client = zlink_socket (ctx, ZLINK_STREAM);
+    void *client = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
     if (!client)
         return false;
 
@@ -1540,8 +1546,10 @@ int recv_sender_stream_chunk_nonblocking (stream_sender_state_t &sender,
         return -1;
 
     unsigned char routing_frame[255];
-    const int routing_len = zlink_recv (
-      sender.socket, routing_frame, sizeof (routing_frame), ZLINK_DONTWAIT);
+    bool more = false;
+    const int routing_len = zlink_recv_with_more (
+      sender.socket, routing_frame, sizeof (routing_frame), ZLINK_DONTWAIT,
+      &more);
     if (routing_len < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
@@ -1549,16 +1557,14 @@ int recv_sender_stream_chunk_nonblocking (stream_sender_state_t &sender,
         return -1;
     }
 
-    int more = 0;
-    size_t more_size = sizeof (more);
-    if (zlink_getsockopt (sender.socket, ZLINK_RCVMORE, &more, &more_size) != 0
-        || !more) {
+    if (!more) {
         return -1;
     }
 
     std::vector<char> payload_buf (512 * 1024, 0);
-    const int payload_len = zlink_recv (
-      sender.socket, payload_buf.data (), payload_buf.size (), ZLINK_DONTWAIT);
+    const int payload_len = zlink_recv_with_more (
+      sender.socket, payload_buf.data (), payload_buf.size (), ZLINK_DONTWAIT,
+      &more);
     if (payload_len < 0) {
         const int err = zlink_errno ();
         if (err == EAGAIN || err == EINTR)
@@ -2208,7 +2214,7 @@ int run_multi_stream_server_only (const std::string &transport,
     if (!ctx.valid ())
         return 1;
 
-    void *server = zlink_socket (ctx.get (), ZLINK_STREAM);
+    void *server = zlink_socket (ctx.get (), ZLINK_SOCKET_STREAM);
     if (!server)
         return 1;
 
@@ -2379,7 +2385,7 @@ void run_multi_stream (const std::string &transport,
     if (!ctx.valid ())
         return;
 
-    void *server = zlink_socket (ctx.get (), ZLINK_STREAM);
+    void *server = zlink_socket (ctx.get (), ZLINK_SOCKET_STREAM);
     if (!server)
         return;
 
@@ -2668,7 +2674,7 @@ void run_multi_stream (const std::string &transport,
     }
 
     if (enable_live_latency && completed_sizes > 0) {
-        void *lat_server = zlink_socket (ctx.get (), ZLINK_STREAM);
+        void *lat_server = zlink_socket (ctx.get (), ZLINK_SOCKET_STREAM);
         if (lat_server) {
             set_sockopt_int (lat_server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
             apply_benchmark_hwm (lat_server, stream_hwm);

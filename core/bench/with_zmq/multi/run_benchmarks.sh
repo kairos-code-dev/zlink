@@ -114,7 +114,7 @@ PY
 }
 
 DEFAULT_PATTERN="router_router"
-DEFAULT_TRANSPORT="tcp,tls,ws,wss"
+DEFAULT_TRANSPORT="tcp,ipc"
 
 normalize_pattern() {
   local raw="${1:-}"
@@ -124,8 +124,6 @@ normalize_pattern() {
 
   local up
   up="$(echo "${raw}" | tr '[:lower:]' '[:upper:]')"
-  up="${up#MULTI_}"
-  up="${up#MULT_}"
 
   case "${up}" in
     DEALER_DEALER) echo "MULTI_DEALER_DEALER" ;;
@@ -133,6 +131,25 @@ normalize_pattern() {
     ROUTER_ROUTER) echo "MULTI_ROUTER_ROUTER" ;;
     PUBSUB) echo "MULTI_PUBSUB" ;;
     STREAM) echo "MULTI_STREAM" ;;
+    *) return 1 ;;
+  esac
+}
+
+comparison_pattern_arg() {
+  local raw="${1:-}"
+  if [[ -z "${raw}" ]]; then
+    return 1
+  fi
+
+  local up
+  up="$(echo "${raw}" | tr '[:lower:]' '[:upper:]')"
+
+  case "${up}" in
+    DEALER_DEALER|MULTI_DEALER_DEALER) echo "dealer_dealer" ;;
+    DEALER_ROUTER|MULTI_DEALER_ROUTER) echo "dealer_router" ;;
+    ROUTER_ROUTER|MULTI_ROUTER_ROUTER) echo "router_router" ;;
+    PUBSUB|MULTI_PUBSUB) echo "pubsub" ;;
+    STREAM|MULTI_STREAM) echo "stream" ;;
     *) return 1 ;;
   esac
 }
@@ -220,10 +237,9 @@ Options:
                                 Allowed: dealer_dealer, dealer_router,
                                          router_router,
                                          pubsub, stream
-                                Also accepts MULTI_* legacy names.
   --runs N                      Iterations per configuration (default: 3)
   --transport NAME              Transport(s), comma-separated allowed
-                                (default: tcp,tls,ws,wss)
+                                (default: tcp,ipc)
   --transports NAME             Alias for --transport
   --zlink-only                  Re-measure only zlink (compare with cached libzmq)
   --single [N]                  Also run matching single pattern after multi
@@ -255,6 +271,7 @@ Environment:
 
 Notes:
   - result is saved under results/multi/report/.
+  - inproc is excluded in multi comparison because split server/client run in separate processes.
 USAGE
 }
 
@@ -286,6 +303,7 @@ RESULTS_DIR="${BENCH_RESULTS_DIR:-${PERF_RESULTS_DIR:-}}"
 RESULTS_TAG=""
 RESULT_FILE=""
 OUTPUT_FILE=""
+SUPPRESS_RESULT_SAVE="${BENCH_MULTI_SUPPRESS_PATTERN_RESULT_SAVE:-0}"
 
 MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-2}"
 MULTI_DURATION_SECONDS="${BENCH_MULTI_DURATION_SECONDS:-5}"
@@ -452,6 +470,10 @@ PATTERN_INTERNAL="$(normalize_pattern "${PATTERN_RAW}")" || {
   echo "Supported: dealer_dealer, dealer_router, router_router, pubsub, stream" >&2
   exit 1
 }
+PATTERN_COMPARISON_ARG="$(comparison_pattern_arg "${PATTERN_RAW}")" || {
+  echo "Error: unsupported comparison pattern '${PATTERN_RAW}'." >&2
+  exit 1
+}
 
 if [[ -z "${RESULTS_DIR}" ]]; then
   RESULTS_DIR="${DEFAULT_RESULTS_ROOT}"
@@ -464,7 +486,7 @@ fi
 
 if [[ -n "${RESULT_FILE}" ]]; then
   RESULT_FILE="$(realpath -m "${RESULT_FILE}")"
-else
+elif [[ "${SUPPRESS_RESULT_SAVE}" != "1" ]]; then
   TS="$(date +%Y%m%d_%H%M%S)"
   NAME="perf_$(detect_platform_tag)_${TS}"
   if [[ -n "${RESULTS_TAG}" ]]; then
@@ -473,14 +495,16 @@ else
   RESULT_FILE="${RESULTS_DIR}/multi/report/${NAME}.txt"
 fi
 
-if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" == "${RESULT_FILE}" ]]; then
+if [[ -n "${OUTPUT_FILE}" && -n "${RESULT_FILE}" && "${OUTPUT_FILE}" == "${RESULT_FILE}" ]]; then
   echo "Error: --output cannot point to the same file as result output." >&2
   exit 1
 fi
 
 cleanup_old_results_dirs "${RESULTS_DIR}"
 
-mkdir -p "$(dirname "${RESULT_FILE}")"
+if [[ -n "${RESULT_FILE}" ]]; then
+  mkdir -p "$(dirname "${RESULT_FILE}")"
+fi
 if [[ -n "${OUTPUT_FILE}" ]]; then
   mkdir -p "$(dirname "${OUTPUT_FILE}")"
 fi
@@ -569,15 +593,21 @@ fi
 SHOW_TOTAL_TIME=1
 
 set +e
-if [[ -n "${OUTPUT_FILE}" ]]; then
-  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
+if [[ -n "${RESULT_FILE}" && -n "${OUTPUT_FILE}" ]]; then
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
+elif [[ -n "${RESULT_FILE}" ]]; then
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}"
+elif [[ -n "${OUTPUT_FILE}" ]]; then
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${OUTPUT_FILE}"
 else
-  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}"
+  PYTHONUNBUFFERED=1 python3 -u "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_COMPARISON_ARG}" "${EXTRA_ARGS[@]}"
 fi
 run_status=${PIPESTATUS[0]}
 set -e
 
-enforce_file_retention "$(dirname "${RESULT_FILE}")"
+if [[ -n "${RESULT_FILE}" ]]; then
+  enforce_file_retention "$(dirname "${RESULT_FILE}")"
+fi
 
 if [[ "${run_status}" -ne 0 ]]; then
   exit "${run_status}"

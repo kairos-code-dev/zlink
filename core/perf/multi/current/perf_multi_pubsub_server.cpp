@@ -7,11 +7,13 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <csignal>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,6 +30,9 @@ static const uint32_t k_metric_run_id = 1U;
 static std::atomic<bool> g_stop_requested (false);
 static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
+std::mutex g_start_sync;
+std::condition_variable g_start_cv;
+size_t g_start_requested_size = 0;
 
 inline void on_signal (int)
 {
@@ -48,6 +53,46 @@ inline void request_queue_probe (size_t msg_size)
         return;
     g_queue_probe_size.store (msg_size, std::memory_order_release);
     g_queue_probe_pending.store (true, std::memory_order_release);
+}
+
+inline bool parse_start_command (const std::string &line, size_t *msg_size_out)
+{
+    static const char prefix[] = "START,";
+    if (!msg_size_out
+        || line.compare (0, sizeof (prefix) - 1, prefix) != 0) {
+        return false;
+    }
+
+    const char *value = line.c_str () + (sizeof (prefix) - 1);
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull (value, &end, 10);
+    if (!end || *end != '\0' || parsed == 0)
+        return false;
+
+    *msg_size_out = static_cast<size_t> (parsed);
+    return true;
+}
+
+inline bool wait_for_start_signal (size_t msg_size, int timeout_ms)
+{
+    std::unique_lock<std::mutex> lock (g_start_sync);
+    if (g_start_requested_size == msg_size) {
+        g_start_requested_size = 0;
+        return true;
+    }
+
+    const bool signaled = g_start_cv.wait_for (
+      lock,
+      std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1),
+      [msg_size] () {
+          return g_stop_requested.load (std::memory_order_acquire)
+                 || g_start_requested_size == msg_size;
+      });
+    if (!signaled || g_start_requested_size != msg_size)
+        return false;
+
+    g_start_requested_size = 0;
+    return true;
 }
 
 inline void emit_requested_queue_probe (const std::string &lib_name,
@@ -289,38 +334,60 @@ inline bool run_server_loop (void *server,
     const std::vector<one_way_phase_t> phases =
       build_one_way_phases (settings, msg_sizes);
     size_t phase_index = 0;
-    auto phase_deadline = std::chrono::steady_clock::now ();
+    auto phase_deadline = std::chrono::steady_clock::time_point ();
+    bool phase_started = false;
     size_t current_phase_msg_size = 0;
     perf_multi_metric::phase_t current_phase = perf_multi_metric::phase_warmup;
     uint64_t phase_seq = 1;
-    if (!phases.empty ())
-        phase_deadline += phases[0].duration;
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (lib_name, transport, server, server);
 
         if (!phases.empty ()) {
             const auto now = std::chrono::steady_clock::now ();
-            while (phase_index < phases.size () && now >= phase_deadline) {
+            while (phase_started && phase_index < phases.size ()
+                   && now >= phase_deadline) {
                 ++phase_index;
-                if (phase_index < phases.size ())
-                    phase_deadline += phases[phase_index].duration;
+                phase_started = false;
             }
 
             if (phase_index >= phases.size ()) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
-                continue;
+                return true;
             }
 
             if (phases[phase_index].msg_size != current_phase_msg_size
                 || phases[phase_index].phase != current_phase) {
+                const bool new_size =
+                  phases[phase_index].msg_size != current_phase_msg_size;
                 current_phase_msg_size = phases[phase_index].msg_size;
                 current_phase = phases[phase_index].phase;
                 phase_seq = 1;
+                if (new_size
+                    && !wait_for_start_signal (
+                      current_phase_msg_size,
+                      settings.connect_ready_timeout_ms)) {
+                    return false;
+                }
+                phase_started = false;
+            }
+
+            if (!phase_started) {
+                phase_deadline =
+                  std::chrono::steady_clock::now ()
+                  + phases[phase_index].duration;
+                phase_started = true;
             }
 
             if (!phases[phase_index].send_active) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                const long remaining_ms =
+                  std::chrono::duration_cast<std::chrono::milliseconds> (
+                    phase_deadline - std::chrono::steady_clock::now ())
+                    .count ();
+                const long wait_ms = remaining_ms > 0 ? remaining_ms : 0;
+                if (zlink_poll (NULL, 0, wait_ms) < 0
+                    && zlink_errno () != EINTR) {
+                    return false;
+                }
                 continue;
             }
 
@@ -417,24 +484,36 @@ inline int run_server_benchmark (const std::string &lib_name,
     g_stop_requested.store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock (g_start_sync);
+        g_start_requested_size = 0;
+    }
     install_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
             size_t queue_size = 0;
+            size_t start_size = 0;
             if (parse_queue_probe_command (line, &queue_size)) {
                 request_queue_probe (queue_size);
                 continue;
             }
+            if (parse_start_command (line, &start_size)) {
+                std::lock_guard<std::mutex> lock (g_start_sync);
+                g_start_requested_size = start_size;
+                g_start_cv.notify_all ();
+                continue;
+            }
             if (line == "STOP" || line == "QUIT") {
                 g_stop_requested.store (true, std::memory_order_release);
+                g_start_cv.notify_all ();
                 return;
             }
         }
         g_stop_requested.store (true, std::memory_order_release);
+        g_start_cv.notify_all ();
     });
-    stdin_watcher.detach ();
 
     std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
     if (sizes.empty ())
@@ -450,15 +529,7 @@ inline int run_server_benchmark (const std::string &lib_name,
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     std::cout << "READY," << endpoint << std::endl;
-
-    if (!wait_connect_ready_count (
-          server_monitor,
-          settings.clients,
-          settings.connect_ready_timeout_ms)) {
-        close_connect_monitor (server_monitor);
-        zlink_close (server);
-        return 1;
-    }
+    close_connect_monitor (server_monitor);
 
     const bool loop_ok = run_server_loop (
       server,
@@ -468,13 +539,17 @@ inline int run_server_benchmark (const std::string &lib_name,
       lib_name,
       transport);
 
+    g_stop_requested.store (true, std::memory_order_release);
+    g_start_cv.notify_all ();
+    if (stdin_watcher.joinable ())
+        stdin_watcher.join ();
+
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);
     const server_queue_stats_t queue_stats =
       sample_server_queue_stats (server, server);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
 
-    close_connect_monitor (server_monitor);
     zlink_close (server);
 
     return loop_ok ? 0 : 1;

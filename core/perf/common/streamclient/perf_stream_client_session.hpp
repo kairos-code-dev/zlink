@@ -40,18 +40,22 @@
 inline constexpr int k_connect_batch = 1024;           // max concurrent connect() calls
 inline constexpr int k_connect_timeout_s = 90;         // connect phase timeout budget
 inline constexpr int k_resize_timeout_s = 30;          // chunk-size barrier wait limit
-inline constexpr int k_socket_sndbuf_default = 64 * 1024; // SO_SNDBUF default (64 KiB)
-inline constexpr int k_socket_rcvbuf_default = 64 * 1024; // SO_RCVBUF default (64 KiB)
+inline constexpr int k_socket_sndbuf_default = 256 * 1024; // SO_SNDBUF default (256 KiB)
+inline constexpr int k_socket_rcvbuf_default = 256 * 1024; // SO_RCVBUF default (256 KiB)
 inline constexpr int k_socket_tcp_nodelay = 1;         // TCP_NODELAY on
 inline constexpr size_t k_rtt_sample_capacity = 1024 * 1024; // max RTT samples (1M)
 inline constexpr size_t k_loopback_port_headroom = 64; // ports reserved for OS use
 
-inline int resolve_stream_sockbuf_env (const char *name, int default_bytes)
+inline int resolve_stream_sockbuf_env_with_fallback (const char *primary_name,
+                                                     const char *bench_name,
+                                                     int default_bytes)
 {
-    if (!name || !*name)
+    if (!primary_name || !*primary_name)
         return default_bytes;
 
-    const char *raw = std::getenv (name);
+    const char *raw = std::getenv (primary_name);
+    if ((!raw || !*raw) && bench_name && *bench_name)
+        raw = std::getenv (bench_name);
     if (!raw || !*raw)
         return default_bytes;
 
@@ -67,15 +71,19 @@ inline int resolve_stream_sockbuf_env (const char *name, int default_bytes)
 
 inline int resolve_stream_sndbuf_bytes ()
 {
-    static const int value = resolve_stream_sockbuf_env (
-      "PERF_MULTI_STREAM_SOCKET_SNDBUF", k_socket_sndbuf_default);
+    static const int value = resolve_stream_sockbuf_env_with_fallback (
+      "PERF_MULTI_STREAM_SOCKET_SNDBUF",
+      "BENCH_STREAM_SNDBUF",
+      k_socket_sndbuf_default);
     return value;
 }
 
 inline int resolve_stream_rcvbuf_bytes ()
 {
-    static const int value = resolve_stream_sockbuf_env (
-      "PERF_MULTI_STREAM_SOCKET_RCVBUF", k_socket_rcvbuf_default);
+    static const int value = resolve_stream_sockbuf_env_with_fallback (
+      "PERF_MULTI_STREAM_SOCKET_RCVBUF",
+      "BENCH_STREAM_RCVBUF",
+      k_socket_rcvbuf_default);
     return value;
 }
 

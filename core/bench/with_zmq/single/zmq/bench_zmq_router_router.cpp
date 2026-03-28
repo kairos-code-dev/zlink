@@ -138,13 +138,13 @@ inline bool setup_router_router_session (void *router1,
     if (!router1 || !router2)
         return false;
 
-    zlink_setsockopt (router1, ZLINK_ROUTING_ID, "ROUTER1", 7);
-    zlink_setsockopt (router2, ZLINK_ROUTING_ID, "ROUTER2", 7);
+    zlink_set_routing_id (router1, "ROUTER1", 7);
+    zlink_set_routing_id (router2, "ROUTER2", 7);
 
     int mandatory = 1;
-    zlink_setsockopt (router1, ZLINK_ROUTER_MANDATORY, &mandatory,
+    zlink_set_router_option (router1, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
                       sizeof (mandatory));
-    zlink_setsockopt (router2, ZLINK_ROUTER_MANDATORY, &mandatory,
+    zlink_set_router_option (router2, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
                       sizeof (mandatory));
 
     if (!setup_connected_pair (router1, router2, transport, pair_id)
@@ -166,7 +166,7 @@ inline bool run_oneway_phase (void *router1,
                               uint32_t run_id,
                               uint64_t *seq,
                               perf_single_metric::phase_t phase,
-                              int warmup_count,
+                              int warmup_s,
                               int duration_s,
                               int recv_timeout_ms,
                               queue_probe_t *queue_probe,
@@ -178,10 +178,10 @@ inline bool run_oneway_phase (void *router1,
 
     const bool active_phase = phase == perf_single_metric::phase_active;
     const auto deadline =
-      active_phase
-        ? std::chrono::steady_clock::now ()
-            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
-        : std::chrono::steady_clock::time_point ();
+      std::chrono::steady_clock::now ()
+      + std::chrono::seconds (
+        active_phase ? (duration_s > 0 ? duration_s : 1)
+                     : (warmup_s > 0 ? warmup_s : 1));
     const auto drain_idle_limit = std::chrono::milliseconds (
       recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
@@ -283,17 +283,7 @@ inline bool run_oneway_phase (void *router1,
         queue_probe->force_sample_send ();
 
     if (active_phase) {
-        const int max_inflight =
-          resolve_bench_count ("PERF_SINGLE_MAX_INFLIGHT", 256);
-        unsigned long long sent_active = 0;
         while (std::chrono::steady_clock::now () < deadline) {
-            while (max_inflight > 0
-                   && sent_active
-                        >= received.load (std::memory_order_relaxed)
-                             + static_cast<unsigned long long> (max_inflight)
-                   && std::chrono::steady_clock::now () < deadline) {
-                std::this_thread::yield ();
-            }
             const uint64_t sent_ts = perf_single_metric::now_us ();
             if (!perf_single_metric::stamp_payload (payload->data (),
                                                     payload_size,
@@ -307,12 +297,11 @@ inline bool run_oneway_phase (void *router1,
                 send_failed = true;
                 break;
             }
-            ++sent_active;
             if (queue_probe)
                 queue_probe->sample_send_if_due ();
         }
     } else {
-        for (int i = 0; i < warmup_count; ++i) {
+        while (std::chrono::steady_clock::now () < deadline) {
             if (!perf_single_metric::stamp_payload (
                   payload->data (),
                   payload_size,
@@ -345,8 +334,7 @@ inline bool run_oneway_phase (void *router1,
             || latency_builder.count () == 0 || !out_latency)
             return false;
         *out_latency = latency_builder.snapshot ();
-    } else if (received.load (std::memory_order_relaxed)
-               < static_cast<unsigned long long> (warmup_count)) {
+    } else if (received.load (std::memory_order_relaxed) == 0) {
         return false;
     }
 
@@ -372,8 +360,8 @@ void run_router_router (const std::string &transport,
         return;
     }
 
-    socket_guard_t router1 (ctx.get (), ZLINK_ROUTER);
-    socket_guard_t router2 (ctx.get (), ZLINK_ROUTER);
+    socket_guard_t router1 (ctx.get (), ZLINK_SOCKET_ROUTER);
+    socket_guard_t router2 (ctx.get (), ZLINK_SOCKET_ROUTER);
     if (!router1.valid () || !router2.valid ()) {
         print_fail_no_queue ();
         return;
@@ -401,7 +389,7 @@ void run_router_router (const std::string &transport,
     uint64_t seq = 1;
 
     unsigned long long warmup_received = 0;
-    const int warmup_count = resolve_bench_count ("PERF_WARMUP_COUNT", 1000);
+    const int warmup_s = resolve_single_warmup_seconds ();
     if (!run_oneway_phase (router1.get (),
                            router2.get (),
                            &payload,
@@ -410,7 +398,7 @@ void run_router_router (const std::string &transport,
                            run_id,
                            &seq,
                            perf_single_metric::phase_warmup,
-                           warmup_count,
+                           warmup_s,
                            0,
                            recv_timeout_ms,
                            NULL,

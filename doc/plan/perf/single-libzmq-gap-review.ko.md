@@ -797,6 +797,16 @@
      routed/source-rid export가 current raw/public residual에 남긴 흔적
   3. `a819ea3a` admission floor는 historical input으로 유지하되,
      새 broad evidence가 생길 때만 다시 implementation target으로 올린다
+- next structural candidate는 local lock primitive 교체가 아니라,
+  `pipe::_out_sync` 아래에 함께 묶인
+  `outbound publication state`와 `lifecycle / activation state`의
+  ownership split 여부를 먼저 설계로 검토하는 family로 고정한다.
+  현재 `write()/write_and_flush()` hot path는 `_out_sync` 아래에서
+  HWM, `_out_pipe` write/flush, `_out_active`, `_state`, `_peers_msgs_read`,
+  activate/term 계열 전이와 같은 coupled 의미를 함께 떠안고 있으므로,
+  다음 round는 또 다른 helper-level shave가 아니라
+  steady-state send publication cluster를 더 얇게 설명할 수 있는지부터
+  판단해야 한다.
 - current `ROUTER` 쪽에서는 active single phase가 blocking send를 쓰므로,
   nonblocking envelope local fast path를 다시 여는 대신 blocking default path
   기준의 routed recv ordering / `recv_routed()` export / `_out_sync`

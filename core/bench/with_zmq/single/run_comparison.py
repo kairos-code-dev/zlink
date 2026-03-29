@@ -44,6 +44,7 @@ if IS_WINDOWS:
     DEFAULT_TRANSPORTS = ["tcp", "inproc"]
 else:
     DEFAULT_TRANSPORTS = ["tcp", "ipc", "inproc"]
+ZLINK_ONLY_TRANSPORTS = ["tcp", "ipc", "inproc", "ws", "wss", "tls"]
 
 
 @dataclass
@@ -257,10 +258,13 @@ def derive_cmake_build_dir(runtime_build_dir: str) -> str:
     return abs_path
 
 
-def expected_runtime_binaries(selected_comparisons: Sequence[Tuple[str, str, str]]) -> List[str]:
+def expected_runtime_binaries(
+    selected_comparisons: Sequence[Tuple[str, str, str]], zlink_only: bool = False
+) -> List[str]:
     names: List[str] = []
     for std_bin, zlk_bin, _ in selected_comparisons:
-        names.append(std_bin)
+        if not zlink_only:
+            names.append(std_bin)
         names.append(zlk_bin)
     return names
 
@@ -274,10 +278,12 @@ def collect_missing_binaries(runtime_bin_dir: str, names: Sequence[str]) -> List
     return sorted(set(missing))
 
 
-def collect_single_build_targets(comparisons: Sequence[Tuple[str, str, str]]) -> List[str]:
+def collect_single_build_targets(
+    comparisons: Sequence[Tuple[str, str, str]], zlink_only: bool = False
+) -> List[str]:
     targets: List[str] = []
     for std_bin, zlk_bin, _ in comparisons:
-        if std_bin not in targets:
+        if not zlink_only and std_bin not in targets:
             targets.append(std_bin)
         if zlk_bin not in targets:
             targets.append(zlk_bin)
@@ -429,24 +435,31 @@ def parse_pattern_arg(raw: str) -> List[str]:
     return out
 
 
-def validate_transports(transports: Sequence[str]) -> List[str]:
-    unknown = [t for t in transports if t not in DEFAULT_TRANSPORTS]
+def validate_transports_for_mode(
+    transports: Sequence[str], zlink_only: bool = False
+) -> List[str]:
+    supported = ZLINK_ONLY_TRANSPORTS if zlink_only else DEFAULT_TRANSPORTS
+    unknown = [t for t in transports if t not in supported]
     if unknown:
         raise ValueError(
             "unsupported transports: "
             + ", ".join(sorted(set(unknown)))
             + ". Supported: "
-            + ", ".join(DEFAULT_TRANSPORTS)
+            + ", ".join(supported)
         )
 
     ordered: List[str] = []
-    for t in DEFAULT_TRANSPORTS:
+    for t in supported:
         if t in transports:
             ordered.append(t)
     for t in transports:
         if t not in ordered:
             ordered.append(t)
     return ordered
+
+
+def validate_transports(transports: Sequence[str]) -> List[str]:
+    return validate_transports_for_mode(transports, zlink_only=False)
 
 
 def format_throughput(msgs_per_sec: float) -> str:
@@ -468,11 +481,24 @@ def format_queue_metric(value: Optional[float]) -> str:
     return f"{value:8.2f}"
 
 
-def build_transport_report_header_lines(transport: str) -> List[str]:
+def build_transport_report_header_lines(
+    transport: str, zlink_only: bool = False
+) -> List[str]:
     size_w = 6
     metric_w = 10
     val_w = 16
     diff_w = 9
+    if zlink_only:
+        return [
+            f"### Transport: {transport}",
+            (
+                f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | "
+                f"{'zlink':>{val_w}} |"
+            ),
+            (
+                f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|"
+            ),
+        ]
     return [
         f"### Transport: {transport}",
         (
@@ -491,6 +517,7 @@ def build_size_report_lines(
     zlk_data: Dict[str, float],
     transport: str,
     size: int,
+    zlink_only: bool = False,
 ) -> List[str]:
     size_w = 6
     metric_w = 10
@@ -522,16 +549,30 @@ def build_size_report_lines(
     else:
         l_diff_s = "N/A"
 
-    lines = [
-        (
-            f"| {f'{size}B':<{size_w}} | {'Throughput':<{metric_w}} | {std_t_s:>{val_w}} | "
-            f"{zlk_t_s:>{val_w}} | {t_diff_s:>{diff_w}} |"
-        ),
-        (
-            f"| {f'{size}B':<{size_w}} | {'Latency':<{metric_w}} | {std_l_s:>{val_w}} | "
-            f"{zlk_l_s:>{val_w}} | {l_diff_s:>{diff_w}} |"
-        ),
-    ]
+    if zlink_only:
+        lines = [
+            (
+                f"| {f'{size}B':<{size_w}} | {'Throughput':<{metric_w}} | "
+                f"{zlk_t_s:>{val_w}} |"
+            ),
+            (
+                f"| {f'{size}B':<{size_w}} | {'Latency':<{metric_w}} | "
+                f"{zlk_l_s:>{val_w}} |"
+            ),
+        ]
+    else:
+        lines = [
+            (
+                f"| {f'{size}B':<{size_w}} | {'Throughput':<{metric_w}} | "
+                f"{std_t_s:>{val_w}} | {zlk_t_s:>{val_w}} | "
+                f"{t_diff_s:>{diff_w}} |"
+            ),
+            (
+                f"| {f'{size}B':<{size_w}} | {'Latency':<{metric_w}} | "
+                f"{std_l_s:>{val_w}} | {zlk_l_s:>{val_w}} | "
+                f"{l_diff_s:>{diff_w}} |"
+            ),
+        ]
 
     return lines
 
@@ -541,12 +582,13 @@ def build_pattern_report_lines(
     zlk_data: Dict[str, float],
     transports: Sequence[str],
     msg_sizes: Sequence[int],
+    zlink_only: bool = False,
 ) -> List[str]:
     lines: List[str] = []
     for tr in transports:
-        lines.extend(build_transport_report_header_lines(tr))
+        lines.extend(build_transport_report_header_lines(tr, zlink_only))
         for sz in msg_sizes:
-            lines.extend(build_size_report_lines(std_data, zlk_data, tr, sz))
+            lines.extend(build_size_report_lines(std_data, zlk_data, tr, sz, zlink_only))
 
         lines.append("")
 
@@ -762,19 +804,25 @@ def resolve_patterns_from_args(args: argparse.Namespace) -> List[str]:
 
 
 def resolve_transports_from_args(args: argparse.Namespace) -> List[str]:
+    return resolve_transports_from_args_with_mode(args, zlink_only=False)
+
+
+def resolve_transports_from_args_with_mode(
+    args: argparse.Namespace, zlink_only: bool = False
+) -> List[str]:
     cli_transports = args.transports_opt.strip()
     if cli_transports:
         parsed = parse_list_value(cli_transports, str)
         if not parsed:
             raise ValueError(f"invalid transport list '{cli_transports}'")
-        return validate_transports(parsed)
+        return validate_transports_for_mode(parsed, zlink_only)
 
     env_transports = parse_env_list_any(
         ["BENCH_TRANSPORTS", "PERF_TRANSPORTS"], str
     )
     if env_transports:
-        return validate_transports(env_transports)
-    return list(DEFAULT_TRANSPORTS)
+        return validate_transports_for_mode(env_transports, zlink_only)
+    return list(ZLINK_ONLY_TRANSPORTS if zlink_only else DEFAULT_TRANSPORTS)
 
 
 def resolve_msg_sizes_from_args(args: argparse.Namespace) -> List[int]:
@@ -805,6 +853,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patterns", dest="patterns_opt", default="")
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--transport", "--transports", dest="transports_opt", default="")
+    parser.add_argument("--zlink-only", action="store_true")
     parser.add_argument("--msg-sizes", dest="msg_sizes_opt", default="")
     parser.add_argument("--build-dir", default="")
     parser.add_argument("--pin-cpu", action="store_true")
@@ -835,6 +884,7 @@ def build_effective_option_items(
     xpub_nodrop = parse_env_int_any(["PERF_SINGLE_PUBSUB_XPUB_NODROP"], 1)
 
     items: List[Tuple[str, str]] = [
+        ("mode", "zlink-only" if args.zlink_only else "compare"),
         ("runs", str(args.runs)),
         ("duration_seconds", str(duration)),
         ("latency_seconds", str(latency_duration)),
@@ -885,7 +935,9 @@ def main() -> int:
 
     try:
         patterns = resolve_patterns_from_args(args)
-        transports = resolve_transports_from_args(args)
+        transports = resolve_transports_from_args_with_mode(
+            args, zlink_only=args.zlink_only
+        )
         msg_sizes = resolve_msg_sizes_from_args(args)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -911,7 +963,7 @@ def main() -> int:
         )
         return 1
 
-    expected_bins = expected_runtime_binaries(comparisons)
+    expected_bins = expected_runtime_binaries(comparisons, args.zlink_only)
     missing = collect_missing_binaries(build_dir, expected_bins)
     no_autobuild = (
         os.environ.get("BENCH_NO_AUTOBUILD") == "1"
@@ -952,7 +1004,7 @@ def main() -> int:
 
         build_dir = normalize_build_dir(runtime_bin_dir_from_cmake_dir(cmake_build_dir))
         zlink_lib_dir = derive_zlink_lib_dir(build_dir)
-        build_targets = collect_single_build_targets(comparisons)
+        build_targets = collect_single_build_targets(comparisons, args.zlink_only)
         build_rc = run_cmake_build(cmake_build_dir, build_targets)
         if build_rc != 0:
             print(f"Error: auto-build failed with exit code {build_rc}", file=sys.stderr)
@@ -1011,23 +1063,24 @@ def main() -> int:
                 announced_zlk = False
 
                 for sz in msg_sizes:
-                    std_partial, std_partial_fail = collect_data(
-                        build_dir,
-                        std_bin,
-                        "libzmq",
-                        pattern_name,
-                        args.runs,
-                        [tr],
-                        [sz],
-                        base_env,
-                        libzmq_lib_dir,
-                        zlink_lib_dir,
-                        announce=not announced_std,
-                        show_progress=False,
-                    )
-                    announced_std = True
-                    std_data.update(std_partial)
-                    std_fail.extend(std_partial_fail)
+                    if not args.zlink_only:
+                        std_partial, std_partial_fail = collect_data(
+                            build_dir,
+                            std_bin,
+                            "libzmq",
+                            pattern_name,
+                            args.runs,
+                            [tr],
+                            [sz],
+                            base_env,
+                            libzmq_lib_dir,
+                            zlink_lib_dir,
+                            announce=not announced_std,
+                            show_progress=False,
+                        )
+                        announced_std = True
+                        std_data.update(std_partial)
+                        std_fail.extend(std_partial_fail)
 
                     zlk_partial, zlk_partial_fail = collect_data(
                         build_dir,
@@ -1048,16 +1101,24 @@ def main() -> int:
                     zlk_fail.extend(zlk_partial_fail)
 
                     if not printed_live_header:
-                        for line in build_transport_report_header_lines(tr):
+                        for line in build_transport_report_header_lines(
+                            tr, zlink_only=args.zlink_only
+                        ):
                             print(line)
                         printed_live_header = True
-                    for line in build_size_report_lines(std_data, zlk_data, tr, sz):
+                    for line in build_size_report_lines(
+                        std_data, zlk_data, tr, sz, zlink_only=args.zlink_only
+                    ):
                         print(line)
                     live_rows += 1
 
                 if print_final_report or live_rows == 0:
                     transport_block = build_pattern_report_lines(
-                        std_data, zlk_data, [tr], msg_sizes
+                        std_data,
+                        zlk_data,
+                        [tr],
+                        msg_sizes,
+                        zlink_only=args.zlink_only,
                     )
                     for line in transport_block:
                         print(line)

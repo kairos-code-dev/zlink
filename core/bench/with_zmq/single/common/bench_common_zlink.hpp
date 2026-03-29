@@ -903,7 +903,8 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
 }
 
 inline bool transport_available(const std::string& transport) {
-    if (transport == "tcp" || transport == "ipc" || transport == "inproc")
+    if (transport == "tcp" || transport == "ipc" || transport == "inproc"
+        || transport == "ws" || transport == "wss" || transport == "tls")
         return true;
     return false;
 }

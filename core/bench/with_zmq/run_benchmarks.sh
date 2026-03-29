@@ -75,6 +75,7 @@ fi
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER"
 PATTERN="ALL"
+ZLINK_ONLY=0
 OUTPUT_FILE=""
 RESULTS_DIR=""
 RESULTS_TAG=""
@@ -106,6 +107,13 @@ SINGLE_BUILD_TARGETS=(
   comp_std_zmq_router_router
   comp_zlink_router_router
 )
+SINGLE_BUILD_TARGETS_ZLINK_ONLY=(
+  comp_zlink_pair
+  comp_zlink_pubsub
+  comp_zlink_dealer_dealer
+  comp_zlink_dealer_router
+  comp_zlink_router_router
+)
 
 usage() {
   cat <<'USAGE'
@@ -133,6 +141,7 @@ Options:
   --recv-timeout-ms N         Alias of --rcvtimeo.
   --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
+  --zlink-only                Benchmark zlink only; ws/wss/tls supported only in zlink mode.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
   --transport LIST            Alias for --transports.
@@ -140,7 +149,7 @@ Notes:
   - Supported patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER
   - Removed patterns: STREAM,GATEWAY,SPOT
   - Supported transports: tcp,ipc,inproc (Windows: tcp,inproc)
-  - Removed transports: ws,wss,tls
+  - Removed transports: ws,wss,tls (except in --zlink-only mode where measured as zlink only)
   - result is saved under results/single/report/.
   - default build mode is incremental (configure/build without deleting build dir).
 USAGE
@@ -223,6 +232,9 @@ while [[ $# -gt 0 ]]; do
     --io-threads)
       IO_THREADS="${2:-}"
       shift
+      ;;
+    --zlink-only)
+      ZLINK_ONLY=1
       ;;
     --msg-sizes)
       MSG_SIZES="${2:-}"
@@ -362,8 +374,14 @@ for i in "${!TRANSPORT_LIST[@]}"; do
       fi
       ;;
     ws|wss|tls)
-      echo "Error: transport '${TRANSPORT_LIST[i]}' is removed from with_zmq/single." >&2
-      exit 1
+      if [[ "${ZLINK_ONLY}" -eq 0 ]]; then
+        echo "Error: transport '${TRANSPORT_LIST[i]}' is removed from with_zmq/single." >&2
+        exit 1
+      fi
+      if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+        echo "Error: transport '${TRANSPORT_LIST[i]}' is removed from with_zmq/single." >&2
+        exit 1
+      fi
       ;;
     *)
       echo "Error: unsupported transport '${TRANSPORT_LIST[i]}'" >&2
@@ -480,6 +498,11 @@ if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
 fi
 
 if [[ "${BUILD_MODE}" != "reuse" ]]; then
+  TARGETS=("${SINGLE_BUILD_TARGETS[@]}")
+  if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
+    TARGETS=("${SINGLE_BUILD_TARGETS_ZLINK_ONLY[@]}")
+  fi
+
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
     CMAKE_ARCH="${CMAKE_ARCH:-x64}"
@@ -496,7 +519,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
       -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
       -DZLINK_CXX_STANDARD=17
-    cmake --build "${BUILD_DIR}" --config Release --target "${SINGLE_BUILD_TARGETS[@]}"
+    cmake --build "${BUILD_DIR}" --config Release --target "${TARGETS[@]}"
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
@@ -509,7 +532,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
       -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
       -DZLINK_CXX_STANDARD=17
-    cmake --build "${BUILD_DIR}" --target "${SINGLE_BUILD_TARGETS[@]}"
+    cmake --build "${BUILD_DIR}" --target "${TARGETS[@]}"
   fi
 fi
 
@@ -555,6 +578,9 @@ RUN_CMD=(
 
 if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_CMD+=("--pin-cpu")
+fi
+if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
+  RUN_CMD+=("--zlink-only")
 fi
 if [[ -n "${MSG_SIZES}" ]]; then
   RUN_CMD+=("--msg-sizes" "${MSG_SIZES}")

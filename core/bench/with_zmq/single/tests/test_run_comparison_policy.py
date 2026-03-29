@@ -38,6 +38,25 @@ class RunComparisonPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             RC.validate_transports(["wss"])
 
+    def test_validate_transports_accepts_ws_family_for_zlink_only(self):
+        self.assertEqual(
+            RC.validate_transports_for_mode(["tcp", "tls", "wss", "ws"], True),
+            ["tcp", "ws", "wss", "tls"],
+        )
+
+    def test_zlink_only_report_without_compare_columns(self):
+        zlk = {
+            "tcp|64|throughput": 1200.0,
+            "tcp|64|latency": 8.0,
+        }
+        lines = RC.build_pattern_report_lines({}, zlk, ["tcp"], [64], zlink_only=True)
+        joined = "\n".join(lines)
+        self.assertFalse(any("Standard libzmq" in line for line in lines))
+        self.assertFalse(any("Diff (%)" in line for line in lines))
+        self.assertIn("zlink", joined)
+        self.assertIn("Throughput", joined)
+        self.assertIn("Latency", joined)
+
     def test_results_dir_policy(self):
         root = "/tmp/bench-results"
         self.assertEqual(RC.single_result_dir(root), "/tmp/bench-results/single/report")

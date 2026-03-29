@@ -1,0 +1,350 @@
+
+## Effective Options (single)
+- mode: zlink-only
+- runs: 1
+- duration_seconds: 5
+- latency_seconds: 5
+- timeout_seconds: 120
+- sndtimeo_ms: 200
+- recvtimeo_ms: 200
+- hwm: 1000
+- sndhwm: 1000
+- rcvhwm: 1000
+- io_threads: 0
+- xpub_nodrop: 1
+- patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER
+- transports: tcp,ws,wss,tls
+- msg_sizes: 64,256,1024,65536,131072,262144
+- build_dir: /home/hep7/project/kairos/zlink-perf-regression-bisect/core/build/bin
+
+## PATTERN: PAIR
+  > Benchmarking zlink for PAIR...
+### Transport: tcp
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   4399.03 Kmsg/s |
+| 64B    | Latency    |          0.05 ms |
+| 256B   | Throughput |   2607.57 Kmsg/s |
+| 256B   | Latency    |          0.26 ms |
+| 1024B  | Throughput |   1339.11 Kmsg/s |
+| 1024B  | Latency    |          0.51 ms |
+| 65536B | Throughput |     96.10 Kmsg/s |
+| 65536B | Latency    |          7.07 ms |
+| 131072B | Throughput |     53.40 Kmsg/s |
+| 131072B | Latency    |         12.42 ms |
+| 262144B | Throughput |     29.56 Kmsg/s |
+| 262144B | Latency    |         22.21 ms |
+  > Benchmarking zlink for PAIR...
+### Transport: ws
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3098.30 Kmsg/s |
+| 64B    | Latency    |         33.91 ms |
+| 256B   | Throughput |   2302.50 Kmsg/s |
+| 256B   | Latency    |         20.26 ms |
+| 1024B  | Throughput |    982.64 Kmsg/s |
+| 1024B  | Latency    |         14.56 ms |
+| 65536B | Throughput |     47.78 Kmsg/s |
+| 65536B | Latency    |         18.69 ms |
+| 131072B | Throughput |     31.33 Kmsg/s |
+| 131072B | Latency    |         22.26 ms |
+| 262144B | Throughput |     18.15 Kmsg/s |
+| 262144B | Latency    |         37.92 ms |
+  > Benchmarking zlink for PAIR...
+### Transport: wss
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3315.34 Kmsg/s |
+| 64B    | Latency    |         75.05 ms |
+| 256B   | Throughput |   1726.84 Kmsg/s |
+| 256B   | Latency    |         43.27 ms |
+| 1024B  | Throughput |    588.43 Kmsg/s |
+| 1024B  | Latency    |         30.36 ms |
+| 65536B | Throughput |     18.96 Kmsg/s |
+| 65536B | Latency    |         46.73 ms |
+| 131072B | Throughput |     10.50 Kmsg/s |
+| 131072B | Latency    |         76.07 ms |
+| 262144B | Throughput |      5.54 Kmsg/s |
+| 262144B | Latency    |        136.91 ms |
+  > Benchmarking zlink for PAIR...
+### Transport: tls
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   4488.39 Kmsg/s |
+| 64B    | Latency    |         36.18 ms |
+| 256B   | Throughput |   2262.46 Kmsg/s |
+| 256B   | Latency    |          0.33 ms |
+| 1024B  | Throughput |    823.01 Kmsg/s |
+| 1024B  | Latency    |          0.87 ms |
+| 65536B | Throughput |     24.35 Kmsg/s |
+| 65536B | Latency    |         29.90 ms |
+| 131072B | Throughput |     13.37 Kmsg/s |
+| 131072B | Latency    |         53.38 ms |
+| 262144B | Throughput |      7.02 Kmsg/s |
+| 262144B | Latency    |        102.49 ms |
+
+## PATTERN: PUBSUB
+  > Benchmarking zlink for PUBSUB...
+### Transport: tcp
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   4545.71 Kmsg/s |
+| 64B    | Latency    |          0.04 ms |
+| 256B   | Throughput |   2446.41 Kmsg/s |
+| 256B   | Latency    |          0.29 ms |
+| 1024B  | Throughput |   1402.42 Kmsg/s |
+| 1024B  | Latency    |          0.49 ms |
+| 65536B | Throughput |     96.17 Kmsg/s |
+| 65536B | Latency    |          7.06 ms |
+| 131072B | Throughput |     52.03 Kmsg/s |
+| 131072B | Latency    |         12.78 ms |
+| 262144B | Throughput |     28.99 Kmsg/s |
+| 262144B | Latency    |         22.69 ms |
+  > Benchmarking zlink for PUBSUB...
+### Transport: ws
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3158.78 Kmsg/s |
+| 64B    | Latency    |         32.44 ms |
+| 256B   | Throughput |   2166.72 Kmsg/s |
+| 256B   | Latency    |         24.33 ms |
+| 1024B  | Throughput |   1077.44 Kmsg/s |
+| 1024B  | Latency    |          9.29 ms |
+| 65536B | Throughput |     49.65 Kmsg/s |
+| 65536B | Latency    |         20.50 ms |
+| 131072B | Throughput |     31.76 Kmsg/s |
+| 131072B | Latency    |         26.72 ms |
+| 262144B | Throughput |     24.02 Kmsg/s |
+| 262144B | Latency    |         27.86 ms |
+  > Benchmarking zlink for PUBSUB...
+### Transport: wss
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3352.22 Kmsg/s |
+| 64B    | Latency    |         70.21 ms |
+| 256B   | Throughput |   1761.36 Kmsg/s |
+| 256B   | Latency    |         37.05 ms |
+| 1024B  | Throughput |    600.37 Kmsg/s |
+| 1024B  | Latency    |         25.74 ms |
+| 65536B | Throughput |     19.34 Kmsg/s |
+| 65536B | Latency    |         48.66 ms |
+| 131072B | Throughput |     11.24 Kmsg/s |
+| 131072B | Latency    |         71.25 ms |
+| 262144B | Throughput |      5.99 Kmsg/s |
+| 262144B | Latency    |        125.76 ms |
+  > Benchmarking zlink for PUBSUB...
+### Transport: tls
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3963.20 Kmsg/s |
+| 64B    | Latency    |          8.53 ms |
+| 256B   | Throughput |   2193.27 Kmsg/s |
+| 256B   | Latency    |          0.33 ms |
+| 1024B  | Throughput |    837.97 Kmsg/s |
+| 1024B  | Latency    |          0.85 ms |
+| 65536B | Throughput |     24.50 Kmsg/s |
+| 65536B | Latency    |         29.51 ms |
+| 131072B | Throughput |     13.36 Kmsg/s |
+| 131072B | Latency    |         54.25 ms |
+| 262144B | Throughput |      6.91 Kmsg/s |
+| 262144B | Latency    |        103.74 ms |
+
+## PATTERN: DEALER_DEALER
+  > Benchmarking zlink for DEALER_DEALER...
+### Transport: tcp
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3891.86 Kmsg/s |
+| 64B    | Latency    |         49.55 ms |
+| 256B   | Throughput |   2599.53 Kmsg/s |
+| 256B   | Latency    |          0.29 ms |
+| 1024B  | Throughput |   1455.25 Kmsg/s |
+| 1024B  | Latency    |          0.51 ms |
+| 65536B | Throughput |     95.37 Kmsg/s |
+| 65536B | Latency    |          7.12 ms |
+| 131072B | Throughput |     52.03 Kmsg/s |
+| 131072B | Latency    |         12.82 ms |
+| 262144B | Throughput |     28.96 Kmsg/s |
+| 262144B | Latency    |         22.48 ms |
+  > Benchmarking zlink for DEALER_DEALER...
+### Transport: ws
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3078.54 Kmsg/s |
+| 64B    | Latency    |         44.11 ms |
+| 256B   | Throughput |   2231.53 Kmsg/s |
+| 256B   | Latency    |         24.41 ms |
+| 1024B  | Throughput |   1012.11 Kmsg/s |
+| 1024B  | Latency    |          9.39 ms |
+| 65536B | Throughput |     46.58 Kmsg/s |
+| 65536B | Latency    |         19.70 ms |
+| 131072B | Throughput |     31.54 Kmsg/s |
+| 131072B | Latency    |         21.99 ms |
+| 262144B | Throughput |     17.70 Kmsg/s |
+| 262144B | Latency    |         38.76 ms |
+  > Benchmarking zlink for DEALER_DEALER...
+### Transport: wss
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3696.88 Kmsg/s |
+| 64B    | Latency    |         67.44 ms |
+| 256B   | Throughput |   1804.42 Kmsg/s |
+| 256B   | Latency    |         34.38 ms |
+| 1024B  | Throughput |    572.81 Kmsg/s |
+| 1024B  | Latency    |         31.18 ms |
+| 65536B | Throughput |     18.22 Kmsg/s |
+| 65536B | Latency    |         47.74 ms |
+| 131072B | Throughput |      9.95 Kmsg/s |
+| 131072B | Latency    |         80.45 ms |
+| 262144B | Throughput |      5.63 Kmsg/s |
+| 262144B | Latency    |        134.94 ms |
+  > Benchmarking zlink for DEALER_DEALER...
+### Transport: tls
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3808.77 Kmsg/s |
+| 64B    | Latency    |         95.20 ms |
+| 256B   | Throughput |   2289.36 Kmsg/s |
+| 256B   | Latency    |          0.40 ms |
+| 1024B  | Throughput |    838.67 Kmsg/s |
+| 1024B  | Latency    |          0.85 ms |
+| 65536B | Throughput |     24.80 Kmsg/s |
+| 65536B | Latency    |         29.34 ms |
+| 131072B | Throughput |     13.41 Kmsg/s |
+| 131072B | Latency    |         53.97 ms |
+| 262144B | Throughput |      6.87 Kmsg/s |
+| 262144B | Latency    |        104.07 ms |
+
+## PATTERN: DEALER_ROUTER
+  > Benchmarking zlink for DEALER_ROUTER...
+### Transport: tcp
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3458.87 Kmsg/s |
+| 64B    | Latency    |        103.71 ms |
+| 256B   | Throughput |   2495.82 Kmsg/s |
+| 256B   | Latency    |          0.33 ms |
+| 1024B  | Throughput |   1366.11 Kmsg/s |
+| 1024B  | Latency    |          0.49 ms |
+| 65536B | Throughput |     94.24 Kmsg/s |
+| 65536B | Latency    |          7.22 ms |
+| 131072B | Throughput |     51.18 Kmsg/s |
+| 131072B | Latency    |         13.01 ms |
+| 262144B | Throughput |     29.31 Kmsg/s |
+| 262144B | Latency    |         22.29 ms |
+  > Benchmarking zlink for DEALER_ROUTER...
+### Transport: ws
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   2890.52 Kmsg/s |
+| 64B    | Latency    |         35.49 ms |
+| 256B   | Throughput |   2049.25 Kmsg/s |
+| 256B   | Latency    |         16.38 ms |
+| 1024B  | Throughput |   1038.32 Kmsg/s |
+| 1024B  | Latency    |         10.41 ms |
+| 65536B | Throughput |     46.05 Kmsg/s |
+| 65536B | Latency    |         19.64 ms |
+| 131072B | Throughput |     31.05 Kmsg/s |
+| 131072B | Latency    |         22.43 ms |
+| 262144B | Throughput |     17.46 Kmsg/s |
+| 262144B | Latency    |         39.52 ms |
+  > Benchmarking zlink for DEALER_ROUTER...
+### Transport: wss
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   2836.21 Kmsg/s |
+| 64B    | Latency    |         63.51 ms |
+| 256B   | Throughput |   1774.12 Kmsg/s |
+| 256B   | Latency    |         41.69 ms |
+| 1024B  | Throughput |    585.07 Kmsg/s |
+| 1024B  | Latency    |         33.38 ms |
+| 65536B | Throughput |     18.41 Kmsg/s |
+| 65536B | Latency    |         47.98 ms |
+| 131072B | Throughput |     10.51 Kmsg/s |
+| 131072B | Latency    |         76.68 ms |
+| 262144B | Throughput |      5.46 Kmsg/s |
+| 262144B | Latency    |        140.17 ms |
+  > Benchmarking zlink for DEALER_ROUTER...
+### Transport: tls
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3337.07 Kmsg/s |
+| 64B    | Latency    |         74.75 ms |
+| 256B   | Throughput |   2189.94 Kmsg/s |
+| 256B   | Latency    |          0.48 ms |
+| 1024B  | Throughput |    837.74 Kmsg/s |
+| 1024B  | Latency    |          0.86 ms |
+| 65536B | Throughput |     24.51 Kmsg/s |
+| 65536B | Latency    |         29.71 ms |
+| 131072B | Throughput |     13.15 Kmsg/s |
+| 131072B | Latency    |         54.90 ms |
+| 262144B | Throughput |      6.84 Kmsg/s |
+| 262144B | Latency    |        104.65 ms |
+
+## PATTERN: ROUTER_ROUTER
+  > Benchmarking zlink for ROUTER_ROUTER...
+### Transport: tcp
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3687.06 Kmsg/s |
+| 64B    | Latency    |          0.03 ms |
+| 256B   | Throughput |   2357.25 Kmsg/s |
+| 256B   | Latency    |          0.28 ms |
+| 1024B  | Throughput |   1256.38 Kmsg/s |
+| 1024B  | Latency    |          0.54 ms |
+| 65536B | Throughput |     93.46 Kmsg/s |
+| 65536B | Latency    |          7.26 ms |
+| 131072B | Throughput |     51.22 Kmsg/s |
+| 131072B | Latency    |         12.93 ms |
+| 262144B | Throughput |     29.03 Kmsg/s |
+| 262144B | Latency    |         22.35 ms |
+  > Benchmarking zlink for ROUTER_ROUTER...
+### Transport: ws
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   2911.31 Kmsg/s |
+| 64B    | Latency    |         49.87 ms |
+| 256B   | Throughput |   2021.44 Kmsg/s |
+| 256B   | Latency    |         52.18 ms |
+| 1024B  | Throughput |    951.39 Kmsg/s |
+| 1024B  | Latency    |         24.51 ms |
+| 65536B | Throughput |     46.26 Kmsg/s |
+| 65536B | Latency    |         19.62 ms |
+| 131072B | Throughput |     30.46 Kmsg/s |
+| 131072B | Latency    |         22.68 ms |
+| 262144B | Throughput |     18.01 Kmsg/s |
+| 262144B | Latency    |         37.99 ms |
+  > Benchmarking zlink for ROUTER_ROUTER...
+### Transport: wss
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   2879.02 Kmsg/s |
+| 64B    | Latency    |         97.80 ms |
+| 256B   | Throughput |   1673.39 Kmsg/s |
+| 256B   | Latency    |         64.99 ms |
+| 1024B  | Throughput |    585.62 Kmsg/s |
+| 1024B  | Latency    |         23.62 ms |
+| 65536B | Throughput |     18.18 Kmsg/s |
+| 65536B | Latency    |         48.09 ms |
+| 131072B | Throughput |     10.56 Kmsg/s |
+| 131072B | Latency    |         74.66 ms |
+| 262144B | Throughput |      5.58 Kmsg/s |
+| 262144B | Latency    |        135.96 ms |
+  > Benchmarking zlink for ROUTER_ROUTER...
+### Transport: tls
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   3724.23 Kmsg/s |
+| 64B    | Latency    |          9.27 ms |
+| 256B   | Throughput |   2097.15 Kmsg/s |
+| 256B   | Latency    |          0.34 ms |
+| 1024B  | Throughput |    896.52 Kmsg/s |
+| 1024B  | Latency    |          0.80 ms |
+| 65536B | Throughput |     24.86 Kmsg/s |
+| 65536B | Latency    |         29.00 ms |
+| 131072B | Throughput |     13.52 Kmsg/s |
+| 131072B | Latency    |         53.39 ms |
+| 262144B | Throughput |      6.92 Kmsg/s |
+| 262144B | Latency    |        103.37 ms |
+
+Saved result file: /home/hep7/project/kairos/zlink-perf-regression-bisect/core/bench/with_zmq/results/single/report/perf_linux_20260329_155434.txt

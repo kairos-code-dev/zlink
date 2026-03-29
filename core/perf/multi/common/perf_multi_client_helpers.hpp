@@ -139,22 +139,13 @@ inline bool wait_all_client_connect_ready (std::vector<connect_monitor_t> &monit
     if (monitors.empty ())
         return true;
 
-    std::vector<char> ready (monitors.size (), 0);
-    std::vector<size_t> active_indices;
-    std::vector<zlink_pollitem_t> items;
-    items.reserve (monitors.size ());
-    active_indices.reserve (monitors.size ());
-
     size_t ready_count = 0;
+    std::vector<char> ready (monitors.size (), 0);
     for (size_t i = 0; i < monitors.size (); ++i) {
         if (!monitors[i].monitor) {
             ready[i] = 1;
             ++ready_count;
-            continue;
         }
-        const zlink_pollitem_t item = {monitors[i].monitor, 0, ZLINK_POLLIN, 0};
-        items.push_back (item);
-        active_indices.push_back (i);
     }
 
     if (ready_count >= monitors.size ())
@@ -166,41 +157,27 @@ inline bool wait_all_client_connect_ready (std::vector<connect_monitor_t> &monit
       + std::chrono::milliseconds (bounded_timeout);
 
     while (ready_count < monitors.size ()) {
-        const auto now = std::chrono::steady_clock::now ();
-        if (now >= deadline)
-            return false;
+        if (std::chrono::steady_clock::now () >= deadline)
+            break;
 
-        for (size_t i = 0; i < items.size (); ++i)
-            items[i].revents = 0;
-
-        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                                 deadline - now)
-                                 .count ();
-        const int prc = zlink_poll (&items[0],
-                                    static_cast<int> (items.size ()),
-                                    remain_ms > 0 ? remain_ms : 0);
-        if (prc < 0) {
-            if (zlink_errno () == EINTR)
+        for (size_t i = 0; i < monitors.size (); ++i) {
+            if (ready[i])
                 continue;
-            return false;
-        }
-        if (prc == 0)
-            continue;
-
-        for (size_t i = 0; i < items.size (); ++i) {
-            const size_t monitor_index = active_indices[i];
-            if (ready[monitor_index])
+            if (!monitors[i].monitor)
                 continue;
-            if ((items[i].revents & ZLINK_POLLIN) == 0)
+            if (poll_connect_ready_count (monitors[i]) <= 0)
                 continue;
-            if (poll_connect_ready_count (monitors[monitor_index]) <= 0)
-                continue;
-            ready[monitor_index] = 1;
+            ready[i] = 1;
             ++ready_count;
         }
+
+        if (ready_count >= monitors.size ())
+            return true;
+
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
 
-    return true;
+    return ready_count >= monitors.size ();
 }
 
 inline void close_client_sockets (std::vector<void *> *sockets)

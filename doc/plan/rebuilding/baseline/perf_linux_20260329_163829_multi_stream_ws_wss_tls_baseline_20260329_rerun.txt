@@ -1,0 +1,55 @@
+=== Running multi benchmark: stream ===
+    warmup=2s duration=5s runs=1 transports=ws,wss,tls
+
+--- Pattern: stream ---
+
+## PATTERN: MULTI_STREAM
+  > Benchmarking zlink for MULTI_STREAM...
+
+### Transport: ws
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |              N/A |    392.03 Kmsg/s |       N/A |
+| 64B    | Latency    |              N/A |         25.60 ms |       N/A |
+| 256B   | Throughput |              N/A |    369.26 Kmsg/s |       N/A |
+| 256B   | Latency    |              N/A |         27.31 ms |       N/A |
+| 1024B  | Throughput |              N/A |    360.91 Kmsg/s |       N/A |
+| 1024B  | Latency    |              N/A |         27.78 ms |       N/A |
+| 65536B | Throughput |              N/A |      5.83 Kmsg/s |       N/A |
+| 65536B | Latency    |              N/A |       1477.57 ms |       N/A |
+| 131072B | Throughput |              N/A |      2.00 Kmsg/s |       N/A |
+| 131072B | Latency    |              N/A |       2899.00 ms |       N/A |
+| 262144B | Throughput |              N/A |      0.52 Kmsg/s |       N/A |
+| 262144B | Latency    |              N/A |       4856.36 ms |       N/A |
+
+### Transport: wss
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |              N/A |    230.85 Kmsg/s |       N/A |
+| 64B    | Latency    |              N/A |         43.12 ms |       N/A |
+| 256B   | Throughput |              N/A |    215.24 Kmsg/s |       N/A |
+| 256B   | Latency    |              N/A |         46.21 ms |       N/A |
+| 1024B  | Throughput |              N/A |    195.73 Kmsg/s |       N/A |
+| 1024B  | Latency    |              N/A |         50.83 ms |       N/A |
+| 65536B | Throughput |              N/A |      4.26 Kmsg/s |       N/A |
+| 65536B | Latency    |              N/A |       1824.57 ms |       N/A |
+| 131072B | Throughput |              N/A |      2.00 Kmsg/s |       N/A |
+| 131072B | Latency    |              N/A |       3638.94 ms |       N/A |
+| 262144B | Throughput |              N/A |      2.00 Kmsg/s |       N/A |
+| 262144B | Latency    |              N/A |       8451.46 ms |       N/A |
+
+### Transport: tls
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |              N/A |    259.78 Kmsg/s |       N/A |
+| 64B    | Latency    |              N/A |         38.83 ms |       N/A |
+| 256B   | Throughput |              N/A |    243.22 Kmsg/s |       N/A |
+| 256B   | Latency    |              N/A |         41.37 ms |       N/A |
+| 1024B  | Throughput |              N/A |    225.90 Kmsg/s |       N/A |
+| 1024B  | Latency    |              N/A |         44.12 ms |       N/A |
+| 65536B | Throughput |              N/A |     19.67 Kmsg/s |       N/A |
+| 65536B | Latency    |              N/A |        481.41 ms |       N/A |
+| 131072B | Throughput |              N/A |      9.72 Kmsg/s |       N/A |
+| 131072B | Latency    |              N/A |        926.40 ms |       N/A |
+| 262144B | Throughput |              N/A |      4.17 Kmsg/s |       N/A |
+| 262144B | Latency    |              N/A |       1927.53 ms |       N/A |

@@ -1,0 +1,176 @@
+=== Running multi benchmark: dealer_dealer,dealer_router,router_router,pubsub,stream ===
+    warmup=2s duration=5s runs=1 transports=tcp,ipc
+
+--- Pattern: dealer_dealer ---
+
+## PATTERN: MULTI_DEALER_DEALER
+  > Benchmarking libzmq for MULTI_DEALER_DEALER...
+  > Benchmarking zlink for MULTI_DEALER_DEALER...
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3763.17 Kmsg/s |   4006.42 Kmsg/s |    +6.46% |
+| 64B    | Latency    |          0.15 ms |          0.24 ms |   -64.68% |
+| 256B   | Throughput |   1591.55 Kmsg/s |   1653.30 Kmsg/s |    +3.88% |
+| 256B   | Latency    |          0.17 ms |          0.29 ms |   -65.88% |
+| 1024B  | Throughput |   1241.64 Kmsg/s |   1406.69 Kmsg/s |   +13.29% |
+| 1024B  | Latency    |          0.24 ms |          0.74 ms |  -211.70% |
+| 65536B | Throughput |     90.77 Kmsg/s |    112.00 Kmsg/s |   +23.39% |
+| 65536B | Latency    |         44.13 ms |         36.50 ms |   +17.29% |
+| 131072B | Throughput |     64.06 Kmsg/s |     67.41 Kmsg/s |    +5.23% |
+| 131072B | Latency    |         45.32 ms |         42.38 ms |    +6.48% |
+| 262144B | Throughput |     27.59 Kmsg/s |     47.41 Kmsg/s |   +71.82% |
+| 262144B | Latency    |         85.45 ms |         32.59 ms |   +61.86% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3116.08 Kmsg/s |   3504.18 Kmsg/s |   +12.45% |
+| 64B    | Latency    |          0.44 ms |          0.17 ms |   +60.59% |
+| 256B   | Throughput |   1410.88 Kmsg/s |   1480.58 Kmsg/s |    +4.94% |
+| 256B   | Latency    |          0.16 ms |          0.23 ms |   -41.93% |
+| 1024B  | Throughput |   1098.44 Kmsg/s |   1069.84 Kmsg/s |    -2.60% |
+| 1024B  | Latency    |          0.18 ms |          0.08 ms |   +53.67% |
+| 65536B | Throughput |    106.33 Kmsg/s |     98.69 Kmsg/s |    -7.19% |
+| 65536B | Latency    |         13.52 ms |         30.81 ms |  -127.95% |
+| 131072B | Throughput |     88.47 Kmsg/s |     44.59 Kmsg/s |   -49.59% |
+| 131072B | Latency    |         10.40 ms |         45.30 ms |  -335.71% |
+| 262144B | Throughput |     33.51 Kmsg/s |     42.06 Kmsg/s |   +25.52% |
+| 262144B | Latency    |         25.78 ms |          0.90 ms |   +96.49% |
+
+--- Pattern: dealer_router ---
+
+## PATTERN: MULTI_DEALER_ROUTER
+  > Benchmarking libzmq for MULTI_DEALER_ROUTER...
+  > Benchmarking zlink for MULTI_DEALER_ROUTER...
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    349.02 Kmsg/s |    523.01 Kmsg/s |   +49.85% |
+| 64B    | Latency    |          0.14 ms |          0.10 ms |   +33.27% |
+| 256B   | Throughput |    372.85 Kmsg/s |    522.75 Kmsg/s |   +40.21% |
+| 256B   | Latency    |          0.13 ms |          0.10 ms |   +28.68% |
+| 1024B  | Throughput |    360.98 Kmsg/s |    495.85 Kmsg/s |   +37.36% |
+| 1024B  | Latency    |          0.14 ms |          0.10 ms |   +27.20% |
+| 65536B | Throughput |     83.80 Kmsg/s |    121.93 Kmsg/s |   +45.50% |
+| 65536B | Latency    |          0.60 ms |          0.41 ms |   +31.27% |
+| 131072B | Throughput |     55.09 Kmsg/s |     46.40 Kmsg/s |   -15.78% |
+| 131072B | Latency    |          0.91 ms |          1.08 ms |   -18.74% |
+| 262144B | Throughput |     30.66 Kmsg/s |     18.28 Kmsg/s |   -40.40% |
+| 262144B | Latency    |          1.63 ms |          2.73 ms |   -67.70% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    522.89 Kmsg/s |    626.13 Kmsg/s |   +19.74% |
+| 64B    | Latency    |          0.10 ms |          0.08 ms |   +16.49% |
+| 256B   | Throughput |    530.05 Kmsg/s |    629.21 Kmsg/s |   +18.71% |
+| 256B   | Latency    |          0.09 ms |          0.08 ms |   +15.77% |
+| 1024B  | Throughput |    509.56 Kmsg/s |    585.31 Kmsg/s |   +14.87% |
+| 1024B  | Latency    |          0.10 ms |          0.09 ms |   +12.94% |
+| 65536B | Throughput |    147.01 Kmsg/s |    117.28 Kmsg/s |   -20.22% |
+| 65536B | Latency    |          0.34 ms |          0.43 ms |   -25.36% |
+| 131072B | Throughput |     79.62 Kmsg/s |     60.50 Kmsg/s |   -24.01% |
+| 131072B | Latency    |          0.63 ms |          0.83 ms |   -31.59% |
+| 262144B | Throughput |     33.88 Kmsg/s |     32.02 Kmsg/s |    -5.48% |
+| 262144B | Latency    |          1.48 ms |          1.56 ms |    -5.78% |
+
+--- Pattern: router_router ---
+
+## PATTERN: MULTI_ROUTER_ROUTER
+  > Benchmarking libzmq for MULTI_ROUTER_ROUTER...
+  > Benchmarking zlink for MULTI_ROUTER_ROUTER...
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    531.53 Kmsg/s |    734.67 Kmsg/s |   +38.22% |
+| 64B    | Latency    |        922.04 ms |        931.90 ms |    -1.07% |
+| 256B   | Throughput |    478.04 Kmsg/s |    587.06 Kmsg/s |   +22.81% |
+| 256B   | Latency    |        658.94 ms |        619.04 ms |    +6.06% |
+| 1024B  | Throughput |    413.33 Kmsg/s |    462.36 Kmsg/s |   +11.86% |
+| 1024B  | Latency    |        576.24 ms |        473.54 ms |   +17.82% |
+| 65536B | Throughput |     75.44 Kmsg/s |     70.78 Kmsg/s |    -6.19% |
+| 65536B | Latency    |        180.79 ms |        214.84 ms |   -18.84% |
+| 131072B | Throughput |     41.07 Kmsg/s |     40.26 Kmsg/s |    -1.97% |
+| 131072B | Latency    |        169.54 ms |        215.35 ms |   -27.02% |
+| 262144B | Throughput |     20.53 Kmsg/s |     17.58 Kmsg/s |   -14.38% |
+| 262144B | Latency    |        319.02 ms |        297.40 ms |    +6.77% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    598.14 Kmsg/s |    815.85 Kmsg/s |   +36.40% |
+| 64B    | Latency    |         31.81 ms |         22.48 ms |   +29.34% |
+| 256B   | Throughput |    490.73 Kmsg/s |    540.72 Kmsg/s |   +10.19% |
+| 256B   | Latency    |         26.97 ms |         25.71 ms |    +4.67% |
+| 1024B  | Throughput |    404.51 Kmsg/s |    447.46 Kmsg/s |   +10.62% |
+| 1024B  | Latency    |         22.24 ms |         22.44 ms |    -0.93% |
+| 65536B | Throughput |     84.08 Kmsg/s |     67.76 Kmsg/s |   -19.41% |
+| 65536B | Latency    |         89.38 ms |        114.92 ms |   -28.57% |
+| 131072B | Throughput |     38.46 Kmsg/s |     41.81 Kmsg/s |    +8.71% |
+| 131072B | Latency    |        186.38 ms |        183.71 ms |    +1.43% |
+| 262144B | Throughput |     22.39 Kmsg/s |     19.51 Kmsg/s |   -12.88% |
+| 262144B | Latency    |        219.43 ms |        309.67 ms |   -41.12% |
+
+--- Pattern: pubsub ---
+
+## PATTERN: MULTI_PUBSUB
+  > Benchmarking libzmq for MULTI_PUBSUB...
+  > Benchmarking zlink for MULTI_PUBSUB...
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |  10632.92 Kmsg/s |  10606.38 Kmsg/s |    -0.25% |
+| 64B    | Latency    |        709.42 ms |        525.55 ms |   +25.92% |
+| 256B   | Throughput |   8453.35 Kmsg/s |   9086.35 Kmsg/s |    +7.49% |
+| 256B   | Latency    |        315.11 ms |        216.39 ms |   +31.33% |
+| 1024B  | Throughput |   4339.73 Kmsg/s |   5051.84 Kmsg/s |   +16.41% |
+| 1024B  | Latency    |        166.85 ms |        159.55 ms |    +4.37% |
+| 65536B | Throughput |    238.70 Kmsg/s |    194.49 Kmsg/s |   -18.52% |
+| 65536B | Latency    |         28.34 ms |         33.18 ms |   -17.08% |
+| 131072B | Throughput |     63.34 Kmsg/s |     95.80 Kmsg/s |   +51.26% |
+| 131072B | Latency    |         72.43 ms |         54.86 ms |   +24.26% |
+| 262144B | Throughput |     32.56 Kmsg/s |     42.58 Kmsg/s |   +30.75% |
+| 262144B | Latency    |         88.02 ms |         95.64 ms |    -8.66% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |  10490.32 Kmsg/s |  10417.75 Kmsg/s |    -0.69% |
+| 64B    | Latency    |          6.50 ms |          7.69 ms |   -18.37% |
+| 256B   | Throughput |   8122.31 Kmsg/s |   9101.56 Kmsg/s |   +12.06% |
+| 256B   | Latency    |          2.16 ms |          4.22 ms |   -94.90% |
+| 1024B  | Throughput |   4027.14 Kmsg/s |   4565.20 Kmsg/s |   +13.36% |
+| 1024B  | Latency    |          3.38 ms |          3.91 ms |   -15.71% |
+| 65536B | Throughput |    284.64 Kmsg/s |    295.65 Kmsg/s |    +3.87% |
+| 65536B | Latency    |         10.64 ms |         12.52 ms |   -17.66% |
+| 131072B | Throughput |     83.85 Kmsg/s |    143.19 Kmsg/s |   +70.76% |
+| 131072B | Latency    |         22.83 ms |         23.70 ms |    -3.81% |
+| 262144B | Throughput |     64.17 Kmsg/s |     60.08 Kmsg/s |    -6.37% |
+| 262144B | Latency    |         47.73 ms |         68.76 ms |   -44.06% |
+
+--- Pattern: stream ---
+
+## PATTERN: MULTI_STREAM
+  > Benchmarking libzmq for MULTI_STREAM...
+  > Benchmarking zlink for MULTI_STREAM...
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    416.31 Kmsg/s |    416.72 Kmsg/s |    +0.10% |
+| 64B    | Latency    |         24.13 ms |         24.15 ms |    -0.07% |
+| 256B   | Throughput |    402.22 Kmsg/s |    406.16 Kmsg/s |    +0.98% |
+| 256B   | Latency    |         24.97 ms |         24.93 ms |    +0.18% |
+| 1024B  | Throughput |    384.63 Kmsg/s |    377.54 Kmsg/s |    -1.84% |
+| 1024B  | Latency    |         26.15 ms |         26.57 ms |    -1.61% |
+| 65536B | Throughput |     29.94 Kmsg/s |     58.20 Kmsg/s |   +94.37% |
+| 65536B | Latency    |        311.74 ms |        169.22 ms |   +45.72% |
+| 131072B | Throughput |     15.04 Kmsg/s |     32.20 Kmsg/s |  +114.10% |
+| 131072B | Latency    |        618.84 ms |        288.68 ms |   +53.35% |
+| 262144B | Throughput |      7.45 Kmsg/s |     15.59 Kmsg/s |  +109.22% |
+| 262144B | Latency    |       1220.83 ms |        606.71 ms |   +50.30% |

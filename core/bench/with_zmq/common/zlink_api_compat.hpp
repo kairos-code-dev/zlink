@@ -12,13 +12,18 @@ typedef int zlink_socket_type_t;
 typedef int zlink_option_t;
 typedef int zlink_pub_option_t;
 typedef int zlink_send_flags_t;
+#ifndef ZLINK_SOCKET_MONITOR_EVENT_MASK_T_DEFINED
 typedef uint64_t zlink_socket_monitor_event_mask_t;
+#endif
 
+#ifndef ZLINK_SOCKET_MONITOR_OPEN_OPTIONS_T_DEFINED
 typedef struct zlink_socket_monitor_open_options_t
 {
     zlink_socket_monitor_event_mask_t events;
 } zlink_socket_monitor_open_options_t;
+#endif
 
+#ifndef ZLINK_MONITOR_SNAPSHOT_T_DEFINED
 typedef struct zlink_monitor_snapshot_t
 {
     uint32_t source_kind;
@@ -28,6 +33,7 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
 } zlink_monitor_snapshot_t;
+#endif
 
 #ifndef ZLINK_SOCKET_PAIR
 #define ZLINK_SOCKET_PAIR ZLINK_PAIR
@@ -512,9 +518,7 @@ inline int zlink_publish (void *socket_,
 inline void *zlink_socket_monitor_open (
   void *socket_, const zlink_socket_monitor_open_options_t *options_)
 {
-    const uint64_t events =
-      options_ ? options_->events : ZLINK_EVENT_CONNECTION_READY_CHANGED;
-    return ::zlink_socket_monitor_open (socket_, static_cast<int> (events));
+    return ::zlink_socket_monitor_open (socket_, options_);
 }
 
 inline int zlink_socket_monitor_recv (void *monitor_,

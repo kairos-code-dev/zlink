@@ -117,6 +117,7 @@ Options:
   --build-dir PATH       Override build directory.
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
+  --zlink-only           Re-measure only zlink (compare with cached libzmq when available).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --server-io-threads N  Set server io-threads (mapped to common io-threads).
   --client-io-threads N  Set client io-threads (mapped to common io-threads).
@@ -329,6 +330,7 @@ BUILD_DIR=""
 OUTPUT_FILE=""
 RESULT_FILE=""
 PIN_CPU=0
+ZLINK_ONLY=0
 
 CLIENTS="${PERF_CLIENTS:-}"
 HWM="${PERF_HWM:-}"
@@ -418,6 +420,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --runs=*)
       RUNS="${1#*=}"
+      shift
+      ;;
+    --zlink-only)
+      ZLINK_ONLY=1
       shift
       ;;
     --warmup)
@@ -790,6 +796,9 @@ run_all_patterns() {
     fi
     if [[ "${PIN_CPU}" -eq 1 ]]; then
       cmd+=(--pin-cpu)
+    fi
+    if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
+      cmd+=(--zlink-only)
     fi
 
     echo

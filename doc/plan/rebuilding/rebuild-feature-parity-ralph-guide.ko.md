@@ -2,24 +2,100 @@
 
 ## 1. 문서 역할
 
-- 이 문서는 현재 워크트리의 `zlink 재구축 작업`을 끝까지 반복 실행하기 위한
-  유일한 authority 문서다.
-- 별도 main/master/gap/residual/보조 계획 문서를 새로 만들지 않는다.
-- 기존 `doc/plan/rebuilding/rebuild-feature-parity-plan.ko.md`는
-  이 가이드에 흡수된 background 문서로만 취급한다.
-- 구현 판단, 작업 순서, 검증, 종료 판정은 모두 이 문서를 기준으로 한다.
+- 이 문서는 현재 워크트리의 `zlink 재구축 작업`을 반복 실행하기 위한
+  실행 authority 문서다.
+- main 문서는
+  `doc/plan/rebuilding/rebuild-feature-parity-plan.ko.md`
+  하나만 유지한다.
+- main 문서는 `무엇을 만들고 있는지`, `현재 우선순위`, `다음 단계 전제`를 설명한다.
+- 이 실행 가이드는 `반복 순서`, `검증`, `종료 판정`을 담당한다.
+- 별도 master/gap/residual/보조 계획 문서를 새로 만들지 않는다.
+- 이 문서 안에 과거 iteration 메모나 historical backlog가 남아 있더라도
+  상단 규칙, main 문서, baseline 문서보다 우선하지 않는다.
+- 가이드 하단의 과거 상태표/백로그/증거는 `historical record only`다.
+  현재 iteration의 current/next 작업 선택 근거로 직접 사용하지 않는다.
+
+## 1.1 실행 진입점
+
+- Ralph loop 재시작은 아래 래퍼를 기준으로 한다.
+
+```bash
+./doc/plan/rebuilding/run_rebuild_feature_parity_ralphloop.sh
+```
+
+- 이 래퍼는 현재 저장소의 실행 가이드와 로그 디렉터리를 고정한다.
+- 기존 supervisor 확인/정리는 기본으로 강제하지 않는다.
+  필요할 때만 `--check-existing-supervisor`를 명시한다.
+
+## 1.2 main 문서
+
+- 작업의 본체 설명과 현재 우선순위는 아래 main 문서를 먼저 본다.
+
+```text
+doc/plan/rebuilding/rebuild-feature-parity-plan.ko.md
+```
+
+- Ralph loop는 이 main 문서의 목표를 전제로,
+  현재 실행 가이드의 반복 규칙대로 동작한다.
+
+## 1.3 main 단계 연결 규칙
+
+- 현재 작업 단계의 authority는 항상 main 문서의 `3. 작업 단계`다.
+- 이 가이드의 `Phase`는 실행 편의를 위한 운영 단위일 뿐이고,
+  main 문서의 단계보다 우선하지 않는다.
+- 따라서 Ralph loop는 아래 순서로 현재 작업 위치를 판정한다.
+  1. main 문서에서 현재 미완료 `단계(stage)`를 먼저 고른다.
+  2. 이 가이드의 대응 `Phase`와 `micro-slice`를 그 단계 안에서 고른다.
+  3. 현재 slice가 그 단계 목표와 직접 연결되지 않으면 current에서 제외한다.
+- 즉 `어느 단계를 하고 있는가`는 main 문서가 정하고,
+  `그 단계를 어떻게 잘게 나눠 반복할 것인가`는 이 가이드가 정한다.
 
 ## 2. 목적과 완료 조건
 
+- 이 프로젝트는 이미 기능적으로 거의 완성된 upstream `core`가 있음에도
+  single one-way 성능이 `libzmq` 대비 약 `30%` 느린 문제 때문에
+  다시 시작한 재구축 프로젝트다.
+- 따라서 성능 유지에 실패하면 이 프로젝트의 의미도 크게 줄어든다.
+- 기능 parity만 맞추고 one-way 성능이 다시 무너지면 완료로 인정하지 않는다.
 - 현재 워크스페이스의 `2026-03-05` good baseline 성능을 유지한다.
 - `/home/hep7/project/kairos/zlink/doc/api`,
   `/home/hep7/project/kairos/zlink/doc/guide`,
   `/home/hep7/project/kairos/zlink/doc/internals`에 정의된 기능과
   인터페이스를 이 워크스페이스의 `core/`에서 제공한다.
 - 기존 시스템 의미와 동등한 `core/tests` 검증을 추가/유지하고 모두 통과한다.
+- 최종 `core/include/zlink.h`는
+  `/home/hep7/project/kairos/zlink/core/include/zlink.h`
+  와 동일해야 한다.
+- 최종 `core/tests`는
+  `/home/hep7/project/kairos/zlink/core/tests`
+  의미를 모두 구현하고 통과해야 한다.
 - `core/bench/with_zmq`로 baseline 대비 핵심 성능 guardrail을 유지한다.
+- 현재 iteration 운영은 guardrail 기준으로 통제하지만,
+  최종 목표는 가능한 범위에서 `libzmq`보다 더 좋은 성능으로 마무리하는 것이다.
 - 위 조건이 모두 충족되고 아래 작업 레지스터에 미완료 항목이 없을 때만
   루프를 종료한다.
+
+## 2.1 현재 시작 조건
+
+- single/multi baseline artifact는 이미 고정돼 있다.
+- 따라서 Ralph loop 재시작 직후 full perf 재측정을 먼저 강제하지 않는다.
+- 기본 시작점은 `main 문서의 가장 앞 미완료 기능 단계`다.
+- 성능 회귀가 실제로 발생했을 때만 현재 slice를 멈추고
+  `성능 안정화 slice`로 되돌아간다.
+- 성능 판정 기준은 아래 baseline을 사용한다.
+  - single compare:
+    `doc/plan/rebuilding/baseline/perf_linux_20260329_200606.txt`
+  - single zlink-only:
+    `doc/plan/rebuilding/baseline/perf_linux_20260329_155434.txt`
+  - multi compare:
+    `doc/plan/rebuilding/baseline/perf_linux_20260329_162318_multi_baseline_20260329.txt`
+  - multi stream `ws/wss/tls`:
+    `doc/plan/rebuilding/baseline/perf_linux_20260329_163829_multi_stream_ws_wss_tls_baseline_20260329_rerun.txt`
+- 허용오차범위는 각 기준 대비 `-5%`까지다.
+- `-5% ~ -10%` 하락은 warning이다.
+- `-10% 이하` 하락은 block이다.
+- 위 순서와 충돌하는 하단 historical backlog/phase 메모가 있으면
+  항상 이 시작 조건 섹션과 main 문서를 우선한다.
 
 ## 3. 상위 규칙
 
@@ -29,6 +105,9 @@
 - 문서가 1차 truth다.
 - `/home/hep7/project/kairos/zlink/core/include`,
   `/home/hep7/project/kairos/zlink/core/src`는 `semantic reference only`다.
+- `/home/hep7/project/kairos/zlink/core`는 기능 범위 reference로 본다.
+  다만 single one-way 성능이 약 `30%` 느린 참고 구현이므로,
+  echo가 잘 나온다는 이유만으로 내부 hot path 구조를 그대로 이식하지 않는다.
 - main 쪽 현재 구현은 기능 의미 참고만 허용한다.
 - main 코드의 구조를 hot path에 자동 이식하지 않는다.
 - `성능 > 구조 미학`이다.
@@ -92,8 +171,15 @@
 - 기능 참고: `/home/hep7/project/kairos/zlink/core/include`,
   `/home/hep7/project/kairos/zlink/core/src`
 - 테스트 기준: `/home/hep7/project/kairos/zlink/core/tests`
+- 최종 기능 완료 기준은 upstream `core/tests`의 의미를 현재 워크스페이스
+  `core/tests`에 동등하게 반영하고 모두 통과시키는 것이다.
+- header/API 완료 기준:
+  `/home/hep7/project/kairos/zlink/core/include/zlink.h`
+  와 현재 `core/include/zlink.h` 완전 일치
 - 성능 기준: `doc/plan/perf/feature-port-from-20260305-baseline.ko.md`
 - 성능 guardrail surface: `core/bench/with_zmq`
+- parity matrix:
+  `doc/plan/rebuilding/rebuild-feature-parity-matrix.ko.md`
 
 ## 5. baseline과 성능 판정
 
@@ -113,8 +199,33 @@
 - `DEALER_DEALER 64B tcp`
 - `DEALER_DEALER 64B inproc`
 
+- 위 4셀은 `빠른 경보용 핵심 셀`이다.
+- 즉 이 4셀은 가장 먼저 보는 smoke surface일 뿐,
+  성능 안정화 완료나 green anchor 판정을 단독으로 대신하지 않는다.
+- 실제 성능 green 판정은 아래 추적 대상 전체를 기준으로 한다.
+  - single compare:
+    `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`
+    x `tcp`, `ipc`, `inproc`
+  - single zlink-only:
+    `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`
+    x `ws`, `wss`, `tls`
+  - 필요 시 multi compare까지 포함한 full gate
+
 ### 5.3 판정 규칙
 
+- 먼저 가장 단순한 기준은 아래다.
+  - `tcp/ipc/inproc`는 `libzmq compare`와
+    `2026-03-05 zlink baseline` 기준으로 본다.
+  - `ws/wss/tls`는 baseline 문서에 고정된 `zlink-only baseline` 기준으로 본다.
+  - `multi stream ws/wss/tls`도 baseline 문서에 고정된 별도
+    zlink-only baseline 기준으로 본다.
+  - 허용오차범위는 각 기준 대비 `-5%`까지다.
+  - `-5% ~ -10%` 하락은 warning이다.
+  - `-10% 이하` 하락은 block이다.
+  - 이 기준은 핵심 4셀뿐 아니라 추적 대상 전체 pattern/transport에 적용한다.
+  - 즉 어느 기준이든 허용오차범위를 넘겨 떨어진 셀이 하나라도 남아 있으면
+    성능 안정화는 미완료다.
+- 그 위에서 iteration 운영 규칙은 아래를 따른다.
 - slice 기본 확인은 `runs=1` smoke로 시작한다.
 - 아래 중 하나면 즉시 같은 조건으로 총 3회까지 재측정한다.
   - 핵심 4셀 중 하나라도 baseline 대비 `-5%` 이하
@@ -131,6 +242,22 @@
 - 성능 하락이 관측돼도 매번 즉시 rollback하지는 않는다.
 - 현재 slice의 계약 경계가 명확하고, 성능 원인이 그 slice 내부로 충분히 좁혀져 있으면
   같은 slice 안에서 짧은 개선 루프를 허용한다.
+- 다만 기능 완료 판정은 단계 완료가 아니라 parity matrix 전체 닫힘으로 본다.
+- 즉 upstream `zlink.h`와 `core/tests` 매핑이 비어 있으면 다음 큰 완료 판정은 금지한다.
+- 성능 안정화가 미완료면 새 기능 micro-slice로 넘어가지 않는다.
+- 성능 안정화가 미완료면 기능 backlog를 조사하거나 triage하는 것도
+  다음 current slice의 기본 선택지가 아니다.
+- 성능 안정화 완료 판정 전에는 최소한
+  - 핵심 4셀 median이 baseline band 안
+  - `tcp/ipc/inproc` compare 전체에서 warning/block 회귀 없음
+  - `ws/wss/tls` zlink-only 전체에서 warning/block 회귀 없음
+  - `multi stream ws/wss/tls` zlink-only에서 warning/block 회귀 없음
+  이 모두 남아 있어야 한다.
+- 위 조건을 만족하는 `성능 안정화 전용 green anchor commit`이 생기기 전까지는
+  어떤 기능 parity 진척도도 다음 current slice의 근거가 될 수 없다.
+- 기능 slice가 green이더라도 다음 단계로 바로 넘기지 말고,
+  현재 단계 범위 안에서 POSD 리팩토링 필요 여부를 한 번 더 검토한다.
+- 다만 POSD 리팩토링은 항상 `성능 > 구조` 원칙 아래에서만 허용한다.
 - 다만 아래 중 하나면 `rollback 또는 slice 재분해`를 강제 검토한다.
   - 같은 slice에서 focused perf debt가 3 iteration 이상 계속 남는다
   - dirty 변경이 둘 이상 기능 묶음으로 섞여 원인 분리가 흐려진다
@@ -161,6 +288,66 @@
 - 성능 개선이 짧게 끝나지 않으면 더 큰 slice로 버티지 말고,
   현재 변경을 더 작은 micro-slice 둘 이상으로 다시 나눈다.
 - 전체 micro-slice master 목록을 처음부터 고정하지는 않는다.
+- 큰 단위 변경으로 여러 기능/경로를 한 번에 섞는 진행은 피한다.
+- 성능 회귀가 보이면 먼저 방금 들어간 변경 묶음을 다시 읽고,
+  최근 수정 코드에서 원인을 빠르게 축소할 수 있어야 한다.
+- 회귀가 난 상태에서 큰 다음 단계로 밀어붙이지 않는다.
+- 성능 회귀가 난 상태에서 새 성능 실험 후보를 넓게 추가하지 않는다.
+- 우선 최근 변경의 원복 또는 slice 축소만으로 기준선 복귀가 가능한지부터 본다.
+- 기준선 복귀 과정에서 실제 hot path를 식별하면 그 내용을 관련 문서에 즉시 업데이트한다.
+- hot path 문서화가 끝난 뒤 그 주의사항을 유지하면서 다음 기능 추가/구조 개선으로 넘어간다.
+- 우선순위는 항상 아래다.
+  1. 최근 변경 검토
+  2. 회귀 원인 축소
+  3. 원복 가능한 최소 수정 또는 slice 축소
+  4. 동일 조건 재측정
+  5. hot path 식별/문서 업데이트
+  6. green이면 다음 단계 진행
+
+### 5.5 성능 개선 실험 규칙
+
+- 성능 개선 후보는 한 iteration에 가능하면 1개만 다룬다.
+- 한 iteration에서 여러 hot path 후보를 동시에 섞지 않는다.
+- 다만 기준선 복귀가 먼저 필요한 상황에서는
+  새 후보 실험보다 최근 변경 원복/축소를 우선한다.
+- 각 후보는 아래 순서를 고정한다.
+  1. 변경 전 동일 조건 측정
+  2. 후보 1개 적용
+  3. 변경 후 동일 조건 측정
+  4. keep/discard 판정
+- 비교 조건은 항상 동일하게 유지한다.
+  - 같은 surface
+  - 같은 pattern
+  - 같은 transport
+  - 같은 msg size
+  - 같은 runs
+- 기본 budget은 아래를 따른다.
+  - 1차: focused smoke `runs=1`
+  - 이상 징후나 keep 후보면: 같은 조건 `runs=3` 재측정 후 median 판정
+  - broad-impact 후보면: full single 또는 필요한 확장 gate까지 같은 iteration 안에 확인
+- keep 규칙:
+  - 허용오차 밖 회귀를 만들지 않는다.
+  - broad win 또는 명확한 targeted win이 확인된다.
+  - 테스트/계약 의미를 악화시키지 않는다.
+- discard 규칙:
+  - broad win이 없고 노이즈 수준이면 버린다.
+  - 일부 셀 개선 대신 다른 핵심 셀을 악화시키면 버린다.
+  - 원인 설명이 불가능한 애매한 변화면 버린다.
+- 성능 개선 iteration의 산출물은 반드시 남긴다.
+  - 실행 명령
+  - 결과 파일
+  - before/after 핵심 수치
+  - keep/discard 결론
+- multipart send/recv/callback/pub/subscribe 경로에서
+  part array를 매번 새로 할당하는 구현은 기본적으로 금지한다.
+- 이 경로의 기본 원칙은
+  `message ownership transfer`와 `thread_local part-array reuse`다.
+- upstream `/home/hep7/project/kairos/zlink/core`에서 이미 적용된 동일 방향을
+  reference로 삼되, 현재 tree에서는 같은 실수를 반복하지 않도록 hot-path 문서에
+  재발 방지 항목으로 유지한다.
+- 실제 효과가 있었던 변경만 hot-path 문서에 남긴다.
+- 기준선 복귀에 직접 기여한 원복/축소도 hot-path 문서에 남긴다.
+- 효과가 없었던 후보는 iteration 로그에 남기고 같은 후보를 반복 시도하지 않는다.
 - 대신 작업 레지스터의 rolling micro-slice queue만 현재 truth로 유지한다.
 - 즉 전체 단계는 phase/macro-step으로 고정하고,
   실제 micro-slice 목록은 작업하면서 계속 재분해/재정렬한다.
@@ -176,9 +363,14 @@
   - `DEALER_DEALER 64B inproc`
 - 기능 계약이 green이어도, 이 짧은 perf 확인 전에는 다음 micro-slice로 넘어가지 않는다.
 - 기본은 항상 핵심 4셀 smoke를 먼저 돈다.
+- 회귀 복구 중인 iteration에서는 `확장 focused perf`도 매 iteration 의무다.
+- 즉 회귀 복구 중인 iteration에서는 quick smoke만 보고 green 판정하지 않는다.
+- 핵심 4셀이 green이어도 확장 패턴이나 다른 transport에서 회귀가 있으면
+  그 iteration은 green이 아니다.
 - 다만 아래처럼 영향 범위가 넓은 변경은 같은 iteration 안에서
   `확장 focused perf` 또는 `full verification`까지 바로 수행해야 한다.
   - public send/recv ABI
+  - multipart array export / callback dispatch container
   - canonical multipart API
   - callback/poller contract 전반
   - monitor/event fanout 공통 경로
@@ -197,21 +389,31 @@
 
 1. 이 가이드 전체와 현재 작업 레지스터를 다시 읽는다.
 2. `git status`, 현재 branch, 최근 commit을 확인한다.
-3. 작업 레지스터의 가장 앞 미완료 phase와 그 안의 가장 작은 `micro-slice`를 고른다.
-4. 관련 문서 항목에서 계약을 추출한다.
-5. `core/tests`에 기능 계약을 먼저 추가하거나 보강한다.
-6. `core/` 코드만 최소 범위로 수정한다.
-7. `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`이 필요하면 갱신하고,
+3. main 문서의 가장 앞 미완료 `단계(stage)`를 먼저 고른다.
+   그 다음 이 가이드의 대응 `phase`와 그 안의 가장 작은 `micro-slice`를 고른다.
+4. 현재 slice가 현재 단계 목표와 직접 연결되는지 먼저 판정한다.
+   - 아니면 current slice에서 제외하고 `parked` 또는 `next`로 내린다.
+6. 관련 문서 항목에서 계약을 추출한다.
+7. `core/tests`에 기능 계약을 먼저 추가하거나 보강한다.
+8. `core/` 코드만 최소 범위로 수정한다.
+9. `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON`이 필요하면 갱신하고,
    `cmake --build core/build -j$(nproc)`로 빌드한다.
-8. 관련 `core/tests` surface를 먼저 통과시킨다.
-9. 먼저 핵심 4셀 focused `with_zmq` smoke를 짧게 돌린다.
-10. 변경 영향 범위가 넓으면 같은 iteration 안에서 확장 focused perf 또는 full verification까지 바로 수행한다.
-11. 필요하면 3회 재측정과 원인 정리를 수행한다.
-12. 결과를 이 가이드의 작업 레지스터와 진행 메모에 갱신한다.
-13. slice가 격리되고 green이면 즉시 commit/push한다.
-14. phase의 마지막 미완료 slice가 끝났으면 phase 종료 POSD review checkpoint를 수행한다.
-15. phase 완료 commit/push를 확인한다.
-16. 미완료 항목이 남으면 다음 iteration으로 넘어간다.
+10. 관련 `core/tests` surface를 먼저 통과시킨다.
+11. 먼저 핵심 4셀 focused `with_zmq` smoke를 짧게 돌린다.
+12. 변경 영향 범위가 넓으면
+    같은 iteration 안에서 확장 focused perf 또는 full verification까지 바로 수행한다.
+13. 필요하면 3회 재측정과 원인 정리를 수행한다.
+14. 결과를 이 가이드의 작업 레지스터와 진행 메모에 갱신한다.
+    - 회귀가 발생했다면 핵심 4셀과 확장 패턴 결과를 둘 다 남긴다.
+    - 현재 slice가 겨냥한 residual 셀/패턴에 어떤 변화가 있었는지 한 줄로 적는다.
+15. slice가 격리되고 green이면 즉시 commit/push한다.
+    - 회귀 복구 slice라면 `성능 안정화 전용 commit/push`가 먼저다.
+16. phase의 마지막 미완료 slice가 끝났으면 phase 종료 POSD review checkpoint를 수행한다.
+    - 현재 단계 범위 안에서만 구조 단순화 여지가 있는지 본다.
+    - hot path 비용이 늘거나 단계 경계를 넘으면 보류한다.
+    - POSD 정리를 수행했다면 같은 단계 안에서 성능을 다시 확인한다.
+17. phase 완료 commit/push를 확인한다.
+18. 미완료 항목이 남으면 다음 iteration으로 넘어간다.
 
 ### 6.1 성능 debt 처리 규칙
 
@@ -222,6 +424,13 @@
   3. 개선 후에도 경계가 깨끗하면 계속 진행
 - 성능 debt 확인은 가능한 한 같은 세션 안에서 바로 한다.
 - perf debt를 “나중에 한 번에 보자”는 식으로 다음 여러 micro-slice로 넘기지 않는다.
+- 회귀 복구 중인 iteration에서는 기능 parity triage나 신규 구현으로 attention을 분산하지 않는다.
+- 성능 debt와 직접 연결되지 않는 spot/service/monitor/API 작업은
+  모두 `next-after-green`으로 미룬다.
+- 회귀 복구 iteration이 특정 residual 셀/패턴에 대한
+  관측/수정/재측정을 끝내지 못했으면 그 iteration은 미완료다.
+- 다른 transport/pattern에서 새 warning/block이 생기면
+  그 iteration은 기존 대상 셀 개선 여부와 무관하게 미완료다.
 - 핵심 4셀 smoke가 warning 이상이면, 다음 기능 micro-slice로 진행하기 전에
   최소한 원인 메모와 처리 방향이 작업 레지스터에 있어야 한다.
 - 변경 영향 범위가 넓은데 quick smoke만 보고 넘어가는 것은 금지한다.
@@ -240,12 +449,19 @@
 
 - Ralph loop를 중단했다가 다시 시작할 때, worktree가 dirty면
   첫 iteration의 목표는 새 기능 추가가 아니라 `dirty tree 재분해`다.
+- 회귀 복구가 끝나지 않은 상태에서 재시작하면
+  첫 iteration의 목표는 `회귀 복구 재진입`이다.
+- 즉 재시작 후에도 회귀가 남아 있으면
+  새 기능 slice를 더 얹지 않고 같은 복구 구간을 이어서 수행한다.
+- 재시작 후 current slice가 현재 회귀 또는 현재 단계 목표와 직접 연결되지 않으면
+  그 slice는 잘못 고른 것이다. 즉시 `parked`로 내리고 다시 고른다.
 - 재시작 첫 iteration은 아래 순서를 우선 수행한다.
   1. 현재 dirty 변경 파일을 기능 묶음별로 inventory한다.
   2. `current micro-slice / next / parked`로 다시 분류한다.
-  3. green 경계가 없는 변경은 `re-slice candidate`로 표시한다.
-  4. 성능 debt와 기능 debt가 섞여 있으면 분리 방향을 먼저 문서에 기록한다.
-  5. 그 다음에만 가장 작은 current micro-slice의 구현/검증으로 들어간다.
+  3. `현재 회귀 복구나 현재 단계 완료에 직접 기여하지 않는 항목`은 전부 `next-after-green`으로 보낸다.
+  4. green 경계가 없는 변경은 `re-slice candidate`로 표시한다.
+  5. 성능 debt와 기능 debt가 섞여 있으면 분리 방향을 먼저 문서에 기록한다.
+  6. 그 다음에만 가장 작은 current micro-slice의 구현/검증으로 들어간다.
 - 즉 재시작 직후에는 기존 dirty tree 위에 새 기능을 바로 더 얹지 않는다.
 - 아래 중 하나면 다음 iteration 전체를 `stabilization / re-slice only`로 사용한다.
   - 3 iteration 연속 commit/push 없음
@@ -267,6 +483,8 @@
 - hot path 공통화만을 위한 wrapper/helper 추가 금지
 - `socket_base`에 의미를 몰아넣는 얕은 구조 확장 금지
 - 한 slice에서 기능, 대규모 구조 변경, 광범위 리팩터링을 한 번에 섞지 않는다
+- 회귀 복구 중인 iteration에서 spot/service/monitor/alias parity 같은
+  기능 backlog를 current slice로 선택하는 것 금지
 
 ## 8. 검증 절차
 
@@ -300,6 +518,21 @@ Phase 6 또는 lifecycle/callback/thread-safe 관련 slice는 아래를 사용�
 ./core/tests/run_thread_safe_contract_perf.sh --min-ratio 0.85 --build-dir core/build
 ```
 
+### 8.3 최종 conformance 검증
+
+최종 완료 또는 Phase 8 종료 직전에는 아래를 추가로 확인한다.
+
+```bash
+diff -u /home/hep7/project/kairos/zlink/core/include/zlink.h core/include/zlink.h
+./core/tests/run_test_lanes.sh --include-e2e --include-regression
+./core/tests/run_thread_safe_contract_stress.sh --count 10 --build-dir core/build
+./core/tests/run_thread_safe_contract_perf.sh --min-ratio 0.85 --build-dir core/build
+```
+
+- `diff` 출력이 비어 있어야 `zlink.h` parity가 닫힌다.
+- 위 검증이 모두 green이고 parity matrix에 미완료 행이 없어야
+  최종 완료로 본다.
+
 장시간 stress gate를 백그라운드로 감시해야 하면 공유 gate 스크립트를 사용한다.
 
 ```bash
@@ -311,6 +544,33 @@ Phase 6 또는 lifecycle/callback/thread-safe 관련 slice는 아래를 사용�
 ```
 
 ### 8.4 focused with_zmq guardrail
+
+Ralph loop 재시작 직후 current perf debt anchor를 다시 잡을 때는
+아래 full single 측정을 먼저 실행한다.
+
+```bash
+./core/bench/with_zmq/run_benchmarks.sh \
+  --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER \
+  --msg-sizes 64,256,1024,65536,131072,262144 \
+  --transports tcp,ipc,inproc \
+  --runs 1 \
+  --reuse-build
+```
+
+`ws/wss/tls`는 zlink-only baseline 기준으로 전 패턴을 별도로 확인한다.
+
+```bash
+./core/bench/with_zmq/run_benchmarks.sh \
+  --zlink-only \
+  --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER \
+  --msg-sizes 64,256,1024,65536,131072,262144 \
+  --transports ws,wss,tls \
+  --runs 1 \
+  --reuse-build
+```
+
+위 결과들 중 warning/block이 하나라도 있으면 다음 current slice는
+반드시 그 residual을 직접 줄이는 성능 안정화 slice여야 한다.
 
 핵심 4셀 smoke는 아래를 기준으로 사용한다.
 
@@ -385,7 +645,29 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
   --build-dir core/build
 ```
 
-## 9. phase별 적용 순서
+## 9. main 단계와 phase 연결
+
+아래 표를 기준으로, Ralph loop는 항상 main 문서의 현재 단계에서만
+slice를 고른다.
+
+| Main 단계 | 의미 | Guide phase | current slice 선택 규칙 |
+| --- | --- | --- | --- |
+| 1단계 | 성능 debt 재측정과 anchor 고정 | Phase 0 | 측정/비교/anchor 기록만 수행 |
+| 2단계 | 성능 안정화 | Phase 1 일부 | 성능 debt를 직접 줄이는 slice만 허용 |
+| 3단계 | 성능 green anchor commit | Phase 1 일부 | 성능 안정화 전용 commit/push만 허용 |
+| 4단계 | 공통 public/core parity | Phase 2 | public API, 공통 core, header parity, matrix 갱신 |
+| 5단계 | pattern parity | Phase 3 | pattern별 의미와 대응 test/matrix를 함께 갱신 |
+| 6단계 | transport/TLS/option parity | Phase 4 | transport, TLS, option 계약만 다룸 |
+| 7단계 | monitoring/events/snapshot parity | Phase 5 | monitor/event/snapshot 계약만 다룸 |
+| 8단계 | thread-safe/lifecycle/callback parity | Phase 6 | thread-safe, lifecycle, callback 계약만 다룸 |
+| 9단계 | services parity | Phase 7 | discovery/registry/spot/gateway 계층만 다룸 |
+| 10단계 | hardening/final perf/release-readiness | Phase 8 | 전체 matrix 닫힘, 전체 tests, full perf, dead code 정리 |
+
+- phase를 고를 때는 항상 위 표의 같은 행 안에서만 고른다.
+- 예를 들어 main 문서가 6단계면, guide에서 Phase 4 slice만 current가 될 수 있다.
+- 다른 phase의 slice는 `next` 또는 `parked`로 내린다.
+
+## 10. phase별 적용 순서
 
 ### Phase 0. 기준선과 작업 프레임 고정
 
@@ -513,7 +795,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - known limitation / unsupported matrix 정리
 - migration notes 정리
 
-## 10. commit / push 운영 규칙
+## 11. commit / push 운영 규칙
 
 - commit은 micro-slice 단위로 한다.
 - 한 commit은 하나의 문서 계약 묶음과 그에 필요한 코드/테스트만 담는다.
@@ -531,7 +813,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - phase 완료 시에는 commit hash, push 여부, 핵심 검증 명령을 작업 레지스터에 반드시 남긴다.
 - push한 commit hash와 핵심 검증 명령은 작업 레지스터에 남긴다.
 
-## 11. phase 종료 POSD review checkpoint
+## 12. phase 종료 POSD review checkpoint
 
 각 phase의 마지막 slice가 끝날 때마다, 다음 phase로 넘어가기 전에 아래 POSD review를
 반드시 한 번 수행한다.
@@ -541,7 +823,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - 별도 POSD 전용 phase를 만들지 않는다.
 - 기능 parity와 성능 guardrail이 우선이고, POSD review는 phase 종료 게이트의 일부다.
 
-### 11.1 review 질문
+### 12.1 review 질문
 
 - 이번 phase에서 생긴 새 wrapper/helper가 hot path 호출 수를 늘렸는가
 - ownership/invariant를 더 깊은 모듈 하나로 숨길 수 있는가
@@ -550,7 +832,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - service/control/lifecycle 경계로 밀어낼 수 있는 slow-path 의미가 hot path에 남아 있는가
 - 이번 phase 구현으로 완전히 대체된 dead code, stale branch, unused helper, unused header, obsolete file이 남았는가
 
-### 11.2 keep 조건
+### 12.2 keep 조건
 
 - 관련 `core/tests`가 모두 green이다.
 - focused `with_zmq` guardrail이 pass이거나 최소 warning 범위 안이다.
@@ -559,7 +841,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - commit 경계를 흐리지 않고 현재 phase 결과물에 포함 가능한 작은 정리다.
 - dead code/file 삭제가 현재 phase 계약과 직접 연결되고, unrelated 변경과 섞이지 않는다.
 
-### 11.3 defer 조건
+### 12.3 defer 조건
 
 아래 중 하나면 이번 phase에서는 POSD 정리를 적용하지 않고 `design debt`로 남긴다.
 
@@ -570,7 +852,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - unrelated 변경과 섞여 안전한 commit/push 경계를 만들기 어렵다.
 - 파일 삭제가 실제 참조 관계를 아직 확정하지 못한 상태다.
 
-### 11.4 phase 종료 기록 규칙
+### 12.4 phase 종료 기록 규칙
 
 작업 레지스터에는 아래를 남긴다.
 
@@ -580,7 +862,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - defer 항목이 있으면 다음 phase backlog 또는 design debt 메모에 연결
 - dead code / dead file 정리를 수행했으면 삭제한 파일과 제거한 stale path를 함께 남긴다.
 
-## 12. 작업 레지스터 갱신 규칙
+## 13. 작업 레지스터 갱신 규칙
 
 각 iteration 끝에서 아래를 현재 상태에 맞게 갱신한다.
 
@@ -601,9 +883,19 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - commit / push 여부
 - 다음 iteration의 첫 작업
 
-## 13. 작업 레지스터
+## 14. 작업 레지스터 아카이브
 
-### 13.1 현재 기준 상태
+이 장 전체는 과거 iteration 기록 보존용이다.
+
+- current/next 작업을 여기서 직접 뽑지 않는다.
+- 현재 작업 선택은 항상
+  1. main 문서
+  2. 이 가이드 상단 규칙
+  3. baseline 문서
+  순서로 판단한다.
+- 아래 표/메모는 historical evidence일 뿐 현재 authority가 아니다.
+
+### 14.1 현재 기준 상태
 
 - branch: `wip/feature-port-from-20260305`
 - baseline anchor: `7bea9e3f6af1542d0f216397e729b8d9f529372d`
@@ -611,7 +903,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 - with_zmq port status: `single/multi runnable`
 - benchmark output shape status: `aligned to current branch policy`
 
-### 13.2 macro-step 진행 현황
+### 14.2 macro-step 진행 현황
 
 | Macro-step | 연결 phase | 상태 | 최근 성능 판정 | 코멘트 |
 | --- | --- | --- | --- | --- |
@@ -625,7 +917,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 | M7 services | Phase 7 | pending | not started | registry/discovery/spot unified services parity 대기 |
 | M8 hardening/release | Phase 8 | pending | not started | full gate / hardening / release-readiness 대기 |
 
-### 13.3 phase 상태표
+### 14.3 phase 상태표
 
 | Phase | 상태 | 비고 |
 | --- | --- | --- |
@@ -637,9 +929,19 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 | Phase 5 | pending | monitoring/events/snapshot parity 미완료 |
 | Phase 6 | pending | thread-safe/lifecycle/callback parity 미완료 |
 | Phase 7 | pending | services parity 미완료 |
+| Phase 8 | pending | full conformance / hardening / release-readiness 미완료 |
 | Phase 8 | pending | full hardening/release-readiness 미완료 |
 
-### 13.4 rolling micro-slice queue
+### 14.4 rolling micro-slice queue
+
+아래 13.4~13.6 블록은 과거 실행 흔적 보존용이다.
+현재 iteration의 current/next 선택 근거로 직접 사용하지 않는다.
+현재 작업 선택은 항상 아래 순서를 따른다.
+
+1. main 문서의 현재 목표/우선순위
+2. 이 실행 가이드 상단의 성능 선행 규칙과 판정 규칙
+3. baseline 문서의 고정 기준
+4. 그 다음에만 historical note 참고
 
 - current macro-step: `M2 public/core parity`
 - current phase: `Phase 2`
@@ -654,7 +956,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
   2. `PAIR` remaining parity inventory
   3. perf debt 원인 분리 전 broad-impact alias cleanup
 
-### 13.5 현재 우선순위 백로그
+### 14.5 현재 우선순위 백로그
 
 1. unified `spot` source-rid / poller / send-ready / monitor / option/routing-id parity inventory
 2. unified `spot` service monitor / send-ready / poller parity
@@ -663,7 +965,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
 5. 상위 public socket parity가 정리된 뒤 `PAIR` 문서 계약도 항목별 micro-slice로 다시 inventory
 6. focused with_zmq smoke에서 남는 `PAIR 64B inproc`, `DEALER_DEALER 64B inproc` debt는 기능 micro-slice와 분리 추적
 
-### 13.6 최근 검증 증거
+### 14.6 최근 검증 증거
 
 - baseline report:
   - `doc/plan/perf/feature-port-from-20260305-baseline.ko.md`
@@ -728,7 +1030,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
   - `core/bench/with_zmq/results/single/report/perf_linux_20260329_092926.txt`
   - `core/bench/with_zmq/results/single/report/perf_linux_20260329_095717.txt`
 
-### 13.7 현재 iteration 시작점
+### 14.7 현재 iteration 시작점
 
 - current macro-step: `M2 public/core parity`
 - current phase: `Phase 2`
@@ -739,7 +1041,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
   - canonical 멀티파트 `zlink_send()/zlink_recv()` ABI 교체 계약은 현재 legacy buffer ABI와 충돌하므로 별도 inventory로 남긴다
   - `doc/guide/03-1-pair.ko.md`의 `recv/poller-only` 서술은 상위 socket/core-api 문서보다 하위 예시 문맥으로 취급하고, canonical public surface는 상위 문서의 raw socket callback 지원으로 판정한다
 
-### 13.8 성능 기록 / 코멘트
+### 14.8 성능 기록 / 코멘트
 
 - baseline reference:
   - source:
@@ -761,7 +1063,7 @@ python3 core/bench/with_zmq/multi/run_comparison.py \
   - 모든 micro-slice는 최소 1개의 quick perf 기록과 1줄 코멘트를 남긴다.
   - broad-impact micro-slice는 expanded/full perf 기록과 코멘트를 같은 iteration에 추가한다.
 
-### 13.9 현재 iteration 진행 메모
+### 14.9 현재 iteration 진행 메모
 
 - 관련 문서 항목
   - `doc/api/README.ko.md`

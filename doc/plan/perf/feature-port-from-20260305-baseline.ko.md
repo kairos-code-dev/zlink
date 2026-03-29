@@ -67,10 +67,14 @@ BENCH_NO_AUTOBUILD=1 python3 core/bench/with_zmq/single/run_comparison.py \
 
 ## 4. 결과 파일
 
+`2026-03-05` single compare anchor의 raw result txt 두 개는 현재 이
+worktree에 남아 있지 않다. 따라서 이 anchor는 아래 기록된 기준 수치와 실행
+명령을 authority로 유지한다.
+
 - run #1:
-  `/home/hep7/project/kairos/zlink-perf-regression-bisect/core/bench/with_zmq/results/single/report/perf_linux_20260328_174940_baseline_20260305_feature_port.txt`
+  raw result file missing in current worktree
 - run #2:
-  `/home/hep7/project/kairos/zlink-perf-regression-bisect/core/bench/with_zmq/results/single/report/perf_linux_20260328_175009_baseline_20260305_feature_port_rerun.txt`
+  raw result file missing in current worktree
 
 ## 5. 기준 throughput
 
@@ -105,3 +109,140 @@ run #2
 - later main의 public-surface/bench 변화를 무심코 가져오지 않는다.
   특히 `PAIR`/`DEALER_DEALER` one-way hot loop를 바꾸는 변경은
   기능 이식과 분리해서 본다.
+
+## 7. 추가 Guardrail: `with_zmq single` compare baseline (`2026-03-29`)
+
+single compare 전체 패턴 기준선도 별도로 고정한다.
+이 결과는 rebuilding 작업의 현재 single compare baseline으로 사용한다.
+
+- bench surface:
+  `core/bench/with_zmq/run_benchmarks.sh`
+- 대상 pattern:
+  `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`
+- 고정 transport:
+  `tcp,ipc,inproc`
+
+실행 명령:
+
+```bash
+./core/bench/with_zmq/run_benchmarks.sh \
+  --reuse-build \
+  --runs 1 \
+  --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER \
+  --transports tcp,ipc,inproc
+```
+
+결과 파일:
+
+- `/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/rebuilding/baseline/perf_linux_20260329_200606.txt`
+
+기준 사용 규칙:
+
+- rebuilding loop의 single compare 기준은 위 결과 파일을 사용한다.
+- 허용오차 정책은 동일하게
+  `-5% 이내 허용 / -5~-10% warning / -10% 이하 block`으로 본다.
+
+## 8. 추가 Guardrail: `with_zmq single` `ws/wss/tls` zlink-only baseline (`2026-03-29`)
+
+`ws/wss/tls`는 libzmq compare 대상이 아니므로
+single 전 패턴에 대해 zlink-only baseline을 별도로 고정한다.
+
+- bench surface:
+  `core/bench/with_zmq/run_benchmarks.sh`
+- 대상 pattern:
+  `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`
+- 고정 transport:
+  `tcp,ws,wss,tls`
+  단, `tcp` 값은 참고용이고 compare baseline을 대체하지 않는다.
+
+실행 명령:
+
+```bash
+./core/bench/with_zmq/run_benchmarks.sh \
+  --reuse-build \
+  --runs 1 \
+  --zlink-only \
+  --patterns PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER \
+  --transports tcp,ws,wss,tls
+```
+
+결과 파일:
+
+- `/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/rebuilding/baseline/perf_linux_20260329_155434.txt`
+
+기준 사용 규칙:
+
+- single `ws/wss/tls`는 위 결과 파일을 기준선으로 사용한다.
+- 이 범위는 `libzmq` diff가 아니라 zlink baseline 대비 회귀만 본다.
+- 허용오차 정책은 single compare와 동일하게
+  `-5% 이내 허용 / -5~-10% warning / -10% 이하 block`으로 본다.
+
+## 9. 추가 Guardrail: `with_zmq multi` compare baseline (`2026-03-29`)
+
+이 섹션은 `2026-03-05` single anchor를 대체하지 않는다.
+single anchor는 그대로 유지하고,
+multi regression 감시용 compare baseline을 별도로 추가 확보한 것이다.
+
+- bench surface:
+  `core/bench/with_zmq/run_benchmarks_multi.sh`
+- 목적:
+  `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `STREAM`
+  의 multi compare 기준선을 고정한다.
+- 고정 transport:
+  `tcp,ipc`
+  단, `STREAM` compare는 runner 정책상 `tcp`만 측정된다.
+
+실행 명령:
+
+```bash
+./core/bench/with_zmq/run_benchmarks_multi.sh \
+  --reuse-build \
+  --runs 1 \
+  --results-tag multi_baseline_20260329
+```
+
+결과 파일:
+
+- `/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/rebuilding/baseline/perf_linux_20260329_162318_multi_baseline_20260329.txt`
+
+기준 사용 규칙:
+
+- multi compare는 위 결과 파일을 기준선으로 사용한다.
+- `tcp,ipc` 셀은 이후 동일 surface/동일 조건으로 재측정해서 비교한다.
+- 허용오차 정책은 single과 동일하게
+  `-5% 이내 허용 / -5~-10% warning / -10% 이하 block`으로 본다.
+
+## 10. 추가 Guardrail: `MULTI_STREAM` `ws/wss/tls` zlink-only baseline (`2026-03-29`)
+
+`ws/wss/tls`는 libzmq compare 대상이 아니므로
+`MULTI_STREAM`에 대해 zlink-only baseline을 별도로 고정한다.
+
+- bench surface:
+  `core/bench/with_zmq/run_benchmarks_multi.sh`
+- 대상 pattern:
+  `STREAM`
+- 고정 transport:
+  `ws,wss,tls`
+
+실행 명령:
+
+```bash
+./core/bench/with_zmq/run_benchmarks_multi.sh \
+  --reuse-build \
+  --runs 1 \
+  --zlink-only \
+  --pattern stream \
+  --transports ws,wss,tls \
+  --results-tag multi_stream_ws_wss_tls_baseline_20260329_rerun
+```
+
+결과 파일:
+
+- `/home/hep7/project/kairos/zlink-perf-regression-bisect/doc/plan/rebuilding/baseline/perf_linux_20260329_163829_multi_stream_ws_wss_tls_baseline_20260329_rerun.txt`
+
+기준 사용 규칙:
+
+- `MULTI_STREAM ws/wss/tls`는 위 결과 파일을 기준선으로 사용한다.
+- 이 범위는 `libzmq` diff가 아니라 zlink baseline 대비 회귀만 본다.
+- 허용오차 정책은 single과 동일하게
+  `-5% 이내 허용 / -5~-10% warning / -10% 이하 block`으로 본다.

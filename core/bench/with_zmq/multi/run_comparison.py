@@ -286,9 +286,12 @@ SHOW_PREP = (
 base_env = os.environ.copy()
 
 
-def transport_supported_for_pattern(pattern_name, transport):
+def transport_supported_for_pattern(pattern_name, transport, lib_name=None):
+    canon = canonical_lib_name(lib_name) if lib_name else None
     if pattern_name == "MULTI_STREAM":
-        return transport == "tcp"
+        if canon == "std_zmq":
+            return transport == "tcp"
+        return transport in ("tcp", "ws", "wss", "tls")
     return transport in ("tcp", "ipc")
 
 
@@ -1039,7 +1042,7 @@ def collect_data(
     sizes = list(msg_sizes) if msg_sizes is not None else list(MSG_SIZES)
 
     for tr in transports:
-        if not transport_supported_for_pattern(pattern_name, tr):
+        if not transport_supported_for_pattern(pattern_name, tr, lib_name):
             continue
 
         for sz in sizes:
@@ -1236,10 +1239,12 @@ def get_cached_std_entry(cache_data, pattern_name):
     return std_data, std_fail
 
 
-def has_valid_cached_metrics(std_data):
+def has_valid_cached_metrics(std_data, pattern_name):
     if not isinstance(std_data, dict):
         return False
     for tr in TRANSPORTS:
+        if not transport_supported_for_pattern(pattern_name, tr, "std_zmq"):
+            continue
         for sz in MSG_SIZES:
             k_t = f"{tr}|{sz}|throughput"
             k_l = f"{tr}|{sz}|latency"
@@ -1261,6 +1266,13 @@ def update_cached_std_entry(cache_data, pattern_name, std_data, std_fail):
         "transports": list(TRANSPORTS),
         "msg_sizes": list(MSG_SIZES),
     }
+
+
+def pattern_requires_std_baseline(pattern_name):
+    for tr in TRANSPORTS:
+        if transport_supported_for_pattern(pattern_name, tr, "std_zmq"):
+            return True
+    return False
 
 
 def format_throughput(msgs_per_sec):
@@ -1332,11 +1344,22 @@ def print_size_comparison_rows(transport, size, std_data, zlk_data, std_availabl
     )
 
 
-def print_pattern_report(std_data, zlk_data, std_available=True):
+def print_pattern_report(pattern_name, std_data, zlk_data, std_available=True):
     for tr in TRANSPORTS:
         print_transport_report_header(tr)
         for sz in MSG_SIZES:
-            print_size_comparison_rows(tr, sz, std_data, zlk_data, std_available)
+            print_size_comparison_rows(
+                tr,
+                sz,
+                std_data,
+                zlk_data,
+                std_available=(
+                    std_available
+                    and transport_supported_for_pattern(
+                        pattern_name, tr, "std_zmq"
+                    )
+                ),
+            )
 
 
 def normalize_pattern_name(raw):
@@ -1516,8 +1539,10 @@ def main():
     selected_comparisons = select_comparisons(comparisons, pattern_req)
     missing_cache_patterns = []
     for _, _, p_name in selected_comparisons:
+        if not pattern_requires_std_baseline(p_name):
+            continue
         cached_entry = get_cached_std_entry(std_cache, p_name)
-        if cached_entry is None or not has_valid_cached_metrics(cached_entry[0]):
+        if cached_entry is None or not has_valid_cached_metrics(cached_entry[0], p_name):
             missing_cache_patterns.append(p_name)
     need_std_baseline = (not zlink_only) or refresh_std_cache or bool(
         missing_cache_patterns
@@ -1606,11 +1631,16 @@ def main():
         zlk_fail = []
         live_rows = 0
 
+        std_required = pattern_requires_std_baseline(p_name)
         cached = get_cached_std_entry(std_cache, p_name)
-        cached_valid = cached is not None and has_valid_cached_metrics(cached[0])
+        cached_valid = (
+            std_required
+            and cached is not None
+            and has_valid_cached_metrics(cached[0], p_name)
+        )
         std_from_cache = False
         if zlink_only:
-            if refresh_std_cache or not cached_valid:
+            if std_required and (refresh_std_cache or not cached_valid):
                 reason = (
                     "refresh requested"
                     if refresh_std_cache
@@ -1620,14 +1650,14 @@ def main():
                     f"  > Cached libzmq {reason} for {p_name}; "
                     "measuring and caching libzmq baseline now."
                 )
-            else:
+            elif std_required:
                 std_data, std_fail = cached
                 print(f"  > Using cached libzmq for {p_name} from {cache_file}")
                 std_from_cache = True
         else:
             std_from_cache = False
 
-        if not std_from_cache:
+        if not std_from_cache and std_required:
             print(f"  > Benchmarking libzmq for {p_name}...")
         print(f"  > Benchmarking zlink for {p_name}...")
 
@@ -1642,7 +1672,11 @@ def main():
 
             print_transport_report_header(tr)
             for sz in MSG_SIZES:
-                if not std_from_cache:
+                std_transport_available = transport_supported_for_pattern(
+                    p_name, tr, "std_zmq"
+                )
+
+                if not std_from_cache and std_transport_available:
                     std_partial, std_partial_fail = collect_data(
                         std_bin,
                         "libzmq",
@@ -1677,7 +1711,7 @@ def main():
                     sz,
                     std_data,
                     zlk_data,
-                    std_available=True,
+                    std_available=std_transport_available,
                 )
                 live_rows += 1
 
@@ -1687,15 +1721,15 @@ def main():
             ):
                 time.sleep(float(TRANSPORT_TRANSITION_MS) / 1000.0)
 
-        if zlink_only and not std_from_cache:
+        if zlink_only and std_required and not std_from_cache:
             update_cached_std_entry(std_cache, p_name, std_data, std_fail)
             cache_updated = True
-        if (not zlink_only) and (refresh_std_cache or cached is None):
+        if (not zlink_only) and std_required and (refresh_std_cache or cached is None):
             update_cached_std_entry(std_cache, p_name, std_data, std_fail)
             cache_updated = True
 
         if print_final_report or live_rows == 0:
-            print_pattern_report(std_data, zlk_data, std_available=True)
+            print_pattern_report(p_name, std_data, zlk_data, std_available=True)
         all_failures.extend(std_fail)
         all_failures.extend(zlk_fail)
 

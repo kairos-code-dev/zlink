@@ -923,7 +923,7 @@ slice를 고른다.
 | --- | --- | --- |
 | Phase 0 | completed | baseline, with_zmq baseline, planning frame 확보 |
 | Phase 1 | completed | `socket_base` send/recv ownership, multipart/routing-id/thread-safety 경계가 현재 코드와 일치함을 재확인 |
-| Phase 2 | in_progress | `zlink_msg_refcnt()`, socket/service monitor callback-only 전환, unified close/snapshot, raw `zlink_recv_handler()`, raw `SUB/XSUB zlink_subscribe_handler()`, raw socket `zlink_send_ready_handler()`, current split spot-family alias(`spot_pub`/`spot_node`) send-ready 최소 parity, unified `spot` 최소 data-plane(`zlink_spot_new/destroy`, `zlink_publish()`, `zlink_subscribe()`, `zlink_set/unset_subscription()`, `zlink_subscription_at()`, unified `zlink_subscribe_handler()`)는 반영했다. unified `spot`의 actual source-rid, poller/send-ready/monitor/options/routing-id parity와 canonical pub/sub API는 아직 미완료다 |
+| Phase 2 | in_progress | `zlink_msg_refcnt()`, socket/service monitor callback-only 전환, unified close/snapshot, raw `zlink_recv_handler()`, raw `SUB/XSUB zlink_subscribe_handler()`, raw socket `zlink_send_ready_handler()`, current split spot-family alias(`spot_pub`/`spot_node`) send-ready 최소 parity는 반영했다. 이번 iteration에서 split `spot_pub_t`/`spot_sub_t` 위에 borrowed-node facade `zlink_spot_new/destroy`, `zlink_spot_publish`, `zlink_spot_subscribe`, `zlink_spot_subscribe_pattern`, `zlink_spot_unsubscribe`, `zlink_spot_recv`, `zlink_spot_setsockopt`를 실제 코드/test에 올렸다. canonical generic pub/sub API, unified `zlink_subscribe_handler()`, unified poller/send-ready/monitor, ctx-owning `zlink_spot_new()`는 아직 미완료다 |
 | Phase 3 | pending | `PAIR`의 단일-peer 교체, `inproc` bind-before-connect 실패 규칙은 test/code에 반영했지만 상위 public socket callback/data-plane parity가 먼저 정리되지 않아 pattern phase 완료로 닫지 않는다 |
 | Phase 4 | pending | transport/TLS/option parity 미완료 |
 | Phase 5 | pending | monitoring/events/snapshot parity 미완료 |
@@ -946,7 +946,7 @@ slice를 고른다.
 - current macro-step: `M2 public/core parity`
 - current phase: `Phase 2`
 - current micro-slice:
-  - unified `spot` service monitor / send-ready / poller parity
+  - unified `spot` 최소 data-plane parity 실제 반영 및 test surface 연결
 - next micro-slice:
   1. unified `spot` service monitor / send-ready / poller gap inventory
   2. canonical `zlink_publish()` ABI inventory와 최소 계약 test 고정
@@ -1002,20 +1002,15 @@ slice를 고른다.
   - `cmake --build core/build -j$(nproc) --target test_spot_send_ready_handler` -> pass
   - `ctest --test-dir core/build --output-on-failure -R "test_spot_send_ready_handler|test_socket_send_ready_handler|test_service_monitor|test_spot_pubsub_scenario|test_spot_send_blocking_wakeup"` -> pass
 - current iteration unified spot verification:
-  - `cmake --build core/build -j$(nproc) --target test_spot_unified_api` -> pass
-  - `ctest --test-dir core/build --output-on-failure -V -R test_spot_unified_api` -> pass
-  - `ctest --test-dir core/build --output-on-failure -R "test_spot_unified_api|test_spot_send_ready_handler|test_spot_pubsub_scenario|test_socket_subscribe_handler"` -> pass
-  - `ctest --test-dir core/build --output-on-failure -R "test_spot_unified_api|test_spot_send_ready_handler|test_service_monitor|test_socket_subscribe_handler"` -> pass
+  - `cmake --build core/build -j$(nproc) --target test_spot_unified_basic` -> pass
+  - `ctest --test-dir core/build --output-on-failure -R test_spot_unified_basic` -> pass
+  - `ctest --test-dir core/build --output-on-failure -R "test_spot_unified_basic|test_spot_send_blocking_wakeup"` -> pass
+  - `ctest --test-dir core/build --output-on-failure -R test_spot_pubsub_scenario` -> pass
 - current public socket API inventory:
   - `core/include/zlink.h` / `core/src/api/zlink.cpp` 기준으로 public header/API는 아직 legacy buffer형 `zlink_send()/zlink_recv()`를 유지한다
-  - `zlink_recv_handler()` raw socket callback attach는 이번 iteration에서 public header/implementation/test에 최소 반영했다
-  - `zlink_subscribe_handler()` raw `SUB/XSUB` callback attach는 이번 iteration에서 public header/implementation/test에 최소 반영했다
-  - `zlink_send_ready_handler()` raw `PAIR/PUB/XPUB/DEALER/ROUTER/STREAM` attach, 교체 semantics, self-reentry `EDEADLK`, data-plane `ZLINK_POLLOUT` `EBUSY`는 이번 iteration에서 public header/implementation/test에 최소 반영했다
-  - `zlink_send_ready_handler()`는 현재 구현에 실제로 존재하는 split spot-family alias `spot_pub`/`spot_node`에 대해 attach, alias 교체, self-reentry `EDEADLK`, subject `ZLINK_POLLOUT` `EBUSY`, `spot_sub` `ENOTSUP`를 이번 iteration에서 반영했다
-  - canonical 멀티파트 `zlink_send()/zlink_recv()` 계약은 현재 public header/implementation에 여전히 미반영이다
-  - unified `spot` 최소 data-plane `zlink_spot_new/destroy`, `zlink_publish()`, `zlink_subscribe()`, `zlink_set/unset_subscription()`, `zlink_subscription_at()`, unified `zlink_subscribe_handler()`는 이번 iteration에서 public header/implementation/test에 반영했다
-  - unified `spot`의 `zlink_set_option()/zlink_get_option()`, `zlink_set_routing_id()/zlink_get_routing_id()`, local publish->subscribe `source_rid` 전달은 이번 micro-slice에서 public header/implementation/test에 반영했다
-  - unified `spot`의 remote source-rid, poller/send-ready, service monitor parity는 아직 미반영이다
+  - 이번 iteration에서 현재 트리 기준 최소 unified `spot` wrapper `zlink_spot_new/destroy`, `zlink_spot_publish`, `zlink_spot_subscribe`, `zlink_spot_subscribe_pattern`, `zlink_spot_unsubscribe`, `zlink_spot_recv`, `zlink_spot_setsockopt`를 public header/implementation/test에 실제 반영했다
+  - 위 wrapper는 기존 `spot_node_t` + split `spot_pub_t`/`spot_sub_t`를 재사용하는 borrowed-node facade다
+  - canonical generic `zlink_publish()/zlink_subscribe()`, unified `zlink_subscribe_handler()`, unified poller/send-ready/service-monitor parity, ctx-owning `zlink_spot_new()`는 아직 미반영이다
 - current iteration focused with_zmq smoke:
   - `core/bench/with_zmq/results/single/report/perf_linux_20260329_075432.txt`
   - `core/bench/with_zmq/results/single/report/perf_linux_20260329_075517.txt`
@@ -1034,7 +1029,7 @@ slice를 고른다.
 
 - current macro-step: `M2 public/core parity`
 - current phase: `Phase 2`
-- current slice: unified `spot` 최소 data-plane slice. 현재 public ABI를 즉시 깨지 않는 범위에서 `zlink_spot_new/destroy`, `zlink_publish()`, `zlink_subscribe()`, subscription inventory, unified `zlink_subscribe_handler()`를 test/code로 고정
+- current slice: unified `spot` 최소 data-plane slice. 현재 트리의 split `spot_pub_t`/`spot_sub_t` 위에 borrowed-node facade `zlink_spot_*`를 얹어 local pub/sub, pattern unsubscribe, setsockopt 계약을 test/code로 고정
 - current micro-slice: unified `spot` 최소 data-plane parity
 - next blocking checks:
   - `doc/api/spot.ko.md`, `doc/guide/02-core-api.ko.md` 기준 unified `spot` source-rid / poller / send-ready / monitor / option/routing-id gap을 먼저 inventory한다
@@ -1050,15 +1045,15 @@ slice를 고른다.
     - 성능의 기준은 `libzmq 절대 동률`이 아니라 `2026-03-05 baseline 유지`다.
 - latest quick smoke:
   - result file:
-    - `core/bench/with_zmq/results/single/report/perf_linux_20260329_100555.txt`
+    - `core/bench/with_zmq/results/single/report/perf_linux_20260329_204103.txt`
   - key cells:
-    - `PAIR 64B tcp`: `+9.30%`
-    - `PAIR 64B inproc`: `-21.28%`
-    - `DEALER_DEALER 64B tcp`: `-4.56%`
-    - `DEALER_DEALER 64B inproc`: `-18.39%`
+    - `PAIR 64B tcp`: `zlink 3921.26 Kmsg/s`, `libzmq no_data_rc_127`
+    - `PAIR 64B inproc`: `zlink 3554.04 Kmsg/s`, `libzmq no_data_rc_127`
+    - `DEALER_DEALER 64B tcp`: `zlink 3863.11 Kmsg/s`, `libzmq no_data_rc_127`
+    - `DEALER_DEALER 64B inproc`: `zlink 4414.59 Kmsg/s`, `libzmq no_data_rc_127`
   - comment:
-    - unified `spot` option/routing-id/local source-rid slice 이후에도 `PAIR inproc`, `DEALER_DEALER inproc` block debt는 그대로 유지된다.
-    - 이번 slice는 `spot` public/service 계층 국소 변경이라 inherited debt로 우선 취급하고, 다음 broad-impact slice 전에 다시 분리 확인한다.
+    - 현재 환경에서는 compare용 `libzmq` 실행이 빠져 quick smoke가 diff 판정까지 닫히지 않았다.
+    - 이번 slice는 `spot` public facade 국소 변경이며, compare 환경 복구 전에는 기존 inproc debt를 새 결과와 직접 비교 판정하지 않는다.
 - logging rule:
   - 모든 micro-slice는 최소 1개의 quick perf 기록과 1줄 코멘트를 남긴다.
   - broad-impact micro-slice는 expanded/full perf 기록과 코멘트를 같은 iteration에 추가한다.

@@ -1026,6 +1026,51 @@ ZLINK_EXPORT int zlink_receiver_destroy (void **receiver_p);
 /*  SPOT PUB/SUB API                                                          */
 /******************************************************************************/
 
+/* Unified SPOT facade ----------------------------------------------------- */
+
+/** @brief Create a unified SPOT handle from an existing SPOT node. */
+ZLINK_EXPORT void *zlink_spot_new (void *node);
+
+/** @brief Destroy a unified SPOT handle. */
+ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
+
+/** @brief Publish a multipart message under a topic through a unified SPOT. */
+ZLINK_EXPORT int zlink_spot_publish (void *spot,
+                                     const char *topic_id,
+                                     zlink_msg_t *parts,
+                                     size_t part_count,
+                                     int flags);
+
+/** @brief Subscribe to an exact topic through a unified SPOT. */
+ZLINK_EXPORT int zlink_spot_subscribe (void *spot, const char *topic_id);
+
+/** @brief Subscribe to a prefix pattern through a unified SPOT. */
+ZLINK_EXPORT int zlink_spot_subscribe_pattern (void *spot,
+                                               const char *pattern);
+
+/** @brief Unsubscribe a topic or pattern through a unified SPOT. */
+ZLINK_EXPORT int zlink_spot_unsubscribe (void *spot,
+                                         const char *topic_id_or_pattern);
+
+/** @brief Receive a multipart message through a unified SPOT. */
+ZLINK_EXPORT int zlink_spot_recv (void *spot,
+                                  zlink_msg_t **parts,
+                                  size_t *part_count,
+                                  int flags,
+                                  char *topic_id_out,
+                                  size_t *topic_id_len);
+
+/* Unified SPOT socket roles */
+#define ZLINK_SPOT_SOCKET_PUB 1
+#define ZLINK_SPOT_SOCKET_SUB 2
+
+/** @brief Set a PUB/SUB socket option through a unified SPOT. */
+ZLINK_EXPORT int zlink_spot_setsockopt (void *spot,
+                                        int socket_role,
+                                        int option,
+                                        const void *optval,
+                                        size_t optvallen);
+
 /* SPOT Node --------------------------------------------------------------- */
 
 /** @brief Create a SPOT node. Manages PUB/SUB/DEALER sockets for topic messaging. */

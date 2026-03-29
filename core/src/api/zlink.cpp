@@ -174,6 +174,17 @@ struct socket_handle_t
     zlink::socket_base_t *socket;
 };
 
+struct spot_handle_t
+{
+    zlink::spot_node_t *node;
+    zlink::spot_pub_t *pub;
+    zlink::spot_sub_t *sub;
+    bool owns_node;
+    uint32_t tag;
+};
+
+static const uint32_t spot_handle_tag = 0x5a4f5401;
+
 static inline socket_handle_t as_socket_handle (void *s_)
 {
     socket_handle_t handle;
@@ -192,6 +203,49 @@ static inline socket_handle_t as_socket_handle (void *s_)
 
     handle.socket = s;
     return handle;
+}
+
+static inline spot_handle_t *as_spot_handle (void *spot_)
+{
+    if (!spot_) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    spot_handle_t *spot = static_cast<spot_handle_t *> (spot_);
+    if (spot->tag != spot_handle_tag) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    if (!spot->node || !spot->node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    return spot;
+}
+
+static int ensure_spot_pub (spot_handle_t *spot_)
+{
+    if (spot_->pub)
+        return 0;
+
+    spot_->pub = spot_->node->create_spot_pub ();
+    if (!spot_->pub)
+        return -1;
+    return 0;
+}
+
+static int ensure_spot_sub (spot_handle_t *spot_)
+{
+    if (spot_->sub)
+        return 0;
+
+    spot_->sub = spot_->node->create_spot_sub ();
+    if (!spot_->sub)
+        return -1;
+    return 0;
 }
 
 namespace
@@ -1195,6 +1249,155 @@ int zlink_receiver_destroy (void **receiver_p_)
     receiver->destroy ();
     delete receiver;
     return 0;
+}
+
+void *zlink_spot_new (void *node_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+    if (!spot) {
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    spot->node = node;
+    spot->pub = NULL;
+    spot->sub = NULL;
+    spot->owns_node = false;
+    spot->tag = spot_handle_tag;
+    return static_cast<void *> (spot);
+}
+
+int zlink_spot_destroy (void **spot_p_)
+{
+    if (!spot_p_ || !*spot_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    spot_handle_t *spot = as_spot_handle (*spot_p_);
+    if (!spot)
+        return -1;
+
+    if (spot->sub) {
+        spot->sub->destroy ();
+        delete spot->sub;
+        spot->sub = NULL;
+    }
+
+    if (spot->pub) {
+        spot->pub->destroy ();
+        delete spot->pub;
+        spot->pub = NULL;
+    }
+
+    if (spot->owns_node) {
+        spot->node->destroy ();
+        delete spot->node;
+        spot->node = NULL;
+    }
+
+    spot->tag = 0;
+    delete spot;
+    *spot_p_ = NULL;
+    return 0;
+}
+
+int zlink_spot_publish (void *spot_,
+                        const char *topic_id_,
+                        zlink_msg_t *parts_,
+                        size_t part_count_,
+                        int flags_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    if (ensure_spot_pub (spot) != 0)
+        return -1;
+    return spot->pub->publish (topic_id_, parts_, part_count_, flags_);
+}
+
+int zlink_spot_subscribe (void *spot_, const char *topic_id_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    if (ensure_spot_sub (spot) != 0)
+        return -1;
+    return spot->sub->subscribe (topic_id_);
+}
+
+int zlink_spot_subscribe_pattern (void *spot_, const char *pattern_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    if (ensure_spot_sub (spot) != 0)
+        return -1;
+    return spot->sub->subscribe_pattern (pattern_);
+}
+
+int zlink_spot_unsubscribe (void *spot_, const char *topic_id_or_pattern_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    if (ensure_spot_sub (spot) != 0)
+        return -1;
+    return spot->sub->unsubscribe (topic_id_or_pattern_);
+}
+
+int zlink_spot_recv (void *spot_,
+                     zlink_msg_t **parts_,
+                     size_t *part_count_,
+                     int flags_,
+                     char *topic_id_out_,
+                     size_t *topic_id_len_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+    if (ensure_spot_sub (spot) != 0)
+        return -1;
+    return spot->sub->recv (parts_, part_count_, flags_, topic_id_out_,
+                            topic_id_len_);
+}
+
+int zlink_spot_setsockopt (void *spot_,
+                           int socket_role_,
+                           int option_,
+                           const void *optval_,
+                           size_t optvallen_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return -1;
+
+    int node_socket_role = -1;
+    switch (socket_role_) {
+        case ZLINK_SPOT_SOCKET_PUB:
+            node_socket_role = ZLINK_SPOT_NODE_SOCKET_PUB;
+            break;
+        case ZLINK_SPOT_SOCKET_SUB:
+            node_socket_role = ZLINK_SPOT_NODE_SOCKET_SUB;
+            break;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+
+    return spot->node->set_socket_option (node_socket_role, option_, optval_,
+                                          optvallen_);
 }
 
 void *zlink_spot_node_new (void *ctx_)

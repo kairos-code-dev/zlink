@@ -64,6 +64,7 @@ set(tests
   routing-id/test_connect_rid_string_alias
   monitoring/test_monitor_enhanced
   discovery/test_service_discovery
+  spot/test_spot_unified_basic
   spot/test_spot_pubsub_scenario
   spot/test_spot_send_blocking_wakeup
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client

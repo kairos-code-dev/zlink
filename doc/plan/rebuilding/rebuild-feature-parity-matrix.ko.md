@@ -50,7 +50,7 @@ diff -u /home/hep7/project/kairos/zlink/core/include/zlink.h core/include/zlink.
 | Socket create/bind/connect/close | `/home/hep7/project/kairos/zlink/core/include/zlink.h` | | | | 미구현 | |
 | Message API / multipart API | `/home/hep7/project/kairos/zlink/core/include/zlink.h` | | | high | 미구현 | |
 | Poll / monitor / events | `/home/hep7/project/kairos/zlink/core/include/zlink.h` | | | medium | 미구현 | |
-| Discovery / registry / spot | `/home/hep7/project/kairos/zlink/core/include/zlink.h` | | | medium | 미구현 | |
+| Discovery / registry / spot | `/home/hep7/project/kairos/zlink/core/include/zlink.h` | `core/include/zlink.h`의 borrowed-node unified `zlink_spot_new/destroy`, `zlink_spot_publish`, `zlink_spot_subscribe`, `zlink_spot_subscribe_pattern`, `zlink_spot_unsubscribe`, `zlink_spot_recv`, `zlink_spot_setsockopt` | `core/tests/spot/test_spot_unified_basic.cpp`, `core/tests/spot/test_spot_pubsub_scenario.cpp`, `core/tests/spot/test_spot_send_blocking_wakeup.cpp` | medium | 진행중 | 최소 unified `spot` data-plane만 반영. canonical generic `zlink_publish()/zlink_subscribe()`, unified poller/send-ready/monitor parity, ctx-owning `zlink_spot_new()`는 미구현 |
 | TLS / transport / socket options | `/home/hep7/project/kairos/zlink/core/include/zlink.h` | | | high | 미구현 | |
 | Thread-safe / callback / lifecycle | `/home/hep7/project/kairos/zlink/core/include/zlink.h` | | | high | 미구현 | |
 
@@ -59,7 +59,7 @@ diff -u /home/hep7/project/kairos/zlink/core/include/zlink.h core/include/zlink.
 | 분류 | upstream 기준 | 현재 대응 테스트 | 구현 위치 | 성능 민감 | 상태 | 메모 |
 |---|---|---|---|---|---|---|
 | unittest lane | `/home/hep7/project/kairos/zlink/core/tests/unittest` | | | | 미구현 | |
-| integration lane | `/home/hep7/project/kairos/zlink/core/tests/integration` | | | | 미구현 | |
+| integration lane | `/home/hep7/project/kairos/zlink/core/tests/integration` | `ctest --test-dir core/build --output-on-failure -R "test_spot_unified_basic|test_spot_send_blocking_wakeup|test_spot_pubsub_scenario"` | `core/src/api/zlink.cpp`, `core/src/services/spot/*` | medium | 부분 | 이번 slice는 unified `spot` 최소 data-plane smoke만 반영. upstream integration 전체 parity는 미완료 |
 | e2e lane | `/home/hep7/project/kairos/zlink/core/tests/e2e` | | | | 미구현 | |
 | regression lane | `/home/hep7/project/kairos/zlink/core/tests` | | | | 미구현 | |
 | thread-safe stress/perf | `/home/hep7/project/kairos/zlink/core/tests` | | | high | 미구현 | |

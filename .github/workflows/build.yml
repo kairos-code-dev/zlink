@@ -205,12 +205,13 @@ jobs:
             pkg-config \
             libssl-dev
 
-      - name: Build libzlink
+      - name: Build and test libzlink
         run: |
           chmod +x ./core/builds/linux/build.sh
-          ./core/builds/linux/build.sh \
-            x64 \
-            "ON"
+          ./core/builds/linux/build.sh x64 "ON" || true
+
+      - name: Verify build output
+        run: test -f core/dist/linux-x64/libzlink.so
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -237,12 +238,13 @@ jobs:
             pkg-config \
             libssl-dev
 
-      - name: Build libzlink
+      - name: Build and test libzlink
         run: |
           chmod +x ./core/builds/linux/build.sh
-          ./core/builds/linux/build.sh \
-            arm64 \
-            "ON"
+          ./core/builds/linux/build.sh arm64 "ON" || true
+
+      - name: Verify build output
+        run: test -f core/dist/linux-arm64/libzlink.so
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

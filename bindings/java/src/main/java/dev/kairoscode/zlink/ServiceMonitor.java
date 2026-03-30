@@ -13,6 +13,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Receives service-layer monitor events from discovery, registry, or spot APIs. */
 public final class ServiceMonitor implements AutoCloseable {
@@ -71,6 +72,22 @@ public final class ServiceMonitor implements AutoCloseable {
             }
             return ServiceEvent.fromNative(event);
         }
+    }
+
+    /** Returns the next service event when one is ready. */
+    public Optional<ServiceEvent> tryRecv() {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment event = arena.allocate(NativeLayouts.SERVICE_EVENT_LAYOUT);
+            int rc = Native.tryServiceMonitorRecv(handle, event);
+            if (rc == 0) {
+                return Optional.of(ServiceEvent.fromNative(event));
+            }
+        }
+        int errno = Native.errno();
+        if (errno == Socket.ERRNO_EAGAIN || errno == Socket.ERRNO_EWOULDBLOCK_WIN)
+            return Optional.empty();
+        throw ZlinkException.fromLastError("zlink_try_service_monitor_recv");
     }
 
     /** Returns the current service monitor snapshot. */

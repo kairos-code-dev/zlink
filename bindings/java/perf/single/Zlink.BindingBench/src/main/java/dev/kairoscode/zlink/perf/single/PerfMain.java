@@ -1,0 +1,27 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package dev.kairoscode.zlink.perf.single;
+
+import dev.kairoscode.zlink.perf.PerfUtil;
+
+public final class PerfMain {
+    private PerfMain() {
+    }
+
+    public static void main(String[] args) {
+        PerfUtil.Config config = PerfUtil.parseSingleArgs(args);
+        if (!"callback".equalsIgnoreCase(config.recvMode())) {
+            throw new IllegalArgumentException("single suite supports only callback recv");
+        }
+        PerfUtil.Result result = switch (config.pattern()) {
+            case "PAIR" -> PerfPair.run(config);
+            case "PUBSUB" -> PerfPubSub.run(config);
+            case "DEALER_DEALER" -> PerfDealerDealer.run(config);
+            case "DEALER_ROUTER" -> PerfDealerRouter.run(config);
+            case "ROUTER_ROUTER" -> PerfRouterRouter.run(config);
+            case "SPOT" -> PerfSpot.run(config);
+            default -> throw new IllegalArgumentException("unsupported pattern: " + config.pattern());
+        };
+        System.out.println(result.toLine());
+    }
+}

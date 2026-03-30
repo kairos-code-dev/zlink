@@ -3,125 +3,296 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Zlink;
-using Zlink.Service;
 using static PerfRunner;
 
 internal static class PerfSpotClient
 {
     private const string Pattern = "SPOT";
-    private const string ServiceName = "perf-spot";
     private const uint ExpectedRunId = 1;
+    private const uint SpotMonitorEventError = 1u << 4;
+    private const uint SpotMonitorEventSubDeliveryReadyChanged = 1u << 19;
+    private const uint SpotReadyMonitorEvents = SpotMonitorEventError
+        | SpotMonitorEventSubDeliveryReadyChanged;
 
     internal static int Run(string transport, int size, string endpoint)
     {
         SpotClientConfig config = BuildConfig(transport, size);
+        PerfRecvMode recvMode = ResolveMultiRecvMode(Pattern);
 
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx);
-        var nodes = new List<SpotNode>(config.ClientCount);
-        var subscribers = new List<Spot>(config.ClientCount);
-        Discovery? discovery = null;
+        var slots = new List<SpotClientSlot>(config.ClientCount);
         try
         {
-            if (!TryParseSpotReadyEndpoint(endpoint, out _, out _,
-                    out string registryRouter))
+            if (!TryParseSpotReadyEndpoint(endpoint, out string serverEndpoint))
             {
                 Console.Error.WriteLine("multi_client_error:invalid_spot_ready_payload");
                 return 1;
             }
 
-            discovery = new Discovery(ctx, DiscoveryServiceType.Spot);
-            ConnectRegistryWithRetry(() => discovery.ConnectRegistry(
-                registryRouter));
-            if (!WaitUntil(() => discovery.ServiceAvailable(ServiceName)
-                    || discovery.ReceiverCount(ServiceName) > 0,
-                    Math.Max(5000, config.ConnectReadyTimeoutMs)))
-            {
-                Console.Error.WriteLine(
-                    "multi_client_error:spot_discovery_not_ready");
-                return 2;
-            }
-
             for (int i = 0; i < config.ClientCount; i++)
             {
-                var node = new SpotNode(ctx);
-                ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
-                ApplySpotNodeSubscriberOptions(node, config);
-                node.Bind(EndpointFor(transport, $"multi-spot-client-{i}"));
-                node.SetDiscovery(discovery, ServiceName);
-                var subscriber = new Spot(node);
-                subscriber.Subscribe("bench");
-                node.SetDiscovery(discovery, ServiceName);
-                nodes.Add(node);
-                subscribers.Add(subscriber);
+                SpotClientSlot slot = CreateSlot(ctx, config, recvMode,
+                    serverEndpoint);
+                slots.Add(slot);
             }
 
-            List<Spot> activeSubscribers = subscribers;
-            if (activeSubscribers.Count == 0)
+            if (slots.Count == 0)
             {
                 Console.Error.WriteLine("multi_client_error:no_ready_connections");
                 return 2;
             }
-            if (!WaitSubPeers(nodes, config.ConnectReadyTimeoutMs))
+
+            if (!WaitForSlotsReady(slots, config.ConnectReadyTimeoutMs))
             {
-                Console.Error.WriteLine("multi_client_error:no_sub_peers");
+                Console.Error.WriteLine("multi_client_error:no_ready_connections");
                 return 2;
             }
-            if (config.SettleMs > 0)
-                Thread.Sleep(config.SettleMs);
 
-            var recv = new byte[Math.Max(256, config.Size)];
-            var phaseState = new SpotClientPhaseState(config.LatencySampleCap);
-            if (!WaitForMsgSizeStart(activeSubscribers, recv, config.Size,
-                    config.ConnectReadyTimeoutMs))
-            {
-                Console.Error.WriteLine("multi_client_error:no_msg_size_start");
-                return 2;
-            }
-            SpotClientActiveStats activeStats = RunActivePhase(activeSubscribers,
-                recv, config, ref phaseState);
-            RunDrainPhase(config);
-            SpotClientResult result = ComputeResult(activeStats,
-                phaseState.LatencySamples, config.DurationSeconds);
-
-            PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
-                result.LatencyUs, result.LatencyP95Us, result.LatencyP99Us);
-            Console.Out.Flush();
-            Console.Error.Flush();
-            Environment.Exit(0);
-            return 0;
+            if (recvMode == PerfRecvMode.Callback)
+                return RunCallbackMode(slots, config);
+            return RunRecvMode(slots, config);
         }
         finally
         {
-            TryDisposeQuietly(discovery);
-            DisposeAllQuietly(nodes);
-            DisposeAllQuietly(subscribers);
+            DisposeSlots(slots);
         }
     }
 
-    private static SpotClientConfig BuildConfig(string transport, int size)
+    private static int RunRecvMode(List<SpotClientSlot> slots,
+        SpotClientConfig config)
     {
-        int resolvedSize = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
-        if (resolvedSize >= 65536 && warmupSeconds > 0)
-            warmupSeconds = 0;
-        int drainMs = ResolveMultiDrainMs(Pattern);
+        var recv = new byte[Math.Max(256, config.Size)];
+        var state = new SpotClientPhaseState(config.LatencySampleCap);
+        Console.WriteLine($"CLIENT_READY,{config.Size}");
+        if (!WaitForMsgSizeStart(slots, recv, config.Size,
+                config.ConnectReadyTimeoutMs))
+        {
+            Console.Error.WriteLine("multi_client_error:no_msg_size_start");
+            return 2;
+        }
 
-        return new SpotClientConfig(
-            transport,
-            resolvedSize,
-            ResolveMultiDurationSeconds(),
-            ResolveMultiSettleMs(),
-            drainMs,
-            ResolveMultiSizeTransitionDrainMs(),
-            ResolveMultiLatencySampleCap(),
-            ResolveMultiClients(Pattern),
-            ResolveMultiConnectReadyTimeoutMs());
+        SpotClientActiveStats activeStats = RunActivePhase(slots, recv, config,
+            ref state);
+        SpotClientResult result = ComputeResult(activeStats, state.LatencySamples,
+            config.DurationSeconds);
+        PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
+            result.LatencyUs, result.LatencyP95Us, result.LatencyP99Us);
+        return 0;
+    }
+
+    private static int RunCallbackMode(List<SpotClientSlot> slots,
+        SpotClientConfig config)
+    {
+        Console.WriteLine($"CLIENT_READY,{config.Size}");
+        long startDeadline = DeadlineTicksFromMilliseconds(
+            config.ConnectReadyTimeoutMs);
+        var spin = new SpinWait();
+        while (Stopwatch.GetTimestamp() < startDeadline)
+        {
+            bool sawStart = false;
+            bool failed = false;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                DrainCallbackEvents(slots[i], config.Size, collectActive: false);
+                if (slots[i].CallbackState!.Fatal)
+                    failed = true;
+                if (slots[i].CallbackState!.SawAnyPhase)
+                    sawStart = true;
+            }
+
+            if (failed)
+            {
+                Console.Error.WriteLine("multi_client_error:spot_callback_failed");
+                return 2;
+            }
+            if (sawStart)
+                break;
+            spin.SpinOnce();
+        }
+
+        bool ready = false;
+        for (int i = 0; i < slots.Count; i++)
+            ready |= slots[i].CallbackState!.SawAnyPhase;
+        if (!ready)
+        {
+            Console.Error.WriteLine("multi_client_error:no_msg_size_start");
+            return 2;
+        }
+
+        long benchStartTicks = Stopwatch.GetTimestamp();
+        long benchDeadlineTicks = benchStartTicks
+            + (long)Math.Max(1, config.DurationSeconds) * Stopwatch.Frequency;
+        spin = new SpinWait();
+        while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
+        {
+            bool progressed = false;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                progressed |= DrainCallbackEvents(slots[i], config.Size,
+                    collectActive: true);
+                if (slots[i].CallbackState!.Fatal)
+                {
+                    Console.Error.WriteLine("multi_client_error:spot_callback_failed");
+                    return 2;
+                }
+            }
+
+            if (!progressed)
+                spin.SpinOnce();
+            else
+                spin.Reset();
+        }
+
+        for (int i = 0; i < slots.Count; i++)
+            _ = DrainCallbackEvents(slots[i], config.Size, collectActive: true);
+
+        var samples = new List<double>(Math.Max(0, config.LatencySampleCap));
+        long measureCount = 0;
+        for (int i = 0; i < slots.Count; i++)
+        {
+            SpotCallbackState state = slots[i].CallbackState!;
+            measureCount += state.MeasureCount;
+            state.AppendSamples(samples);
+        }
+
+        var activeStats = new SpotClientActiveStats(measureCount,
+            benchStartTicks, Stopwatch.GetTimestamp());
+        SpotClientResult result = ComputeResult(activeStats, samples,
+            config.DurationSeconds);
+        PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
+            result.LatencyUs, result.LatencyP95Us, result.LatencyP99Us);
+        return 0;
+    }
+
+    private static SpotClientSlot CreateSlot(Context ctx, SpotClientConfig config,
+        PerfRecvMode recvMode, string serverEndpoint)
+    {
+        var node = new SpotNode(ctx);
+        try
+        {
+            ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
+            ApplySpotNodeSubscriberOptions(node);
+            var subscriber = new Spot(node);
+            try
+            {
+                ServiceMonitor monitor = subscriber.OpenMonitor(
+                    SpotReadyMonitorEvents);
+                try
+                {
+                    node.ConnectPeer(serverEndpoint);
+                    subscriber.SetSubscription("bench");
+                    if (recvMode == PerfRecvMode.Callback)
+                    {
+                        var callbackState = new SpotCallbackState(
+                            config.LatencySampleCap);
+                        subscriber.SubscribeHandler((_, parts) =>
+                        {
+                            callbackState.OnMessage(parts);
+                        });
+                        return new SpotClientSlot(node, subscriber, monitor,
+                            callbackState);
+                    }
+
+                    return new SpotClientSlot(node, subscriber, monitor, null);
+                }
+                catch
+                {
+                    monitor.Dispose();
+                    throw;
+                }
+            }
+            catch
+            {
+                subscriber.Dispose();
+                throw;
+            }
+        }
+        catch
+        {
+            node.Dispose();
+            throw;
+        }
+    }
+
+    private static bool WaitForSlotsReady(List<SpotClientSlot> slots, int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        var spin = new SpinWait();
+        for (int i = 0; i < slots.Count; i++)
+        {
+            ServiceMonitor? monitor = slots[i].Monitor;
+            if (monitor == null)
+                return false;
+
+            while (Stopwatch.GetTimestamp() < deadlineTicks)
+            {
+                ServiceMonitorEvent? evt = monitor.TryReceive();
+                if (evt == null)
+                {
+                    spin.SpinOnce();
+                    continue;
+                }
+                spin.Reset();
+                if (evt.Value.EventType == SpotMonitorEventError)
+                    return false;
+                if (evt.Value.EventType == SpotMonitorEventSubDeliveryReadyChanged
+                    && evt.Value.Value > 0)
+                {
+                    monitor.Dispose();
+                    slots[i].Monitor = null;
+                    break;
+                }
+            }
+
+            if (slots[i].Monitor != null)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool WaitForMsgSizeStart(List<SpotClientSlot> slots, byte[] recv,
+        int msgSize, int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        var spin = new SpinWait();
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            bool progressed = false;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                while (true)
+                {
+                    int n = ReceiveSpotPayload(slots[i].Subscriber, recv.AsSpan());
+                    if (n <= 0)
+                        break;
+                    progressed = true;
+                    if (!TryDecodeMetricHeader(recv.AsSpan(0, n),
+                            out PerfMetricHeader header))
+                    {
+                        continue;
+                    }
+                    if (header.RunId == ExpectedRunId
+                        && header.MsgSize == (uint)msgSize)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (!progressed)
+                spin.SpinOnce();
+            else
+                spin.Reset();
+        }
+
+        return false;
     }
 
     private static SpotClientActiveStats RunActivePhase(
-        List<Spot> activeSubscribers, byte[] recv,
-        SpotClientConfig config, ref SpotClientPhaseState state)
+        List<SpotClientSlot> slots, byte[] recv, SpotClientConfig config,
+        ref SpotClientPhaseState state)
     {
         List<double> latencySamples = state.LatencySamples;
         long sampleSeen = state.SampleSeen;
@@ -131,42 +302,26 @@ internal static class PerfSpotClient
         long benchEndTicks = benchStartTicks;
         long benchDeadlineTicks = benchStartTicks
             + (long)Math.Max(1, config.DurationSeconds) * Stopwatch.Frequency;
-        using var poller = new Poller();
-        var events = new PollEvent[Math.Max(1, activeSubscribers.Count)];
-        for (int i = 0; i < activeSubscribers.Count; i++)
-            poller.AddSpotSub(activeSubscribers[i], PollEvents.PollIn, i);
+        var spin = new SpinWait();
+
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
-            int written = poller.Wait(events.AsSpan(),
-                RemainingMilliseconds(benchDeadlineTicks), out int totalReady);
-            if (totalReady <= 0)
+            bool sawData = false;
+            for (int i = 0; i < slots.Count; i++)
             {
-                continue;
-            }
-
-            for (int i = 0; i < written; i++)
-            {
-                if (events[i].Tag is not int socketIndex)
-                    continue;
-
                 while (true)
                 {
-                    int n = ReceiveSpotPayload(activeSubscribers[socketIndex],
-                        recv.AsSpan());
+                    int n = ReceiveSpotPayload(slots[i].Subscriber, recv.AsSpan());
                     if (n <= 0)
                         break;
 
+                    sawData = true;
                     long endTicks = Stopwatch.GetTimestamp();
-                    if (endTicks >= benchDeadlineTicks)
-                        break;
-
                     if (TryDecodeMetricHeader(recv.AsSpan(0, n),
                             out PerfMetricHeader header)
                         && header.RunId == ExpectedRunId
                         && header.MsgSize == (uint)config.Size
-                        && (header.Phase == (uint)PerfPhase.Active
-                            || header.Phase == (uint)PerfPhase.Drain
-                            || header.Phase == (uint)PerfPhase.Warmup))
+                        && header.Phase == (uint)PerfPhase.Active)
                     {
                         measureCount++;
                         benchEndTicks = endTicks;
@@ -181,6 +336,11 @@ internal static class PerfSpotClient
                     }
                 }
             }
+
+            if (!sawData)
+                spin.SpinOnce();
+            else
+                spin.Reset();
         }
 
         if (benchEndTicks <= benchStartTicks)
@@ -192,12 +352,73 @@ internal static class PerfSpotClient
             benchEndTicks);
     }
 
-    private static void RunDrainPhase(SpotClientConfig config)
+    private static bool DrainCallbackEvents(SpotClientSlot slot, int expectedSize,
+        bool collectActive)
     {
-        if (config.DrainMs > 0)
-            Thread.Sleep(config.DrainMs);
-        if (config.SizeTransitionDrainMs > 0)
-            Thread.Sleep(config.SizeTransitionDrainMs);
+        bool progressed = false;
+        SpotCallbackState state = slot.CallbackState!;
+        while (state.TryDequeue(out SpotMetricEvent evt))
+        {
+            progressed = true;
+            if (evt.RunId != ExpectedRunId || evt.MsgSize != (uint)expectedSize)
+                continue;
+
+            state.SawAnyPhase = true;
+            if (!collectActive || evt.Phase != (uint)PerfPhase.Active)
+                continue;
+
+            state.MeasureCount++;
+            if (evt.SentTsUs == 0)
+                continue;
+            ulong nowUs = EpochUs();
+            if (nowUs < evt.SentTsUs)
+                continue;
+            state.AddSample(nowUs - evt.SentTsUs);
+        }
+
+        return progressed;
+    }
+
+    private static int ReceiveSpotPayload(Spot subscriber, Span<byte> payloadBuffer)
+    {
+        try
+        {
+            Subscribed? subscribed = subscriber.TrySubscribe();
+            if (subscribed == null)
+                return 0;
+            return CopySubscribedPayload(subscribed, payloadBuffer);
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+        {
+            return 0;
+        }
+    }
+
+    private static int CopySubscribedPayload(Subscribed subscribed,
+        Span<byte> payloadBuffer)
+    {
+        try
+        {
+            if (!subscribed.HasSinglePart)
+                return 0;
+            return subscribed.SinglePartOrThrow().CopyTo(payloadBuffer);
+        }
+        finally
+        {
+            foreach (Message part in subscribed.Parts)
+                part.Dispose();
+        }
+    }
+
+    private static SpotClientConfig BuildConfig(string transport, int size)
+    {
+        return new SpotClientConfig(
+            transport,
+            Math.Max(1, size),
+            ResolveMultiDurationSeconds(),
+            ResolveMultiLatencySampleCap(),
+            ResolveMultiClients(Pattern),
+            ResolveMultiConnectReadyTimeoutMs());
     }
 
     private static SpotClientResult ComputeResult(SpotClientActiveStats stats,
@@ -217,104 +438,8 @@ internal static class PerfSpotClient
             latencyP99Us);
     }
 
-    private static int ReceiveSpotPayload(Spot subscriber,
-        Span<byte> payloadBuffer)
+    private static void ApplySpotNodeSubscriberOptions(SpotNode node)
     {
-        try
-        {
-            return subscriber.ReceiveSinglePayload(payloadBuffer,
-                ReceiveFlags.DontWait);
-        }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
-        {
-            return 0;
-        }
-    }
-
-    private static bool WaitSubPeers(List<SpotNode> nodes, int timeoutMs)
-    {
-        if (nodes.Count == 0)
-            return false;
-
-        long deadlineTicks = DeadlineTicksFromMilliseconds(
-            Math.Max(5000, timeoutMs * 3));
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            int ready = 0;
-            for (int i = 0; i < nodes.Count; i++)
-            {
-                try
-                {
-                    if (nodes[i].GetSubPeers().Length > 0)
-                        ready++;
-                }
-                catch (ZlinkException)
-                {
-                    return false;
-                }
-            }
-
-            if (ready == nodes.Count)
-                return true;
-            Thread.Sleep(1);
-        }
-
-        return false;
-    }
-
-    private static bool WaitForMsgSizeStart(List<Spot> subscribers,
-        byte[] recv, int msgSize, int timeoutMs)
-    {
-        using var poller = new Poller();
-        var events = new PollEvent[Math.Max(1, subscribers.Count)];
-        for (int i = 0; i < subscribers.Count; i++)
-            poller.AddSpotSub(subscribers[i], PollEvents.PollIn, i);
-
-        long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(5000,
-            timeoutMs));
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            int written = poller.Wait(events.AsSpan(),
-                RemainingMilliseconds(deadlineTicks), out int totalReady);
-            if (totalReady <= 0)
-            {
-                continue;
-            }
-
-            for (int i = 0; i < written; i++)
-            {
-                if (events[i].Tag is not int socketIndex)
-                    continue;
-
-                while (true)
-                {
-                    int n = ReceiveSpotPayload(subscribers[socketIndex],
-                        recv.AsSpan());
-                    if (n <= 0)
-                        break;
-
-                    if (!TryDecodeMetricHeader(recv.AsSpan(0, n),
-                            out PerfMetricHeader header))
-                    {
-                        continue;
-                    }
-
-                    if (header.RunId == ExpectedRunId
-                        && header.MsgSize == (uint)msgSize)
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static void ApplySpotNodeSubscriberOptions(SpotNode node,
-        SpotClientConfig config)
-    {
-        _ = config;
         int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", Pattern);
         int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", Pattern);
         int rcvTimeo = ResolveMultiRcvTimeoutMs();
@@ -330,32 +455,8 @@ internal static class PerfSpotClient
             SocketOptions.Linger, 0);
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
             SocketOptions.Linger, 0);
-    }
-
-    private static void ConnectRegistryWithRetry(Action connect)
-    {
-        Exception? last = null;
-        if (WaitUntil(() =>
-            {
-                try
-                {
-                    connect();
-                    return true;
-                }
-                catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                                || IsInterrupted(ex.Errno))
-                {
-                    last = ex;
-                    return false;
-                }
-            }, 5000, 20))
-        {
-            return;
-        }
-
-        if (last != null)
-            throw last;
-        throw new TimeoutException("registry connect timeout");
+        TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
+            SocketOptions.SndHwm, sndHwm);
     }
 
     private static void TrySetSpotNodeSocketOption(SpotNode node,
@@ -379,53 +480,32 @@ internal static class PerfSpotClient
     }
 
     private static bool TryParseSpotReadyEndpoint(string endpoint,
-        out string serverEndpoint, out string registryPub,
-        out string registryRouter)
+        out string serverEndpoint)
     {
         serverEndpoint = string.Empty;
-        registryPub = string.Empty;
-        registryRouter = string.Empty;
         if (string.IsNullOrWhiteSpace(endpoint))
             return false;
 
-        string[] parts = endpoint.Split('|', 3, StringSplitOptions.TrimEntries);
-        if (parts.Length != 3)
-            return false;
-
-        serverEndpoint = parts[0];
-        registryPub = parts[1];
-        registryRouter = parts[2];
-        return !string.IsNullOrWhiteSpace(serverEndpoint)
-               && !string.IsNullOrWhiteSpace(registryPub)
-               && !string.IsNullOrWhiteSpace(registryRouter);
+        string[] parts = endpoint.Split('|', StringSplitOptions.TrimEntries);
+        serverEndpoint = parts.Length == 0 ? string.Empty : parts[0];
+        return !string.IsNullOrWhiteSpace(serverEndpoint);
     }
 
-    private static int RemainingMilliseconds(long deadlineTicks)
+    private static void DisposeSlots(List<SpotClientSlot> slots)
     {
-        long nowTicks = Stopwatch.GetTimestamp();
-        if (deadlineTicks <= nowTicks)
-            return 0;
-
-        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
-            / Stopwatch.Frequency;
-        if (remainingMs >= int.MaxValue)
-            return int.MaxValue;
-        return (int)Math.Ceiling(remainingMs);
+        for (int i = slots.Count - 1; i >= 0; i--)
+            slots[i].Dispose();
     }
 
     private readonly struct SpotClientConfig
     {
         internal SpotClientConfig(string transport, int size,
-            int durationSeconds, int settleMs, int drainMs,
-            int sizeTransitionDrainMs, int latencySampleCap, int clientCount,
+            int durationSeconds, int latencySampleCap, int clientCount,
             int connectReadyTimeoutMs)
         {
             Transport = transport;
             Size = size;
             DurationSeconds = durationSeconds;
-            SettleMs = settleMs;
-            DrainMs = drainMs;
-            SizeTransitionDrainMs = sizeTransitionDrainMs;
             LatencySampleCap = latencySampleCap;
             ClientCount = clientCount;
             ConnectReadyTimeoutMs = connectReadyTimeoutMs;
@@ -434,9 +514,6 @@ internal static class PerfSpotClient
         internal string Transport { get; }
         internal int Size { get; }
         internal int DurationSeconds { get; }
-        internal int SettleMs { get; }
-        internal int DrainMs { get; }
-        internal int SizeTransitionDrainMs { get; }
         internal int LatencySampleCap { get; }
         internal int ClientCount { get; }
         internal int ConnectReadyTimeoutMs { get; }
@@ -478,15 +555,139 @@ internal static class PerfSpotClient
     {
         internal SpotClientPhaseState(int latencySampleCap)
         {
-            Index = 0;
-            LatencySamples = new List<double>(latencySampleCap);
+            LatencySamples = new List<double>(Math.Max(0, latencySampleCap));
             SampleSeen = 0;
-            Rng = 0xA341316Cu;
+            Rng = 0xC0FFEEu;
         }
 
-        internal int Index;
         internal List<double> LatencySamples;
         internal long SampleSeen;
         internal uint Rng;
+    }
+
+    private readonly struct SpotMetricEvent
+    {
+        internal SpotMetricEvent(uint runId, uint phase, uint msgSize,
+            ulong sentTsUs)
+        {
+            RunId = runId;
+            Phase = phase;
+            MsgSize = msgSize;
+            SentTsUs = sentTsUs;
+        }
+
+        internal uint RunId { get; }
+        internal uint Phase { get; }
+        internal uint MsgSize { get; }
+        internal ulong SentTsUs { get; }
+    }
+
+    private sealed class SpotCallbackState
+    {
+        private readonly SpotMetricEvent[] _events;
+        private readonly double[] _samples;
+        private int _writeIndex;
+        private int _readIndex;
+        private int _sampleWriteIndex;
+
+        internal SpotCallbackState(int latencySampleCap)
+        {
+            _events = new SpotMetricEvent[4096];
+            _samples = new double[Math.Max(1, latencySampleCap)];
+            _writeIndex = 0;
+            _readIndex = 0;
+            _sampleWriteIndex = 0;
+            SawAnyPhase = false;
+            Fatal = false;
+            MeasureCount = 0;
+        }
+
+        internal bool SawAnyPhase { get; set; }
+        internal bool Fatal { get; private set; }
+        internal long MeasureCount { get; set; }
+
+        internal void OnMessage(Message[] parts)
+        {
+            try
+            {
+                if (parts.Length != 1)
+                    return;
+                if (!TryDecodeMetricHeader(parts[0].AsReadOnlySpan(),
+                        out PerfMetricHeader header))
+                {
+                    return;
+                }
+
+                int write = _writeIndex;
+                int next = (write + 1) % _events.Length;
+                if (next == Volatile.Read(ref _readIndex))
+                {
+                    Fatal = true;
+                    return;
+                }
+                _events[write] = new SpotMetricEvent(header.RunId, header.Phase,
+                    header.MsgSize, header.SentTsUs);
+                Volatile.Write(ref _writeIndex, next);
+            }
+            finally
+            {
+                for (int i = 0; i < parts.Length; i++)
+                    parts[i].Dispose();
+            }
+        }
+
+        internal bool TryDequeue(out SpotMetricEvent evt)
+        {
+            int read = _readIndex;
+            if (read == Volatile.Read(ref _writeIndex))
+            {
+                evt = default;
+                return false;
+            }
+
+            evt = _events[read];
+            Volatile.Write(ref _readIndex, (read + 1) % _events.Length);
+            return true;
+        }
+
+        internal void AddSample(double latencyUs)
+        {
+            int index = _sampleWriteIndex;
+            if ((uint)index >= (uint)_samples.Length)
+                return;
+            _samples[index] = latencyUs;
+            _sampleWriteIndex = index + 1;
+        }
+
+        internal void AppendSamples(List<double> destination)
+        {
+            int count = Math.Min(_sampleWriteIndex, _samples.Length);
+            for (int i = 0; i < count; i++)
+                destination.Add(_samples[i]);
+        }
+    }
+
+    private sealed class SpotClientSlot : IDisposable
+    {
+        internal SpotClientSlot(SpotNode node, Spot subscriber,
+            ServiceMonitor monitor, SpotCallbackState? callbackState)
+        {
+            Node = node;
+            Subscriber = subscriber;
+            Monitor = monitor;
+            CallbackState = callbackState;
+        }
+
+        internal SpotNode Node { get; }
+        internal Spot Subscriber { get; }
+        internal ServiceMonitor? Monitor { get; set; }
+        internal SpotCallbackState? CallbackState { get; }
+
+        public void Dispose()
+        {
+            Monitor?.Dispose();
+            Subscriber.Dispose();
+            Node.Dispose();
+        }
     }
 }

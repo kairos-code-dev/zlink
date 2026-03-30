@@ -7,16 +7,16 @@ namespace {
 void test_probe_router_router ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::router);
-    zlink::socket_t client (ctx, zlink::socket_type::router);
+    zlink::router_socket_t server (ctx);
+    zlink::router_socket_t client (ctx);
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "probe-router-router");
     assert (server.bind (endpoint) == 0);
 
-    assert (client.set (zlink::socket_option::routing_id, "X", 1) == 0);
+    assert (client.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
     const int probe = 1;
-    assert (client.set (zlink::socket_option::probe_router, probe) == 0);
+    assert (client.set_option (zlink::socket_option::probe_router, probe) == 0);
     assert (client.connect (endpoint) == 0);
 
     recv_string_expect_success (server, "X");
@@ -36,16 +36,16 @@ void test_probe_router_router ()
 void test_probe_router_dealer ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::router);
-    zlink::socket_t client (ctx, zlink::socket_type::dealer);
+    zlink::router_socket_t server (ctx);
+    zlink::dealer_socket_t client (ctx);
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "probe-router-dealer");
     assert (server.bind (endpoint) == 0);
 
-    assert (client.set (zlink::socket_option::routing_id, "X", 1) == 0);
+    assert (client.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
     const int probe = 1;
-    assert (client.set (zlink::socket_option::probe_router, probe) == 0);
+    assert (client.set_option (zlink::socket_option::probe_router, probe) == 0);
     assert (client.connect (endpoint) == 0);
 
     recv_string_expect_success (server, "X");

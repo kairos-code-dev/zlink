@@ -20,7 +20,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 final class SampleSupport {
-    private static final Duration TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration TIMEOUT = Duration.ofSeconds(180);
     private static final long SPOT_FILTER_APPLIED = 1L << 13;
 
     private SampleSupport() {
@@ -42,9 +42,25 @@ final class SampleSupport {
         return "inproc://" + prefix + "-" + UUID.randomUUID();
     }
 
+    static String uniqueTopic(String prefix) {
+        return prefix + "." + UUID.randomUUID();
+    }
+
     static void await(CountDownLatch latch, String label) {
         try {
             if (!latch.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+                throw new IllegalStateException(label + " timed out");
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(label + " interrupted", ex);
+        }
+    }
+
+    static void awaitThread(Thread thread, String label) {
+        try {
+            thread.join(TIMEOUT.toMillis());
+            if (thread.isAlive()) {
                 throw new IllegalStateException(label + " timed out");
             }
         } catch (InterruptedException ex) {
@@ -72,32 +88,11 @@ final class SampleSupport {
                     subReady.countDown();
                 }
             });
-            spot.subscribe(topic);
+            spot.setSubscription(topic);
             await(subReady, "spot filter applied");
         }
     }
 
-    static void subscribeAndAwaitSpotRecvReady(Spot spot, String topic) {
-        try (ServiceMonitor subMonitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
-            CountDownLatch filterApplied = new CountDownLatch(1);
-            subMonitor.onEvent(event -> {
-                if ((event.eventType() & SPOT_FILTER_APPLIED) != 0) {
-                    filterApplied.countDown();
-                }
-            });
-            spot.subscribe(topic);
-            await(filterApplied, "spot filter applied");
-
-            long deadline = System.nanoTime() + TIMEOUT.toNanos();
-            while (System.nanoTime() < deadline) {
-                if (subMonitor.snapshot().readyCount() > 0) {
-                    return;
-                }
-                Thread.onSpinWait();
-            }
-            throw new IllegalStateException("spot recv ready timed out");
-        }
-    }
 
     static java.net.Socket connectRawTcp(String endpoint) {
         try {

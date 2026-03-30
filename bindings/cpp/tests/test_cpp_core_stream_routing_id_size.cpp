@@ -143,18 +143,17 @@ int main ()
     g_payload_ok.store (0, std::memory_order_release);
 
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::stream);
+    zlink::stream_socket_t server (ctx);
     const int zero = 0;
-    assert (server.set (zlink::socket_option::linger, zero) == 0);
+    assert (server.set_option (zlink::socket_option::linger, zero) == 0);
 
     assert (server.stream_attach (&on_stream_packet) == 0);
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     const std::string endpoint = bound_endpoint (server);
 
-    zlink::socket_t monitor =
-      server.monitor_open (zlink::monitor_event::connection_ready);
-    assert (monitor.set (zlink::socket_option::linger, zero) == 0);
+    zlink::monitor_handle_t monitor =
+      server.monitor_handle (zlink::monitor_event::connection_ready);
 
     const int client_fd = connect_raw_tcp (endpoint.c_str ());
     assert (client_fd >= 0);

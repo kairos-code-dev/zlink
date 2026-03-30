@@ -11,13 +11,12 @@ def main():
                 dealer.connect(endpoint)
 
                 dealer.send(b"ping")
-                with router.recv_message() as request:
-                    print(request.routing_id, request.to_bytes())
-                    router.send(request.routing_id, zlink.SendFlag.SNDMORE)
-                router.send(b"pong")
+                with router.recv() as request:
+                    print(request.routing_id, request.to_bytes_list())
+                    router.send_to(request.routing_id, b"pong")
 
-                with dealer.recv_message() as response:
-                    print(response.to_bytes())
+                with dealer.recv() as response:
+                    print(response.to_bytes_list())
 
 
 if __name__ == "__main__":

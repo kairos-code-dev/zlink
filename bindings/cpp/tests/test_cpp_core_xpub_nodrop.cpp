@@ -5,26 +5,26 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t pub (ctx, zlink::socket_type::xpub);
-    zlink::socket_t sub (ctx, zlink::socket_type::sub);
+    zlink::xpub_socket_t pub (ctx);
+    zlink::sub_socket_t sub (ctx);
 
     const int hwm = 64;
     const int nodrop = 1;
     const int rcvtimeo = 50;
     const int zero = 0;
 
-    assert (pub.set (zlink::socket_option::linger, zero) == 0);
-    assert (sub.set (zlink::socket_option::linger, zero) == 0);
+    assert (pub.set_option (zlink::socket_option::linger, zero) == 0);
+    assert (sub.set_option (zlink::socket_option::linger, zero) == 0);
 
-    assert (pub.set (zlink::socket_option::sndhwm, hwm) == 0);
-    assert (pub.set (zlink::socket_option::xpub_nodrop, nodrop) == 0);
+    assert (pub.set_option (zlink::socket_option::sndhwm, hwm) == 0);
+    assert (pub.set_option (zlink::socket_option::xpub_nodrop, nodrop) == 0);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-xpub-nodrop-", "ep");
     assert (pub.bind (endpoint) == 0);
 
     assert (sub.connect (endpoint) == 0);
-    assert (sub.set (zlink::socket_option::subscribe, "", 0) == 0);
-    assert (sub.set (zlink::socket_option::rcvtimeo, rcvtimeo) == 0);
+    assert (sub.set_option (zlink::socket_option::subscribe, "", 0) == 0);
+    assert (sub.set_option (zlink::socket_option::rcvtimeo, rcvtimeo) == 0);
 
     char sub_cmd[8];
     assert (recv_with_timeout (pub, sub_cmd, sizeof (sub_cmd), 2000) >= 1);

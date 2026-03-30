@@ -26,28 +26,14 @@ public abstract class SubscriberSocketBase : SocketBase
         Kernel.UnsetSubscription(topicOrPattern);
     }
 
-    public void Subscribe(out string topic, out Message message,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public Subscribed Subscribe()
     {
-        Kernel.Subscribe(out topic, out message, flags);
+        return Kernel.Subscribe();
     }
 
-    public void Subscribe(out string topic, out Message[] parts,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public Subscribed? TrySubscribe()
     {
-        Kernel.Subscribe(out topic, out parts, flags);
-    }
-
-    public void Subscribe(out string routingId, out string topic,
-        out Message message, ReceiveFlags flags = ReceiveFlags.None)
-    {
-        Kernel.Subscribe(out routingId, out topic, out message, flags);
-    }
-
-    public void Subscribe(out string routingId, out string topic,
-        out Message[] parts, ReceiveFlags flags = ReceiveFlags.None)
-    {
-        Kernel.Subscribe(out routingId, out topic, out parts, flags);
+        return Kernel.TrySubscribe();
     }
 
     public void SubscribeHandler(SocketSubscribeHandler handler)

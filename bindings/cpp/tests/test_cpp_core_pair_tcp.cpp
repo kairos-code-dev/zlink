@@ -5,8 +5,8 @@ namespace {
 void test_pair_tcp_regular ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    zlink::socket_t client (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     const std::string endpoint = bound_endpoint (server);
@@ -18,8 +18,8 @@ void test_pair_tcp_regular ()
 void test_pair_tcp_connect_by_name ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    zlink::socket_t client (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     const std::string endpoint = bound_endpoint (server);

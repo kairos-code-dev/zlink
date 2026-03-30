@@ -23,11 +23,11 @@ class MultipartScenarioTest(unittest.TestCase):
                 self.assertTrue(
                     wait_for_socket_event(b, zlink.PollEvent.POLLOUT, 2000)
                 )
-                b.send_multipart([b"a", b"b"])
+                b.send([b"a", b"b"])
                 self.assertTrue(
                     wait_for_socket_event(a, zlink.PollEvent.POLLIN, 2000)
                 )
-                with a.recv_multipart() as received:
+                with a.recv() as received:
                     self.assertEqual(received.to_bytes_list(), [b"a", b"b"])
                 a.close()
                 b.close()

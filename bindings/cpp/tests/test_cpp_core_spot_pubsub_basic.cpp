@@ -59,7 +59,7 @@ static void test_spot_peer_pubsub ()
 
         std::vector<zlink::message_t> parts;
         parts.push_back (make_msg ("pong", 4));
-        assert (spot_a.publish ("peer:topic", parts) == 0);
+        spot_a.publish ("peer:topic", parts);
 
         std::vector<zlink::message_t> recv_parts;
         std::string topic;
@@ -92,7 +92,7 @@ static void test_spot_multipart_peer_pubsub ()
     std::vector<zlink::message_t> parts;
     parts.push_back (make_msg ("one", 3));
     parts.push_back (make_msg ("two", 3));
-    assert (spot_a.publish ("mp:topic", parts) == 0);
+    spot_a.publish ("mp:topic", parts);
 
     std::vector<zlink::message_t> recv_parts;
     std::string topic;

@@ -2,8 +2,6 @@
 #ifndef ZLINK_CPP_RUNTIME_HPP_INCLUDED
 #define ZLINK_CPP_RUNTIME_HPP_INCLUDED
 
-#include "socket.hpp"
-
 namespace zlink
 {
 
@@ -55,9 +53,10 @@ inline void sleep (int seconds_)
  * @param capture_ Optional capture socket.
  * @return 0 on success, -1 on failure.
  */
-inline int proxy (socket_t &frontend_,
-                  socket_t &backend_,
-                  socket_t *capture_ = NULL)
+template<typename FrontendT, typename BackendT, typename CaptureT>
+inline int proxy (FrontendT &frontend_,
+                  BackendT &backend_,
+                  CaptureT *capture_ = NULL)
 {
     return zlink_proxy (frontend_.handle (),
                         backend_.handle (),
@@ -72,10 +71,14 @@ inline int proxy (socket_t &frontend_,
  * @param control_ Control socket for commands.
  * @return 0 on success, -1 on failure.
  */
-inline int proxy (socket_t &frontend_,
-                  socket_t &backend_,
-                  socket_t *capture_,
-                  socket_t &control_)
+template<typename FrontendT,
+         typename BackendT,
+         typename CaptureT,
+         typename ControlT>
+inline int proxy (FrontendT &frontend_,
+                  BackendT &backend_,
+                  CaptureT *capture_,
+                  ControlT &control_)
 {
     return zlink_proxy_steerable (
       frontend_.handle (),

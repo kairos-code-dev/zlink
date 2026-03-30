@@ -128,7 +128,8 @@ bool perf_dealer_router_server (const std::string &transport, size_t)
     bool stop_requested = false;
     bool failed = false;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
-        const int poll_rc = poller.wait (events, compute_wait_ms (deadline));
+        const int poll_rc =
+          poller.wait_all (events, compute_wait_ms (deadline));
         if (poll_rc < 0) {
             if (errno == EINTR)
                 continue;

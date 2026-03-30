@@ -3,9 +3,11 @@
 
 #include <algorithm>
 #include <cerrno>
-#include <climits>
+#include <cctype>
 #include <cstdlib>
+#include <climits>
 #include <cstring>
+#include <iostream>
 #include <string>
 
 namespace perf {
@@ -68,11 +70,58 @@ inline bool is_stream_pattern (const char *pattern)
     if (!pattern || !*pattern)
         return false;
     return std::strcmp (pattern, "STREAM") == 0
-           || std::strcmp (pattern, "STREAM_CALLBACK") == 0
-           || std::strcmp (pattern, "STREAM_LEN32BE") == 0
-           || std::strcmp (pattern, "MULTI_STREAM") == 0
-           || std::strcmp (pattern, "MULTI_STREAM_CALLBACK") == 0
-           || std::strcmp (pattern, "MULTI_STREAM_LEN32BE") == 0;
+           || std::strcmp (pattern, "MULTI_STREAM") == 0;
+}
+
+inline bool callback_supported_for_pattern (const char *pattern)
+{
+    if (!pattern || !*pattern)
+        return false;
+
+    return std::strcmp (pattern, "SPOT") == 0
+           || std::strcmp (pattern, "MULTI_SPOT") == 0
+           || std::strcmp (pattern, "STREAM") == 0
+           || std::strcmp (pattern, "MULTI_STREAM") == 0;
+}
+
+inline std::string resolve_multi_perf_recv_mode ()
+{
+    const char *env = std::getenv ("PERF_RECV_MODE");
+    if (!env || !*env)
+        return "recv";
+
+    std::string mode (env);
+    std::transform (
+      mode.begin (), mode.end (), mode.begin (), [](unsigned char c_) {
+          return static_cast<char> (std::tolower (c_));
+      });
+
+    if (mode != "recv" && mode != "callback") {
+        std::cerr << "policy violation: invalid --recv mode " << mode
+                  << std::endl;
+        std::exit (1);
+    }
+
+    return mode;
+}
+
+inline bool multi_perf_callback_mode ()
+{
+    return resolve_multi_perf_recv_mode () == "callback";
+}
+
+inline bool multi_perf_validate_recv_mode_for_pattern (const char *pattern)
+{
+    if (!pattern || !*pattern)
+        return false;
+
+    if (multi_perf_callback_mode () && !callback_supported_for_pattern (pattern)) {
+        std::cerr << "policy violation: --recv callback unsupported for "
+                  << pattern << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 inline size_t resolve_multi_default_clients (const std::string &pattern)

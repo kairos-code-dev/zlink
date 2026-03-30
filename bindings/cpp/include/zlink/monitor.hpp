@@ -2,7 +2,7 @@
 #ifndef ZLINK_CPP_MONITOR_HPP_INCLUDED
 #define ZLINK_CPP_MONITOR_HPP_INCLUDED
 
-#include "socket.hpp"
+#include "error.hpp"
 #include "types.hpp"
 
 namespace zlink
@@ -15,7 +15,8 @@ class monitor_handle_t
 
     explicit monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
 
-    explicit monitor_handle_t (socket_t &socket_,
+    template<typename SocketLike>
+    explicit monitor_handle_t (SocketLike &socket_,
                                monitor_event events_ = monitor_event::all)
         : _monitor (NULL)
     {
@@ -47,7 +48,8 @@ class monitor_handle_t
     monitor_handle_t (const monitor_handle_t &) = delete;
     monitor_handle_t &operator= (const monitor_handle_t &) = delete;
 
-    static monitor_handle_t open (socket_t &socket_,
+    template<typename SocketLike>
+    static monitor_handle_t open (SocketLike &socket_,
                                   monitor_event events_ = monitor_event::all)
     {
         return monitor_handle_t (socket_, events_);
@@ -64,9 +66,24 @@ class monitor_handle_t
         return zlink_socket_monitor_handler (_monitor, handler_, userdata_);
     }
 
-    int recv (zlink_socket_monitor_event_t &event_)
+    ZLINK_CPP_NODISCARD zlink_socket_monitor_event_t receive ()
     {
-        return zlink_socket_monitor_recv (_monitor, &event_);
+        zlink_socket_monitor_event_t event;
+        const int rc = zlink_socket_monitor_recv (_monitor, &event);
+        throw_on_error (rc);
+        return event;
+    }
+
+    ZLINK_CPP_NODISCARD maybe_t<zlink_socket_monitor_event_t> try_receive ()
+    {
+        zlink_socket_monitor_event_t event;
+        const int rc = zlink_try_socket_monitor_recv (_monitor, &event);
+        if (rc == 0)
+            return maybe_t<zlink_socket_monitor_event_t> (event);
+        if (errno == EAGAIN)
+            return maybe_t<zlink_socket_monitor_event_t> ();
+        throw_on_error (rc);
+        return maybe_t<zlink_socket_monitor_event_t> ();
     }
 
     int snapshot (zlink_monitor_snapshot_t &snapshot_) const

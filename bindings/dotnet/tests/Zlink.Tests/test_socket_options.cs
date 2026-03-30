@@ -77,14 +77,14 @@ public sealed class test_socket_options
         using var stream = new StreamSocket(ctx);
         using var dealer = new DealerSocket(ctx);
 
-        stream.SetOption(SocketOptions.StreamNotify, 0);
-        Assert.Equal(0, stream.GetOption(SocketOptions.StreamNotify));
+        stream.SetNotify(false);
+        Assert.False(stream.GetNotify());
 
         stream.SetOption(SocketOptions.MaxMsgSize, 1024L);
         Assert.Equal(1024L, stream.GetOption(SocketOptions.MaxMsgSize));
 
-        dealer.SetOption(SocketOptions.RoutingId, "RID-OPT");
-        Assert.Equal("RID-OPT", dealer.GetOption(SocketOptions.RoutingId));
+        dealer.SetRoutingId("RID-OPT");
+        Assert.Equal("RID-OPT", dealer.GetRoutingId());
     }
 
     [Fact]
@@ -102,6 +102,34 @@ public sealed class test_socket_options
 
         string actual = router.GetOption(SocketOptions.LastEndpoint);
         Assert.StartsWith("tcp://", actual);
+    }
+
+    [Fact]
+    public void typed_socket_option_helpers_route_to_supported_options()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var dealer = new DealerSocket(ctx);
+        using var router = new RouterSocket(ctx);
+        using var stream = new StreamSocket(ctx);
+        using var xpub = new XPubSocket(ctx);
+
+        dealer.SetRoutingId("DEALER-RID");
+        Assert.Equal("DEALER-RID", dealer.GetRoutingId());
+
+        router.SetRoutingId("ROUTER-RID");
+        Assert.Equal("ROUTER-RID", router.GetRoutingId());
+        router.SetMandatory(true);
+        Assert.True(router.GetMandatory());
+
+        stream.SetNotify(true);
+        Assert.True(stream.GetNotify());
+
+        xpub.SetVerbose(true);
+        xpub.SetVerboser(true);
+        xpub.SetNoDrop(true);
     }
 
     [Fact]

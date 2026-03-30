@@ -24,20 +24,18 @@ int main ()
 
     assert (subscriber.set_subscription ("topic:alpha") == 0);
 
-    bool subscribed = false;
-    std::string topic;
-    assert (publisher.subscription_event (subscribed, topic) == 0);
-    assert (subscribed);
-    assert (topic == "topic:alpha");
+    const zlink::subscription_event_t event =
+      publisher.receive_subscription_event ();
+    assert (event.subscribed);
+    assert (event.topic == "topic:alpha");
 
     zlink::message_t outbound =
       detail::make_message ("pubsub-recv");
-    assert (publisher.publish ("topic:alpha", outbound) == 0);
+    publisher.publish ("topic:alpha", outbound);
 
-    zlink::message_t inbound;
-    std::string inbound_topic;
-    assert (subscriber.recv (inbound_topic, inbound) == 0);
-    assert (inbound_topic == "topic:alpha");
-    assert (inbound.to_string () == "pubsub-recv");
+    const zlink::subscribed_t inbound = subscriber.subscribe ();
+    assert (inbound.topic == "topic:alpha");
+    assert (inbound.parts.size () == 1);
+    assert (inbound.parts[0].to_string () == "pubsub-recv");
     return 0;
 }

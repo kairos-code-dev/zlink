@@ -5,7 +5,7 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t sock (ctx, zlink::socket_type::pub);
+    zlink::pub_socket_t sock (ctx);
 
     assert (sock.connect ("tcp://localhost:1234") == 0);
     assert (sock.connect ("tcp://[::1]:1234") == 0);

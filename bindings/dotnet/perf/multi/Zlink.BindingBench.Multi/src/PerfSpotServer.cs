@@ -2,54 +2,56 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using Zlink;
-using Zlink.Service;
 using static PerfRunner;
 
 internal static class PerfSpotServer
 {
     private const string Pattern = "SPOT";
-    private const string ServiceName = "perf-spot";
     private const uint RunId = 1;
+    private const string Topic = "bench";
+    private const uint SpotMonitorEventError = 1u << 4;
+    private const uint SpotMonitorEventPubDeliveryReadyChanged = 1u << 18;
+    private const uint SpotMonitorEventPubFirstDeliveryReadyChanged = 1u << 20;
+    private const uint SpotReadyMonitorEvents = SpotMonitorEventError
+        | SpotMonitorEventPubDeliveryReadyChanged
+        | SpotMonitorEventPubFirstDeliveryReadyChanged;
 
     internal static int Run(string transport, int size)
     {
         SpotServerConfig config = BuildConfig(transport, size);
+        _ = ResolveMultiRecvMode(Pattern);
+        var control = new ControlState();
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx);
-        using var registry = new Registry(ctx);
-        using var discovery = new Discovery(ctx, DiscoveryServiceType.Spot);
         using var nodePub = new SpotNode(ctx);
+        using var spotPub = new Spot(nodePub);
+        using ServiceMonitor monitor = spotPub.OpenMonitor(SpotReadyMonitorEvents);
 
-        ApplyRegistrySocketOptions(registry, Pattern, config.SndTimeoutMs,
-            config.RcvTimeoutMs);
-        registry.SetHeartbeat(5000, 120000);
-        registry.SetEndpoints(config.RegistryPub, config.RegistryRouter);
-        registry.SetBroadcastInterval((uint)Math.Max(100, config.SettleMs));
-        registry.Start();
-
-        discovery.ConnectRegistry(config.RegistryRouter);
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
         TryConfigureSpotPublisherSocket(nodePub, Pattern, config.SndTimeoutMs,
             config.RcvTimeoutMs);
-        nodePub.SetDiscovery(discovery, ServiceName);
         nodePub.Bind(config.Endpoint);
-        nodePub.Register(ServiceName, config.Endpoint);
+        StartControlWatcher(control);
 
-        using var spotPub = new Spot(nodePub);
-        PreparedTopic topic = spotPub.PrepareTopic("bench");
-        Console.WriteLine(
-            $"READY,{config.Endpoint}|{config.RegistryPub}|{config.RegistryRouter}");
-        _ = WaitUntil(() => nodePub.GetPubPeers().Length >= config.ClientCount,
-            config.ReadyTimeoutMs);
+        Console.WriteLine($"READY,{config.Endpoint}");
+        if (!WaitForSpotReadyCount(monitor, config.ClientCount,
+                config.ReadyTimeoutMs))
+        {
+            Console.Error.WriteLine("multi_server_error:spot_pub_not_ready");
+            return 2;
+        }
+        if (!WaitForStart(control, config.Size, config.ReadyTimeoutMs))
+        {
+            Console.Error.WriteLine("multi_server_error:no_start_signal");
+            return 2;
+        }
 
         var phaseState = new SpotServerPhaseState(config.Size);
-        RunPhase(spotPub, topic, config, PerfPhase.Warmup, config.WarmupSeconds,
-            ref phaseState);
-        RunPhase(spotPub, topic, config, PerfPhase.Drain, config.SettleMs,
-            ref phaseState);
-        SpotServerActiveStats activeStats = RunActivePhase(spotPub, topic, config,
-            ref phaseState);
+        RunPhase(spotPub, control, config, PerfPhase.Warmup,
+            config.WarmupSeconds, ref phaseState);
+        SpotServerActiveStats activeStats = RunActivePhase(spotPub, control,
+            config, ref phaseState);
         SpotServerResult result = ComputeResult(activeStats);
 
         PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
@@ -69,35 +71,31 @@ internal static class PerfSpotServer
             resolvedSize,
             warmupSeconds,
             ResolveMultiDurationSeconds(),
-            ResolveMultiSettleMs(),
             Math.Min(ResolveMultiSndTimeoutMs(), 200),
             ResolveMultiRcvTimeoutMs(),
             ResolveMultiConnectReadyTimeoutMs(),
             ResolveMultiClients(Pattern),
-            MultiEndpointFor(transport, "multi-spot"),
-            EndpointFor("tcp", "multi-spot-reg-pub"),
-            EndpointFor("tcp", "multi-spot-reg-router"));
+            MultiEndpointFor(transport, "multi-spot"));
     }
 
-    private static void RunPhase(Spot spotPub, PreparedTopic topic,
-        SpotServerConfig config,
-        PerfPhase phase, int durationValue, ref SpotServerPhaseState state)
+    private static void RunPhase(Spot spotPub, ControlState control,
+        SpotServerConfig config, PerfPhase phase, int durationValue,
+        ref SpotServerPhaseState state)
     {
         if (durationValue <= 0)
             return;
 
-        using var poller = new Poller();
-        poller.AddSpotPub(spotPub, PollEvents.None);
         long durationTicks = phase == PerfPhase.Drain
             ? Math.Max(0, durationValue) * Stopwatch.Frequency / 1000
             : (long)Math.Max(0, durationValue) * Stopwatch.Frequency;
         long deadlineTicks = Stopwatch.GetTimestamp() + durationTicks;
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        while (!control.StopRequested
+               && Stopwatch.GetTimestamp() < deadlineTicks)
         {
             StampMetricHeader(state.Payload.AsSpan(), RunId, phase,
                 config.Size, state.Seq++, EpochUs());
-            if (!PublishUntilReady(spotPub, topic, poller, state.Payload.AsSpan(),
-                    deadlineTicks))
+            if (!PublishUntilReady(spotPub, state.Payload.AsSpan(),
+                    deadlineTicks, control))
             {
                 break;
             }
@@ -105,21 +103,20 @@ internal static class PerfSpotServer
     }
 
     private static SpotServerActiveStats RunActivePhase(Spot spotPub,
-        PreparedTopic topic, SpotServerConfig config,
+        ControlState control, SpotServerConfig config,
         ref SpotServerPhaseState state)
     {
         long sendCount = 0;
-        using var poller = new Poller();
-        poller.AddSpotPub(spotPub, PollEvents.None);
         long benchStartTicks = Stopwatch.GetTimestamp();
         long benchDeadlineTicks = benchStartTicks
             + (long)Math.Max(1, config.DurationSeconds) * Stopwatch.Frequency;
-        while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
+        while (!control.StopRequested
+               && Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
             StampMetricHeader(state.Payload.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, state.Seq++, EpochUs());
-            if (PublishUntilReady(spotPub, topic, poller, state.Payload.AsSpan(),
-                    benchDeadlineTicks))
+            if (PublishUntilReady(spotPub, state.Payload.AsSpan(),
+                    benchDeadlineTicks, control))
                 sendCount++;
             else
                 break;
@@ -139,66 +136,116 @@ internal static class PerfSpotServer
         return new SpotServerResult(throughput, latencyUs, latencyUs, latencyUs);
     }
 
-    private static bool PublishUntilReady(Spot spotPub, PreparedTopic topic,
-        Poller poller,
-        ReadOnlySpan<byte> payload, long deadlineTicks)
+    private static bool PublishUntilReady(Spot spotPub, ReadOnlySpan<byte> payload,
+        long deadlineTicks, ControlState control)
     {
-        var events = new List<PollEvent>(1);
+        var spin = new SpinWait();
         while (true)
         {
+            if (control.StopRequested)
+                return false;
             if (Stopwatch.GetTimestamp() >= deadlineTicks)
                 return false;
-            try
-            {
-                spotPub.Publish(topic, payload, SendFlags.DontWait);
-                poller.ModifySpotPub(spotPub, PollEvents.None);
+
+            using Message message = Message.FromBytes(payload);
+            SendResult result = spotPub.TryPublish(Topic, message);
+            if (result == SendResult.Sent)
                 return true;
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                            || IsInterrupted(ex.Errno))
-            {
-                poller.ModifySpotPub(spotPub, PollEvents.PollOut);
-                if (!WaitForEvents(poller, events,
-                        RemainingMilliseconds(deadlineTicks)))
-                    continue;
-                continue;
-            }
+
+            spin.SpinOnce();
         }
     }
 
-    private static int RemainingMilliseconds(long deadlineTicks)
+    private static bool WaitForSpotReadyCount(ServiceMonitor monitor,
+        int expectedReady, int timeoutMs)
     {
-        long nowTicks = Stopwatch.GetTimestamp();
-        if (deadlineTicks <= nowTicks)
-            return 0;
+        if (expectedReady <= 0)
+            return true;
 
-        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
-            / Stopwatch.Frequency;
-        if (remainingMs >= int.MaxValue)
-            return int.MaxValue;
-        return (int)Math.Ceiling(remainingMs);
+        uint readyCount = 0;
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        var spin = new SpinWait();
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            ServiceMonitorEvent? evt = monitor.TryReceive();
+            if (evt == null)
+            {
+                spin.SpinOnce();
+                continue;
+            }
+            spin.Reset();
+
+            if (evt.Value.EventType == SpotMonitorEventError)
+                return false;
+
+            if (evt.Value.EventType != SpotMonitorEventPubDeliveryReadyChanged
+                && evt.Value.EventType != SpotMonitorEventPubFirstDeliveryReadyChanged)
+            {
+                continue;
+            }
+
+            readyCount = Math.Max(readyCount, evt.Value.Value);
+            if (readyCount >= expectedReady)
+                return true;
+        }
+
+        return false;
     }
 
-    private static void ApplyRegistrySocketOptions(Registry registry,
-        string pattern, int sndTimeoutMs, int rcvTimeoutMs)
+    private static void StartControlWatcher(ControlState control)
     {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", pattern);
-        registry.SetOption(RegistrySocketRole.Pub, SocketOptions.Linger, 0);
-        registry.SetOption(RegistrySocketRole.Router, SocketOptions.Linger, 0);
-        registry.SetOption(RegistrySocketRole.PeerSub, SocketOptions.Linger, 0);
-        registry.SetOption(RegistrySocketRole.Pub, SocketOptions.SndHwm, sndHwm);
-        registry.SetOption(RegistrySocketRole.Router, SocketOptions.SndHwm, sndHwm);
-        registry.SetOption(RegistrySocketRole.Router, SocketOptions.RcvHwm, rcvHwm);
-        registry.SetOption(RegistrySocketRole.PeerSub, SocketOptions.RcvHwm, rcvHwm);
-        registry.SetOption(RegistrySocketRole.Pub, SocketOptions.SndTimeo,
-            sndTimeoutMs);
-        registry.SetOption(RegistrySocketRole.Router, SocketOptions.SndTimeo,
-            sndTimeoutMs);
-        registry.SetOption(RegistrySocketRole.Router, SocketOptions.RcvTimeo,
-            rcvTimeoutMs);
-        registry.SetOption(RegistrySocketRole.PeerSub, SocketOptions.RcvTimeo,
-            rcvTimeoutMs);
+        var thread = new Thread(static state =>
+        {
+            var watcher = (ControlState)state!;
+            while (true)
+            {
+                string? line = Console.ReadLine();
+                if (line == null)
+                {
+                    watcher.RequestStop();
+                    return;
+                }
+
+                if (string.Equals(line, "STOP", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(line, "QUIT",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    watcher.RequestStop();
+                    return;
+                }
+
+                if (TryParseStart(line, out int startSize))
+                    watcher.SetStartSize(startSize);
+            }
+        });
+        thread.IsBackground = true;
+        thread.Start(control);
+    }
+
+    private static bool TryParseStart(string line, out int msgSize)
+    {
+        msgSize = 0;
+        const string prefix = "START,";
+        if (!line.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+        return int.TryParse(line.AsSpan(prefix.Length), out msgSize)
+               && msgSize > 0;
+    }
+
+    private static bool WaitForStart(ControlState control, int size, int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
+        var spin = new SpinWait();
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            if (control.StopRequested)
+                return false;
+            if (Volatile.Read(ref control.StartSize) == size)
+                return true;
+            spin.SpinOnce();
+        }
+
+        return false;
     }
 
     private static void TryConfigureSpotPublisherSocket(SpotNode node,
@@ -208,8 +255,6 @@ internal static class PerfSpotServer
         int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", pattern);
         int xpubNoDrop = ParsePositiveEnv("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0
             ? 1 : 0;
-        TrySetSpotNodeOption(node, SpotNodeOption.PubMode,
-            (int)SpotNodePubMode.Sync);
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
             SocketOptions.Linger, 0);
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
@@ -224,18 +269,6 @@ internal static class PerfSpotServer
             SocketOptions.RcvHwm, rcvHwm);
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
             SocketOptions.RcvTimeo, rcvTimeoutMs);
-    }
-
-    private static void TrySetSpotNodeOption(SpotNode node, SpotNodeOption option,
-        int value)
-    {
-        try
-        {
-            node.SetOption(option, value);
-        }
-        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.Errno))
-        {
-        }
     }
 
     private static void TrySetSpotNodeSocketOption(SpotNode node,
@@ -261,36 +294,29 @@ internal static class PerfSpotServer
     private readonly struct SpotServerConfig
     {
         internal SpotServerConfig(string transport, int size, int warmupSeconds,
-            int durationSeconds, int settleMs, int sndTimeoutMs, int rcvTimeoutMs,
-            int readyTimeoutMs, int clientCount, string endpoint,
-            string registryPub, string registryRouter)
+            int durationSeconds, int sndTimeoutMs, int rcvTimeoutMs,
+            int readyTimeoutMs, int clientCount, string endpoint)
         {
             Transport = transport;
             Size = size;
             WarmupSeconds = warmupSeconds;
             DurationSeconds = durationSeconds;
-            SettleMs = settleMs;
             SndTimeoutMs = sndTimeoutMs;
             RcvTimeoutMs = rcvTimeoutMs;
             ReadyTimeoutMs = readyTimeoutMs;
             ClientCount = clientCount;
             Endpoint = endpoint;
-            RegistryPub = registryPub;
-            RegistryRouter = registryRouter;
         }
 
         internal string Transport { get; }
         internal int Size { get; }
         internal int WarmupSeconds { get; }
         internal int DurationSeconds { get; }
-        internal int SettleMs { get; }
         internal int SndTimeoutMs { get; }
         internal int RcvTimeoutMs { get; }
         internal int ReadyTimeoutMs { get; }
         internal int ClientCount { get; }
         internal string Endpoint { get; }
-        internal string RegistryPub { get; }
-        internal string RegistryRouter { get; }
     }
 
     private readonly struct SpotServerResult
@@ -336,5 +362,23 @@ internal static class PerfSpotServer
 
         internal ulong Seq;
         internal byte[] Payload;
+    }
+
+    private sealed class ControlState
+    {
+        internal int StartSize;
+        private int _stopFlag;
+
+        internal bool StopRequested => Volatile.Read(ref _stopFlag) != 0;
+
+        internal void SetStartSize(int size)
+        {
+            Volatile.Write(ref StartSize, size);
+        }
+
+        internal void RequestStop()
+        {
+            Volatile.Write(ref _stopFlag, 1);
+        }
     }
 }

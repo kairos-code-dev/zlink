@@ -7,7 +7,7 @@ int main ()
 {
     zlink::context_t ctx;
 
-    zlink::socket_t router (ctx, zlink::socket_type::router);
+    zlink::router_socket_t router (ctx);
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""}, "router-mandatory");
     assert (router.bind (endpoint) == 0);
 
@@ -15,12 +15,12 @@ int main ()
     assert (router.send ("DATA", 4) == 4);
 
     const int mandatory = 1;
-    assert (router.set (zlink::socket_option::router_mandatory, mandatory) == 0);
+    assert (router.set_option (zlink::socket_option::router_mandatory, mandatory) == 0);
     assert (router.send ("UNKNOWN", 7, zlink::send_flag::sndmore) == -1);
     assert (zlink_errno () == EHOSTUNREACH);
 
-    zlink::socket_t dealer (ctx, zlink::socket_type::dealer);
-    assert (dealer.set (zlink::socket_option::routing_id, "X", 1) == 0);
+    zlink::dealer_socket_t dealer (ctx);
+    assert (dealer.set_option (zlink::socket_option::routing_id, "X", 1) == 0);
     assert (dealer.connect (endpoint) == 0);
 
     assert (dealer.send ("Hello", 5) == 5);

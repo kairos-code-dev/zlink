@@ -27,13 +27,12 @@ int main ()
 
     zlink::message_t outbound =
       detail::make_message ("spot-recv");
-    assert (spot.publish ("topic:alpha", outbound) == 0);
+    spot.publish ("topic:alpha", outbound);
 
-    zlink::message_t inbound;
-    std::string topic;
-    assert (spot.recv (inbound, topic) == 0);
-    assert (topic == "topic:alpha");
-    assert (inbound.to_string () == "spot-recv");
+    const zlink::subscribed_t inbound = spot.receive ();
+    assert (inbound.topic == "topic:alpha");
+    assert (inbound.parts.size () == 1);
+    assert (inbound.parts[0].to_string () == "spot-recv");
     assert (pub_monitor.close () == 0);
     assert (sub_monitor.close () == 0);
     assert (spot.destroy () == 0);

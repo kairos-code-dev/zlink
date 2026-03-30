@@ -35,14 +35,10 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.SocketOption.SUBSCRIBE), 6)
         self.assertEqual(int(zlink.SocketOption.UNSUBSCRIBE), 7)
 
-    def test_send_flag_values(self):
-        self.assertEqual(int(zlink.SendFlag.NONE), 0)
-        self.assertEqual(int(zlink.SendFlag.DONTWAIT), 1)
-        self.assertEqual(int(zlink.SendFlag.SNDMORE), 2)
-
-    def test_receive_flag_values(self):
-        self.assertEqual(int(zlink.ReceiveFlag.NONE), 0)
-        self.assertEqual(int(zlink.ReceiveFlag.DONTWAIT), 1)
+    def test_send_result_values(self):
+        self.assertEqual(int(zlink.SendResult.SENT), 0)
+        self.assertEqual(int(zlink.SendResult.BACKPRESSURED), 1)
+        self.assertEqual(int(zlink.SendResult.NOT_READY), 2)
 
     def test_monitor_event_values(self):
         self.assertEqual(int(zlink.MonitorEvent.CONNECTED), 0x0001)
@@ -112,14 +108,9 @@ class EnumTypeTests(unittest.TestCase):
         self.assertIsInstance(zlink.SocketOption.LINGER, int)
 
     def test_int_flag_is_int(self):
-        self.assertIsInstance(zlink.SendFlag.DONTWAIT, int)
+        self.assertIsInstance(zlink.SendResult.SENT, int)
         self.assertIsInstance(zlink.MonitorEvent.CONNECTED, int)
         self.assertIsInstance(zlink.PollEvent.POLLIN, int)
-
-    def test_flag_or_operation(self):
-        combined = zlink.SendFlag.DONTWAIT | zlink.SendFlag.SNDMORE
-        self.assertEqual(int(combined), 3)
-        self.assertIsInstance(combined, int)
 
     def test_monitor_event_or_operation(self):
         combined = zlink.MonitorEvent.CONNECTED | zlink.MonitorEvent.DISCONNECTED

@@ -67,7 +67,7 @@ int main ()
 
     zlink::message_t outbound =
       detail::make_message ("spot-callback");
-    assert (spot.publish ("topic:alpha", outbound) == 0);
+    spot.publish ("topic:alpha", outbound);
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 10000));

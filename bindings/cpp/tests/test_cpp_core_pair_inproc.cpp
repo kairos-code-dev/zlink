@@ -7,8 +7,8 @@ namespace {
 void test_roundtrip ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    zlink::socket_t client (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-pair-", "inproc");
     assert (server.bind (endpoint) == 0);
@@ -20,8 +20,8 @@ void test_roundtrip ()
 void test_send_multipart ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    zlink::socket_t client (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     const std::string endpoint =
       unique_inproc ("inproc://cpp-pair-mp-", "multipart");

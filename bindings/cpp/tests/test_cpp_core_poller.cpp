@@ -7,8 +7,8 @@ namespace {
 void test_poller_modify_switches_event_mask ()
 {
     zlink::context_t ctx;
-    zlink::socket_t receiver (ctx, zlink::socket_type::pair);
-    zlink::socket_t sender (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t receiver (ctx);
+    zlink::pair_socket_t sender (ctx);
 
     const std::string endpoint =
       unique_inproc ("inproc://cpp-poller-", "modify");

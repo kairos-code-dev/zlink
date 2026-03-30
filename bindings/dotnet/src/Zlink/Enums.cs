@@ -101,19 +101,11 @@ public enum SocketOption
     OnlyFirstSubscribe = 0x7F000006
 }
 
-[Flags]
-public enum SendFlags
+public enum SendResult
 {
-    None = 0,
-    DontWait = 1,
-    SendMore = 2
-}
-
-[Flags]
-public enum ReceiveFlags
-{
-    None = 0,
-    DontWait = 1
+    Sent = 0,
+    Backpressured = 1,
+    NotReady = 2
 }
 
 public enum ErrorCode

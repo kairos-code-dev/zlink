@@ -17,15 +17,23 @@ public abstract class PublisherSocketBase : SocketBase
     {
     }
 
-    public void Publish(string topic, Message message,
-        SendFlags flags = SendFlags.None)
+    public void Publish(string topic, Message message)
     {
-        Kernel.Publish(topic, message, flags);
+        Kernel.Publish(topic, message);
     }
 
-    public void Publish(string topic, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
+    public void Publish(string topic, IReadOnlyList<Message> parts)
     {
-        Kernel.Publish(topic, parts, flags);
+        Kernel.Publish(topic, parts);
+    }
+
+    public SendResult TryPublish(string topic, Message message)
+    {
+        return Kernel.TryPublish(topic, message);
+    }
+
+    public SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
+    {
+        return Kernel.TryPublish(topic, parts);
     }
 }

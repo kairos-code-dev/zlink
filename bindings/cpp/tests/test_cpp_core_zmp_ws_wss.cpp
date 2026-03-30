@@ -8,12 +8,12 @@ void test_ws_pair_message ()
         return;
 
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    zlink::socket_t client (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     const int zero = 0;
-    assert (server.set (zlink::socket_option::linger, zero) == 0);
-    assert (client.set (zlink::socket_option::linger, zero) == 0);
+    assert (server.set_option (zlink::socket_option::linger, zero) == 0);
+    assert (client.set_option (zlink::socket_option::linger, zero) == 0);
 
     const std::string endpoint = endpoint_for (transport_case_t{"ws", ""},
                                                "zmp-ws");

@@ -33,8 +33,8 @@ int zlink_service_send_ready_handler_internal (
     }
 
     if (resolved.kind == zlink::service_handle_spot_node) {
-        errno = ENOTSUP;
-        return -1;
+        return spot_node_install_send_ready_handler (
+          static_cast<zlink::spot_node_t *> (handle_), handler_, userdata_);
     }
 
     errno = EFAULT;

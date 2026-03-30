@@ -148,6 +148,20 @@ inline int get_string_option (int (*getter_) (void *, zlink_pub_option_t, void *
     return -1;
 }
 
+inline send_result_t to_send_result (int result_) noexcept
+{
+    switch (result_) {
+    case ZLINK_SEND_RESULT_SENT:
+        return send_result_t::sent;
+    case ZLINK_SEND_RESULT_BACKPRESSURED:
+        return send_result_t::backpressured;
+    case ZLINK_SEND_RESULT_NOT_READY:
+        return send_result_t::not_ready;
+    default:
+        return send_result_t::sent;
+    }
+}
+
 } // namespace detail
 
 class spot_node_t
@@ -244,32 +258,22 @@ class spot_node_t
           _node, ca, hostname, trust_system_ ? 1 : 0);
     }
 
-    ZLINK_CPP_NODISCARD int
-    set (socket_option option_, const void *value_, size_t size_)
-    {
-        return zlink_set_option (
-          _node, static_cast<zlink_option_t> (option_), value_, size_);
-    }
-
     template<typename T>
     ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     set (socket_option_key_t<T> key_, const T &value_)
     {
-        return set (key_.option, &value_, sizeof (value_));
+        return zlink_set_option (
+          _node, static_cast<zlink_option_t> (key_.option), &value_,
+          sizeof (value_));
     }
 
     ZLINK_CPP_NODISCARD int
     set (socket_option_key_t<std::string> key_, const std::string &value_)
     {
-        return set (key_.option, value_.data (), value_.size ());
-    }
-
-    ZLINK_CPP_NODISCARD int
-    get (socket_option option_, void *value_, size_t *size_) const
-    {
-        return zlink_get_option (
-          _node, static_cast<zlink_option_t> (option_), value_, size_);
+        return zlink_set_option (
+          _node, static_cast<zlink_option_t> (key_.option), value_.data (),
+          value_.size ());
     }
 
     template<typename T>
@@ -278,7 +282,8 @@ class spot_node_t
     get (socket_option_key_t<T> key_, T &value_) const
     {
         size_t size = sizeof (value_);
-        return get (key_.option, &value_, &size);
+        return zlink_get_option (
+          _node, static_cast<zlink_option_t> (key_.option), &value_, &size);
     }
 
     ZLINK_CPP_NODISCARD int
@@ -346,6 +351,13 @@ class spot_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
+    explicit spot_t (spot_node_t &node_)
+        : _spot (zlink_spot_wrap_node (node_.handle ())), _last_error (0)
+    {
+        if (!_spot)
+            _last_error = errno != 0 ? errno : EFAULT;
+    }
+
     ~spot_t () { (void) destroy (); }
 
     spot_t (spot_t &&other) noexcept
@@ -375,10 +387,40 @@ class spot_t
 
     int last_error () const noexcept { return _last_error; }
 
+    void publish (const std::string &topic_, std::vector<message_t> &parts_)
+    {
+        const int rc = publish (topic_, parts_, send_flag::none);
+        throw_on_error (rc);
+    }
+
+    void publish (const std::string &topic_, message_t &part_)
+    {
+        const int rc = publish (topic_, part_, send_flag::none);
+        throw_on_error (rc);
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t
+    try_publish (const std::string &topic_, std::vector<message_t> &parts_)
+    {
+        send_result_t result = send_result_t::sent;
+        const int rc = try_publish (result, topic_, parts_);
+        throw_on_error (rc);
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t
+    try_publish (const std::string &topic_, message_t &part_)
+    {
+        send_result_t result = send_result_t::sent;
+        const int rc = try_publish (result, topic_, part_);
+        throw_on_error (rc);
+        return result;
+    }
+
     ZLINK_CPP_NODISCARD int
     publish (const std::string &topic_,
              std::vector<message_t> &parts_,
-             send_flag flags_ = send_flag::none)
+             send_flag flags_)
     {
         if (!_spot) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -409,7 +451,7 @@ class spot_t
     ZLINK_CPP_NODISCARD int
     publish (const std::string &topic_,
              message_t &part_,
-             send_flag flags_ = send_flag::none)
+             send_flag flags_)
     {
         if (!_spot) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -434,10 +476,84 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
+    try_publish (send_result_t &result_out_,
+                 const std::string &topic_,
+                 std::vector<message_t> &parts_)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        if (parts_.empty ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        std::vector<zlink_msg_t> native;
+        if (detail::move_parts_to_native (parts_, native) != 0)
+            return -1;
+
+        const int rc = zlink_try_publish_result (
+          _spot, topic_.c_str (), native.data (), native.size ());
+        if (rc < 0) {
+            const int err = errno;
+            for (size_t i = 0; i < native.size (); ++i)
+                (void) zlink_msg_close (&native[i]);
+            errno = err;
+            return rc;
+        }
+
+        result_out_ = detail::to_send_result (rc);
+        if (rc != ZLINK_SEND_RESULT_SENT) {
+            for (size_t i = 0; i < native.size (); ++i) {
+                if (parts_[i].init () == 0)
+                    (void) zlink_msg_move (parts_[i].handle (), &native[i]);
+                (void) zlink_msg_close (&native[i]);
+            }
+        }
+        return 0;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    try_publish (send_result_t &result_out_,
+                 const std::string &topic_,
+                 message_t &part_)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        zlink_msg_t native;
+        if (zlink_msg_init_size (&native, part_.size ()) != 0)
+            return -1;
+        if (part_.size () > 0 && part_.data ())
+            std::memcpy (zlink_msg_data (&native), part_.data (), part_.size ());
+
+        const int rc = zlink_try_publish_result (
+          _spot, topic_.c_str (), &native, 1);
+        if (rc < 0) {
+            const int err = errno;
+            (void) zlink_msg_close (&native);
+            errno = err;
+            return rc;
+        }
+
+        result_out_ = detail::to_send_result (rc);
+        if (rc != ZLINK_SEND_RESULT_SENT) {
+            if (part_.init () == 0)
+                (void) zlink_msg_move (part_.handle (), &native);
+            (void) zlink_msg_close (&native);
+        }
+        return 0;
+    }
+
+    ZLINK_CPP_NODISCARD int
     publish (const std::string &topic_,
              const void *data_,
              size_t size_,
-             send_flag flags_ = send_flag::none)
+             send_flag flags_)
     {
         message_t part = message_t::from_bytes (data_, size_);
         if (!part.valid ())
@@ -448,7 +564,7 @@ class spot_t
     ZLINK_CPP_NODISCARD int
     publish (const std::string &topic_,
              const std::string &text_,
-             send_flag flags_ = send_flag::none)
+             send_flag flags_)
     {
         return publish (topic_, text_.data (), text_.size (), flags_);
     }
@@ -595,6 +711,29 @@ class spot_t
         return detail::assign_parts_from_native (parts_native, part_count, parts_);
     }
 
+    ZLINK_CPP_NODISCARD subscribed_t receive ()
+    {
+        subscribed_t subscribed;
+        const int rc = recv (subscribed.parts, subscribed.topic, recv_flag::none,
+                             &subscribed.routing_id);
+        throw_on_error (rc);
+        return subscribed;
+    }
+
+    ZLINK_CPP_NODISCARD maybe_t<subscribed_t> try_receive ()
+    {
+        subscribed_t subscribed;
+        const int rc =
+          recv (subscribed.parts, subscribed.topic, recv_flag::dontwait,
+                &subscribed.routing_id);
+        if (rc == 0)
+            return maybe_t<subscribed_t> (std::move (subscribed));
+        if (errno == EAGAIN)
+            return maybe_t<subscribed_t> ();
+        throw_on_error (rc);
+        return maybe_t<subscribed_t> ();
+    }
+
     ZLINK_CPP_NODISCARD int
     recv (message_t &part_,
           std::string &topic_,
@@ -619,32 +758,22 @@ class spot_t
         return 0;
     }
 
-    ZLINK_CPP_NODISCARD int
-    set (socket_option option_, const void *value_, size_t size_)
-    {
-        return zlink_set_option (
-          _spot, static_cast<zlink_option_t> (option_), value_, size_);
-    }
-
     template<typename T>
     ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     set (socket_option_key_t<T> key_, const T &value_)
     {
-        return set (key_.option, &value_, sizeof (value_));
+        return zlink_set_option (
+          _spot, static_cast<zlink_option_t> (key_.option), &value_,
+          sizeof (value_));
     }
 
     ZLINK_CPP_NODISCARD int
     set (socket_option_key_t<std::string> key_, const std::string &value_)
     {
-        return set (key_.option, value_.data (), value_.size ());
-    }
-
-    ZLINK_CPP_NODISCARD int
-    get (socket_option option_, void *value_, size_t *size_) const
-    {
-        return zlink_get_option (
-          _spot, static_cast<zlink_option_t> (option_), value_, size_);
+        return zlink_set_option (
+          _spot, static_cast<zlink_option_t> (key_.option), value_.data (),
+          value_.size ());
     }
 
     template<typename T>
@@ -653,7 +782,8 @@ class spot_t
     get (socket_option_key_t<T> key_, T &value_) const
     {
         size_t size = sizeof (value_);
-        return get (key_.option, &value_, &size);
+        return zlink_get_option (
+          _spot, static_cast<zlink_option_t> (key_.option), &value_, &size);
     }
 
     ZLINK_CPP_NODISCARD int
@@ -663,39 +793,53 @@ class spot_t
           &zlink_get_option, _spot, key_.option, 256u, value_);
     }
 
-    ZLINK_CPP_NODISCARD int
-    set (pub_option option_, const void *value_, size_t size_)
+    template<typename T>
+    ZLINK_CPP_NODISCARD
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set (pub_option_key_t<T> key_, const T &value_)
     {
         return zlink_set_pub_option (
-          _spot, static_cast<zlink_pub_option_t> (option_), value_, size_);
+          _spot, static_cast<zlink_pub_option_t> (key_.option), &value_,
+          sizeof (value_));
     }
 
     ZLINK_CPP_NODISCARD int
-    get (pub_option option_, void *value_, size_t *size_) const
+    set (pub_option_key_t<std::string> key_, const std::string &value_)
     {
+        return zlink_set_pub_option (
+          _spot, static_cast<zlink_pub_option_t> (key_.option), value_.data (),
+          value_.size ());
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int get (pub_option_key_t<T> key_, T &value_) const
+    {
+        size_t size = sizeof (value_);
         return zlink_get_pub_option (
-          _spot, static_cast<zlink_pub_option_t> (option_), value_, size_);
+          _spot, static_cast<zlink_pub_option_t> (key_.option), &value_, &size);
     }
 
     ZLINK_CPP_NODISCARD int
-    set (sub_option option_, const void *value_, size_t size_)
-    {
-        return zlink_set_sub_option (
-          _spot, static_cast<zlink_sub_option_t> (option_), value_, size_);
-    }
-
-    ZLINK_CPP_NODISCARD int
-    get (sub_option option_, void *value_, size_t *size_) const
-    {
-        return zlink_get_sub_option (
-          _spot, static_cast<zlink_sub_option_t> (option_), value_, size_);
-    }
-
-    ZLINK_CPP_NODISCARD int
-    get (pub_option option_, std::string &value_) const
+    get (pub_option_key_t<std::string> key_, std::string &value_) const
     {
         return detail::get_string_option (
-          &zlink_get_pub_option, _spot, option_, 256u, value_);
+          &zlink_get_pub_option, _spot, key_.option, 256u, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set (sub_option_key_t<T> key_, const T &value_)
+    {
+        return zlink_set_sub_option (
+          _spot, static_cast<zlink_sub_option_t> (key_.option), &value_,
+          sizeof (value_));
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int get (sub_option_key_t<T> key_, T &value_) const
+    {
+        size_t size = sizeof (value_);
+        return zlink_get_sub_option (
+          _spot, static_cast<zlink_sub_option_t> (key_.option), &value_, &size);
     }
 
     ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)

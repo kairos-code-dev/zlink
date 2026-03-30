@@ -39,26 +39,6 @@ class base_socket_t : public socket_handle_t
         return socket_base ().attach_discovery (discovery_);
     }
 
-    ZLINK_CPP_NODISCARD int recv_handler (zlink_socket_msg_handler_fn handler_,
-                                          void *userdata_ = NULL)
-    {
-        return socket_base ().recv_handler (handler_, userdata_);
-    }
-
-    ZLINK_CPP_NODISCARD int
-    subscribe_handler (zlink_subscribe_handler_fn handler_,
-                       void *userdata_ = NULL)
-    {
-        return socket_base ().subscribe_handler (handler_, userdata_);
-    }
-
-    ZLINK_CPP_NODISCARD int
-    send_ready_handler (zlink_send_ready_handler_fn handler_,
-                        void *userdata_ = NULL)
-    {
-        return socket_base ().send_ready_handler (handler_, userdata_);
-    }
-
     monitor_handle_t
     monitor_handle (monitor_event events_ = monitor_event::all) const
     {
@@ -77,18 +57,6 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    set_option (socket_option option_, const void *value_, size_t size_)
-    {
-        return socket_base ().set_option (option_, value_, size_);
-    }
-
-    template<typename T>
-    ZLINK_CPP_NODISCARD int set_option (socket_option option_, const T &value_)
-    {
-        return socket_base ().set_option (option_, value_);
-    }
-
-    ZLINK_CPP_NODISCARD int
     set_option (socket_option_key_t<std::string> key_,
                 const std::string &value_)
     {
@@ -103,24 +71,6 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    get_option (socket_option option_, void *value_, size_t *size_) const
-    {
-        return socket_base ().get_option (option_, value_, size_);
-    }
-
-    template<typename T>
-    ZLINK_CPP_NODISCARD int get_option (socket_option option_, T *value_) const
-    {
-        return socket_base ().get_option (option_, value_);
-    }
-
-    ZLINK_CPP_NODISCARD int
-    get_option (socket_option option_, std::string &value_) const
-    {
-        return socket_base ().get_option (option_, value_);
-    }
-
-    ZLINK_CPP_NODISCARD int
     get_option (socket_option_key_t<std::string> key_,
                 std::string &value_) const
     {
@@ -132,26 +82,6 @@ class base_socket_t : public socket_handle_t
                                         T *value_) const
     {
         return socket_base ().get_option (key_, value_);
-    }
-
-    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
-    {
-        return socket_base ().set_routing_id (data_, size_);
-    }
-
-    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &routing_id_)
-    {
-        return socket_base ().set_routing_id (routing_id_);
-    }
-
-    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t &routing_id_) const
-    {
-        return socket_base ().get_routing_id (routing_id_);
-    }
-
-    ZLINK_CPP_NODISCARD int get_routing_id (std::string &routing_id_) const
-    {
-        return socket_base ().get_routing_id (routing_id_);
     }
 
     ZLINK_CPP_NODISCARD int set_tls_server (const std::string &cert_,
@@ -179,9 +109,29 @@ class base_socket_t : public socket_handle_t
     {
     }
 
-    explicit base_socket_t (socket_t &&socket_) noexcept
+    explicit base_socket_t (detail::socket_t &&socket_) noexcept
         : socket_handle_t (std::move (socket_))
     {
+    }
+
+    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    {
+        return socket_base ().set_routing_id (data_, size_);
+    }
+
+    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &routing_id_)
+    {
+        return socket_base ().set_routing_id (routing_id_);
+    }
+
+    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t &routing_id_) const
+    {
+        return socket_base ().get_routing_id (routing_id_);
+    }
+
+    ZLINK_CPP_NODISCARD int get_routing_id (std::string &routing_id_) const
+    {
+        return socket_base ().get_routing_id (routing_id_);
     }
 
     ZLINK_CPP_NODISCARD int

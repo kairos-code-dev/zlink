@@ -2,20 +2,23 @@ package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SocketOption;
+import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.XPubSocket;
-import dev.kairoscode.zlink.options.SocketOptions;
+import dev.kairoscode.zlink.XPubSubscriptionMode;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -23,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketContractTest {
     @Test
@@ -64,8 +68,10 @@ public class SocketContractTest {
             pub.bind(endpoint);
             sub.setSubscription("socket-topic");
             sub.connect(endpoint);
-            subMonitor.recv();
-            pubMonitor.recv();
+            TestSupport.awaitDeliveryReady(subMonitor,
+                dev.kairoscode.zlink.MonitorEventType.SUB_DELIVERY_READY_CHANGED);
+            TestSupport.awaitDeliveryReady(pubMonitor,
+                dev.kairoscode.zlink.MonitorEventType.PUB_DELIVERY_READY_CHANGED);
 
             try (Message payload = Message.copyOfUtf8("socket-payload")) {
                 pub.publish("socket-topic", payload);
@@ -116,24 +122,69 @@ public class SocketContractTest {
     }
 
     @Test
-    public void specializedOptionsAreRejectedOnWrongSocketTypes() {
+    public void rawOptionSurfaceIsHiddenAndTypedOptionsRemain() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
              PairSocket pair = new PairSocket(ctx);
+             PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
              StreamSocket stream = new StreamSocket(ctx);
              XPubSocket xpub = new XPubSocket(ctx)) {
-            assertThrows(IllegalArgumentException.class,
-                () -> pair.setOption(SocketOptions.XPUB_MANUAL, 1));
-            assertThrows(IllegalArgumentException.class,
-                () -> pair.setSockOpt(SocketOption.SUBSCRIBE,
-                    "topic".getBytes(StandardCharsets.UTF_8)));
-            assertThrows(IllegalArgumentException.class,
-                () -> sub.setOption(SocketOptions.ROUTER_MANDATORY, 1));
-            assertThrows(IllegalArgumentException.class,
-                () -> stream.setOption(SocketOptions.XPUB_VERBOSE, 1));
-            assertDoesNotThrow(() -> xpub.setOption(SocketOptions.XPUB_MANUAL, 1));
+            assertFalse(hasPublicMethod(PairSocket.class, "setOption"));
+            assertFalse(hasPublicMethod(PairSocket.class, "getOption"));
+            assertFalse(hasPublicMethod(PairSocket.class, "setSockOpt"));
+            assertFalse(hasPublicMethod(PairSocket.class, "getSockOptInt"));
+            assertFalse(hasPublicMethod(MonitorSocket.class, "setOption"));
+            assertFalse(hasPublicMethod(MonitorSocket.class, "recv",
+                dev.kairoscode.zlink.ReceiveFlag.class));
+            assertFalse(hasPublicMethod(PairSocket.class, "send", Message.class,
+                dev.kairoscode.zlink.SendFlag.class));
+            assertFalse(hasPublicMethod(PairSocket.class, "recv",
+                dev.kairoscode.zlink.ReceiveFlag.class));
+            assertFalse(hasPublicMethod(PubSocket.class, "publish", String.class,
+                Message.class, dev.kairoscode.zlink.SendFlag.class));
+            assertFalse(hasPublicMethod(SubSocket.class, "subscribe",
+                dev.kairoscode.zlink.ReceiveFlag.class));
+            assertFalse(hasPublicMethod(XPubSocket.class, "subscriptionEvent"));
+            assertTrue(hasPublicMethod(PairSocket.class, "trySend", Message.class));
+            assertTrue(hasPublicMethod(PairSocket.class, "tryRecv"));
+            assertTrue(hasPublicMethod(MonitorSocket.class, "tryRecv"));
+            assertTrue(hasPublicMethod(PubSocket.class, "tryPublish",
+                String.class, Message.class));
+            assertTrue(hasPublicMethod(SubSocket.class, "trySubscribe"));
+            assertTrue(hasPublicMethod(XPubSocket.class,
+                "tryReceiveSubscriptionEvent"));
+            assertDoesNotThrow(() ->
+                xpub.options().subscriptionMode(XPubSubscriptionMode.MANUAL));
+            assertDoesNotThrow(() -> stream.options().notifyConnections(true));
+            assertTrue(stream.options().notifyConnections());
+            assertDoesNotThrow(() -> pair.options().receiveTimeoutMillis(10));
+            assertEquals(10, pair.options().receiveTimeoutMillis());
+            assertDoesNotThrow(() -> pair.options().sendTimeout(Duration.ofMillis(20)));
+            assertEquals(Duration.ofMillis(20), pair.options().sendTimeout());
+        }
+    }
+
+    @Test
+    public void trySendAndTryRecvUseCanonicalNonBlockingSurface() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             PairSocket server = new PairSocket(ctx);
+             PairSocket client = new PairSocket(ctx)) {
+            String endpoint = TestSupport.inprocEndpoint("socket-try-contract");
+            server.bind(endpoint);
+            client.connect(endpoint);
+
+            assertTrue(server.tryRecv().isEmpty());
+            try (Message outbound = Message.copyOfUtf8("pair-try")) {
+                assertEquals(SendResult.SENT, client.trySend(outbound));
+            }
+            try (var received = server.tryRecv().orElseThrow()) {
+                assertEquals(List.of("pair-try"),
+                    List.of(received.singlePartOrThrow().toUtf8String()));
+            }
         }
     }
 
@@ -144,5 +195,15 @@ public class SocketContractTest {
             }
         }
         return false;
+    }
+
+    private static boolean hasPublicMethod(Class<?> type, String name,
+                                           Class<?>... parameterTypes) {
+        try {
+            Method method = type.getMethod(name, parameterTypes);
+            return method != null;
+        } catch (NoSuchMethodException ex) {
+            return false;
+        }
     }
 }

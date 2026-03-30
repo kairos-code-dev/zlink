@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Zlink;
+using Zlink.Service;
 using static PerfRunner;
 
 internal static class PerfSpot
@@ -21,41 +22,38 @@ internal static class PerfSpot
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
-        SpotNode? pubNode = null;
-        SpotNode? subNode = null;
-        Spot? spotPub = null;
-        Spot? spotSub = null;
+        using var pubNode = new SpotNode(ctx);
+        using var subNode = new SpotNode(ctx);
+        using var spotPub = new Spot(pubNode);
+        using var spotSub = new Spot(subNode);
 
         try
         {
-            pubNode = new SpotNode(ctx);
-            subNode = new SpotNode(ctx);
-            int sndHwm = ParseEnv("PERF_SINGLE_SNDHWM", ParseEnv("PERF_SINGLE_HWM", 1000));
-            int rcvHwm = ParseEnv("PERF_SINGLE_RCVHWM", ParseEnv("PERF_SINGLE_HWM", 1000));
+            int sndHwm = ParseEnv("PERF_SINGLE_SNDHWM",
+                ParseEnv("PERF_SINGLE_HWM", 1000));
+            int rcvHwm = ParseEnv("PERF_SINGLE_RCVHWM",
+                ParseEnv("PERF_SINGLE_HWM", 1000));
             int sndTimeo = ParseEnvNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
-            int readyTimeoutMs = ResolveSpotDiscoveryTimeoutMs();
             int subscriptionReadyTimeoutMs = ResolveSpotReadyTimeoutMs();
 
-            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.SndHwm, sndHwm);
-            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.SndTimeo, sndTimeo);
-            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.XPubNoDrop, 1);
-
-            subNode.SetOption(SpotNodeSocketRole.Sub, SocketOptions.RcvHwm, rcvHwm);
-            subNode.SetOption(SpotNodeSocketRole.Sub, SocketOptions.RcvTimeo, recvTimeoutMs);
+            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.SndHwm,
+                sndHwm);
+            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.SndTimeo,
+                sndTimeo);
+            pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.XPubNoDrop,
+                1);
+            subNode.SetOption(SpotNodeSocketRole.Sub, SocketOptions.RcvHwm,
+                rcvHwm);
+            subNode.SetOption(SpotNodeSocketRole.Sub, SocketOptions.RcvTimeo,
+                recvTimeoutMs);
 
             ConfigureSpotTlsPublisherIfNeeded(pubNode, transport);
             ConfigureSpotTlsSubscriberIfNeeded(subNode, transport);
 
             string endpoint = EndpointFor(transport, "spot");
             pubNode.Bind(endpoint);
-            subNode.ConnectPeerPub(endpoint);
-
-            spotPub = new Spot(pubNode);
-            spotSub = new Spot(subNode);
-            spotSub.Subscribe(Topic);
-
-            if (!WaitUntil(() => subNode.GetSubPeers().Length > 0, readyTimeoutMs, 1))
-                return 2;
+            subNode.ConnectPeer(endpoint);
+            spotSub.SetSubscription(Topic);
 
             int payloadSize = Math.Max(size, sizeof(long));
             var payload = new byte[payloadSize];
@@ -63,23 +61,29 @@ internal static class PerfSpot
 
             if (!WaitForSubscriptionReady(spotPub, spotSub, payload,
                     subscriptionReadyTimeoutMs))
+            {
+                Console.Error.WriteLine("single_spot_error:subscription_not_ready");
                 return 2;
+            }
 
             long seq = 1;
-            if (!RunPhase(spotPub, spotSub, payload, payloadSize, size,
-                    phase: 0, ref seq, warmupCount, 0, recvTimeoutMs, 0,
+            if (!RunPhase(spotPub, spotSub, payload, payloadSize, phase: 0,
+                    ref seq, warmupCount, 0, latCount: 0,
                     out long warmupReceived, out _)
-                || warmupReceived < warmupCount)
+                || warmupReceived == 0)
             {
+                Console.Error.WriteLine(
+                    $"single_spot_error:warmup_failed:received={warmupReceived}:expected_nonzero");
                 return 2;
             }
 
             Thread.Sleep(settleMs);
 
-            if (!RunPhase(spotPub, spotSub, payload, payloadSize, size,
-                    phase: 1, ref seq, 0, durationSeconds, recvTimeoutMs, latCount,
+            if (!RunPhase(spotPub, spotSub, payload, payloadSize, phase: 1,
+                    ref seq, 0, durationSeconds, latCount,
                     out long received, out var latencySamples))
             {
+                Console.Error.WriteLine("single_spot_error:active_phase_failed");
                 return 2;
             }
 
@@ -89,13 +93,10 @@ internal static class PerfSpot
                 latency.p95, latency.p99);
             return 0;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"single_spot_error:exception:{ex.GetType().Name}:{ex.Message}");
             return 2;
-        }
-        finally
-        {
-            TryDisposeAllQuietly(spotSub, spotPub, subNode, pubNode);
         }
     }
 
@@ -106,41 +107,42 @@ internal static class PerfSpot
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            publisher.Publish(Topic, payload.AsSpan(), SendFlags.None);
-            try
+            if (TryPublishPayload(publisher, payload) != SendResult.Sent)
+                continue;
+
+            if (TryReceiveSinglePayload(subscriber, recv, nonBlocking: true,
+                    out int read)
+                && read > 0)
             {
-                if (subscriber.ReceiveSinglePayload(recv, ReceiveFlags.None) > 0)
-                    return true;
+                return true;
             }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
-                                            || IsInterrupted(ex.Errno))
-            {
-            }
+
+            Thread.Yield();
         }
+
         return false;
     }
 
     private static bool RunPhase(Spot sender, Spot receiver, byte[] payload,
-        int payloadSize, int msgSize, int phase, ref long seq, int warmupCount,
-        int durationSeconds, int recvTimeoutMs, int latencyCap,
-        out long receivedOut, out List<double> latencySamples)
+        int payloadSize, int phase, ref long seq, int warmupCount,
+        int durationSeconds, int latCount, out long receivedOut,
+        out List<double> latencySamples)
     {
         bool active = durationSeconds > 0;
         long deadlineTicks = active ? DeadlineTicksFromSeconds(durationSeconds) : 0;
-        long drainTicks = Math.Max(1,
-            (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
         long received = 0;
         int senderDone = 0;
         Exception? recvError = null;
-        var samples = new List<double>(Math.Max(0, latencyCap));
+        var samples = new List<double>(Math.Max(0, latCount));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
+        long drainTicks = Stopwatch.Frequency / 5;
 
         var recvThread = new Thread(() =>
         {
-            long lastRecvTicks = Stopwatch.GetTimestamp();
             var recvBuffer = new byte[payloadSize];
+            long lastRecvTicks = Stopwatch.GetTimestamp();
 
             void AccountMessage(int bytesRead)
             {
@@ -154,7 +156,7 @@ internal static class PerfSpot
                 long nowUs = TimestampUs();
                 long sentUs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
                 double latencyUs = Math.Max(0L, nowUs - sentUs);
-                ReservoirSample(samples, latencyUs, ref sampleSeen, latencyCap,
+                ReservoirSample(samples, latencyUs, ref sampleSeen, latCount,
                     ref rng);
             }
 
@@ -163,34 +165,21 @@ internal static class PerfSpot
                 while (true)
                 {
                     bool done = Volatile.Read(ref senderDone) != 0;
-                    try
+                    int recvRc = TryReceiveSinglePayload(receiver, recvBuffer,
+                        nonBlocking: true, out int nonBlockingRead)
+                        ? nonBlockingRead : 0;
+
+                    if (recvRc > 0)
                     {
-                        int recvRc = receiver.ReceiveSinglePayload(recvBuffer,
-                            done ? ReceiveFlags.DontWait : ReceiveFlags.None);
                         lastRecvTicks = Stopwatch.GetTimestamp();
                         AccountMessage(recvRc);
-
-                        while (true)
-                        {
-                            recvRc = receiver.ReceiveSinglePayload(recvBuffer,
-                                ReceiveFlags.DontWait);
-                            lastRecvTicks = Stopwatch.GetTimestamp();
-                            AccountMessage(recvRc);
-                        }
-                    }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
-                    {
                         continue;
                     }
-                    catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
-                    {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks
-                            >= drainTicks)
-                        {
-                            break;
-                        }
-                        Thread.Yield();
-                    }
+
+                    if (done
+                        && Stopwatch.GetTimestamp() - lastRecvTicks >= drainTicks)
+                        break;
+                    Thread.Yield();
                 }
             }
             catch (Exception ex)
@@ -207,14 +196,10 @@ internal static class PerfSpot
             while (Stopwatch.GetTimestamp() < deadlineTicks)
             {
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
-                try
+                if (TryPublishPayload(sender, payload) != SendResult.Sent)
                 {
-                    sender.Publish(Topic, payload.AsSpan(), SendFlags.None);
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
+                    Thread.Yield();
+                    continue;
                 }
                 seq++;
             }
@@ -224,14 +209,9 @@ internal static class PerfSpot
             for (int i = 0; i < warmupCount; i++)
             {
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
-                try
+                while (TryPublishPayload(sender, payload) != SendResult.Sent)
                 {
-                    sender.Publish(Topic, payload.AsSpan(), SendFlags.None);
-                }
-                catch
-                {
-                    sendFailed = true;
-                    break;
+                    Thread.Yield();
                 }
                 seq++;
             }
@@ -246,9 +226,54 @@ internal static class PerfSpot
             return false;
 
         if (!active)
-            return received >= warmupCount;
+            return received > 0;
 
-        return received > 0 && latencySamples.Count > 0;
+        return received > 0 && (latCount == 0 || latencySamples.Count > 0);
+    }
+
+    private static SendResult TryPublishPayload(Spot publisher,
+        ReadOnlySpan<byte> payload)
+    {
+        using Message message = Message.FromBytes(payload);
+        return publisher.TryPublish(Topic, message);
+    }
+
+    private static bool TryReceiveSinglePayload(Spot subscriber, Span<byte> buffer,
+        bool nonBlocking, out int read)
+    {
+        read = 0;
+        try
+        {
+            Subscribed? subscribed = nonBlocking
+                ? subscriber.TrySubscribe()
+                : subscriber.Subscribe();
+            if (subscribed == null)
+                return false;
+            read = CopySubscribedPayload(subscribed, buffer);
+            return read > 0;
+        }
+        catch (ZlinkException ex) when (nonBlocking && IsWouldBlock(ex.Errno))
+        {
+            return false;
+        }
+    }
+
+    private static int CopySubscribedPayload(Subscribed subscribed,
+        Span<byte> buffer)
+    {
+        try
+        {
+            if (!subscribed.HasSinglePart)
+                return 0;
+
+            Message part = subscribed.SinglePartOrThrow();
+            return part.CopyTo(buffer);
+        }
+        finally
+        {
+            foreach (Message part in subscribed.Parts)
+                part.Dispose();
+        }
     }
 
     private static bool IsWouldBlock(int errno)

@@ -4,6 +4,7 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import java.util.List;
+import java.util.Optional;
 
 public final class SubSocket extends Socket {
     public SubSocket(Context ctx) {
@@ -19,6 +20,6 @@ public final class SubSocket extends Socket {
     public void unsetSubscription(String filter) { super.unsetSubscription(filter); }
     public List<SubscriptionEntry> subscriptions() { return super.subscriptions(); }
     public TopicMessage subscribe() { return super.subscribe(); }
-    public TopicMessage subscribe(ReceiveFlag flags) { return super.subscribe(flags); }
+    public Optional<TopicMessage> trySubscribe() { return super.trySubscribe(); }
     public void onSubscribe(SubscribeHandler handler) { super.onSubscribe(handler); }
 }

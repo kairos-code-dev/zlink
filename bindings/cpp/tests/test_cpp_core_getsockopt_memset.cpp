@@ -5,8 +5,8 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t pub (ctx, zlink::socket_type::pub);
-    zlink::socket_t sub (ctx, zlink::socket_type::sub);
+    zlink::pub_socket_t pub (ctx);
+    zlink::sub_socket_t sub (ctx);
 
     assert (pub.bind ("inproc://cpp-getsockopt-memset") == 0);
     assert (sub.connect ("inproc://cpp-getsockopt-memset") == 0);

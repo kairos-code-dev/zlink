@@ -5,6 +5,12 @@ using Zlink;
 
 internal static partial class PerfRunner
 {
+    internal enum PerfRecvMode
+    {
+        Recv = 0,
+        Callback = 1,
+    }
+
     internal static readonly byte[] MultiStopToken =
         System.Text.Encoding.ASCII.GetBytes("__zlink_perf_stop__");
 
@@ -24,8 +30,31 @@ internal static partial class PerfRunner
     {
         string normalized = NormalizePerfPattern(pattern);
         return normalized == "STREAM"
-            || normalized == "STREAM_CALLBACK"
-            || normalized == "STREAM_LEN32BE";
+            || normalized == "STREAM_CALLBACK";
+    }
+
+    internal static PerfRecvMode ResolveMultiRecvMode(string pattern)
+    {
+        string raw = (Environment.GetEnvironmentVariable("PERF_RECV_MODE")
+                      ?? string.Empty).Trim();
+        if (raw.Length == 0)
+            return PerfRecvMode.Recv;
+
+        if (raw.Equals("recv", StringComparison.OrdinalIgnoreCase))
+            return PerfRecvMode.Recv;
+        if (raw.Equals("callback", StringComparison.OrdinalIgnoreCase))
+        {
+            string normalized = NormalizePerfPattern(pattern);
+            if (normalized == "SPOT" || normalized == "STREAM")
+                return PerfRecvMode.Callback;
+            throw new ArgumentException(
+                $"callback recv mode is unsupported for pattern {normalized}.",
+                nameof(pattern));
+        }
+
+        throw new ArgumentException(
+            $"Unknown recv mode '{raw}'. Expected recv or callback.",
+            nameof(pattern));
     }
 
     internal static int ParseFirstPositiveEnv(int fallback,

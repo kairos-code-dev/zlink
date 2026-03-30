@@ -3,6 +3,7 @@ package dev.kairoscode.zlink.integration.contract;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PairSocket;
+import dev.kairoscode.zlink.ServiceEvent;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.TestSupport;
@@ -69,7 +70,38 @@ class ServiceContractsIntegrationTest {
         try (Context ctx = new Context();
              Spot spot = new Spot(ctx);
              ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
+            assertTrue(monitor.tryRecv().isEmpty());
+            spot.setSubscription("svc-topic");
+            ServiceEvent event = monitor.recv();
+            assertEquals(SPOT_FILTER_APPLIED, event.eventType() & SPOT_FILTER_APPLIED);
+            assertEquals("svc-topic", event.subject());
             assertTrue(monitor.snapshot().readyCount() >= 0);
+        }
+    }
+
+    @Test
+    void spotNodeWrappedHandleExposesCanonicalServiceHandle() {
+        TestSupport.assumeNative();
+
+        String endpoint = TestSupport.tcpEndpoint();
+
+        try (Context ctx = new Context();
+             SpotNode serverNode = new SpotNode(ctx);
+             SpotNode clientNode = new SpotNode(ctx);
+             Spot publisher = serverNode.wrapHandle();
+             Spot subscriber = clientNode.wrapHandle();
+             ServiceMonitor monitor = subscriber.monitorOpen((int) SPOT_FILTER_APPLIED)) {
+            serverNode.bind(endpoint);
+            clientNode.connectPeer(endpoint);
+            subscriber.setSubscription("perf-topic");
+            monitor.recv();
+            try (var payload = dev.kairoscode.zlink.Message.copyOfUtf8("perf-body")) {
+                publisher.publish("perf-topic", payload);
+            }
+            try (var received = subscriber.subscribe()) {
+                assertEquals("perf-topic", received.topicId());
+                assertEquals("perf-body", received.firstPart().toUtf8String());
+            }
         }
     }
 }

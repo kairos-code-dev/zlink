@@ -1,0 +1,16 @@
+## Effective Options (start)
+- pattern: STREAM
+- recv_mode: callback
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 256
+
+RESULT,current,STREAM,tcp,256,throughput,5630.00
+RESULT,current,STREAM,tcp,256,bandwidth,1.44
+RESULT,current,STREAM,tcp,256,latency,-103076806699952.36
+RESULT,current,STREAM,tcp,256,latency_p95,27515861608.63
+RESULT,current,STREAM,tcp,256,latency_p99,27515878444.43
+
+## Effective Options (result)
+- recv_mode: callback
+- result_lines: 5

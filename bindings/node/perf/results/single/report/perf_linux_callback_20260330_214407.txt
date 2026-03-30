@@ -1,0 +1,16 @@
+## Effective Options (start)
+- pattern: ROUTER_ROUTER
+- recv_mode: callback
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 256
+
+RESULT,current,ROUTER_ROUTER,inproc,256,throughput,115400.00
+RESULT,current,ROUTER_ROUTER,inproc,256,bandwidth,29.54
+RESULT,current,ROUTER_ROUTER,inproc,256,latency,7.98
+RESULT,current,ROUTER_ROUTER,inproc,256,latency_p95,4.72
+RESULT,current,ROUTER_ROUTER,inproc,256,latency_p99,10.50
+
+## Effective Options (result)
+- recv_mode: callback
+- result_lines: 5

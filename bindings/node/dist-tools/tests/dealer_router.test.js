@@ -1,0 +1,25 @@
+'use strict';
+Object.defineProperty(exports, "__esModule", { value: true });
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const zlink = require('../dist');
+test('dealer/router uses routing id through Received and routed send', () => {
+    const ctx = new zlink.Context();
+    const router = new zlink.RouterSocket(ctx);
+    const dealer = new zlink.DealerSocket(ctx);
+    router.bind('inproc://dealer-router-contract');
+    dealer.connect('inproc://dealer-router-contract');
+    dealer.send(zlink.Message.copyOf('hello'));
+    const request = router.receive();
+    assert.equal(request.parts.length, 1);
+    assert.equal(request.parts[0].toBuffer().toString(), 'hello');
+    assert.ok(Buffer.isBuffer(request.routingId));
+    router.send(request.routingId, [zlink.Message.copyOf('world')]);
+    const response = dealer.receive();
+    assert.equal(response.parts.length, 1);
+    assert.equal(response.parts[0].toBuffer().toString(), 'world');
+    assert.equal(typeof router.trySend, 'function');
+    dealer.close();
+    router.close();
+    ctx.close();
+});

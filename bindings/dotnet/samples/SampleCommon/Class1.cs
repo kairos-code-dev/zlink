@@ -25,6 +25,11 @@ public static class SampleSupport
         {
             return false;
         }
+        catch (TypeInitializationException ex) when (ex.InnerException
+                is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false;
+        }
     }
 
     public static string NewEndpoint(string transport, string prefix)
@@ -57,15 +62,17 @@ public static class SampleSupport
         while (DateTime.UtcNow < deadline)
         {
             using var message = Message.FromString(payload);
-            try
-            {
-                socket.Send(message, SendFlags.DontWait);
+            SendResult result = socket.TrySend(message);
+            if (result == SendResult.Sent)
                 return;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
+            if (result != SendResult.Backpressured
+                && result != SendResult.NotReady)
             {
-                Thread.Sleep(10);
+                throw new InvalidOperationException(
+                    $"Unexpected send result: {result}");
             }
+
+            Thread.Sleep(10);
         }
 
         throw new TimeoutException("send timeout");
@@ -78,15 +85,17 @@ public static class SampleSupport
         while (DateTime.UtcNow < deadline)
         {
             using var message = Message.FromString(payload);
-            try
-            {
-                socket.Publish(topic, message, SendFlags.DontWait);
+            SendResult result = socket.TryPublish(topic, message);
+            if (result == SendResult.Sent)
                 return;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
+            if (result != SendResult.Backpressured
+                && result != SendResult.NotReady)
             {
-                Thread.Sleep(10);
+                throw new InvalidOperationException(
+                    $"Unexpected publish result: {result}");
             }
+
+            Thread.Sleep(10);
         }
 
         throw new TimeoutException("publish timeout");
@@ -97,16 +106,17 @@ public static class SampleSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Received? received = socket.TryReceive();
+            if (received != null)
             {
-                socket.Receive(out Message message, ReceiveFlags.DontWait);
-                using (message)
-                    return Encoding.UTF8.GetString(message.AsReadOnlySpan());
+                if (received.Parts.Count == 0)
+                    throw new InvalidOperationException(
+                        "Expected at least one message part.");
+                using Message message = received.Parts[0];
+                return Encoding.UTF8.GetString(message.AsReadOnlySpan());
             }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-                Thread.Sleep(10);
-            }
+
+            Thread.Sleep(10);
         }
 
         throw new TimeoutException("receive timeout");
@@ -118,17 +128,18 @@ public static class SampleSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Subscribed? subscribed = socket.TrySubscribe();
+            if (subscribed != null)
             {
-                socket.Subscribe(out topic, out Message message,
-                    ReceiveFlags.DontWait);
-                using (message)
-                    return Encoding.UTF8.GetString(message.AsReadOnlySpan());
+                topic = subscribed.Topic;
+                if (subscribed.Parts.Count == 0)
+                    throw new InvalidOperationException(
+                        "Expected at least one subscribed message part.");
+                using Message message = subscribed.Parts[0];
+                return Encoding.UTF8.GetString(message.AsReadOnlySpan());
             }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-                Thread.Sleep(10);
-            }
+
+            Thread.Sleep(10);
         }
 
         throw new TimeoutException("subscribe timeout");
@@ -167,12 +178,6 @@ public static class SampleSupport
     {
         int idx = endpoint.LastIndexOf(':');
         return int.Parse(endpoint.AsSpan(idx + 1));
-    }
-
-    private static bool IsRetryable(ZlinkException ex)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(ex.Errno);
-        return code == ErrorCode.EAgain || code == ErrorCode.EIntr;
     }
 
     private static int ReservePort()

@@ -10,18 +10,19 @@ const char *kRoutingIdX = "X";
 const char *kRoutingIdY = "Y";
 const char *kRoutingIdZ = "Z";
 
-void set_zero_linger (zlink::socket_t &sock)
+template<typename SocketLike>
+void set_zero_linger (SocketLike &sock)
 {
     const int zero = 0;
-    assert (sock.set (zlink::socket_option::linger, zero) == 0);
+    assert (sock.set_option (zlink::socket_option::linger, zero) == 0);
 }
 
 void test_router_to_router (bool named)
 {
     zlink::context_t ctx;
 
-    zlink::socket_t bind_router (ctx, zlink::socket_type::router);
-    zlink::socket_t conn_router (ctx, zlink::socket_type::router);
+    zlink::router_socket_t bind_router (ctx);
+    zlink::router_socket_t conn_router (ctx);
     set_zero_linger (bind_router);
     set_zero_linger (conn_router);
 
@@ -30,22 +31,22 @@ void test_router_to_router (bool named)
     assert (bind_router.bind (endpoint) == 0);
 
     if (named) {
-        assert (bind_router.set (zlink::socket_option::routing_id, kRoutingIdX, 1)
+        assert (bind_router.set_option (zlink::socket_option::routing_id, kRoutingIdX, 1)
                 == 0);
-        assert (conn_router.set (zlink::socket_option::routing_id, kRoutingIdY, 1)
+        assert (conn_router.set_option (zlink::socket_option::routing_id, kRoutingIdY, 1)
                 == 0);
     }
 
-    assert (conn_router.set (zlink::socket_option::connect_routing_id,
+    assert (conn_router.set_option (zlink::socket_option::connect_routing_id,
                              kConnRoutingId,
                              std::strlen (kConnRoutingId))
             == 0);
     assert (conn_router.connect (endpoint) == 0);
 
-    assert (conn_router.send (
-              kConnRoutingId, std::strlen (kConnRoutingId), zlink::send_flag::sndmore)
+    assert (raw_send (conn_router, kConnRoutingId, std::strlen (kConnRoutingId),
+                      zlink::send_flag::sndmore)
             == static_cast<int> (std::strlen (kConnRoutingId)));
-    assert (conn_router.send ("hi 1", 4) == 4);
+    assert (raw_send (conn_router, "hi 1", 4) == 4);
 
     zlink::message_t route_from_conn;
     zlink::message_t payload;
@@ -62,7 +63,7 @@ void test_router_to_router (bool named)
     assert (std::memcmp (payload.data (), "hi 1", 4) == 0);
 
     assert (bind_router.send (route_from_conn, zlink::send_flag::sndmore) >= 0);
-    assert (bind_router.send ("ok", 2) == 2);
+    assert (raw_send (bind_router, "ok", 2) == 2);
 
     char recv_buf[32];
     std::memset (recv_buf, 0, sizeof (recv_buf));
@@ -79,9 +80,9 @@ void test_router_to_router_while_receiving ()
 {
     zlink::context_t ctx;
 
-    zlink::socket_t xbind (ctx, zlink::socket_type::router);
-    zlink::socket_t zbind (ctx, zlink::socket_type::router);
-    zlink::socket_t yconn (ctx, zlink::socket_type::router);
+    zlink::router_socket_t xbind (ctx);
+    zlink::router_socket_t zbind (ctx);
+    zlink::router_socket_t yconn (ctx);
     set_zero_linger (xbind);
     set_zero_linger (zbind);
     set_zero_linger (yconn);
@@ -91,30 +92,30 @@ void test_router_to_router_while_receiving ()
     assert (xbind.bind (x_endpoint) == 0);
     assert (zbind.bind (z_endpoint) == 0);
 
-    assert (xbind.set (zlink::socket_option::routing_id, kRoutingIdX, 1) == 0);
-    assert (yconn.set (zlink::socket_option::routing_id, kRoutingIdY, 1) == 0);
-    assert (zbind.set (zlink::socket_option::routing_id, kRoutingIdZ, 1) == 0);
+    assert (xbind.set_option (zlink::socket_option::routing_id, kRoutingIdX, 1) == 0);
+    assert (yconn.set_option (zlink::socket_option::routing_id, kRoutingIdY, 1) == 0);
+    assert (zbind.set_option (zlink::socket_option::routing_id, kRoutingIdZ, 1) == 0);
 
-    assert (yconn.set (zlink::socket_option::connect_routing_id, kRoutingIdX, 1)
+    assert (yconn.set_option (zlink::socket_option::connect_routing_id, kRoutingIdX, 1)
             == 0);
     assert (yconn.connect (x_endpoint) == 0);
 
-    assert (yconn.send (kRoutingIdX, 1, zlink::send_flag::sndmore) == 1);
-    assert (yconn.send ("hi 1", 4) == 4);
+    assert (raw_send (yconn, kRoutingIdX, 1, zlink::send_flag::sndmore) == 1);
+    assert (raw_send (yconn, "hi 1", 4) == 4);
 
     sleep_ms (50);
 
-    assert (xbind.set (zlink::socket_option::connect_routing_id, kRoutingIdZ, 1)
+    assert (xbind.set_option (zlink::socket_option::connect_routing_id, kRoutingIdZ, 1)
             == 0);
     assert (xbind.connect (z_endpoint) == 0);
 
-    assert (xbind.send (kRoutingIdZ, 1, zlink::send_flag::sndmore) == 1);
-    assert (xbind.send ("hi 1", 4) == 4);
+    assert (raw_send (xbind, kRoutingIdZ, 1, zlink::send_flag::sndmore) == 1);
+    assert (raw_send (xbind, "hi 1", 4) == 4);
 
     sleep_ms (50);
 
     char y_buf[32];
-    assert (yconn.recv (y_buf, sizeof (y_buf), zlink::recv_flag::dontwait) == -1);
+    assert (raw_recv (yconn, y_buf, sizeof (y_buf), zlink::recv_flag::dontwait) == -1);
     assert (zlink_errno () == EAGAIN);
 
     zlink::message_t route;

@@ -170,9 +170,22 @@ int spot_subject_recv (void *subject_,
                           topic_id_out_, topic_id_len_out_);
     }
 
-    if (as_spot_node_handle (subject_)) {
-        errno = ENOTSUP;
-        return -1;
+    if (is_registered_spot_node_handle (subject_)) {
+        zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (subject_);
+        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+        if (!admission.acquired ())
+            return -1;
+        if (spot_node_require_recv_model (node) != 0)
+            return -1;
+        zlink::spot_internal_receiver_t *receiver =
+          zlink::spot_node_access_t::ensure_internal_receiver (node);
+        zlink::spot_sub_t *sub = receiver ? receiver->impl () : NULL;
+        if (!sub) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        return sub->recv (source_rid_out_, parts_out_, part_count_out_, flags_,
+                          topic_id_out_, topic_id_len_out_);
     }
 
     errno = EFAULT;
@@ -318,8 +331,23 @@ int spot_subject_set_subscription (void *handle_, const char *filter_)
     }
 
     if (is_registered_spot_node_handle (handle_)) {
-        errno = ENOTSUP;
-        return -1;
+        zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (handle_);
+        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+        if (!admission.acquired ())
+            return -1;
+        zlink::spot_internal_receiver_t *receiver =
+          zlink::spot_node_access_t::internal_receiver (node);
+        if (receiver) {
+            return is_pattern ? receiver->subscribe_pattern (filter_)
+                              : receiver->subscribe (filter_);
+        }
+        zlink::spot_sub_t *sub = node->ensure_default_sub ();
+        if (!sub) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        return is_pattern ? sub->subscribe_pattern (filter_)
+                          : sub->subscribe (filter_);
     }
 
     errno = EFAULT;
@@ -360,8 +388,20 @@ int spot_subject_unset_subscription (void *handle_, const char *filter_)
     }
 
     if (is_registered_spot_node_handle (handle_)) {
-        errno = ENOTSUP;
-        return -1;
+        zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (handle_);
+        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+        if (!admission.acquired ())
+            return -1;
+        zlink::spot_internal_receiver_t *receiver =
+          zlink::spot_node_access_t::internal_receiver (node);
+        if (receiver)
+            return receiver->unsubscribe (filter_);
+        zlink::spot_sub_t *sub = node->ensure_default_sub ();
+        if (!sub) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        return sub->unsubscribe (filter_);
     }
 
     errno = EFAULT;

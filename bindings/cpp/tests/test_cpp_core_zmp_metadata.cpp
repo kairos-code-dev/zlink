@@ -7,11 +7,11 @@ namespace {
 void test_zmp_metadata_enabled ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    zlink::socket_t client (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     const int enabled = 1;
-    assert (client.set (zlink::socket_option::zmp_metadata, enabled) == 0);
+    assert (client.set_option (zlink::socket_option::zmp_metadata, enabled) == 0);
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "zmp-metadata-on");
@@ -31,11 +31,11 @@ void test_zmp_metadata_enabled ()
 void test_zmp_metadata_disabled ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    zlink::socket_t client (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     const int disabled = 0;
-    assert (client.set (zlink::socket_option::zmp_metadata, disabled) == 0);
+    assert (client.set_option (zlink::socket_option::zmp_metadata, disabled) == 0);
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "zmp-metadata-off");

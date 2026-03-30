@@ -1,0 +1,16 @@
+## Effective Options (start)
+- pattern: STREAM
+- recv_mode: recv
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 256
+
+RESULT,current,STREAM,tcp,256,throughput,2516.00
+RESULT,current,STREAM,tcp,256,bandwidth,0.64
+RESULT,current,STREAM,tcp,256,latency,390.59
+RESULT,current,STREAM,tcp,256,latency_p95,1916.32
+RESULT,current,STREAM,tcp,256,latency_p99,9940.88
+
+## Effective Options (result)
+- recv_mode: recv
+- result_lines: 5

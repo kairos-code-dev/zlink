@@ -30,6 +30,10 @@ internal static partial class NativeMethods
         out ZlinkMonitorEvent @event);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_try_socket_monitor_recv(IntPtr monitor,
+        out ZlinkMonitorEvent @event);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void zlink_monitor_ignore_handler(
         ref ZlinkMonitorEvent @event, IntPtr userData);
 
@@ -47,6 +51,10 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_service_monitor_recv(IntPtr monitor,
+        out ZlinkServiceEvent @event);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_try_service_monitor_recv(IntPtr monitor,
         out ZlinkServiceEvent @event);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

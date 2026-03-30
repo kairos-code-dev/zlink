@@ -7,8 +7,6 @@
 #include "zlink/error.hpp"
 #include "zlink/message.hpp"
 #include "zlink/context.hpp"
-#include "zlink/socket.hpp"
-#include "zlink/socket_handle.hpp"
 #include "zlink/base_socket.hpp"
 #include "zlink/message_socket.hpp"
 #include "zlink/publisher_socket.hpp"

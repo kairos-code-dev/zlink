@@ -7,8 +7,8 @@ namespace {
 void test_pubsub_filter_transport (const std::string &bind_endpoint_)
 {
     zlink::context_t ctx;
-    zlink::socket_t pub (ctx, zlink::socket_type::pub);
-    zlink::socket_t sub (ctx, zlink::socket_type::sub);
+    zlink::pub_socket_t pub (ctx);
+    zlink::sub_socket_t sub (ctx);
 
     assert (pub.bind (bind_endpoint_) == 0);
 
@@ -17,7 +17,7 @@ void test_pubsub_filter_transport (const std::string &bind_endpoint_)
         connect_endpoint = bound_endpoint (pub);
 
     assert (sub.connect (connect_endpoint) == 0);
-    assert (sub.set (zlink::socket_option::subscribe, "topicA", 6) == 0);
+    assert (sub.set_option (zlink::socket_option::subscribe, "topicA", 6) == 0);
     sleep_ms (300);
 
     send_string_expect_success (pub, "topicA hello");
@@ -31,8 +31,8 @@ void test_pubsub_filter_transport (const std::string &bind_endpoint_)
 void test_pubsub_xpub_xsub_transport (const std::string &bind_endpoint_)
 {
     zlink::context_t ctx;
-    zlink::socket_t xpub (ctx, zlink::socket_type::xpub);
-    zlink::socket_t xsub (ctx, zlink::socket_type::xsub);
+    zlink::xpub_socket_t xpub (ctx);
+    zlink::xsub_socket_t xsub (ctx);
 
     assert (xpub.bind (bind_endpoint_) == 0);
     std::string endpoint = bind_endpoint_;

@@ -49,10 +49,10 @@ int connect_raw_tcp (const char *endpoint_)
 void test_stream_accept_and_reply ()
 {
     zlink::context_t ctx;
-    zlink::socket_t stream (ctx, zlink::socket_type::stream);
+    zlink::stream_socket_t stream (ctx);
 
     const int zero = 0;
-    assert (stream.set (zlink::socket_option::linger, zero) == 0);
+    assert (stream.set_option (zlink::socket_option::linger, zero) == 0);
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "stream-socket");
@@ -83,7 +83,9 @@ void test_stream_accept_and_reply ()
     assert (std::memcmp (payload_msg.data (), hello, sizeof (hello) - 1) == 0);
 
     const char world[] = "WORLD";
-    assert (stream.stream_send (rid, world, sizeof (world) - 1) == static_cast<int> (sizeof (world) - 1));
+    assert (routed_raw_send (stream, routing_id_from_uint32 (rid), world,
+                             sizeof (world) - 1)
+            == static_cast<int> (sizeof (world) - 1));
 
     char recv_buf[32];
     const int n = recv (raw_fd, recv_buf, sizeof (recv_buf), 0);

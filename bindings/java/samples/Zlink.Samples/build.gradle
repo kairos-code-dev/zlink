@@ -28,6 +28,7 @@ def sampleMainClasses = [
     runDealerRouterCallback: 'dev.kairoscode.zlink.samples.DealerRouterCallbackSample',
     runStreamRecv: 'dev.kairoscode.zlink.samples.StreamRecvSample',
     runStreamCallback: 'dev.kairoscode.zlink.samples.StreamCallbackSample',
+    runSpotMonitor: 'dev.kairoscode.zlink.samples.SpotMonitorSample',
     runSpotRecv: 'dev.kairoscode.zlink.samples.SpotRecvSample',
     runSpotCallback: 'dev.kairoscode.zlink.samples.SpotCallbackSample'
 ]
@@ -40,4 +41,9 @@ sampleMainClasses.each { taskName, mainClassName ->
         mainClass = mainClassName
         jvmArgs '--enable-native-access=ALL-UNNAMED'
     }
+}
+
+tasks.register('runAllSamples') {
+    group = 'application'
+    dependsOn sampleMainClasses.keySet().collect { tasks.named(it) }
 }

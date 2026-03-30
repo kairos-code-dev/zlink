@@ -9,6 +9,16 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     {
     }
 
+    public void SetNotify(bool enabled)
+    {
+        SetOption(SocketOptions.StreamNotify, enabled ? 1 : 0);
+    }
+
+    public bool GetNotify()
+    {
+        return GetOption(SocketOptions.StreamNotify) != 0;
+    }
+
     public void AttachStreamRaw(StreamPacketHandler handler)
     {
         Kernel.AttachStreamRaw(handler);

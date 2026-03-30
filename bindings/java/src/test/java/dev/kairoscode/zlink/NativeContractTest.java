@@ -44,7 +44,7 @@ public class NativeContractTest {
                 Native.sendMultipart(right.handle(), msg, 1,
                     SendFlag.NONE.getValue()));
 
-            try (Received inbound = left.recv(ReceiveFlag.NONE)) {
+            try (Received inbound = left.recv()) {
                 assertArrayEquals(payload,
                     inbound.singlePartOrThrow().toByteArray());
             }

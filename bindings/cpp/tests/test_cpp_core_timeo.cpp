@@ -9,7 +9,7 @@ int main ()
 
     const std::string endpoint = unique_inproc ("inproc://cpp-timeout-", "dealer");
 
-    zlink::socket_t frontend (ctx, zlink::socket_type::dealer);
+    zlink::dealer_socket_t frontend (ctx);
     assert (frontend.bind (endpoint) == 0);
 
     char buffer[32];
@@ -19,7 +19,7 @@ int main ()
 
     const int timeout_ms = 250;
     const int jitter_ms = 70;
-    assert (frontend.set (zlink::socket_option::rcvtimeo, timeout_ms) == 0);
+    assert (frontend.set_option (zlink::socket_option::rcvtimeo, timeout_ms) == 0);
 
     const auto start = std::chrono::steady_clock::now ();
     assert (frontend.recv (buffer, sizeof (buffer), zlink::recv_flag::none) == -1);
@@ -29,9 +29,9 @@ int main ()
     assert (zlink_errno () == EAGAIN);
     assert (elapsed >= timeout_ms - jitter_ms);
 
-    zlink::socket_t backend (ctx, zlink::socket_type::dealer);
+    zlink::dealer_socket_t backend (ctx);
     assert (backend.connect (endpoint) == 0);
-    assert (backend.set (zlink::socket_option::sndtimeo, timeout_ms) == 0);
+    assert (backend.set_option (zlink::socket_option::sndtimeo, timeout_ms) == 0);
 
     assert (backend.send ("Hello", 5) == 5);
     std::memset (buffer, 0, sizeof (buffer));

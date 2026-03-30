@@ -383,6 +383,7 @@ napi_value spot_destroy(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
+    release_socket_subscribe_handler_slot(spot);
     void *tmp = spot;
     int rc = zlink_spot_destroy(&tmp);
     if (rc != 0)
@@ -435,6 +436,66 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_try_publish(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    std::string topic = get_string(env, argv[1]);
+
+    bool is_buffer = false;
+    napi_is_buffer(env, argv[2], &is_buffer);
+    std::vector<zlink_msg_t> parts;
+    if (is_buffer) {
+        void *data = NULL;
+        size_t len = 0;
+        if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
+            napi_throw_type_error(env, NULL, "payload must be Buffer");
+            return NULL;
+        }
+        parts.resize(1);
+        if (zlink_msg_init_size(&parts[0], len) != 0)
+            return throw_last_error(env, "tryPublish failed");
+        if (len > 0)
+            memcpy(zlink_msg_data(&parts[0]), data, len);
+    } else {
+        if (!build_msg_vector(env, argv[2], &parts))
+            return NULL;
+    }
+
+    int rc = zlink_try_publish_result(spot, topic.c_str(), parts.data(), parts.size());
+    if (rc < 0) {
+        close_msg_vector(parts);
+        return throw_last_error(env, "tryPublish failed");
+    }
+
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
+static void noop_send_ready_handler(void *, void *)
+{
+}
+
+napi_value spot_enable_send_ready_noop(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    const int rc =
+      zlink_send_ready_handler(spot, &noop_send_ready_handler, NULL);
+    if (rc != 0)
+        return throw_last_error(env, "spot_enable_send_ready_noop failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value spot_subscribe(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -474,43 +535,125 @@ napi_value spot_unsubscribe(napi_env env, napi_callback_info info)
 
 napi_value spot_recv(napi_env env, napi_callback_info info)
 {
-    napi_value argv[2];
-    size_t argc = 2;
+    napi_value argv[1];
+    size_t argc = 1;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    int32_t flags = 0;
-    napi_get_value_int32(env, argv[1], &flags);
-
+    std::vector<char> topic(256, '\0');
     zlink_routing_id_t routing_id;
-    memset(&routing_id, 0, sizeof(routing_id));
     zlink_msg_t *parts = NULL;
     size_t count = 0;
-    char topic[256] = {0};
-    size_t topic_len = sizeof(topic);
-    int rc = zlink_subscribe(spot, &routing_id, &parts, &count, topic,
-                             &topic_len, flags);
-    if (rc != 0)
-        return throw_last_error(env, "spot_recv failed");
+    size_t topic_len = topic.size();
 
-    napi_value arr;
-    napi_create_array_with_length(env, count, &arr);
-    for (size_t i = 0; i < count; ++i) {
-        size_t sz = zlink_msg_size(&parts[i]);
-        void *data = zlink_msg_data(&parts[i]);
-        napi_value buf;
-        napi_create_buffer_copy(env, sz, data, NULL, &buf);
-        napi_set_element(env, arr, static_cast<uint32_t>(i), buf);
+    for (;;) {
+        memset(&routing_id, 0, sizeof(routing_id));
+        int rc = zlink_subscribe(
+          spot, &routing_id, &parts, &count, topic.data(), &topic_len, 0);
+        if (rc == 0) {
+            napi_value arr;
+            napi_create_array_with_length(env, count, &arr);
+            for (size_t i = 0; i < count; ++i) {
+                size_t sz = zlink_msg_size(&parts[i]);
+                void *data = zlink_msg_data(&parts[i]);
+                napi_value buf;
+                napi_create_buffer_copy(env, sz, data, NULL, &buf);
+                napi_set_element(env, arr, static_cast<uint32_t>(i), buf);
+            }
+            zlink_multipart_close(parts, count);
+
+            napi_value obj;
+            napi_create_object(env, &obj);
+            napi_value topic_value;
+            napi_create_string_utf8(env, topic.data(), topic_len, &topic_value);
+            napi_set_named_property(env, obj, "topic", topic_value);
+            napi_set_named_property(env, obj, "parts", arr);
+            napi_value rid = create_routing_id_value(env, routing_id);
+            napi_set_named_property(env, obj, "routingId", rid);
+            return obj;
+        }
+        if (zlink_errno() != EMSGSIZE)
+            return throw_last_error(env, "spot_recv failed");
+        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
     }
-    zlink_multipart_close(parts, count);
+}
 
-    napi_value obj;
-    napi_create_object(env, &obj);
-    napi_value topic_value;
-    napi_create_string_utf8(env, topic, NAPI_AUTO_LENGTH, &topic_value);
-    napi_set_named_property(env, obj, "topic", topic_value);
-    napi_set_named_property(env, obj, "parts", arr);
-    return obj;
+napi_value spot_try_recv(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+
+    std::vector<char> topic(256, '\0');
+    zlink_routing_id_t routing_id;
+    zlink_msg_t *parts = NULL;
+    size_t count = 0;
+    size_t topic_len = topic.size();
+
+    for (;;) {
+        memset(&routing_id, 0, sizeof(routing_id));
+        int rc = zlink_subscribe(
+          spot, &routing_id, &parts, &count, topic.data(), &topic_len, ZLINK_DONTWAIT);
+        if (rc == 0) {
+            napi_value arr;
+            napi_create_array_with_length(env, count, &arr);
+            for (size_t i = 0; i < count; ++i) {
+                size_t sz = zlink_msg_size(&parts[i]);
+                void *data = zlink_msg_data(&parts[i]);
+                napi_value buf;
+                napi_create_buffer_copy(env, sz, data, NULL, &buf);
+                napi_set_element(env, arr, static_cast<uint32_t>(i), buf);
+            }
+            zlink_multipart_close(parts, count);
+
+            napi_value obj;
+            napi_create_object(env, &obj);
+            napi_value topic_value;
+            napi_create_string_utf8(env, topic.data(), topic_len, &topic_value);
+            napi_set_named_property(env, obj, "topic", topic_value);
+            napi_set_named_property(env, obj, "parts", arr);
+            napi_value rid = create_routing_id_value(env, routing_id);
+            napi_set_named_property(env, obj, "routingId", rid);
+            return obj;
+        }
+        const int err = zlink_errno();
+        if (err == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        if (err != EMSGSIZE)
+            return throw_last_error(env, "spot_try_recv failed");
+        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
+    }
+}
+
+napi_value spot_subscribe_handler(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(
+          env, NULL, "subscribeHandler requires (spot, handler)");
+        return NULL;
+    }
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(
+          env, NULL, "subscribeHandler handler must be a function");
+        return NULL;
+    }
+    if (!attach_socket_subscribe_handler(env, spot, argv[1]))
+        return NULL;
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value spot_open_monitor(napi_env env, napi_callback_info info)

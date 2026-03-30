@@ -1,16 +1,43 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 ROOT="/home/hep7/project/kairos/zlink/bindings/dotnet/samples"
+CORE_LIB="/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so"
 
-dotnet run --project "$ROOT/PairRecv/PairRecv.csproj"
-dotnet run --project "$ROOT/PairCallback/PairCallback.csproj"
-dotnet run --project "$ROOT/PubSubRecv/PubSubRecv.csproj"
-dotnet run --project "$ROOT/PubSubCallback/PubSubCallback.csproj"
-dotnet run --project "$ROOT/DealerRouterRecv/DealerRouterRecv.csproj"
-dotnet run --project "$ROOT/DealerRouterCallback/DealerRouterCallback.csproj"
-dotnet run --project "$ROOT/StreamRecv/StreamRecv.csproj"
-dotnet run --project "$ROOT/StreamCallback/StreamCallback.csproj"
-dotnet run --project "$ROOT/SpotRecv/SpotRecv.csproj"
-dotnet run --project "$ROOT/SpotCallback/SpotCallback.csproj"
-dotnet run --project "$ROOT/RegistryDiscoveryMonitor/RegistryDiscoveryMonitor.csproj"
+if [[ -f "$CORE_LIB" ]]; then
+  export ZLINK_LIBRARY_PATH="$CORE_LIB"
+fi
+
+SAMPLES=(
+  "PairRecv/PairRecv.csproj"
+  "PairCallback/PairCallback.csproj"
+  "PubSubRecv/PubSubRecv.csproj"
+  "PubSubCallback/PubSubCallback.csproj"
+  "DealerRouterRecv/DealerRouterRecv.csproj"
+  "DealerRouterCallback/DealerRouterCallback.csproj"
+  "StreamRecv/StreamRecv.csproj"
+  "StreamCallback/StreamCallback.csproj"
+  "SpotRecv/SpotRecv.csproj"
+  "SpotCallback/SpotCallback.csproj"
+  "RegistryDiscoveryMonitor/RegistryDiscoveryMonitor.csproj"
+)
+
+passed=0
+failed=0
+
+for sample in "${SAMPLES[@]}"; do
+  echo "RUN,$sample"
+  if dotnet run --project "$ROOT/$sample"; then
+    echo "OK,$sample"
+    passed=$((passed + 1))
+  else
+    echo "FAIL,$sample"
+    failed=$((failed + 1))
+  fi
+done
+
+echo "SUMMARY,passed,$passed,failed,$failed,total,${#SAMPLES[@]}"
+
+if (( failed > 0 )); then
+  exit 1
+fi

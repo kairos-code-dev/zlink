@@ -10,11 +10,11 @@ void test_disconnect_inproc ()
     bool is_subscribed = false;
 
     zlink::context_t ctx;
-    zlink::socket_t pub_socket (ctx, zlink::socket_type::xpub);
-    zlink::socket_t sub_socket (ctx, zlink::socket_type::sub);
+    zlink::xpub_socket_t pub_socket (ctx);
+    zlink::sub_socket_t sub_socket (ctx);
     int more = 0;
 
-    assert (sub_socket.set (zlink::socket_option::subscribe, "foo", 3) == 0);
+    assert (sub_socket.set_option (zlink::socket_option::subscribe, "foo", 3) == 0);
     assert (pub_socket.bind ("inproc://someInProcDescriptor") == 0);
 
     for (int iteration = 0;; ++iteration) {
@@ -39,7 +39,7 @@ void test_disconnect_inproc ()
                     is_subscribed = true;
                 }
 
-                assert (pub_socket.get (zlink::socket_option::rcvmore, &more) == 0);
+                assert (pub_socket.get_option (zlink::socket_option::rcvmore, &more) == 0);
             }
         }
 
@@ -47,7 +47,7 @@ void test_disconnect_inproc ()
             for (more = 1; more;) {
                 zlink::message_t msg;
                 assert (sub_socket.recv (msg) == 0);
-                assert (sub_socket.get (zlink::socket_option::rcvmore, &more) == 0);
+                assert (sub_socket.get_option (zlink::socket_option::rcvmore, &more) == 0);
             }
             ++publications_received;
         }

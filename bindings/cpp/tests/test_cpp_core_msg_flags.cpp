@@ -5,8 +5,8 @@ namespace {
 void test_more ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::router);
-    zlink::socket_t client (ctx, zlink::socket_type::dealer);
+    zlink::router_socket_t server (ctx);
+    zlink::dealer_socket_t client (ctx);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-msg-flags-", "more");
     assert (server.bind (endpoint) == 0);

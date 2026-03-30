@@ -11,7 +11,7 @@ public final class TopicMessage implements AutoCloseable {
     private final List<Message> parts;
     private boolean closed;
 
-    TopicMessage(RoutingId routingId, String topicId, Message[] parts) {
+    public TopicMessage(RoutingId routingId, String topicId, Message[] parts) {
         this.routingId = routingId;
         this.topicId = topicId == null ? "" : topicId;
         this.parts = parts == null ? List.of() : List.of(parts);

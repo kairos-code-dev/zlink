@@ -5,8 +5,8 @@ namespace {
 void test_bind_after_connect_tcp ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::dealer);
-    zlink::socket_t client (ctx, zlink::socket_type::dealer);
+    zlink::dealer_socket_t server (ctx);
+    zlink::dealer_socket_t client (ctx);
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "bind-after-connect");

@@ -1,4 +1,4 @@
-// STREAM_CALLBACK multi server benchmark: raw callback echo relay.
+// MULTI_STREAM callback-mode server benchmark: raw callback echo relay.
 // Topology: client STREAM(connect, N) -> server STREAM(bind, 1)
 // Measurement role: echo incoming payloads back via raw stream callback.
 
@@ -17,7 +17,7 @@
 
 namespace {
 
-static const char *k_pattern = "STREAM_CALLBACK";
+static const char *k_pattern = "MULTI_STREAM";
 
 static std::atomic<bool> g_stop_requested (false);
 static std::atomic<bool> g_callback_failed (false);
@@ -160,20 +160,36 @@ inline send_status_t try_send_stream_message (pending_stream_message_t *message)
         || message->rid.size == 0)
         return send_fatal;
 
-    const size_t payload_size = zlink_msg_size (&message->payload);
-    const int rc = zlink_stream_send_msg (
-      g_server_socket, &message->rid, &message->payload, ZLINK_DONTWAIT);
-    if (rc == static_cast<int> (payload_size)) {
+    zlink_msg_t part;
+    if (zlink_msg_init (&part) != 0)
+        return send_fatal;
+    if (zlink_msg_move (&part, &message->payload) != 0) {
+        (void) zlink_msg_close (&part);
+        return send_fatal;
+    }
+
+    const int rc = zlink_try_send_rid_result (
+      g_server_socket, &message->rid, &part, 1);
+    if (rc == ZLINK_SEND_RESULT_SENT) {
+        (void) zlink_msg_close (&part);
         message->has_payload = false;
         message->rid.size = 0;
         return send_done;
     }
-    if (rc >= 0)
-        return send_fatal;
 
-    const int err = zlink_errno ();
-    if (err == EAGAIN || err == EINTR)
+    if (zlink_msg_move (&message->payload, &part) != 0) {
+        (void) zlink_msg_close (&part);
+        return send_fatal;
+    }
+    (void) zlink_msg_close (&part);
+
+    if (rc == ZLINK_SEND_RESULT_BACKPRESSURED || rc == ZLINK_SEND_RESULT_NOT_READY)
         return send_blocked;
+    if (rc < 0) {
+        const int err = zlink_errno ();
+        if (err == EAGAIN || err == EINTR)
+            return send_blocked;
+    }
     return send_fatal;
 }
 
@@ -219,50 +235,56 @@ inline bool flush_pending_stream_messages_locked ()
 
 // ---------- raw stream callback ---------------------------------------------
 
-int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
+void on_stream_packet (const zlink_routing_id_t *rid,
+                       zlink_msg_t *parts,
+                       size_t part_count,
+                       void *)
 {
-    if (!rid || !msg || !g_server_socket)
-        return 0;
+    if (!rid || !parts || part_count != 1 || !g_server_socket) {
+        if (parts)
+            zlink_multipart_close (parts, part_count);
+        return;
+    }
+
+    zlink_msg_t *msg = &parts[0];
 
     const unsigned char *payload =
       static_cast<const unsigned char *> (zlink_msg_data (msg));
     const size_t payload_size = zlink_msg_size (msg);
     if (is_stream_event_payload (payload, payload_size)) {
-        (void) zlink_msg_close (msg);
-        return 0;
+        zlink_multipart_close (parts, part_count);
+        return;
     }
 
     pending_stream_message_t request;
     request.rid = *rid;
     if (zlink_msg_move (&request.payload, msg) != 0) {
         g_callback_failed.store (true, std::memory_order_release);
-        (void) zlink_msg_close (msg);
-        return 1;
+        zlink_multipart_close (parts, part_count);
+        return;
     }
     request.has_payload = true;
     const send_status_t send_rc = try_send_stream_message (&request);
     if (send_rc == send_done) {
-        (void) zlink_msg_close (msg);
-        return 0;
+        zlink_multipart_close (parts, part_count);
+        return;
     }
     if (send_rc == send_blocked) {
         std::lock_guard<std::mutex> guard (g_pending_mutex);
         if (!enqueue_pending_stream_message_locked (&request)) {
             g_callback_failed.store (true, std::memory_order_release);
-            (void) zlink_msg_close (msg);
-            return 1;
+            zlink_multipart_close (parts, part_count);
+            return;
         }
-        (void) zlink_msg_close (msg);
-        return 0;
+        zlink_multipart_close (parts, part_count);
+        return;
     }
 
     if (send_rc == send_fatal) {
         g_callback_failed.store (true, std::memory_order_release);
-        (void) zlink_msg_close (msg);
-        return 1;
+        zlink_multipart_close (parts, part_count);
+        return;
     }
-
-    return 0;
 }
 
 } // namespace
@@ -290,9 +312,11 @@ bool perf_stream_callback_server (const std::string &transport, size_t)
 
     const int io_timeout_ms =
       perf::multi::parse_positive_env ("PERF_STREAM_TIMEOUT_MS", 5000);
-    (void) server.sock ().set (zlink::socket_options::sndtimeo, io_timeout_ms);
-    (void) server.sock ().set (zlink::socket_options::rcvtimeo, io_timeout_ms);
-    (void) server.sock ().set (zlink::socket_options::tcp_nodelay, 1);
+    (void) server.sock ().set_option (zlink::socket_options::sndtimeo,
+                                      io_timeout_ms);
+    (void) server.sock ().set_option (zlink::socket_options::rcvtimeo,
+                                      io_timeout_ms);
+    (void) server.sock ().set_option (zlink::socket_options::tcp_nodelay, 1);
 
     if (!perf::multi::setup_tls_server (server.sock (), transport))
         return false;
@@ -318,7 +342,7 @@ bool perf_stream_callback_server (const std::string &transport, size_t)
     g_pending_count = 0;
     install_signal_handlers ();
 
-    if (server.sock ().stream_attach (on_stream_packet) != 0) {
+    if (server.sock ().recv_handler (on_stream_packet, NULL) != 0) {
         g_server_socket = NULL;
         delete[] g_pending_messages;
         g_pending_messages = NULL;
@@ -383,7 +407,6 @@ bool perf_stream_callback_server (const std::string &transport, size_t)
         }
     }
 
-    (void) server.sock ().stream_detach ();
     delete[] g_pending_messages;
     g_pending_messages = NULL;
     g_pending_capacity = 0;

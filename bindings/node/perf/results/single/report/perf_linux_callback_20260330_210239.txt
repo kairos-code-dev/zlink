@@ -1,0 +1,16 @@
+## Effective Options (start)
+- pattern: SPOT
+- recv_mode: callback
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 256
+
+RESULT,current,SPOT,inproc,256,throughput,39452.00
+RESULT,current,SPOT,inproc,256,bandwidth,10.10
+RESULT,current,SPOT,inproc,256,latency,28216.78
+RESULT,current,SPOT,inproc,256,latency_p95,49517.48
+RESULT,current,SPOT,inproc,256,latency_p99,51562.17
+
+## Effective Options (result)
+- recv_mode: callback
+- result_lines: 5

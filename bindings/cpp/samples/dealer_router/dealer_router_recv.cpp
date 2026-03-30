@@ -25,18 +25,18 @@ int main ()
 
     zlink::message_t outbound =
       detail::make_message ("dealer-router-recv");
-    assert (dealer.send (outbound) == 0);
+    dealer.send (outbound);
 
-    zlink_routing_id_t source_rid;
-    zlink::message_t inbound;
-    assert (router.recv (source_rid, inbound) == 0);
-    assert (inbound.to_string () == "dealer-router-recv");
+    const zlink::received_t inbound = router.receive ();
+    assert (inbound.routing_id.size > 0);
+    assert (inbound.parts.size () == 1);
+    assert (inbound.parts[0].to_string () == "dealer-router-recv");
 
     zlink::message_t reply = detail::make_message ("dealer-reply");
-    assert (router.send (source_rid, reply) == 0);
+    router.send (inbound.routing_id, reply);
 
-    zlink::message_t echoed;
-    assert (dealer.recv (echoed) == 0);
-    assert (echoed.to_string () == "dealer-reply");
+    const zlink::received_t echoed = dealer.receive ();
+    assert (echoed.parts.size () == 1);
+    assert (echoed.parts[0].to_string () == "dealer-reply");
     return 0;
 }

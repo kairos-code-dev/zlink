@@ -24,14 +24,15 @@ const int kSocketBufBytes = 4096;
 const int kProbeTimeoutMs = 250;
 const int kLingerMs = 0;
 
-void configure_stream_socket (zlink::socket_t &socket_)
+template<typename SocketLike>
+void configure_stream_socket (SocketLike &socket_)
 {
-    assert (socket_.set (zlink::socket_option::linger, kLingerMs) == 0);
-    assert (socket_.set (zlink::socket_option::sndhwm, kStreamHwm) == 0);
-    assert (socket_.set (zlink::socket_option::rcvhwm, kStreamHwm) == 0);
-    assert (socket_.set (zlink::socket_option::sndbuf, kSocketBufBytes) == 0);
-    assert (socket_.set (zlink::socket_option::rcvbuf, kSocketBufBytes) == 0);
-    assert (socket_.set (zlink::socket_option::sndtimeo, kSendTimeoutMs) == 0);
+    assert (socket_.set_option (zlink::socket_option::linger, kLingerMs) == 0);
+    assert (socket_.set_option (zlink::socket_option::sndhwm, kStreamHwm) == 0);
+    assert (socket_.set_option (zlink::socket_option::rcvhwm, kStreamHwm) == 0);
+    assert (socket_.set_option (zlink::socket_option::sndbuf, kSocketBufBytes) == 0);
+    assert (socket_.set_option (zlink::socket_option::rcvbuf, kSocketBufBytes) == 0);
+    assert (socket_.set_option (zlink::socket_option::sndtimeo, kSendTimeoutMs) == 0);
 }
 
 #if defined(ZLINK_HAVE_WINDOWS)
@@ -158,7 +159,7 @@ void set_raw_timeout (int fd_, int timeout_ms_)
 }
 #endif
 
-void establish_stream_route (zlink::socket_t &server_,
+void establish_stream_route (zlink::stream_socket_t &server_,
                              int raw_fd_,
                              uint32_t *rid_)
 {
@@ -168,7 +169,7 @@ void establish_stream_route (zlink::socket_t &server_,
     unsigned char routing_id[kRouteIdSize];
     unsigned char payload[16];
 
-    const int rid_rc = server_.recv (routing_id, sizeof (routing_id));
+    const int rid_rc = raw_recv (server_, routing_id, sizeof (routing_id));
     assert (rid_rc == kRouteIdSize);
 
     int more = 0;
@@ -176,7 +177,7 @@ void establish_stream_route (zlink::socket_t &server_,
     assert (zlink_getsockopt (server_.handle (), ZLINK_RCVMORE, &more, &more_size) == 0);
     assert (more == 1);
 
-    const int payload_rc = server_.recv (payload, sizeof (payload));
+    const int payload_rc = raw_recv (server_, payload, sizeof (payload));
     assert (payload_rc == 1);
     assert (payload[0] == request);
 
@@ -186,10 +187,11 @@ void establish_stream_route (zlink::socket_t &server_,
             | static_cast<uint32_t> (routing_id[3]);
 }
 
-void fill_stream_send_queue_until_hwm (zlink::socket_t &server_,
+void fill_stream_send_queue_until_hwm (zlink::stream_socket_t &server_,
                                        uint32_t rid_)
 {
     std::vector<unsigned char> payload (kPayloadSize, 0x5A);
+    const zlink_routing_id_t routing_id = routing_id_from_uint32 (rid_);
     int sent = 0;
     const auto stable_full_window = std::chrono::milliseconds (120);
     auto no_success_since = std::chrono::steady_clock::now ();
@@ -198,8 +200,9 @@ void fill_stream_send_queue_until_hwm (zlink::socket_t &server_,
     bool reached_full = false;
 
     for (;;) {
-        const int rc = server_.stream_send (rid_, payload.data (), kPayloadSize,
-                                            zlink::send_flag::dontwait);
+        const int rc = routed_raw_send (
+          server_, routing_id, payload.data (), kPayloadSize,
+          zlink::send_flag::dontwait);
         if (rc == static_cast<int> (kPayloadSize)) {
             ++sent;
             no_success_since = std::chrono::steady_clock::now ();
@@ -231,9 +234,9 @@ void test_stream_queue_reopens_after_peer_reads ()
     return;
 #else
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::stream);
+    zlink::stream_socket_t server (ctx);
     configure_stream_socket (server);
-    assert (server.set (zlink::socket_option::sndtimeo, kWakeupSendTimeoutMs) == 0);
+    assert (server.set_option (zlink::socket_option::sndtimeo, kWakeupSendTimeoutMs) == 0);
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     const std::string endpoint = bound_endpoint (server);
@@ -247,8 +250,10 @@ void test_stream_queue_reopens_after_peer_reads ()
     fill_stream_send_queue_until_hwm (server, rid);
 
     std::vector<unsigned char> payload (kPayloadSize, 0x33);
-    assert (server.set (zlink::socket_option::sndtimeo, kProbeTimeoutMs) == 0);
-    assert (server.stream_send (rid, payload.data (), kPayloadSize) == -1);
+    assert (server.set_option (zlink::socket_option::sndtimeo, kProbeTimeoutMs) == 0);
+    assert (routed_raw_send (
+              server, routing_id_from_uint32 (rid), payload.data (), kPayloadSize)
+            == -1);
     assert (zlink_errno () == EAGAIN);
 
     unsigned char drain_buf[64 * 1024];
@@ -267,8 +272,9 @@ void test_stream_queue_reopens_after_peer_reads ()
     const auto reopen_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (1500);
     while (std::chrono::steady_clock::now () < reopen_deadline) {
-        const int send_rc = server.stream_send (rid, payload.data (), kPayloadSize,
-                                                zlink::send_flag::dontwait);
+        const int send_rc = routed_raw_send (
+          server, routing_id_from_uint32 (rid), payload.data (), kPayloadSize,
+          zlink::send_flag::dontwait);
         if (send_rc == static_cast<int> (kPayloadSize)) {
             reopened = true;
             break;
@@ -289,7 +295,7 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
     return;
 #else
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::stream);
+    zlink::stream_socket_t server (ctx);
     configure_stream_socket (server);
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
@@ -305,7 +311,8 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
 
     std::vector<unsigned char> payload (kPayloadSize, 0x44);
     void *stopwatch = zlink_stopwatch_start ();
-    const int send_rc = server.stream_send (rid, payload.data (), kPayloadSize);
+    const int send_rc = routed_raw_send (
+      server, routing_id_from_uint32 (rid), payload.data (), kPayloadSize);
     const unsigned int elapsed_ms = zlink_stopwatch_stop (stopwatch) / 1000;
 
     assert (send_rc == -1);

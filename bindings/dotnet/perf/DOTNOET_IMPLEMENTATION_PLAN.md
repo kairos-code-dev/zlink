@@ -199,7 +199,7 @@ dotnet run --project perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj \
 - **SIZE**: 양의 정수 (바이트)
 - 종료코드: 0=성공, 1=인자 오류, 2=런타임 오류
 
-> **single suite 는 위 8종**이다. STREAM 3종(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은
+> **single suite 는 위 8종**이다. STREAM 2종(STREAM, STREAM_CALLBACK)은
 > core/perf 기준 **multi 전용** 패턴이며, single suite 에는 포함되지 않는다 (`core/perf/run_comparison.py:84` 참조).
 
 ### 3.2 Multi 실행
@@ -236,8 +236,8 @@ dotnet run --project perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj \
 
 ### 3.3 STREAM 패턴 클라이언트
 
-STREAM, STREAM_CALLBACK, STREAM_LEN32BE 패턴은:
-- **서버**: C# 벤치마크가 직접 구현 (Socket.AttachStreamRaw / AttachStreamLen32Be API)
+STREAM, STREAM_CALLBACK 패턴은:
+- **서버**: C# 벤치마크가 직접 구현 (`Socket.AttachStreamRaw` 기반)
 - **클라이언트**: `core/perf/common/streamclient/build/perf_stream_client` (C++ 공통 바이너리) 사용
 - `run_policy_bench.py` 가 자동으로 공통 stream client 를 호출한다.
 
@@ -400,7 +400,7 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 8 | PerfSpot.cs | SPOT | Spot (pub/sub) | one-way | tcp,tls,ws,wss | ★ warmup clamp: size≥65536 → max 20 |
 
 > core/perf 기준 single suite 는 **8개 패턴**이다 (`core/perf/run_comparison.py:84`).
-> STREAM 3종(STREAM, STREAM_CALLBACK, STREAM_LEN32BE)은 **multi 전용** 패턴이며, single suite 에 포함되지 않는다.
+> STREAM 2종(STREAM, STREAM_CALLBACK)은 **multi 전용** 패턴이며, single suite 에 포함되지 않는다.
 
 ### 7.2 Multi 패턴
 
@@ -416,7 +416,6 @@ bandwidth_mbps = throughput × size × multiplier / 1,000,000
 | 6 | PerfSpotServer.cs | PerfSpotClient.cs | SPOT | Spot publish | Spot subscribe |
 | 7 | PerfStreamServer.cs | (C++ stream client) | STREAM | STREAM bind, raw echo | C++ stream client |
 | 8 | PerfStreamCallbackServer.cs | (C++ stream client) | STREAM_CALLBACK | AttachStreamRaw callback | C++ stream client |
-| 9 | PerfStreamLen32BeServer.cs | (C++ stream client) | STREAM_LEN32BE | AttachStreamLen32Be | C++ stream client |
 
 **Multi 서버 통신 프로토콜:**
 - 서버 stdout 에 `READY,<endpoint>` 출력 → 스크립트가 클라이언트 시작

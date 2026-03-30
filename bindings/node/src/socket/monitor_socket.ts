@@ -15,6 +15,10 @@ export class MonitorSocket {
     return requireNative().monitorRecv(this._native) as SocketMonitorEventValue;
   }
 
+  tryRecv(): SocketMonitorEventValue | null {
+    return requireNative().monitorTryRecv(this._native) as SocketMonitorEventValue | null;
+  }
+
   snapshot(): MonitorSnapshot {
     return requireNative().monitorSnapshot(this._native) as MonitorSnapshot;
   }

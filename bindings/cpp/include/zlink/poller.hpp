@@ -2,8 +2,6 @@
 #ifndef ZLINK_CPP_POLLER_HPP_INCLUDED
 #define ZLINK_CPP_POLLER_HPP_INCLUDED
 
-#include "socket.hpp"
-
 #include <cerrno>
 #include <vector>
 
@@ -13,7 +11,7 @@ namespace zlink
 struct poll_event_t
 {
     void *socket_handle;
-    socket_t *socket;
+    void *socket;
     zlink_fd_t fd;
     void *user;
     short events;
@@ -60,7 +58,8 @@ class poller_t
         return _poller ? zlink_poller_size (_poller) : -1;
     }
 
-    int add (socket_t &socket_, poll_event events_, void *user_ = NULL)
+    template<typename SocketLike>
+    int add (SocketLike &socket_, poll_event events_, void *user_ = NULL)
     {
         if (!_poller) {
             errno = EFAULT;
@@ -114,7 +113,8 @@ class poller_t
         return 0;
     }
 
-    int modify (socket_t &socket_, poll_event events_)
+    template<typename SocketLike>
+    int modify (SocketLike &socket_, poll_event events_)
     {
         if (!_poller) {
             errno = EFAULT;
@@ -156,7 +156,8 @@ class poller_t
         return 0;
     }
 
-    int remove (socket_t &socket_)
+    template<typename SocketLike>
+    int remove (SocketLike &socket_)
     {
         if (!_poller) {
             errno = EFAULT;
@@ -263,7 +264,7 @@ class poller_t
     struct item_t
     {
         void *socket_handle;
-        socket_t *socket;
+        void *socket;
         zlink_fd_t fd;
         short events;
         void *user;

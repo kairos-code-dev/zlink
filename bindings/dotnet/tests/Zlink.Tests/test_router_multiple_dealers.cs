@@ -23,8 +23,8 @@ public sealed class test_router_multiple_dealers
         using var dealer1 = new DealerSocket(ctx);
         using var dealer2 = new DealerSocket(ctx);
 
-        dealer1.SetOption(SocketOptions.RoutingId, "D1");
-        dealer2.SetOption(SocketOptions.RoutingId, "D2");
+        dealer1.SetRoutingId("D1");
+        dealer2.SetRoutingId("D2");
 
         string endpoint = CoreTestSupport.NewEndpoint(transport,
             "router-multi-dealer");
@@ -33,10 +33,8 @@ public sealed class test_router_multiple_dealers
         dealer2.Connect(endpoint);
         Thread.Sleep(100);
 
-        CoreTestSupport.SendWithRetry(dealer1, "from_dealer1"u8, SendFlags.None,
-            2000);
-        CoreTestSupport.SendWithRetry(dealer2, "from_dealer2"u8, SendFlags.None,
-            2000);
+        CoreTestSupport.SendWithRetry(dealer1, "from_dealer1"u8, 2000);
+        CoreTestSupport.SendWithRetry(dealer2, "from_dealer2"u8, 2000);
 
         var received = new Dictionary<string, string>();
         for (int i = 0; i < 2; i++)

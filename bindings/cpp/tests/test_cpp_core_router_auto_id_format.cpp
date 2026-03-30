@@ -5,12 +5,12 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::router);
-    zlink::socket_t client (ctx, zlink::socket_type::dealer);
+    zlink::router_socket_t server (ctx);
+    zlink::dealer_socket_t client (ctx);
 
     const int zero = 0;
-    assert (server.set (zlink::socket_option::linger, zero) == 0);
-    assert (client.set (zlink::socket_option::linger, zero) == 0);
+    assert (server.set_option (zlink::socket_option::linger, zero) == 0);
+    assert (client.set_option (zlink::socket_option::linger, zero) == 0);
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "router-auto-id-format");

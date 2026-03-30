@@ -1,12 +1,13 @@
 import unittest
 
 import zlink
+from zlink._ffi import lib
 
 
 class NativeContractTests(unittest.TestCase):
     def test_import_does_not_require_removed_legacy_symbols(self):
         try:
-            native = zlink.lib()
+            native = lib()
         except OSError:
             self.skipTest("zlink native library not found")
 

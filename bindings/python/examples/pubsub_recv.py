@@ -8,10 +8,10 @@ def main():
                 endpoint = "inproc://py-example-pubsub"
                 pub.bind(endpoint)
                 sub.connect(endpoint)
-                sub.subscribe(b"prices")
+                sub.set_subscription(b"prices")
 
                 pub.publish(b"prices", b"101.25")
-                with sub.recv_topic_message() as received:
+                with sub.recv() as received:
                     print(received.topic.decode("utf-8"), received.to_bytes_list())
 
 

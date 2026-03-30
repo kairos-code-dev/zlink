@@ -15,16 +15,18 @@ const size_t kMsgSize = 64;
 const char *kEndpoint = "inproc://pair_send_blocking_wakeup";
 const char *kTimeoutEndpoint = "inproc://pair_send_blocking_timeout";
 
-void configure_pair_socket (zlink::socket_t &socket_)
+template<typename SocketLike>
+void configure_pair_socket (SocketLike &socket_)
 {
-    assert (socket_.set (zlink::socket_option::sndhwm, kSocketHwm) == 0);
-    assert (socket_.set (zlink::socket_option::rcvhwm, kSocketHwm) == 0);
+    assert (socket_.set_option (zlink::socket_option::sndhwm, kSocketHwm) == 0);
+    assert (socket_.set_option (zlink::socket_option::rcvhwm, kSocketHwm) == 0);
 }
 
-void fill_until_hwm (zlink::socket_t &sender_, const char *buffer_)
+template<typename SocketLike>
+void fill_until_hwm (SocketLike &sender_, const char *buffer_)
 {
     int sent = 0;
-    while (sender_.send (buffer_, kMsgSize, zlink::send_flag::dontwait)
+    while (raw_send (sender_, buffer_, kMsgSize, zlink::send_flag::dontwait)
            == static_cast<int> (kMsgSize))
         ++sent;
 
@@ -35,12 +37,12 @@ void fill_until_hwm (zlink::socket_t &sender_, const char *buffer_)
 void test_pair_blocking_send_wakes_only_after_lwm_reads ()
 {
     zlink::context_t ctx;
-    zlink::socket_t receiver (ctx, zlink::socket_type::pair);
-    zlink::socket_t sender (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t receiver (ctx);
+    zlink::pair_socket_t sender (ctx);
     configure_pair_socket (receiver);
     configure_pair_socket (sender);
 
-    assert (sender.set (zlink::socket_option::sndtimeo, kSendTimeoutMs) == 0);
+    assert (sender.set_option (zlink::socket_option::sndtimeo, kSendTimeoutMs) == 0);
 
     assert (receiver.bind (kEndpoint) == 0);
     assert (sender.connect (kEndpoint) == 0);
@@ -53,20 +55,20 @@ void test_pair_blocking_send_wakes_only_after_lwm_reads ()
     fill_until_hwm (sender, send_buf);
 
     std::future<int> send_future = std::async (std::launch::async, [&] () {
-        return sender.send (send_buf, kMsgSize);
+        return raw_send (sender, send_buf, kMsgSize);
     });
 
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
 
     for (int i = 0; i < kLwm - 1; ++i) {
-        const int rc = receiver.recv (recv_buf, kMsgSize);
+        const int rc = raw_recv (receiver, recv_buf, kMsgSize);
         assert (rc == static_cast<int> (kMsgSize));
     }
 
     const std::future_status state_before_lwm =
       send_future.wait_for (std::chrono::milliseconds (100));
 
-    const int lwm_rc = receiver.recv (recv_buf, kMsgSize);
+    const int lwm_rc = raw_recv (receiver, recv_buf, kMsgSize);
     assert (lwm_rc == static_cast<int> (kMsgSize));
 
     const std::future_status state_after_lwm =
@@ -83,12 +85,12 @@ void test_pair_blocking_send_wakes_only_after_lwm_reads ()
 void test_pair_blocking_send_times_out_without_recv ()
 {
     zlink::context_t ctx;
-    zlink::socket_t receiver (ctx, zlink::socket_type::pair);
-    zlink::socket_t sender (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t receiver (ctx);
+    zlink::pair_socket_t sender (ctx);
     configure_pair_socket (receiver);
     configure_pair_socket (sender);
 
-    assert (sender.set (zlink::socket_option::sndtimeo, kSendTimeoutMs) == 0);
+    assert (sender.set_option (zlink::socket_option::sndtimeo, kSendTimeoutMs) == 0);
 
     assert (receiver.bind (kTimeoutEndpoint) == 0);
     assert (sender.connect (kTimeoutEndpoint) == 0);
@@ -99,7 +101,7 @@ void test_pair_blocking_send_times_out_without_recv ()
     fill_until_hwm (sender, send_buf);
 
     void *stopwatch = zlink_stopwatch_start ();
-    assert (sender.send (send_buf, kMsgSize) == -1);
+    assert (raw_send (sender, send_buf, kMsgSize) == -1);
     const unsigned int elapsed_ms = zlink_stopwatch_stop (stopwatch) / 1000;
 
     assert (zlink_errno () == EAGAIN);

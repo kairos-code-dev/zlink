@@ -16,8 +16,9 @@ NetworkStream network = client.GetStream();
 byte[] request = "stream-recv"u8.ToArray();
 SampleSupport.SendAll(network, request);
 
-stream.Receive(out string routingId, out Message payload);
-using (payload)
+Received received = stream.Receive();
+string routingId = received.RoutingId;
+using (Message payload = received.Parts[0])
 {
     Console.WriteLine(payload.GetString());
 }

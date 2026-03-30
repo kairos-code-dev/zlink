@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -74,6 +75,24 @@ public class SocketOptionsTypeMapTest {
             SocketOptions.CONNECT_ROUTING_ID_BYTES.valueClass());
         assertEquals(SocketOptions.CONNECT_ROUTING_ID.optionId(),
             SocketOptions.CONNECT_ROUTING_ID_BYTES.optionId());
+    }
+
+    @Test
+    public void aliasOptionId98RespectsSocketTypeOwner() {
+        try (Context ctx = new Context();
+             PairSocket pair = new PairSocket(ctx);
+             XPubSocket xpub = new XPubSocket(ctx)) {
+            assertThrows(IllegalArgumentException.class,
+                () -> pair.validateOptionAccess(SocketOption.TLS_VERIFY.getValue(),
+                    SocketOptions.XPUB_MANUAL_LAST_VALUE.name()));
+            assertThrows(IllegalArgumentException.class,
+                () -> xpub.validateOptionAccess(SocketOption.TLS_VERIFY.getValue(),
+                    SocketOptions.TLS_VERIFY.name()));
+            xpub.validateOptionAccess(SocketOption.TLS_VERIFY.getValue(),
+                SocketOptions.XPUB_MANUAL_LAST_VALUE.name());
+            pair.validateOptionAccess(SocketOption.TLS_VERIFY.getValue(),
+                SocketOptions.TLS_VERIFY.name());
+        }
     }
 
     private static boolean isStringBytesTwin(Set<String> mapped) {

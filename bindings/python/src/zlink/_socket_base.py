@@ -3,13 +3,12 @@
 import ctypes
 import warnings
 
-from ._enums import SocketType
+from ._enums import SendResult, SocketOption, SocketType
 from ._ffi import ZlinkMsg, lib
 from ._core import (
     Message,
-    ReceivedMessage,
-    ReceivedMultipart,
-    ReceivedTopicMessage,
+    Received,
+    Subscribed,
     ZlinkRoutingId,
     _SOCKET_RECV_HANDLER,
     _SOCKET_SEND_READY_HANDLER,
@@ -20,10 +19,10 @@ from ._core import (
     _clone_native_msg,
     _copy_routing_id,
     _init_msg_from_buffer,
-    _msg_data_ptr,
-    _msg_to_bytes,
+    _is_eagain,
     _raise_last_error,
     _recv_native_parts,
+    _try_recv_native_parts,
     _report_unhandled_callback_exception,
     _routing_id_bytes,
     _send_buffer,
@@ -45,6 +44,84 @@ def _socket_type_name(socket_type):
         return str(int(socket_type))
 
 
+def _payload_parts(payload):
+    if isinstance(payload, (list, tuple)):
+        parts = list(payload)
+    else:
+        parts = [payload]
+    if not parts:
+        raise ValueError("parts must not be empty")
+    return parts
+
+
+def _int32_bytes(value):
+    native = ctypes.c_int32(int(value))
+    return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
+
+
+def _bool_bytes(value):
+    return _int32_bytes(1 if value else 0)
+
+
+def _read_int32(raw):
+    if len(raw) != ctypes.sizeof(ctypes.c_int32):
+        raise ValueError("native option payload size mismatch")
+    return ctypes.c_int32.from_buffer_copy(raw).value
+
+
+class CommonSocketOptions:
+    def __init__(self, socket):
+        self._socket = socket
+
+    @property
+    def linger_ms(self):
+        return self._socket._get_common_int_option(SocketOption.LINGER)
+
+    @linger_ms.setter
+    def linger_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.LINGER, value)
+
+    @property
+    def send_high_water_mark(self):
+        return self._socket._get_common_int_option(SocketOption.SNDHWM)
+
+    @send_high_water_mark.setter
+    def send_high_water_mark(self, value):
+        self._socket._set_common_int_option(SocketOption.SNDHWM, value)
+
+    @property
+    def receive_high_water_mark(self):
+        return self._socket._get_common_int_option(SocketOption.RCVHWM)
+
+    @receive_high_water_mark.setter
+    def receive_high_water_mark(self, value):
+        self._socket._set_common_int_option(SocketOption.RCVHWM, value)
+
+    @property
+    def send_timeout_ms(self):
+        return self._socket._get_common_int_option(SocketOption.SNDTIMEO)
+
+    @send_timeout_ms.setter
+    def send_timeout_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.SNDTIMEO, value)
+
+    @property
+    def receive_timeout_ms(self):
+        return self._socket._get_common_int_option(SocketOption.RCVTIMEO)
+
+    @receive_timeout_ms.setter
+    def receive_timeout_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.RCVTIMEO, value)
+
+    @property
+    def immediate(self):
+        return self._socket._get_common_bool_option(SocketOption.IMMEDIATE)
+
+    @immediate.setter
+    def immediate(self, value):
+        self._socket._set_common_bool_option(SocketOption.IMMEDIATE, value)
+
+
 class _SocketHandle:
     def __init__(self, handle, own):
         self.handle = handle
@@ -64,23 +141,25 @@ class _SocketHandle:
 
 class _BaseSocket:
     _socket_type_value = None
-    _routing_id_socket_types = {
-        int(SocketType.DEALER),
-        int(SocketType.ROUTER),
-        int(SocketType.STREAM),
-    }
-    _subscribe_socket_types = {
-        int(SocketType.SUB),
-        int(SocketType.XSUB),
-    }
-    _pub_option_socket_types = {
-        int(SocketType.PUB),
-        int(SocketType.XPUB),
-    }
-    _sub_option_socket_types = _subscribe_socket_types
-    _dealer_option_socket_types = {int(SocketType.DEALER)}
-    _router_option_socket_types = {int(SocketType.ROUTER)}
-    _stream_option_socket_types = {int(SocketType.STREAM)}
+    _OPTION_ROUTE_MISS = object()
+    _OPTION_SET_ROUTES = (
+        ((5,), "routing IDs", "set_routing_id", lambda option, value: (value,)),
+        ((6,), "subscriptions", "set_subscription", lambda option, value: (value,)),
+        ((7,), "subscriptions", "unset_subscription", lambda option, value: (value,)),
+        ((40,), "publisher options", "_set_pub_option", lambda option, value: (0x3301, value)),
+        ((0x3100, 0x3200), "router options", "_set_router_option", lambda option, value: (option, value)),
+        ((0x3200, 0x3300), "dealer options", "_set_dealer_option", lambda option, value: (option, value)),
+        ((0x3300, 0x3400), "publisher options", "_set_pub_option", lambda option, value: (option, value)),
+        ((0x3400, 0x3500), "subscriber options", "_set_sub_option", lambda option, value: (option, value)),
+        ((0x3500, 0x3600), "stream options", "_set_stream_option", lambda option, value: (option, value)),
+    )
+    _OPTION_GET_ROUTES = (
+        ((5,), "routing IDs", "get_routing_id", lambda option, size: ()),
+        ((0x3100, 0x3200), "router options", "_get_router_option", lambda option, size: (option, size)),
+        ((0x3300, 0x3400), "publisher options", "_get_pub_option", lambda option, size: (option, size)),
+        ((0x3400, 0x3500), "subscriber options", "_get_sub_option", lambda option, size: (option, size)),
+        ((0x3500, 0x3600), "stream options", "_get_stream_option", lambda option, size: (option, size)),
+    )
 
     def __init__(self, context, sock_type=None):
         socket_type = self._resolve_socket_type(sock_type)
@@ -99,14 +178,13 @@ class _BaseSocket:
     def _init_from_native_handle(self, handle, *, own, socket_type):
         self._socket_handle = _SocketHandle(handle, own)
         self._socket_type = socket_type
-        self._pending_send_parts = []
-        self._legacy_recv_queue = []
         self._recv_handler = None
         self._recv_handler_cb = None
         self._subscribe_handler = None
         self._subscribe_handler_cb = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
+        self.options = CommonSocketOptions(self)
 
     @property
     def _handle(self):
@@ -203,99 +281,91 @@ class _BaseSocket:
             _raise_last_error()
         return buf.raw[: out_size.value]
 
-    def _require_socket_type(self, allowed_socket_types, capability):
-        if self._socket_type in allowed_socket_types:
-            return
-        actual = _socket_type_name(self._socket_type)
-        supported = ", ".join(
-            _socket_type_name(socket_type) for socket_type in sorted(allowed_socket_types)
-        )
-        raise TypeError(
-            f"{actual} sockets do not support {capability}; supported socket types: {supported}"
-        )
+    def _native_parts_from_payload(self, payload):
+        native_parts = []
+        for part in _payload_parts(payload):
+            if isinstance(part, Message):
+                native_parts.append(_clone_native_msg(part._msg))
+                continue
+            native = ZlinkMsg()
+            _keepalive = _init_msg_from_buffer(native, part, borrow=False)
+            _ = _keepalive
+            native_parts.append(native)
+        return native_parts
 
-    def set_option(self, option: int, value):
-        if int(option) == 5:
-            self._require_socket_type(self._routing_id_socket_types, "routing IDs")
-            topic_bytes = bytes(_as_bytes_view(value))
-            rc = lib().zlink_set_routing_id(
-                self._handle,
-                ctypes.c_char_p(topic_bytes),
-                len(topic_bytes),
-            )
-        elif int(option) == 6:
-            self._require_socket_type(self._subscribe_socket_types, "subscriptions")
-            rc = lib().zlink_set_subscription(
-                self._handle, bytes(_as_bytes_view(value))
-            )
-        elif int(option) == 7:
-            self._require_socket_type(self._subscribe_socket_types, "subscriptions")
-            rc = lib().zlink_unset_subscription(
-                self._handle, bytes(_as_bytes_view(value))
-            )
-        elif int(option) == 40:
-            self._require_socket_type(
-                self._pub_option_socket_types, "publisher options"
-            )
-            self.set_pub_option(0x3301, value)
-            return
-        elif 0x3100 <= int(option) < 0x3200:
-            self._require_socket_type(self._router_option_socket_types, "router options")
-            self.set_router_option(option, value)
-            return
-        elif 0x3200 <= int(option) < 0x3300:
-            self._require_socket_type(self._dealer_option_socket_types, "dealer options")
-            self.set_dealer_option(option, value)
-            return
-        elif 0x3300 <= int(option) < 0x3400:
-            self._require_socket_type(self._pub_option_socket_types, "publisher options")
-            self.set_pub_option(option, value)
-            return
-        elif 0x3400 <= int(option) < 0x3500:
-            self._require_socket_type(
-                self._sub_option_socket_types, "subscriber options"
-            )
-            self.set_sub_option(option, value)
-            return
-        elif 0x3500 <= int(option) < 0x3600:
-            self._require_socket_type(self._stream_option_socket_types, "stream options")
-            self.set_stream_option(option, value)
-            return
-        else:
-            self._set_raw_option(lib().zlink_set_option, option, value)
-            return
+    def _unsupported_capability(self, capability):
+        actual = _socket_type_name(self._socket_type)
+        raise TypeError(f"{actual} sockets do not support {capability}")
+
+    def _require_capability_method(self, method_name, capability):
+        method = getattr(self, method_name, None)
+        if method is None:
+            self._unsupported_capability(capability)
+        return method
+
+    def _option_route_matches(self, route_key, option):
+        if len(route_key) == 1:
+            return int(option) == route_key[0]
+        return route_key[0] <= int(option) < route_key[1]
+
+    def _dispatch_option_route(self, option, value, routes):
+        for route_key, capability, method_name, args_factory in routes:
+            if not self._option_route_matches(route_key, option):
+                continue
+            method = self._require_capability_method(method_name, capability)
+            return method(*args_factory(int(option), value))
+        return self._OPTION_ROUTE_MISS
+
+    def _set_routing_id_raw(self, routing_id):
+        topic_bytes = bytes(_as_bytes_view(routing_id))
+        rc = lib().zlink_set_routing_id(
+            self._handle,
+            ctypes.c_char_p(topic_bytes),
+            len(topic_bytes),
+        )
         if rc != 0:
             _raise_last_error()
 
-    def get_option(self, option: int, size: int = 256):
-        if int(option) == 5:
-            self._require_socket_type(self._routing_id_socket_types, "routing IDs")
-            rid = ZlinkRoutingId()
-            rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(rid))
-            if rc != 0:
-                _raise_last_error()
-            return bytes(rid.data[: rid.size])
-        if 0x3100 <= int(option) < 0x3200:
-            self._require_socket_type(self._router_option_socket_types, "router options")
-            return self.get_router_option(option, size)
-        if 0x3300 <= int(option) < 0x3400:
-            self._require_socket_type(self._pub_option_socket_types, "publisher options")
-            return self.get_pub_option(option, size)
-        if 0x3400 <= int(option) < 0x3500:
-            self._require_socket_type(
-                self._sub_option_socket_types, "subscriber options"
-            )
-            return self.get_sub_option(option, size)
-        if 0x3500 <= int(option) < 0x3600:
-            self._require_socket_type(self._stream_option_socket_types, "stream options")
-            return self.get_stream_option(option, size)
+    def _get_routing_id_raw(self) -> bytes:
+        rid = ZlinkRoutingId()
+        rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(rid))
+        if rc != 0:
+            _raise_last_error()
+        return bytes(rid.data[: rid.size])
+
+    def _send_result(self, native_result):
+        if int(native_result) < 0:
+            _raise_last_error()
+        return SendResult(int(native_result))
+
+    def _set_option(self, option: int, value):
+        if self._dispatch_option_route(option, value, self._OPTION_SET_ROUTES) is not self._OPTION_ROUTE_MISS:
+            return
+        self._set_raw_option(lib().zlink_set_option, option, value)
+
+    def _get_option(self, option: int, size: int = 256):
+        routed = self._dispatch_option_route(option, size, self._OPTION_GET_ROUTES)
+        if routed is not self._OPTION_ROUTE_MISS:
+            return routed
         return self._get_raw_option(lib().zlink_get_option, option, size)
 
-    def set_routing_id(self, routing_id):
-        self.set_option(5, routing_id)
+    def _set_common_int_option(self, option: int, value):
+        self._set_raw_option(lib().zlink_set_option, option, _int32_bytes(value))
 
-    def get_routing_id(self) -> bytes:
-        return self.get_option(5)
+    def _get_common_int_option(self, option: int):
+        return _read_int32(self._get_raw_option(lib().zlink_get_option, option, 4))
+
+    def _set_common_bool_option(self, option: int, value):
+        self._set_raw_option(lib().zlink_set_option, option, _bool_bytes(value))
+
+    def _get_common_bool_option(self, option: int):
+        return bool(self._get_common_int_option(option))
+
+    def _set_pub_bool_option(self, option: int, value):
+        self._set_pub_option(option, _bool_bytes(value))
+
+    def _get_pub_bool_option(self, option: int):
+        return bool(_read_int32(self._get_pub_option(option, 4)))
 
     def on_send_ready(self, handler):
         if handler is None:
@@ -326,8 +396,6 @@ class _BaseSocket:
         return open_socket_monitor(self, events)
 
     def close(self):
-        self._pending_send_parts = []
-        self._legacy_recv_queue = []
         self._recv_handler = None
         self._recv_handler_cb = None
         self._subscribe_handler = None
@@ -358,109 +426,88 @@ class Socket(_BaseSocket):
     def register_socket_type(cls, sock_type, socket_cls):
         cls._dispatch[_native_socket_type(sock_type)] = socket_cls
 
+
+class RoutingIdSocket(Socket):
+    def set_routing_id(self, routing_id):
+        self._set_routing_id_raw(routing_id)
+
+    def get_routing_id(self) -> bytes:
+        return self._get_routing_id_raw()
+
+
+class DealerOptionSocket(Socket):
+    def _set_dealer_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_dealer_option, option, value)
+
+
+class RouterOptionSocket(Socket):
+    def _set_router_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_router_option, option, value)
+
+    def _get_router_option(self, option, size: int = 256):
+        return self._get_raw_option(lib().zlink_get_router_option, option, size)
+
+    def _set_router_bool_option(self, option, value):
+        self._set_router_option(option, _bool_bytes(value))
+
+    def _get_router_bool_option(self, option):
+        return bool(_read_int32(self._get_router_option(option, ctypes.sizeof(ctypes.c_int32))))
+
+    def _set_router_bytes_option(self, option, value):
+        self._set_router_option(option, bytes(_as_bytes_view(value)))
+
+    def _get_router_bytes_option(self, option, size: int = 256):
+        return self._get_router_option(option, size)
+
+
+class StreamOptionSocket(Socket):
+    def _set_stream_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_stream_option, option, value)
+
+    def _get_stream_option(self, option, size: int = 256):
+        return self._get_raw_option(lib().zlink_get_stream_option, option, size)
+
+
+class PublisherOptionSocket(Socket):
+    def _set_pub_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_pub_option, option, value)
+
+    def _get_pub_option(self, option, size: int = 256):
+        return self._get_raw_option(lib().zlink_get_pub_option, option, size)
+
+
+class SubscriberOptionSocket(Socket):
+    def _set_sub_option(self, option, value):
+        self._set_raw_option(lib().zlink_set_sub_option, option, value)
+
+    def _get_sub_option(self, option, size: int = 256):
+        return self._get_raw_option(lib().zlink_get_sub_option, option, size)
+
+
 class MessageSocket(Socket):
-    def recv(self, size: int, flags: int = 0) -> bytes:
-        warnings.warn(
-            "Socket.recv(size) is legacy; use recv_message() instead",
-            DeprecationWarning,
-            stacklevel=2,
+    def send(self, payload):
+        self._send_native_parts(self._native_parts_from_payload(payload), 0)
+
+    def try_send(self, payload):
+        native_parts = self._native_parts_from_payload(payload)
+        part_count = len(native_parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native in enumerate(native_parts):
+            parts_array[index] = native
+        return self._send_result(
+            lib().zlink_try_send_result(self._handle, parts_array, part_count)
         )
-        if self._legacy_recv_queue:
-            data = self._legacy_recv_queue.pop(0)
-            if len(data) > size:
-                raise ValueError("received message larger than requested legacy size")
-            return data
 
-        routing_id, owner = _recv_native_parts(self._handle, flags)
-        if routing_id:
-            self._legacy_recv_queue.append(routing_id)
-        self._legacy_recv_queue.extend(
-            _msg_to_bytes(owner.msg(index))
-            for index in range(owner._part_count)
-        )
-        owner.close()
-        data = self._legacy_recv_queue.pop(0)
-        if len(data) > size:
-            raise ValueError("received message larger than requested legacy size")
-        return data
+    def recv(self):
+        routing, owner = _recv_native_parts(self._handle, 0)
+        return Received(owner, routing)
 
-    def send(self, data, flags: int = 0):
-        if int(flags) & 0x2:
-            self._pending_send_parts.append(data)
-            return len(bytes(_as_bytes_view(data)))
-
-        if self._pending_send_parts:
-            parts = self._pending_send_parts + [data]
-            self._pending_send_parts = []
-            if self._socket_type == int(SocketType.ROUTER) and parts:
-                routing_id = parts[0]
-                payload_parts = parts[1:] or [b""]
-                native_parts = []
-                for part in payload_parts:
-                    if isinstance(part, Message):
-                        native_parts.append(_clone_native_msg(part._msg))
-                    else:
-                        native = ZlinkMsg()
-                        _keepalive = _init_msg_from_buffer(native, part, borrow=False)
-                        _ = _keepalive
-                        native_parts.append(native)
-                return self._send_native_parts_to_routing_id(
-                    routing_id, native_parts, 0
-                )
-            return self.send_multipart(parts, flags=0)
-
-        if isinstance(data, Message):
-            native = _clone_native_msg(data._msg)
-            return self._send_native_parts([native], flags)
-
-        native = ZlinkMsg()
-        _keepalive = _init_msg_from_buffer(native, data, borrow=False)
-        _ = _keepalive
-        return self._send_native_parts([native], flags)
-
-    def send_multipart(self, parts, flags: int = 0):
-        native_parts = []
-        for part in parts:
-            if isinstance(part, Message):
-                native_parts.append(_clone_native_msg(part._msg))
-                continue
-            native = ZlinkMsg()
-            _keepalive = _init_msg_from_buffer(native, part, borrow=False)
-            _ = _keepalive
-            native_parts.append(native)
-        self._send_native_parts(native_parts, flags)
-
-    def recv_message(self, flags: int = 0):
-        routing, owner = _recv_native_parts(self._handle, flags)
-        if owner._part_count != 1:
-            count = owner._part_count
-            owner.close()
-            raise ValueError(f"expected single-part message, got {count} parts")
-        return ReceivedMessage._from_owner(owner, 0, routing)
-
-    def recv_multipart(self, flags: int = 0):
-        routing, owner = _recv_native_parts(self._handle, flags)
-        return ReceivedMultipart(owner, routing)
-
-    def recv_into(self, buffer, flags: int = 0):
-        view = _as_bytes_view(buffer)
-        if view.readonly:
-            raise TypeError("buffer must be writable")
-        if view.nbytes <= 0:
-            raise ValueError("buffer must not be empty")
-        with self.recv_message(flags=flags) as received:
-            payload = received.view()
-            payload_size = len(payload)
-            if payload_size > view.nbytes:
-                raise ValueError("buffer too small for received message")
-            if payload_size:
-                native = received._native_msg()
-                ctypes.memmove(
-                    ctypes.addressof((ctypes.c_ubyte * view.nbytes).from_buffer(view)),
-                    _msg_data_ptr(native),
-                    payload_size,
-                )
-            return payload_size
+    def try_recv(self):
+        payload = _try_recv_native_parts(self._handle)
+        if payload is None:
+            return None
+        routing, owner = payload
+        return Received(owner, routing)
 
     def on_receive(self, handler):
         if handler is None:
@@ -470,7 +517,7 @@ class MessageSocket(Socket):
             routing_id = None
             if routing_id_ptr:
                 routing_id = _routing_id_bytes(routing_id_ptr.contents)
-            received = ReceivedMultipart(
+            received = Received(
                 _ReceivedPartsOwner(parts_ptr, int(part_count)),
                 routing_id,
             )
@@ -496,39 +543,56 @@ class MessageSocket(Socket):
         self.on_receive(handler)
 
 
-class PublisherSocket(Socket):
-    def publish(self, topic, payload, flags: int = 0):
-        topic_bytes = bytes(_as_bytes_view(topic))
-        if isinstance(payload, (list, tuple)):
-            parts = payload
-        else:
-            parts = [payload]
-        native_parts = []
-        for part in parts:
-            if isinstance(part, Message):
-                native_parts.append(_clone_native_msg(part._msg))
-            else:
-                native = ZlinkMsg()
-                _keepalive = _init_msg_from_buffer(native, part, borrow=False)
-                _ = _keepalive
-                native_parts.append(native)
+class RoutedMessageSocket(MessageSocket):
+    def send_to(self, routing_id, payload):
+        self._send_native_parts_to_routing_id(
+            routing_id, self._native_parts_from_payload(payload), 0
+        )
 
+    def try_send_to(self, routing_id, payload):
+        native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        rc = lib().zlink_publish(
-            self._handle, topic_bytes, parts_array, part_count, int(flags)
+        target = _copy_routing_id(routing_id)
+        return self._send_result(
+            lib().zlink_try_send_rid_result(
+                self._handle, ctypes.byref(target), parts_array, part_count
+            )
         )
+
+
+class PublisherSocket(Socket):
+    def publish(self, topic, payload):
+        topic_bytes = bytes(_as_bytes_view(topic))
+        native_parts = self._native_parts_from_payload(payload)
+        part_count = len(native_parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native in enumerate(native_parts):
+            parts_array[index] = native
+        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, 0)
         if rc < 0:
             for index in range(part_count):
                 lib().zlink_msg_close(ctypes.byref(parts_array[index]))
             _raise_last_error()
-        return rc
+
+    def try_publish(self, topic, payload):
+        topic_bytes = bytes(_as_bytes_view(topic))
+        native_parts = self._native_parts_from_payload(payload)
+        part_count = len(native_parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native in enumerate(native_parts):
+            parts_array[index] = native
+        return self._send_result(
+            lib().zlink_try_publish_result(
+                self._handle, topic_bytes, parts_array, part_count
+            )
+        )
 
 
 class SubscriberSocket(Socket):
-    def recv_topic_message(self, flags: int = 0):
+    def _recv_subscribed(self, flags):
         routing_id = ZlinkRoutingId()
         parts = ctypes.POINTER(ZlinkMsg)()
         part_count = ctypes.c_size_t()
@@ -541,7 +605,7 @@ class SubscriberSocket(Socket):
             ctypes.byref(part_count),
             topic_buf,
             ctypes.byref(topic_len),
-            int(flags),
+            flags,
         )
         if rc != 0:
             _raise_last_error()
@@ -549,15 +613,26 @@ class SubscriberSocket(Socket):
         owner = _ReceivedPartsOwner(parts, int(part_count.value))
         topic = topic_buf.raw[: topic_len.value]
         routing = _routing_id_bytes(routing_id)
-        return ReceivedTopicMessage(topic, owner, routing)
+        return Subscribed(topic, owner, routing)
 
-    def subscribe(self, topic):
+    def recv(self):
+        return self._recv_subscribed(0)
+
+    def try_recv(self):
+        try:
+            return self._recv_subscribed(1)
+        except Exception as exc:
+            if _is_eagain(exc):
+                return None
+            raise
+
+    def set_subscription(self, topic):
         topic_bytes = bytes(_as_bytes_view(topic))
         rc = lib().zlink_set_subscription(self._handle, topic_bytes)
         if rc != 0:
             _raise_last_error()
 
-    def unsubscribe(self, topic):
+    def unset_subscription(self, topic):
         topic_bytes = bytes(_as_bytes_view(topic))
         rc = lib().zlink_unset_subscription(self._handle, topic_bytes)
         if rc != 0:
@@ -574,7 +649,7 @@ class SubscriberSocket(Socket):
             topic = b""
             if topic_ptr and topic_len:
                 topic = ctypes.string_at(topic_ptr, topic_len)
-            received = ReceivedTopicMessage(
+            received = Subscribed(
                 topic,
                 _ReceivedPartsOwner(parts_ptr, int(part_count)),
                 routing_id,

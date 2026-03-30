@@ -21,13 +21,13 @@ int main ()
               raw_fd, request, sizeof (request) - 1)
             == static_cast<int> (sizeof (request) - 1));
 
-    zlink_routing_id_t source_rid;
-    zlink::message_t inbound;
-    assert (server.recv (source_rid, inbound) == 0);
-    assert (inbound.to_string () == "stream-recv");
+    const zlink::received_t inbound = server.receive ();
+    assert (inbound.routing_id.size > 0);
+    assert (inbound.parts.size () == 1);
+    assert (inbound.parts[0].to_string () == "stream-recv");
 
     zlink::message_t reply = detail::make_message ("stream-reply");
-    assert (server.send (source_rid, reply) == 0);
+    server.send (inbound.routing_id, reply);
 
     char response[64];
     const int received =

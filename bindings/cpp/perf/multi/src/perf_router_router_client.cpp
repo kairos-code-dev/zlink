@@ -315,7 +315,8 @@ class router_router_client_bench_t
             }
             ++send_index;
 
-            const int poll_rc = _poller.wait (_poll_events, compute_wait_ms (deadline));
+            const int poll_rc =
+              _poller.wait_all (_poll_events, compute_wait_ms (deadline));
             if (poll_rc < 0) {
                 if (errno == EINTR)
                     continue;
@@ -390,7 +391,8 @@ class router_router_client_bench_t
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::milliseconds (_phase_cfg.settle_ms);
         while (std::chrono::steady_clock::now () < deadline) {
-            const int poll_rc = _poller.wait (_poll_events, compute_wait_ms (deadline));
+            const int poll_rc =
+              _poller.wait_all (_poll_events, compute_wait_ms (deadline));
             if (poll_rc < 0) {
                 if (errno == EINTR)
                     continue;

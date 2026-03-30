@@ -10,7 +10,8 @@
 namespace {
 
 #if !defined(ZLINK_HAVE_WINDOWS)
-void connect_with_retry (zlink::socket_t &socket_, const std::string &endpoint_)
+template<typename SocketLike>
+void connect_with_retry (SocketLike &socket_, const std::string &endpoint_)
 {
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (3000);
@@ -29,14 +30,14 @@ void connect_with_retry (zlink::socket_t &socket_, const std::string &endpoint_)
     if (!ctx.valid ())
         _exit (2);
 
-    zlink::socket_t frontend (ctx, zlink::socket_type::router);
-    zlink::socket_t backend (ctx, zlink::socket_type::dealer);
+    zlink::router_socket_t frontend (ctx);
+    zlink::dealer_socket_t backend (ctx);
     if (!frontend.valid () || !backend.valid ())
         _exit (3);
 
     const int linger = 0;
-    (void) frontend.set (zlink::socket_option::linger, linger);
-    (void) backend.set (zlink::socket_option::linger, linger);
+    (void) frontend.set_option (zlink::socket_option::linger, linger);
+    (void) backend.set_option (zlink::socket_option::linger, linger);
 
     if (frontend.bind (frontend_ep_) != 0)
         _exit (4);
@@ -63,14 +64,14 @@ void test_proxy_router_dealer_roundtrip ()
     zlink::context_t ctx;
     assert (ctx.valid ());
 
-    zlink::socket_t client (ctx, zlink::socket_type::dealer);
-    zlink::socket_t worker (ctx, zlink::socket_type::dealer);
+    zlink::dealer_socket_t client (ctx);
+    zlink::dealer_socket_t worker (ctx);
     assert (client.valid ());
     assert (worker.valid ());
 
     const int linger = 0;
-    assert (client.set (zlink::socket_option::linger, linger) == 0);
-    assert (worker.set (zlink::socket_option::linger, linger) == 0);
+    assert (client.set_option (zlink::socket_option::linger, linger) == 0);
+    assert (worker.set_option (zlink::socket_option::linger, linger) == 0);
 
     connect_with_retry (client, frontend_ep);
     connect_with_retry (worker, backend_ep);

@@ -11,9 +11,7 @@ namespace zlink
  * @brief Lightweight error object that stores a zlink error code.
  */
 class error_t
-#if defined(ZLINK_CPP_EXCEPTIONS)
   : public std::exception
-#endif
 {
   public:
     /**
@@ -32,9 +30,7 @@ class error_t
      * @return Message string managed by zlink.
      */
     const char *what () const noexcept
-#if defined(ZLINK_CPP_EXCEPTIONS)
       override
-#endif
     {
         return zlink_strerror (_code);
     }
@@ -49,7 +45,6 @@ class error_t
  */
 inline error_t last_error () { return error_t (zlink_errno ()); }
 
-#if defined(ZLINK_CPP_EXCEPTIONS)
 /**
  * @brief Throw `std::runtime_error` when a zlink return code indicates failure.
  * @param rc Return code to check.
@@ -59,7 +54,6 @@ inline void throw_on_error (int rc)
     if (rc < 0)
         throw std::runtime_error (zlink_strerror (zlink_errno ()));
 }
-#endif
 
 } // namespace zlink
 

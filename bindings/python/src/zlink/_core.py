@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+import errno
 import sys
 import types
 
@@ -157,6 +158,10 @@ def _routing_id_bytes(routing_id):
     return bytes(routing_id.data[: routing_id.size]) or None
 
 
+def _is_eagain(exc):
+    return isinstance(exc, ZlinkError) and exc.errno == errno.EAGAIN
+
+
 def _report_unhandled_callback_exception(handler):
     exc_type, exc_value, exc_traceback = sys.exc_info()
     if exc_type is None:
@@ -216,6 +221,15 @@ def _recv_native_parts(handle, flags):
     return _routing_id_bytes(routing_id), _ReceivedPartsOwner(
         parts, int(part_count.value)
     )
+
+
+def _try_recv_native_parts(handle):
+    try:
+        return _recv_native_parts(handle, 1)
+    except ZlinkError as exc:
+        if _is_eagain(exc):
+            return None
+        raise
 
 
 class Context:
@@ -308,20 +322,21 @@ class ReceivedMessage:
 class ReceivedMultipart:
     def __init__(self, owner, routing_id=None):
         self._owner = owner
-        self.messages = [
+        self.parts = tuple(
             ReceivedMessage._from_owner(owner, index)
             for index in range(owner._part_count)
-        ]
+        )
         self.routing_id = routing_id
+        self.messages = self.parts
 
     def __iter__(self):
-        return iter(self.messages)
+        return iter(self.parts)
 
     def __len__(self):
-        return len(self.messages)
+        return len(self.parts)
 
     def to_bytes_list(self):
-        return [message.to_bytes() for message in self.messages]
+        return [message.to_bytes() for message in self.parts]
 
     def close(self):
         self._owner.close()
@@ -337,14 +352,21 @@ class ReceivedTopicMessage:
     def __init__(self, topic, owner, routing_id=None):
         self.topic = topic
         self._owner = owner
-        self.messages = [
+        self.parts = tuple(
             ReceivedMessage._from_owner(owner, index)
             for index in range(owner._part_count)
-        ]
+        )
         self.routing_id = routing_id
+        self.messages = self.parts
+
+    def __iter__(self):
+        return iter(self.parts)
+
+    def __len__(self):
+        return len(self.parts)
 
     def to_bytes_list(self):
-        return [message.to_bytes() for message in self.messages]
+        return [message.to_bytes() for message in self.parts]
 
     def close(self):
         self._owner.close()
@@ -354,6 +376,21 @@ class ReceivedTopicMessage:
 
     def __exit__(self, exc_type, exc, tb):
         self.close()
+
+
+class Received(ReceivedMultipart):
+    pass
+
+
+class Subscribed(ReceivedTopicMessage):
+    pass
+
+
+class SubscriptionEvent:
+    def __init__(self, topic, subscribed, routing_id=None):
+        self.routing_id = routing_id
+        self.topic = topic
+        self.subscribed = subscribed
 
 
 class Message:
@@ -407,8 +444,8 @@ class Message:
             return memoryview(b"")
         return memoryview((ctypes.c_ubyte * size).from_address(ptr))
 
-    def send(self, socket, flags: int = 0):
-        socket.send(self, flags=flags)
+    def send(self, socket):
+        socket.send(self)
 
     def close(self):
         if not self._valid:

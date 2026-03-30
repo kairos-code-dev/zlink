@@ -6,15 +6,15 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t pub (ctx, zlink::socket_type::xpub);
-    zlink::socket_t sub (ctx, zlink::socket_type::sub);
+    zlink::xpub_socket_t pub (ctx);
+    zlink::sub_socket_t sub (ctx);
 
     const std::string endpoint =
       unique_inproc ("inproc://cpp-xpub-welcome-", "msg");
     assert (pub.bind (endpoint) == 0);
-    assert (pub.set (zlink::socket_option::xpub_welcome_msg, "W", 1) == 0);
+    assert (pub.set_option (zlink::socket_option::xpub_welcome_msg, "W", 1) == 0);
 
-    assert (sub.set (zlink::socket_option::subscribe, "W", 1) == 0);
+    assert (sub.set_option (zlink::socket_option::subscribe, "W", 1) == 0);
     assert (sub.connect (endpoint) == 0);
 
     char sub_cmd[8];

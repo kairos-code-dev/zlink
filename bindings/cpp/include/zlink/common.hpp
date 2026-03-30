@@ -9,14 +9,11 @@
 #include <cstring>
 #include <functional>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
-
-#if defined(ZLINK_CPP_EXCEPTIONS)
 #include <exception>
-#include <stdexcept>
-#endif
 
 #if __cplusplus >= 201703L
 /**

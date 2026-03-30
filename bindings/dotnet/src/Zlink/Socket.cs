@@ -16,7 +16,7 @@ public delegate void SocketRecvHandler(string routingId, Message[] parts);
 public delegate void SocketSubscribeHandler(string routingId, string topic,
     Message[] parts);
 
-public sealed class Socket : SocketBase
+internal sealed class Socket : SocketBase
 {
     public Socket(Context context, SocketType type)
         : base(context, type)
@@ -33,6 +33,8 @@ public sealed class Socket : SocketBase
         return new Socket(handle, own);
     }
 
+    internal SocketType Type => Kernel.Type;
+
     public void AttachStreamRaw(StreamPacketHandler handler)
     {
         Kernel.AttachStreamRaw(handler);
@@ -43,38 +45,64 @@ public sealed class Socket : SocketBase
         Kernel.DetachStream();
     }
 
-    public void Send(Message message, SendFlags flags = SendFlags.None)
+    public void Send(Message message)
     {
-        Kernel.Send(message, flags);
+        Kernel.Send(message);
     }
 
-    public void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    public void Send(IReadOnlyList<Message> parts)
     {
-        Kernel.Send(parts, flags);
+        Kernel.Send(parts);
     }
 
-    public void Send(string routingId, Message message,
-        SendFlags flags = SendFlags.None)
+    public SendResult TrySend(Message message)
     {
-        Kernel.Send(routingId, message, flags);
+        return Kernel.TrySend(message);
     }
 
-    public void Send(string routingId, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
+    public SendResult TrySend(IReadOnlyList<Message> parts)
     {
-        Kernel.Send(routingId, parts, flags);
+        return Kernel.TrySend(parts);
     }
 
-    public void Publish(string topic, Message message,
-        SendFlags flags = SendFlags.None)
+    public void Send(string routingId, Message message)
     {
-        Kernel.Publish(topic, message, flags);
+        Kernel.Send(routingId, message);
     }
 
-    public void Publish(string topic, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
+    public void Send(string routingId, IReadOnlyList<Message> parts)
     {
-        Kernel.Publish(topic, parts, flags);
+        Kernel.Send(routingId, parts);
+    }
+
+    public SendResult TrySend(string routingId, Message message)
+    {
+        return Kernel.TrySend(routingId, message);
+    }
+
+    public SendResult TrySend(string routingId, IReadOnlyList<Message> parts)
+    {
+        return Kernel.TrySend(routingId, parts);
+    }
+
+    public void Publish(string topic, Message message)
+    {
+        Kernel.Publish(topic, message);
+    }
+
+    public void Publish(string topic, IReadOnlyList<Message> parts)
+    {
+        Kernel.Publish(topic, parts);
+    }
+
+    public SendResult TryPublish(string topic, Message message)
+    {
+        return Kernel.TryPublish(topic, message);
+    }
+
+    public SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
+    {
+        return Kernel.TryPublish(topic, parts);
     }
 
     public void SetSubscription(string topicOrPattern)
@@ -92,28 +120,14 @@ public sealed class Socket : SocketBase
         Kernel.RecvHandler(handler);
     }
 
-    public void Subscribe(out string topic, out Message message,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public Subscribed Subscribe()
     {
-        Kernel.Subscribe(out topic, out message, flags);
+        return Kernel.Subscribe();
     }
 
-    public void Subscribe(out string topic, out Message[] parts,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public Subscribed? TrySubscribe()
     {
-        Kernel.Subscribe(out topic, out parts, flags);
-    }
-
-    public void Subscribe(out string routingId, out string topic,
-        out Message message, ReceiveFlags flags = ReceiveFlags.None)
-    {
-        Kernel.Subscribe(out routingId, out topic, out message, flags);
-    }
-
-    public void Subscribe(out string routingId, out string topic,
-        out Message[] parts, ReceiveFlags flags = ReceiveFlags.None)
-    {
-        Kernel.Subscribe(out routingId, out topic, out parts, flags);
+        return Kernel.TrySubscribe();
     }
 
     public void SubscribeHandler(SocketSubscribeHandler handler)
@@ -121,38 +135,33 @@ public sealed class Socket : SocketBase
         Kernel.SubscribeHandler(handler);
     }
 
-    public void ReceiveSubscriptionEvent(out string topic, out bool subscribed,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public SubscriptionEvent ReceiveSubscriptionEvent()
     {
-        Kernel.ReceiveSubscriptionEvent(out topic, out subscribed, flags);
+        return Kernel.ReceiveSubscriptionEvent();
     }
 
-    public void ReceiveSubscriptionEvent(out string routingId, out string topic,
-        out bool subscribed, ReceiveFlags flags = ReceiveFlags.None)
+    public SubscriptionEvent? TryReceiveSubscriptionEvent()
     {
-        Kernel.ReceiveSubscriptionEvent(out routingId, out topic, out subscribed,
-            flags);
+        return Kernel.TryReceiveSubscriptionEvent();
     }
 
-    public void Receive(out Message message, ReceiveFlags flags = ReceiveFlags.None)
+    public Received Receive()
     {
-        Kernel.Receive(out message, flags);
+        return Kernel.Receive();
     }
 
-    public void Receive(out Message[] parts, ReceiveFlags flags = ReceiveFlags.None)
+    public Received? TryReceive()
     {
-        Kernel.Receive(out parts, flags);
+        return Kernel.TryReceive();
     }
 
-    public void Receive(out string routingId, out Message message,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public Received ReceiveRouted()
     {
-        Kernel.Receive(out routingId, out message, flags);
+        return Kernel.ReceiveRouted();
     }
 
-    public void Receive(out string routingId, out Message[] parts,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public Received? TryReceiveRouted()
     {
-        Kernel.Receive(out routingId, out parts, flags);
+        return Kernel.TryReceiveRouted();
     }
 }

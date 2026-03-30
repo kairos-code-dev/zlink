@@ -3,6 +3,7 @@
 #define ZLINK_CPP_SUBSCRIBER_SOCKET_HPP_INCLUDED
 
 #include "base_socket.hpp"
+#include "error.hpp"
 
 namespace zlink
 {
@@ -27,37 +28,31 @@ class subscriber_socket_t : public base_socket_t
         return socket_base ().subscription_at (index_, filter_, is_pattern_);
     }
 
-    ZLINK_CPP_NODISCARD int recv (std::string &topic_id_out_,
-                                  message_t &part_,
-                                  recv_flag flags_ = recv_flag::none)
+    ZLINK_CPP_NODISCARD subscribed_t subscribe ()
     {
-        return socket_base ().subscribe (topic_id_out_, part_, flags_);
+        subscribed_t subscribed;
+        const int rc = socket_base ().subscribe (subscribed);
+        throw_on_error (rc);
+        return subscribed;
     }
 
-    ZLINK_CPP_NODISCARD int recv (std::string &topic_id_out_,
-                                  std::vector<message_t> &parts_out_,
-                                  recv_flag flags_ = recv_flag::none)
+    ZLINK_CPP_NODISCARD maybe_t<subscribed_t> try_subscribe ()
     {
-        return socket_base ().subscribe (topic_id_out_, parts_out_, flags_);
-    }
-
-    ZLINK_CPP_NODISCARD int recv (zlink_routing_id_t &source_rid_out_,
-                                  std::string &topic_id_out_,
-                                  message_t &part_,
-                                  recv_flag flags_ = recv_flag::none)
-    {
-        return socket_base ().subscribe (
-          source_rid_out_, topic_id_out_, part_, flags_);
+        subscribed_t subscribed;
+        const int rc = socket_base ().subscribe (subscribed, recv_flag::dontwait);
+        if (rc == 0)
+            return maybe_t<subscribed_t> (std::move (subscribed));
+        if (errno == EAGAIN)
+            return maybe_t<subscribed_t> ();
+        throw_on_error (rc);
+        return maybe_t<subscribed_t> ();
     }
 
     ZLINK_CPP_NODISCARD int
-    recv (zlink_routing_id_t &source_rid_out_,
-          std::string &topic_id_out_,
-          std::vector<message_t> &parts_out_,
-          recv_flag flags_ = recv_flag::none)
+    subscribe_handler (zlink_subscribe_handler_fn handler_,
+                       void *userdata_ = NULL)
     {
-        return socket_base ().subscribe (
-          source_rid_out_, topic_id_out_, parts_out_, flags_);
+        return socket_base ().subscribe_handler (handler_, userdata_);
     }
 
   protected:

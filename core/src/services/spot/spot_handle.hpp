@@ -18,6 +18,7 @@ struct spot_handle_t
 {
     spot_handle_t () :
         tag (0x1e6700dc),
+        owns_node (false),
         node (NULL),
         pub (NULL),
         sub (NULL),
@@ -29,6 +30,7 @@ struct spot_handle_t
     bool check_tag () const { return tag == 0x1e6700dc; }
 
     uint32_t tag;
+    bool owns_node;
     zlink::service_public_api_guard_t public_api;
     zlink::spot_node_t *node;
     zlink::spot_pub_t *pub;

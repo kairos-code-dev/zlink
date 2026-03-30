@@ -156,20 +156,36 @@ inline send_status_t try_send_stream_message (pending_stream_message_t *message)
         || message->rid.size == 0)
         return send_fatal;
 
-    const size_t payload_size = zlink_msg_size (&message->payload);
-    const int rc = zlink_stream_send_msg (
-      g_server_socket, &message->rid, &message->payload, ZLINK_DONTWAIT);
-    if (rc == static_cast<int> (payload_size)) {
+    zlink_msg_t part;
+    if (zlink_msg_init (&part) != 0)
+        return send_fatal;
+    if (zlink_msg_move (&part, &message->payload) != 0) {
+        (void) zlink_msg_close (&part);
+        return send_fatal;
+    }
+
+    const int rc = zlink_try_send_rid_result (
+      g_server_socket, &message->rid, &part, 1);
+    if (rc == ZLINK_SEND_RESULT_SENT) {
+        (void) zlink_msg_close (&part);
         message->has_payload = false;
         message->rid.size = 0;
         return send_done;
     }
-    if (rc >= 0)
-        return send_fatal;
 
-    const int err = zlink_errno ();
-    if (err == EINTR || err == EAGAIN)
+    if (zlink_msg_move (&message->payload, &part) != 0) {
+        (void) zlink_msg_close (&part);
+        return send_fatal;
+    }
+    (void) zlink_msg_close (&part);
+
+    if (rc == ZLINK_SEND_RESULT_BACKPRESSURED || rc == ZLINK_SEND_RESULT_NOT_READY)
         return send_blocked;
+    if (rc < 0) {
+        const int err = zlink_errno ();
+        if (err == EINTR || err == EAGAIN)
+            return send_blocked;
+    }
     return send_fatal;
 }
 
@@ -367,9 +383,11 @@ bool perf_stream_server (const std::string &transport, size_t)
 
     const int io_timeout_ms =
       perf::multi::parse_positive_env ("PERF_STREAM_TIMEOUT_MS", 5000);
-    (void) server.sock ().set (zlink::socket_options::sndtimeo, io_timeout_ms);
-    (void) server.sock ().set (zlink::socket_options::rcvtimeo, io_timeout_ms);
-    (void) server.sock ().set (zlink::socket_options::tcp_nodelay, 1);
+    (void) server.sock ().set_option (zlink::socket_options::sndtimeo,
+                                      io_timeout_ms);
+    (void) server.sock ().set_option (zlink::socket_options::rcvtimeo,
+                                      io_timeout_ms);
+    (void) server.sock ().set_option (zlink::socket_options::tcp_nodelay, 1);
 
     if (!perf::multi::setup_tls_server (server.sock (), transport))
         return false;

@@ -4,8 +4,11 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import java.util.List;
+import java.util.Optional;
 
 public final class DealerSocket extends Socket {
+    private final DealerSocketOptions options = new DealerSocketOptions(this);
+
     public DealerSocket(Context ctx) {
         super(ctx, SocketType.DEALER);
     }
@@ -18,11 +21,12 @@ public final class DealerSocket extends Socket {
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
     public void send(Message part) { super.send(part); }
-    public void send(Message part, SendFlag flags) { super.send(part, flags); }
     public void send(List<Message> parts) { super.send(parts); }
-    public void send(List<Message> parts, SendFlag flags) { super.send(parts, flags); }
+    public SendResult trySend(Message part) { return super.trySend(part); }
+    public SendResult trySend(List<Message> parts) { return super.trySend(parts); }
     public Received recv() { return super.recv(); }
-    public Received recv(ReceiveFlag flags) { return super.recv(flags); }
+    public Optional<Received> tryRecv() { return super.tryRecv(); }
     public void onReceive(SocketMessageHandler handler) { super.onReceive(handler); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
+    @Override public DealerSocketOptions options() { return options; }
 }

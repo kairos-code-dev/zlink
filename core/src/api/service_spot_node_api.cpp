@@ -63,6 +63,24 @@ void *zlink_spot_new (void *ctx_)
     }
 
     spot->node = node;
+    spot->owns_node = true;
+    return static_cast<void *> (spot);
+}
+
+void *zlink_spot_wrap_node (void *node_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
+        return NULL;
+
+    spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
+    if (!spot) {
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    spot->node = node;
+    spot->owns_node = false;
     return static_cast<void *> (spot);
 }
 
@@ -87,8 +105,12 @@ int zlink_spot_destroy (void **spot_p_)
         return -1;
     }
 
+    const bool owns_node = spot->owns_node;
     zlink::destroy_spot_handle_for_testing (spot);
     *spot_p_ = NULL;
+
+    if (!owns_node)
+        return 0;
 
     void *node_handle = node;
     return zlink_spot_node_destroy (&node_handle);

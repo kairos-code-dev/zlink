@@ -96,8 +96,8 @@ class BenchFastpathTests(unittest.TestCase):
         self.assertIsNotNone(recv_many)
 
         count = 64
-        send_none = int(zlink.SendFlag.NONE)
-        recv_none = int(zlink.ReceiveFlag.NONE)
+        send_none = 0
+        recv_none = 0
         self.assertEqual(send_many(count, send_none), count)
         self.assertEqual(recv_many(count, recv_none), count)
         self.assertEqual(bytes(recv_buf[: len(payload)]), payload)
@@ -134,7 +134,7 @@ class BenchFastpathTests(unittest.TestCase):
         self.assertIsNotNone(recv_drain)
 
         count = 96
-        send_none = int(zlink.SendFlag.NONE)
+        send_none = 0
         self.assertEqual(send_many(count, send_none), count)
         self.assertTrue(self._wait_for_socket_event(router, zlink.PollEvent.POLLIN, 3000))
         self.assertEqual(recv_drain(count), count)
@@ -152,24 +152,16 @@ class BenchFastpathTests(unittest.TestCase):
         except OSError:
             self.skipTest("zlink native library not found")
 
-        suffix = str(int(time.time() * 1000))
-        node_pub = None
-        node_sub = None
         spot_pub = None
         spot_sub = None
 
         try:
             count = 64
-            send_none = int(zlink.SendFlag.NONE)
-            recv_none = int(zlink.ReceiveFlag.NONE)
-            node_pub = zlink.SpotNode(ctx)
-            node_sub = zlink.SpotNode(ctx)
-            spot_ep = f"inproc://py-fastpath-spot-{suffix}"
-            node_pub.bind(spot_ep)
-            node_sub.connect_peer(spot_ep)
+            send_none = 0
+            recv_none = 0
             spot_pub = zlink.Spot(ctx)
             spot_sub = zlink.Spot(ctx)
-            spot_sub.subscribe("bench")
+            spot_sub.set_subscription("bench")
 
             spot_payload = b"spot-fastpath"
             spot_publish_many = bench_common.make_cext_spot_publish_many_const(
@@ -182,11 +174,11 @@ class BenchFastpathTests(unittest.TestCase):
             self.assertEqual(spot_publish_many(count, send_none), count)
             self.assertEqual(spot_recv_many(count, recv_none), count)
 
-            spot_pub.publish("bench", [spot_payload], send_none)
+            spot_pub.publish("bench", [spot_payload])
             self.assertTrue(
                 self._wait_for_socket_event(spot_sub, zlink.PollEvent.POLLIN, 3000)
             )
-            with spot_sub.recv(recv_none) as received:
+            with spot_sub.recv() as received:
                 self.assertEqual(received.topic, b"bench")
                 self.assertEqual(received.to_bytes_list(), [spot_payload])
         finally:
@@ -194,10 +186,6 @@ class BenchFastpathTests(unittest.TestCase):
                 spot_sub.close()
             if spot_pub is not None:
                 spot_pub.close()
-            if node_sub is not None:
-                node_sub.close()
-            if node_pub is not None:
-                node_pub.close()
             ctx.close()
 
 

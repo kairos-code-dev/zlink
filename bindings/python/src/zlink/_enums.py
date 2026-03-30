@@ -82,20 +82,17 @@ class SocketOption(IntEnum):
     UNSUBSCRIBE = 7
 
 
-class SendFlag(IntFlag):
-    NONE = 0
-    DONTWAIT = 1
-    SNDMORE = 2
+class SendResult(IntEnum):
+    SENT = 0
+    BACKPRESSURED = 1
+    NOT_READY = 2
 
 
-class ReceiveFlag(IntFlag):
-    NONE = 0
-    DONTWAIT = 1
-
-
-class StreamDispatchMode(IntFlag):
-    NONE = 0
-    LEN32BE = 0x0001
+class RouterOption(IntEnum):
+    MANDATORY = 0x3101
+    HANDOVER = 0x3102
+    PROBE = 0x3103
+    CONNECT_ROUTING_ID = 0x3104
 
 
 class ErrorCode(IntEnum):
@@ -147,6 +144,21 @@ class ServiceType(IntEnum):
     SOCKET = 0x3003
 
 
+class ServiceMonitorMask(IntFlag):
+    READY_CHANGED = 1 << 0
+    PEER_UP = 1 << 2
+    PEER_DOWN = 1 << 3
+    ERROR = 1 << 4
+    SPOT_FILTER_APPLIED = 1 << 13
+    SPOT_SUBSCRIPTION_READY_CHANGED = 1 << 14
+    SPOT_PUB_QUEUE_FULL = 1 << 15
+    SPOT_PUB_QUEUE_DRAINED = 1 << 16
+    CLOSED = 1 << 17
+    SPOT_PUB_DELIVERY_READY_CHANGED = 1 << 18
+    SPOT_SUB_DELIVERY_READY_CHANGED = 1 << 19
+    SPOT_FIRST_DELIVERY_READY_CHANGED = 1 << 20
+
+
 class RegistrySocketRole(IntEnum):
     PUB = 1
     ROUTER = 2
@@ -178,6 +190,26 @@ class SpotNodePubMode(IntEnum):
 class SpotNodePubQueueFullPolicy(IntEnum):
     EAGAIN = 0
     DROP = 1
+
+
+class SpotNodeState(IntEnum):
+    IDLE = 1
+    CONNECTING = 2
+    PARTIAL_READY = 3
+    READY = 4
+    ERROR = 5
+
+
+class SpotPeerSource(IntEnum):
+    MANUAL = 1
+    DISCOVERY = 2
+    MIXED = 3
+
+
+class SpotPeerState(IntEnum):
+    CONFIGURED = 1
+    CONNECTING = 2
+    CONNECTED = 3
 
 
 class SpotSocketRole(IntEnum):

@@ -2,7 +2,7 @@
 
 import { requireNative } from '../native';
 import { DuplexSocket } from './duplex_socket';
-import { SocketOption, StreamDispatchMode } from './constants';
+import { SocketOption } from './constants';
 import { normalizeBufferLike } from './socket_support';
 import type { BufferLike } from '../buffer_like';
 
@@ -16,6 +16,30 @@ export class Socket extends DuplexSocket {
     super(ctx, type);
   }
 
+  setSockOpt(option: number, value: BufferLike | string): void {
+    this.setSockOptRaw(option, value);
+  }
+
+  getSockOpt(option: number): Buffer {
+    return this.getSockOptRaw(option);
+  }
+
+  setOption(option: number, value: BufferLike | string): void {
+    this.setSockOpt(option, value);
+  }
+
+  getOption(option: number): Buffer {
+    return this.getSockOpt(option);
+  }
+
+  setRoutingId(routingId: BufferLike): void {
+    this.setSockOpt(SocketOption.ROUTING_ID, routingId);
+  }
+
+  getRoutingId(): Buffer {
+    return this.getSockOpt(SocketOption.ROUTING_ID);
+  }
+
   subscribe(filter: BufferLike | string): void {
     this.setSockOpt(SocketOption.SUBSCRIBE, normalizeBufferLike(filter, 'filter'));
   }
@@ -24,19 +48,15 @@ export class Socket extends DuplexSocket {
     this.setSockOpt(SocketOption.UNSUBSCRIBE, normalizeBufferLike(filter, 'filter'));
   }
 
-  streamAttach(handler: StreamHandler, mode: number = StreamDispatchMode.NONE): void {
+  streamAttach(handler: StreamHandler): void {
     if (typeof handler !== 'function') {
       throw new TypeError('streamAttach handler must be a function');
     }
-    requireNative().socketStreamAttach(this.nativeHandle(), handler, mode | 0);
+    requireNative().socketStreamAttach(this.nativeHandle(), handler, 0);
   }
 
   streamAttachRaw(handler: StreamHandler): void {
-    this.streamAttach(handler, StreamDispatchMode.NONE);
-  }
-
-  streamAttachLen32be(handler: StreamHandler): void {
-    this.streamAttach(handler, StreamDispatchMode.LEN32BE);
+    this.streamAttach(handler);
   }
 
   streamDetach(): void {

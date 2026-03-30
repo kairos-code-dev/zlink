@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.ComponentModel;
 using Zlink.Service;
 using Zlink.Sockets.Internal;
 
@@ -58,62 +59,80 @@ public abstract class SocketBase : IDisposable
         return _kernel.OpenMonitor(events);
     }
 
-    public void SetOption(SocketOptionKey<int> option, int value)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal void SetOption(SocketOptionKey<int> option, int value)
     {
         _kernel.SetOption(option, value);
     }
 
-    public void SetOption(SocketOptionKey<long> option, long value)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal void SetOption(SocketOptionKey<long> option, long value)
     {
         _kernel.SetOption(option, value);
     }
 
-    public void SetOption(SocketOptionKey<ulong> option, ulong value)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal void SetOption(SocketOptionKey<ulong> option, ulong value)
     {
         _kernel.SetOption(option, value);
     }
 
-    public void SetOption(SocketOptionKey<byte[]> option, byte[] value)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal void SetOption(SocketOptionKey<byte[]> option, byte[] value)
     {
         _kernel.SetOption(option, value);
     }
 
-    public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
     {
         _kernel.SetOption(option, value);
     }
 
-    public void SetOption(SocketOptionKey<string> option, string value)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal void SetOption(SocketOptionKey<string> option, string value)
     {
         _kernel.SetOption(option, value);
     }
 
-    public int GetOption(SocketOptionKey<int> option)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal int GetOption(SocketOptionKey<int> option)
+    {
+        if (this is Socket socket
+            && PerfRawSocketCompat.TryGetInt32Option(socket, option,
+                out int compatValue))
+        {
+            return compatValue;
+        }
+        return _kernel.GetOption(option);
+    }
+
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal long GetOption(SocketOptionKey<long> option)
     {
         return _kernel.GetOption(option);
     }
 
-    public long GetOption(SocketOptionKey<long> option)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal ulong GetOption(SocketOptionKey<ulong> option)
     {
         return _kernel.GetOption(option);
     }
 
-    public ulong GetOption(SocketOptionKey<ulong> option)
-    {
-        return _kernel.GetOption(option);
-    }
-
-    public byte[] GetOption(SocketOptionKey<byte[]> option, int initialSize = 256)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal byte[] GetOption(SocketOptionKey<byte[]> option, int initialSize = 256)
     {
         return _kernel.GetOption(option, initialSize);
     }
 
-    public int GetOption(SocketOptionKey<byte[]> option, Span<byte> destination)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal int GetOption(SocketOptionKey<byte[]> option, Span<byte> destination)
     {
         return _kernel.GetOption(option, destination);
     }
 
-    public string GetOption(SocketOptionKey<string> option, int initialSize = 256)
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    internal string GetOption(SocketOptionKey<string> option, int initialSize = 256)
     {
         return _kernel.GetOption(option, initialSize);
     }

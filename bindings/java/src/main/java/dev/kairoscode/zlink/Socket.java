@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Abstract common socket base for zlink typed socket facades.
@@ -36,12 +37,10 @@ public abstract class Socket implements AutoCloseable {
     private final SocketCore socketCore;
     private final MessagePlane messagePlane;
     private final TopicPlane topicPlane;
-    private final LegacySocketCompat legacySocketCompat;
+    private final CommonSocketOptions options;
     private MemorySegment handle;
     private final boolean own;
     private final SocketType socketTypeHint;
-    private final ThreadLocal<Message> recvFrameScratch =
-      ThreadLocal.withInitial(Message::new);
     private final ThreadLocal<LegacyReceiveState> legacyReceiveState =
       ThreadLocal.withInitial(LegacyReceiveState::new);
 
@@ -103,7 +102,7 @@ public abstract class Socket implements AutoCloseable {
         this.socketCore = new SocketCore(this);
         this.messagePlane = new MessagePlane(this);
         this.topicPlane = new TopicPlane(this);
-        this.legacySocketCompat = new LegacySocketCompat(this, messagePlane);
+        this.options = new CommonSocketOptions(this);
     }
 
     Socket(MemorySegment handle, boolean own, SocketType socketTypeHint) {
@@ -113,7 +112,7 @@ public abstract class Socket implements AutoCloseable {
         this.socketCore = new SocketCore(this);
         this.messagePlane = new MessagePlane(this);
         this.topicPlane = new TopicPlane(this);
-        this.legacySocketCompat = new LegacySocketCompat(this, messagePlane);
+        this.options = new CommonSocketOptions(this);
     }
 
     /** Binds the socket to the endpoint. */
@@ -141,49 +140,53 @@ public abstract class Socket implements AutoCloseable {
         socketCore.attachDiscovery(discovery);
     }
 
-    public void setSockOpt(SocketOption option, byte[] value) {
+    void setSockOpt(SocketOption option, byte[] value) {
         socketCore.setSockOpt(option, value);
     }
 
-    public void setSockOpt(SocketOption option, byte[] value, int offset, int length) {
+    void setSockOpt(SocketOption option, byte[] value, int offset, int length) {
         socketCore.setSockOpt(option, value, offset, length);
     }
 
-    public void setSockOpt(SocketOption option, ByteBuffer value) {
+    void setSockOpt(SocketOption option, ByteBuffer value) {
         socketCore.setSockOpt(option, value);
     }
 
-    public void setSockOpt(SocketOption option, int value) {
+    void setSockOpt(SocketOption option, int value) {
         socketCore.setSockOpt(option, value);
     }
 
-    public byte[] getSockOptBytes(SocketOption option, int maxLen) {
+    byte[] getSockOptBytes(SocketOption option, int maxLen) {
         return socketCore.getSockOptBytes(option, maxLen);
     }
 
-    public int getSockOptInt(SocketOption option) {
+    int getSockOptInt(SocketOption option) {
         return socketCore.getSockOptInt(option);
     }
 
-    public void setOption(SocketOptionKey<Integer> option, int value) {
+    void setOption(SocketOptionKey<Integer> option, int value) {
         socketCore.setOption(option, value);
     }
 
-    public void setOption(SocketOptionKey<Long> option, long value) {
+    void setOption(SocketOptionKey<Long> option, long value) {
         socketCore.setOptionLong(option, value);
     }
 
-    public void setOption(SocketOptionKey<String> option, String value) {
+    void setOption(SocketOptionKey<String> option, String value) {
         socketCore.setOptionString(option, value);
     }
 
-    public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
+    void setOption(SocketOptionKey<byte[]> option, byte[] value) {
         socketCore.setOptionBytes(option, value);
     }
 
     @SuppressWarnings("unchecked")
-    public <T> T getOption(SocketOptionKey<T> option) {
+    <T> T getOption(SocketOptionKey<T> option) {
         return socketCore.getOption(option);
+    }
+
+    public CommonSocketOptions options() {
+        return options;
     }
 
     public MonitorSocket monitorOpen(int events) {
@@ -216,6 +219,14 @@ public abstract class Socket implements AutoCloseable {
         messagePlane.send(parts, flags);
     }
 
+    SendResult trySend(Message part) {
+        return messagePlane.trySend(part);
+    }
+
+    SendResult trySend(List<Message> parts) {
+        return messagePlane.trySend(parts);
+    }
+
     void send(RoutingId rid, Message part) {
         messagePlane.send(rid, part);
     }
@@ -230,6 +241,14 @@ public abstract class Socket implements AutoCloseable {
 
     void send(RoutingId rid, List<Message> parts, SendFlag flags) {
         messagePlane.send(rid, parts, flags);
+    }
+
+    SendResult trySend(RoutingId rid, Message part) {
+        return messagePlane.trySend(rid, part);
+    }
+
+    SendResult trySend(RoutingId rid, List<Message> parts) {
+        return messagePlane.trySend(rid, parts);
     }
 
     /** Publishes a single payload part to a topic-aware socket. */
@@ -252,12 +271,24 @@ public abstract class Socket implements AutoCloseable {
         topicPlane.publish(topicId, parts, flags);
     }
 
+    SendResult tryPublish(String topicId, Message part) {
+        return topicPlane.tryPublish(topicId, part);
+    }
+
+    SendResult tryPublish(String topicId, List<Message> parts) {
+        return topicPlane.tryPublish(topicId, parts);
+    }
+
     Received recv() {
         return messagePlane.recv();
     }
 
     Received recv(ReceiveFlag flags) {
         return messagePlane.recv(flags);
+    }
+
+    Optional<Received> tryRecv() {
+        return messagePlane.tryRecv();
     }
 
     /** Receives a topic-aware delivery from a SUB/XSUB-style socket. */
@@ -270,12 +301,20 @@ public abstract class Socket implements AutoCloseable {
         return topicPlane.subscribe(flags);
     }
 
-    SubscriptionEvent subscriptionEvent() {
+    Optional<TopicMessage> trySubscribe() {
+        return topicPlane.trySubscribe();
+    }
+
+    SubscriptionEvent receiveSubscriptionEvent() {
         return topicPlane.subscriptionEvent(ReceiveFlag.NONE);
     }
 
     SubscriptionEvent subscriptionEvent(ReceiveFlag flags) {
         return topicPlane.subscriptionEvent(flags);
+    }
+
+    Optional<SubscriptionEvent> tryReceiveSubscriptionEvent() {
+        return topicPlane.trySubscriptionEvent();
     }
 
     void setRoutingId(RoutingId rid) {
@@ -318,26 +357,6 @@ public abstract class Socket implements AutoCloseable {
         socketCore.onSendReady(handler);
     }
 
-    @Deprecated(forRemoval = false)
-    int send(byte[] data, SendFlag flag) {
-        return legacySocketCompat.send(data, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    boolean trySend(byte[] data, SendFlag flag) {
-        return legacySocketCompat.trySend(data, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    boolean trySend(byte[] data, int offset, int length, SendFlag flag) {
-        return legacySocketCompat.trySend(data, offset, length, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    int send(byte[] data, int offset, int length, SendFlag flag) {
-        return legacySocketCompat.send(data, offset, length, flag);
-    }
-
     int send(byte[] data, int offset, int length, int sendFlags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
@@ -353,16 +372,6 @@ public abstract class Socket implements AutoCloseable {
         try (Message msg = Message.copyOf(data, offset, length)) {
             return trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
         }
-    }
-
-    @Deprecated(forRemoval = false)
-    int send(ByteBuffer buffer, SendFlag flag) {
-        return legacySocketCompat.send(buffer, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    boolean trySend(ByteBuffer buffer, SendFlag flag) {
-        return legacySocketCompat.trySend(buffer, flag);
     }
 
     int send(ByteBuffer buffer, int sendFlags) {
@@ -393,33 +402,6 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    @Deprecated(forRemoval = false)
-    int send(ByteSpan span, SendFlag flag) {
-        return legacySocketCompat.send(span, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    int send(MemorySegment segment, SendFlag flag) {
-        return legacySocketCompat.send(segment, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    boolean trySend(MemorySegment segment, SendFlag flag) {
-        return legacySocketCompat.trySend(segment, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    boolean trySend(MemorySegment segment, long offset, long length,
-                           SendFlag flag) {
-        return legacySocketCompat.trySend(segment, offset, length, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    int send(MemorySegment segment, long offset, long length,
-                    SendFlag flag) {
-        return legacySocketCompat.send(segment, offset, length, flag);
-    }
-
     int send(MemorySegment segment, long offset, long length,
              int sendFlags) {
         Objects.requireNonNull(segment, "segment");
@@ -441,16 +423,6 @@ public abstract class Socket implements AutoCloseable {
             : Message.copyOf(segment, offset, length)) {
             return trySendMessageFrame(msg, SendFlag.fromValue(sendFlags));
         }
-    }
-
-    @Deprecated(forRemoval = false)
-    int send(ByteBuf buf, SendFlag flag) {
-        return legacySocketCompat.send(buf, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    boolean trySend(ByteBuf buf, SendFlag flag) {
-        return legacySocketCompat.trySend(buf, flag);
     }
 
     int send(ByteBuf buf, int sendFlags) {
@@ -513,81 +485,76 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    @Deprecated(forRemoval = false)
-    byte[] recv(int size, ReceiveFlag flags) {
-        return legacySocketCompat.recv(size, flags);
-    }
-
-    @Deprecated(forRemoval = false)
-    int recv(byte[] data, ReceiveFlag flags) {
-        return legacySocketCompat.recv(data, flags);
-    }
-
-    @Deprecated(forRemoval = false)
-    int tryRecv(byte[] data, ReceiveFlag flags) {
-        return legacySocketCompat.tryRecv(data, flags);
-    }
-
-    @Deprecated(forRemoval = false)
-    int tryRecv(byte[] data, int offset, int length, ReceiveFlag flags) {
-        return legacySocketCompat.tryRecv(data, offset, length, flags);
-    }
-
-    @Deprecated(forRemoval = false)
-    int recv(byte[] data, int offset, int length, ReceiveFlag flags) {
-        return legacySocketCompat.recv(data, offset, length, flags);
-    }
-
-    @Deprecated(forRemoval = false)
     int recv(ByteBuffer buffer, ReceiveFlag flags) {
-        return legacySocketCompat.recv(buffer, flags);
+        Objects.requireNonNull(buffer, "buffer");
+        int writable = buffer.remaining();
+        if (writable <= 0)
+            return 0;
+        try (Message frame = nextRecvFrame(flags, false)) {
+            int rc = Math.min(writable, frame.size());
+            if (rc > 0) {
+                ByteBuffer dst = buffer.slice();
+                dst.limit(rc);
+                MemorySegment.copy(frame.dataSegment(), 0,
+                    MemorySegment.ofBuffer(dst), 0, rc);
+            }
+            buffer.position(buffer.position() + rc);
+            return rc;
+        }
     }
 
-    @Deprecated(forRemoval = false)
     int tryRecv(ByteBuffer buffer, ReceiveFlag flags) {
-        return legacySocketCompat.tryRecv(buffer, flags);
+        Objects.requireNonNull(buffer, "buffer");
+        int writable = buffer.remaining();
+        if (writable <= 0)
+            return 0;
+        try (Message frame = nextRecvFrame(flags, true)) {
+            if (frame == null)
+                return -1;
+            int rc = Math.min(writable, frame.size());
+            if (rc > 0) {
+                ByteBuffer dst = buffer.slice();
+                dst.limit(rc);
+                MemorySegment.copy(frame.dataSegment(), 0,
+                    MemorySegment.ofBuffer(dst), 0, rc);
+            }
+            buffer.position(buffer.position() + rc);
+            return rc;
+        }
     }
 
-    @Deprecated(forRemoval = false)
-    int recv(ByteSpan span, ReceiveFlag flags) {
-        return legacySocketCompat.recv(span, flags);
+    int recv(MemorySegment segment, long offset, long length,
+             ReceiveFlag flags) {
+        Objects.requireNonNull(segment, "segment");
+        validateRange(segment.byteSize(), offset, length, "segment");
+        if (length == 0)
+            return 0;
+        try (Message frame = nextRecvFrame(flags, false)) {
+            int rc = Math.min(toIntLength(length), frame.size());
+            if (rc > 0) {
+                MemorySegment.copy(frame.dataSegment(), 0, segment, offset, rc);
+            }
+            return rc;
+        }
     }
 
-    @Deprecated(forRemoval = false)
-    int recv(MemorySegment segment, ReceiveFlag flags) {
-        return legacySocketCompat.recv(segment, flags);
-    }
-
-    @Deprecated(forRemoval = false)
-    int tryRecv(MemorySegment segment, ReceiveFlag flags) {
-        return legacySocketCompat.tryRecv(segment, flags);
-    }
-
-    @Deprecated(forRemoval = false)
-    boolean recvFrameHasMore(ReceiveFlag flags) {
-        return legacySocketCompat.recvFrameHasMore(flags);
-    }
-
-    @Deprecated(forRemoval = false)
-    int recv(MemorySegment segment, long offset, long length, ReceiveFlag flags) {
-        return legacySocketCompat.recv(segment, offset, length, flags);
-    }
-
-    @Deprecated(forRemoval = false)
     int tryRecv(MemorySegment segment, long offset, long length,
-                       ReceiveFlag flags) {
-        return legacySocketCompat.tryRecv(segment, offset, length, flags);
+                ReceiveFlag flags) {
+        Objects.requireNonNull(segment, "segment");
+        validateRange(segment.byteSize(), offset, length, "segment");
+        if (length == 0)
+            return 0;
+        try (Message frame = nextRecvFrame(flags, true)) {
+            if (frame == null)
+                return -1;
+            int rc = Math.min(toIntLength(length), frame.size());
+            if (rc > 0) {
+                MemorySegment.copy(frame.dataSegment(), 0, segment, offset, rc);
+            }
+            return rc;
+        }
     }
 
-    @Deprecated(forRemoval = false)
-    int recv(ByteBuf buf, ReceiveFlag flags) {
-        return legacySocketCompat.recv(buf, flags);
-    }
-
-    @Deprecated(forRemoval = false)
-    int tryRecv(ByteBuf buf, ReceiveFlag flags) {
-        return legacySocketCompat.tryRecv(buf, flags);
-    }
 
     MemorySegment handle() {
         return handle;
@@ -614,10 +581,6 @@ public abstract class Socket implements AutoCloseable {
             case STRING -> (T) getTypedStringOption(option);
             case BYTES -> (T) getTypedBytesOption(option);
         };
-    }
-
-    Message recvFrameScratch() {
-        return this.recvFrameScratch.get();
     }
 
     int recvByteBufDirect(ByteBuf buf, ReceiveFlag flags) {
@@ -712,6 +675,18 @@ public abstract class Socket implements AutoCloseable {
         SocketType type = resolveSocketType();
         if (type == null)
             return;
+        if (optionId == SocketOption.TLS_VERIFY.getValue()) {
+            if (type == SocketType.XPUB) {
+                if (SocketOptions.XPUB_MANUAL_LAST_VALUE.name().equals(optionName))
+                    return;
+                throw new IllegalArgumentException(
+                  optionName + " is not supported by " + type + " sockets");
+            }
+            if (SocketOptions.TLS_VERIFY.name().equals(optionName))
+                return;
+            throw new IllegalArgumentException(
+              optionName + " is not supported by " + type + " sockets");
+        }
         if (supportsOption(type, optionId))
             return;
         throw new IllegalArgumentException(
@@ -951,6 +926,21 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
+    SendResult trySendMessageFrame(Message message) {
+        Objects.requireNonNull(message, "message");
+        while (true) {
+            Integer rc = withNativeSendFrame(message,
+              nativeMsg -> Native.trySendResult(handle, nativeMsg, 1));
+            if (rc >= 0)
+                return SendResult.fromNativeValue(rc);
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throw ZlinkException.fromLastError("zlink_try_send_result");
+        }
+    }
+
     private <T> T withNativeSendFrame(Message message,
                                       NativeFrameAction<T> action) {
         try (Arena arena = Arena.ofConfined()) {
@@ -1027,7 +1017,7 @@ public abstract class Socket implements AutoCloseable {
 
     private static Message[] materializeFrames(Native.MultipartReceive received) {
         byte[] routingId = received.routingId();
-        Message[] payload = Message.fromMsgVector(received.parts(),
+        Message[] payload = Message.fromOwnedMsgVector(received.parts(),
           received.partCount());
         int prefix = routingId == null || routingId.length == 0 ? 0 : 1;
         if (payload.length == 0 && prefix == 0) {
@@ -1058,6 +1048,22 @@ public abstract class Socket implements AutoCloseable {
             }
             throw ZlinkException.fromLastError(
                 routingId == null ? "zlink_send" : "zlink_send_rid");
+        }
+    }
+
+    SendResult trySendParts(RoutingId routingId, List<Message> parts) {
+        ensureOpen();
+        validateParts(parts);
+        while (true) {
+            int rc = trySendPartsOnceResult(routingId, parts);
+            if (rc >= 0)
+                return SendResult.fromNativeValue(rc);
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throw ZlinkException.fromLastError(
+                routingId == null ? "zlink_try_send_result"
+                    : "zlink_try_send_rid_result");
         }
     }
 
@@ -1094,6 +1100,35 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
+    private int trySendPartsOnceResult(RoutingId routingId, List<Message> parts) {
+        try (Arena arena = Arena.ofConfined()) {
+            int count = parts.size();
+            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+            MemorySegment nativeParts = arena.allocate(msgSize * count,
+                NativeLayouts.MSG_LAYOUT.byteAlignment());
+            Object[] anchors = new Object[count];
+            boolean success = false;
+            try {
+                for (int i = 0; i < count; i++) {
+                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
+                        msgSize);
+                    anchors[i] = parts.get(i).transferTo(nativeMsg);
+                }
+                int rc = routingId == null
+                    ? Native.trySendResult(handle, nativeParts, count)
+                    : Native.trySendResult(handle, nativeRoutingId(arena, routingId),
+                        nativeParts, count);
+                if (rc == SendResult.SENT.nativeValue())
+                    success = true;
+                return rc;
+            } finally {
+                if (!success) {
+                    restoreParts(parts, nativeParts, anchors);
+                }
+            }
+        }
+    }
+
     void publishParts(String topicId, List<Message> parts,
                       SendFlag flags, boolean nonBlocking) {
         ensureOpen();
@@ -1109,6 +1144,20 @@ public abstract class Socket implements AutoCloseable {
                 return;
             }
             throw ZlinkException.fromLastError("zlink_publish");
+        }
+    }
+
+    SendResult tryPublishParts(String topicId, List<Message> parts) {
+        ensureOpen();
+        validateParts(parts);
+        while (true) {
+            int rc = tryPublishPartsOnceResult(topicId, parts);
+            if (rc >= 0)
+                return SendResult.fromNativeValue(rc);
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throw ZlinkException.fromLastError("zlink_try_publish_result");
         }
     }
 
@@ -1136,6 +1185,35 @@ public abstract class Socket implements AutoCloseable {
                     return true;
                 }
                 return false;
+            } finally {
+                if (!success) {
+                    restoreParts(parts, nativeParts, anchors);
+                }
+            }
+        }
+    }
+
+    private int tryPublishPartsOnceResult(String topicId, List<Message> parts) {
+        try (Arena arena = Arena.ofConfined()) {
+            int count = parts.size();
+            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+            MemorySegment nativeTopic = arena.allocateFrom(topicId,
+                StandardCharsets.UTF_8);
+            MemorySegment nativeParts = arena.allocate(msgSize * count,
+                NativeLayouts.MSG_LAYOUT.byteAlignment());
+            Object[] anchors = new Object[count];
+            boolean success = false;
+            try {
+                for (int i = 0; i < count; i++) {
+                    MemorySegment nativeMsg = nativeParts.asSlice((long) i * msgSize,
+                        msgSize);
+                    anchors[i] = parts.get(i).transferTo(nativeMsg);
+                }
+                int rc = Native.tryPublishResult(handle, nativeTopic, nativeParts,
+                    count);
+                if (rc == SendResult.SENT.nativeValue())
+                    success = true;
+                return rc;
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);

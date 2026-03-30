@@ -790,6 +790,44 @@ napi_value service_monitor_recv(napi_env env, napi_callback_info info)
     return obj;
 }
 
+napi_value service_monitor_try_recv(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *monitor = NULL;
+    napi_get_value_external(env, argv[0], &monitor);
+
+    zlink_service_monitor_event_t event;
+    memset(&event, 0, sizeof(event));
+    int rc = zlink_try_service_monitor_recv(monitor, &event);
+    if (rc != 0) {
+        if (zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "service_monitor_try_recv failed");
+    }
+
+    napi_value obj;
+    napi_create_object(env, &obj);
+    set_uint32_property(env, obj, "serviceKind",
+                        static_cast<uint32_t>(event.service_kind));
+    set_uint32_property(env, obj, "eventType", event.event_type);
+    set_int64_property(env, obj, "status", event.status);
+    set_int64_property(env, obj, "errorCode", event.error_code);
+    set_uint32_property(env, obj, "value", event.value);
+    set_uint32_property(env, obj, "detailFlags", event.detail_flags);
+    set_string_property(env, obj, "serviceName", event.service_name);
+    set_string_property(env, obj, "endpoint", event.endpoint);
+    napi_value rid = create_routing_id_value(env, event.routing_id);
+    napi_set_named_property(env, obj, "routingId", rid);
+    set_string_property(env, obj, "subject", event.subject);
+    set_uint32_property(env, obj, "subjectKind", event.subject_kind);
+    return obj;
+}
+
 napi_value discovery_destroy(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];

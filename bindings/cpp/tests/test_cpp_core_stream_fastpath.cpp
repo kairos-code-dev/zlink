@@ -5,7 +5,7 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t stream (ctx, zlink::socket_type::stream);
+    zlink::stream_socket_t stream (ctx);
 
     char recv_buf[64];
     assert (stream.recv (recv_buf, sizeof (recv_buf), zlink::recv_flag::dontwait)

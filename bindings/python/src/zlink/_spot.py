@@ -2,14 +2,30 @@
 
 import ctypes
 
-from ._ffi import ZlinkMsg, ZlinkRoutingId, lib
+from ._enums import (
+    SendResult,
+    SpotNodeState,
+    SpotPeerSource,
+    SpotPeerState,
+)
+from ._ffi import (
+    ZlinkMsg,
+    ZlinkRoutingId,
+    ZlinkSpotNodePeerEntry,
+    ZlinkSpotNodePeerFilter,
+    ZlinkSpotNodeStatus,
+    ZlinkSpotNodeSubjectEntry,
+    ZlinkSpotNodeSubjectFilter,
+    lib,
+)
 from ._core import (
     Message,
-    ReceivedTopicMessage,
+    Subscribed,
     _SOCKET_SEND_READY_HANDLER,
     _ReceivedPartsOwner,
     _as_bytes_view,
     _clone_native_msg,
+    _is_eagain,
     _init_msg_from_buffer,
     _report_unhandled_callback_exception,
     _raise_last_error,
@@ -26,6 +42,102 @@ _SPOT_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_size_t,
     ctypes.c_void_p,
 )
+
+
+def _decode_fixed(buf):
+    return bytes(buf).split(b"\0", 1)[0].decode("utf-8", errors="replace")
+
+
+def _fixed_buffer_value(value, size):
+    raw = b""
+    if value is not None:
+        raw = bytes(_as_bytes_view(value))
+    if len(raw) >= size:
+        raise ValueError(f"value exceeds fixed buffer size {size - 1}")
+    return raw
+
+
+class SpotNodeStatus:
+    def __init__(
+        self,
+        *,
+        service_name,
+        local_endpoint,
+        node_routing_id,
+        state,
+        configured_peer_count,
+        active_peer_count,
+        connected_peer_count,
+        subject_count,
+        ready_subject_count,
+        last_error,
+        last_changed_ms,
+    ):
+        self.service_name = service_name
+        self.local_endpoint = local_endpoint
+        self.node_routing_id = node_routing_id
+        self.state = state
+        self.configured_peer_count = configured_peer_count
+        self.active_peer_count = active_peer_count
+        self.connected_peer_count = connected_peer_count
+        self.subject_count = subject_count
+        self.ready_subject_count = ready_subject_count
+        self.last_error = last_error
+        self.last_changed_ms = last_changed_ms
+
+
+class SpotNodePeerEntry:
+    def __init__(
+        self,
+        *,
+        service_name,
+        local_endpoint,
+        peer_endpoint,
+        source,
+        state,
+        connected_since_ms,
+        last_changed_ms,
+    ):
+        self.service_name = service_name
+        self.local_endpoint = local_endpoint
+        self.peer_endpoint = peer_endpoint
+        self.source = source
+        self.state = state
+        self.connected_since_ms = connected_since_ms
+        self.last_changed_ms = last_changed_ms
+
+
+class SpotNodePeerFilter:
+    def __init__(self, *, peer_endpoint=None, source=None, state=None):
+        self.peer_endpoint = peer_endpoint
+        self.source = source
+        self.state = state
+
+
+class SpotNodeSubjectEntry:
+    def __init__(
+        self,
+        *,
+        role,
+        subject,
+        subject_kind,
+        ready_peer_count,
+        active_peer_count,
+        last_changed_ms,
+    ):
+        self.role = role
+        self.subject = subject
+        self.subject_kind = subject_kind
+        self.ready_peer_count = ready_peer_count
+        self.active_peer_count = active_peer_count
+        self.last_changed_ms = last_changed_ms
+
+
+class SpotNodeSubjectFilter:
+    def __init__(self, *, role=None, subject=None, subject_kind=0):
+        self.role = role
+        self.subject = subject
+        self.subject_kind = subject_kind
 
 
 class SpotNode:
@@ -56,7 +168,7 @@ class SpotNode:
         if rc != 0:
             _raise_last_error()
 
-    def set_option(self, option: int, value):
+    def _set_option(self, option: int, value):
         if int(option) == 5:
             self.set_routing_id(value)
             return
@@ -120,6 +232,107 @@ class SpotNode:
 
         return open_service_monitor(self, events)
 
+    def wrap_handle(self):
+        handle = lib().zlink_spot_wrap_node(self._handle)
+        if not handle:
+            _raise_last_error()
+        return Spot._from_native_handle(handle)
+
+    def status_snapshot(self):
+        native = ZlinkSpotNodeStatus()
+        rc = lib().zlink_spot_node_status_snapshot(self._handle, ctypes.byref(native))
+        if rc != 0:
+            _raise_last_error()
+        return SpotNodeStatus(
+            service_name=_decode_fixed(native.service_name),
+            local_endpoint=_decode_fixed(native.local_endpoint),
+            node_routing_id=_routing_id_bytes(native.node_routing_id),
+            state=SpotNodeState(int(native.state)),
+            configured_peer_count=int(native.configured_peer_count),
+            active_peer_count=int(native.active_peer_count),
+            connected_peer_count=int(native.connected_peer_count),
+            subject_count=int(native.subject_count),
+            ready_subject_count=int(native.ready_subject_count),
+            last_error=int(native.last_error),
+            last_changed_ms=int(native.last_changed_ms),
+        )
+
+    def peers_snapshot(self):
+        return self.peers_query(None)
+
+    def peers_query(self, filter_=None):
+        count = ctypes.c_size_t()
+        filter_ptr = None
+        filter_native = None
+        if filter_ is not None:
+            filter_native = ZlinkSpotNodePeerFilter()
+            filter_native.peer_endpoint = _fixed_buffer_value(
+                filter_.peer_endpoint, 256
+            )
+            filter_native.source = 0 if filter_.source is None else int(filter_.source)
+            filter_native.state = 0 if filter_.state is None else int(filter_.state)
+            filter_ptr = ctypes.byref(filter_native)
+        rc = lib().zlink_spot_node_peers_query(
+            self._handle, filter_ptr, None, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_last_error()
+        if count.value == 0:
+            return []
+        entries = (ZlinkSpotNodePeerEntry * int(count.value))()
+        rc = lib().zlink_spot_node_peers_query(
+            self._handle, filter_ptr, entries, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_last_error()
+        return [
+            SpotNodePeerEntry(
+                service_name=_decode_fixed(entry.service_name),
+                local_endpoint=_decode_fixed(entry.local_endpoint),
+                peer_endpoint=_decode_fixed(entry.peer_endpoint),
+                source=SpotPeerSource(int(entry.source)),
+                state=SpotPeerState(int(entry.state)),
+                connected_since_ms=int(entry.connected_since_ms),
+                last_changed_ms=int(entry.last_changed_ms),
+            )
+            for entry in entries[: int(count.value)]
+        ]
+
+    def subjects_snapshot(self, filter_=None):
+        count = ctypes.c_size_t()
+        filter_ptr = None
+        filter_native = None
+        if filter_ is not None:
+            filter_native = ZlinkSpotNodeSubjectFilter()
+            filter_native.role = 0 if filter_.role is None else int(filter_.role)
+            filter_native.subject = _fixed_buffer_value(filter_.subject, 256)
+            filter_native.subject_kind = int(filter_.subject_kind)
+            filter_ptr = ctypes.byref(filter_native)
+        rc = lib().zlink_spot_node_subjects_snapshot(
+            self._handle, filter_ptr, None, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_last_error()
+        if count.value == 0:
+            return []
+        entries = (ZlinkSpotNodeSubjectEntry * int(count.value))()
+        rc = lib().zlink_spot_node_subjects_snapshot(
+            self._handle, filter_ptr, entries, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_last_error()
+        return [
+            SpotNodeSubjectEntry(
+                role=int(entry.role),
+                subject=_decode_fixed(entry.subject),
+                subject_kind=int(entry.subject_kind),
+                ready_peer_count=int(entry.ready_peer_count),
+                active_peer_count=int(entry.active_peer_count),
+                last_changed_ms=int(entry.last_changed_ms),
+            )
+            for entry in entries[: int(count.value)]
+        ]
+
     def close(self):
         if not self._handle:
             return
@@ -137,26 +350,37 @@ class SpotNode:
 
 
 class Spot:
+    @classmethod
+    def _from_native_handle(cls, handle):
+        obj = cls.__new__(cls)
+        obj._own = True
+        obj._handle = handle
+        obj._handler = None
+        obj._handler_cb = None
+        obj._send_ready_handler = None
+        obj._send_ready_handler_cb = None
+        return obj
+
     def __init__(self, ctx_or_node):
-        self._own = not isinstance(ctx_or_node, SpotNode)
         self._handler = None
         self._handler_cb = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
-        if self._own:
-            self._handle = lib().zlink_spot_new(ctx_or_node._handle)
+        self._own = True
+        if isinstance(ctx_or_node, SpotNode):
+            self._handle = lib().zlink_spot_wrap_node(ctx_or_node._handle)
         else:
-            self._handle = ctx_or_node._handle
+            self._handle = lib().zlink_spot_new(ctx_or_node._handle)
         if not self._handle:
             _raise_last_error()
 
-    def publish(self, topic, payload, flags: int = 0):
-        topic_bytes = bytes(_as_bytes_view(topic))
+    def _native_parts_from_payload(self, payload):
         if isinstance(payload, (list, tuple)):
-            parts = payload
+            parts = list(payload)
         else:
             parts = [payload]
-
+        if not parts:
+            raise ValueError("parts must not be empty")
         native_parts = []
         for part in parts:
             if isinstance(part, Message):
@@ -165,54 +389,81 @@ class Spot:
             native = ZlinkMsg()
             _ = _init_msg_from_buffer(native, part, borrow=False)
             native_parts.append(native)
+        return native_parts
 
+    def publish(self, topic, payload):
+        topic_bytes = bytes(_as_bytes_view(topic))
+        native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
         rc = lib().zlink_publish(
-            self._handle, topic_bytes, parts_array, part_count, int(flags)
+            self._handle, topic_bytes, parts_array, part_count, 0
         )
         if rc != 0:
             for index in range(part_count):
                 lib().zlink_msg_close(ctypes.byref(parts_array[index]))
             _raise_last_error()
 
-    def recv(self, flags: int = 0):
+    def try_publish(self, topic, payload):
+        topic_bytes = bytes(_as_bytes_view(topic))
+        native_parts = self._native_parts_from_payload(payload)
+        part_count = len(native_parts)
+        parts_array = (ZlinkMsg * part_count)()
+        for index, native in enumerate(native_parts):
+            parts_array[index] = native
+        result = lib().zlink_try_publish_result(
+            self._handle, topic_bytes, parts_array, part_count
+        )
+        if int(result) < 0:
+            _raise_last_error()
+        return SendResult(result)
+
+    def _recv_subscribed(self, flags):
         routing_id = ZlinkRoutingId()
         parts = ctypes.POINTER(ZlinkMsg)()
         part_count = ctypes.c_size_t()
         topic_buf = ctypes.create_string_buffer(256)
         topic_len = ctypes.c_size_t(len(topic_buf))
-        rc = lib().zlink_subscribe(
+        native = lib()
+        rc = native.zlink_subscribe(
             self._handle,
             ctypes.byref(routing_id),
             ctypes.byref(parts),
             ctypes.byref(part_count),
             topic_buf,
             ctypes.byref(topic_len),
-            int(flags),
+            flags,
         )
         if rc != 0:
             _raise_last_error()
         owner = _ReceivedPartsOwner(parts, int(part_count.value))
-        return ReceivedTopicMessage(
-            topic_buf.raw[: topic_len.value],
-            owner,
-            _routing_id_bytes(routing_id),
-        )
+        topic = topic_buf.raw[: topic_len.value]
+        return Subscribed(topic, owner, _routing_id_bytes(routing_id))
 
-    def subscribe(self, topic):
+    def recv(self):
+        return self._recv_subscribed(0)
+
+    def try_recv(self):
+        try:
+            return self._recv_subscribed(1)
+        except Exception as exc:
+            if _is_eagain(exc):
+                return None
+            raise
+
+    def set_subscription(self, topic):
         rc = lib().zlink_set_subscription(self._handle, bytes(_as_bytes_view(topic)))
         if rc != 0:
             _raise_last_error()
 
-    def unsubscribe(self, topic):
+    def unset_subscription(self, topic):
         rc = lib().zlink_unset_subscription(self._handle, bytes(_as_bytes_view(topic)))
         if rc != 0:
             _raise_last_error()
 
-    def set_pub_option(self, option, value):
+    def _set_pub_option(self, option, value):
         view = _as_bytes_view(value)
         if view.nbytes == 0:
             rc = lib().zlink_set_pub_option(self._handle, int(option), None, 0)
@@ -235,7 +486,7 @@ class Spot:
         if rc != 0:
             _raise_last_error()
 
-    def set_sub_option(self, option, value):
+    def _set_sub_option(self, option, value):
         view = _as_bytes_view(value)
         if view.nbytes == 0:
             rc = lib().zlink_set_sub_option(self._handle, int(option), None, 0)
@@ -272,7 +523,7 @@ class Spot:
             if topic_ptr and topic_len:
                 topic = ctypes.string_at(topic_ptr, topic_len)
             owner = _ReceivedPartsOwner(parts_ptr, int(part_count))
-            message = ReceivedTopicMessage(topic, owner, routing_id)
+            message = Subscribed(topic, owner, routing_id)
             try:
                 handler(message)
             except Exception:
@@ -319,14 +570,11 @@ class Spot:
         self._handler_cb = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
-        if self._own:
-            handle = ctypes.c_void_p(self._handle)
-            rc = lib().zlink_spot_destroy(ctypes.byref(handle))
-            self._handle = None
-            if rc != 0:
-                _raise_last_error()
-            return
+        handle = ctypes.c_void_p(self._handle)
         self._handle = None
+        rc = lib().zlink_spot_destroy(ctypes.byref(handle))
+        if rc != 0:
+            _raise_last_error()
 
     def __enter__(self):
         return self

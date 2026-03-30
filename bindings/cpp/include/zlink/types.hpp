@@ -3,6 +3,7 @@
 #define ZLINK_CPP_TYPES_HPP_INCLUDED
 
 #include "common.hpp"
+#include "message.hpp"
 
 #include <cerrno>
 
@@ -327,10 +328,73 @@ inline recv_flag operator| (recv_flag a, recv_flag b)
                                    | static_cast<int> (b));
 }
 
-enum class stream_dispatch_mode : int
+enum class send_result_t : int
 {
-    none = 0,
-    len32be = 1
+    sent = ZLINK_SEND_RESULT_SENT,
+    backpressured = ZLINK_SEND_RESULT_BACKPRESSURED,
+    not_ready = ZLINK_SEND_RESULT_NOT_READY
+};
+
+inline zlink_routing_id_t empty_routing_id () noexcept
+{
+    zlink_routing_id_t routing_id;
+    std::memset (&routing_id, 0, sizeof (routing_id));
+    return routing_id;
+}
+
+struct received_t
+{
+    received_t () : routing_id (empty_routing_id ()) {}
+
+    zlink_routing_id_t routing_id;
+    std::vector<message_t> parts;
+};
+
+struct subscribed_t
+{
+    subscribed_t () : routing_id (empty_routing_id ()) {}
+
+    zlink_routing_id_t routing_id;
+    std::string topic;
+    std::vector<message_t> parts;
+};
+
+struct subscription_event_t
+{
+    subscription_event_t ()
+        : routing_id (empty_routing_id ()), subscribed (false)
+    {
+    }
+
+    zlink_routing_id_t routing_id;
+    std::string topic;
+    bool subscribed;
+};
+
+template<typename T> class maybe_t
+{
+  public:
+    maybe_t () : _has_value (false), _value () {}
+
+    maybe_t (const T &value_) : _has_value (true), _value (value_) {}
+
+    maybe_t (T &&value_) : _has_value (true), _value (std::move (value_)) {}
+
+    explicit operator bool () const noexcept { return _has_value; }
+    bool has_value () const noexcept { return _has_value; }
+
+    T &value () noexcept { return _value; }
+    const T &value () const noexcept { return _value; }
+
+    T &operator* () noexcept { return _value; }
+    const T &operator* () const noexcept { return _value; }
+
+    T *operator-> () noexcept { return &_value; }
+    const T *operator-> () const noexcept { return &_value; }
+
+  private:
+    bool _has_value;
+    T _value;
 };
 
 enum class error_code : int

@@ -259,7 +259,7 @@ class dealer_dealer_client_bench_t
             if (wait_ms < 1)
                 wait_ms = 1;
 
-            const int poll_rc = _poller.wait (_poll_events, wait_ms);
+            const int poll_rc = _poller.wait_all (_poll_events, wait_ms);
             if (poll_rc < 0) {
                 if (errno == EINTR)
                     continue;

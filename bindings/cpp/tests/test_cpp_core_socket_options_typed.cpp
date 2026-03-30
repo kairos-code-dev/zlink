@@ -10,7 +10,7 @@ void test_typed_socket_options ()
 {
     zlink::context_t ctx;
 
-    zlink::socket_t dealer (ctx, zlink::socket_type::dealer);
+    zlink::dealer_socket_t dealer (ctx);
     assert (dealer.set (zlink::socket_options::linger, 0) == 0);
     assert (dealer.set (zlink::socket_options::sndhwm, 7) == 0);
 
@@ -36,7 +36,7 @@ void test_typed_socket_options ()
 void test_typed_stream_notify ()
 {
     zlink::context_t ctx;
-    zlink::socket_t stream (ctx, zlink::socket_type::stream);
+    zlink::stream_socket_t stream (ctx);
 
     assert (stream.set (zlink::socket_options::stream_notify, 1) == 0);
     int stream_notify = 0;
@@ -47,7 +47,7 @@ void test_typed_stream_notify ()
 void test_typed_binary_string_get ()
 {
     zlink::context_t ctx;
-    zlink::socket_t dealer (ctx, zlink::socket_type::dealer);
+    zlink::dealer_socket_t dealer (ctx);
 
     const std::string routing_id ("RID\0", 4);
     assert (dealer.set (zlink::socket_options::routing_id, routing_id) == 0);
@@ -61,7 +61,7 @@ void test_typed_binary_string_get ()
 void test_typed_string_get ()
 {
     zlink::context_t ctx;
-    zlink::socket_t pair (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t pair (ctx);
 
     assert (pair.bind ("inproc://typed-socket-options") == 0);
 

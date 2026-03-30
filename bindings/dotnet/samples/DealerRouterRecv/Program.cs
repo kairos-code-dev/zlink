@@ -12,8 +12,9 @@ router.Bind(endpoint);
 dealer.Connect(endpoint);
 
 SampleSupport.SendUtf8UntilReady(dealer, "dealer-request", 2000);
-router.Receive(out string routingId, out Message request);
-using (request)
+Received received = router.Receive();
+string routingId = received.RoutingId;
+using (Message request = received.Parts[0])
 {
     Console.WriteLine($"request:{request.GetString()}");
 }

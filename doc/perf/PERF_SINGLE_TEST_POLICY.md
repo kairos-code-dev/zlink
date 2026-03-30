@@ -62,7 +62,7 @@
 - 수신 모델 (`--recv`)
   - **callback 모델** (`--recv callback`)만 허용한다.
   - `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-    `ROUTER_ROUTER`, `GATEWAY`, `SPOT` 전부 callback only다.
+    `ROUTER_ROUTER`, `SPOT` 전부 callback only다.
   - callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
     두지 않는다.
   - recv: `zlink_recv_handler()` 등록 → 라이브러리가 I/O thread에서 callback
@@ -301,7 +301,6 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 - DEALER_DEALER
 - DEALER_ROUTER
 - ROUTER_ROUTER
-- GATEWAY
 - SPOT
 
 > STREAM 계열(STREAM)은 single suite에서 테스트하지 않는다.
@@ -315,7 +314,6 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | DEALER_DEALER | `callback` |
 | DEALER_ROUTER | `callback` |
 | ROUTER_ROUTER | `callback` |
-| GATEWAY | `callback` |
 | SPOT | `callback` |
 
 정책:
@@ -328,7 +326,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 
 | 방향 | 패턴 | throughput 단위 |
 |------|------|----------------|
-| one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, GATEWAY, SPOT | `msg/s` |
+| one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, SPOT | `msg/s` |
 
 > **구현 참고**: `run_comparison.py`는 소켓 동작(echo/one-way)과 무관하게 모든 single 패턴을 **one-way 방향**, **Kmsg/s** 단위로 출력한다. bandwidth도 방향과 무관하게 `throughput × size / 1,000,000`으로 계산한다 (direction_factor를 적용하지 않는다).
 
@@ -341,7 +339,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | 패턴군 | transport |
 |--------|-----------|
 | PAIR / PUBSUB / DEALER / ROUTER | tcp, tls, ws, wss, inproc, ipc (Windows: ipc 제외) |
-| GATEWAY / SPOT | tcp, tls, ws, wss |
+| SPOT | tcp, tls, ws, wss |
 
 ---
 

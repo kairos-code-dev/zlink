@@ -16,7 +16,7 @@ namespace {
 void test_localhost ()
 {
     zlink::context_t ctx;
-    zlink::socket_t dealer (ctx, zlink::socket_type::dealer);
+    zlink::dealer_socket_t dealer (ctx);
     assert (dealer.bind ("tcp://127.0.0.1:*") == 0);
 }
 

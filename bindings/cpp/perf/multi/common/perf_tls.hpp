@@ -1,13 +1,15 @@
 #ifndef PERF_MULTI_TLS_HPP
 #define PERF_MULTI_TLS_HPP
 
-#include <zlink.hpp>
+#include "../../common/perf_socket_compat.hpp"
 
 #include <filesystem>
 #include <string>
 
 namespace perf {
 namespace multi {
+
+typedef zlink::socket_t perf_socket_t;
 
 inline bool tls_file_exists (const std::filesystem::path &path)
 {
@@ -84,7 +86,7 @@ inline bool try_resolve_perf_tls_paths (std::string &cert_out,
     return true;
 }
 
-inline bool setup_tls_server (zlink::socket_t &socket,
+inline bool setup_tls_server (perf_socket_t &socket,
                               const std::string &transport)
 {
     if (transport != "tls" && transport != "wss")
@@ -96,11 +98,11 @@ inline bool setup_tls_server (zlink::socket_t &socket,
     if (!try_resolve_perf_tls_paths (cert, key, ca))
         return false;
 
-    return socket.set (zlink::socket_options::tls_cert, cert) == 0
-           && socket.set (zlink::socket_options::tls_key, key) == 0;
+    return socket.set_option (zlink::socket_options::tls_cert, cert) == 0
+           && socket.set_option (zlink::socket_options::tls_key, key) == 0;
 }
 
-inline bool setup_tls_client (zlink::socket_t &socket,
+inline bool setup_tls_client (perf_socket_t &socket,
                               const std::string &transport)
 {
     if (transport != "tls" && transport != "wss")
@@ -112,11 +114,12 @@ inline bool setup_tls_client (zlink::socket_t &socket,
     if (!try_resolve_perf_tls_paths (cert, key, ca))
         return false;
 
-    return socket.set (zlink::socket_options::tls_ca, ca) == 0
-           && socket.set (zlink::socket_options::tls_hostname,
-                          std::string ("localhost"))
+    return socket.set_option (zlink::socket_options::tls_ca, ca) == 0
+           && socket.set_option (zlink::socket_options::tls_hostname,
+                                 std::string ("localhost"))
                 == 0
-           && socket.set (zlink::socket_options::tls_trust_system, 0) == 0;
+           && socket.set_option (zlink::socket_options::tls_trust_system, 0)
+                == 0;
 }
 
 } // namespace multi

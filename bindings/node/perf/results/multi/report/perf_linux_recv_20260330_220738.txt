@@ -1,0 +1,16 @@
+## Effective Options (start)
+- pattern: MULTI_PUBSUB
+- recv_mode: recv
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 256
+
+RESULT,current,MULTI_PUBSUB,tcp,256,throughput,253186.00
+RESULT,current,MULTI_PUBSUB,tcp,256,bandwidth,64.82
+RESULT,current,MULTI_PUBSUB,tcp,256,latency,254057.83
+RESULT,current,MULTI_PUBSUB,tcp,256,latency_p95,396957.33
+RESULT,current,MULTI_PUBSUB,tcp,256,latency_p99,411571.46
+
+## Effective Options (result)
+- recv_mode: recv
+- result_lines: 5

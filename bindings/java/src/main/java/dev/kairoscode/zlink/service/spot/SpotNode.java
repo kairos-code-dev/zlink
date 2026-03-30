@@ -76,6 +76,48 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
+    /** Configures server TLS credentials on the node transport surface. */
+    public void setTlsServer(String certPem, String keyPem,
+                             boolean requireClientCert) {
+        if (requireClientCert) {
+            throw new UnsupportedOperationException(
+              "spot node TLS server does not expose client-cert mode");
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeSetTlsServer(handle,
+              NativeHelpers.toCString(arena, certPem),
+              NativeHelpers.toCString(arena, keyPem));
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_set_tls_server");
+            }
+        }
+    }
+
+    /** Configures client TLS credentials on the node transport surface. */
+    public void setTlsClient(String caCertPem, String hostname,
+                             boolean trustSystem) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeSetTlsClient(handle,
+              NativeHelpers.toCString(arena, caCertPem),
+              NativeHelpers.toCString(arena, hostname),
+              trustSystem ? 1 : 0);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_spot_node_set_tls_client");
+            }
+        }
+    }
+
+    /** Returns a unified spot wrapper bound to this node. */
+    public Spot wrapHandle() {
+        MemorySegment spot = Native.spotWrapNode(handle);
+        if (spot == null || spot.address() == 0) {
+            throw ZlinkException.fromLastError("zlink_spot_wrap_node");
+        }
+        return new Spot(spot);
+    }
+
     /** Opens a service monitor for the spot node handle. */
     public ServiceMonitor monitorOpen(int events) {
         MemorySegment monitor = Native.serviceMonitorOpen(handle, events);

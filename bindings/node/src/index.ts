@@ -2,31 +2,21 @@
 
 import { requireNative } from './native';
 import { normalizeBufferLike } from './buffer_like';
-import { Message, Received } from './message';
+import { Message, Received, Subscribed, SubscriptionEvent } from './message';
 import {
   SocketType,
-  SocketOption,
-  SendFlag,
-  ReceiveFlag,
-  StreamDispatchMode
+  SocketOption
 } from './socket/constants';
 import { BaseSocket } from './socket/base_socket';
-import { SendSocket } from './socket/send_socket';
-import { DuplexSocket } from './socket/duplex_socket';
-import { RecvSocket } from './socket/recv_socket';
-import { SubscriberSocket } from './socket/subscriber_socket';
 import { Socket } from './socket/compat_socket';
 import { MonitorSocket } from './socket/monitor_socket';
 import {
-  PubSocket,
-  XPubSocket,
-  PairSocket,
-  DealerSocket,
-  RouterSocket,
-  StreamSocket,
-  SubSocket,
-  XSubSocket
-} from './socket/socket_types';
+  materializeReceived,
+  materializeSubscribed,
+  materializeSubscriptionEvent,
+  normalizeMessagePayload,
+  normalizeMultipart
+} from './socket/socket_support';
 import type { BufferLike } from './buffer_like';
 import type { MessageLike } from './message';
 
@@ -34,27 +24,73 @@ export type { BufferLike, MessageLike };
 export {
   Message,
   Received,
+  Subscribed,
+  SubscriptionEvent,
   BaseSocket,
-  SendSocket,
-  DuplexSocket,
-  RecvSocket,
-  SubscriberSocket,
   Socket,
   MonitorSocket,
-  PubSocket,
-  XPubSocket,
-  PairSocket,
-  DealerSocket,
-  RouterSocket,
-  StreamSocket,
-  SubSocket,
-  XSubSocket,
   SocketType,
-  SocketOption,
-  SendFlag,
-  ReceiveFlag,
-  StreamDispatchMode
+  SocketOption
 };
+
+export const SendResult = Object.freeze({
+  Sent: 0,
+  Backpressured: 1,
+  NotReady: 2
+} as const);
+
+export type SendResult = typeof SendResult[keyof typeof SendResult];
+export type SocketRecvHandler = (routingId: Buffer | null, parts: Message[]) => void;
+export type SocketSubscribeHandler = (
+  routingId: Buffer | null,
+  topic: string,
+  parts: Message[]
+) => void;
+export type SpotSubHandler = SocketSubscribeHandler;
+
+const ROUTING_ID_MAX_LENGTH = 255;
+
+function boolAsUint32Buffer(value: boolean): Buffer {
+  const buffer = Buffer.allocUnsafe(4);
+  buffer.writeUInt32LE(value ? 1 : 0, 0);
+  return buffer;
+}
+
+function normalizeRoutingId(routingId: BufferLike): Buffer {
+  const normalized = normalizeBufferLike(routingId, 'routingId');
+  if (normalized.length > ROUTING_ID_MAX_LENGTH) {
+    throw new RangeError(`routingId must be at most ${ROUTING_ID_MAX_LENGTH} bytes`);
+  }
+  return normalized;
+}
+
+function startPollingLoop<T>(
+  isOpen: () => boolean,
+  read: () => T | null,
+  invoke: (value: T) => void
+): void {
+  const tick = (): void => {
+    if (!isOpen()) {
+      return;
+    }
+    try {
+      const value = read();
+      if (value !== null) {
+        invoke(value);
+      }
+    } catch (error) {
+      if (!isOpen()) {
+        return;
+      }
+      setImmediate(() => {
+        throw error;
+      });
+      return;
+    }
+    setImmediate(tick);
+  };
+  setImmediate(tick);
+}
 
 export const ContextOption = Object.freeze({
   IO_THREADS: 1, MAX_SOCKETS: 2, SOCKET_LIMIT: 3,
@@ -260,6 +296,332 @@ export interface SpotNodeSubjectEntry {
   lastChangedMs: number;
 }
 
+export abstract class SendSocketBase extends BaseSocket {
+  protected constructor(ctx: Context, type: number) {
+    super(ctx, type);
+  }
+
+  send(message: MessageLike): number;
+  send(parts: readonly MessageLike[]): number;
+  send(payloadOrParts: MessageLike | readonly MessageLike[]): number {
+    if (Array.isArray(payloadOrParts)) {
+      return requireNative().socketSendParts(
+        this.nativeHandle(),
+        normalizeMultipart(payloadOrParts),
+        0
+      ) as number;
+    }
+    const payload = payloadOrParts as MessageLike;
+    return requireNative().socketSend(
+      this.nativeHandle(),
+      normalizeMessagePayload(payload),
+      0
+    ) as number;
+  }
+
+  trySend(message: MessageLike): SendResult;
+  trySend(parts: readonly MessageLike[]): SendResult;
+  trySend(payloadOrParts: MessageLike | readonly MessageLike[]): SendResult {
+    if (Array.isArray(payloadOrParts)) {
+      return requireNative().socketTrySendParts(
+        this.nativeHandle(),
+        normalizeMultipart(payloadOrParts)
+      ) as SendResult;
+    }
+    const payload = payloadOrParts as MessageLike;
+    return requireNative().socketTrySend(
+      this.nativeHandle(),
+      normalizeMessagePayload(payload)
+    ) as SendResult;
+  }
+}
+
+export abstract class PublisherSocketBase extends BaseSocket {
+  protected constructor(ctx: Context, type: number) {
+    super(ctx, type);
+  }
+
+  publish(topic: string, message: MessageLike): number;
+  publish(topic: string, parts: readonly MessageLike[]): number;
+  publish(topic: string, payloadOrParts: MessageLike | readonly MessageLike[]): number {
+    if (Array.isArray(payloadOrParts)) {
+      return requireNative().socketPublish(
+        this.nativeHandle(),
+        topic,
+        normalizeMultipart(payloadOrParts),
+        0
+      ) as number;
+    }
+    const payload = payloadOrParts as MessageLike;
+    return requireNative().socketPublish(
+      this.nativeHandle(),
+      topic,
+      normalizeMessagePayload(payload),
+      0
+    ) as number;
+  }
+
+  tryPublish(topic: string, message: MessageLike): SendResult;
+  tryPublish(topic: string, parts: readonly MessageLike[]): SendResult;
+  tryPublish(topic: string, payloadOrParts: MessageLike | readonly MessageLike[]): SendResult {
+    if (Array.isArray(payloadOrParts)) {
+      return requireNative().socketTryPublish(
+        this.nativeHandle(),
+        topic,
+        normalizeMultipart(payloadOrParts)
+      ) as SendResult;
+    }
+    const payload = payloadOrParts as MessageLike;
+    return requireNative().socketTryPublish(
+      this.nativeHandle(),
+      topic,
+      normalizeMessagePayload(payload)
+    ) as SendResult;
+  }
+}
+
+export abstract class MessageSocketBase extends SendSocketBase {
+  protected constructor(ctx: Context, type: number) {
+    super(ctx, type);
+  }
+
+  receive(): Received {
+    return materializeReceived(
+      requireNative().socketRecvMessage(this.nativeHandle(), 0) as {
+        parts: Buffer[];
+        routingId?: Buffer | null;
+      }
+    );
+  }
+
+  tryReceive(): Received | null {
+    const raw = requireNative().socketTryRecvMessage(this.nativeHandle()) as
+      | { parts: Buffer[]; routingId?: Buffer | null }
+      | null;
+    return raw ? materializeReceived(raw) : null;
+  }
+
+  recvHandler(handler: SocketRecvHandler): void {
+    if (typeof handler !== 'function') {
+      throw new TypeError('handler must be a function');
+    }
+    startPollingLoop(
+      () => this.nativeHandle() != null,
+      () => this.tryReceive(),
+      (received) => handler(received.routingId, [...received.parts])
+    );
+  }
+}
+
+export abstract class RoutedMessageSocketBase extends BaseSocket {
+  protected constructor(ctx: Context, type: number) {
+    super(ctx, type);
+  }
+
+  send(routingId: BufferLike, message: MessageLike): number;
+  send(routingId: BufferLike, parts: readonly MessageLike[]): number;
+  send(routingId: BufferLike, payloadOrParts: MessageLike | readonly MessageLike[]): number {
+    const routing = normalizeRoutingId(routingId);
+    if (Array.isArray(payloadOrParts)) {
+      return requireNative().socketSendParts(
+        this.nativeHandle(),
+        [routing, ...normalizeMultipart(payloadOrParts)],
+        0
+      ) as number;
+    }
+    const payload = payloadOrParts as MessageLike;
+    return requireNative().socketSendParts(
+      this.nativeHandle(),
+      [routing, normalizeMessagePayload(payload)],
+      0
+    ) as number;
+  }
+
+  trySend(routingId: BufferLike, message: MessageLike): SendResult;
+  trySend(routingId: BufferLike, parts: readonly MessageLike[]): SendResult;
+  trySend(
+    routingId: BufferLike,
+    payloadOrParts: MessageLike | readonly MessageLike[]
+  ): SendResult {
+    const routing = normalizeRoutingId(routingId);
+    if (Array.isArray(payloadOrParts)) {
+      return requireNative().socketTrySendRoutingParts(
+        this.nativeHandle(),
+        routing,
+        normalizeMultipart(payloadOrParts)
+      ) as SendResult;
+    }
+    const payload = payloadOrParts as MessageLike;
+    return requireNative().socketTrySendRouting(
+      this.nativeHandle(),
+      routing,
+      normalizeMessagePayload(payload)
+    ) as SendResult;
+  }
+
+  receive(): Received {
+    return materializeReceived(
+      requireNative().socketRecvMessage(this.nativeHandle(), 0) as {
+        parts: Buffer[];
+        routingId?: Buffer | null;
+      }
+    );
+  }
+
+  tryReceive(): Received | null {
+    const raw = requireNative().socketTryRecvMessage(this.nativeHandle()) as
+      | { parts: Buffer[]; routingId?: Buffer | null }
+      | null;
+    return raw ? materializeReceived(raw) : null;
+  }
+
+  recvHandler(handler: SocketRecvHandler): void {
+    if (typeof handler !== 'function') {
+      throw new TypeError('handler must be a function');
+    }
+    startPollingLoop(
+      () => this.nativeHandle() != null,
+      () => this.tryReceive(),
+      (received) => handler(received.routingId, [...received.parts])
+    );
+  }
+}
+
+export abstract class SubscriberSocketBase extends BaseSocket {
+  protected constructor(ctx: Context, type: number) {
+    super(ctx, type);
+  }
+
+  setSubscription(topicOrPattern: string): void {
+    this.setSockOptRaw(SocketOption.SUBSCRIBE, topicOrPattern);
+  }
+
+  unsetSubscription(topicOrPattern: string): void {
+    this.setSockOptRaw(SocketOption.UNSUBSCRIBE, topicOrPattern);
+  }
+
+  subscribe(): Subscribed {
+    return materializeSubscribed(
+      requireNative().socketSubscribeMessage(this.nativeHandle()) as {
+        parts: Buffer[];
+        routingId?: Buffer | null;
+        topic: string;
+      }
+    );
+  }
+
+  trySubscribe(): Subscribed | null {
+    const raw = requireNative().socketTrySubscribeMessage(this.nativeHandle()) as
+      | { parts: Buffer[]; routingId?: Buffer | null; topic: string }
+      | null;
+    return raw ? materializeSubscribed(raw) : null;
+  }
+
+  subscribeHandler(handler: SocketSubscribeHandler): void {
+    if (typeof handler !== 'function') {
+      throw new TypeError('handler must be a function');
+    }
+    startPollingLoop(
+      () => this.nativeHandle() != null,
+      () => this.trySubscribe(),
+      (received) => handler(received.routingId, received.topic, [...received.parts])
+    );
+  }
+}
+
+export class PubSocket extends PublisherSocketBase {
+  constructor(ctx: Context) {
+    super(ctx, SocketType.PUB);
+  }
+}
+
+export class XPubSocket extends PublisherSocketBase {
+  constructor(ctx: Context) {
+    super(ctx, SocketType.XPUB);
+  }
+
+  receiveSubscriptionEvent(): SubscriptionEvent {
+    return materializeSubscriptionEvent(
+      requireNative().socketSubscriptionEvent(this.nativeHandle()) as {
+        routingId?: Buffer | null;
+        topic: string;
+        subscribed: boolean;
+      }
+    );
+  }
+
+  tryReceiveSubscriptionEvent(): SubscriptionEvent | null {
+    const raw = requireNative().socketTrySubscriptionEvent(this.nativeHandle()) as
+      | { routingId?: Buffer | null; topic: string; subscribed: boolean }
+      | null;
+    return raw ? materializeSubscriptionEvent(raw) : null;
+  }
+
+  setVerbose(enabled: boolean): void {
+    this.setSockOptRaw(SocketOption.XPUB_VERBOSE, boolAsUint32Buffer(enabled));
+  }
+
+  setVerboser(enabled: boolean): void {
+    this.setSockOptRaw(SocketOption.XPUB_VERBOSER, boolAsUint32Buffer(enabled));
+  }
+
+  setNoDrop(enabled: boolean): void {
+    this.setSockOptRaw(SocketOption.XPUB_NODROP, boolAsUint32Buffer(enabled));
+  }
+}
+
+export class PairSocket extends MessageSocketBase {
+  constructor(ctx: Context) {
+    super(ctx, SocketType.PAIR);
+  }
+}
+
+export class DealerSocket extends MessageSocketBase {
+  constructor(ctx: Context) {
+    super(ctx, SocketType.DEALER);
+  }
+
+  setRoutingId(routingId: BufferLike): void {
+    this.setSockOptRaw(SocketOption.ROUTING_ID, normalizeRoutingId(routingId));
+  }
+
+  getRoutingId(): Buffer {
+    return this.getSockOptRaw(SocketOption.ROUTING_ID);
+  }
+}
+
+export class RouterSocket extends RoutedMessageSocketBase {
+  constructor(ctx: Context) {
+    super(ctx, SocketType.ROUTER);
+  }
+
+  setRoutingId(routingId: BufferLike): void {
+    this.setSockOptRaw(SocketOption.ROUTING_ID, normalizeRoutingId(routingId));
+  }
+
+  getRoutingId(): Buffer {
+    return this.getSockOptRaw(SocketOption.ROUTING_ID);
+  }
+}
+
+export class StreamSocket extends RoutedMessageSocketBase {
+  constructor(ctx: Context) {
+    super(ctx, SocketType.STREAM);
+  }
+}
+
+export class SubSocket extends SubscriberSocketBase {
+  constructor(ctx: Context) {
+    super(ctx, SocketType.SUB);
+  }
+}
+
+export class XSubSocket extends SubscriberSocketBase {
+  constructor(ctx: Context) {
+    super(ctx, SocketType.XSUB);
+  }
+}
+
 export class Context {
   /** @internal */
   private _native: unknown | null;
@@ -290,6 +652,10 @@ export class ServiceMonitor {
 
   recv(): ServiceEventValue {
     return requireNative().serviceMonitorRecv(this._native) as ServiceEventValue;
+  }
+
+  tryRecv(): ServiceEventValue | null {
+    return requireNative().serviceMonitorTryRecv(this._native) as ServiceEventValue | null;
   }
 
   snapshot(): MonitorSnapshot {
@@ -610,11 +976,12 @@ export class Spot {
 
   constructor(ctx: Context) {
     this._native = requireNative().spotNew(ctx.nativeHandle());
+    requireNative().spotEnableSendReadyNoop(this._native);
   }
 
-  publish(topic: string, payload: MessageLike, flags?: number): void;
-  publish(topic: string, payloadParts: readonly MessageLike[], flags?: number): void;
-  publish(topic: string, payloadOrParts: MessageLike | readonly MessageLike[], flags = 0): void {
+  publish(topic: string, payload: MessageLike): void;
+  publish(topic: string, payloadParts: readonly MessageLike[]): void;
+  publish(topic: string, payloadOrParts: MessageLike | readonly MessageLike[]): void {
     if (Array.isArray(payloadOrParts)) {
       requireNative().spotPublish(
         this._native,
@@ -624,7 +991,7 @@ export class Spot {
             ? part.payloadBuffer()
             : normalizeBufferLike(part, `payloadOrParts[${index}]`);
         }),
-        flags | 0
+        0
       );
       return;
     }
@@ -632,26 +999,64 @@ export class Spot {
     const payload = payloadValue instanceof Message
       ? payloadValue.payloadBuffer()
       : normalizeBufferLike(payloadValue, 'payload');
-    requireNative().spotPublish(this._native, topic, payload, flags | 0);
+    requireNative().spotPublish(this._native, topic, payload, 0);
   }
 
-  subscribe(topic: string): void {
-    requireNative().spotSubscribe(this._native, topic);
+  tryPublish(topic: string, payload: MessageLike): SendResult;
+  tryPublish(topic: string, payloadParts: readonly MessageLike[]): SendResult;
+  tryPublish(topic: string, payloadOrParts: MessageLike | readonly MessageLike[]): SendResult {
+    if (Array.isArray(payloadOrParts)) {
+      return requireNative().spotTryPublish(
+        this._native,
+        topic,
+        payloadOrParts.map((part, index) => {
+          return part instanceof Message
+            ? part.payloadBuffer()
+            : normalizeBufferLike(part, `payloadOrParts[${index}]`);
+        })
+      ) as SendResult;
+    }
+    const payloadValue = payloadOrParts as MessageLike;
+    const payload = payloadValue instanceof Message
+      ? payloadValue.payloadBuffer()
+      : normalizeBufferLike(payloadValue, 'payload');
+    return requireNative().spotTryPublish(this._native, topic, payload) as SendResult;
   }
 
-  subscribePattern(pattern: string): void {
-    requireNative().spotSubscribePattern(this._native, pattern);
+  setSubscription(topicOrPattern: string): void {
+    requireNative().spotSubscribe(this._native, topicOrPattern);
   }
 
-  unsubscribe(topicOrPattern: string): void {
+  unsetSubscription(topicOrPattern: string): void {
     requireNative().spotUnsubscribe(this._native, topicOrPattern);
   }
 
-  recv(flags = 0): { topic: string; payload: Buffer } {
-    return requireNative().spotRecv(this._native, flags | 0) as {
-      topic: string;
-      payload: Buffer;
-    };
+  subscribe(): Subscribed {
+    return materializeSubscribed(
+      requireNative().spotRecv(this._native) as {
+        routingId?: Buffer | null;
+        topic: string;
+        parts: Buffer[];
+      }
+    );
+  }
+
+  trySubscribe(): Subscribed | null {
+    const raw = requireNative().spotTryRecv(this._native) as
+      | { routingId?: Buffer | null; topic: string; parts: Buffer[] }
+      | null;
+    return raw ? materializeSubscribed(raw) : null;
+  }
+
+  subscribeHandler(handler: SpotSubHandler): void {
+    if (typeof handler !== 'function') {
+      throw new TypeError('handler must be a function');
+    }
+    startPollingLoop(
+      () => this._native != null,
+      () => this.trySubscribe(),
+      (received) => handler(received.routingId, received.topic, [...received.parts])
+    );
   }
 
   openMonitor(

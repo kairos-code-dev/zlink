@@ -189,6 +189,13 @@ typedef enum zlink_ctx_option_t
 
 typedef uint32_t zlink_send_flags_t;
 
+typedef enum zlink_send_result_t
+{
+    ZLINK_SEND_RESULT_SENT = 0,
+    ZLINK_SEND_RESULT_BACKPRESSURED = 1,
+    ZLINK_SEND_RESULT_NOT_READY = 2
+} zlink_send_result_t;
+
 /**
  * @brief Create a new zlink context.
  *
@@ -601,6 +608,7 @@ ZLINK_EXPORT int zlink_recv_handler (
  * - raw `SUB`
  * - raw `XSUB`
  * - unified `spot`
+ * - `spot node`
  *
  * The subject starts in recv model. After a successful attach,
  * `zlink_subscribe()` and data-plane poller `ZLINK_POLLIN` registration on the
@@ -627,6 +635,7 @@ ZLINK_EXPORT int zlink_subscribe_handler (
  * - raw `ROUTER`
  * - raw `STREAM`
  * - unified `spot`
+ * - `spot node`
  *
  * Send-ready is independent from receive callback mode. After a successful
  * attach, data-plane poller `ZLINK_POLLOUT` registration on the same subject
@@ -767,6 +776,10 @@ ZLINK_EXPORT int zlink_send (void *s_,
                              size_t part_count_,
                              zlink_send_flags_t flags_);
 
+ZLINK_EXPORT int zlink_try_send_result (void *s_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_);
+
 /**
  * @brief Send a multipart message to a specific peer routing id.
  *
@@ -779,6 +792,12 @@ ZLINK_EXPORT int zlink_send_rid (void *s_,
                                  zlink_msg_t *parts_,
                                  size_t part_count_,
                                  zlink_send_flags_t flags_);
+
+ZLINK_EXPORT int zlink_try_send_rid_result (
+  void *s_,
+  const zlink_routing_id_t *target_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_);
 
 /**
  * @brief Receive a multipart message from a socket or handle.
@@ -805,6 +824,11 @@ ZLINK_EXPORT int zlink_publish (void *subject_,
                                 zlink_msg_t *parts_,
                                 size_t part_count_,
                                 zlink_send_flags_t flags_);
+
+ZLINK_EXPORT int zlink_try_publish_result (void *subject_,
+                                           const char *topic_id_,
+                                           zlink_msg_t *parts_,
+                                           size_t part_count_);
 
 ZLINK_EXPORT int zlink_set_subscription (void *handle_,
                                          const char *filter_);
@@ -908,6 +932,9 @@ ZLINK_EXPORT int zlink_socket_monitor_handler (
   void *userdata_);
 
 ZLINK_EXPORT int zlink_socket_monitor_recv (
+  void *monitor_, zlink_socket_monitor_event_t *out_);
+
+ZLINK_EXPORT int zlink_try_socket_monitor_recv (
   void *monitor_, zlink_socket_monitor_event_t *out_);
 
 /** @brief Read the current snapshot for a socket or service monitor handle. */
@@ -1051,7 +1078,16 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
  */
 ZLINK_EXPORT void *zlink_spot_new (void *ctx);
 
-/** @brief Destroy a unified SPOT handle and its owned spot node. */
+/**
+ * @brief Create a unified SPOT handle wrapper over an existing SPOT node.
+ *
+ * The returned handle borrows `node` and must be released with
+ * `zlink_spot_destroy()`. Destroying the wrapper does not destroy the
+ * underlying node.
+ */
+ZLINK_EXPORT void *zlink_spot_wrap_node (void *node);
+
+/** @brief Destroy a unified SPOT handle. */
 ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
 
 /* SPOT Node --------------------------------------------------------------- */
@@ -1280,6 +1316,9 @@ ZLINK_EXPORT int zlink_service_monitor_handler (
   void *userdata_);
 
 ZLINK_EXPORT int zlink_service_monitor_recv (
+  void *monitor_, zlink_service_monitor_event_t *out_);
+
+ZLINK_EXPORT int zlink_try_service_monitor_recv (
   void *monitor_, zlink_service_monitor_event_t *out_);
 
 typedef enum zlink_spot_node_state_t

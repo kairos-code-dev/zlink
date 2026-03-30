@@ -73,7 +73,7 @@ add_cpp_single_bench(cpp_perf_router_router
 add_cpp_single_bench(cpp_perf_spot
   "${PERF_ROOT_DIR}/single/src/perf_spot.cpp")
 
-# Multi server suite (9 binaries)
+# Multi server suite (8 binaries)
 add_cpp_multi_server_bench(cpp_comp_src_dealer_dealer_server
   "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_dealer_router_server
@@ -88,8 +88,6 @@ add_cpp_multi_server_bench(cpp_comp_src_stream_server
   "${PERF_ROOT_DIR}/multi/src/perf_stream_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_stream_callback_server
   "${PERF_ROOT_DIR}/multi/src/perf_stream_callback_server.cpp")
-add_cpp_multi_server_bench(cpp_comp_src_stream_len32be_server
-  "${PERF_ROOT_DIR}/multi/src/perf_stream_len32be_server.cpp")
 
 # Multi client suite (6 binaries)
 add_cpp_multi_client_bench(cpp_comp_src_dealer_dealer_client

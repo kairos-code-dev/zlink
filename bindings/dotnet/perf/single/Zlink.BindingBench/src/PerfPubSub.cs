@@ -88,7 +88,7 @@ internal static class PerfPubSub
             {
                 using Message message = subscriber.ReceiveMessage(
                     ReceiveFlags.DontWait);
-                if (!message.More && message.Size == payload.Length)
+                if (message.Size == payload.Length)
                     return true;
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.Errno)

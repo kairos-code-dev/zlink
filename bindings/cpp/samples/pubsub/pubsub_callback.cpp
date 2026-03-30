@@ -65,15 +65,14 @@ int main ()
     assert (subscriber.set_subscription ("topic:alpha") == 0);
     assert (subscriber.subscribe_handler (&subscribe_callback, &state) == 0);
 
-    bool subscribed = false;
-    std::string topic;
-    assert (publisher.subscription_event (subscribed, topic) == 0);
-    assert (subscribed);
-    assert (topic == "topic:alpha");
+    const zlink::subscription_event_t event =
+      publisher.receive_subscription_event ();
+    assert (event.subscribed);
+    assert (event.topic == "topic:alpha");
 
     zlink::message_t outbound =
       detail::make_message ("pubsub-callback");
-    assert (publisher.publish ("topic:alpha", outbound) == 0);
+    publisher.publish ("topic:alpha", outbound);
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 2000));

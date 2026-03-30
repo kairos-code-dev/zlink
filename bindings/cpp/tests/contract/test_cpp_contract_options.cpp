@@ -4,6 +4,77 @@
 
 namespace {
 
+template<typename SpotT> class has_typed_pub_option_set_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().set (zlink::pub_options::verbose, 1),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SpotT> (0))::value;
+};
+
+template<typename SpotT> class has_typed_sub_option_get_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<const T &> ().get (
+                      zlink::sub_options::topics_count,
+                      std::declval<int &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SpotT> (0))::value;
+};
+
+static_assert (has_typed_pub_option_set_t<zlink::service::spot_t>::value,
+               "spot_t must expose typed pub option setters");
+static_assert (has_typed_sub_option_get_t<zlink::service::spot_t>::value,
+               "spot_t must expose typed sub option getters");
+
+template<typename SocketT> class has_typed_router_option_set_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().set_option (
+                      zlink::router_options::mandatory, 1),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_typed_router_option_get_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<const T &> ().get_option (
+                      zlink::router_options::mandatory,
+                      static_cast<int *> (NULL)),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+static_assert (has_typed_router_option_set_t<zlink::router_socket_t>::value,
+               "router_socket_t must expose typed router option setters");
+static_assert (has_typed_router_option_get_t<zlink::router_socket_t>::value,
+               "router_socket_t must expose typed router option getters");
+
 void test_context_options ()
 {
     zlink::context_t ctx;
@@ -25,14 +96,6 @@ void test_socket_common_and_router_options ()
     int got_linger = -1;
     assert (router.get_option (zlink::socket_options::linger, &got_linger) == 0);
     assert (got_linger == linger);
-
-    const int mandatory = 1;
-    assert (router.set_option (zlink::router_options::mandatory, mandatory) == 0);
-
-    int got_mandatory = 0;
-    assert (router.get_option (zlink::router_options::mandatory, &got_mandatory)
-            == 0);
-    assert (got_mandatory == mandatory);
 
     zlink::stream_socket_t stream (ctx);
     const int notify = 1;

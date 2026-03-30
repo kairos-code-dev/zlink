@@ -3,16 +3,14 @@
 #include <cstring>
 #include <vector>
 
-static bool wait_for_event (zlink::socket_t &monitor_,
+static bool wait_for_event (zlink::monitor_handle_t &monitor_,
                             uint64_t expected_event_,
                             zlink_monitor_event_t *out_)
 {
     for (int attempt = 0; attempt < 100; ++attempt) {
         for (;;) {
             zlink_monitor_event_t ev;
-            if (zlink_monitor_recv (
-                  monitor_.handle (), &ev, static_cast<int> (zlink::recv_flag::dontwait))
-                != 0)
+            if (monitor_recv_nowait (monitor_, &ev) != 0)
                 break;
             if (ev.event != expected_event_)
                 continue;
@@ -36,12 +34,7 @@ static void test_auto_routing_id_generation ()
     };
 
     for (size_t i = 0; i < sizeof (types) / sizeof (types[0]); ++i) {
-        zlink::socket_t sock (ctx, types[i]);
-        unsigned char rid[255];
-        std::memset (rid, 0, sizeof (rid));
-        size_t size = sizeof (rid);
-        assert (sock.get (zlink::socket_option::routing_id, rid, &size) == 0);
-        assert (size == 16);
+        assert (auto_routing_id_size (ctx, types[i]) == 16);
     }
 }
 
@@ -49,15 +42,14 @@ static void test_monitor_open_and_connection_ready ()
 {
     zlink::context_t ctx;
 
-    zlink::socket_t server (ctx, zlink::socket_type::router);
-    zlink::socket_t client (ctx, zlink::socket_type::dealer);
+    zlink::router_socket_t server (ctx);
+    zlink::dealer_socket_t client (ctx);
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""}, "monitor");
     assert (server.bind (endpoint) == 0);
 
-    zlink::socket_t monitor =
-      server.monitor_open (zlink::monitor_event::connection_ready
-                           | zlink::monitor_event::disconnected);
+    zlink::monitor_handle_t monitor = server.monitor_handle (
+      zlink::monitor_event::connection_ready | zlink::monitor_event::disconnected);
 
     assert (client.connect (endpoint) == 0);
 

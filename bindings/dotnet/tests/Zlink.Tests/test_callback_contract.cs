@@ -28,8 +28,7 @@ public sealed class test_callback_contract
             receivedSignal.Set();
         });
 
-        CoreTestSupport.SendWithRetry(sender, "callback-owned"u8, SendFlags.None,
-            3000);
+        CoreTestSupport.SendWithRetry(sender, "callback-owned"u8, 3000);
 
         Assert.True(receivedSignal.Wait(3000));
         Assert.NotNull(owned);
@@ -67,8 +66,7 @@ public sealed class test_callback_contract
                 throw new InvalidOperationException("recv-handler-fail");
             });
 
-            CoreTestSupport.SendWithRetry(sender, "callback"u8, SendFlags.None,
-                3000);
+            CoreTestSupport.SendWithRetry(sender, "callback"u8, 3000);
 
             Assert.True(observedSignal.Wait(3000));
             Assert.NotNull(observed);
@@ -107,7 +105,7 @@ public sealed class test_callback_contract
         });
 
         CoreTestSupport.PublishWithRetry(publisher, "callback",
-            "payload"u8, SendFlags.None, 3000);
+            "payload"u8, 3000);
 
         Assert.True(receivedSignal.Wait(3000));
         Assert.Equal("callback", receivedTopic);
@@ -149,7 +147,7 @@ public sealed class test_callback_contract
             });
 
             CoreTestSupport.PublishWithRetry(publisher, "callback",
-                "payload"u8, SendFlags.None, 3000);
+                "payload"u8, 3000);
 
             Assert.True(observedSignal.Wait(3000));
             Assert.NotNull(observed);

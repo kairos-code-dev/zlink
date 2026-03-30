@@ -7,11 +7,11 @@ namespace {
 void test_basic_manual ()
 {
     zlink::context_t ctx;
-    zlink::socket_t xpub (ctx, zlink::socket_type::xpub);
-    zlink::socket_t xsub (ctx, zlink::socket_type::xsub);
+    zlink::xpub_socket_t xpub (ctx);
+    zlink::xsub_socket_t xsub (ctx);
 
     const int manual = 1;
-    assert (xpub.set (zlink::socket_option::xpub_manual, manual) == 0);
+    assert (xpub.set_option (zlink::socket_option::xpub_manual, manual) == 0);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-xpub-manual-", "basic");
     assert (xpub.bind (endpoint) == 0);
@@ -26,7 +26,7 @@ void test_basic_manual ()
     assert (rc == static_cast<int> (sizeof (subscription)));
     assert (std::memcmp (sub_msg, subscription, sizeof (subscription)) == 0);
 
-    assert (xpub.set (zlink::socket_option::subscribe, "B", 1) == 0);
+    assert (xpub.set_option (zlink::socket_option::subscribe, "B", 1) == 0);
 
     send_string_expect_success (xpub, "A");
     send_string_expect_success (xpub, "B");
@@ -37,11 +37,11 @@ void test_basic_manual ()
 void test_unsubscribe_manual ()
 {
     zlink::context_t ctx;
-    zlink::socket_t xpub (ctx, zlink::socket_type::xpub);
-    zlink::socket_t xsub (ctx, zlink::socket_type::xsub);
+    zlink::xpub_socket_t xpub (ctx);
+    zlink::xsub_socket_t xsub (ctx);
 
     const int manual = 1;
-    assert (xpub.set (zlink::socket_option::xpub_manual, manual) == 0);
+    assert (xpub.set_option (zlink::socket_option::xpub_manual, manual) == 0);
 
     const std::string endpoint = unique_inproc ("inproc://cpp-xpub-manual-", "unsub");
     assert (xpub.bind (endpoint) == 0);
@@ -56,12 +56,12 @@ void test_unsubscribe_manual ()
     assert (recv_with_timeout (xpub, frame, sizeof (frame), 2000)
             == static_cast<int> (sizeof (sub_a)));
     assert (std::memcmp (frame, sub_a, sizeof (sub_a)) == 0);
-    assert (xpub.set (zlink::socket_option::subscribe, "XA", 2) == 0);
+    assert (xpub.set_option (zlink::socket_option::subscribe, "XA", 2) == 0);
 
     assert (recv_with_timeout (xpub, frame, sizeof (frame), 2000)
             == static_cast<int> (sizeof (sub_b)));
     assert (std::memcmp (frame, sub_b, sizeof (sub_b)) == 0);
-    assert (xpub.set (zlink::socket_option::subscribe, "XB", 2) == 0);
+    assert (xpub.set_option (zlink::socket_option::subscribe, "XB", 2) == 0);
 
     const unsigned char unsub_a[] = {0, 'A'};
     assert (xsub.send (unsub_a, sizeof (unsub_a))
@@ -70,7 +70,7 @@ void test_unsubscribe_manual ()
     assert (recv_with_timeout (xpub, frame, sizeof (frame), 2000)
             == static_cast<int> (sizeof (unsub_a)));
     assert (std::memcmp (frame, unsub_a, sizeof (unsub_a)) == 0);
-    assert (xpub.set (zlink::socket_option::unsubscribe, "XA", 2) == 0);
+    assert (xpub.set_option (zlink::socket_option::unsubscribe, "XA", 2) == 0);
 
     send_string_expect_success (xpub, "XA");
     send_string_expect_success (xpub, "XB");

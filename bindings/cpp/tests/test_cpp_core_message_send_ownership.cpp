@@ -17,7 +17,7 @@ void counting_free_fn (void *data_, void *hint_) noexcept
 void test_socket_send_msg_consumes_on_failure ()
 {
     zlink::context_t ctx;
-    zlink::socket_t sender (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t sender (ctx);
 
     zlink::message_t msg (4);
     assert (msg.valid ());
@@ -29,19 +29,20 @@ void test_socket_send_msg_consumes_on_failure ()
 void test_stream_send_msg_consumes_on_failure ()
 {
     zlink::context_t ctx;
-    zlink::socket_t stream (ctx, zlink::socket_type::stream);
+    zlink::stream_socket_t stream (ctx);
 
     zlink::message_t msg (3);
     assert (msg.valid ());
 
-    assert (stream.stream_send (1u, msg, zlink::send_flag::dontwait) == -1);
+    const zlink_routing_id_t routing_id = routing_id_from_uint32 (1u);
+    assert (stream.send (routing_id, msg, zlink::send_flag::dontwait) == -1);
     assert (!msg.valid ());
 }
 
 void test_socket_send_zero_consumes_on_failure ()
 {
     zlink::context_t ctx;
-    zlink::socket_t sender (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t sender (ctx);
 
     int free_count = 0;
     char *payload = static_cast<char *> (std::malloc (4));
@@ -57,7 +58,7 @@ void test_socket_send_zero_consumes_on_failure ()
 void test_socket_send_zero_invalid_input_does_not_consume ()
 {
     zlink::context_t ctx;
-    zlink::socket_t sender (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t sender (ctx);
 
     int free_count = 0;
     assert (sender.send_zero (NULL, 1, &counting_free_fn, &free_count,

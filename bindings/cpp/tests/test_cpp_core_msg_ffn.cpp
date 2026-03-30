@@ -13,8 +13,8 @@ void ffn (void *data_, void *hint_)
 void test_msg_init_ffn ()
 {
     zlink::context_t ctx;
-    zlink::socket_t router (ctx, zlink::socket_type::router);
-    zlink::socket_t dealer (ctx, zlink::socket_type::dealer);
+    zlink::router_socket_t router (ctx);
+    zlink::dealer_socket_t dealer (ctx);
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "msg-ffn");

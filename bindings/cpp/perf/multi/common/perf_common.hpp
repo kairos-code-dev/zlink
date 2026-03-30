@@ -4,8 +4,7 @@
 #include "perf_common_multi.hpp"
 #include "perf_metric_header.hpp"
 #include "perf_tls.hpp"
-
-#include <zlink.hpp>
+#include "../../common/perf_socket_compat.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -23,6 +22,8 @@
 
 namespace perf {
 namespace multi {
+
+typedef zlink::socket_t perf_socket_t;
 
 static const char *k_stop_token = "__zlink_perf_stop__";
 
@@ -81,18 +82,17 @@ class socket_guard_t
     {
     }
 
-    zlink::socket_t &sock () { return _sock; }
+    perf_socket_t &sock () { return _sock; }
     bool valid () const { return _sock.handle () != NULL; }
 
   private:
-    zlink::socket_t _sock;
+    perf_socket_t _sock;
 };
 
 struct connect_monitor_t
 {
-    connect_monitor_t () : owner (NULL), monitor () {}
+    connect_monitor_t () : monitor () {}
 
-    zlink::socket_t *owner;
     std::unique_ptr<zlink::monitor_socket_t> monitor;
 };
 
@@ -139,6 +139,28 @@ class bench_latency_sampler_t
         const unsigned long long slot = next_rand () % _count;
         if (slot < static_cast<unsigned long long> (_cap))
             _samples[static_cast<size_t> (slot)] = sample;
+    }
+
+    void merge_from (const bench_latency_sampler_t &other_)
+    {
+        if (other_._count == 0)
+            return;
+
+        _sum += other_._sum;
+        const unsigned long long base_count = _count;
+        _count += other_._count;
+
+        for (size_t i = 0; i < other_._samples.size (); ++i) {
+            if (_samples.size () < _cap) {
+                _samples.push_back (other_._samples[i]);
+                continue;
+            }
+
+            const unsigned long long slot =
+              (base_count + static_cast<unsigned long long> (i)) % _count;
+            if (slot < static_cast<unsigned long long> (_cap))
+                _samples[static_cast<size_t> (slot)] = other_._samples[i];
+        }
     }
 
     unsigned long long count () const { return _count; }
@@ -200,26 +222,28 @@ class bench_latency_sampler_t
     std::vector<double> _samples;
 };
 
-inline void apply_benchmark_hwm (zlink::socket_t &socket,
+inline void apply_benchmark_hwm (perf_socket_t &socket,
                                  int sndhwm,
                                  int rcvhwm)
 {
     const int snd_value = sndhwm > 0 ? sndhwm : 1;
     const int rcv_value = rcvhwm > 0 ? rcvhwm : 1;
-    (void) socket.set (zlink::socket_options::sndhwm, snd_value);
-    (void) socket.set (zlink::socket_options::rcvhwm, rcv_value);
+    (void) socket.set_option (zlink::socket_options::sndhwm, snd_value);
+    (void) socket.set_option (zlink::socket_options::rcvhwm, rcv_value);
 }
 
-inline void apply_debug_timeouts (zlink::socket_t &socket,
+inline void apply_debug_timeouts (perf_socket_t &socket,
                                   const std::string &)
 {
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    (void) socket.set (zlink::socket_options::sndtimeo, settings.sndtimeo_ms);
-    (void) socket.set (zlink::socket_options::rcvtimeo, settings.rcvtimeo_ms);
-    (void) socket.set (zlink::socket_options::linger, 0);
+    (void) socket.set_option (zlink::socket_options::sndtimeo,
+                              settings.sndtimeo_ms);
+    (void) socket.set_option (zlink::socket_options::rcvtimeo,
+                              settings.rcvtimeo_ms);
+    (void) socket.set_option (zlink::socket_options::linger, 0);
 }
 
-inline void apply_benchmark_socket_options (zlink::socket_t &socket,
+inline void apply_benchmark_socket_options (perf_socket_t &socket,
                                             const multi_bench_settings_t &settings,
                                             const std::string &transport)
 {
@@ -228,18 +252,14 @@ inline void apply_benchmark_socket_options (zlink::socket_t &socket,
     apply_debug_timeouts (socket, transport);
 }
 
-inline bool open_connect_monitor (zlink::socket_t &socket, connect_monitor_t &out)
+inline bool open_connect_monitor (perf_socket_t &socket, connect_monitor_t &out)
 {
-    zlink::socket_t monitor = socket.monitor_open (zlink::monitor_event::connection_ready);
-    if (!monitor.handle ())
+    zlink::monitor_socket_t monitor (
+      zlink::monitor_handle_t::open (socket,
+                                     zlink::monitor_event::connection_ready));
+    if (!monitor.valid ())
         return false;
 
-    const int monitor_hwm = resolve_multi_bench_settings ().monitor_hwm;
-    (void) monitor.set (zlink::socket_options::sndhwm, monitor_hwm);
-    (void) monitor.set (zlink::socket_options::rcvhwm, monitor_hwm);
-    (void) monitor.set (zlink::socket_options::linger, 0);
-
-    out.owner = &socket;
     out.monitor.reset (new zlink::monitor_socket_t (std::move (monitor)));
     return true;
 }
@@ -251,10 +271,11 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
 
     int ready = 0;
     for (;;) {
-        zlink_monitor_event_t ev;
-        if (mon.monitor->recv (ev, zlink::recv_flag::dontwait) != 0)
+        const zlink::maybe_t<zlink_socket_monitor_event_t> ev =
+          mon.monitor->try_receive ();
+        if (!ev)
             break;
-        if (ev.event
+        if (ev->event
             == static_cast<uint64_t> (zlink::monitor_event::connection_ready)) {
             ++ready;
         }
@@ -281,7 +302,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    if (poller.add (mon.monitor->socket (), zlink::poll_event::pollin, NULL) != 0)
+    if (poller.add (*mon.monitor, zlink::poll_event::pollin, NULL) != 0)
         return false;
 
     const auto deadline = std::chrono::steady_clock::now ()
@@ -297,7 +318,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const int rc = poller.wait (events, wait_ms);
+        const int rc = poller.wait_all (events, wait_ms);
         if (rc < 0) {
             if (errno == EINTR)
                 continue;
@@ -325,9 +346,7 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
 
     std::vector<char> ready (monitors.size (), 0);
     std::vector<size_t> active_indices;
-    std::vector<zlink::socket_t *> sockets;
     active_indices.reserve (monitors.size ());
-    sockets.reserve (monitors.size ());
 
     size_t ready_count = 0;
     for (size_t i = 0; i < monitors.size (); ++i) {
@@ -336,7 +355,6 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
             ++ready_count;
             continue;
         }
-        sockets.push_back (&monitors[i].monitor->socket ());
         active_indices.push_back (i);
     }
 
@@ -347,9 +365,11 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
 
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
-    events.reserve (sockets.size ());
-    for (size_t i = 0; i < sockets.size (); ++i) {
-        if (poller.add (*sockets[i], zlink::poll_event::pollin, NULL) != 0)
+    events.reserve (active_indices.size ());
+    for (size_t i = 0; i < active_indices.size (); ++i) {
+        if (poller.add (*monitors[active_indices[i]].monitor,
+                        zlink::poll_event::pollin, NULL)
+            != 0)
             return false;
     }
 
@@ -366,7 +386,7 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const int rc = poller.wait (events, wait_ms);
+        const int rc = poller.wait_all (events, wait_ms);
         if (rc < 0) {
             if (errno == EINTR)
                 continue;
@@ -392,12 +412,9 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
 
 inline void close_connect_monitor (connect_monitor_t &mon)
 {
-    if (mon.owner) {
-        (void) mon.owner->monitor (std::string (),
-                                   static_cast<zlink::monitor_event> (0));
-    }
+    if (mon.monitor.get ())
+        (void) mon.monitor->close ();
     mon.monitor.reset ();
-    mon.owner = NULL;
 }
 
 inline std::string make_endpoint (const std::string &transport,
@@ -443,7 +460,7 @@ inline std::string normalize_endpoint_host (const std::string &endpoint)
     return out;
 }
 
-inline std::string bind_and_resolve_endpoint (zlink::socket_t &socket,
+inline std::string bind_and_resolve_endpoint (perf_socket_t &socket,
                                               const std::string &transport,
                                               const std::string &id,
                                               int fixed_port)
@@ -457,7 +474,7 @@ inline std::string bind_and_resolve_endpoint (zlink::socket_t &socket,
         return endpoint;
 
     std::string last;
-    if (socket.get (zlink::socket_options::last_endpoint, last) != 0)
+    if (socket.get_option (zlink::socket_options::last_endpoint, last) != 0)
         return std::string ();
 
     return normalize_endpoint_host (last);
@@ -533,20 +550,6 @@ inline bool is_stop_token (const void *data, size_t size)
     if (size == token_size
         && std::memcmp (data, k_stop_token, token_size) == 0) {
         return true;
-    }
-
-    // stream client uses len32be framing: [4-byte len][payload].
-    if (size >= 4 + token_size) {
-        const unsigned char *bytes = static_cast<const unsigned char *> (data);
-        const uint32_t len = (static_cast<uint32_t> (bytes[0]) << 24)
-                             | (static_cast<uint32_t> (bytes[1]) << 16)
-                             | (static_cast<uint32_t> (bytes[2]) << 8)
-                             | static_cast<uint32_t> (bytes[3]);
-        if (len == size - 4
-            && len == token_size
-            && std::memcmp (bytes + 4, k_stop_token, token_size) == 0) {
-            return true;
-        }
     }
 
     return false;

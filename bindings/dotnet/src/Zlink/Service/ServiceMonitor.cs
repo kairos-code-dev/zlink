@@ -39,6 +39,21 @@ public sealed class ServiceMonitor : IDisposable
         return ServiceMonitorEvent.FromNative(ref native);
     }
 
+    public ServiceMonitorEvent? TryReceive()
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_try_service_monitor_recv(_handle,
+            out var native);
+        if (rc == 0)
+            return ServiceMonitorEvent.FromNative(ref native);
+        if (ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
+            == ErrorCode.EAgain)
+        {
+            return null;
+        }
+        throw ZlinkException.FromLastError();
+    }
+
     public void Close()
     {
         if (_handle == IntPtr.Zero)
@@ -96,4 +111,3 @@ public sealed class ServiceMonitor : IDisposable
         }
     }
 }
-

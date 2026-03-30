@@ -27,8 +27,6 @@ internal static partial class PerfRunner
                 "STREAM" => PerfStreamServer.Run(transport, size),
                 "STREAM_CALLBACK" =>
                     PerfStreamCallbackServer.Run(transport, size),
-                "STREAM_LEN32BE" =>
-                    PerfStreamLen32BeServer.Run(transport, size),
                 _ => 1,
             };
 
@@ -45,6 +43,13 @@ internal static partial class PerfRunner
             Console.Error.WriteLine($"multi_server_error:{ex.Message}");
             return 2;
         }
+    }
+
+    internal static int PrintUnsupported(string pattern, string transport,
+        int size, string reason)
+    {
+        Console.WriteLine($"UNSUPPORTED,{pattern},{transport},{size},{reason}");
+        return 0;
     }
 
     private static void EmitServerProcessMetrics(Process process,

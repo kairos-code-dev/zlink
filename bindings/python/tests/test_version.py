@@ -11,7 +11,7 @@ class VersionTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
         self.assertEqual(major, 5)
         self.assertEqual(minor, 0)
-        self.assertEqual(patch, 4)
+        self.assertEqual(patch, 5)
 
     def test_pair_send_recv(self):
         try:
@@ -26,8 +26,8 @@ class VersionTests(unittest.TestCase):
                     s2.connect(endpoint)
                     payload = b"ping"
                     s1.send(payload)
-                    with s2.recv_message() as received:
-                        self.assertEqual(received.to_bytes(), payload)
+                    with s2.recv() as received:
+                        self.assertEqual(received.to_bytes_list(), [payload])
 
 if __name__ == "__main__":
     unittest.main()

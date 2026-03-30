@@ -167,8 +167,7 @@ internal static partial class PerfRunner
         return normalized == "DEALER_ROUTER"
             || normalized == "ROUTER_ROUTER"
             || normalized == "STREAM"
-            || normalized == "STREAM_CALLBACK"
-            || normalized == "STREAM_LEN32BE";
+            || normalized == "STREAM_CALLBACK";
     }
 
     internal static void PrintResult(string pattern, string transport, int size,

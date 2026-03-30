@@ -1,7 +1,7 @@
 #ifndef PERF_SINGLE_TLS_HPP
 #define PERF_SINGLE_TLS_HPP
 
-#include <zlink.hpp>
+#include "../../common/perf_socket_compat.hpp"
 
 #include <filesystem>
 #include <string>

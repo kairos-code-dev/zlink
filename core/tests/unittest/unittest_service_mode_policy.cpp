@@ -282,7 +282,7 @@ void test_generic_monitor_poller_accepts_non_pollin_events ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_generic_data_plane_surface_removed ()
+void test_spot_node_topic_surface_and_callback_modes ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -312,30 +312,25 @@ void test_spot_node_generic_data_plane_surface_removed ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&routed_part, 4));
     memcpy (zlink_msg_data (&routed_part), "pong", 4);
 
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_subscribe_handler (node, &noop_spot_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (node, "bench"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_unset_subscription (node, "bench"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_subscribe_handler (node, &noop_spot_handler, NULL));
     TEST_ASSERT_EQUAL_INT (-1, zlink_send (node, &part, 1, 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_send_rid (node, &routing_id, &routed_part, 1, 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_publish (node, "bench", &part, 1, 0));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     zlink_msg_close (&routed_part);
     zlink_msg_close (&part);
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
-                           0));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_set_subscription (node, "bench"));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (-1, zlink_unset_subscription (node, "bench"));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+                           ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_poller_add (poller, node, node, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
@@ -541,7 +536,7 @@ int main (void)
     setup_test_environment ();
 
     RUN_TEST (test_spot_callback_policy);
-    RUN_TEST (test_spot_node_generic_data_plane_surface_removed);
+    RUN_TEST (test_spot_node_topic_surface_and_callback_modes);
     RUN_TEST (test_spot_tls_configuration_is_node_owned);
     RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);
     RUN_TEST (test_discovery_protocol_derives_socket_roles_and_matching);

@@ -7,12 +7,12 @@ namespace {
 void run_router_multiple_dealers (const std::string &endpoint_)
 {
     zlink::context_t ctx;
-    zlink::socket_t router (ctx, zlink::socket_type::router);
-    zlink::socket_t dealer1 (ctx, zlink::socket_type::dealer);
-    zlink::socket_t dealer2 (ctx, zlink::socket_type::dealer);
+    zlink::router_socket_t router (ctx);
+    zlink::dealer_socket_t dealer1 (ctx);
+    zlink::dealer_socket_t dealer2 (ctx);
 
-    assert (dealer1.set (zlink::socket_option::routing_id, "D1", 2) == 0);
-    assert (dealer2.set (zlink::socket_option::routing_id, "D2", 2) == 0);
+    assert (dealer1.set_option (zlink::socket_option::routing_id, "D1", 2) == 0);
+    assert (dealer2.set_option (zlink::socket_option::routing_id, "D2", 2) == 0);
 
     assert (router.bind (endpoint_) == 0);
     std::string bound = endpoint_;

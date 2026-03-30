@@ -27,8 +27,8 @@ class PairScenarioTest(unittest.TestCase):
                 self.assertTrue(
                     wait_for_socket_event(a, zlink.PollEvent.POLLIN, 2000)
                 )
-                with a.recv_message() as out:
-                    self.assertEqual(out.to_bytes(), b"ping")
+                with a.recv() as out:
+                    self.assertEqual(out.to_bytes_list(), [b"ping"])
                 a.close()
                 b.close()
             try_transport(name, run)

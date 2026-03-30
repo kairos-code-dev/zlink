@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.options.SocketOptionKey;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.util.Optional;
 
 public final class MonitorSocket implements AutoCloseable {
     private MemorySegment handle;
@@ -17,17 +18,23 @@ public final class MonitorSocket implements AutoCloseable {
     }
 
     public MonitorEvent recv() {
-        return recv(ReceiveFlag.NONE);
-    }
-
-    public MonitorEvent recv(ReceiveFlag flag) {
-        if (flag == null)
-            throw new IllegalArgumentException("flag is null");
         ensureOpen();
-        return Native.monitorRecv(handle, flag.getValue());
+        return Native.monitorRecv(handle, ReceiveFlag.NONE.getValue());
     }
 
-    public void setOption(SocketOptionKey<Integer> option, int value) {
+    public Optional<MonitorEvent> tryRecv() {
+        ensureOpen();
+        MonitorEvent event = Native.monitorRecv(handle,
+            ReceiveFlag.DONTWAIT.getValue());
+        if (event != null)
+            return Optional.of(event);
+        int errno = Native.errno();
+        if (errno == Socket.ERRNO_EAGAIN || errno == Socket.ERRNO_EWOULDBLOCK_WIN)
+            return Optional.empty();
+        throw ZlinkException.fromLastError("zlink_monitor_recv");
+    }
+
+    void setOption(SocketOptionKey<Integer> option, int value) {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment valueBuf = arena.allocate(java.lang.foreign.ValueLayout.JAVA_INT);

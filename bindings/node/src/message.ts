@@ -41,17 +41,41 @@ export class Message {
 }
 
 export class Received {
-  readonly parts: readonly Buffer[];
+  readonly parts: readonly Message[];
   readonly routingId: Buffer | null;
-  readonly hasMore: boolean;
 
-  constructor(parts: readonly Buffer[], routingId: Buffer | null = null, hasMore = false) {
+  constructor(parts: readonly Message[], routingId: Buffer | null = null) {
     this.parts = Object.freeze(parts.slice());
     this.routingId = routingId;
-    this.hasMore = hasMore === true;
   }
 
   close(): void {}
+}
+
+export class Subscribed {
+  readonly routingId: Buffer | null;
+  readonly topic: string;
+  readonly parts: readonly Message[];
+
+  constructor(topic: string, parts: readonly Message[], routingId: Buffer | null = null) {
+    this.routingId = routingId;
+    this.topic = topic;
+    this.parts = Object.freeze(parts.slice());
+  }
+
+  close(): void {}
+}
+
+export class SubscriptionEvent {
+  readonly routingId: Buffer | null;
+  readonly topic: string;
+  readonly subscribed: boolean;
+
+  constructor(topic: string, subscribed: boolean, routingId: Buffer | null = null) {
+    this.routingId = routingId;
+    this.topic = topic;
+    this.subscribed = subscribed === true;
+  }
 }
 
 export type MessageLike = Message | BufferLike | string;

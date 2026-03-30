@@ -36,4 +36,3 @@ export const SocketOption = Object.freeze({
 
 export const SendFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001, SNDMORE: 0x0002 } as const);
 export const ReceiveFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001 } as const);
-export const StreamDispatchMode = Object.freeze({ NONE: 0, LEN32BE: 1 } as const);

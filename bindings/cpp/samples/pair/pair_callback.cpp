@@ -62,7 +62,7 @@ int main ()
 
     zlink::message_t outbound =
       detail::make_message ("pair-callback");
-    assert (client.send (outbound) == 0);
+    client.send (outbound);
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 2000));

@@ -26,10 +26,10 @@ public sealed class test_pair_tcp
         sc.Connect(endpoint);
         Thread.Sleep(50);
 
-        CoreTestSupport.SendWithRetry(sc, "ping"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(sc, "ping"u8, 2000);
         Assert.Equal("ping", CoreTestSupport.ReceiveUtf8WithTimeout(sb, 2000));
 
-        CoreTestSupport.SendWithRetry(sb, "pong"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(sb, "pong"u8, 2000);
         Assert.Equal("pong", CoreTestSupport.ReceiveUtf8WithTimeout(sc, 2000));
     }
 
@@ -58,16 +58,16 @@ public sealed class test_pair_tcp
         using Message part2 = Message.FromString("world");
         client.Send(new[] { part1, part2 });
 
-        server.Receive(out Message[] received);
+        Received received = server.Receive();
         try
         {
-            Assert.Equal(2, received.Length);
-            Assert.Equal("hello", received[0].GetString());
-            Assert.Equal("world", received[1].GetString());
+            Assert.Equal(2, received.Parts.Count);
+            Assert.Equal("hello", received.Parts[0].GetString());
+            Assert.Equal("world", received.Parts[1].GetString());
         }
         finally
         {
-            foreach (Message part in received)
+            foreach (Message part in received.Parts)
                 part.Dispose();
         }
     }
@@ -91,7 +91,7 @@ public sealed class test_pair_tcp
         sc.Connect(connectEndpoint);
         Thread.Sleep(50);
 
-        CoreTestSupport.SendWithRetry(sc, "hello"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(sc, "hello"u8, 2000);
         Assert.Equal("hello", CoreTestSupport.ReceiveUtf8WithTimeout(sb, 2000));
     }
 
@@ -112,7 +112,7 @@ public sealed class test_pair_tcp
         var poller = new Poller();
         poller.Add(receiver, PollEvents.PollIn);
 
-        CoreTestSupport.SendWithRetry(sender, "x"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(sender, "x"u8, 2000);
 
         PollEvent[] events = new PollEvent[4];
         int written = poller.Wait(events, 2000, out int totalReady);
@@ -141,7 +141,7 @@ public sealed class test_pair_tcp
         poller.Add(receiver, PollEvents.PollIn);
         Assert.Equal(1, poller.Count);
 
-        CoreTestSupport.SendWithRetry(sender, "ping"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(sender, "ping"u8, 2000);
 
         poller.Modify(receiver, PollEvents.PollOut);
         var events = new List<PollEvent>();
@@ -179,7 +179,7 @@ public sealed class test_pair_tcp
         int fd = receiver.GetOption(SocketOptions.Fd);
         poller.AddFd(fd, PollEvents.PollIn);
 
-        CoreTestSupport.SendWithRetry(sender, "fd"u8, SendFlags.None, 2000);
+        CoreTestSupport.SendWithRetry(sender, "fd"u8, 2000);
 
         var events = new List<PollEvent>();
         Assert.Equal(1, poller.Wait(events, 2000));
@@ -206,9 +206,7 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        var ex = Assert.Throws<ZlinkException>(() =>
-            receiver.Receive(out Message _, ReceiveFlags.DontWait));
-        Assert.Equal(ErrorCode.EAgain, ZlinkException.MapErrorCode(ex.Errno));
+        Assert.Null(receiver.TryReceive());
     }
 
     [Fact]
@@ -232,8 +230,7 @@ public sealed class test_pair_tcp
                 part.Dispose();
         });
 
-        var ex = Assert.Throws<ZlinkException>(() =>
-            receiver.Receive(out Message _, ReceiveFlags.DontWait));
+        var ex = Assert.Throws<ZlinkException>(() => receiver.TryReceive());
         Assert.Equal(ErrorCode.EBusy, ZlinkException.MapErrorCode(ex.Errno));
     }
 
@@ -267,5 +264,51 @@ public sealed class test_pair_tcp
 
         monitor.Close();
         Assert.Throws<ObjectDisposedException>(() => monitor.Snapshot());
+    }
+
+    [Fact]
+    public void try_send_reports_backpressured_when_pair_hwm_is_exhausted()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new PairSocket(ctx);
+        using var receiver = new PairSocket(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-try-send-backpressured");
+
+        sender.SetOption(SocketOptions.SndHwm, 1);
+        receiver.SetOption(SocketOptions.RcvHwm, 1);
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        SendResult result = SendResult.Sent;
+        for (int i = 0; i < 1024; i++)
+        {
+            using Message payload = Message.FromString($"bp-{i}");
+            result = sender.TrySend(payload);
+            if (result != SendResult.Sent)
+                break;
+        }
+
+        Assert.Equal(SendResult.Backpressured, result);
+    }
+
+    [Fact]
+    public void try_send_reports_not_ready_for_unknown_router_peer()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var router = new RouterSocket(ctx);
+        router.SetMandatory(true);
+
+        using Message message = Message.FromString("no-route");
+        SendResult result = router.TrySend("UNKNOWN", message);
+
+        Assert.Equal(SendResult.NotReady, result);
     }
 }

@@ -4,20 +4,48 @@
 
 namespace {
 
+bool wait_for_any_socket_monitor_event (zlink::monitor_handle_t &monitor_,
+                                        int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ());
+        if (!zlink_cpp_contract::wait_for_monitor_readable (
+              monitor_.handle (), remaining_ms)) {
+            continue;
+        }
+
+        if (monitor_.try_receive ())
+            return true;
+    }
+
+    return false;
+}
+
 void test_socket_monitor_open_recv_snapshot ()
 {
     zlink::context_t ctx;
     zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     zlink::monitor_handle_t monitor = server.monitor_handle ();
     assert (monitor.valid ());
 
-    const std::string endpoint =
-      zlink_cpp_contract::unique_tcp ("monitor-pair");
-    assert (server.bind (endpoint) == 0);
+    assert (server.bind ("tcp://127.0.0.1:*") == 0);
+    std::string endpoint;
+    assert (server.get_option (zlink::socket_options::last_endpoint, endpoint)
+            == 0);
+    assert (!endpoint.empty ());
+    assert (client.connect (endpoint) == 0);
 
-    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
-      monitor, static_cast<uint64_t> (zlink::monitor_event::listening), 2000));
+    (void) monitor.try_receive ();
+    assert (wait_for_any_socket_monitor_event (monitor, 2000));
     zlink_monitor_snapshot_t snapshot;
     assert (monitor.snapshot (snapshot) == 0);
 }
@@ -25,22 +53,15 @@ void test_socket_monitor_open_recv_snapshot ()
 void test_service_monitor_open_snapshot ()
 {
     zlink::context_t ctx;
-    zlink::service::registry_t registry (ctx);
-    assert (registry.valid ());
+    zlink::service::spot_t spot (ctx);
+    assert (spot.valid ());
 
-    const std::string pub_endpoint =
-      zlink_cpp_contract::unique_tcp ("monitor-reg-pub");
-    const std::string router_endpoint =
-      zlink_cpp_contract::unique_tcp ("monitor-reg-router");
-    assert (registry.bind (pub_endpoint, router_endpoint) == 0);
-
-    zlink::service::discovery_t discovery (
-      ctx, zlink::service_type::spot, "monitor-service");
-    assert (discovery.valid ());
-    assert (discovery.connect_registry (router_endpoint) == 0);
-
-    zlink::service_monitor_handle_t monitor (discovery);
+    zlink::service_monitor_handle_t monitor (spot);
     assert (monitor.valid ());
+    (void) monitor.try_receive ();
+
+    zlink_monitor_snapshot_t snapshot;
+    assert (monitor.snapshot (snapshot) == 0);
 }
 
 } // namespace

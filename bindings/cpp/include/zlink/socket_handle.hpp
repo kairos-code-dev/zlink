@@ -13,7 +13,8 @@ class socket_handle_t
     socket_handle_t () noexcept {}
 
     explicit socket_handle_t (void *socket_, bool own_ = true) noexcept
-        : _socket (own_ ? socket_t::adopt (socket_) : socket_t::wrap (socket_))
+        : _socket (own_ ? detail::socket_t::adopt (socket_)
+                        : detail::socket_t::wrap (socket_))
     {
     }
 
@@ -42,16 +43,16 @@ class socket_handle_t
     ZLINK_CPP_NODISCARD int close () noexcept { return _socket.close (); }
 
   protected:
-    explicit socket_handle_t (socket_t &&socket_) noexcept
+    explicit socket_handle_t (detail::socket_t &&socket_) noexcept
         : _socket (std::move (socket_))
     {
     }
 
-    socket_t &socket_base () noexcept { return _socket; }
-    const socket_t &socket_base () const noexcept { return _socket; }
+    detail::socket_t &socket_base () noexcept { return _socket; }
+    const detail::socket_t &socket_base () const noexcept { return _socket; }
 
   private:
-    socket_t _socket;
+    detail::socket_t _socket;
 };
 
 } // namespace zlink

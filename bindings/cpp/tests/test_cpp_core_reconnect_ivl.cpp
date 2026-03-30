@@ -4,15 +4,15 @@ namespace {
 
 void test_reconnect_ivl_against_pair_socket (const std::string &endpoint_,
                                              zlink::context_t &ctx_,
-                                             zlink::socket_t &server_,
+                                             zlink::pair_socket_t &server_,
                                              bool ipv6_ = false)
 {
-    zlink::socket_t client (ctx_, zlink::socket_type::pair);
+    zlink::pair_socket_t client (ctx_);
     if (ipv6_)
-        assert (client.set (zlink::socket_option::ipv6, 1) == 0);
+        assert (client.set_option (zlink::socket_option::ipv6, 1) == 0);
 
     const int interval = -1;
-    assert (client.set (zlink::socket_option::reconnect_ivl, interval) == 0);
+    assert (client.set_option (zlink::socket_option::reconnect_ivl, interval) == 0);
     assert (client.connect (endpoint_) == 0);
 
     bounce (server_, client);
@@ -30,7 +30,7 @@ void test_reconnect_ivl_against_pair_socket (const std::string &endpoint_,
 void test_reconnect_ivl_tcp_ipv4 ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     const std::string endpoint = bound_endpoint (server);
@@ -41,8 +41,8 @@ void test_reconnect_ivl_tcp_ipv4 ()
 void test_reconnect_ivl_tcp_ipv6 ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    assert (server.set (zlink::socket_option::ipv6, 1) == 0);
+    zlink::pair_socket_t server (ctx);
+    assert (server.set_option (zlink::socket_option::ipv6, 1) == 0);
 
     if (server.bind ("tcp://[::1]:*") != 0)
         return;

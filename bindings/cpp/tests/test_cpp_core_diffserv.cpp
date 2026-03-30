@@ -3,12 +3,12 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::pair);
-    zlink::socket_t client (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t server (ctx);
+    zlink::pair_socket_t client (ctx);
 
     int tos = 0x28;
     size_t tos_size = sizeof (tos);
-    assert (server.set (zlink::socket_option::tos, &tos, tos_size) == 0);
+    assert (server.set_option (zlink::socket_option::tos, &tos, tos_size) == 0);
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "diffserv");
@@ -20,7 +20,7 @@ int main ()
 
     tos = 0x58;
     tos_size = sizeof (tos);
-    assert (client.set (zlink::socket_option::tos, &tos, tos_size) == 0);
+    assert (client.set_option (zlink::socket_option::tos, &tos, tos_size) == 0);
     assert (client.connect (endpoint) == 0);
 
     out_tos = 0;

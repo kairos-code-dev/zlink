@@ -103,10 +103,19 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
                     ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_TRY_SEND_RESULT = downcall(
+            "zlink_try_send_result",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_SEND_RID = downcall("zlink_send_rid",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_TRY_SEND_RID_RESULT = downcall(
+            "zlink_try_send_rid_result",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_RECV = downcall("zlink_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -194,6 +203,11 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_TRY_PUBLISH_RESULT = downcall(
+            "zlink_try_publish_result",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_SUBSCRIBE = downcall("zlink_subscribe",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -292,6 +306,10 @@ public final class Native {
         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SERVICE_MONITOR_RECV = downcall(
       "zlink_service_monitor_recv",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS));
+    private static final MethodHandle MH_TRY_SERVICE_MONITOR_RECV = downcall(
+      "zlink_try_service_monitor_recv",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS));
     private static final MethodHandle MH_ERRNO = downcall("zlink_errno",
@@ -437,9 +455,12 @@ public final class Native {
     private static final MethodHandle MH_SPOT_NODE_NEW = downcall("zlink_spot_node_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NEW = downcall("zlink_spot_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+      FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_WRAP_NODE = downcall(
+      "zlink_spot_wrap_node",
+      FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_DESTROY = downcall("zlink_spot_destroy",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DESTROY = downcall("zlink_spot_node_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_BIND = downcall("zlink_spot_node_bind",
@@ -695,6 +716,15 @@ public final class Native {
         }
     }
 
+    public static int trySendResult(MemorySegment socket, MemorySegment parts,
+                                    long partCount) {
+        try {
+            return (int) MH_TRY_SEND_RESULT.invokeExact(socket, parts, partCount);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_try_send_result failed", t);
+        }
+    }
+
     public static int sendMultipart(MemorySegment socket, MemorySegment routingId,
                                     MemorySegment parts, long partCount,
                                     int flags) {
@@ -703,6 +733,16 @@ public final class Native {
               partCount, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_send_rid failed", t);
+        }
+    }
+
+    public static int trySendResult(MemorySegment socket, MemorySegment routingId,
+                                    MemorySegment parts, long partCount) {
+        try {
+            return (int) MH_TRY_SEND_RID_RESULT.invokeExact(socket, routingId,
+              parts, partCount);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_try_send_rid_result failed", t);
         }
     }
 
@@ -974,6 +1014,18 @@ public final class Native {
         }
     }
 
+    public static int tryPublishResult(MemorySegment subject,
+                                       MemorySegment topicId,
+                                       MemorySegment parts,
+                                       long partCount) {
+        try {
+            return (int) MH_TRY_PUBLISH_RESULT.invokeExact(subject, topicId,
+              parts, partCount);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_try_publish_result failed", t);
+        }
+    }
+
     public static int subscribe(MemorySegment subject, MemorySegment sourceRidOut,
                                 MemorySegment partsOut,
                                 MemorySegment partCountOut,
@@ -1090,6 +1142,17 @@ public final class Native {
             return (int) MH_SERVICE_MONITOR_RECV.invokeExact(monitor, eventOut);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_service_monitor_recv failed", t);
+        }
+    }
+
+    public static int tryServiceMonitorRecv(MemorySegment monitor,
+                                            MemorySegment eventOut) {
+        try {
+            return (int) MH_TRY_SERVICE_MONITOR_RECV.invokeExact(monitor,
+              eventOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_try_service_monitor_recv failed",
+              t);
         }
     }
 
@@ -1776,6 +1839,14 @@ public final class Native {
             return (MemorySegment) MH_SPOT_NEW.invokeExact(ctx);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_new failed", t);
+        }
+    }
+
+    public static MemorySegment spotWrapNode(MemorySegment node) {
+        try {
+            return (MemorySegment) MH_SPOT_WRAP_NODE.invokeExact(node);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_wrap_node failed", t);
         }
     }
 

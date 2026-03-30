@@ -34,9 +34,17 @@ int spot_subject_publish (void *subject_,
         return pub->publish (topic_id_, parts_, part_count_, flags_);
     }
 
-    if (as_spot_node_handle (subject_)) {
-        errno = ENOTSUP;
-        return -1;
+    if (is_registered_spot_node_handle (subject_)) {
+        zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (subject_);
+        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+        if (!admission.acquired ())
+            return -1;
+        zlink::spot_pub_t *pub = node->ensure_default_pub ();
+        if (!pub) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        return pub->publish (topic_id_, parts_, part_count_, flags_);
     }
 
     errno = EFAULT;

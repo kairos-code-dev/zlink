@@ -9,12 +9,12 @@ const int kSettleTimeMs = 300;
 void test_default_socket_hwm_is_1000 ()
 {
     zlink::context_t ctx;
-    zlink::socket_t socket (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t socket (ctx);
 
     int sndhwm = 0;
     int rcvhwm = 0;
-    assert (socket.get (zlink::socket_option::sndhwm, &sndhwm) == 0);
-    assert (socket.get (zlink::socket_option::rcvhwm, &rcvhwm) == 0);
+    assert (socket.get_option (zlink::socket_option::sndhwm, &sndhwm) == 0);
+    assert (socket.get_option (zlink::socket_option::rcvhwm, &rcvhwm) == 0);
     assert (sndhwm == 1000);
     assert (rcvhwm == 1000);
 }
@@ -23,14 +23,14 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
 {
     zlink::context_t ctx;
 
-    zlink::socket_t pub_socket (ctx, zlink::socket_type::xpub);
-    assert (pub_socket.set (zlink::socket_option::sndhwm, send_hwm_) == 0);
+    zlink::xpub_socket_t pub_socket (ctx);
+    assert (pub_socket.set_option (zlink::socket_option::sndhwm, send_hwm_) == 0);
     assert (pub_socket.bind (bind_endpoint_) == 0);
     const std::string pub_endpoint = bound_endpoint (pub_socket);
 
-    zlink::socket_t sub_socket (ctx, zlink::socket_type::sub);
-    assert (sub_socket.set (zlink::socket_option::rcvhwm, send_hwm_) == 0);
-    assert (sub_socket.set (zlink::socket_option::subscribe, "", 0) == 0);
+    zlink::sub_socket_t sub_socket (ctx);
+    assert (sub_socket.set_option (zlink::socket_option::rcvhwm, send_hwm_) == 0);
+    assert (sub_socket.set_option (zlink::socket_option::subscribe, "", 0) == 0);
     assert (sub_socket.connect (pub_endpoint) == 0);
 
     const unsigned char subscription_to_all_topics[] = {1};
@@ -40,7 +40,9 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
 
     int send_count = 0;
     while (send_count < msg_cnt_
-           && pub_socket.send ("test message", 13, zlink::send_flag::dontwait) == 13)
+           && raw_send (pub_socket, "test message", 13,
+                        zlink::send_flag::dontwait)
+                == 13)
         ++send_count;
 
     assert (send_count >= send_hwm_);
@@ -48,7 +50,9 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
 
     int recv_count = 0;
     char dummy[64];
-    while (sub_socket.recv (dummy, sizeof (dummy), zlink::recv_flag::dontwait) == 13)
+    while (raw_recv (sub_socket, dummy, sizeof (dummy),
+                     zlink::recv_flag::dontwait)
+           == 13)
         ++recv_count;
 
     assert (recv_count > 0);
@@ -56,14 +60,15 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
     return recv_count;
 }
 
-int receive (zlink::socket_t &socket_, int *is_termination_)
+template<typename SocketLike>
+int receive (SocketLike &socket_, int *is_termination_)
 {
     int recv_count = 0;
     *is_termination_ = 0;
 
     char buffer[255];
     int len = -1;
-    while ((len = socket_.recv (buffer, sizeof (buffer))) >= 0) {
+    while ((len = raw_recv (socket_, buffer, sizeof (buffer))) >= 0) {
         ++recv_count;
         if (len == 3 && std::strncmp (buffer, "end", len) == 0) {
             *is_termination_ = 1;
@@ -78,19 +83,19 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
 {
     zlink::context_t ctx;
 
-    zlink::socket_t pub_socket (ctx, zlink::socket_type::xpub);
-    assert (pub_socket.set (zlink::socket_option::sndhwm, send_hwm_) == 0);
+    zlink::xpub_socket_t pub_socket (ctx);
+    assert (pub_socket.set_option (zlink::socket_option::sndhwm, send_hwm_) == 0);
     assert (pub_socket.bind (bind_endpoint_) == 0);
     const std::string pub_endpoint = bound_endpoint (pub_socket);
 
-    zlink::socket_t sub_socket (ctx, zlink::socket_type::sub);
-    assert (sub_socket.set (zlink::socket_option::rcvhwm, send_hwm_) == 0);
+    zlink::sub_socket_t sub_socket (ctx);
+    assert (sub_socket.set_option (zlink::socket_option::rcvhwm, send_hwm_) == 0);
 
     const int wait = 1;
-    assert (pub_socket.set (zlink::socket_option::xpub_nodrop, wait) == 0);
+    assert (pub_socket.set_option (zlink::socket_option::xpub_nodrop, wait) == 0);
     const int timeout_ms = 10;
-    assert (sub_socket.set (zlink::socket_option::rcvtimeo, timeout_ms) == 0);
-    assert (sub_socket.set (zlink::socket_option::subscribe, "", 0) == 0);
+    assert (sub_socket.set_option (zlink::socket_option::rcvtimeo, timeout_ms) == 0);
+    assert (sub_socket.set_option (zlink::socket_option::subscribe, "", 0) == 0);
     assert (sub_socket.connect (pub_endpoint) == 0);
 
     const unsigned char subscription_to_all_topics[] = {1};
@@ -104,7 +109,7 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
     int is_termination = 0;
 
     while (send_count < msg_cnt_) {
-        const int rc = pub_socket.send (NULL, 0, zlink::send_flag::dontwait);
+        const int rc = raw_send (pub_socket, NULL, 0, zlink::send_flag::dontwait);
         if (rc == 0) {
             ++send_count;
         } else {
@@ -118,7 +123,7 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *bind_endpoint_)
     assert (blocked_count > 0);
 
     recv_count += receive (sub_socket, &is_termination);
-    assert (pub_socket.send ("end", 3) == 3);
+    assert (raw_send (pub_socket, "end", 3) == 3);
     while (!is_termination)
         recv_count += receive (sub_socket, &is_termination);
     --recv_count;
@@ -135,28 +140,28 @@ void test_reset_hwm ()
 
     zlink::context_t ctx;
 
-    zlink::socket_t pub_socket (ctx, zlink::socket_type::pub);
-    assert (pub_socket.set (zlink::socket_option::sndhwm, hwm) == 0);
+    zlink::pub_socket_t pub_socket (ctx);
+    assert (pub_socket.set_option (zlink::socket_option::sndhwm, hwm) == 0);
     assert (pub_socket.bind ("tcp://127.0.0.1:*") == 0);
     const std::string endpoint = bound_endpoint (pub_socket);
 
-    zlink::socket_t sub_socket (ctx, zlink::socket_type::sub);
-    assert (sub_socket.set (zlink::socket_option::rcvhwm, hwm) == 0);
+    zlink::sub_socket_t sub_socket (ctx);
+    assert (sub_socket.set_option (zlink::socket_option::rcvhwm, hwm) == 0);
     assert (sub_socket.connect (endpoint) == 0);
-    assert (sub_socket.set (zlink::socket_option::subscribe, "", 0) == 0);
+    assert (sub_socket.set_option (zlink::socket_option::subscribe, "", 0) == 0);
 
     sleep_ms (kSettleTimeMs);
 
     int send_count = 0;
     while (send_count < first_count
-           && pub_socket.send (NULL, 0, zlink::send_flag::dontwait) == 0)
+           && raw_send (pub_socket, NULL, 0, zlink::send_flag::dontwait) == 0)
         ++send_count;
     assert (send_count == first_count);
 
     sleep_ms (kSettleTimeMs);
 
     int recv_count = 0;
-    while (sub_socket.recv (NULL, 0, zlink::recv_flag::dontwait) == 0)
+    while (raw_recv (sub_socket, NULL, 0, zlink::recv_flag::dontwait) == 0)
         ++recv_count;
     assert (recv_count == first_count);
 
@@ -164,14 +169,14 @@ void test_reset_hwm ()
 
     send_count = 0;
     while (send_count < second_count
-           && pub_socket.send (NULL, 0, zlink::send_flag::dontwait) == 0)
+           && raw_send (pub_socket, NULL, 0, zlink::send_flag::dontwait) == 0)
         ++send_count;
     assert (send_count == second_count);
 
     sleep_ms (kSettleTimeMs);
 
     recv_count = 0;
-    while (sub_socket.recv (NULL, 0, zlink::recv_flag::dontwait) == 0)
+    while (raw_recv (sub_socket, NULL, 0, zlink::recv_flag::dontwait) == 0)
         ++recv_count;
     assert (recv_count == second_count);
 }

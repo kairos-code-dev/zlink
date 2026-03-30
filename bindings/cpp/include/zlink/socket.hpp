@@ -186,7 +186,19 @@ inline int recv_single_part (void *socket_,
     return 0;
 }
 
-} // namespace detail
+inline send_result_t to_send_result (int result_) noexcept
+{
+    switch (result_) {
+    case ZLINK_SEND_RESULT_SENT:
+        return send_result_t::sent;
+    case ZLINK_SEND_RESULT_BACKPRESSURED:
+        return send_result_t::backpressured;
+    case ZLINK_SEND_RESULT_NOT_READY:
+        return send_result_t::not_ready;
+    default:
+        return send_result_t::sent;
+    }
+}
 
 class socket_t
 {
@@ -311,6 +323,53 @@ class socket_t
         return rc;
     }
 
+    ZLINK_CPP_NODISCARD send_result_t try_send (message_t &part_)
+    {
+        send_result_t result = send_result_t::sent;
+        const int rc = try_send (result, part_);
+        (void) rc;
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD int try_send (send_result_t &result_, message_t &part_)
+    {
+        std::vector<message_t> parts (1);
+        parts[0] = std::move (part_);
+        const int rc = try_send (result_, parts);
+        if (rc != 0 || result_ != send_result_t::sent)
+            part_ = std::move (parts[0]);
+        return rc;
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t try_send (std::vector<message_t> &parts_)
+    {
+        send_result_t result = send_result_t::sent;
+        const int rc = try_send (result, parts_);
+        (void) rc;
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    try_send (send_result_t &result_, std::vector<message_t> &parts_)
+    {
+        std::vector<zlink_msg_t> native_parts;
+        if (detail::move_parts_to_native (parts_, native_parts) != 0)
+            return -1;
+
+        const int rc = zlink_try_send_result (
+          _socket, native_parts.empty () ? NULL : &native_parts[0],
+          native_parts.size ());
+        if (rc < 0) {
+            detail::restore_parts_from_native (parts_, native_parts);
+            return -1;
+        }
+
+        result_ = detail::to_send_result (rc);
+        if (rc != ZLINK_SEND_RESULT_SENT)
+            detail::restore_parts_from_native (parts_, native_parts);
+        return 0;
+    }
+
     ZLINK_CPP_NODISCARD int send (const zlink_routing_id_t &target_rid_,
                                   message_t &part_,
                                   send_flag flags_ = send_flag::none)
@@ -338,6 +397,62 @@ class socket_t
         if (rc != 0)
             detail::restore_parts_from_native (parts_, native_parts);
         return rc;
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t try_send (
+      const zlink_routing_id_t &target_rid_,
+      message_t &part_)
+    {
+        send_result_t result = send_result_t::sent;
+        const int rc = try_send (result, target_rid_, part_);
+        (void) rc;
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    try_send (send_result_t &result_,
+              const zlink_routing_id_t &target_rid_,
+              message_t &part_)
+    {
+        std::vector<message_t> parts (1);
+        parts[0] = std::move (part_);
+        const int rc = try_send (result_, target_rid_, parts);
+        if (rc != 0 || result_ != send_result_t::sent)
+            part_ = std::move (parts[0]);
+        return rc;
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t
+    try_send (const zlink_routing_id_t &target_rid_,
+              std::vector<message_t> &parts_)
+    {
+        send_result_t result = send_result_t::sent;
+        const int rc = try_send (result, target_rid_, parts_);
+        (void) rc;
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    try_send (send_result_t &result_,
+              const zlink_routing_id_t &target_rid_,
+              std::vector<message_t> &parts_)
+    {
+        std::vector<zlink_msg_t> native_parts;
+        if (detail::move_parts_to_native (parts_, native_parts) != 0)
+            return -1;
+
+        const int rc = zlink_try_send_rid_result (
+          _socket, &target_rid_, native_parts.empty () ? NULL : &native_parts[0],
+          native_parts.size ());
+        if (rc < 0) {
+            detail::restore_parts_from_native (parts_, native_parts);
+            return -1;
+        }
+
+        result_ = detail::to_send_result (rc);
+        if (rc != ZLINK_SEND_RESULT_SENT)
+            detail::restore_parts_from_native (parts_, native_parts);
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD int recv (message_t &part_,
@@ -369,6 +484,14 @@ class socket_t
         return detail::recv_parts (_socket, &source_rid_, flags_, parts_);
     }
 
+    ZLINK_CPP_NODISCARD int
+    receive (received_t &received_, recv_flag flags_ = recv_flag::none)
+    {
+        received_.routing_id = empty_routing_id ();
+        return detail::recv_parts (
+          _socket, &received_.routing_id, flags_, received_.parts);
+    }
+
     ZLINK_CPP_NODISCARD int publish (const std::string &topic_id_,
                                      message_t &part_,
                                      send_flag flags_ = send_flag::none)
@@ -396,6 +519,60 @@ class socket_t
         if (rc != 0)
             detail::restore_parts_from_native (parts_, native_parts);
         return rc;
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t try_publish (const std::string &topic_id_,
+                                                   message_t &part_)
+    {
+        send_result_t result = send_result_t::sent;
+        const int rc = try_publish (result, topic_id_, part_);
+        (void) rc;
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    try_publish (send_result_t &result_,
+                 const std::string &topic_id_,
+                 message_t &part_)
+    {
+        std::vector<message_t> parts (1);
+        parts[0] = std::move (part_);
+        const int rc = try_publish (result_, topic_id_, parts);
+        if (rc != 0 || result_ != send_result_t::sent)
+            part_ = std::move (parts[0]);
+        return rc;
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t
+    try_publish (const std::string &topic_id_, std::vector<message_t> &parts_)
+    {
+        send_result_t result = send_result_t::sent;
+        const int rc = try_publish (result, topic_id_, parts_);
+        (void) rc;
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    try_publish (send_result_t &result_,
+                 const std::string &topic_id_,
+                 std::vector<message_t> &parts_)
+    {
+        std::vector<zlink_msg_t> native_parts;
+        if (detail::move_parts_to_native (parts_, native_parts) != 0)
+            return -1;
+
+        const int rc = zlink_try_publish_result (
+          _socket, topic_id_.c_str (),
+          native_parts.empty () ? NULL : &native_parts[0], native_parts.size ());
+        if (rc < 0) {
+            detail::restore_parts_from_native (parts_, native_parts);
+            return -1;
+        }
+
+        result_ = detail::to_send_result (rc);
+        if (rc != ZLINK_SEND_RESULT_SENT)
+            detail::restore_parts_from_native (parts_, native_parts);
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)
@@ -505,6 +682,15 @@ class socket_t
         return detail::assign_parts_from_native (parts_native, part_count, parts_out_);
     }
 
+    ZLINK_CPP_NODISCARD int
+    subscribe (subscribed_t &subscribed_, recv_flag flags_ = recv_flag::none)
+    {
+        subscribed_.routing_id = empty_routing_id ();
+        subscribed_.topic.clear ();
+        return subscribe (
+          subscribed_.routing_id, subscribed_.topic, subscribed_.parts, flags_);
+    }
+
     ZLINK_CPP_NODISCARD int subscription_event (bool &subscribed_out_,
                                                 std::string &topic_id_out_,
                                                 recv_flag flags_ = recv_flag::none)
@@ -535,6 +721,17 @@ class socket_t
         topic_id_out_.assign (topic_buffer.data (), bounded_topic);
         subscribed_out_ = subscribed != 0;
         return 0;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    subscription_event (subscription_event_t &event_,
+                        recv_flag flags_ = recv_flag::none)
+    {
+        event_.routing_id = empty_routing_id ();
+        event_.topic.clear ();
+        event_.subscribed = false;
+        return subscription_event (
+          event_.routing_id, event_.subscribed, event_.topic, flags_);
     }
 
     ZLINK_CPP_NODISCARD int recv_handler (zlink_socket_msg_handler_fn handler_,
@@ -871,6 +1068,7 @@ class socket_t
     bool _own;
 };
 
+} // namespace detail
 } // namespace zlink
 
 #endif

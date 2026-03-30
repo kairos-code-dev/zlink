@@ -70,7 +70,7 @@ int main ()
 
     zlink::message_t reply =
       detail::make_message ("stream-callback-reply");
-    assert (server.send (state.routing_id, reply) == 0);
+    server.send (state.routing_id, reply);
 
     char response[64];
     const int received =

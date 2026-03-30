@@ -1,0 +1,16 @@
+## Effective Options (start)
+- pattern: DEALER_DEALER
+- recv_mode: callback
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 256
+
+RESULT,current,DEALER_DEALER,inproc,256,throughput,135514.00
+RESULT,current,DEALER_DEALER,inproc,256,bandwidth,34.69
+RESULT,current,DEALER_DEALER,inproc,256,latency,6.74
+RESULT,current,DEALER_DEALER,inproc,256,latency_p95,3.95
+RESULT,current,DEALER_DEALER,inproc,256,latency_p99,7.73
+
+## Effective Options (result)
+- recv_mode: callback
+- result_lines: 5

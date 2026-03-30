@@ -76,8 +76,8 @@ void test_ctx_zero_copy ()
     assert (zlink_ctx_set (ctx.handle (), ZLINK_ZERO_COPY_RECV, 0) == 0);
     assert (zlink_ctx_get (ctx.handle (), ZLINK_ZERO_COPY_RECV) == 0);
 
-    zlink::socket_t pull (ctx, zlink::socket_type::dealer);
-    zlink::socket_t push (ctx, zlink::socket_type::dealer);
+    zlink::dealer_socket_t pull (ctx);
+    zlink::dealer_socket_t push (ctx);
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "ctx-zero-copy");
@@ -104,7 +104,7 @@ void test_ctx_option_blocky ()
     assert (zlink_ctx_set (ctx.handle (), ZLINK_IPV6, 1) == 0);
 
     {
-        zlink::socket_t router (ctx, zlink::socket_type::router);
+        zlink::router_socket_t router (ctx);
         int ipv6 = 0;
         size_t optlen = sizeof (ipv6);
         assert (zlink_getsockopt (router.handle (), ZLINK_IPV6, &ipv6, &optlen) == 0);
@@ -121,7 +121,7 @@ void test_ctx_option_blocky ()
     assert (zlink_ctx_get (ctx.handle (), ZLINK_BLOCKY) == 0);
 
     {
-        zlink::socket_t router (ctx, zlink::socket_type::router);
+        zlink::router_socket_t router (ctx);
         int linger = -1;
         size_t optlen = sizeof (linger);
         assert (zlink_getsockopt (router.handle (), ZLINK_LINGER, &linger, &optlen)

@@ -5,6 +5,7 @@ package dev.kairoscode.zlink;
 import dev.kairoscode.zlink.internal.Native;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 final class MessagePlane {
     private final Socket socket;
@@ -33,6 +34,16 @@ final class MessagePlane {
         socket.sendParts(null, parts, flags, false);
     }
 
+    SendResult trySend(Message part) {
+        Objects.requireNonNull(part, "part");
+        return socket.trySendParts(null, List.of(part));
+    }
+
+    SendResult trySend(List<Message> parts) {
+        Objects.requireNonNull(parts, "parts");
+        return socket.trySendParts(null, parts);
+    }
+
     void send(RoutingId rid, Message part) {
         send(rid, part, SendFlag.NONE);
     }
@@ -53,6 +64,16 @@ final class MessagePlane {
         socket.sendParts(rid, parts, flags, false);
     }
 
+    SendResult trySend(RoutingId rid, Message part) {
+        Objects.requireNonNull(part, "part");
+        return socket.trySendParts(rid, List.of(part));
+    }
+
+    SendResult trySend(RoutingId rid, List<Message> parts) {
+        Objects.requireNonNull(parts, "parts");
+        return socket.trySendParts(rid, parts);
+    }
+
     Received recv() {
         return recv(ReceiveFlag.NONE);
     }
@@ -64,7 +85,7 @@ final class MessagePlane {
                 flags.getValue());
             if (received != null) {
                 RoutingId rid = Socket.toRoutingId(received.routingId());
-                Message[] parts = Message.fromMsgVector(received.parts(),
+                Message[] parts = Message.fromOwnedMsgVector(received.parts(),
                     received.partCount());
                 return new Received(rid, parts);
             }
@@ -72,6 +93,28 @@ final class MessagePlane {
             int errno = Native.errno();
             if (errno == Socket.ERRNO_EINTR)
                 continue;
+            throw ZlinkException.fromLastError("zlink_recv");
+        }
+    }
+
+    Optional<Received> tryRecv() {
+        while (true) {
+            Native.MultipartReceive received = Native.recvMultipart(socket.handle(),
+                ReceiveFlag.DONTWAIT.getValue());
+            if (received != null) {
+                RoutingId rid = Socket.toRoutingId(received.routingId());
+                Message[] parts = Message.fromOwnedMsgVector(received.parts(),
+                    received.partCount());
+                return Optional.of(new Received(rid, parts));
+            }
+
+            int errno = Native.errno();
+            if (errno == Socket.ERRNO_EINTR)
+                continue;
+            if (errno == Socket.ERRNO_EAGAIN
+                || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
+                return Optional.empty();
+            }
             throw ZlinkException.fromLastError("zlink_recv");
         }
     }

@@ -10,6 +10,7 @@ import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.XPubSocket;
+import dev.kairoscode.zlink.XPubSubscriptionMode;
 import dev.kairoscode.zlink.XSubSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -64,8 +65,10 @@ public class SocketSubscriptionContractTest {
             pub.bind(endpoint);
             sub.setSubscription("topic-a");
             sub.connect(endpoint);
-            subMonitor.recv();
-            pubMonitor.recv();
+            TestSupport.awaitDeliveryReady(subMonitor,
+                MonitorEventType.SUB_DELIVERY_READY_CHANGED);
+            TestSupport.awaitDeliveryReady(pubMonitor,
+                MonitorEventType.PUB_DELIVERY_READY_CHANGED);
 
             try (Message part = Message.copyOfUtf8("payload")) {
                 pub.publish("topic-a", part);
@@ -93,8 +96,10 @@ public class SocketSubscriptionContractTest {
             pub.bind(endpoint);
             sub.setSubscription("topic-b");
             sub.connect(endpoint);
-            subMonitor.recv();
-            pubMonitor.recv();
+            TestSupport.awaitDeliveryReady(subMonitor,
+                MonitorEventType.SUB_DELIVERY_READY_CHANGED);
+            TestSupport.awaitDeliveryReady(pubMonitor,
+                MonitorEventType.PUB_DELIVERY_READY_CHANGED);
 
             try (Message part = Message.copyOfUtf8("payload-b")) {
                 pub.publish("topic-b", part);
@@ -115,13 +120,13 @@ public class SocketSubscriptionContractTest {
         try (Context ctx = new Context();
              XPubSocket pub = new XPubSocket(ctx);
              XSubSocket sub = new XSubSocket(ctx)) {
-            pub.setOption(dev.kairoscode.zlink.options.SocketOptions.XPUB_MANUAL, 1);
+            pub.options().subscriptionMode(XPubSubscriptionMode.MANUAL);
             String endpoint = TestSupport.inprocEndpoint("xpub-manual-contract");
             pub.bind(endpoint);
             sub.setSubscription("manual-topic");
             sub.connect(endpoint);
 
-            SubscriptionEvent event = pub.subscriptionEvent();
+            SubscriptionEvent event = pub.receiveSubscriptionEvent();
             assertTrue(event.subscribed());
             assertEquals("manual-topic", event.filter());
         }

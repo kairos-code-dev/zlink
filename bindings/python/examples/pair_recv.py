@@ -10,8 +10,8 @@ def main():
                 client.connect(endpoint)
 
                 client.send(b"hello")
-                with server.recv_message() as received:
-                    print(received.to_bytes().decode("utf-8"))
+                with server.recv() as received:
+                    print(received.to_bytes_list()[0].decode("utf-8"))
 
 
 if __name__ == "__main__":

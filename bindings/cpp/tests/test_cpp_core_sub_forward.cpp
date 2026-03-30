@@ -8,10 +8,10 @@ void test_sub_forward ()
 {
     zlink::context_t ctx;
 
-    zlink::socket_t xpub (ctx, zlink::socket_type::xpub);
-    zlink::socket_t xsub (ctx, zlink::socket_type::xsub);
-    zlink::socket_t pub (ctx, zlink::socket_type::pub);
-    zlink::socket_t sub (ctx, zlink::socket_type::sub);
+    zlink::xpub_socket_t xpub (ctx);
+    zlink::xsub_socket_t xsub (ctx);
+    zlink::pub_socket_t pub (ctx);
+    zlink::sub_socket_t sub (ctx);
 
     const std::string endpoint_upstream =
       endpoint_for (transport_case_t{"tcp", ""}, "sub-forward-up");
@@ -23,7 +23,7 @@ void test_sub_forward ()
 
     assert (pub.connect (endpoint_downstream) == 0);
     assert (sub.connect (endpoint_upstream) == 0);
-    assert (sub.set (zlink::socket_option::subscribe, "", 0) == 0);
+    assert (sub.set_option (zlink::socket_option::subscribe, "", 0) == 0);
 
     char buff[32];
     std::memset (buff, 0, sizeof (buff));

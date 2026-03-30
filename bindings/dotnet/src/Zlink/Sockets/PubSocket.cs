@@ -8,4 +8,9 @@ public sealed class PubSocket : PublisherSocketBase
         : base(context, SocketType.Pub)
     {
     }
+
+    public void SetNoDrop(bool enabled)
+    {
+        SetOption(SocketOptions.XPubNoDrop, enabled ? 1 : 0);
+    }
 }

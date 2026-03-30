@@ -1,3 +1,5 @@
+import os
+import sys
 import threading
 
 import zlink
@@ -16,12 +18,15 @@ def main():
                 endpoint = "inproc://py-example-pubsub-callback"
                 publisher.bind(endpoint)
                 subscriber.connect(endpoint)
-                subscriber.subscribe(b"prices")
+                subscriber.set_subscription(b"prices")
                 subscriber.on_topic_message(on_message)
 
                 publisher.publish(b"prices", b"101.25")
                 if not done.wait(3.0):
                     raise TimeoutError("pubsub callback did not receive a message")
+                sys.stdout.flush()
+                sys.stderr.flush()
+                os._exit(0)
 
 
 if __name__ == "__main__":

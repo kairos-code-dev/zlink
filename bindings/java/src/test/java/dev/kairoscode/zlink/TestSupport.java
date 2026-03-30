@@ -28,6 +28,16 @@ public final class TestSupport {
         return "tcp://127.0.0.1:" + randomPort();
     }
 
+    public static MonitorEvent awaitDeliveryReady(MonitorSocket monitor,
+                                                  MonitorEventType eventType) {
+        while (true) {
+            MonitorEvent event = monitor.recv();
+            if (event.event() == eventType.getValue() && event.value() > 0) {
+                return event;
+            }
+        }
+    }
+
     private static int randomPort() {
         try (ServerSocket server = new ServerSocket(0)) {
             server.setReuseAddress(true);

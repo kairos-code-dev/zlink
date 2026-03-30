@@ -96,12 +96,13 @@ inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
             continue;
 
-        zlink_socket_monitor_event_t event;
-        if (monitor_.recv (event) != 0)
+        const zlink::maybe_t<zlink_socket_monitor_event_t> event =
+          monitor_.try_receive ();
+        if (!event)
             continue;
-        if (event.event != event_type_)
+        if (event->event != event_type_)
             continue;
-        if (value_ >= 0 && static_cast<int64_t> (event.value) != value_)
+        if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
             continue;
         return true;
     }
@@ -127,12 +128,13 @@ wait_for_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
             continue;
 
-        zlink_service_monitor_event_t event;
-        if (monitor_.recv (event) != 0)
+        const zlink::maybe_t<zlink_service_monitor_event_t> event =
+          monitor_.try_receive ();
+        if (!event)
             continue;
-        if (event.event_type != event_type_)
+        if (event->event_type != event_type_)
             continue;
-        if (value_ >= 0 && static_cast<int64_t> (event.value) != value_)
+        if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
             continue;
         return true;
     }
@@ -168,8 +170,7 @@ wait_for_service_monitor_state (zlink::service_monitor_handle_t &monitor_,
         if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
             continue;
 
-        zlink_service_monitor_event_t ignored;
-        (void) monitor_.recv (ignored);
+        (void) monitor_.try_receive ();
     }
 
     return false;

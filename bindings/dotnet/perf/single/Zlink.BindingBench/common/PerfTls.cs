@@ -38,7 +38,7 @@ internal static partial class PerfRunner
         socket.SetOption(SocketOptions.TlsHostname, "localhost");
     }
 
-    internal static void ConfigureReceiverTlsServerIfNeeded(Receiver receiver,
+    internal static void ConfigureReceiverTlsServerIfNeeded(Zlink.Socket receiver,
         string transport)
     {
         if (!IsSecureTransport(transport))
@@ -51,7 +51,8 @@ internal static partial class PerfRunner
                 "TLS certificate files not found under bindings/dotnet/tests/certs");
         }
 
-        receiver.SetTlsServer(certPath, keyPath);
+        receiver.SetOption(SocketOptions.TlsCert, certPath);
+        receiver.SetOption(SocketOptions.TlsKey, keyPath);
     }
 
     internal static void ConfigureSpotTlsPublisherIfNeeded(SpotNode spotNode,
@@ -59,14 +60,12 @@ internal static partial class PerfRunner
     {
         if (!IsSecureTransport(transport))
             return;
-
         if (!TryResolvePerfTlsPaths(out string certPath, out string keyPath,
                 out _))
         {
             throw new InvalidOperationException(
                 "TLS certificate files not found under bindings/dotnet/tests/certs");
         }
-
         spotNode.SetTlsServer(certPath, keyPath);
     }
 
@@ -75,14 +74,12 @@ internal static partial class PerfRunner
     {
         if (!IsSecureTransport(transport))
             return;
-
         if (!TryResolvePerfTlsPaths(out _, out _, out string caPath))
         {
             throw new InvalidOperationException(
                 "TLS CA file not found under bindings/dotnet/tests/certs");
         }
-
-        spotNode.SetTlsClient(caPath, "localhost", false);
+        spotNode.SetTlsClient(caPath, "localhost");
     }
 
     private static bool TryResolvePerfTlsPaths(out string certPath,

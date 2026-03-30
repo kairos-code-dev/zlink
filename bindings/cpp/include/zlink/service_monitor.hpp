@@ -2,12 +2,30 @@
 #ifndef ZLINK_CPP_SERVICE_MONITOR_HPP_INCLUDED
 #define ZLINK_CPP_SERVICE_MONITOR_HPP_INCLUDED
 
+#include "error.hpp"
 #include "services/discovery.hpp"
 #include "services/spot.hpp"
 #include "types.hpp"
 
 namespace zlink
 {
+
+namespace detail
+{
+
+inline service_monitor_event
+normalize_spot_service_monitor_events (service_monitor_event events_) noexcept
+{
+    if (events_ != service_monitor_event::all)
+        return events_;
+
+    return service_monitor_event::error
+           | service_monitor_event::spot_filter_applied
+           | service_monitor_event::spot_subscription_ready_changed
+           | service_monitor_event::spot_sub_delivery_ready_changed;
+}
+
+} // namespace detail
 
 class service_monitor_handle_t
 {
@@ -36,14 +54,18 @@ class service_monitor_handle_t
     explicit service_monitor_handle_t (
       service::spot_t &spot_,
       service_monitor_event events_ = service_monitor_event::all)
-        : service_monitor_handle_t (spot_.handle (), events_)
+        : service_monitor_handle_t (
+            spot_.handle (),
+            detail::normalize_spot_service_monitor_events (events_))
     {
     }
 
     explicit service_monitor_handle_t (
       service::spot_node_t &node_,
       service_monitor_event events_ = service_monitor_event::all)
-        : service_monitor_handle_t (node_.handle (), events_)
+        : service_monitor_handle_t (
+            node_.handle (),
+            detail::normalize_spot_service_monitor_events (events_))
     {
     }
 
@@ -88,9 +110,24 @@ class service_monitor_handle_t
         return zlink_service_monitor_handler (_monitor, handler_, userdata_);
     }
 
-    int recv (zlink_service_monitor_event_t &event_)
+    ZLINK_CPP_NODISCARD zlink_service_monitor_event_t receive ()
     {
-        return zlink_service_monitor_recv (_monitor, &event_);
+        zlink_service_monitor_event_t event;
+        const int rc = zlink_service_monitor_recv (_monitor, &event);
+        throw_on_error (rc);
+        return event;
+    }
+
+    ZLINK_CPP_NODISCARD maybe_t<zlink_service_monitor_event_t> try_receive ()
+    {
+        zlink_service_monitor_event_t event;
+        const int rc = zlink_try_service_monitor_recv (_monitor, &event);
+        if (rc == 0)
+            return maybe_t<zlink_service_monitor_event_t> (event);
+        if (errno == EAGAIN)
+            return maybe_t<zlink_service_monitor_event_t> ();
+        throw_on_error (rc);
+        return maybe_t<zlink_service_monitor_event_t> ();
     }
 
     int snapshot (zlink_monitor_snapshot_t &snapshot_) const

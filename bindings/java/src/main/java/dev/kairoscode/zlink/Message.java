@@ -269,89 +269,10 @@ public final class Message implements AutoCloseable {
         return wrapNative(segment, 0, span.length());
     }
 
-    @Deprecated(forRemoval = false)
-    static Message fromBytes(byte[] data) {
-        return copyOf(data);
-    }
-
-    @Deprecated(forRemoval = false)
-    static Message fromBytes(byte[] data, int offset, int length) {
-        return copyOf(data, offset, length);
-    }
-
-    @Deprecated(forRemoval = false)
-    static Message fromByteBuffer(ByteBuffer data) {
-        Objects.requireNonNull(data, "data");
-        int length = data.remaining();
-        Message msg = copyOf(data);
-        data.position(data.position() + length);
-        return msg;
-    }
-
-    @Deprecated(forRemoval = false)
-    static Message fromMemorySegment(MemorySegment data) {
-        return copyOf(data);
-    }
-
-    @Deprecated(forRemoval = false)
-    static Message fromMemorySegment(MemorySegment data, long offset, long length) {
-        return copyOf(data, offset, length);
-    }
-
-    @Deprecated(forRemoval = false)
-    static Message fromNativeData(MemorySegment data) {
-        return wrapNative(data);
-    }
-
-    @Deprecated(forRemoval = false)
-    static Message fromNativeData(MemorySegment data, long offset, long length) {
-        return wrapNative(data, offset, length);
-    }
-
-    @Deprecated(forRemoval = false)
-    static Message fromDirectByteBuffer(ByteBuffer data) {
-        Objects.requireNonNull(data, "data");
-        if (!data.isDirect())
-            throw new IllegalArgumentException("fromDirectByteBuffer requires a direct ByteBuffer");
-        int length = data.remaining();
-        Message msg = wrapDirect(data);
-        data.position(data.position() + length);
-        return msg;
-    }
-
-    @Deprecated(forRemoval = false)
-    void send(Socket socket, SendFlag flag) {
-        Objects.requireNonNull(socket, "socket");
-        Objects.requireNonNull(flag, "flag");
-        socket.sendMessageFrame(this, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    boolean trySend(Socket socket, SendFlag flag) {
-        Objects.requireNonNull(socket, "socket");
-        Objects.requireNonNull(flag, "flag");
-        return socket.trySendMessageFrame(this, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    void recv(Socket socket, ReceiveFlag flag) {
-        Objects.requireNonNull(socket, "socket");
-        Objects.requireNonNull(flag, "flag");
-        socket.recvMessageFrame(this, flag);
-    }
-
-    @Deprecated(forRemoval = false)
-    int tryRecv(Socket socket, ReceiveFlag flag) {
-        Objects.requireNonNull(socket, "socket");
-        Objects.requireNonNull(flag, "flag");
-        return socket.tryRecvMessageFrame(this, flag);
-    }
-
     public int size() {
         return (int) NativeMsg.msgSize(msg);
     }
 
-    @Deprecated(forRemoval = false)
     boolean more() {
         return more;
     }

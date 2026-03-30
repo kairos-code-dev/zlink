@@ -40,8 +40,6 @@ internal static partial class PerfRunner
                     transport, size),
                 "STREAM_CALLBACK" => PrintStreamClientUnsupported(
                     outputPattern, transport, size),
-                "STREAM_LEN32BE" => PrintStreamClientUnsupported(
-                    outputPattern, transport, size),
                 _ => 1,
             };
 
@@ -55,7 +53,8 @@ internal static partial class PerfRunner
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"multi_client_error:{ex.Message}");
+            Console.Error.WriteLine(
+                $"multi_client_error:{ex.GetType().Name}:{ex.Message}");
             return 2;
         }
     }

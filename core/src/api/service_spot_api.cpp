@@ -99,8 +99,8 @@ int zlink_service_recv_handler_internal (void *handle_,
     }
 
     if (resolved.kind == zlink::service_handle_spot_node) {
-        errno = ENOTSUP;
-        return -1;
+        return spot_node_install_recv_handler (
+          static_cast<zlink::spot_node_t *> (handle_), handler_, userdata_);
     }
 
     errno = EFAULT;

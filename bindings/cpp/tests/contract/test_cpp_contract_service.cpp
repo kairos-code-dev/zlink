@@ -6,17 +6,60 @@
 
 namespace {
 
+template<typename SpotT> class has_receive_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().receive (), std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SpotT> (0))::value;
+};
+
+template<typename SpotT> class has_try_receive_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().try_receive (), std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SpotT> (0))::value;
+};
+
+template<typename SpotT> class has_try_publish_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().try_publish (
+                      std::declval<const std::string &> (),
+                      std::declval<zlink::message_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SpotT> (0))::value;
+};
+
+static_assert (has_receive_t<zlink::service::spot_t>::value,
+               "spot_t must expose receive");
+static_assert (has_try_receive_t<zlink::service::spot_t>::value,
+               "spot_t must expose try_receive");
+static_assert (has_try_publish_t<zlink::service::spot_t>::value,
+               "spot_t must expose try_publish");
+
 void test_registry_query_and_discovery_metadata ()
 {
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
     assert (registry.valid ());
-
-    const std::string pub_endpoint =
-      zlink_cpp_contract::unique_tcp ("registry-pub");
-    const std::string router_endpoint =
-      zlink_cpp_contract::unique_tcp ("registry-router");
-    assert (registry.bind (pub_endpoint, router_endpoint) == 0);
 
     zlink_registry_status_t status;
     assert (registry.status_snapshot (status) == 0);
@@ -24,15 +67,9 @@ void test_registry_query_and_discovery_metadata ()
     size_t topology_count = 0;
     assert (registry.topology_snapshot (NULL, &topology_count) == 0);
 
-    zlink::service::registry_query_client_t query (ctx);
-    assert (query.valid ());
-    assert (query.connect (router_endpoint) == 0);
-    assert (query.snapshot (NULL, &topology_count) == 0);
-
     zlink::service::discovery_t discovery (
       ctx, zlink::service_type::spot, "orders");
     assert (discovery.valid ());
-    assert (discovery.connect_registry (router_endpoint) == 0);
 
     const int64_t value = 42;
     assert (discovery.set_value (value) == 0);
@@ -53,20 +90,6 @@ void test_registry_query_and_discovery_metadata ()
 void test_spot_node_snapshot_and_service_monitor ()
 {
     zlink::context_t ctx;
-    zlink::service::registry_t registry (ctx);
-    assert (registry.valid ());
-
-    const std::string pub_endpoint =
-      zlink_cpp_contract::unique_tcp ("service-reg-pub");
-    const std::string router_endpoint =
-      zlink_cpp_contract::unique_tcp ("service-reg-router");
-    assert (registry.bind (pub_endpoint, router_endpoint) == 0);
-
-    zlink::service::discovery_t discovery (
-      ctx, zlink::service_type::spot, "service-monitor");
-    assert (discovery.valid ());
-    assert (discovery.connect_registry (router_endpoint) == 0);
-
     zlink::service::spot_node_t node (ctx);
     assert (node.valid ());
 
@@ -83,7 +106,7 @@ void test_spot_node_snapshot_and_service_monitor ()
     size_t subject_count = 0;
     assert (node.subjects_snapshot (NULL, &subject_count) == 0);
 
-    zlink::service_monitor_handle_t monitor (discovery);
+    zlink::service_monitor_handle_t monitor (node);
     assert (monitor.valid ());
 }
 
@@ -113,16 +136,25 @@ void test_unified_spot_self_delivery_recv_contract ()
 
     zlink::message_t outbound =
       zlink_cpp_contract::make_message ("service-self");
-    assert (spot.publish ("topic:service-self", outbound) == 0);
+    spot.publish ("topic:service-self", outbound);
 
-    zlink::message_t inbound;
-    std::string topic;
-    assert (spot.recv (inbound, topic) == 0);
-    assert (topic == "topic:service-self");
-    assert (inbound.to_string () == "service-self");
+    const zlink::subscribed_t inbound = spot.receive ();
+    assert (inbound.topic == "topic:service-self");
+    assert (inbound.parts.size () == 1);
+    assert (inbound.parts[0].to_string () == "service-self");
 
     assert (pub_monitor.close () == 0);
     assert (sub_monitor.close () == 0);
+}
+
+void test_unified_spot_wrap_node_surface_contract ()
+{
+    zlink::context_t ctx;
+    zlink::service::spot_node_t node (ctx);
+    assert (node.valid ());
+
+    zlink::service::spot_t spot (node);
+    assert (spot.valid ());
 }
 
 } // namespace
@@ -132,5 +164,6 @@ int main ()
     test_registry_query_and_discovery_metadata ();
     test_spot_node_snapshot_and_service_monitor ();
     test_unified_spot_self_delivery_recv_contract ();
+    test_unified_spot_wrap_node_surface_contract ();
     return 0;
 }

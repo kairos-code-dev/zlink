@@ -7,7 +7,7 @@ namespace {
 void test_fair_queue_in (const std::string &endpoint_)
 {
     zlink::context_t ctx;
-    zlink::socket_t receiver (ctx, zlink::socket_type::router);
+    zlink::router_socket_t receiver (ctx);
     assert (receiver.bind (endpoint_) == 0);
 
     std::string connect_endpoint = endpoint_;
@@ -15,13 +15,13 @@ void test_fair_queue_in (const std::string &endpoint_)
         connect_endpoint = bound_endpoint (receiver);
 
     const unsigned char services = 5;
-    std::vector<zlink::socket_t> senders;
+    std::vector<zlink::dealer_socket_t> senders;
     senders.reserve (services);
 
     for (unsigned char peer = 0; peer < services; ++peer) {
-        senders.push_back (zlink::socket_t (ctx, zlink::socket_type::dealer));
+        senders.push_back (zlink::dealer_socket_t (ctx));
         char rid[2] = {static_cast<char> ('A' + peer), '\0'};
-        assert (senders.back ().set (zlink::socket_option::routing_id, rid, 2) == 0);
+        assert (senders.back ().set_option (zlink::socket_option::routing_id, rid, 2) == 0);
         assert (senders.back ().connect (connect_endpoint) == 0);
     }
 

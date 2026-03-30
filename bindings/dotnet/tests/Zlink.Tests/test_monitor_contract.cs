@@ -56,4 +56,22 @@ public sealed class test_monitor_contract
         monitor.Close();
         Assert.Throws<ObjectDisposedException>(() => monitor.Snapshot());
     }
+
+    [Fact]
+    public void socket_monitor_try_receive_returns_null_when_queue_empty()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var server = new PairSocket(ctx);
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "monitor-try-recv-empty");
+        server.Bind(endpoint);
+
+        using SocketMonitor monitor = server.OpenMonitor(
+            SocketEvent.ConnectionReady);
+
+        Assert.Null(monitor.TryReceive());
+    }
 }

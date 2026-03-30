@@ -148,6 +148,13 @@ internal static partial class PerfRunner
             $"RESULT,current,{pattern},{transport},{size},latency_p99,{latP99Ms}");
     }
 
+    internal static int PrintUnsupported(string pattern, string transport,
+        int size, string reason)
+    {
+        Console.WriteLine($"UNSUPPORTED,{pattern},{transport},{size},{reason}");
+        return 0;
+    }
+
     private static double BandwidthMbps(double throughput, int size)
     {
         return (throughput * size) / 1_000_000.0;

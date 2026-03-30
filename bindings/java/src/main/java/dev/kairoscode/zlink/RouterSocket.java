@@ -4,8 +4,11 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import java.util.List;
+import java.util.Optional;
 
 public final class RouterSocket extends Socket {
+    private final RouterSocketOptions options = new RouterSocketOptions(this);
+
     public RouterSocket(Context ctx) {
         super(ctx, SocketType.ROUTER);
     }
@@ -18,11 +21,12 @@ public final class RouterSocket extends Socket {
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
     public void send(RoutingId rid, Message part) { super.send(rid, part); }
-    public void send(RoutingId rid, Message part, SendFlag flags) { super.send(rid, part, flags); }
     public void send(RoutingId rid, List<Message> parts) { super.send(rid, parts); }
-    public void send(RoutingId rid, List<Message> parts, SendFlag flags) { super.send(rid, parts, flags); }
+    public SendResult trySend(RoutingId rid, Message part) { return super.trySend(rid, part); }
+    public SendResult trySend(RoutingId rid, List<Message> parts) { return super.trySend(rid, parts); }
     public Received recv() { return super.recv(); }
-    public Received recv(ReceiveFlag flags) { return super.recv(flags); }
+    public Optional<Received> tryRecv() { return super.tryRecv(); }
     public void onReceive(SocketMessageHandler handler) { super.onReceive(handler); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
+    @Override public RouterSocketOptions options() { return options; }
 }

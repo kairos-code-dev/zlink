@@ -17,12 +17,14 @@
 ```bash
 ctest --test-dir core/build --output-on-failure -L contract
 ctest --test-dir core/build --output-on-failure -L sample-smoke -j1
+./bindings/cpp/run_samples.sh
 ```
 
 ## 검증 자산
 
 - `tests/contract/`: 바인딩 전용 계약 검증
 - `samples/`: 사용자-facing 사용 예제 + `sample-smoke` 실행 엔트리
+- `run_samples.sh`: 전체 sample smoke 실행 스크립트
 
 ## 타깃 규칙
 

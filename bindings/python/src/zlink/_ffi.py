@@ -59,6 +59,61 @@ class ZlinkServiceMonitorOpenOptions(ctypes.Structure):
     _fields_ = [("events", ctypes.c_uint32)]
 
 
+class ZlinkSpotNodeStatus(ctypes.Structure):
+    _fields_ = [
+        ("service_name", ctypes.c_char * 256),
+        ("local_endpoint", ctypes.c_char * 256),
+        ("node_routing_id", ZlinkRoutingId),
+        ("state", ctypes.c_uint32),
+        ("configured_peer_count", ctypes.c_uint32),
+        ("active_peer_count", ctypes.c_uint32),
+        ("connected_peer_count", ctypes.c_uint32),
+        ("subject_count", ctypes.c_uint32),
+        ("ready_subject_count", ctypes.c_uint32),
+        ("last_error", ctypes.c_int32),
+        ("last_changed_ms", ctypes.c_uint64),
+    ]
+
+
+class ZlinkSpotNodePeerEntry(ctypes.Structure):
+    _fields_ = [
+        ("service_name", ctypes.c_char * 256),
+        ("local_endpoint", ctypes.c_char * 256),
+        ("peer_endpoint", ctypes.c_char * 256),
+        ("source", ctypes.c_uint32),
+        ("state", ctypes.c_uint32),
+        ("connected_since_ms", ctypes.c_uint64),
+        ("last_changed_ms", ctypes.c_uint64),
+    ]
+
+
+class ZlinkSpotNodePeerFilter(ctypes.Structure):
+    _fields_ = [
+        ("peer_endpoint", ctypes.c_char * 256),
+        ("source", ctypes.c_uint32),
+        ("state", ctypes.c_uint32),
+    ]
+
+
+class ZlinkSpotNodeSubjectEntry(ctypes.Structure):
+    _fields_ = [
+        ("role", ctypes.c_uint32),
+        ("subject", ctypes.c_char * 256),
+        ("subject_kind", ctypes.c_uint32),
+        ("ready_peer_count", ctypes.c_uint32),
+        ("active_peer_count", ctypes.c_uint32),
+        ("last_changed_ms", ctypes.c_uint64),
+    ]
+
+
+class ZlinkSpotNodeSubjectFilter(ctypes.Structure):
+    _fields_ = [
+        ("role", ctypes.c_uint32),
+        ("subject", ctypes.c_char * 256),
+        ("subject_kind", ctypes.c_uint32),
+    ]
+
+
 class ZlinkMemberPeerEntry(ctypes.Structure):
     _fields_ = [
         ("service_type", ctypes.c_uint16),
@@ -351,6 +406,11 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_try_send_result",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkMsg), ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_send_rid",
             [
                 ctypes.c_void_p,
@@ -358,6 +418,16 @@ class _Lib:
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_size_t,
                 ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_try_send_rid_result",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
             ],
             ctypes.c_int,
         )
@@ -384,13 +454,23 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_try_publish_result",
+            [
+                ctypes.c_void_p,
+                ctypes.c_char_p,
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_subscribe",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
                 ctypes.POINTER(ctypes.c_size_t),
-                ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_char),
                 ctypes.POINTER(ctypes.c_size_t),
                 ctypes.c_uint32,
             ],
@@ -402,7 +482,7 @@ class _Lib:
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ctypes.c_int),
-                ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_char),
                 ctypes.POINTER(ctypes.c_size_t),
                 ctypes.c_uint32,
             ],
@@ -509,6 +589,7 @@ class _Lib:
         )
 
         self._require("zlink_spot_new", [ctypes.c_void_p], ctypes.c_void_p)
+        self._require("zlink_spot_wrap_node", [ctypes.c_void_p], ctypes.c_void_p)
         self._require(
             "zlink_spot_destroy",
             [ctypes.POINTER(ctypes.c_void_p)],
@@ -538,6 +619,40 @@ class _Lib:
         self._require(
             "zlink_spot_node_attach_discovery",
             [ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_status_snapshot",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkSpotNodeStatus)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_peers_snapshot",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkSpotNodePeerEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_peers_query",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkSpotNodePeerFilter),
+                ctypes.POINTER(ZlinkSpotNodePeerEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_subjects_snapshot",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkSpotNodeSubjectFilter),
+                ctypes.POINTER(ZlinkSpotNodeSubjectEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
             ctypes.c_int,
         )
 

@@ -844,7 +844,7 @@ active warmup은 active phase 시작 전 추가 송수신 워밍업을 수행하
 
 | 방향 | 단위 | 의미 | 측정 지점 | 패턴 |
 |------|------|------|-----------|------|
-| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_GATEWAY, MULTI_STREAM |
+| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_STREAM |
 | one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 - echo 패턴: client가 send → server echo → client recv. 1 rtt = 2 message hops. client가 echo를 수신한 횟수를 카운트한다.
@@ -889,7 +889,7 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 | 유형 | divisor | 적용 패턴 |
 |------|---------|-----------|
-| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM |
+| 양방향 RTT | `2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM |
 | 단방향 | `received_count` | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 ### 9.2 계산식
@@ -966,7 +966,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
 ### 11.1 지원 패턴
 
-MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT, MULTI_STREAM
+MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MULTI_SPOT, MULTI_STREAM
 
 #### 바인딩 소스 파일 명명 규칙
 
@@ -1000,7 +1000,6 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `comp_src_dealer_router_server` | `*_dealer_router_client.cpp` | `comp_src_dealer_router_client` |
 | MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_src_router_router_server` | `*_router_router_client.cpp` | `comp_src_router_router_client` |
 | MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_src_pubsub_server` | `*_pubsub_client.cpp` | `comp_src_pubsub_client` |
-| MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_src_gateway_server` | `*_gateway_client.cpp` | `comp_src_gateway_client` |
 | MULTI_SPOT (`--recv recv|callback`) | `*_spot_server.cpp` | `comp_src_spot_server` | `*_spot_client.cpp` | `comp_src_spot_client` |
 | MULTI_STREAM (`--recv recv|callback`) | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
@@ -1035,7 +1034,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |--------|------|
 | MULTI_DEALER / MULTI_ROUTER / MULTI_PUBSUB | `[64, 256, 1024, 65536, 131072, 262144]` |
 | MULTI_STREAM | `[64, 256, 1024, 65536]` |
-| MULTI_GATEWAY / MULTI_SPOT | `[64, 256, 1024, 65536, 131072, 262144]` |
+| MULTI_SPOT | `[64, 256, 1024, 65536, 131072, 262144]` |
 
 - STREAM 계열은 대량 동시 연결 환경에서 테스트하므로 65536B까지만 측정한다.
 
@@ -1044,7 +1043,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | 패턴군 | transport |
 |--------|-----------|
 | MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss (Python 엔진 기본값에 ipc 포함, 단 shell wrapper 기본값은 tcp,tls,ws,wss; Windows: ipc 제외) |
-| MULTI_GATEWAY, MULTI_SPOT | tcp, tls, ws, wss |
+| MULTI_SPOT | tcp, tls, ws, wss |
 | MULTI_STREAM | tcp, tls, ws, wss |
 
 ---
@@ -1234,7 +1233,7 @@ def bandwidth_mbps(throughput, msg_size, is_echo):
     return throughput * msg_size * multiplier / 1_000_000
 
 def latency_rtt_us(elapsed_us, roundtrip_count):
-    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM"""
+    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM"""
     return elapsed_us / max(1, roundtrip_count * 2)
 
 def latency_oneway_us(elapsed_us, count):

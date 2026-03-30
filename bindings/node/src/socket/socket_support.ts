@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { normalizeBufferLike } from '../buffer_like';
-import { Message, Received } from '../message';
+import { Message, Received, Subscribed, SubscriptionEvent } from '../message';
 import { requireNative } from '../native';
 import { ReceiveFlag } from './constants';
 import type { BufferLike } from '../buffer_like';
@@ -43,7 +43,7 @@ export function recvMessage(
     routingId?: Buffer | null;
     hasMore?: boolean;
   };
-  return new Received(raw.parts, raw.routingId ?? null, raw.hasMore === true);
+  return materializeReceived(raw);
 }
 
 export function recvInto(
@@ -71,3 +71,30 @@ export function recvMsgInto(
 }
 
 export { normalizeBufferLike };
+
+export function wrapMessageParts(parts: readonly Buffer[]): Message[] {
+  return parts.map((part) => Message.wrap(part));
+}
+
+export function materializeReceived(raw: {
+  parts: readonly Buffer[];
+  routingId?: Buffer | null;
+}): Received {
+  return new Received(wrapMessageParts(raw.parts), raw.routingId ?? null);
+}
+
+export function materializeSubscribed(raw: {
+  topic: string;
+  parts: readonly Buffer[];
+  routingId?: Buffer | null;
+}): Subscribed {
+  return new Subscribed(raw.topic, wrapMessageParts(raw.parts), raw.routingId ?? null);
+}
+
+export function materializeSubscriptionEvent(raw: {
+  topic: string;
+  subscribed: boolean;
+  routingId?: Buffer | null;
+}): SubscriptionEvent {
+  return new SubscriptionEvent(raw.topic, raw.subscribed, raw.routingId ?? null);
+}

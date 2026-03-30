@@ -1,0 +1,31 @@
+## Effective Options (start)
+- pattern: ALL
+- recv_mode: callback
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 256
+
+RESULT,current,PAIR,inproc,256,throughput,134106.00
+RESULT,current,PAIR,inproc,256,bandwidth,34.33
+RESULT,current,PAIR,inproc,256,latency,6.54
+RESULT,current,PAIR,inproc,256,latency_p95,4.37
+RESULT,current,PAIR,inproc,256,latency_p99,13.01
+RESULT,current,PUBSUB,inproc,256,throughput,115816.00
+RESULT,current,PUBSUB,inproc,256,bandwidth,29.65
+RESULT,current,PUBSUB,inproc,256,latency,7.77
+RESULT,current,PUBSUB,inproc,256,latency_p95,5.37
+RESULT,current,PUBSUB,inproc,256,latency_p99,18.00
+RESULT,current,DEALER_ROUTER,inproc,256,throughput,120914.00
+RESULT,current,DEALER_ROUTER,inproc,256,bandwidth,30.95
+RESULT,current,DEALER_ROUTER,inproc,256,latency,7.32
+RESULT,current,DEALER_ROUTER,inproc,256,latency_p95,4.93
+RESULT,current,DEALER_ROUTER,inproc,256,latency_p99,14.04
+RESULT,current,SPOT,inproc,256,throughput,106794.00
+RESULT,current,SPOT,inproc,256,bandwidth,27.34
+RESULT,current,SPOT,inproc,256,latency,11310.64
+RESULT,current,SPOT,inproc,256,latency_p95,16429.71
+RESULT,current,SPOT,inproc,256,latency_p99,19564.94
+
+## Effective Options (result)
+- recv_mode: callback
+- result_lines: 20

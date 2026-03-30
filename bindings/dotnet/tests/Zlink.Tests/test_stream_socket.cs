@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -64,15 +65,15 @@ public sealed class test_stream_socket
         return $"hex:{routingId:X8}";
     }
 
-    private static void SendLen32Be(Socket stream, string routingId,
-        Message message, SendFlags flags = SendFlags.None)
+    private static void SendLen32Be(StreamSocket stream, string routingId,
+        Message message)
     {
         using Message framed = Message.FromBytes(
             BuildLen32BeFrame(message.AsReadOnlySpan()));
-        stream.Send(routingId, framed, flags);
+        stream.Send(routingId, framed);
     }
 
-    private static void AttachLen32Be(Socket stream,
+    private static void AttachLen32Be(StreamSocket stream,
         Func<string, Message[], int> handler)
     {
         var accumulators = new Dictionary<string, Len32BeAccumulator>(
@@ -104,9 +105,33 @@ public sealed class test_stream_socket
         });
     }
 
-    private static bool TryDrainOneMultipart(Socket streamSocket)
+    private static bool TryDrainOneMultipart(StreamSocket streamSocket)
     {
         return CoreTestSupport.TryReceiveMultipartLastPart(streamSocket, 512, out _);
+    }
+
+    private static bool HasPublicMessageSend(Type type)
+    {
+        return type.GetMethod("Send", BindingFlags.Instance | BindingFlags.Public,
+            binder: null, types: new[] { typeof(Message) },
+            modifiers: null) != null;
+    }
+
+    private static bool HasPublicRoutedSend(Type type)
+    {
+        return type.GetMethod("Send", BindingFlags.Instance | BindingFlags.Public,
+            binder: null, types: new[]
+            {
+                typeof(string), typeof(Message)
+            }, modifiers: null) != null;
+    }
+
+    private static bool HasPublicReceiveWithoutRoutingId()
+    {
+        return typeof(StreamSocket).GetMethod("Receive",
+            BindingFlags.Instance | BindingFlags.Public, binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null) != null;
     }
 
     private static string ResolveRepoPath(string relativePath)
@@ -202,7 +227,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-case");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -215,7 +240,7 @@ public sealed class test_stream_socket
             foreach (Message message in messages)
             {
                 Interlocked.Increment(ref packets);
-                SendLen32Be(stream, rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message);
             }
             return 0;
         });
@@ -247,7 +272,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
 
         stream.AttachStreamRaw((_, _) => 0);
         Assert.Throws<InvalidOperationException>(() =>
@@ -267,7 +292,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-callback-ex");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -309,19 +334,7 @@ public sealed class test_stream_socket
     [Fact]
     public void stream_recv_api_dispatch_conflict()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
-
-        Assert.Throws<InvalidOperationException>(() =>
-            stream.Receive(out Message _, ReceiveFlags.DontWait));
-
-        stream.AttachStreamRaw((_, _) => 0);
-        Assert.Throws<InvalidOperationException>(() =>
-            stream.Receive(out Message _, ReceiveFlags.DontWait));
-        stream.DetachStream();
+        Assert.True(HasPublicReceiveWithoutRoutingId());
     }
 
     [Fact]
@@ -331,9 +344,9 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
 
-        stream.SetOption(SocketOptions.StreamNotify, 1);
+        stream.SetNotify(true);
         stream.AttachStreamRaw((_, _) => 0);
         stream.DetachStream();
     }
@@ -341,33 +354,13 @@ public sealed class test_stream_socket
     [Fact]
     public void stream_send_message_failure_preserves_ownership()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var sub = new Socket(ctx, SocketType.Sub);
-        using var msg = Message.FromBytes("x"u8);
-
-        Assert.Throws<InvalidOperationException>(() =>
-            sub.Send(msg, SendFlags.DontWait));
-        Assert.Equal(1, msg.Size);
+        Assert.False(HasPublicMessageSend(typeof(SubSocket)));
     }
 
     [Fact]
     public void stream_streamsend_message_failure_preserves_ownership()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var dealer = new Socket(ctx, SocketType.Dealer);
-        using var msg = Message.FromBytes("x"u8);
-
-        const uint rid = 1;
-        Assert.Throws<InvalidOperationException>(() =>
-            dealer.Send(StreamRoutingIdToPublicString(rid), msg,
-                SendFlags.DontWait));
-        Assert.Equal(1, msg.Size);
+        Assert.False(HasPublicRoutedSend(typeof(DealerSocket)));
     }
 
     [Fact]
@@ -377,7 +370,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-raw-cb");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -389,7 +382,7 @@ public sealed class test_stream_socket
         {
             if (payload.AsReadOnlySpan().SequenceEqual(expected))
                 Interlocked.Increment(ref matched);
-            stream.Send(rid, payload, SendFlags.None);
+            stream.Send(rid, payload);
             return 0;
         });
 
@@ -412,7 +405,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-raw-owned");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -457,7 +450,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-cb");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -471,7 +464,7 @@ public sealed class test_stream_socket
             {
                 if (message.AsReadOnlySpan().SequenceEqual(payload))
                     Interlocked.Increment(ref matched);
-                SendLen32Be(stream, rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message);
             }
             return 0;
         });
@@ -497,7 +490,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len-owned");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -546,7 +539,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-zero-cb");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -559,7 +552,7 @@ public sealed class test_stream_socket
             ReadOnlySpan<byte> payload = msg.AsReadOnlySpan();
             if (payload.Length == 1 && payload[0] == 0)
                 Interlocked.Increment(ref matched);
-            stream.Send(rid, msg, SendFlags.None);
+            stream.Send(rid, msg);
             return 0;
         });
 
@@ -601,7 +594,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-multi");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -621,7 +614,7 @@ public sealed class test_stream_socket
             foreach (Message message in messages)
             {
                 Interlocked.Increment(ref packets);
-                SendLen32Be(stream, rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message);
             }
             return 0;
         });
@@ -647,7 +640,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-life");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -657,7 +650,7 @@ public sealed class test_stream_socket
         {
             Interlocked.Increment(ref callbacks);
             foreach (Message message in messages)
-                SendLen32Be(stream, rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message);
             return 0;
         });
 
@@ -684,7 +677,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-batch");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -704,7 +697,7 @@ public sealed class test_stream_socket
             for (int i = 0; i < parts.Length; i++)
             {
                 Interlocked.Increment(ref packetCount);
-                SendLen32Be(stream, rid, parts[i], SendFlags.None);
+                SendLen32Be(stream, rid, parts[i]);
             }
             return 0;
         });
@@ -731,7 +724,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -744,19 +737,19 @@ public sealed class test_stream_socket
         byte[] incoming = "hello"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        stream.Receive(out string routingId, out Message payloadMessage);
-        using (payloadMessage)
+        Received received = stream.Receive();
+        using (Message payloadMessage = received.Parts[0])
         {
+            string routingId = received.RoutingId;
             Assert.False(string.IsNullOrEmpty(routingId));
             Assert.Equal("hello", CoreTestSupport.Utf8(payloadMessage));
+            using var reply = Message.FromBytes("world"u8);
+            stream.Send(routingId, reply);
+            Assert.Throws<ObjectDisposedException>(() =>
+            {
+                _ = reply.Size;
+            });
         }
-
-        using var reply = Message.FromBytes("world"u8);
-        stream.Send(routingId, reply, SendFlags.None);
-        Assert.Throws<ObjectDisposedException>(() =>
-        {
-            _ = reply.Size;
-        });
 
         client.ReceiveTimeout = 3000;
         byte[] recv = new byte[64];
@@ -772,7 +765,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-peers");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -785,9 +778,10 @@ public sealed class test_stream_socket
         byte[] incoming = "routing-id-check"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        stream.Receive(out string routingId, out Message message);
-        using (message)
+        Received received = stream.Receive();
+        using (Message message = received.Parts[0])
         {
+            string routingId = received.RoutingId;
             Assert.False(string.IsNullOrEmpty(routingId));
             Assert.Equal("routing-id-check", CoreTestSupport.Utf8(message));
         }
@@ -800,7 +794,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-monitor");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -816,9 +810,10 @@ public sealed class test_stream_socket
             using var client = ConnectRawClient(port);
             NetworkStream ns = client.GetStream();
             SendAll(ns, "probe"u8);
-            stream.Receive(out string routingId, out Message payload);
-            using (payload)
+            Received received = stream.Receive();
+            using (Message payload = received.Parts[0])
             {
+                string routingId = received.RoutingId;
                 Assert.False(string.IsNullOrEmpty(routingId));
                 Assert.Equal("probe", CoreTestSupport.Utf8(payload));
             }
@@ -852,14 +847,14 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-raw-load");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
 
         stream.AttachStreamRaw((rid, payload) =>
         {
-            stream.Send(rid, payload, SendFlags.None);
+            stream.Send(rid, payload);
             return 0;
         });
 
@@ -903,7 +898,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len-load");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -911,7 +906,7 @@ public sealed class test_stream_socket
         AttachLen32Be(stream, (rid, messages) =>
         {
             foreach (Message message in messages)
-                SendLen32Be(stream, rid, message, SendFlags.None);
+                SendLen32Be(stream, rid, message);
             return 0;
         });
 
@@ -952,7 +947,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         stream.SetOption(SocketOptions.MaxMsgSize, 4L);
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-maxmsg");
@@ -968,8 +963,9 @@ public sealed class test_stream_socket
         NetworkStream ns = client.GetStream();
         SendAll(ns, "ok"u8);
 
-        stream.Receive(out string serverRoutingId, out Message payload);
-        using (payload)
+        Received received = stream.Receive();
+        string serverRoutingId = received.RoutingId;
+        using (Message payload = received.Parts[0])
         {
             Assert.Equal("ok", CoreTestSupport.Utf8(payload));
         }
@@ -998,7 +994,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         Assert.Throws<ZlinkException>(() =>
             stream.Connect("tcp://127.0.0.1:5555"));
     }
@@ -1012,7 +1008,7 @@ public sealed class test_stream_socket
             return;
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         string endpoint = CoreTestSupport.NewEndpoint("ws", "stream-ws");
         stream.Bind(endpoint);
     }
@@ -1038,7 +1034,7 @@ public sealed class test_stream_socket
         }
 
         using var ctx = new Context();
-        using var stream = new Socket(ctx, SocketType.Stream);
+        using var stream = new StreamSocket(ctx);
         stream.SetOption(SocketOptions.TlsCert, cert);
         stream.SetOption(SocketOptions.TlsKey, key);
         string endpoint = CoreTestSupport.NewEndpoint("wss", "stream-wss");

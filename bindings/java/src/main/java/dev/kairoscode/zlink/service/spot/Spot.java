@@ -7,10 +7,11 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendFlag;
+import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendReadyHandler;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.SubscribeHandler;
+import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
@@ -27,6 +28,7 @@ import java.lang.invoke.MethodType;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -38,6 +40,9 @@ public final class Spot implements AutoCloseable {
     private static final int TOPIC_CAPACITY = 256;
     private static final int TOPIC_CACHE_LIMIT = 1024;
     private static final int TOPIC_SCRATCH_INITIAL_CAPACITY = 64;
+    private static final int ERRNO_EINTR = 4;
+    private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_SUBSCRIBE_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -72,6 +77,13 @@ public final class Spot implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_spot_new");
     }
 
+    Spot(MemorySegment handle) {
+        Objects.requireNonNull(handle, "handle");
+        if (handle.address() == 0)
+            throw new IllegalArgumentException("spot handle must not be null");
+        this.handle = handle;
+    }
+
     /** Returns the native spot handle. */
     public MemorySegment handle() {
         return handle;
@@ -79,72 +91,84 @@ public final class Spot implements AutoCloseable {
 
     /** Publishes one payload part on the topic. */
     public void publish(String topicId, Message part) {
-        publish(topicId, part, SendFlag.NONE);
+        Objects.requireNonNull(part, "part");
+        publish(topicId, List.of(part));
     }
 
-    /** Publishes one payload part on the topic with explicit flags. */
-    public void publish(String topicId, Message part, SendFlag flags) {
+    public SendResult tryPublish(String topicId, Message part) {
         Objects.requireNonNull(part, "part");
-        publish(topicId, List.of(part), flags);
+        return tryPublish(topicId, List.of(part));
     }
 
     /** Publishes a multipart payload on the topic. */
     public void publish(String topicId, List<Message> parts) {
-        publish(topicId, parts, SendFlag.NONE);
+        publishInternal(topicId, parts, false);
     }
 
-    /** Publishes a multipart payload on the topic with explicit flags. */
-    public void publish(String topicId, List<Message> parts, SendFlag flags) {
-        Objects.requireNonNull(flags, "flags");
+    public SendResult tryPublish(String topicId, List<Message> parts) {
+        return publishInternal(topicId, parts, true);
+    }
+
+    private SendResult publishInternal(String topicId, List<Message> parts,
+                                       boolean nonBlocking) {
         int partCount = validateMessages(parts, "parts");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment topic = topicCString(topicId);
-            MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT,
-              partCount);
-            int initialized = 0;
-            try {
-                for (int i = 0; i < partCount; i++) {
-                    Message part = Objects.requireNonNull(parts.get(i),
-                      "parts[" + i + "]");
-                    MemorySegment dest = vec.asSlice((long) i * MSG_SIZE,
-                      MSG_SIZE);
-                    int rc = NativeMsg.msgInit(dest);
-                    if (rc != 0)
-                        throw ZlinkException.fromLastError("zlink_msg_init");
-                    initialized++;
-                    part.copyTo(dest);
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment topic = topicCString(topicId);
+                MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT,
+                  partCount);
+                int initialized = 0;
+                boolean success = false;
+                try {
+                    for (int i = 0; i < partCount; i++) {
+                        Message part = Objects.requireNonNull(parts.get(i),
+                          "parts[" + i + "]");
+                        MemorySegment dest = vec.asSlice((long) i * MSG_SIZE,
+                          MSG_SIZE);
+                        int initRc = NativeMsg.msgInit(dest);
+                        if (initRc != 0)
+                            throw ZlinkException.fromLastError("zlink_msg_init");
+                        initialized++;
+                        part.copyTo(dest);
+                    }
+                    int rc = nonBlocking
+                        ? Native.tryPublishResult(handle, topic, vec, partCount)
+                        : Native.publish(handle, topic, vec, partCount, 0);
+                    if (nonBlocking) {
+                        if (rc >= 0) {
+                            if (rc == SendResult.SENT.nativeValue())
+                                success = true;
+                            return SendResult.fromNativeValue(rc);
+                        }
+                    } else {
+                        if (rc != 0)
+                            throw ZlinkException.fromLastError("zlink_publish");
+                        success = true;
+                        return SendResult.SENT;
+                    }
+                } finally {
+                    if (!success)
+                        closeMsgVector(vec, initialized);
                 }
-                int rc = Native.publish(handle, topic, vec, partCount,
-                  flags.getValue());
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_publish");
-            } catch (RuntimeException ex) {
-                closeMsgVector(vec, initialized);
-                throw ex;
             }
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            throw ZlinkException.fromLastError(
+                nonBlocking ? "zlink_try_publish_result" : "zlink_publish");
         }
     }
 
-    @Deprecated(forRemoval = false)
-    public void publish(String topicId, Message[] parts, SendFlag flags) {
-        publish(topicId, List.of(parts), flags);
-    }
-
     /** Subscribes to one topic or pattern string. */
-    public void subscribe(String topicId) {
+    public void setSubscription(String topicId) {
         MemorySegment filter = topicCString(topicId);
         int rc = Native.setSubscription(handle, filter);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_set_subscription");
     }
 
-    /** Alias for {@link #subscribe(String)}. */
-    public void subscribePattern(String pattern) {
-        subscribe(pattern);
-    }
-
     /** Removes a topic or pattern subscription. */
-    public void unsubscribe(String topicIdOrPattern) {
+    public void unsetSubscription(String topicIdOrPattern) {
         MemorySegment filter = topicCString(topicIdOrPattern);
         int rc = Native.unsetSubscription(handle, filter);
         if (rc != 0)
@@ -214,40 +238,14 @@ public final class Spot implements AutoCloseable {
         return new ServiceMonitor(monitor);
     }
 
-    /** Receives the next topic delivery. */
-    public SpotMessage recv() {
-        return recv(ReceiveFlag.NONE);
+    public TopicMessage subscribe() {
+        return receiveTopicMessage(ReceiveFlag.NONE).orElseThrow(
+            () -> new IllegalStateException(
+                "blocking subscribe returned no delivery"));
     }
 
-    /** Receives the next topic delivery with explicit flags. */
-    public SpotMessage recv(ReceiveFlag flags) {
-        Objects.requireNonNull(flags, "flags");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-            rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-              (byte) 0);
-            MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
-            MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-            topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-
-            int rc = Native.subscribe(handle, rid, partsOut, partCountOut,
-              topicOut, topicLenOut, flags.getValue());
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_subscribe");
-
-            long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
-            MemorySegment partsAddr = partsOut.get(ValueLayout.ADDRESS, 0);
-            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
-            int topicLength = normalizeTopicLength(topicOut, TOPIC_CAPACITY,
-              topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-            String topicId = topicLength == 0
-              ? ""
-              : new String(topicOut.asSlice(0, topicLength).toArray(
-                ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
-            return new SpotMessage(topicId, parts);
-        }
+    public Optional<TopicMessage> trySubscribe() {
+        return receiveTopicMessage(ReceiveFlag.DONTWAIT);
     }
 
     @Override
@@ -270,46 +268,6 @@ public final class Spot implements AutoCloseable {
         topicScratchCapacity.remove();
         if (topicCacheArena.scope().isAlive())
             topicCacheArena.close();
-    }
-
-    public static final class SpotMessage implements AutoCloseable {
-        private final String topicId;
-        private final List<Message> parts;
-        private boolean closed;
-
-        SpotMessage(String topicId, Message[] parts) {
-            this.topicId = topicId == null ? "" : topicId;
-            this.parts = parts == null ? List.of() : List.of(parts);
-        }
-
-        public String topicId() {
-            return topicId;
-        }
-
-        public List<Message> parts() {
-            return parts;
-        }
-
-        public Message firstPart() {
-            if (parts.isEmpty())
-                throw new IllegalStateException("spot message has no parts");
-            return parts.get(0);
-        }
-
-        @Override
-        public void close() {
-            if (closed)
-                return;
-            closed = true;
-            Message.closeAll(parts.toArray(Message[]::new));
-        }
-    }
-
-    private static void closeMsgVector(MemorySegment vec, int count) {
-        for (int i = 0; i < count; i++) {
-            MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
-            NativeMsg.msgClose(msg);
-        }
     }
 
     private static int normalizeTopicLength(MemorySegment topic, int capacity,
@@ -434,6 +392,54 @@ public final class Spot implements AutoCloseable {
           current.getUncaughtExceptionHandler();
         if (uncaught != null)
             uncaught.uncaughtException(current, failure);
+    }
+
+    private Optional<TopicMessage> receiveTopicMessage(ReceiveFlag flags) {
+        Objects.requireNonNull(flags, "flags");
+        ensureOpen();
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+                rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+                  (byte) 0);
+                MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
+                MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
+                MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
+                MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+                topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+
+                int rc = Native.subscribe(handle, rid, partsOut, partCountOut,
+                  topicOut, topicLenOut, flags.getValue());
+                if (rc == 0) {
+                    long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
+                    MemorySegment partsAddr = partsOut.get(ValueLayout.ADDRESS, 0);
+                    Message[] parts = Message.fromOwnedMsgVector(partsAddr, partCount);
+                    int topicLength = normalizeTopicLength(topicOut, TOPIC_CAPACITY,
+                      topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+                    String topicId = topicLength == 0
+                      ? ""
+                      : new String(topicOut.asSlice(0, topicLength).toArray(
+                        ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+                    return Optional.of(new TopicMessage(null, topicId, parts));
+                }
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            if (flags == ReceiveFlag.DONTWAIT
+                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                return Optional.empty();
+            }
+            throw ZlinkException.fromLastError("zlink_subscribe");
+        }
+    }
+
+    private static void closeMsgVector(MemorySegment vec, int count) {
+        for (int i = 0; i < count; i++) {
+            MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
+            NativeMsg.msgClose(msg);
+        }
     }
 
     private static void closeArena(Arena arena) {

@@ -3,7 +3,6 @@ package dev.kairoscode.zlink.contract;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
@@ -35,7 +34,7 @@ public class ReceivedContractTest {
             dealer.send(List.of(Message.copyOfUtf8("part-1"),
                 Message.copyOfUtf8("part-2")));
 
-            try (Received inbound = router.recv(ReceiveFlag.NONE)) {
+            try (Received inbound = router.recv()) {
                 assertTrue(inbound.hasRoutingId());
                 assertArrayEquals(dealerRid.toByteArray(),
                     inbound.routingId().toByteArray());

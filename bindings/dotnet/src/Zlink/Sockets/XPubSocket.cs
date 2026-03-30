@@ -9,16 +9,28 @@ public sealed class XPubSocket : PublisherSocketBase
     {
     }
 
-    public void ReceiveSubscriptionEvent(out string topic, out bool subscribed,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public void SetVerbose(bool enabled)
     {
-        Kernel.ReceiveSubscriptionEvent(out topic, out subscribed, flags);
+        SetOption(SocketOptions.XPubVerbose, enabled ? 1 : 0);
     }
 
-    public void ReceiveSubscriptionEvent(out string routingId, out string topic,
-        out bool subscribed, ReceiveFlags flags = ReceiveFlags.None)
+    public void SetVerboser(bool enabled)
     {
-        Kernel.ReceiveSubscriptionEvent(out routingId, out topic, out subscribed,
-            flags);
+        SetOption(SocketOptions.XPubVerboser, enabled ? 1 : 0);
+    }
+
+    public void SetNoDrop(bool enabled)
+    {
+        SetOption(SocketOptions.XPubNoDrop, enabled ? 1 : 0);
+    }
+
+    public SubscriptionEvent ReceiveSubscriptionEvent()
+    {
+        return Kernel.ReceiveSubscriptionEvent();
+    }
+
+    public SubscriptionEvent? TryReceiveSubscriptionEvent()
+    {
+        return Kernel.TryReceiveSubscriptionEvent();
     }
 }

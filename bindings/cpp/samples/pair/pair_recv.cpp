@@ -23,10 +23,10 @@ int main ()
       2000, 1));
 
     zlink::message_t outbound = detail::make_message ("pair-recv");
-    assert (client.send (outbound) == 0);
+    client.send (outbound);
 
-    zlink::message_t inbound;
-    assert (server.recv (inbound) == 0);
-    assert (inbound.to_string () == "pair-recv");
+    const zlink::received_t inbound = server.receive ();
+    assert (inbound.parts.size () == 1);
+    assert (inbound.parts[0].to_string () == "pair-recv");
     return 0;
 }

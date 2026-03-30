@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 final class TopicPlane {
     private final Socket socket;
@@ -39,6 +40,17 @@ final class TopicPlane {
         socket.publishParts(topicId, parts, flags, false);
     }
 
+    SendResult tryPublish(String topicId, Message part) {
+        Objects.requireNonNull(part, "part");
+        return tryPublish(topicId, List.of(part));
+    }
+
+    SendResult tryPublish(String topicId, List<Message> parts) {
+        Objects.requireNonNull(topicId, "topicId");
+        Objects.requireNonNull(parts, "parts");
+        return socket.tryPublishParts(topicId, parts);
+    }
+
     TopicMessage subscribe() {
         return subscribe(ReceiveFlag.NONE);
     }
@@ -64,7 +76,7 @@ final class TopicPlane {
             byte[] routingId = Socket.decodeRoutingId(rid);
             long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
             MemorySegment partsAddr = partsOut.get(ValueLayout.ADDRESS, 0);
-            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
+            Message[] parts = Message.fromOwnedMsgVector(partsAddr, partCount);
             int topicLength = Socket.normalizeTopicLength(topicOut, Socket.TOPIC_CAPACITY,
                 topicLenOut.get(ValueLayout.JAVA_LONG, 0));
             String topicId = topicLength == 0
@@ -72,6 +84,48 @@ final class TopicPlane {
                 : new String(topicOut.asSlice(0, topicLength).toArray(
                     ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
             return new TopicMessage(Socket.toRoutingId(routingId), topicId, parts);
+        }
+    }
+
+    Optional<TopicMessage> trySubscribe() {
+        socket.ensureOpen();
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+                rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+                    (byte) 0);
+                MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
+                MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
+                MemorySegment topicOut = arena.allocate(Socket.TOPIC_CAPACITY);
+                MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+                topicLenOut.set(ValueLayout.JAVA_LONG, 0, Socket.TOPIC_CAPACITY);
+
+                int rc = Native.subscribe(socket.handle(), rid, partsOut, partCountOut,
+                    topicOut, topicLenOut, ReceiveFlag.DONTWAIT.getValue());
+                if (rc == 0) {
+                    byte[] routingId = Socket.decodeRoutingId(rid);
+                    long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
+                    MemorySegment partsAddr = partsOut.get(ValueLayout.ADDRESS, 0);
+                    Message[] parts = Message.fromOwnedMsgVector(partsAddr, partCount);
+                    int topicLength = Socket.normalizeTopicLength(topicOut,
+                        Socket.TOPIC_CAPACITY,
+                        topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+                    String topicId = topicLength == 0 ? ""
+                        : new String(topicOut.asSlice(0, topicLength).toArray(
+                            ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+                    return Optional.of(new TopicMessage(Socket.toRoutingId(routingId),
+                        topicId, parts));
+                }
+            }
+
+            int errno = Native.errno();
+            if (errno == Socket.ERRNO_EINTR)
+                continue;
+            if (errno == Socket.ERRNO_EAGAIN
+                || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
+                return Optional.empty();
+            }
+            throw ZlinkException.fromLastError("zlink_subscribe");
         }
     }
 
@@ -100,6 +154,44 @@ final class TopicPlane {
                     ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
             return new SubscriptionEvent(Socket.toRoutingId(Socket.decodeRoutingId(rid)),
                 subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0, filter);
+        }
+    }
+
+    Optional<SubscriptionEvent> trySubscriptionEvent() {
+        socket.ensureOpen();
+        while (true) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+                rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+                    (byte) 0);
+                MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
+                MemorySegment topicOut = arena.allocate(Socket.TOPIC_CAPACITY);
+                MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
+                topicLenOut.set(ValueLayout.JAVA_LONG, 0, Socket.TOPIC_CAPACITY);
+
+                int rc = Native.subscriptionEvent(socket.handle(), rid, subscribedOut,
+                    topicOut, topicLenOut, ReceiveFlag.DONTWAIT.getValue());
+                if (rc == 0) {
+                    int topicLength = Socket.normalizeTopicLength(topicOut,
+                        Socket.TOPIC_CAPACITY,
+                        topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+                    String filter = topicLength == 0 ? ""
+                        : new String(topicOut.asSlice(0, topicLength).toArray(
+                            ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+                    return Optional.of(new SubscriptionEvent(
+                        Socket.toRoutingId(Socket.decodeRoutingId(rid)),
+                        subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0, filter));
+                }
+            }
+
+            int errno = Native.errno();
+            if (errno == Socket.ERRNO_EINTR)
+                continue;
+            if (errno == Socket.ERRNO_EAGAIN
+                || errno == Socket.ERRNO_EWOULDBLOCK_WIN) {
+                return Optional.empty();
+            }
+            throw ZlinkException.fromLastError("zlink_subscription_event");
         }
     }
 

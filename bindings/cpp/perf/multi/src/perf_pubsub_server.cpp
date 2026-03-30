@@ -80,7 +80,8 @@ bool run_phase (zlink::socket_t &publisher,
             return false;
         }
 
-        const int poll_rc = poller.wait (events, compute_wait_ms (settings, deadline));
+        const int poll_rc =
+          poller.wait_all (events, compute_wait_ms (settings, deadline));
         if (poll_rc < 0) {
             if (errno == EINTR)
                 continue;

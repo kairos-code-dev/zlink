@@ -13,8 +13,7 @@ template<typename SocketT> class has_routed_send_t
     static auto test (int)
       -> decltype (std::declval<T &> ().send (
                       std::declval<const zlink_routing_id_t &> (),
-                      std::declval<zlink::message_t &> (),
-                      zlink::send_flag::none),
+                      std::declval<zlink::message_t &> ()),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -23,15 +22,43 @@ template<typename SocketT> class has_routed_send_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-template<typename SocketT> class has_routed_recv_t
+template<typename SocketT> class has_receive_t
 {
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().recv (
-                      std::declval<zlink_routing_id_t &> (),
-                      std::declval<zlink::message_t &> (),
-                      zlink::recv_flag::none),
+      -> decltype (std::declval<T &> ().receive (),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_raw_common_option_set_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().set_option (
+                      zlink::socket_option::linger, 0),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_raw_common_option_get_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().get_option (
+                      zlink::socket_option::linger,
+                      static_cast<int *> (NULL)),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -42,20 +69,24 @@ template<typename SocketT> class has_routed_recv_t
 
 static_assert (!has_routed_send_t<zlink::pair_socket_t>::value,
                "pair_socket_t must not expose routed send");
-static_assert (!has_routed_recv_t<zlink::pair_socket_t>::value,
-               "pair_socket_t must not expose routed recv");
+static_assert (has_receive_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must expose receive");
+static_assert (!has_raw_common_option_set_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must not expose raw common option setters");
+static_assert (!has_raw_common_option_get_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must not expose raw common option getters");
 static_assert (!has_routed_send_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must not expose routed send");
-static_assert (!has_routed_recv_t<zlink::dealer_socket_t>::value,
-               "dealer_socket_t must not expose routed recv");
+static_assert (has_receive_t<zlink::dealer_socket_t>::value,
+               "dealer_socket_t must expose receive");
 static_assert (has_routed_send_t<zlink::router_socket_t>::value,
                "router_socket_t must expose routed send");
-static_assert (has_routed_recv_t<zlink::router_socket_t>::value,
-               "router_socket_t must expose routed recv");
+static_assert (has_receive_t<zlink::router_socket_t>::value,
+               "router_socket_t must expose receive");
 static_assert (has_routed_send_t<zlink::stream_socket_t>::value,
                "stream_socket_t must expose routed send");
-static_assert (has_routed_recv_t<zlink::stream_socket_t>::value,
-               "stream_socket_t must expose routed recv");
+static_assert (has_receive_t<zlink::stream_socket_t>::value,
+               "stream_socket_t must expose receive");
 
 void test_pair_send_recv_single_part ()
 {
@@ -65,7 +96,7 @@ void test_pair_send_recv_single_part ()
     zlink::monitor_handle_t left_monitor = left.monitor_handle ();
     zlink::monitor_handle_t right_monitor = right.monitor_handle ();
 
-    const std::string endpoint = zlink_cpp_contract::unique_tcp ("pair");
+    const std::string endpoint = zlink_cpp_contract::unique_inproc ("pair");
     assert (left.bind (endpoint) == 0);
     assert (right.connect (endpoint) == 0);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
@@ -78,11 +109,11 @@ void test_pair_send_recv_single_part ()
       1));
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("ping");
-    assert (right.send (outbound, zlink::send_flag::dontwait) == 0);
+    right.send (outbound);
 
-    zlink::message_t inbound;
-    assert (left.recv (inbound) == 0);
-    assert (inbound.to_string () == "ping");
+    const zlink::received_t inbound = left.receive ();
+    assert (inbound.parts.size () == 1);
+    assert (inbound.parts[0].to_string () == "ping");
 }
 
 void test_pair_send_recv_multipart ()
@@ -94,7 +125,7 @@ void test_pair_send_recv_multipart ()
     zlink::monitor_handle_t right_monitor = right.monitor_handle ();
 
     const std::string endpoint =
-      zlink_cpp_contract::unique_tcp ("pair-multipart");
+      zlink_cpp_contract::unique_inproc ("pair-multipart");
     assert (left.bind (endpoint) == 0);
     assert (right.connect (endpoint) == 0);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
@@ -109,13 +140,12 @@ void test_pair_send_recv_multipart ()
     std::vector<zlink::message_t> outbound;
     outbound.push_back (zlink_cpp_contract::make_message ("one"));
     outbound.push_back (zlink_cpp_contract::make_message ("two"));
-    assert (right.send (outbound, zlink::send_flag::dontwait) == 0);
+    right.send (outbound);
 
-    std::vector<zlink::message_t> inbound;
-    assert (left.recv (inbound) == 0);
-    assert (inbound.size () == 2);
-    assert (inbound[0].to_string () == "one");
-    assert (inbound[1].to_string () == "two");
+    const zlink::received_t inbound = left.receive ();
+    assert (inbound.parts.size () == 2);
+    assert (inbound.parts[0].to_string () == "one");
+    assert (inbound.parts[1].to_string () == "two");
 }
 
 } // namespace

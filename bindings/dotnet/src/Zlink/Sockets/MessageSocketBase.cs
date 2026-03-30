@@ -17,14 +17,24 @@ public abstract class MessageSocketBase : SocketBase
     {
     }
 
-    public void Send(Message message, SendFlags flags = SendFlags.None)
+    public void Send(Message message)
     {
-        Kernel.Send(message, flags);
+        Kernel.Send(message);
     }
 
-    public void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    public void Send(IReadOnlyList<Message> parts)
     {
-        Kernel.Send(parts, flags);
+        Kernel.Send(parts);
+    }
+
+    public SendResult TrySend(Message message)
+    {
+        return Kernel.TrySend(message);
+    }
+
+    public SendResult TrySend(IReadOnlyList<Message> parts)
+    {
+        return Kernel.TrySend(parts);
     }
 
     public void RecvHandler(SocketRecvHandler handler)
@@ -32,13 +42,13 @@ public abstract class MessageSocketBase : SocketBase
         Kernel.RecvHandler(handler);
     }
 
-    public void Receive(out Message message, ReceiveFlags flags = ReceiveFlags.None)
+    public Received Receive()
     {
-        Kernel.Receive(out message, flags);
+        return Kernel.Receive();
     }
 
-    public void Receive(out Message[] parts, ReceiveFlags flags = ReceiveFlags.None)
+    public Received? TryReceive()
     {
-        Kernel.Receive(out parts, flags);
+        return Kernel.TryReceive();
     }
 }

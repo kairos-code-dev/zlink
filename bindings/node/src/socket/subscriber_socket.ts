@@ -11,10 +11,10 @@ export class SubscriberSocket extends RecvSocket {
   }
 
   subscribe(filter: BufferLike | string): void {
-    this.setSockOpt(SocketOption.SUBSCRIBE, normalizeBufferLike(filter, 'filter'));
+    this.setSockOptRaw(SocketOption.SUBSCRIBE, normalizeBufferLike(filter, 'filter'));
   }
 
   unsubscribe(filter: BufferLike | string): void {
-    this.setSockOpt(SocketOption.UNSUBSCRIBE, normalizeBufferLike(filter, 'filter'));
+    this.setSockOptRaw(SocketOption.UNSUBSCRIBE, normalizeBufferLike(filter, 'filter'));
   }
 }

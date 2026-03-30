@@ -287,11 +287,11 @@ internal static class PerfStreamCallbackServer
 
     private sealed class PendingStreamPacket
     {
-        internal uint RoutingId { get; private set; }
+        internal string RoutingId { get; private set; } = string.Empty;
         internal Message? Payload { get; private set; }
         internal bool HasPayload => Payload != null;
 
-        internal void Assign(uint routingId, Message payload)
+        internal void Assign(string routingId, Message payload)
         {
             RoutingId = routingId;
             Payload = payload;
@@ -302,7 +302,7 @@ internal static class PerfStreamCallbackServer
             Clear();
             RoutingId = other.RoutingId;
             Payload = other.Payload;
-            other.RoutingId = 0;
+            other.RoutingId = string.Empty;
             other.Payload = null;
         }
 
@@ -310,7 +310,7 @@ internal static class PerfStreamCallbackServer
         {
             Payload?.Dispose();
             Payload = null;
-            RoutingId = 0;
+            RoutingId = string.Empty;
         }
     }
 

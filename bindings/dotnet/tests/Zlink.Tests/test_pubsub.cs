@@ -28,7 +28,7 @@ public sealed class test_pubsub
         Thread.Sleep(100);
 
         CoreTestSupport.PublishWithRetry(publisher, string.Empty, "test"u8,
-            SendFlags.None, 2000);
+            2000);
         Assert.Equal("test", CoreTestSupport.SubscribeUtf8WithTimeout(subscriber,
             out string topic, 2000));
         Assert.Equal(string.Empty, topic);
@@ -55,12 +55,9 @@ public sealed class test_pubsub
         subscriber.SetSubscription("topicA");
         Thread.Sleep(100);
 
-        CoreTestSupport.PublishWithRetry(publisher, "topicA", "hello"u8,
-            SendFlags.None, 2000);
-        CoreTestSupport.PublishWithRetry(publisher, "topicB", "world"u8,
-            SendFlags.None, 2000);
-        CoreTestSupport.PublishWithRetry(publisher, "topicA", "test"u8,
-            SendFlags.None, 2000);
+        CoreTestSupport.PublishWithRetry(publisher, "topicA", "hello"u8, 2000);
+        CoreTestSupport.PublishWithRetry(publisher, "topicB", "world"u8, 2000);
+        CoreTestSupport.PublishWithRetry(publisher, "topicA", "test"u8, 2000);
 
         Assert.Equal("hello", CoreTestSupport.SubscribeUtf8WithTimeout(subscriber,
             out string topic0, 2000));
@@ -98,7 +95,7 @@ public sealed class test_pubsub
         Thread.Sleep(50);
 
         CoreTestSupport.PublishWithRetry(xpub, string.Empty, "xpub_xsub_test"u8,
-            SendFlags.None, 2000);
+            2000);
         Assert.Equal("xpub_xsub_test", CoreTestSupport.SubscribeUtf8WithTimeout(
             xsub, out string recvTopic, 2000));
         Assert.Equal(string.Empty, recvTopic);

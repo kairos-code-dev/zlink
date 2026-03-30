@@ -31,6 +31,11 @@ internal static class CoreTestSupport
         {
             return false;
         }
+        catch (TypeInitializationException ex) when (ex.InnerException
+                is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false;
+        }
     }
 
     internal static (int major, int minor, int patch) ReadCoreHeaderVersion()
@@ -113,173 +118,82 @@ internal static class CoreTestSupport
         return false;
     }
 
-    internal static void SendWithRetry(Zlink.Socket socket,
-        ReadOnlySpan<byte> payload, SendFlags flags, int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            using Message message = Message.FromBytes(payload);
-            try
-            {
-                socket.Send(message, flags | SendFlags.DontWait);
-                return;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
-            Thread.Sleep(10);
-        }
-        throw new TimeoutException("send timeout");
-    }
-
     internal static void SendWithRetry(MessageSocketBase socket,
-        ReadOnlySpan<byte> payload, SendFlags flags, int timeoutMs)
+        ReadOnlySpan<byte> payload, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
             using Message message = Message.FromBytes(payload);
-            try
-            {
-                socket.Send(message, flags | SendFlags.DontWait);
+            SendResult result = socket.TrySend(message);
+            if (result == SendResult.Sent)
                 return;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
             Thread.Sleep(10);
         }
         throw new TimeoutException("send timeout");
-    }
-
-    internal static void PublishWithRetry(Zlink.Socket socket, string topic,
-        ReadOnlySpan<byte> payload, SendFlags flags, int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            using Message message = Message.FromBytes(payload);
-            try
-            {
-                socket.Publish(topic, message, flags | SendFlags.DontWait);
-                return;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
-            Thread.Sleep(10);
-        }
-        throw new TimeoutException("publish timeout");
     }
 
     internal static void PublishWithRetry(PublisherSocketBase socket, string topic,
-        ReadOnlySpan<byte> payload, SendFlags flags, int timeoutMs)
+        ReadOnlySpan<byte> payload, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
             using Message message = Message.FromBytes(payload);
-            try
-            {
-                socket.Publish(topic, message, flags | SendFlags.DontWait);
+            SendResult result = socket.TryPublish(topic, message);
+            if (result == SendResult.Sent)
                 return;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
             Thread.Sleep(10);
         }
         throw new TimeoutException("publish timeout");
     }
 
-    internal static Message ReceiveMessageWithTimeout(Zlink.Socket socket,
+    internal static Received ReceiveMessageWithTimeout(MessageSocketBase socket,
         int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
-            {
-                socket.Receive(out Message message, ReceiveFlags.DontWait);
-                return message;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
+            Received? received = socket.TryReceive();
+            if (received != null)
+                return received;
             Thread.Sleep(10);
         }
         throw new TimeoutException("receive timeout");
-    }
-
-    internal static Message ReceiveMessageWithTimeout(MessageSocketBase socket,
-        int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                socket.Receive(out Message message, ReceiveFlags.DontWait);
-                return message;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
-            Thread.Sleep(10);
-        }
-        throw new TimeoutException("receive timeout");
-    }
-
-    internal static byte[] ReceiveBytesWithTimeout(Zlink.Socket socket,
-        int maxSize, int timeoutMs)
-    {
-        _ = maxSize;
-        using Message message = ReceiveMessageWithTimeout(socket, timeoutMs);
-        return message.AsReadOnlySpan().ToArray();
     }
 
     internal static byte[] ReceiveBytesWithTimeout(MessageSocketBase socket,
         int maxSize, int timeoutMs)
     {
         _ = maxSize;
-        using Message message = ReceiveMessageWithTimeout(socket, timeoutMs);
-        return message.AsReadOnlySpan().ToArray();
-    }
-
-    internal static string ReceiveUtf8WithTimeout(Zlink.Socket socket, int timeoutMs)
-    {
-        using Message message = ReceiveMessageWithTimeout(socket, timeoutMs);
-        return Encoding.UTF8.GetString(message.AsReadOnlySpan()).Trim('\0');
+        Received received = ReceiveMessageWithTimeout(socket, timeoutMs);
+        try
+        {
+            return received.Parts.Count == 0
+                ? Array.Empty<byte>()
+                : received.Parts[received.Parts.Count - 1].AsReadOnlySpan().ToArray();
+        }
+        finally
+        {
+            DisposeAll(received.Parts);
+        }
     }
 
     internal static string ReceiveUtf8WithTimeout(MessageSocketBase socket,
         int timeoutMs)
     {
-        using Message message = ReceiveMessageWithTimeout(socket, timeoutMs);
-        return Encoding.UTF8.GetString(message.AsReadOnlySpan()).Trim('\0');
-    }
-
-    internal static string SubscribeUtf8WithTimeout(Zlink.Socket socket,
-        out string topic, int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
+        Received received = ReceiveMessageWithTimeout(socket, timeoutMs);
+        try
         {
-            try
-            {
-                socket.Subscribe(out topic, out Message message,
-                    ReceiveFlags.DontWait);
-                using Message _ = message;
-                return Encoding.UTF8.GetString(message.AsReadOnlySpan()).Trim('\0');
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
-            Thread.Sleep(10);
+            return received.Parts.Count == 0
+                ? string.Empty
+                : Encoding.UTF8.GetString(
+                    received.Parts[received.Parts.Count - 1].AsReadOnlySpan()).Trim('\0');
         }
-
-        throw new TimeoutException("subscribe timeout");
+        finally
+        {
+            DisposeAll(received.Parts);
+        }
     }
 
     internal static string SubscribeUtf8WithTimeout(SubscriberSocketBase socket,
@@ -288,41 +202,27 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Subscribed? subscribed = socket.TrySubscribe();
+            if (subscribed != null)
             {
-                socket.Subscribe(out topic, out Message message,
-                    ReceiveFlags.DontWait);
-                using Message _ = message;
-                return Encoding.UTF8.GetString(message.AsReadOnlySpan()).Trim('\0');
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
+                topic = subscribed.Topic;
+                try
+                {
+                    return subscribed.Parts.Count == 0
+                        ? string.Empty
+                        : Encoding.UTF8.GetString(
+                            subscribed.Parts[subscribed.Parts.Count - 1]
+                                .AsReadOnlySpan()).Trim('\0');
+                }
+                finally
+                {
+                    DisposeAll(subscribed.Parts);
+                }
             }
             Thread.Sleep(10);
         }
 
         throw new TimeoutException("subscribe timeout");
-    }
-
-    internal static byte[] ReceiveSubscriptionEventWithTimeout(Zlink.Socket socket,
-        out bool subscribed, int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                socket.ReceiveSubscriptionEvent(out string topic,
-                    out subscribed, ReceiveFlags.DontWait);
-                return Encoding.UTF8.GetBytes(topic);
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
-            Thread.Sleep(10);
-        }
-
-        throw new TimeoutException("subscription event timeout");
     }
 
     internal static byte[] ReceiveSubscriptionEventWithTimeout(XPubSocket socket,
@@ -331,14 +231,11 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            SubscriptionEvent? ev = socket.TryReceiveSubscriptionEvent();
+            if (ev != null)
             {
-                socket.ReceiveSubscriptionEvent(out string topic,
-                    out subscribed, ReceiveFlags.DontWait);
-                return Encoding.UTF8.GetBytes(topic);
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
+                subscribed = ev.Subscribed;
+                return Encoding.UTF8.GetBytes(ev.Topic);
             }
             Thread.Sleep(10);
         }
@@ -346,37 +243,13 @@ internal static class CoreTestSupport
         throw new TimeoutException("subscription event timeout");
     }
 
-    internal static bool ExpectNoSubscriptionEvent(Zlink.Socket socket, int probeMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                socket.ReceiveSubscriptionEvent(out _, out _, ReceiveFlags.DontWait);
-                return false;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
-            Thread.Sleep(5);
-        }
-        return true;
-    }
-
     internal static bool ExpectNoSubscriptionEvent(XPubSocket socket, int probeMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
-            {
-                socket.ReceiveSubscriptionEvent(out _, out _, ReceiveFlags.DontWait);
+            if (socket.TryReceiveSubscriptionEvent() != null)
                 return false;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
             Thread.Sleep(5);
         }
         return true;
@@ -394,45 +267,20 @@ internal static class CoreTestSupport
         return Encoding.UTF8.GetString(payload).Trim('\0');
     }
 
-    internal static bool TryReceiveMultipartLastPart(Zlink.Socket socket,
-        int maxSize, out byte[] lastPart)
-    {
-        _ = maxSize;
-        try
-        {
-            socket.Receive(out Message[] parts, ReceiveFlags.DontWait);
-            if (parts.Length == 0)
-            {
-                lastPart = Array.Empty<byte>();
-                return true;
-            }
-
-            try
-            {
-                lastPart = parts[parts.Length - 1].AsReadOnlySpan().ToArray();
-                return true;
-            }
-            finally
-            {
-                foreach (Message part in parts)
-                    part.Dispose();
-            }
-        }
-        catch (ZlinkException ex) when (IsRetryable(ex))
-        {
-            lastPart = Array.Empty<byte>();
-            return false;
-        }
-    }
-
     internal static bool TryReceiveMultipartLastPart(MessageSocketBase socket,
         int maxSize, out byte[] lastPart)
     {
         _ = maxSize;
         try
         {
-            socket.Receive(out Message[] parts, ReceiveFlags.DontWait);
-            if (parts.Length == 0)
+            Received? received = socket.TryReceive();
+            if (received == null)
+            {
+                lastPart = Array.Empty<byte>();
+                return false;
+            }
+            IReadOnlyList<Message> parts = received.Parts;
+            if (parts.Count == 0)
             {
                 lastPart = Array.Empty<byte>();
                 return true;
@@ -440,13 +288,12 @@ internal static class CoreTestSupport
 
             try
             {
-                lastPart = parts[parts.Length - 1].AsReadOnlySpan().ToArray();
+                lastPart = parts[parts.Count - 1].AsReadOnlySpan().ToArray();
                 return true;
             }
             finally
             {
-                foreach (Message part in parts)
-                    part.Dispose();
+                DisposeAll(parts);
             }
         }
         catch (ZlinkException ex) when (IsRetryable(ex))
@@ -456,23 +303,40 @@ internal static class CoreTestSupport
         }
     }
 
-    internal static bool ExpectNoMessage(Zlink.Socket socket, int probeMs)
+    internal static bool TryReceiveMultipartLastPart(RoutedMessageSocketBase socket,
+        int maxSize, out byte[] lastPart)
     {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
-        while (DateTime.UtcNow < deadline)
+        _ = maxSize;
+        try
         {
-            try
+            Received? received = socket.TryReceive();
+            if (received == null)
             {
-                socket.Receive(out Message message, ReceiveFlags.DontWait);
-                using Message _ = message;
+                lastPart = Array.Empty<byte>();
                 return false;
             }
-            catch (ZlinkException ex) when (IsRetryable(ex))
+            IReadOnlyList<Message> parts = received.Parts;
+            if (parts.Count == 0)
             {
+                lastPart = Array.Empty<byte>();
+                return true;
             }
-            Thread.Sleep(5);
+
+            try
+            {
+                lastPart = parts[parts.Count - 1].AsReadOnlySpan().ToArray();
+                return true;
+            }
+            finally
+            {
+                DisposeAll(parts);
+            }
         }
-        return true;
+        catch (ZlinkException ex) when (IsRetryable(ex))
+        {
+            lastPart = Array.Empty<byte>();
+            return false;
+        }
     }
 
     internal static bool ExpectNoMessage(MessageSocketBase socket, int probeMs)
@@ -480,33 +344,11 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Received? received = socket.TryReceive();
+            if (received != null)
             {
-                socket.Receive(out Message message, ReceiveFlags.DontWait);
-                using Message _ = message;
+                DisposeAll(received.Parts);
                 return false;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
-            Thread.Sleep(5);
-        }
-        return true;
-    }
-
-    internal static bool ExpectNoSubscribedMessage(Zlink.Socket socket, int probeMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                socket.Subscribe(out _, out Message message, ReceiveFlags.DontWait);
-                using Message received = message;
-                return false;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
             }
             Thread.Sleep(5);
         }
@@ -519,41 +361,15 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Subscribed? subscribed = socket.TrySubscribe();
+            if (subscribed != null)
             {
-                socket.Subscribe(out _, out Message message, ReceiveFlags.DontWait);
-                using Message received = message;
+                DisposeAll(subscribed.Parts);
                 return false;
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
             }
             Thread.Sleep(5);
         }
         return true;
-    }
-
-    internal static (string routingId, string payload) ReceiveRoutedUtf8WithTimeout(
-        Zlink.Socket socket, int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                socket.Receive(out string routingId, out Message message,
-                    ReceiveFlags.DontWait);
-                using Message received = message;
-                return (routingId, Encoding.UTF8.GetString(
-                    message.AsReadOnlySpan()).Trim('\0'));
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
-            }
-            Thread.Sleep(10);
-        }
-
-        throw new TimeoutException("receive timeout");
     }
 
     internal static (string routingId, string payload) ReceiveRoutedUtf8WithTimeout(
@@ -562,16 +378,22 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            Received? received = socket.TryReceive();
+            if (received != null)
             {
-                socket.Receive(out string routingId, out Message message,
-                    ReceiveFlags.DontWait);
-                using Message received = message;
-                return (routingId, Encoding.UTF8.GetString(
-                    message.AsReadOnlySpan()).Trim('\0'));
-            }
-            catch (ZlinkException ex) when (IsRetryable(ex))
-            {
+                try
+                {
+                    string payload = received.Parts.Count == 0
+                        ? string.Empty
+                        : Encoding.UTF8.GetString(
+                            received.Parts[received.Parts.Count - 1].AsReadOnlySpan())
+                            .Trim('\0');
+                    return (received.RoutingId, payload);
+                }
+                finally
+                {
+                    DisposeAll(received.Parts);
+                }
             }
             Thread.Sleep(10);
         }
@@ -615,6 +437,12 @@ internal static class CoreTestSupport
             current = current.Parent;
         }
         return null;
+    }
+
+    private static void DisposeAll(IReadOnlyList<Message> parts)
+    {
+        for (int i = 0; i < parts.Count; i++)
+            parts[i].Dispose();
     }
 }
 

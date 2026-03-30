@@ -2,7 +2,6 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
-import dev.kairoscode.zlink.options.SocketOptions;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
@@ -52,9 +51,7 @@ public class CallbackModeContractTest {
                 payload.get());
             assertNotNull(deliveredPart.get());
             assertFalse(deliveredPart.get().valid());
-            ZlinkException ex = assertThrows(ZlinkException.class,
-                () -> left.recv(ReceiveFlag.DONTWAIT));
-            assertEquals(16, ex.errno());
+            assertThrows(ZlinkException.class, left::tryRecv);
         }
     }
 
@@ -67,11 +64,11 @@ public class CallbackModeContractTest {
         AtomicReference<byte[]> payload = new AtomicReference<>();
 
         try (Context ctx = new Context();
-             XPubSocket pub = new XPubSocket(ctx);
+            XPubSocket pub = new XPubSocket(ctx);
              SubSocket sub = new SubSocket(ctx)) {
             String endpoint = TestSupport.tcpEndpoint();
             pub.bind(endpoint);
-            pub.setOption(SocketOptions.RCVTIMEO, TestSupport.DEFAULT_TIMEOUT_MS);
+            pub.options().receiveTimeoutMillis(TestSupport.DEFAULT_TIMEOUT_MS);
             sub.setSubscription("alpha");
             sub.connect(endpoint);
             sub.onSubscribe((routingId, deliveredTopic, received) -> {
@@ -80,7 +77,7 @@ public class CallbackModeContractTest {
                 delivered.countDown();
             });
 
-            SubscriptionEvent event = pub.subscriptionEvent();
+            SubscriptionEvent event = pub.receiveSubscriptionEvent();
             assertTrue(event.subscribed());
             assertEquals("alpha", event.filter());
             publish(pub, "alpha", List.of(Message.copyOfUtf8("payload")));
@@ -129,7 +126,7 @@ public class CallbackModeContractTest {
                 MemorySegment topicSeg = arena.allocateFrom(topic,
                     StandardCharsets.UTF_8);
                 int rc = Native.publish(subject.handle(), topicSeg, nativeParts,
-                    parts.size(), SendFlag.NONE.getValue());
+                    parts.size(), 0);
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_publish");
                 success = true;

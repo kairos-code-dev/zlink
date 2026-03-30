@@ -124,7 +124,7 @@
 - 어떤 event를 ready gate로 써야 하는지는
   [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   "메시징 시작 전 준비 확인" 절을 단일 기준으로 따른다.
-- routing 검증이 필요한 패턴(예: ROUTER, GATEWAY)은 monitor-ready 이후
+- routing 검증이 필요한 패턴(예: ROUTER)은 monitor-ready 이후
   단발성 self-check 1회만 수행하고, 실패 시 즉시 fail 처리한다.
 - registry/bootstrap/query/summary 조회는 measurement phase 밖에서만 수행한다.
 
@@ -392,7 +392,7 @@ bindings/perf/run_policy_bench.py --binding java --suite multi --pattern ALL
 ```text
 ## Effective Options (start)
 - runs: 1
-- patterns: PAIR, GATEWAY
+- patterns: PAIR, SPOT
 - transports: tcp, tls, ws, wss
 - msg_sizes: 64, 256, 1024, 65536, 131072, 262144
 - recv_mode: recv
@@ -463,7 +463,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ```text
 ## Effective Options (start)
 - runs: 1
-- patterns: PAIR, GATEWAY
+- patterns: PAIR, SPOT
 - transports: tcp, tls, ws, wss
 - msg_sizes: 64, 256, 1024, 65536, 131072, 262144
 - recv_mode: recv

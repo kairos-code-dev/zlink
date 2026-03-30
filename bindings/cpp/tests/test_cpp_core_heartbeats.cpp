@@ -10,13 +10,11 @@
 
 namespace {
 
-static bool wait_monitor_event (zlink::socket_t &monitor_, uint64_t event_)
+static bool wait_monitor_event (zlink::monitor_handle_t &monitor_, uint64_t event_)
 {
     for (int i = 0; i < 200; ++i) {
         zlink_monitor_event_t ev;
-        while (zlink_monitor_recv (
-                 monitor_.handle (), &ev, static_cast<int> (zlink::recv_flag::dontwait))
-               == 0) {
+        while (monitor_recv_nowait (monitor_, &ev) == 0) {
             if (ev.event == event_)
                 return true;
         }
@@ -63,20 +61,19 @@ static int connect_raw_tcp (const std::string &endpoint_)
 void test_handshake_timeout ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, zlink::socket_type::router);
+    zlink::router_socket_t server (ctx);
 
     const int timeout = 100;
     const int linger = 0;
-    assert (server.set (zlink::socket_option::handshake_ivl, timeout) == 0);
-    assert (server.set (zlink::socket_option::linger, linger) == 0);
+    assert (server.set_option (zlink::socket_option::handshake_ivl, timeout) == 0);
+    assert (server.set_option (zlink::socket_option::linger, linger) == 0);
 
     const std::string endpoint =
       endpoint_for (transport_case_t{"tcp", ""}, "heartbeats");
     assert (server.bind (endpoint) == 0);
 
-    zlink::socket_t monitor =
-      server.monitor_open (zlink::monitor_event::accepted
-                           | zlink::monitor_event::disconnected);
+    zlink::monitor_handle_t monitor = server.monitor_handle (
+      zlink::monitor_event::accepted | zlink::monitor_event::disconnected);
 
 #if !defined(ZLINK_HAVE_WINDOWS)
     const int fd = connect_raw_tcp (endpoint);

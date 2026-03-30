@@ -17,16 +17,44 @@ public abstract class RoutedMessageSocketBase : SocketBase
     {
     }
 
-    public void Send(string routingId, Message message,
-        SendFlags flags = SendFlags.None)
+    public void Send(string routingId, Message message)
     {
-        Kernel.Send(routingId, message, flags);
+        Kernel.Send(routingId, message);
     }
 
-    public void Send(string routingId, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
+    public void Send(RoutingId routingId, Message message)
     {
-        Kernel.Send(routingId, parts, flags);
+        Kernel.Send(routingId.Value, message);
+    }
+
+    public void Send(string routingId, IReadOnlyList<Message> parts)
+    {
+        Kernel.Send(routingId, parts);
+    }
+
+    public void Send(RoutingId routingId, IReadOnlyList<Message> parts)
+    {
+        Kernel.Send(routingId.Value, parts);
+    }
+
+    public SendResult TrySend(string routingId, Message message)
+    {
+        return Kernel.TrySend(routingId, message);
+    }
+
+    public SendResult TrySend(RoutingId routingId, Message message)
+    {
+        return Kernel.TrySend(routingId.Value, message);
+    }
+
+    public SendResult TrySend(string routingId, IReadOnlyList<Message> parts)
+    {
+        return Kernel.TrySend(routingId, parts);
+    }
+
+    public SendResult TrySend(RoutingId routingId, IReadOnlyList<Message> parts)
+    {
+        return Kernel.TrySend(routingId.Value, parts);
     }
 
     public void RecvHandler(SocketRecvHandler handler)
@@ -34,15 +62,13 @@ public abstract class RoutedMessageSocketBase : SocketBase
         Kernel.RecvHandler(handler);
     }
 
-    public void Receive(out string routingId, out Message message,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public Received Receive()
     {
-        Kernel.Receive(out routingId, out message, flags);
+        return Kernel.ReceiveRouted();
     }
 
-    public void Receive(out string routingId, out Message[] parts,
-        ReceiveFlags flags = ReceiveFlags.None)
+    public Received? TryReceive()
     {
-        Kernel.Receive(out routingId, out parts, flags);
+        return Kernel.TryReceiveRouted();
     }
 }

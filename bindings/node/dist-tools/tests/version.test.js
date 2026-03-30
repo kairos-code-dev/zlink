@@ -1,0 +1,66 @@
+'use strict';
+Object.defineProperty(exports, "__esModule", { value: true });
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const zlink = require('../dist');
+test('version matches core', () => {
+    const versionFile = fs.readFileSync(path.join(process.cwd(), '..', '..', 'VERSION'), 'utf8');
+    const major = Number(versionFile.match(/^LIBZLINK_VERSION_MAJOR=(\d+)$/m)[1]);
+    const minor = Number(versionFile.match(/^LIBZLINK_VERSION_MINOR=(\d+)$/m)[1]);
+    const patch = Number(versionFile.match(/^LIBZLINK_VERSION_PATCH=(\d+)$/m)[1]);
+    assert.deepEqual(zlink.version(), [major, minor, patch]);
+});
+test('legacy recv(size, flags) remains as compatibility path', () => {
+    const ctx = new zlink.Context();
+    const sender = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+    const receiver = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+    sender.bind('inproc://legacy-recv-contract');
+    receiver.connect('inproc://legacy-recv-contract');
+    sender.send('ping');
+    const out = receiver.recv(16, 0);
+    assert.equal(out.toString(), 'ping');
+    receiver.close();
+    sender.close();
+    ctx.close();
+});
+test('legacy recvInto remains on compatibility socket only', () => {
+    const ctx = new zlink.Context();
+    const sender = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+    const receiver = new zlink.Socket(ctx, zlink.SocketType.PAIR);
+    sender.bind('inproc://recv-into-contract');
+    receiver.connect('inproc://recv-into-contract');
+    sender.send('pong');
+    const target = Buffer.alloc(16);
+    const received = receiver.recvInto(target);
+    assert.equal(received, 4);
+    assert.equal(target.subarray(0, received).toString(), 'pong');
+    receiver.close();
+    sender.close();
+    ctx.close();
+});
+test('dedicated option helpers cover routing id and generic option access', () => {
+    const ctx = new zlink.Context();
+    const dealer = new zlink.DealerSocket(ctx);
+    const routingId = Buffer.from('dealer-1');
+    dealer.setRoutingId(routingId);
+    assert.equal(dealer.getRoutingId().subarray(0, routingId.length).toString(), 'dealer-1');
+    dealer.close();
+    ctx.close();
+});
+test('stream helpers remain on compat socket and stay off canonical stream surface', () => {
+    const ctx = new zlink.Context();
+    const stream = new zlink.StreamSocket(ctx);
+    const compat = new zlink.Socket(ctx, zlink.SocketType.STREAM);
+    assert.equal(stream.streamAttach, undefined);
+    assert.equal(stream.streamDetach, undefined);
+    assert.equal(typeof compat.streamAttach, 'function');
+    assert.equal(typeof compat.streamDetach, 'function');
+    assert.equal(typeof stream.send, 'function');
+    assert.equal(zlink.StreamDispatchMode, undefined);
+    assert.doesNotThrow(() => compat.streamDetach());
+    compat.close();
+    stream.close();
+    ctx.close();
+});

@@ -45,7 +45,10 @@ inline int recv_single_part_header_flags (
     if (zlink_msg_init (&msg) != 0)
         return -1;
 
-    const int rc = zmq_msg_recv (&msg, socket, flags);
+    char topic_id[256];
+    size_t topic_len = 0;
+    const int rc =
+      bench_recv_pubsub_single_part (socket, &msg, topic_id, &topic_len, flags);
     if (rc < 0) {
         const int err = zlink_errno ();
         zlink_msg_close (&msg);
@@ -54,12 +57,14 @@ inline int recv_single_part_header_flags (
         return -1;
     }
 
+    const bool topic_ok =
+      topic_len == 5 && std::memcmp (topic_id, "bench", topic_len) == 0;
     const size_t actual_size = zlink_msg_size (&msg);
     const bool size_ok = actual_size == expected_size;
-    const bool has_more = zlink_msg_more (&msg) != 0;
+    const bool has_more = bench_msg_has_more (msg);
     bool header_ok = false;
 
-    if (size_ok && !has_more) {
+    if (topic_ok && size_ok && !has_more) {
         if (header_out) {
             header_ok = perf_single_metric::decode_payload_header (
               zlink_msg_data (&msg), actual_size, header_out);
@@ -70,7 +75,7 @@ inline int recv_single_part_header_flags (
 
     zlink_msg_close (&msg);
 
-    if (!size_ok || has_more)
+    if (!topic_ok || !size_ok || has_more)
         return -1;
 
     if (header_ok_out)
@@ -213,7 +218,19 @@ inline bool run_oneway_phase (void *pub_socket,
                                                     msg_size,
                                                     (*seq)++,
                                                     sent_ts)
-                || !send_exact (pub_socket, payload->data (), payload_size, 0)) {
+            ) {
+                send_failed = true;
+                break;
+            }
+            zlink_msg_t part;
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
+                send_failed = true;
+                break;
+            }
+            if (bench_send_pubsub_single_part (pub_socket, "bench", &part, 0)
+                < 0) {
+                zlink_msg_close (&part);
                 send_failed = true;
                 break;
             }
@@ -230,7 +247,19 @@ inline bool run_oneway_phase (void *pub_socket,
                   msg_size,
                   (*seq)++,
                   perf_single_metric::now_us ())
-                || !send_exact (pub_socket, payload->data (), payload_size, 0)) {
+            ) {
+                send_failed = true;
+                break;
+            }
+            zlink_msg_t part;
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
+                send_failed = true;
+                break;
+            }
+            if (bench_send_pubsub_single_part (pub_socket, "bench", &part, 0)
+                < 0) {
+                zlink_msg_close (&part);
                 send_failed = true;
                 break;
             }

@@ -24,7 +24,7 @@ inline int recv_single_part_header_flags (
     if (zlink_msg_init (&msg) != 0)
         return -1;
 
-    const int rc = zmq_msg_recv (&msg, socket, flags);
+    const int rc = bench_recv_single_part (socket, &msg, flags);
     if (rc < 0) {
         const int err = zlink_errno ();
         zlink_msg_close (&msg);
@@ -192,7 +192,18 @@ inline bool run_oneway_phase (void *sender,
                                                     msg_size,
                                                     (*seq)++,
                                                     sent_ts)
-                || !send_exact (sender, payload->data (), payload_size, 0)) {
+            ) {
+                send_failed = true;
+                break;
+            }
+            zlink_msg_t part;
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
+                send_failed = true;
+                break;
+            }
+            if (bench_send_single_part (sender, &part, 0) < 0) {
+                zlink_msg_close (&part);
                 send_failed = true;
                 break;
             }
@@ -209,7 +220,18 @@ inline bool run_oneway_phase (void *sender,
                   msg_size,
                   (*seq)++,
                   perf_single_metric::now_us ())
-                || !send_exact (sender, payload->data (), payload_size, 0)) {
+            ) {
+                send_failed = true;
+                break;
+            }
+            zlink_msg_t part;
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
+                send_failed = true;
+                break;
+            }
+            if (bench_send_single_part (sender, &part, 0) < 0) {
+                zlink_msg_close (&part);
                 send_failed = true;
                 break;
             }

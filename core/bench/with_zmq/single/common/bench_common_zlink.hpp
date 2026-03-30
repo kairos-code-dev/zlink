@@ -441,6 +441,23 @@ inline bool use_raw_msg_api_bench()
     return false;
 }
 
+inline int bench_msg_init_copy(zlink_msg_t *msg_,
+                               const void *data_,
+                               size_t size_)
+{
+    if (!msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (::zlink_msg_init_size(msg_, size_) != 0)
+        return -1;
+
+    if (size_ > 0 && data_)
+        std::memcpy(::zlink_msg_data(msg_), data_, size_);
+    return 0;
+}
+
 inline int bench_send_single_part (void *socket_,
                                    zlink_msg_t *msg_,
                                    zlink_send_flags_t flags_)

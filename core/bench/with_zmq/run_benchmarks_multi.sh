@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM"
 TRANSPORTS_DEFAULT="tcp,ipc"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
@@ -101,13 +101,13 @@ Usage: core/bench/with_zmq/run_benchmarks_multi.sh [options]
 
 Run multi-socket benchmark patterns with libzmq vs zlink comparison.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,STREAM
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
 By default, multi-bench uses transports: tcp,ipc (can be overridden with --transports).
 
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above).
-                         Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+                         Alias: stream/streams => STREAM
   --help                 Show this help.
   --reuse-build          Reuse existing build directory as-is (skip auto-build).
   --clean-build          Remove build directory and do a clean build.
@@ -149,7 +149,7 @@ Options:
 Notes:
   - result is saved under results/multi/report/.
   - multi comparison uses split server/client processes, so inproc is excluded.
-  - STREAM_CALLBACK and STREAM_LEN32BE are mapped to STREAM.
+  - STREAM is recv-only in with_zmq multi comparison mode.
 USAGE
 }
 
@@ -179,8 +179,6 @@ expand_and_add_explicit_pattern() {
   case "${raw}" in
     STREAM|STREAMS)
       add_explicit_pattern_unique "STREAM"
-      add_explicit_pattern_unique "STREAM_CALLBACK"
-      add_explicit_pattern_unique "STREAM_LEN32BE"
       ;;
     *)
       add_explicit_pattern_unique "${raw}"
@@ -206,7 +204,7 @@ normalize_with_zmq_pattern() {
     PUBSUB)
       echo "pubsub"
       ;;
-    STREAM|STREAM_CALLBACK|STREAM_LEN32BE)
+    STREAM)
       echo "stream"
       ;;
     *)

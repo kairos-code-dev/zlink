@@ -201,13 +201,11 @@ inline bool run_oneway_phase (void *sender,
             }
 
             zlink_msg_t part;
-            if (::zlink_msg_init_size (&part, payload_size) != 0) {
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
                 send_failed = true;
                 break;
             }
-            if (payload_size > 0)
-                memcpy (::zlink_msg_data (&part), payload->data (),
-                        payload_size);
             const int send_rc = bench_send_single_part (
               sender, &part, static_cast<zlink_send_flags_t> (0));
             if (send_rc < 0) {
@@ -233,13 +231,11 @@ inline bool run_oneway_phase (void *sender,
             }
 
             zlink_msg_t part;
-            if (::zlink_msg_init_size (&part, payload_size) != 0) {
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
                 send_failed = true;
                 break;
             }
-            if (payload_size > 0)
-                memcpy (::zlink_msg_data (&part), payload->data (),
-                        payload_size);
             const int send_rc = bench_send_single_part (
               sender, &part, static_cast<zlink_send_flags_t> (0));
             if (send_rc < 0) {

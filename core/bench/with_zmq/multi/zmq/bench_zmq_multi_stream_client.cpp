@@ -1,6 +1,6 @@
 #include "../../../../perf/common/streamclient/perf_stream_bench_client.hpp"
 #include "../../../../perf/common/streamclient/perf_stream_client_options.hpp"
-#include "../../../../perf/multi/common/perf_common_multi.hpp"
+#include "perf_common_multi.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -85,7 +85,6 @@ int main (int argc, char **argv)
     if (!multi_perf_validate_recv_mode_for_pattern ("MULTI_STREAM"))
         return 1;
 
-    const std::string transport = argv[2];
     std::string endpoint;
     if (!parse_endpoint_arg (argc, argv, &endpoint)) {
         std::fprintf (stderr, "missing --endpoint\n");
@@ -93,7 +92,7 @@ int main (int argc, char **argv)
     }
 
     client_options_t opt;
-    opt.transport = transport;
+    opt.transport = argv[2];
     opt.pattern = "MULTI_STREAM";
     opt.print_perf_result = 1;
     opt.send_stop_token = 0;
@@ -118,6 +117,7 @@ int main (int argc, char **argv)
         std::fprintf (stderr, "invalid --endpoint: %s\n", endpoint.c_str ());
         return 1;
     }
+
     opt.transport = endpoint_transport;
     opt.host = endpoint_host;
     opt.port = endpoint_port;

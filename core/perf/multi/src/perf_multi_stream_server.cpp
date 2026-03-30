@@ -1,9 +1,7 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_resource.hpp"
-#include "../../../external/moodycamel/concurrentqueue.h"
 
-#include <atomic>
 #include <cerrno>
 #include <csignal>
 #include <cstring>
@@ -30,28 +28,13 @@ static const char *k_pattern = PERF_MULTI_STREAM_PATTERN_NAME;
 static const char k_stop_token[] = "__zlink_perf_stop__";
 
 // Uses perf_stop_requested() from perf_common.hpp
-static std::atomic<bool> g_callback_failed (false);
 static void *g_server_socket = NULL;
-static std::atomic<bool> g_callback_mode_enabled (false);
-static std::atomic<bool> g_callback_send_ready (false);
 static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
-static std::atomic<unsigned long long> g_callback_recv_count (0);
-static std::atomic<unsigned long long> g_callback_send_count (0);
-static std::atomic<unsigned long long> g_callback_pending_count (0);
-static std::atomic<unsigned long long> g_callback_frame_count (0);
+static std::atomic<unsigned long long> g_stream_recv_count (0);
+static std::atomic<unsigned long long> g_stream_send_count (0);
+static std::atomic<unsigned long long> g_stream_pending_count (0);
 static std::mutex g_pending_send_queue_sync;
-static std::mutex g_callback_send_wait_sync;
-static std::mutex g_stream_callback_stash_sync;
-static std::condition_variable g_callback_send_wait_cv;
-static std::map<std::string, std::vector<unsigned char> > g_stream_callback_stashes;
-
-void mark_stream_callback_failed ();
-
-inline void notify_callback_sender ()
-{
-    g_callback_send_wait_cv.notify_one ();
-}
 
 struct queued_stream_message_t
 {
@@ -124,7 +107,6 @@ inline std::string routing_id_key (const zlink_routing_id_t *rid)
 }
 
 static std::deque<queued_stream_message_t> g_pending_send_queue;
-static moodycamel::ConcurrentQueue<queued_stream_message_t> g_callback_send_queue;
 
 inline void request_queue_probe (size_t msg_size)
 {
@@ -232,44 +214,13 @@ bool enqueue_stream_message (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
         return false;
     }
 
-    g_callback_pending_count.fetch_add (1, std::memory_order_relaxed);
-    if (g_callback_mode_enabled.load (std::memory_order_acquire)) {
-        if (!g_callback_send_queue.enqueue (std::move (queued))) {
-            g_callback_pending_count.fetch_sub (1, std::memory_order_relaxed);
-            mark_stream_callback_failed ();
-            return false;
-        }
-        notify_callback_sender ();
-        return true;
-    }
+    g_stream_pending_count.fetch_add (1, std::memory_order_relaxed);
 
     {
         std::lock_guard<std::mutex> lock (g_pending_send_queue_sync);
         g_pending_send_queue.push_back (std::move (queued));
     }
     return true;
-}
-
-void mark_stream_callback_failed ()
-{
-    if (bench_debug_enabled ()) {
-        std::cerr << "[multi-stream-server] callback failed recv="
-                  << g_callback_recv_count.load (std::memory_order_relaxed)
-                  << " send="
-                  << g_callback_send_count.load (std::memory_order_relaxed)
-                  << " pending="
-                  << g_callback_pending_count.load (std::memory_order_relaxed)
-                  << " err=" << zlink_errno () << std::endl;
-    }
-    g_callback_failed.store (true, std::memory_order_release);
-    perf_stop_requested ().store (true, std::memory_order_release);
-    notify_callback_sender ();
-}
-
-void clear_stream_callback_stashes ()
-{
-    std::lock_guard<std::mutex> lock (g_stream_callback_stash_sync);
-    g_stream_callback_stashes.clear ();
 }
 
 void drain_stream_pending_queue ()
@@ -286,11 +237,11 @@ void drain_stream_pending_queue ()
 
         stream_send_result_t send_result = try_send_stream_message (queued);
         if (send_result == stream_send_sent) {
-            g_callback_send_count.fetch_add (1, std::memory_order_relaxed);
+            g_stream_send_count.fetch_add (1, std::memory_order_relaxed);
             const unsigned long long pending_before =
-              g_callback_pending_count.load (std::memory_order_relaxed);
+              g_stream_pending_count.load (std::memory_order_relaxed);
             if (pending_before > 0) {
-                g_callback_pending_count.fetch_sub (
+                g_stream_pending_count.fetch_sub (
                   1, std::memory_order_relaxed);
             }
             continue;
@@ -300,7 +251,7 @@ void drain_stream_pending_queue ()
             g_pending_send_queue.push_front (std::move (queued));
             return;
         }
-        mark_stream_callback_failed ();
+        perf_stop_requested ().store (true, std::memory_order_release);
         return;
     }
 }
@@ -309,71 +260,6 @@ size_t pending_stream_send_count ()
 {
     std::lock_guard<std::mutex> lock (g_pending_send_queue_sync);
     return g_pending_send_queue.size ();
-}
-
-void on_stream_send_ready (void *subject_, void *)
-{
-    if (subject_ && subject_ != g_server_socket)
-        return;
-
-    g_callback_send_ready.store (true, std::memory_order_release);
-    notify_callback_sender ();
-}
-
-void callback_stream_sender_loop ()
-{
-    queued_stream_message_t blocked;
-    bool has_blocked = false;
-
-    while (!perf_stop_requested ().load (std::memory_order_acquire)) {
-        if (g_callback_failed.load (std::memory_order_acquire))
-            return;
-
-        if (has_blocked) {
-            if (!g_callback_send_ready.exchange (false, std::memory_order_acq_rel)) {
-                std::unique_lock<std::mutex> lock (g_callback_send_wait_sync);
-                g_callback_send_wait_cv.wait_for (
-                  lock, std::chrono::milliseconds (1));
-            }
-
-            const stream_send_result_t send_result =
-              try_send_stream_message (blocked);
-            if (send_result == stream_send_sent) {
-                g_callback_send_count.fetch_add (1, std::memory_order_relaxed);
-                g_callback_pending_count.fetch_sub (1, std::memory_order_relaxed);
-                has_blocked = false;
-                continue;
-            }
-            if (send_result == stream_send_pending)
-                continue;
-
-            mark_stream_callback_failed ();
-            return;
-        }
-
-        queued_stream_message_t queued;
-        if (!g_callback_send_queue.try_dequeue (queued)) {
-            std::unique_lock<std::mutex> lock (g_callback_send_wait_sync);
-            g_callback_send_wait_cv.wait_for (
-              lock, std::chrono::milliseconds (1));
-            continue;
-        }
-
-        const stream_send_result_t send_result = try_send_stream_message (queued);
-        if (send_result == stream_send_sent) {
-            g_callback_send_count.fetch_add (1, std::memory_order_relaxed);
-            g_callback_pending_count.fetch_sub (1, std::memory_order_relaxed);
-            continue;
-        }
-        if (send_result == stream_send_pending) {
-            blocked = std::move (queued);
-            has_blocked = true;
-            continue;
-        }
-
-        mark_stream_callback_failed ();
-        return;
-    }
 }
 
 bool process_stream_chunk (const zlink_routing_id_t *rid, zlink_msg_t *msg)
@@ -387,91 +273,13 @@ bool process_stream_chunk (const zlink_routing_id_t *rid, zlink_msg_t *msg)
     if (is_stream_event_payload (payload, payload_size))
         return true;
 
-    g_callback_recv_count.fetch_add (1, std::memory_order_relaxed);
+    g_stream_recv_count.fetch_add (1, std::memory_order_relaxed);
     if (is_stop_token_payload (payload, payload_size)) {
-    perf_stop_requested ().store (true, std::memory_order_release);
-    notify_callback_sender ();
-    return true;
-}
+        perf_stop_requested ().store (true, std::memory_order_release);
+        return true;
+    }
 
     return enqueue_stream_message (rid, msg);
-}
-
-bool process_stream_callback_chunk (const zlink_routing_id_t *rid,
-                                    zlink_msg_t *msg)
-{
-    if (!rid || !msg || !g_server_socket)
-        return false;
-
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (zlink_msg_data (msg));
-    const size_t payload_size = zlink_msg_size (msg);
-    if (is_stream_event_payload (payload, payload_size))
-        return true;
-    if (!payload || payload_size == 0)
-        return false;
-
-    g_callback_recv_count.fetch_add (1, std::memory_order_relaxed);
-
-    std::vector<std::vector<unsigned char> > complete_frames;
-    {
-        const std::string key = routing_id_key (rid);
-        std::lock_guard<std::mutex> lock (g_stream_callback_stash_sync);
-        std::vector<unsigned char> &stash = g_stream_callback_stashes[key];
-        stash.insert (stash.end (), payload, payload + payload_size);
-
-        size_t consumed = 0;
-        while (consumed + 4 <= stash.size ()) {
-            const unsigned char *frame = &stash[consumed];
-            const size_t body_size = static_cast<size_t> (load_u32_be (frame));
-            if (body_size > 4 * 1024 * 1024) {
-                stash.clear ();
-                return false;
-            }
-
-            const size_t frame_size = 4 + body_size;
-            if (consumed + frame_size > stash.size ())
-                break;
-
-            complete_frames.push_back (std::vector<unsigned char> (frame_size));
-            std::memcpy (&complete_frames.back ()[0], frame, frame_size);
-            consumed += frame_size;
-        }
-
-        if (consumed > 0) {
-            if (consumed == stash.size ()) {
-                stash.clear ();
-            } else {
-                stash.erase (stash.begin (),
-                             stash.begin () + static_cast<std::ptrdiff_t> (consumed));
-            }
-        }
-    }
-
-    for (size_t i = 0; i < complete_frames.size (); ++i) {
-        g_callback_frame_count.fetch_add (1, std::memory_order_relaxed);
-        queued_stream_message_t queued;
-        queued.routing_id = *rid;
-        (void) zlink_msg_close (&queued.msg);
-        if (zlink_msg_init_size (&queued.msg, complete_frames[i].size ()) != 0
-            || (complete_frames[i].size () > 0
-                && !zlink_msg_data (&queued.msg))) {
-            return false;
-        }
-        std::memcpy (zlink_msg_data (&queued.msg), &complete_frames[i][0],
-                     complete_frames[i].size ());
-        if (!enqueue_stream_message (&queued.routing_id, &queued.msg))
-            return false;
-    }
-
-    return true;
-}
-
-int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg, void *)
-{
-    const bool ok = process_stream_callback_chunk (rid, msg);
-    (void) zlink_msg_close (msg);
-    return ok ? 0 : 1;
 }
 
 bool process_stream_recv_parts (const zlink_routing_id_t *rid,
@@ -485,16 +293,7 @@ bool process_stream_recv_parts (const zlink_routing_id_t *rid,
             return false;
         }
     }
-    return !g_callback_failed.load (std::memory_order_acquire);
-}
-
-void on_stream_handler (const zlink_routing_id_t *rid,
-                        zlink_msg_t *parts,
-                        size_t part_count,
-                        void *userdata)
-{
-    for (size_t i = 0; i < part_count; ++i)
-        (void) on_stream_packet (rid, &parts[i], userdata);
+    return true;
 }
 
 bool drain_stream_recv_socket_once (void *server)
@@ -602,25 +401,15 @@ int main (int argc, char **argv)
     }
 
     perf_stop_requested ().store (false, std::memory_order_release);
-    g_callback_failed.store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
-    g_callback_recv_count.store (0, std::memory_order_release);
-    g_callback_send_count.store (0, std::memory_order_release);
-    g_callback_pending_count.store (0, std::memory_order_release);
-    g_callback_frame_count.store (0, std::memory_order_release);
-    g_callback_mode_enabled.store (false, std::memory_order_release);
-    g_callback_send_ready.store (false, std::memory_order_release);
+    g_stream_recv_count.store (0, std::memory_order_release);
+    g_stream_send_count.store (0, std::memory_order_release);
+    g_stream_pending_count.store (0, std::memory_order_release);
     g_server_socket = server;
     {
         std::lock_guard<std::mutex> queue_lock (g_pending_send_queue_sync);
         g_pending_send_queue.clear ();
-    }
-    clear_stream_callback_stashes ();
-    {
-        queued_stream_message_t queued;
-        while (g_callback_send_queue.try_dequeue (queued)) {
-        }
     }
     install_perf_signal_handlers ();
 
@@ -638,106 +427,47 @@ int main (int argc, char **argv)
             }
         }
         perf_stop_requested ().store (true, std::memory_order_release);
-        notify_callback_sender ();
     });
     stdin_watcher.detach ();
-
-    const bool callback_mode = multi_perf_callback_mode ();
-    g_callback_mode_enabled.store (callback_mode, std::memory_order_release);
-    std::thread callback_send_worker;
-    if (callback_mode) {
-        if (zlink_recv_handler (server, &on_stream_handler, NULL) != 0
-            || zlink_send_ready_handler (server, &on_stream_send_ready, NULL)
-                 != 0) {
-            g_server_socket = NULL;
-            zlink_close (server);
-            return 1;
-        }
-        callback_send_worker = std::thread (&callback_stream_sender_loop);
-    }
 
     std::cout << "READY," << endpoint << std::endl;
 
     int rc = 0;
     while (!perf_stop_requested ().load (std::memory_order_acquire) && rc == 0) {
         emit_requested_queue_probe (lib_name, transport, server, server);
-        if (g_callback_failed.load (std::memory_order_acquire)) {
+        zlink_pollitem_t item;
+        std::memset (&item, 0, sizeof (item));
+        item.socket = server;
+        item.fd = 0;
+        item.events = static_cast<short> (
+          ZLINK_POLLIN
+          | (pending_stream_send_count () > 0 ? ZLINK_POLLOUT : 0));
+        item.revents = 0;
+
+        const int poll_rc = perf_socket_poll (&item, 1, 5);
+        if (poll_rc < 0) {
+            if (zlink_errno () == EINTR || zlink_errno () == EAGAIN)
+                continue;
             rc = 1;
             break;
         }
 
-        if (!callback_mode) {
-            zlink_pollitem_t item;
-            std::memset (&item, 0, sizeof (item));
-            item.socket = server;
-            item.fd = 0;
-            item.events = static_cast<short> (
-              ZLINK_POLLIN
-              | (pending_stream_send_count () > 0 ? ZLINK_POLLOUT : 0));
-            item.revents = 0;
-
-            const int poll_rc = perf_socket_poll (&item, 1, 5);
-            if (poll_rc < 0) {
-                if (zlink_errno () == EINTR || zlink_errno () == EAGAIN)
-                    continue;
-                rc = 1;
-                break;
-            }
-
-            if ((item.revents & ZLINK_POLLIN) != 0
-                && !drain_stream_recv_socket_once (server)) {
-                rc = 1;
-                break;
-            }
-            if (pending_stream_send_count () > 0
-                && (((item.revents & ZLINK_POLLOUT) != 0)
-                    || ((item.revents & ZLINK_POLLIN) != 0))) {
-                drain_stream_pending_queue ();
-            }
-            if (g_callback_failed.load (std::memory_order_acquire)) {
-                rc = 1;
-                break;
-            }
-            continue;
-        }
-        if (perf_socket_poll (NULL, 0, 1) < 0 && zlink_errno () != EINTR) {
+        if ((item.revents & ZLINK_POLLIN) != 0
+            && !drain_stream_recv_socket_once (server)) {
             rc = 1;
             break;
         }
-        continue;
+        if (pending_stream_send_count () > 0
+            && (((item.revents & ZLINK_POLLOUT) != 0)
+                || ((item.revents & ZLINK_POLLIN) != 0))) {
+            drain_stream_pending_queue ();
+        }
     }
-
-    if (g_callback_failed.load (std::memory_order_acquire))
-        rc = 1;
-
-    if (bench_debug_enabled () && callback_mode) {
-        std::cerr << "[multi-stream-server] callback summary recv="
-                  << g_callback_recv_count.load (std::memory_order_relaxed)
-                  << " frames="
-                  << g_callback_frame_count.load (std::memory_order_relaxed)
-                  << " send="
-                  << g_callback_send_count.load (std::memory_order_relaxed)
-                  << " pending="
-                  << g_callback_pending_count.load (std::memory_order_relaxed)
-                  << std::endl;
-    }
-
-    notify_callback_sender ();
-    if (callback_send_worker.joinable ())
-        callback_send_worker.join ();
 
     g_server_socket = NULL;
-    g_callback_mode_enabled.store (false, std::memory_order_release);
-    g_callback_send_ready.store (false, std::memory_order_release);
     {
         std::lock_guard<std::mutex> queue_lock (g_pending_send_queue_sync);
         g_pending_send_queue.clear ();
-    }
-    clear_stream_callback_stashes ();
-    {
-        queued_stream_message_t queued;
-        while (g_callback_send_queue.try_dequeue (queued)) {
-        }
     }
 
     const bench_resource_metrics_t metrics =

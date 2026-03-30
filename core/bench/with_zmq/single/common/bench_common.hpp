@@ -20,6 +20,11 @@
 // Reuse the single-bench source structure against libzmq types.
 typedef zmq_msg_t zlink_msg_t;
 typedef zmq_pollitem_t zlink_pollitem_t;
+typedef struct zlink_routing_id_t
+{
+    uint8_t size;
+    unsigned char data[256];
+} zlink_routing_id_t;
 
 #ifndef ZLINK_IO_THREADS
 #define ZLINK_IO_THREADS ZMQ_IO_THREADS
@@ -97,7 +102,9 @@ typedef zmq_pollitem_t zlink_pollitem_t;
 #define zlink_send zmq_send
 #define zlink_recv zmq_recv
 #define zlink_msg_init zmq_msg_init
+#define zlink_msg_init_size zmq_msg_init_size
 #define zlink_msg_close zmq_msg_close
+#define zlink_msg_move zmq_msg_move
 #define zlink_msg_size zmq_msg_size
 #define zlink_msg_data zmq_msg_data
 #define zlink_msg_more zmq_msg_more
@@ -538,19 +545,172 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     return rc == 0;
 }
 
-inline bool send_exact(void *socket_,
-                       const void *data_,
-                       size_t size_,
-                       int flags_)
+inline bool bench_msg_has_more(const zlink_msg_t &msg_)
 {
-    const int rc = zlink_send(socket_, data_, size_, flags_);
-    return rc >= 0 && static_cast<size_t>(rc) == size_;
+    return zmq_msg_more(const_cast<zlink_msg_t *>(&msg_)) != 0;
 }
 
-inline bool recv_exact(void *socket_, void *data_, size_t size_, int flags_)
+inline int bench_msg_init_copy(zlink_msg_t *msg_,
+                               const void *data_,
+                               size_t size_)
 {
-    const int rc = zlink_recv(socket_, data_, size_, flags_);
-    return rc >= 0 && static_cast<size_t>(rc) == size_;
+    if (!msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (zlink_msg_init_size(msg_, size_) != 0)
+        return -1;
+
+    if (size_ > 0 && data_)
+        std::memcpy(zlink_msg_data(msg_), data_, size_);
+    return 0;
+}
+
+inline int bench_send_single_part(void *socket_,
+                                  zlink_msg_t *msg_,
+                                  int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return zmq_msg_send(msg_, socket_, flags_);
+}
+
+inline int bench_recv_single_part(void *socket_,
+                                  zlink_msg_t *msg_,
+                                  int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return zmq_msg_recv(msg_, socket_, flags_);
+}
+
+inline int bench_send_single_part_routed(void *socket_,
+                                         const zlink_routing_id_t *target_rid_,
+                                         zlink_msg_t *msg_,
+                                         int flags_)
+{
+    if (!socket_ || !target_rid_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t rid_msg;
+    if (bench_msg_init_copy(
+          &rid_msg, target_rid_->data, target_rid_->size) != 0) {
+        return -1;
+    }
+
+    const int rid_rc = zmq_msg_send(&rid_msg, socket_, flags_ | ZLINK_SNDMORE);
+    if (rid_rc < 0) {
+        zlink_msg_close(&rid_msg);
+        return -1;
+    }
+    return zmq_msg_send(msg_, socket_, flags_);
+}
+
+inline int bench_recv_single_part_routed(void *socket_,
+                                         zlink_msg_t *msg_,
+                                         zlink_routing_id_t *source_rid_out_,
+                                         int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t rid_msg;
+    if (zlink_msg_init(&rid_msg) != 0)
+        return -1;
+
+    const int rid_rc = zmq_msg_recv(&rid_msg, socket_, flags_);
+    if (rid_rc < 0) {
+        zlink_msg_close(&rid_msg);
+        return -1;
+    }
+
+    if (!bench_msg_has_more(rid_msg)) {
+        zlink_msg_close(&rid_msg);
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    if (source_rid_out_) {
+        const size_t rid_size =
+          std::min(static_cast<size_t>(255), zlink_msg_size(&rid_msg));
+        source_rid_out_->size = static_cast<uint8_t>(rid_size);
+        if (rid_size > 0) {
+            std::memcpy(source_rid_out_->data, zlink_msg_data(&rid_msg), rid_size);
+        }
+    }
+
+    zlink_msg_close(&rid_msg);
+    return zmq_msg_recv(msg_, socket_, 0);
+}
+
+inline int bench_send_pubsub_single_part(void *socket_,
+                                         const char *topic_,
+                                         zlink_msg_t *msg_,
+                                         int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const size_t topic_size = topic_ ? std::strlen(topic_) : 0;
+    zlink_msg_t topic_msg;
+    if (bench_msg_init_copy(&topic_msg, topic_, topic_size) != 0)
+        return -1;
+
+    const int topic_rc =
+      zmq_msg_send(&topic_msg, socket_, flags_ | ZLINK_SNDMORE);
+    if (topic_rc < 0) {
+        zlink_msg_close(&topic_msg);
+        return -1;
+    }
+    return zmq_msg_send(msg_, socket_, flags_);
+}
+
+inline int bench_recv_pubsub_single_part(void *socket_,
+                                         zlink_msg_t *msg_,
+                                         char *topic_out_,
+                                         size_t *topic_len_out_,
+                                         int flags_)
+{
+    if (!socket_ || !msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t topic_msg;
+    if (zlink_msg_init(&topic_msg) != 0)
+        return -1;
+
+    const int topic_rc = zmq_msg_recv(&topic_msg, socket_, flags_);
+    if (topic_rc < 0) {
+        zlink_msg_close(&topic_msg);
+        return -1;
+    }
+
+    const size_t topic_size = zlink_msg_size(&topic_msg);
+    if (topic_len_out_)
+        *topic_len_out_ = topic_size;
+    if (topic_out_ && topic_size > 0)
+        std::memcpy(topic_out_, zlink_msg_data(&topic_msg), topic_size);
+
+    if (!bench_msg_has_more(topic_msg)) {
+        zlink_msg_close(&topic_msg);
+        errno = EMSGSIZE;
+        return -1;
+    }
+
+    zlink_msg_close(&topic_msg);
+    return zmq_msg_recv(msg_, socket_, 0);
 }
 
 inline int resolve_single_send_timeout_ms()

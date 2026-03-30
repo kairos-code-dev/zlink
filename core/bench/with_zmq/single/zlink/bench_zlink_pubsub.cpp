@@ -361,13 +361,11 @@ inline bool run_oneway_phase (void *pub_socket,
             }
 
             zlink_msg_t part;
-            if (::zlink_msg_init_size (&part, payload_size) != 0) {
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
                 send_failed = true;
                 break;
             }
-            if (payload_size > 0)
-                memcpy (::zlink_msg_data (&part), payload->data (),
-                        payload_size);
             if (::zlink_publish (pub_socket, k_pubsub_topic, &part, 1,
                                  static_cast<zlink_send_flags_t> (0))
                 < 0) {
@@ -393,13 +391,11 @@ inline bool run_oneway_phase (void *pub_socket,
             }
 
             zlink_msg_t part;
-            if (::zlink_msg_init_size (&part, payload_size) != 0) {
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
                 send_failed = true;
                 break;
             }
-            if (payload_size > 0)
-                memcpy (::zlink_msg_data (&part), payload->data (),
-                        payload_size);
             if (::zlink_publish (pub_socket, k_pubsub_topic, &part, 1,
                                  static_cast<zlink_send_flags_t> (0))
                 < 0) {

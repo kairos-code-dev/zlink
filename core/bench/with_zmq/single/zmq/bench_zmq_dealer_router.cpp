@@ -19,37 +19,30 @@ inline int recv_router_header_flags (void *router,
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink_msg_t rid;
-    if (zlink_msg_init (&rid) != 0)
+    zlink_msg_t payload;
+    if (zlink_msg_init (&payload) != 0)
         return -1;
 
-    const int id_rc = zmq_msg_recv (&rid, router, flags);
+    zlink_routing_id_t source_rid;
+    source_rid.size = 0;
+    const int id_rc =
+      bench_recv_single_part_routed (router, &payload, &source_rid, flags);
     if (id_rc < 0) {
         const int err = zlink_errno ();
-        zlink_msg_close (&rid);
+        zlink_msg_close (&payload);
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
     }
 
-    if (zlink_msg_more (&rid) == 0) {
-        zlink_msg_close (&rid);
-        return -1;
-    }
-    zlink_msg_close (&rid);
-
-    zlink_msg_t payload;
-    if (zlink_msg_init (&payload) != 0)
-        return -1;
-
-    if (zmq_msg_recv (&payload, router, 0) < 0) {
+    if (source_rid.size == 0) {
         zlink_msg_close (&payload);
         return -1;
     }
 
     const size_t actual_size = zlink_msg_size (&payload);
     const bool size_ok = actual_size == payload_size;
-    const bool has_more = zlink_msg_more (&payload) != 0;
+    const bool has_more = bench_msg_has_more (payload);
     bool header_ok = false;
 
     if (size_ok && !has_more) {
@@ -224,7 +217,18 @@ inline bool run_oneway_phase (void *dealer,
                                                     msg_size,
                                                     (*seq)++,
                                                     sent_ts)
-                || !send_exact (dealer, payload->data (), payload_size, 0)) {
+            ) {
+                send_failed = true;
+                break;
+            }
+            zlink_msg_t part;
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
+                send_failed = true;
+                break;
+            }
+            if (bench_send_single_part (dealer, &part, 0) < 0) {
+                zlink_msg_close (&part);
                 send_failed = true;
                 break;
             }
@@ -241,7 +245,18 @@ inline bool run_oneway_phase (void *dealer,
                   msg_size,
                   (*seq)++,
                   perf_single_metric::now_us ())
-                || !send_exact (dealer, payload->data (), payload_size, 0)) {
+            ) {
+                send_failed = true;
+                break;
+            }
+            zlink_msg_t part;
+            if (bench_msg_init_copy (&part, payload->data (), payload_size)
+                != 0) {
+                send_failed = true;
+                break;
+            }
+            if (bench_send_single_part (dealer, &part, 0) < 0) {
+                zlink_msg_close (&part);
                 send_failed = true;
                 break;
             }

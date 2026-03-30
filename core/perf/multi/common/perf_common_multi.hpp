@@ -193,7 +193,7 @@ inline int resolve_multi_int_env (const char *env_name,
 inline bool multi_perf_callback_supported_for_pattern (const char *pattern)
 {
     const std::string normalized = normalize_multi_pattern_name (pattern);
-    return normalized == "SPOT" || normalized == "STREAM";
+    return normalized == "SPOT";
 }
 
 inline std::string resolve_multi_perf_recv_mode ()

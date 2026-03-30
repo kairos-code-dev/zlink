@@ -11,7 +11,7 @@ namespace zlink
 {
 class ctx_t;
 class discovery_t;
-class spot_runtime_t;
+struct spot_runtime_t;
 class spot_internal_receiver_t;
 class spot_node_t;
 

@@ -247,14 +247,9 @@ bool wait_for_spot_pub_ready(spot_pub_ready_probe_t *probe,
 
 int resolve_spot_pub_ready_quorum_percent(const std::string &transport)
 {
-    int default_percent = 90;
-    if (transport == "wss")
-        default_percent = 75;
-    else if (transport == "ws")
-        default_percent = 85;
-
+    (void) transport;
     return resolve_multi_int_env("PERF_MULTI_SPOT_PUB_READY_QUORUM_PERCENT",
-                                 default_percent,
+                                 90,
                                  1);
 }
 
@@ -664,6 +659,8 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
+    sync_spot_internal_mesh_pub_hwm(
+      bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm));
     std::vector<size_t> msg_sizes = resolve_bench_msg_sizes(64);
     if (msg_sizes.empty())
         msg_sizes.push_back(64);

@@ -194,6 +194,8 @@ Usage: core/perf/run_benchmarks_multi.sh [options]
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
   DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM
+When callback mode is selected without an explicit pattern, default PATTERN is:
+  SPOT,STREAM
 By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -210,6 +212,8 @@ Options:
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
   --recv MODE            Receive model: recv|callback (default: recv).
+  --callback             Alias of --recv callback. If --pattern is omitted,
+                         defaults to SPOT,STREAM.
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
@@ -376,6 +380,7 @@ SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
 CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"
 STREAM_SERVER_IO_THREADS="${PERF_MULTI_STREAM_SERVER_IO_THREADS:-${PERF_STREAM_SERVER_IO_THREADS:-}}"
 STREAM_CLIENT_IO_THREADS="${PERF_MULTI_STREAM_CLIENT_IO_THREADS:-${PERF_STREAM_CLIENT_IO_THREADS:-}}"
+CALLBACK_DEFAULT_PATTERNS=("SPOT" "STREAM")
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -471,6 +476,11 @@ while [[ $# -gt 0 ]]; do
       RECV_MODE="${2}"
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
+      ;;
+    --callback)
+      RECV_MODE="callback"
+      SCRIPT_ARGS+=( "--recv" "callback" )
+      shift
       ;;
     --warmup)
       if [[ $# -lt 2 ]]; then
@@ -785,6 +795,8 @@ fi
 PATTERNS=("${PATTERN_LIST[@]}")
 if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
   PATTERNS=("${EXPLICIT_PATTERNS[@]}")
+elif [[ "${RECV_MODE}" == "callback" ]]; then
+  PATTERNS=("${CALLBACK_DEFAULT_PATTERNS[@]}")
 fi
 
 RUN_BASE_ARGS=()

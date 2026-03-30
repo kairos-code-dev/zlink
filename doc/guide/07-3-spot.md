@@ -134,6 +134,10 @@ void *spot = zlink_spot_new(ctx);
 It provides both publish and subscribe behavior. There are no public standalone
 `spot_pub` / `spot_sub` constructors.
 
+Transport security is not configured through unified `spot`. If the service
+must use `tls://` or `wss://`, configure TLS on the owned `SpotNode` first.
+The internal `inproc` linkage inside unified `spot` is not a TLS surface.
+
 ### 4.2 Publishing
 
 ```c

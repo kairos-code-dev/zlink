@@ -215,7 +215,8 @@ inline bool publish_once (void *server,
                       << " phase=" << static_cast<unsigned int> (phase)
                       << " size=" << current_msg_size << std::endl;
         }
-        if (perf_socket_poll (NULL, 0, 1) < 0 && zlink_errno () != EINTR)
+        if (perf_socket_poll (NULL, 0, perf_aux_poll_wait_ms ()) < 0
+            && zlink_errno () != EINTR)
             return false;
         return true;
     }

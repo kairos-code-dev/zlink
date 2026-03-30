@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../src');
+const zlink = require('../dist');
 
 const ctx = new zlink.Context();
 const stream = new zlink.Socket(ctx, zlink.SocketType.STREAM);

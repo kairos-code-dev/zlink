@@ -361,6 +361,8 @@ int run_case (const std::string &lib_name_,
     if (!ctx.valid ())
         return 1;
 
+    sync_single_spot_internal_mesh_pub_hwm ();
+
     void *pub_node = zlink_spot_node_new (ctx.get ());
     void *sub_node = zlink_spot_node_new (ctx.get ());
     void *pub = NULL;

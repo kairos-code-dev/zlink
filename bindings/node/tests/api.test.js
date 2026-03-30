@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../src');
+const zlink = require('../dist');
 
 test('service objects expose aligned monitor and query surface', () => {
   const ctx = new zlink.Context();

@@ -106,16 +106,22 @@ final class SocketCore {
     }
 
     void setSockOpt(SocketOption option, byte[] value) {
+        Objects.requireNonNull(option, "option");
+        socket.validateOptionAccess(option.getValue(), option.name());
         setSockOpt(option, value, 0, value.length);
     }
 
     void setSockOpt(SocketOption option, byte[] value, int offset, int length) {
+        Objects.requireNonNull(option, "option");
+        socket.validateOptionAccess(option.getValue(), option.name());
         Objects.requireNonNull(value, "value");
         Socket.validateRange(value.length, offset, length, "value");
         socket.setSockOptBytes(option.getValue(), value, offset, length);
     }
 
     void setSockOpt(SocketOption option, ByteBuffer value) {
+        Objects.requireNonNull(option, "option");
+        socket.validateOptionAccess(option.getValue(), option.name());
         Objects.requireNonNull(value, "value");
         int length = value.remaining();
         if (length == 0) {
@@ -135,20 +141,27 @@ final class SocketCore {
     }
 
     void setSockOpt(SocketOption option, int value) {
+        Objects.requireNonNull(option, "option");
+        socket.validateOptionAccess(option.getValue(), option.name());
         socket.setSockOptInt(option.getValue(), value);
     }
 
     byte[] getSockOptBytes(SocketOption option, int maxLen) {
+        Objects.requireNonNull(option, "option");
+        socket.validateOptionAccess(option.getValue(), option.name());
         return socket.getSockOptBytes(option.getValue(), maxLen);
     }
 
     int getSockOptInt(SocketOption option) {
+        Objects.requireNonNull(option, "option");
+        socket.validateOptionAccess(option.getValue(), option.name());
         return socket.getSockOptInt(option.getValue());
     }
 
     void setOption(SocketOptionKey<Integer> option, int value) {
         Objects.requireNonNull(option, "option");
         socket.validateAmbiguousOption(option);
+        socket.validateOptionAccess(option.optionId(), option.name());
         Socket.validateOptionType(option, SocketOptionValueType.INT32);
         option.requireWritable();
         socket.setSockOptInt(option.optionId(), value);
@@ -157,6 +170,7 @@ final class SocketCore {
     void setOptionLong(SocketOptionKey<Long> option, long value) {
         Objects.requireNonNull(option, "option");
         socket.validateAmbiguousOption(option);
+        socket.validateOptionAccess(option.optionId(), option.name());
         Socket.validateOptionType(option, SocketOptionValueType.INT64);
         option.requireWritable();
         socket.setSockOptLong(option.optionId(), value);
@@ -165,6 +179,7 @@ final class SocketCore {
     void setOptionString(SocketOptionKey<String> option, String value) {
         Objects.requireNonNull(option, "option");
         socket.validateAmbiguousOption(option);
+        socket.validateOptionAccess(option.optionId(), option.name());
         Socket.validateOptionType(option, SocketOptionValueType.STRING);
         option.requireWritable();
         byte[] utf8 = Objects.requireNonNull(value, "value").getBytes(
@@ -175,6 +190,7 @@ final class SocketCore {
     void setOptionBytes(SocketOptionKey<byte[]> option, byte[] value) {
         Objects.requireNonNull(option, "option");
         socket.validateAmbiguousOption(option);
+        socket.validateOptionAccess(option.optionId(), option.name());
         Socket.validateOptionType(option, SocketOptionValueType.BYTES);
         option.requireWritable();
         Objects.requireNonNull(value, "value");
@@ -184,6 +200,7 @@ final class SocketCore {
     <T> T getOption(SocketOptionKey<T> option) {
         Objects.requireNonNull(option, "option");
         socket.validateAmbiguousOption(option);
+        socket.validateOptionAccess(option.optionId(), option.name());
         option.requireReadable();
         return socket.readOption(option);
     }

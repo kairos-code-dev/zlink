@@ -94,8 +94,7 @@ typedef enum zlink_socket_type_t
 } zlink_socket_type_t;
 ```
 
-단축 별칭도 사용 가능: `ZLINK_PAIR`, `ZLINK_PUB`, `ZLINK_SUB`,
-`ZLINK_DEALER`, `ZLINK_ROUTER`, `ZLINK_XPUB`, `ZLINK_XSUB`, `ZLINK_STREAM`.
+항상 위에 표시된 `ZLINK_SOCKET_*` 정규화된 상수를 사용합니다.
 
 ### 송신 플래그
 
@@ -463,6 +462,11 @@ int zlink_set_tls_server (void *handle_,
 서버 소켓에 TLS 인증서, 개인 키를 설정하고, 클라이언트 인증서 요구 여부를
 지정합니다.
 
+service handle의 경우 TLS 지원 범위는 surface마다 다릅니다. Discovery는
+client TLS만, Registry는 client/server TLS를 지원하며, SPOT은 `SpotNode`
+handle에서만 TLS를 지원합니다. unified `Spot`과 SPOT child pub/sub handle은
+`ENOTSUP`로 실패합니다.
+
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 
 **참고:** `zlink_set_tls_client`, `zlink_bind`
@@ -482,6 +486,11 @@ int zlink_set_tls_client (void *handle_,
 
 클라이언트 소켓에 CA 인증서, 호스트명(SNI 및 인증서 검증용), 시스템 CA
 저장소 신뢰 여부를 설정합니다.
+
+service handle의 경우 TLS 지원 범위는 surface마다 다릅니다. Discovery는
+client TLS만, Registry는 client/server TLS를 지원하며, SPOT은 `SpotNode`
+handle에서만 TLS를 지원합니다. unified `Spot`과 SPOT child pub/sub handle은
+`ENOTSUP`로 실패합니다.
 
 **반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
 

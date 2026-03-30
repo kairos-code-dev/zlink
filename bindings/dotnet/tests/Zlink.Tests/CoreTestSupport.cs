@@ -557,7 +557,7 @@ internal static class CoreTestSupport
     }
 
     internal static (string routingId, string payload) ReceiveRoutedUtf8WithTimeout(
-        MessageSocketBase socket, int timeoutMs)
+        RoutedMessageSocketBase socket, int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)

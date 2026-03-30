@@ -9,6 +9,8 @@ Aligned Node bindings for `libzlink`.
 - `new PubSocket(ctx)`, `new XPubSocket(ctx)`
 - `new SubSocket(ctx)`, `new XSubSocket(ctx)`
 - duplex sockets: `send(...)`, `sendParts(...)`, `recv()`, `recvInto(buffer)`
+- `RouterSocket`: `recv()`, `recvInto(buffer)`, `sendTo(routingId, message)`,
+  `sendPartsTo(routingId, parts)`
 - send sockets: `send(...)`, `sendParts(...)`
 - subscriber sockets: `subscribe(...)`, `unsubscribe(...)`, `recv()`
 
@@ -16,7 +18,9 @@ Aligned Node bindings for `libzlink`.
 `Message.wrap()` keeps the caller-owned buffer as the payload source.
 Canonical raw sockets intentionally hide opposite-direction methods, so
 `PubSocket` does not expose `recv()` and `SubSocket` does not expose `send()`.
-`StreamSocket` also does not expose active stream helpers on the canonical path.
+`RouterSocket` also does not expose generic `send(...)`; replies must include a
+routing ID. `StreamSocket` also does not expose active stream helpers on the
+canonical path.
 
 ## Compatibility Socket
 
@@ -46,6 +50,7 @@ aligned canonical surface.
 ## Verification
 
 ```bash
+cd bindings/node && npm run build
 cd bindings/node && node-gyp rebuild
 cd bindings/node && npm test
 cd bindings/node && node --test tests/*.test.js

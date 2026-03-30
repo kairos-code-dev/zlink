@@ -7,6 +7,7 @@ param(
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
     [string]$Recv = "recv",
+    [switch]$Callback,
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
@@ -53,6 +54,7 @@ function Show-Usage {
 Usage: core\perf\run_benchmarks_multi.ps1 [options]
 
 Run only multi-socket benchmark patterns.
+Default pattern is ALL in recv mode and SPOT,STREAM in callback mode.
 
 Options:
   -Pattern NAME                Pattern list (comma-separated) or ALL.
@@ -64,6 +66,8 @@ Options:
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag appended to result filename.
   -Recv MODE                   Receive model: recv|callback (default: recv).
+  -Callback                    Alias of -Recv callback. If -Pattern is omitted,
+                               defaults to SPOT,STREAM.
   -IoThreads N                 Set PERF_IO_THREADS.
                                Default multi io-threads are 4.
   -MsgSizes LIST               Comma-separated sizes.
@@ -107,6 +111,7 @@ if ($ServerBindPort -lt 0 -or $ServerBindPort -gt 65535) {
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') { throw "IoThreads must be a non-negative integer." }
 if (-not $Recv) { $Recv = "recv" }
 $Recv = $Recv.Trim().ToLowerInvariant()
+if ($Callback.IsPresent) { $Recv = "callback" }
 if ($Recv -notin @("recv", "callback")) { throw "Recv must be 'recv' or 'callback'." }
 if ($Hwm -and ($Hwm -notmatch '^\d+$' -or [int]$Hwm -lt 1)) { throw "Hwm must be a positive integer." }
 if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) { throw "SendHwm must be a positive integer." }
@@ -161,8 +166,14 @@ function Expand-AndAddPatternAlias {
 
 $ExpandedPatterns = New-Object 'System.Collections.Generic.List[string]'
 if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
+    if ($Recv -eq "callback") {
+        foreach ($p in @("SPOT", "STREAM")) {
+            Expand-AndAddPatternAlias -List $ExpandedPatterns -RawPattern $p
+        }
+    } else {
     foreach ($p in $DefaultPatterns) {
         Expand-AndAddPatternAlias -List $ExpandedPatterns -RawPattern $p
+    }
     }
 } else {
     foreach ($part in $Pattern.Split(",")) {

@@ -27,18 +27,6 @@ public abstract class MessageSocketBase : SocketBase
         Kernel.Send(parts, flags);
     }
 
-    public void Send(string routingId, Message message,
-        SendFlags flags = SendFlags.None)
-    {
-        Kernel.Send(routingId, message, flags);
-    }
-
-    public void Send(string routingId, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
-    {
-        Kernel.Send(routingId, parts, flags);
-    }
-
     public void RecvHandler(SocketRecvHandler handler)
     {
         Kernel.RecvHandler(handler);
@@ -52,17 +40,5 @@ public abstract class MessageSocketBase : SocketBase
     public void Receive(out Message[] parts, ReceiveFlags flags = ReceiveFlags.None)
     {
         Kernel.Receive(out parts, flags);
-    }
-
-    public void Receive(out string routingId, out Message message,
-        ReceiveFlags flags = ReceiveFlags.None)
-    {
-        Kernel.Receive(out routingId, out message, flags);
-    }
-
-    public void Receive(out string routingId, out Message[] parts,
-        ReceiveFlags flags = ReceiveFlags.None)
-    {
-        Kernel.Receive(out routingId, out parts, flags);
     }
 }

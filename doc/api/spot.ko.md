@@ -70,7 +70,9 @@ int zlink_get_routing_id(void *node,
 `SpotNode`는 topology 및 lifecycle owner입니다. `service_name`은 연결된
 Discovery 인스턴스에서 결정됩니다. SpotNode는 generic data-plane facade를
 직접 노출하지 않습니다 — publish/subscribe/recv callback API는
-`zlink_spot_new()`를 사용하세요.
+`zlink_spot_new()`를 사용하세요. TLS/WSS 설정도 `SpotNode`의 책임이며,
+`zlink_set_tls_server()` / `zlink_set_tls_client()`는 bind/connect 전에
+node handle에 적용해야 합니다.
 
 ### Unified Spot
 
@@ -138,6 +140,10 @@ int zlink_get_routing_id(void *spot,
 publish와 subscribe 동작을 모두 제공합니다. publish-only 혹은 subscribe-only
 public child handle은 더 이상 제공하지 않습니다.
 
+unified `Spot`은 transport security 설정 surface가 아닙니다. unified `Spot`
+handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하면
+`ENOTSUP`로 실패합니다. TLS/WSS는 소유된 `SpotNode`에 먼저 설정해야 합니다.
+
 `zlink_subscribe()`는 recv 모드에서 동기식 pull 방식의 수신을 제공합니다.
 다음 메시지와 source routing ID, topic을 반환합니다. 성공 시 `source_rid_out_`,
 `parts_out_`, `topic_id_out_`이 채워집니다. non-blocking 동작은 `flags_`에
@@ -145,6 +151,23 @@ public child handle은 더 이상 제공하지 않습니다.
 
 aggregate ready-peer / queue 조회는 `zlink_service_monitor_open()`과
 `zlink_monitor_snapshot()` 조합을 사용합니다.
+
+## Internal Mesh Publish Budget
+
+SPOT은 SpotNode 런타임 내부에서 peer fanout 용 `mesh_pub` sender를 사용합니다.
+이 내부 `mesh_pub`의 send HWM 기본값은 `tcp`, `tls`, `ws`, `wss`를 포함한
+모든 transport에서 `100`입니다.
+
+이 내부 budget은 unified `Spot` handle에 설정하는 public `SNDHWM` /
+`RCVHWM`과는 별개의 값입니다.
+
+- internal `mesh_pub` send HWM 기본값: `100`
+- transport별 기본 확장은 적용하지 않습니다
+- 특정 배포에서만 별도 internal budget이 필요하면
+  `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM=<value>`로 override 하십시오
+
+transport 비교 perf에서는 transport별 internal backlog 깊이 차이로
+queueing latency가 왜곡되지 않도록 기본값 유지가 권장됩니다.
 
 ## callback 계약
 

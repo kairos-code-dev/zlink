@@ -7,6 +7,11 @@
 zlink 서비스 계층은 Discovery와 SPOT 두 가지 고수준 서비스를 제공한다.
 이 문서는 내부 구현 상세를 다룬다.
 
+SPOT에서 transport security 소유권은 의도적으로 좁게 유지한다.
+`SpotNode`가 mesh/control 소켓의 TLS/WSS wiring을 책임지고, unified `Spot`은
+data-plane facade로만 남는다. facade가 내부 node를 소유할 수는 있지만,
+그 자체가 TLS 설정 surface는 아니다.
+
 ## 2. Registry 내부 구현
 
 ### 2.1 데이터 구조
@@ -182,10 +187,10 @@ Frame 4~N: 서비스 엔트리 (service_count만큼 반복)
 
 ### 5.2 동시성 모델
 - 발행: 호출자 스레드에서 직접 수행,
-  `_pub_sync` mutex로 직렬화 (thread-safe)
+  `_publish_sync` mutex로 직렬화 (thread-safe)
 - 수신: worker 스레드가 SUB 소켓에서 수신,
   spot_sub_t 내부 큐로 분배
-- 잠금 순서: `_sync` → `_pub_sync` (데드락 방지)
+- 잠금 순서: `_sync` → `_publish_sync` (데드락 방지)
 - 비동기 큐 없이 직접 발행 (publish path에 메시지 버퍼링 없음)
 
 ### 5.3 구독 집계

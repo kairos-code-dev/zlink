@@ -95,8 +95,7 @@ typedef enum zlink_socket_type_t
 } zlink_socket_type_t;
 ```
 
-Short-form aliases are also available: `ZLINK_PAIR`, `ZLINK_PUB`, `ZLINK_SUB`,
-`ZLINK_DEALER`, `ZLINK_ROUTER`, `ZLINK_XPUB`, `ZLINK_XSUB`, `ZLINK_STREAM`.
+Always use the fully qualified `ZLINK_SOCKET_*` constants shown above.
 
 ### Send Flags
 
@@ -361,7 +360,7 @@ int zlink_close (void *s_);
 
 Closes the socket and releases all associated resources. Any outstanding
 messages in the send queue are discarded or sent depending on the
-`ZLINK_LINGER` setting. Public handles follow a tiered contract: hot-path send
+`ZLINK_OPT_LINGER` setting. Public handles follow a tiered contract: hot-path send
 operations can be called concurrently from multiple threads, low-frequency control paths
 serialize for correctness, and close/destroy uses a stricter lifecycle gate.
 If another thread has an in-flight callback or admitted API on the same
@@ -475,6 +474,11 @@ Configures TLS server mode on the socket. `cert_` and `key_` are paths to
 PEM-encoded certificate and private key files. Set `require_client_cert_`
 to 1 to require client certificate authentication.
 
+For service handles, TLS support is surface-specific. Discovery accepts
+client TLS, Registry accepts client/server TLS, and SPOT accepts TLS only
+for `SpotNode` handles. Unified `Spot` and SPOT child pub/sub handles fail
+with `ENOTSUP`.
+
 **Returns:** 0 on success, -1 on failure (errno is set).
 
 **See also:** `zlink_set_tls_client`
@@ -496,6 +500,11 @@ Configures TLS client mode on the socket. `ca_cert_` is the path to a
 PEM-encoded CA certificate bundle. `hostname_` sets the expected hostname
 for SNI and certificate verification. Set `trust_system_` to 1 to also
 trust the system CA certificate store.
+
+For service handles, TLS support is surface-specific. Discovery accepts
+client TLS, Registry accepts client/server TLS, and SPOT accepts TLS only
+for `SpotNode` handles. Unified `Spot` and SPOT child pub/sub handles fail
+with `ENOTSUP`.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
 
@@ -699,7 +708,7 @@ Binds the socket to a local endpoint. The endpoint string uses the format
 - `tls://interface:port` (TLS-encrypted TCP)
 
 A socket can be bound to multiple endpoints. For TCP, if port 0 is specified
-the system assigns an ephemeral port; use `ZLINK_LAST_ENDPOINT` to retrieve
+the system assigns an ephemeral port; use `ZLINK_OPT_LAST_ENDPOINT` to retrieve
 the actual endpoint.
 
 **Returns:** 0 on success, -1 on failure (errno is set).
@@ -813,7 +822,7 @@ mode (no handler attached). If a receive handler has been attached via
 **Returns:** 0 on success, -1 on failure (errno is set).
 
 **Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
-set, or if `ZLINK_RCVTIMEO` expired. `EBUSY` if a receive handler is
+set, or if `ZLINK_OPT_RCVTIMEO` expired. `EBUSY` if a receive handler is
 attached. `ETERM` if the context was terminated.
 
 **See also:** `zlink_send`, `zlink_recv_handler`, `zlink_multipart_close`

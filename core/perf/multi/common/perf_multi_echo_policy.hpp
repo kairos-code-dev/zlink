@@ -170,7 +170,7 @@ inline bool echo_start_phase_requests (State *state,
             break;
 
         bool progressed = false;
-        if (!service_fn (state, std::min (remaining_ms, 10), &progressed))
+        if (!service_fn (state, remaining_ms, &progressed))
             return false;
     }
 
@@ -200,7 +200,7 @@ inline bool echo_wait_phase_duration (State *state,
             break;
 
         bool progressed = false;
-        if (!service_fn (state, std::min (remaining_ms, 10), &progressed))
+        if (!service_fn (state, remaining_ms, &progressed))
             return false;
     }
 

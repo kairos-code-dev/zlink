@@ -136,6 +136,10 @@ void *spot = zlink_spot_new(ctx);
 publish와 subscribe를 함께 제공한다. public standalone `spot_pub` / `spot_sub`
 생성자는 제공하지 않는다.
 
+transport security는 unified `spot`에서 설정하지 않는다. `tls://` 또는
+`wss://`를 써야 하면 먼저 소유된 `SpotNode`에 TLS를 설정해야 한다. unified
+`spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
+
 ### 4.2 발행
 
 ```c

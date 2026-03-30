@@ -55,6 +55,39 @@ void test_spot_peer_wss ()
     run_spot_peer_transport_test (peer_transport_wss);
 }
 
+void test_spot_child_handles_reject_tls_configuration ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_spot_node (ctx, "spot-child-tls-policy");
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *pub = create_spot_pub_handle (node);
+    void *sub = create_spot_sub_handle (node, NULL);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_set_tls_server (pub, "server.crt", "server.key", 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_set_tls_client (pub, "ca.crt", "localhost", 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_set_tls_client (sub, "ca.crt", "localhost", 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_unified_wss_subscription_ready_first_delivery ()
 {
     if (!zlink_has ("wss")) {

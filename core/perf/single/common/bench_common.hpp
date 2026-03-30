@@ -68,6 +68,8 @@ typedef struct zlink_pollitem_t
 } zlink_pollitem_t;
 #endif
 
+static const long PERF_AUX_POLL_WAIT_MS = 100;
+
 inline int perf_idle_wait_ms(long timeout_)
 {
     if (timeout_ <= 0)
@@ -146,6 +148,11 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
         if (perf_idle_wait_ms(1) != 0)
             return -1;
     }
+}
+
+inline long perf_aux_poll_wait_ms()
+{
+    return PERF_AUX_POLL_WAIT_MS;
 }
 
 // --- Configuration ---
@@ -1208,6 +1215,23 @@ inline int resolve_single_socket_hwm(bool send_)
                  : parse_positive_env("PERF_SINGLE_RCVHWM", base_hwm);
 }
 
+inline void sync_single_spot_internal_mesh_pub_hwm()
+{
+    if (std::getenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM") != NULL)
+        return;
+
+    const int sndhwm = resolve_single_socket_hwm(true);
+    if (sndhwm <= 0)
+        return;
+
+    const std::string value = std::to_string(sndhwm);
+#if defined(_WIN32)
+    _putenv_s("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str());
+#else
+    setenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str(), 1);
+#endif
+}
+
 inline int resolve_single_queue_sample_ms()
 {
     return parse_positive_env("PERF_SINGLE_QUEUE_SAMPLE_MS", 100);
@@ -1432,7 +1456,7 @@ inline bool single_wait_for_send_backpressure(queue_probe_t *queue_probe_)
     if (queue_probe_)
         queue_probe_->sample_send_if_due();
 
-    const int rc = perf_socket_poll(NULL, 0, 1);
+    const int rc = perf_socket_poll(NULL, 0, perf_aux_poll_wait_ms());
     if (rc >= 0)
         return true;
 

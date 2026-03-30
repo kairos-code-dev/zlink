@@ -2,9 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../src');
+const zlink = require('../dist');
 
-test('dealer/router uses routing id through Received and sendParts', () => {
+test('dealer/router uses routing id through Received and sendPartsTo', () => {
   const ctx = new zlink.Context();
   const router = new zlink.RouterSocket(ctx);
   const dealer = new zlink.DealerSocket(ctx);
@@ -19,14 +19,15 @@ test('dealer/router uses routing id through Received and sendParts', () => {
   assert.equal(request.parts[0].toString(), 'hello');
   assert.ok(Buffer.isBuffer(request.routingId));
 
-  router.sendParts([
-    zlink.Message.wrap(request.routingId),
+  router.sendPartsTo(request.routingId, [
     zlink.Message.copyOf('world')
   ]);
 
   const response = dealer.recv();
   assert.equal(response.parts.length, 1);
   assert.equal(response.parts[0].toString(), 'world');
+  assert.throws(() => router.send(zlink.Message.copyOf('bad')), /sendTo/);
+  assert.throws(() => router.sendParts([zlink.Message.copyOf('bad')]), /sendPartsTo/);
 
   dealer.close();
   router.close();

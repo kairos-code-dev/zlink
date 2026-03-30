@@ -85,6 +85,9 @@ and delegates execution to `run_benchmarks.sh`.
 
 `DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM`
 
+In callback mode without an explicit pattern, the default narrows to:
+`SPOT,STREAM`
+
 ### Options
 
 | Option | Default | Description |
@@ -99,6 +102,7 @@ and delegates execution to `run_benchmarks.sh`.
 | `--output PATH` | — | Tee output to file |
 | `--runs N` | `1` | Iterations per configuration |
 | `--recv MODE` | `recv` | Receive model (`recv` or `callback`) |
+| `--callback` | off | Alias of `--recv callback`; defaults to `SPOT,STREAM` when `--pattern` is omitted |
 | `--pin-cpu` | off | Pin CPU core |
 | `--io-threads N` | — | Set both server/client io threads |
 | `--server-io-threads N` | `4` | Set server io threads |

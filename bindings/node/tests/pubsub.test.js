@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../src');
+const zlink = require('../dist');
 
 test('spot exposes unified publish and subscribe surface', () => {
   const ctx = new zlink.Context();

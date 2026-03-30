@@ -70,7 +70,9 @@ int zlink_get_routing_id(void *node,
 `SpotNode` is the topology and lifecycle owner. Its `service_name` is
 determined by the attached Discovery instance. SpotNode does not expose
 the generic data-plane facade directly — use `zlink_spot_new()` for
-publish/subscribe/recv callback APIs.
+publish/subscribe/recv callback APIs. TLS/WSS configuration is also
+owned by `SpotNode`; use `zlink_set_tls_server()` / `zlink_set_tls_client()`
+with the node handle before bind/connect.
 
 ### Unified Spot
 
@@ -138,6 +140,11 @@ int zlink_get_routing_id(void *spot,
 It provides both publish and subscribe behavior. There is no separate public
 publish-only or subscribe-only child handle.
 
+Unified `Spot` is not a transport-security configuration surface. Calling
+`zlink_set_tls_server()` or `zlink_set_tls_client()` with a unified `Spot`
+handle fails with `ENOTSUP`. Configure TLS/WSS on the owned `SpotNode`
+before the node participates in bind/connect/discovery.
+
 `zlink_subscribe()` provides synchronous pull-style receive in recv
 model. It returns the next available message with its source routing ID and
 topic. `source_rid_out_`, `parts_out_`, and `topic_id_out_` are filled on
@@ -146,6 +153,23 @@ Returns `EBUSY` in callback model.
 
 Use `zlink_service_monitor_open()` plus `zlink_monitor_snapshot()` for
 aggregate ready-peer and queue inspection.
+
+## Internal Mesh Publish Budget
+
+SPOT uses an internal `mesh_pub` sender inside the SpotNode runtime to fan out
+payloads to connected peers. The internal `mesh_pub` send HWM defaults to
+`100` for every transport, including `tcp`, `tls`, `ws`, and `wss`.
+
+This internal budget is separate from public socket `SNDHWM` or `RCVHWM`
+options applied to unified `Spot` handles.
+
+- Default internal `mesh_pub` send HWM: `100`
+- Transport-specific default expansion is not applied
+- Override only when a deployment explicitly needs a different internal budget:
+  `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM=<value>`
+
+Keep the default when comparing transport behavior in perf runs so queueing
+latency is not distorted by transport-specific internal backlog depth.
 
 ## Callback contract
 
@@ -160,8 +184,7 @@ typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
 
 - Install the callback with `zlink_subscribe_handler(node_or_spot, handler, userdata)`.
 - Handles start in recv model and switch one-way to callback model.
-- Once in callback model, `zlink_subscribe()` / `zlink_subscribe()`
-  fail with `EBUSY`.
+- Once in callback model, `zlink_subscribe()` fails with `EBUSY`.
 - The callback consumes ownership of `parts`.
 
 ## Option summary

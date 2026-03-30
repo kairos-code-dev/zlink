@@ -14,6 +14,8 @@
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 
+#include <climits>
+
 namespace zlink
 {
 namespace
@@ -224,6 +226,21 @@ int publish_bootstrap_if_due (spot_node_t *node_,
           runtime_, bootstrap_ready);
     return 0;
 }
+
+int resolve_data_plane_poll_timeout_ms (uint64_t next_bootstrap_ms_)
+{
+    if (next_bootstrap_ms_ == 0)
+        return 0;
+
+    const uint64_t now_ms = clock_t ().now_ms ();
+    if (next_bootstrap_ms_ <= now_ms)
+        return 0;
+
+    const uint64_t remaining_ms = next_bootstrap_ms_ - now_ms;
+    return remaining_ms > static_cast<uint64_t> (INT_MAX)
+             ? INT_MAX
+             : static_cast<int> (remaining_ms);
+}
 }
 
 int spot_data_plane_loop_t::run_until_shutdown (
@@ -254,7 +271,9 @@ int spot_data_plane_loop_t::run_until_shutdown (
         }
 
         socket_poller_t::event_t events[5];
-        const int rc = poller.wait (events, 5, 20);
+        const int rc =
+          poller.wait (events, 5,
+                       resolve_data_plane_poll_timeout_ms (next_bootstrap_ms));
         if (rc < 0) {
             if (errno == EAGAIN || errno == EINTR)
                 continue;

@@ -258,10 +258,10 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 
 각 iteration은 아래 순서를 따른다.
 
-1. 이 문서 전체를 다시 읽고 현재 세션 로그의 작업 레지스터에서 첫 미완료 항목을 찾는다.
+1. 이 문서 전체를 다시 읽고 이 문서의 작업 레지스터에서 첫 미완료 항목을 찾는다.
 2. 그 항목이 여전히 가장 큰 복잡도 원인인지 현재 코드로 재검토한다.
 3. 대표 변경 시나리오와 현재 change amplification을 한 번 적어 본다.
-4. 더 큰 허브가 새로 보이면 먼저 현재 세션 로그 작업 레지스터의 우선순위를 갱신한다.
+4. 더 큰 허브가 새로 보이면 먼저 이 문서 작업 레지스터의 우선순위를 갱신한다.
 5. 한 번에 하나의 bounded slice만 구현한다.
 6. 새 경계가 깊은 모듈인지, 단순 wrapper인지 먼저 판정한다.
 7. 현재 slice가 최종적으로 구조 개선과 성능 개선을 함께 만드는 전체 방향에 포함되는지 확인한다.
@@ -269,9 +269,9 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 9. 구조 변경에 맞는 `core/tests/` 회귀를 추가하거나 보강한다.
 10. 빌드와 관련 테스트를 실행한다.
 11. 작업 직후 `core/src` 전체를 다시 훑어 방금 닫은 slice보다 더 큰 허브가 생기지 않았는지 재점검한다.
-12. 더 큰 허브가 새로 보이면 현재 세션 로그 작업 레지스터 우선순위를 즉시 갱신하고 다음 iteration으로 넘긴다.
+12. 더 큰 허브가 새로 보이면 이 문서 작업 레지스터 우선순위를 즉시 갱신하고 다음 iteration으로 넘긴다.
 13. 더 이상 진행할 리팩토링이 없다고 판단한 마지막 단계에서만 성능 게이트를 실행한다.
-14. 현재 세션 로그의 상태/증거/다음 후보를 갱신한다.
+14. 이 문서 작업 레지스터의 상태/증거/다음 후보를 갱신한다.
 15. 아직 남은 구조 항목이 있으면 다음 iteration으로 간다.
 
 한 iteration에서 해야 할 일은 "코드 수정 + 검증 + 문서 갱신"까지다.
@@ -282,12 +282,12 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 개발 작업이 한 차례 끝난 뒤 이 문서를 다시 실행할 때는 아래 순서를 먼저 수행한다.
 
 1. 최근 기능 변경이 만든 새 책임/새 허브/새 hot path를 먼저 식별한다.
-2. 이전 세션 로그의 항목과 메모를 참고하되, 완료 여부와 우선순위는 현재 코드 기준으로 다시 판정한다.
-3. 새 기능 때문에 생긴 허브가 더 크면 그 항목을 현재 세션 로그 표의 최상단으로 올린다.
+2. 이전 실행에서 남긴 메모나 증거가 있더라도, 완료 여부와 우선순위는 현재 코드 기준으로 다시 판정한다.
+3. 새 기능 때문에 생긴 허브가 더 크면 그 항목을 현재 작업 레지스터 표의 최상단으로 올린다.
 4. 기존 `완료` 항목도 새 기능으로 인해 다시 허브화됐으면 `진행중` 또는 `미착수`로 되돌린다.
 5. 성능 baseline은 "현재 기능 변경 직후 상태"를 새 기준선으로 다시 잡는다.
 
-즉 다음 실행에서는 예전 세션 로그 표를 참고하되,
+즉 다음 실행에서는 이전 메모를 참고하되,
 우선순위와 baseline은 현재 기능 변경 이후 상태로 다시 잡는다.
 
 ## 4.2 종료 전 반복 리뷰 계약
@@ -297,8 +297,8 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 
 반복 리뷰 기본 원칙:
 
-- 세션 로그 표에 미완료 항목이 없더라도 바로 종료 후보로 가지 않는다.
-- 종료 후보에 들어간 뒤에도 새 허브를 찾으면 즉시 세션 로그에 행을 추가하고 종료 후보를 취소한다.
+- 작업 레지스터 표에 미완료 항목이 없더라도 바로 종료 후보로 가지 않는다.
+- 종료 후보에 들어간 뒤에도 새 허브를 찾으면 즉시 작업 레지스터에 행을 추가하고 종료 후보를 취소한다.
 - "최근에 손댄 영역만 다시 본다"는 방식은 금지한다. 종료 후보에서는 반드시 `core/src` 전체를 다시 본다.
 - 이전 iteration에서 이미 `완료`로 적은 항목도 현재 코드에서 다시 허브화됐는지 재평가한다.
 
@@ -317,9 +317,9 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 
 반복 리뷰 중 새 허브를 찾았을 때의 강제 규칙:
 
-- 크기나 hot path 여부와 무관하게 먼저 세션 로그에 행을 추가한다.
+- 크기나 hot path 여부와 무관하게 먼저 작업 레지스터에 행을 추가한다.
 - 그 뒤 "어떤 방향으로 먼저 자를지 / 무엇을 hot path 밖으로 밀어낼지 / 어떤 순서로 구현할지"를 판정한다.
-- 즉 세션 로그에 없는 후보를 머릿속 판단만으로 넘기고 종료하는 것을 금지한다.
+- 즉 작업 레지스터에 없는 후보를 머릿속 판단만으로 넘기고 종료하는 것을 금지한다.
 
 ## 5. 성능 게이트 규칙
 
@@ -385,7 +385,7 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 
 - 가능하면 같은 branch의 직전 commit 또는 작업 직전 로그를 baseline으로 쓴다.
 - baseline이 없으면 현재 운영 기준에서는 perf gate 무실패만으로 진행할 수 있다.
-- baseline 로그가 있다면 변경 후 로그 경로와 함께 현재 세션 로그의 작업 레지스터 `검증 증거` 칸에 적는다.
+- baseline 로그가 있다면 변경 후 로그 경로와 함께 이 문서 작업 레지스터의 `검증 증거` 칸에 적는다.
 - focused perf 없이 닫는 경우에도 왜 실제 focused perf 실행 없이 종료 판단이 가능한지 `메모` 칸에 적는다.
 
 다음 실행에서 baseline을 다시 잡을 때는 아래처럼 해석한다.
@@ -422,7 +422,7 @@ dead code/file 정리 규칙은 아래처럼 고정한다.
 다만 현재 운영 기준에서는 baseline 미달 자체를 종료 차단의 절대 규칙으로 쓰지 않는다.
 반복 판정 일관성을 위해 아래 기준은 후속 개선 우선순위를 정하는 참고 기준으로 사용한다.
 
-- focused perf 또는 thread-safe perf의 핵심 throughput 지표가 baseline 대비 3% 초과 하락하면 세션 로그 `메모` 또는 `검증 증거`에 남기고 후속 성능 안정화 후보로 올린다.
+- focused perf 또는 thread-safe perf의 핵심 throughput 지표가 baseline 대비 3% 초과 하락하면 작업 레지스터의 `메모` 또는 `검증 증거`에 남기고 후속 성능 안정화 후보로 올린다.
 - noise가 큰 환경이라고 판단되면 같은 명령을 3회까지 반복해 중앙값으로 비교할 수 있다.
 - CPU 사용량 또는 tail latency를 수집할 수 있다면 동일 조건 비교 결과를 남긴다.
 - 수치가 애매하면 낙관적으로 결론내리지 말고, 가능하면 더 작은 slice나 후속 측정 후보로 되돌린다.
@@ -532,11 +532,11 @@ ctest --test-dir core/build --output-on-failure
 
 루프는 아래 조건을 모두 만족할 때만 종료할 수 있다.
 
-1. 현재 세션 로그의 작업 레지스터 항목이 모두 `완료` 또는 진짜 blocker가 있는 `보류-정당화됨` 상태다.
+1. 이 문서의 작업 레지스터 항목이 모두 `완료` 또는 진짜 blocker가 있는 `보류-정당화됨` 상태다.
 2. 남은 POSD 후보가 있다면 계약/환경 blocker로만 보류되어 있고, 복잡도나 성능 우려만을 이유로 남겨 둔 항목은 없다.
 3. 새 기능 추가 시 반복 수정이 필요한 구조 허브가 더 이상 명확한 우선순위로 남아 있지 않다.
 4. `4.2 종료 전 반복 리뷰 계약`의 종료 리뷰 패스를 수행했고, 두 번 연속 새 허브가 추가되지 않았다.
-5. 반복 리뷰 과정에서 발견된 후보는 모두 세션 로그에 반영됐고, 세션 로그 밖에 남겨둔 미기록 후보가 없다.
+5. 반복 리뷰 과정에서 발견된 후보는 모두 작업 레지스터에 반영됐고, 작업 레지스터 밖에 남겨둔 미기록 후보가 없다.
 6. 최근 iteration에서 문서 갱신 없이 바로 손댈 만한 POSD 후보를 더 제시하기 어렵다.
 7. 이번 실행에서 정리 대상 slice에 속한 dead code, dead branch, dead file이 남아 있지 않다.
 8. 현재 `core/build/` 기준 전체 테스트가 통과한다.
@@ -582,25 +582,16 @@ ctest --test-dir core/build --output-on-failure
 
 ## 8. 작업 레지스터
 
-이 섹션은 본문에 특정 실행 회차의 상태표를 오래 유지하기 위한 공간이 아니다.
-가이드 본문은 주기 실행 가능한 기준 문서를 유지하고,
-실제 `완료/진행중/미착수`와 검증 증거는 각 실행 세션 로그 파일에 둔다.
+이 실행은 단일 문서 체계로 운영한다.
+따라서 실제 `완료/진행중/미착수`, 검증 증거, 메모, 다음 후보는 모두 이 섹션의 표 한 곳에만 유지한다.
+별도 main/master/gap/spec 문서나 실행별 세션 로그 파일을 authority로 두지 않는다.
 
-기본 위치:
+운영 규칙:
 
-```text
-core/tools/refactor/logs/
-```
-
-권장 방식:
-
-- 실행을 시작할 때 해당 실행 전용 세션 로그 파일을 하나 만든다.
-- 현재 iteration들이 읽고 갱신하는 기준 로그는 그 실행에서 처음 정한 단 하나의 세션 로그 파일이다.
-- 실행 중 다른 로그 파일이 추가로 생겨도, 현재 실행의 작업 레지스터 기준 로그를 중간에 바꾸지 않는다.
-- 현재 회차의 우선순위, 상태, 검증 증거, 메모는 그 세션 로그 안에서만 갱신한다.
-- 가이드 본문에는 특정 회차의 완료/착수 상태를 고정해서 남기지 않는다.
-- 다음 개발 사이클에서 다시 실행할 때는 예전 세션 로그를 참고하되, 새 세션 로그에서 우선순위를 다시 잡는다.
-- 예전 세션 로그의 `완료` 표시는 참고 자료일 뿐이며, 실제 완료 여부의 기준은 현재 코드다.
+- 현재 실행의 우선순위, 상태, 검증 증거, 메모는 이 표에서만 갱신한다.
+- 외부 로그 파일은 검증 증거 경로로만 참조한다. 작업 레지스터 자체를 다른 파일로 분리하지 않는다.
+- 다음 개발 사이클에서 다시 실행할 때도 완료 여부의 기준은 현재 코드와 현재 가이드다.
+- 이전 실행의 로그나 커밋 메모는 참고 자료일 뿐이며, 현재 작업 레지스터보다 우선하지 않는다.
 
 상태 값은 아래만 사용한다.
 
@@ -619,22 +610,21 @@ core/tools/refactor/logs/
 - 최종 종료 전의 `완료` 항목은 perf 미실행일 수 있으며, 이 경우 `검증 증거` 또는 `메모` 칸에 "final perf gate 이전 단계라서 미실행" 사유를 적는다.
 - 개발 완료 후 다시 실행했다면 `메모` 칸에 어떤 기능 변경 이후 재평가인지 적는다.
 - 예전 세션의 `완료` 항목이라도 현재 코드에서 다시 허브화됐으면 상태를 되돌린다.
-- 세션 로그 표의 우선순위는 고정 번호가 아니라 현재 시점 우선순위다. 다음 실행 시 재정렬을 허용한다.
+- 작업 레지스터 표의 우선순위는 고정 번호가 아니라 현재 시점 우선순위다. 다음 실행 시 재정렬을 허용한다.
 
-현재 세션 상태표는 이 가이드 본문에 고정하지 않는다.
-실제 상태 기준은 현재 실행의 세션 로그 파일 하나뿐이다.
-
-세션 로그에 넣을 표 형식 템플릿:
+현재 실행 상태표:
 
 | 우선순위 | 상태 | 영역 | 목표 | 성능 주의점 | 관련 파일 | 검증 증거 | 메모 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 미착수 | <영역> | <목표> | <성능 주의점> | <관련 파일> | <검증 증거> | <메모> |
+| 1 | 완료 | `services/spot` subject option/query owner | `spot_subject_query.cpp`에서 option owner를 분리해 service option/query API가 subscription/routing/TLS 허브를 함께 알지 않게 정리 | control-path 중심이지만 pub/sub poller socket access와 composite handle admission 순서를 유지해야 한다 | `core/src/services/spot/spot_subject_option.cpp`, `core/src/services/spot/spot_subject_query.cpp`, `core/src/services/spot/spot_subject_subscription_internal.hpp`, `core/tests/unittest/unittest_spot_subject_access.cpp` | `cmake --build core/build -j"$(nproc)" --target unittest_spot_subject_access`, `ctest --test-dir core/build --output-on-failure -R unittest_spot_subject_access` | 대표 시나리오대로 option owner TU를 분리했고, subscription aggregation helper는 internal header로만 노출해 query/subscription owner와 admission 순서를 유지했다. |
+| 2 | 완료 | `engine/transport` large-file owner review | `asio_engine.cpp`, `asio_ws_engine.cpp`를 다시 읽고 giant owner로 승격될 실제 잔여 허브만 남긴다 | handshake/stream fast-path 비용 증가 금지 | `core/src/engine/asio/asio_engine.cpp`, `core/src/transports/ws/asio_ws_engine.cpp` | `ctest --test-dir core/build --output-on-failure -R '^test_stream_fastpath$'`, `ctest --test-dir core/build --output-on-failure -R '^test_spot_pubsub_scenario_peer_wss$'` | 현재 코드는 `asio_engine_t`가 transport-common async runtime/stream tuning owner, `asio_ws_engine_t`가 ws+wss handshake와 ZMP-over-WebSocket wire execution owner로 읽힌다. 지금 바로 자르면 handshake/read/write/timer 지식이 더 새어나와 shallow split이 될 가능성이 커서 giant owner로 재승격하지 않았다. |
+| 3 | 진행중 | 종료 전 반복 리뷰 + final gate 준비 | `4.2` 반복 리뷰 2회, 전체 테스트, 필요 시 final perf/stress gate까지 이어서 실제 미적용 항목이 없는지 확정 | 이번 실행에서 `core/` 실코드 변경이 있었으므로 종료 후보가 되면 full perf gate가 필요하다 | `core/src/`, `core/tests/`, `core/perf/`, `core/tools/refactor/core-system-posd-performance-first-ralph-guide.ko.md` | 진행 중 | 반복 리뷰 2회 연속 무허브, 전체 테스트 green, final perf/stress gate까지 끝나기 전에는 종료로 닫지 않는다. |
 
 ## 9. 각 iteration의 체크리스트
 
 각 iteration에서 아래를 순서대로 수행한다.
 
-1. 현재 세션 로그의 작업 레지스터에서 첫 미완료 행을 읽는다.
+1. 이 문서의 작업 레지스터에서 첫 미완료 행을 읽는다.
 2. 해당 영역의 핵심 허브 파일을 읽고 POSD 냄새를 한 문장으로 다시 적는다.
 3. 대표 변경 시나리오와 수정 지점 수를 적어 change amplification 기준선을 만든다.
 4. 구현 범위를 한 번의 patch 세트로 닫을 수 있을 만큼만 자른다.
@@ -646,15 +636,15 @@ core/tools/refactor/logs/
 10. 관련 테스트를 추가/보강한다.
 11. 빌드와 targeted 검증을 실행한다.
 12. 작업 직후 `core/src` 전체를 다시 스캔해 새 허브가 생기지 않았는지 확인한다.
-13. 새 허브가 발견되면 현재 세션 로그의 작업 레지스터에 즉시 추가하고 우선순위를 다시 정한다.
+13. 새 허브가 발견되면 이 문서 작업 레지스터에 즉시 추가하고 우선순위를 다시 정한다.
 14. 더 이상 진행할 리팩토링이 없다고 판단한 경우에만 `4.2`의 종료 전 반복 리뷰와 성능 게이트를 실행한다.
-15. 현재 세션 로그의 작업 레지스터를 갱신한다.
+15. 이 문서 작업 레지스터를 갱신한다.
 16. 더 남아 있으면 `계속 진행 필요`, 없으면 `미적용 사항이 없습니다.`를 출력한다.
 
 다음 실행의 첫 iteration에서는 아래 두 단계를 먼저 앞에 추가한다.
 
 1. 최근 큰 기능 변경이 무엇이었는지 `메모` 또는 새 행으로 적는다.
-2. 기존 세션 로그 표의 우선순위와 상태를 현재 코드 기준으로 다시 정렬한다.
+2. 기존 작업 레지스터 표의 우선순위와 상태를 현재 코드 기준으로 다시 정렬한다.
 3. 종료 직전이 아니라 시작 시점에도 `4.2`의 반복 리뷰 패스 1회를 먼저 돌려 새 허브를 표에 올린다.
 
 ## 10. 구현 방향 메모
@@ -724,9 +714,16 @@ core/tools/refactor/logs/
 7. top-level service facade 정리
    - `spot_node_t`, `discovery_t`가 coordinator 이상의 세부 owner를 직접 쥐지 않게 정리한다.
    - 현재 코드 기준으로 `spot_node.cpp` 상단의 stale helper/control-path duplicate static policy는 제거됐고, `discovery_t`의 local value/metadata/metadata-max-size owner는 `discovery_local_state_t`로, provider snapshot/update-seq/observer coordination state owner는 `discovery_service_state_t`로 이동했다. `set_option/get_option`, `set_value/get_value`, `set_metadata/get_metadata`, member-query wrapper는 state owner TU로, provider update/observer sequencing은 `discovery_update.cpp`가 아니라 private state owner로 더 좁혔다. 이 축은 representative gate 재실행과 push commit `756e54b4`까지 완료됐고, 다음 첫 미완료 항목은 8번 engine/transport large-file owner 리뷰와 그 뒤 최종 gate다.
-8. engine/transport large-file owner 리뷰
+8. `spot` subject option/query owner 분리
+   - `spot_subject_query.cpp`가 option mapping, composite/node/pub/sub admission, subscription query, routing id, TLS, recv query를 함께 쥔 giant control-path hub로 다시 커졌다.
+   - 현재 코드 기준으로 option owner는 `spot_subject_option.cpp`로 이관했고, subscription aggregate owner는 `spot_subject_subscription_internal.hpp` internal seam 하나로만 공유되게 좁혔다.
+   - 대표 시나리오였던 spot subject common/pub/sub option 추가는 giant query TU가 아니라 option owner TU + tests에서 닫히게 됐다.
+   - 검증 증거: `cmake --build core/build -j"$(nproc)" --target unittest_spot_subject_access`, `ctest --test-dir core/build --output-on-failure -R unittest_spot_subject_access`.
+9. engine/transport large-file owner 리뷰
    - `asio_engine.cpp`, `asio_ws_engine.cpp`와 실제 large file 중 owner 설명이 약한 축만 선별해 정리한다.
-   - 현재 코드 기준으로 `asio_engine_t`는 backend-common async runtime, handshake, timer, stream fast-path tuning owner이고 `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution owner다. representative smoke `test_stream_fastpath`, `test_spot_pubsub_scenario_peer_wss`와 ABI 무변경 확인 기준으로 새 구조 phase를 열 giant owner로는 승격하지 않았다. 최신 final lane gate도 다시 green이며, push commit `a4cac5b0` 기준으로 현재 코드와 가이드를 다시 대조한 결과 추가 구현 미완료 항목은 남아 있지 않다.
+   - 현재 코드 기준으로 `asio_engine_t`는 transport-common async runtime, handshake, timer, stream fast-path tuning owner이고 `asio_ws_engine_t`는 ws/wss handshake와 ZMP-over-WebSocket wire execution owner로 읽힌다.
+   - `test_stream_fastpath`, `test_spot_pubsub_scenario_peer_wss` targeted smoke 재검증까지 다시 green이므로 지금은 giant owner로 재승격하지 않는다.
+   - 다음 첫 미완료 항목은 종료 전 반복 리뷰 2회와 final gate다.
 
 적용 규칙:
 

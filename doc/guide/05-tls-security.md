@@ -6,6 +6,11 @@ English | [한국어](05-tls-security.ko.md)
 
 zlink natively supports `tls://` and `wss://` transports through OpenSSL. Encrypted communication can be configured directly without an external proxy.
 
+For SPOT services, TLS/WSS configuration is node-owned. Apply
+`zlink_set_tls_server()` / `zlink_set_tls_client()` to the `SpotNode`
+handle before bind/connect. Unified `spot` and SPOT child pub/sub handles
+are not TLS configuration surfaces and fail with `ENOTSUP`.
+
 ## 2. TLS Server Setup
 
 ```c
@@ -121,7 +126,7 @@ zlink_set_tls_client(socket, NULL, NULL, 1);
 - Hostname verification is strongly recommended for production
 - Must match the certificate's CN or SAN
 
-> Reference: `core/tests/test_stream_socket.cpp` — `trust_system = 0` followed by private CA usage
+> Reference: `core/tests/e2e/spot/spot_pubsub_scenario_shared.cpp` — `trust_system = 0` followed by private CA usage
 
 ## 6. Generating Test Certificates
 

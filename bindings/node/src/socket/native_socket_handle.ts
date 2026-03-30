@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
 
-'use strict';
+import { requireNative } from '../native';
 
-const { requireNative } = require('../native');
+export class NativeSocketHandle {
+  private _native: unknown | null;
+  private readonly _own: boolean;
 
-class NativeSocketHandle {
-  constructor(nativeHandle, own = true) {
+  constructor(nativeHandle: unknown, own = true) {
     this._native = nativeHandle;
     this._own = own === true;
   }
 
-  value() {
+  value(): unknown {
     return this._native;
   }
 
-  streamDetach() {
+  streamDetach(): void {
     if (!this._native) return;
     requireNative().socketStreamDetach(this._native);
   }
 
-  close() {
+  close(): void {
     if (!this._native) return;
     try {
       this.streamDetach();
@@ -28,7 +29,3 @@ class NativeSocketHandle {
     this._native = null;
   }
 }
-
-module.exports = {
-  NativeSocketHandle
-};

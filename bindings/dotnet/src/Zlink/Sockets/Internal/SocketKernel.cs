@@ -16,6 +16,7 @@ internal sealed class SocketKernel : IDisposable
     private const int TopicBufferSize = 4096;
 
     private readonly SocketHandle _handle;
+    private readonly SocketType _socketType;
     private NativeMethods.ZlinkStreamOnRawDelegate? _streamRawCallback;
     private StreamPacketHandler? _streamPacketHandler;
     private SocketRecvHandler? _recvHandler;
@@ -29,11 +30,13 @@ internal sealed class SocketKernel : IDisposable
     public SocketKernel(Context context, SocketType type)
     {
         _handle = new SocketHandle(context, type);
+        _socketType = type;
     }
 
     public SocketKernel(IntPtr handle, bool own)
     {
         _handle = new SocketHandle(handle, own);
+        _socketType = ReadSocketType(_handle.DangerousGetHandle());
     }
 
     public IntPtr Handle => _handle.DangerousGetHandle();
@@ -86,6 +89,7 @@ internal sealed class SocketKernel : IDisposable
 
     public void AttachStreamRaw(StreamPacketHandler handler)
     {
+        EnsureSupports(SocketCapability.StreamAttach, nameof(AttachStreamRaw));
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
         if (_streamAttached)
@@ -107,6 +111,7 @@ internal sealed class SocketKernel : IDisposable
 
     public void DetachStream()
     {
+        EnsureSupports(SocketCapability.StreamAttach, nameof(DetachStream));
         if (!_streamAttached)
             return;
 
@@ -119,6 +124,7 @@ internal sealed class SocketKernel : IDisposable
 
     public void Send(Message message, SendFlags flags = SendFlags.None)
     {
+        EnsureSupports(SocketCapability.MessageSend, nameof(Send));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         SendSingleCore(message, flags);
@@ -126,6 +132,7 @@ internal sealed class SocketKernel : IDisposable
 
     public void Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
+        EnsureSupports(SocketCapability.MessageSend, nameof(Send));
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
         if (parts.Count == 0)
@@ -152,6 +159,7 @@ internal sealed class SocketKernel : IDisposable
     public void Send(string routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
+        EnsureSupports(SocketCapability.RoutedSend, nameof(Send));
         if (routingId == null)
             throw new ArgumentNullException(nameof(routingId));
         if (message == null)
@@ -166,6 +174,7 @@ internal sealed class SocketKernel : IDisposable
     public void Send(string routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
+        EnsureSupports(SocketCapability.RoutedSend, nameof(Send));
         if (routingId == null)
             throw new ArgumentNullException(nameof(routingId));
         if (parts == null)
@@ -199,6 +208,7 @@ internal sealed class SocketKernel : IDisposable
     public void Publish(string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
+        EnsureSupports(SocketCapability.Publish, nameof(Publish));
         if (topic == null)
             throw new ArgumentNullException(nameof(topic));
         if (message == null)
@@ -209,6 +219,7 @@ internal sealed class SocketKernel : IDisposable
     public void Publish(string topic, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
+        EnsureSupports(SocketCapability.Publish, nameof(Publish));
         if (topic == null)
             throw new ArgumentNullException(nameof(topic));
         if (parts == null)
@@ -237,6 +248,8 @@ internal sealed class SocketKernel : IDisposable
 
     public void SetSubscription(string topicOrPattern)
     {
+        EnsureSupports(SocketCapability.SubscriptionControl,
+            nameof(SetSubscription));
         if (topicOrPattern == null)
             throw new ArgumentNullException(nameof(topicOrPattern));
 
@@ -246,6 +259,8 @@ internal sealed class SocketKernel : IDisposable
 
     public void UnsetSubscription(string topicOrPattern)
     {
+        EnsureSupports(SocketCapability.SubscriptionControl,
+            nameof(UnsetSubscription));
         if (topicOrPattern == null)
             throw new ArgumentNullException(nameof(topicOrPattern));
 
@@ -255,6 +270,7 @@ internal sealed class SocketKernel : IDisposable
 
     public void RecvHandler(SocketRecvHandler handler)
     {
+        EnsureSupports(SocketCapability.ReceiveHandler, nameof(RecvHandler));
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
 
@@ -283,7 +299,8 @@ internal sealed class SocketKernel : IDisposable
     public void Subscribe(out string topic, out Message message,
         ReceiveFlags flags = ReceiveFlags.None)
     {
-        Subscribe(out _, out topic, out Message[] parts, flags);
+        EnsureSupports(SocketCapability.SubscribeReceive, nameof(Subscribe));
+        SubscribeCore(out topic, out Message[] parts, flags);
         if (parts.Length != 1)
         {
             foreach (Message part in parts)
@@ -298,12 +315,14 @@ internal sealed class SocketKernel : IDisposable
     public void Subscribe(out string topic, out Message[] parts,
         ReceiveFlags flags = ReceiveFlags.None)
     {
-        Subscribe(out _, out topic, out parts, flags);
+        EnsureSupports(SocketCapability.SubscribeReceive, nameof(Subscribe));
+        SubscribeCore(out topic, out parts, flags);
     }
 
     public void Subscribe(out string routingId, out string topic,
         out Message message, ReceiveFlags flags = ReceiveFlags.None)
     {
+        EnsureSupports(SocketCapability.SubscribeReceive, nameof(Subscribe));
         Subscribe(out routingId, out topic, out Message[] parts, flags);
         if (parts.Length != 1)
         {
@@ -319,6 +338,7 @@ internal sealed class SocketKernel : IDisposable
     public unsafe void Subscribe(out string routingId, out string topic,
         out Message[] parts, ReceiveFlags flags = ReceiveFlags.None)
     {
+        EnsureSupports(SocketCapability.SubscribeReceive, nameof(Subscribe));
         IntPtr nativeParts = IntPtr.Zero;
         nuint partCount = 0;
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
@@ -352,6 +372,8 @@ internal sealed class SocketKernel : IDisposable
 
     public unsafe void SubscribeHandler(SocketSubscribeHandler handler)
     {
+        EnsureSupports(SocketCapability.SubscribeHandler,
+            nameof(SubscribeHandler));
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
 
@@ -367,12 +389,16 @@ internal sealed class SocketKernel : IDisposable
     public void ReceiveSubscriptionEvent(out string topic, out bool subscribed,
         ReceiveFlags flags = ReceiveFlags.None)
     {
+        EnsureSupports(SocketCapability.SubscriptionEvents,
+            nameof(ReceiveSubscriptionEvent));
         ReceiveSubscriptionEvent(out _, out topic, out subscribed, flags);
     }
 
     public unsafe void ReceiveSubscriptionEvent(out string routingId,
         out string topic, out bool subscribed, ReceiveFlags flags = ReceiveFlags.None)
     {
+        EnsureSupports(SocketCapability.SubscriptionEvents,
+            nameof(ReceiveSubscriptionEvent));
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
@@ -396,7 +422,8 @@ internal sealed class SocketKernel : IDisposable
 
     public void Receive(out Message message, ReceiveFlags flags = ReceiveFlags.None)
     {
-        Receive(out _, out Message[] parts, flags);
+        EnsureSupports(SocketCapability.MessageReceive, nameof(Receive));
+        ReceiveCore(out Message[] parts, flags);
         if (parts.Length != 1)
         {
             foreach (Message part in parts)
@@ -410,12 +437,14 @@ internal sealed class SocketKernel : IDisposable
 
     public void Receive(out Message[] parts, ReceiveFlags flags = ReceiveFlags.None)
     {
-        Receive(out _, out parts, flags);
+        EnsureSupports(SocketCapability.MessageReceive, nameof(Receive));
+        ReceiveCore(out parts, flags);
     }
 
     public void Receive(out string routingId, out Message message,
         ReceiveFlags flags = ReceiveFlags.None)
     {
+        EnsureSupports(SocketCapability.RoutedReceive, nameof(Receive));
         Receive(out routingId, out Message[] parts, flags);
         if (parts.Length != 1)
         {
@@ -431,6 +460,7 @@ internal sealed class SocketKernel : IDisposable
     public void Receive(out string routingId, out Message[] parts,
         ReceiveFlags flags = ReceiveFlags.None)
     {
+        EnsureSupports(SocketCapability.RoutedReceive, nameof(Receive));
         IntPtr nativeParts = IntPtr.Zero;
         nuint partCount = 0;
         ZlinkRoutingId nativeRoutingId = default;
@@ -455,24 +485,28 @@ internal sealed class SocketKernel : IDisposable
 
     public void SetOption(SocketOptionKey<int> option, int value)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         SetOptionInt32(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<long> option, long value)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         SetOptionInt64(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<ulong> option, ulong value)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         SetOptionUInt64(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<byte[]> option, byte[] value)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         SetOption(option, value.AsSpan());
@@ -480,48 +514,56 @@ internal sealed class SocketKernel : IDisposable
 
     public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         SetOptionBytes(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<string> option, string value)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         SetOptionString(option.Option, value);
     }
 
     public int GetOption(SocketOptionKey<int> option)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         return GetOptionInt32(option.Option);
     }
 
     public long GetOption(SocketOptionKey<long> option)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         return GetOptionInt64(option.Option);
     }
 
     public ulong GetOption(SocketOptionKey<ulong> option)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         return GetOptionUInt64(option.Option);
     }
 
     public byte[] GetOption(SocketOptionKey<byte[]> option, int initialSize = 256)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         return GetOptionBytes(option.Option, initialSize);
     }
 
     public int GetOption(SocketOptionKey<byte[]> option, Span<byte> destination)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         return GetOptionBytesInto(option.Option, destination);
     }
 
     public string GetOption(SocketOptionKey<string> option, int initialSize = 256)
     {
+        EnsureOptionSupported(option.Option, nameof(option));
         SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         return GetOptionString(option.Option, initialSize);
     }
@@ -790,6 +832,157 @@ internal sealed class SocketKernel : IDisposable
         if (len < 0)
             len = bytes.Length;
         return Encoding.UTF8.GetString(bytes, 0, len);
+    }
+
+    private unsafe void SubscribeCore(out string topic, out Message[] parts,
+        ReceiveFlags flags)
+    {
+        IntPtr nativeParts = IntPtr.Zero;
+        nuint partCount = 0;
+        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        try
+        {
+            nuint topicLength = TopicBufferSize;
+            int rc = NativeMethods.zlink_subscribe(Handle, IntPtr.Zero,
+                out nativeParts, out partCount, topicBuffer, ref topicLength,
+                (int)flags);
+            ZlinkException.ThrowIfError(rc);
+
+            topic = DecodeTopic(topicBuffer, topicLength);
+            parts = Message.FromNativeVector(nativeParts, partCount);
+            nativeParts = IntPtr.Zero;
+            partCount = 0;
+        }
+        catch
+        {
+            if (nativeParts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(nativeParts, partCount);
+            throw;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(topicBuffer);
+        }
+    }
+
+    private void ReceiveCore(out Message[] parts, ReceiveFlags flags)
+    {
+        IntPtr nativeParts = IntPtr.Zero;
+        nuint partCount = 0;
+        try
+        {
+            int rc = NativeMethods.zlink_recv(Handle, IntPtr.Zero, out nativeParts,
+                out partCount, (int)flags);
+            ZlinkException.ThrowIfError(rc);
+            parts = Message.FromNativeVector(nativeParts, partCount);
+            nativeParts = IntPtr.Zero;
+            partCount = 0;
+        }
+        catch
+        {
+            if (nativeParts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(nativeParts, partCount);
+            throw;
+        }
+    }
+
+    private static SocketType ReadSocketType(IntPtr handle)
+    {
+        unsafe
+        {
+            int value = 0;
+            nuint size = (nuint)sizeof(int);
+            int rc = NativeMethods.zlink_get_option(handle, (int)SocketOption.Type,
+                new IntPtr(&value), ref size);
+            ZlinkException.ThrowIfError(rc);
+            return (SocketType)value;
+        }
+    }
+
+    private void EnsureSupports(SocketCapability capability, string memberName)
+    {
+        if (Supports(capability))
+            return;
+
+        throw new InvalidOperationException(
+            $"Socket type '{_socketType}' does not support '{memberName}'.");
+    }
+
+    private bool Supports(SocketCapability capability)
+    {
+        return capability switch
+        {
+            SocketCapability.MessageSend => _socketType == SocketType.Pair
+                || _socketType == SocketType.Dealer,
+            SocketCapability.MessageReceive => _socketType == SocketType.Pair
+                || _socketType == SocketType.Dealer,
+            SocketCapability.RoutedSend => _socketType == SocketType.Router
+                || _socketType == SocketType.Stream,
+            SocketCapability.RoutedReceive => _socketType == SocketType.Router
+                || _socketType == SocketType.Stream,
+            SocketCapability.Publish => _socketType == SocketType.Pub
+                || _socketType == SocketType.XPub,
+            SocketCapability.SubscriptionControl => _socketType == SocketType.Sub
+                || _socketType == SocketType.XSub,
+            SocketCapability.SubscribeReceive => _socketType == SocketType.Sub
+                || _socketType == SocketType.XSub,
+            SocketCapability.ReceiveHandler => _socketType == SocketType.Pair
+                || _socketType == SocketType.Dealer
+                || _socketType == SocketType.Router
+                || _socketType == SocketType.Stream,
+            SocketCapability.SubscribeHandler => _socketType == SocketType.Sub
+                || _socketType == SocketType.XSub,
+            SocketCapability.SubscriptionEvents => _socketType == SocketType.XPub,
+            SocketCapability.StreamAttach => _socketType == SocketType.Stream,
+            _ => false
+        };
+    }
+
+    private void EnsureOptionSupported(SocketOption option, string paramName)
+    {
+        if (IsOptionSupported(option))
+            return;
+
+        throw new InvalidOperationException(
+            $"Socket option '{option}' is not supported by socket type '{_socketType}'.");
+    }
+
+    private bool IsOptionSupported(SocketOption option)
+    {
+        return option switch
+        {
+            SocketOption.Subscribe or SocketOption.Unsubscribe
+                or SocketOption.OnlyFirstSubscribe => _socketType == SocketType.Sub
+                || _socketType == SocketType.XSub,
+            SocketOption.StreamNotify => _socketType == SocketType.Stream,
+            SocketOption.XPubVerbose or SocketOption.XPubVerboser
+                or SocketOption.XPubManual or SocketOption.XPubManualLastValue
+                or SocketOption.XPubWelcomeMsg or SocketOption.TopicsCount
+                => _socketType == SocketType.XPub,
+            SocketOption.XPubNoDrop => _socketType == SocketType.Pub
+                || _socketType == SocketType.XPub,
+            SocketOption.RouterMandatory or SocketOption.RouterHandover
+                => _socketType == SocketType.Router,
+            SocketOption.ProbeRouter => _socketType == SocketType.Dealer,
+            SocketOption.RoutingId => _socketType == SocketType.Dealer
+                || _socketType == SocketType.Router,
+            _ => true
+        };
+    }
+
+    private enum SocketCapability
+    {
+        MessageSend,
+        MessageReceive,
+        RoutedSend,
+        RoutedReceive,
+        Publish,
+        SubscriptionControl,
+        SubscribeReceive,
+        ReceiveHandler,
+        SubscribeHandler,
+        SubscriptionEvents,
+        StreamAttach
     }
 
     private static void CloseStreamPacket(IntPtr msg)

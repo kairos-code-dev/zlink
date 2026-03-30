@@ -103,4 +103,23 @@ public sealed class test_socket_options
         string actual = router.GetOption(SocketOptions.LastEndpoint);
         Assert.StartsWith("tcp://", actual);
     }
+
+    [Fact]
+    public void socket_options_reject_incompatible_socket_types()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var pub = new PubSocket(ctx);
+        using var sub = new SubSocket(ctx);
+        using var dealer = new DealerSocket(ctx);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            pub.SetOption(SocketOptions.Subscribe, string.Empty));
+        Assert.Throws<InvalidOperationException>(() =>
+            sub.SetOption(SocketOptions.XPubVerbose, 1));
+        Assert.Throws<InvalidOperationException>(() =>
+            dealer.SetOption(SocketOptions.StreamNotify, 1));
+    }
 }

@@ -410,7 +410,15 @@ bool wait_pubsub_recv_loop_ready (pubsub_recv_loop_t *loop_, int timeout_ms_)
     while (std::chrono::steady_clock::now () < deadline) {
         if (loop_->ready.load (std::memory_order_acquire))
             return true;
-        if (perf_socket_poll (NULL, 0, 1) < 0 && zlink_errno () != EINTR)
+        const long remaining_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - std::chrono::steady_clock::now ())
+            .count ();
+        const long wait_ms = remaining_ms > 0
+                               ? std::min<long> (
+                                   remaining_ms, perf_aux_poll_wait_ms ())
+                               : 0;
+        if (perf_socket_poll (NULL, 0, wait_ms) < 0 && zlink_errno () != EINTR)
             return false;
     }
     return loop_->ready.load (std::memory_order_acquire);

@@ -124,6 +124,50 @@ void test_spot_subject_access_routes_subscription_and_routing_state ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+void test_spot_subject_access_routes_composite_and_node_options ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *spot = zlink_spot_new (ctx);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    spot_handle_t *handle = as_spot_handle (spot);
+    TEST_ASSERT_NOT_NULL (handle);
+    TEST_ASSERT_NOT_NULL (handle->node);
+
+    const int linger = 27;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      spot_subject_set_common_option (spot, ZLINK_OPT_LINGER, &linger,
+                                      sizeof (linger)));
+
+    int actual = 0;
+    size_t actual_size = sizeof (actual);
+    TEST_ASSERT_SUCCESS_ERRNO (spot_subject_get_common_option (
+      handle->pub, ZLINK_OPT_LINGER, &actual, &actual_size));
+    TEST_ASSERT_EQUAL_INT (linger, actual);
+
+    actual = 0;
+    actual_size = sizeof (actual);
+    TEST_ASSERT_SUCCESS_ERRNO (spot_subject_get_common_option (
+      handle->sub, ZLINK_OPT_LINGER, &actual, &actual_size));
+    TEST_ASSERT_EQUAL_INT (linger, actual);
+
+    const int sndtimeo = 44;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      spot_subject_set_common_option (handle->pub, ZLINK_OPT_SNDTIMEO,
+                                      &sndtimeo, sizeof (sndtimeo)));
+
+    actual = 0;
+    actual_size = sizeof (actual);
+    TEST_ASSERT_SUCCESS_ERRNO (spot_subject_get_common_option (
+      spot, ZLINK_OPT_SNDTIMEO, &actual, &actual_size));
+    TEST_ASSERT_EQUAL_INT (sndtimeo, actual);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 } // namespace
 
 int main ()
@@ -133,5 +177,6 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_spot_subject_access_resolves_composite_and_node_poller_sockets);
     RUN_TEST (test_spot_subject_access_routes_subscription_and_routing_state);
+    RUN_TEST (test_spot_subject_access_routes_composite_and_node_options);
     return UNITY_END ();
 }

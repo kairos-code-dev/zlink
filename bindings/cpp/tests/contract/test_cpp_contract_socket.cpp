@@ -2,7 +2,60 @@
 
 #include "support.hpp"
 
+#include <type_traits>
+
 namespace {
+
+template<typename SocketT> class has_routed_send_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().send (
+                      std::declval<const zlink_routing_id_t &> (),
+                      std::declval<zlink::message_t &> (),
+                      zlink::send_flag::none),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_routed_recv_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().recv (
+                      std::declval<zlink_routing_id_t &> (),
+                      std::declval<zlink::message_t &> (),
+                      zlink::recv_flag::none),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+static_assert (!has_routed_send_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must not expose routed send");
+static_assert (!has_routed_recv_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must not expose routed recv");
+static_assert (!has_routed_send_t<zlink::dealer_socket_t>::value,
+               "dealer_socket_t must not expose routed send");
+static_assert (!has_routed_recv_t<zlink::dealer_socket_t>::value,
+               "dealer_socket_t must not expose routed recv");
+static_assert (has_routed_send_t<zlink::router_socket_t>::value,
+               "router_socket_t must expose routed send");
+static_assert (has_routed_recv_t<zlink::router_socket_t>::value,
+               "router_socket_t must expose routed recv");
+static_assert (has_routed_send_t<zlink::stream_socket_t>::value,
+               "stream_socket_t must expose routed send");
+static_assert (has_routed_recv_t<zlink::stream_socket_t>::value,
+               "stream_socket_t must expose routed recv");
 
 void test_pair_send_recv_single_part ()
 {

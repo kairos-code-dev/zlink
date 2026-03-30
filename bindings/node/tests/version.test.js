@@ -4,7 +4,7 @@ const { once } = require('node:events');
 const net = require('node:net');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../src');
+const zlink = require('../dist');
 
 test('version matches core', () => {
   assert.deepEqual(zlink.version(), [5, 0, 4]);

@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../src');
+const zlink = require('../dist');
 
 const ctx = new zlink.Context();
 const registry = new zlink.Registry(ctx);

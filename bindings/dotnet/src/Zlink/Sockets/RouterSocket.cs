@@ -2,7 +2,7 @@
 
 namespace Zlink;
 
-public sealed class RouterSocket : MessageSocketBase
+public sealed class RouterSocket : RoutedMessageSocketBase
 {
     public RouterSocket(Context context)
         : base(context, SocketType.Router)

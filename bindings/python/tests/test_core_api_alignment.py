@@ -259,10 +259,29 @@ class CoreApiAlignmentTests(unittest.TestCase):
     def test_surface_restrictions_match_socket_role(self):
         self.assertFalse(hasattr(zlink.PairSocket, "publish"))
         self.assertFalse(hasattr(zlink.PubSocket, "recv_message"))
+        self.assertFalse(hasattr(zlink.PubSocket, "recv"))
+        self.assertFalse(hasattr(zlink.SubSocket, "recv"))
         self.assertFalse(hasattr(zlink.SubSocket, "subscription_event"))
         self.assertTrue(hasattr(zlink.XPubSocket, "subscription_event"))
         self.assertTrue(hasattr(zlink.SubSocket, "on_topic_message"))
         self.assertTrue(hasattr(zlink.PairSocket, "on_receive"))
+
+    def test_generic_option_surface_rejects_wrong_socket_family(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        with ctx:
+            with zlink.PairSocket(ctx) as pair:
+                with self.assertRaisesRegex(TypeError, "PAIR sockets do not support publisher options"):
+                    pair.set_option(0x3301, (1).to_bytes(4, "little"))
+                with self.assertRaisesRegex(TypeError, "PAIR sockets do not support subscriptions"):
+                    pair.set_option(zlink.SocketOption.SUBSCRIBE, b"topic")
+
+            with zlink.PubSocket(ctx) as pub:
+                with self.assertRaisesRegex(TypeError, "PUB sockets do not support subscriber options"):
+                    pub.set_option(0x3401, (1).to_bytes(4, "little"))
 
     def test_deprecated_callback_aliases_warn_and_forward(self):
         try:

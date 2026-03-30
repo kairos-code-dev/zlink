@@ -38,6 +38,13 @@ def _native_socket_type(sock_type):
     return _LEGACY_SOCKET_TYPE_MAP.get(int(sock_type), int(sock_type))
 
 
+def _socket_type_name(socket_type):
+    try:
+        return SocketType(int(socket_type)).name
+    except ValueError:
+        return str(int(socket_type))
+
+
 class _SocketHandle:
     def __init__(self, handle, own):
         self.handle = handle
@@ -57,6 +64,23 @@ class _SocketHandle:
 
 class _BaseSocket:
     _socket_type_value = None
+    _routing_id_socket_types = {
+        int(SocketType.DEALER),
+        int(SocketType.ROUTER),
+        int(SocketType.STREAM),
+    }
+    _subscribe_socket_types = {
+        int(SocketType.SUB),
+        int(SocketType.XSUB),
+    }
+    _pub_option_socket_types = {
+        int(SocketType.PUB),
+        int(SocketType.XPUB),
+    }
+    _sub_option_socket_types = _subscribe_socket_types
+    _dealer_option_socket_types = {int(SocketType.DEALER)}
+    _router_option_socket_types = {int(SocketType.ROUTER)}
+    _stream_option_socket_types = {int(SocketType.STREAM)}
 
     def __init__(self, context, sock_type=None):
         socket_type = self._resolve_socket_type(sock_type)
@@ -179,8 +203,20 @@ class _BaseSocket:
             _raise_last_error()
         return buf.raw[: out_size.value]
 
+    def _require_socket_type(self, allowed_socket_types, capability):
+        if self._socket_type in allowed_socket_types:
+            return
+        actual = _socket_type_name(self._socket_type)
+        supported = ", ".join(
+            _socket_type_name(socket_type) for socket_type in sorted(allowed_socket_types)
+        )
+        raise TypeError(
+            f"{actual} sockets do not support {capability}; supported socket types: {supported}"
+        )
+
     def set_option(self, option: int, value):
         if int(option) == 5:
+            self._require_socket_type(self._routing_id_socket_types, "routing IDs")
             topic_bytes = bytes(_as_bytes_view(value))
             rc = lib().zlink_set_routing_id(
                 self._handle,
@@ -188,29 +224,41 @@ class _BaseSocket:
                 len(topic_bytes),
             )
         elif int(option) == 6:
+            self._require_socket_type(self._subscribe_socket_types, "subscriptions")
             rc = lib().zlink_set_subscription(
                 self._handle, bytes(_as_bytes_view(value))
             )
         elif int(option) == 7:
+            self._require_socket_type(self._subscribe_socket_types, "subscriptions")
             rc = lib().zlink_unset_subscription(
                 self._handle, bytes(_as_bytes_view(value))
             )
         elif int(option) == 40:
+            self._require_socket_type(
+                self._pub_option_socket_types, "publisher options"
+            )
             self.set_pub_option(0x3301, value)
             return
         elif 0x3100 <= int(option) < 0x3200:
+            self._require_socket_type(self._router_option_socket_types, "router options")
             self.set_router_option(option, value)
             return
         elif 0x3200 <= int(option) < 0x3300:
+            self._require_socket_type(self._dealer_option_socket_types, "dealer options")
             self.set_dealer_option(option, value)
             return
         elif 0x3300 <= int(option) < 0x3400:
+            self._require_socket_type(self._pub_option_socket_types, "publisher options")
             self.set_pub_option(option, value)
             return
         elif 0x3400 <= int(option) < 0x3500:
+            self._require_socket_type(
+                self._sub_option_socket_types, "subscriber options"
+            )
             self.set_sub_option(option, value)
             return
         elif 0x3500 <= int(option) < 0x3600:
+            self._require_socket_type(self._stream_option_socket_types, "stream options")
             self.set_stream_option(option, value)
             return
         else:
@@ -221,18 +269,25 @@ class _BaseSocket:
 
     def get_option(self, option: int, size: int = 256):
         if int(option) == 5:
+            self._require_socket_type(self._routing_id_socket_types, "routing IDs")
             rid = ZlinkRoutingId()
             rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(rid))
             if rc != 0:
                 _raise_last_error()
             return bytes(rid.data[: rid.size])
         if 0x3100 <= int(option) < 0x3200:
+            self._require_socket_type(self._router_option_socket_types, "router options")
             return self.get_router_option(option, size)
         if 0x3300 <= int(option) < 0x3400:
+            self._require_socket_type(self._pub_option_socket_types, "publisher options")
             return self.get_pub_option(option, size)
         if 0x3400 <= int(option) < 0x3500:
+            self._require_socket_type(
+                self._sub_option_socket_types, "subscriber options"
+            )
             return self.get_sub_option(option, size)
         if 0x3500 <= int(option) < 0x3600:
+            self._require_socket_type(self._stream_option_socket_types, "stream options")
             return self.get_stream_option(option, size)
         return self._get_raw_option(lib().zlink_get_option, option, size)
 
@@ -303,6 +358,7 @@ class Socket(_BaseSocket):
     def register_socket_type(cls, sock_type, socket_cls):
         cls._dispatch[_native_socket_type(sock_type)] = socket_cls
 
+class MessageSocket(Socket):
     def recv(self, size: int, flags: int = 0) -> bytes:
         warnings.warn(
             "Socket.recv(size) is legacy; use recv_message() instead",
@@ -328,8 +384,6 @@ class Socket(_BaseSocket):
             raise ValueError("received message larger than requested legacy size")
         return data
 
-
-class MessageSocket(Socket):
     def send(self, data, flags: int = 0):
         if int(flags) & 0x2:
             self._pending_send_parts.append(data)

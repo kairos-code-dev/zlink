@@ -12,33 +12,15 @@ namespace zlink
 {
 namespace
 {
-bool is_secure_transport_local (const std::string &endpoint_)
-{
-    return endpoint_.compare (0, 6, "tls://") == 0
-           || endpoint_.compare (0, 6, "wss://") == 0;
-}
-
-bool is_wss_transport_local (const std::string &endpoint_)
-{
-    return endpoint_.compare (0, 6, "wss://") == 0;
-}
+static const int default_mesh_pub_sndhwm = 100;
 }
 
 int spot_mesh_pub_budget_t::resolve_default (const std::string &endpoint_,
                                              unsigned int ready_peers_)
 {
-    const bool secure = is_secure_transport_local (endpoint_);
-    const bool wss = is_wss_transport_local (endpoint_);
-
-    if (ready_peers_ == 0)
-        return 64;
-    if (ready_peers_ == 1)
-        return 768;
-    if (wss)
-        return 512;
-    if (!secure)
-        return 64;
-    return 2048;
+    (void) endpoint_;
+    (void) ready_peers_;
+    return default_mesh_pub_sndhwm;
 }
 
 bool spot_mesh_pub_budget_t::should_refresh (

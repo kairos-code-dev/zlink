@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
-'use strict';
-
-const SocketType = Object.freeze({
+export const SocketType = Object.freeze({
   PAIR: 0x1001, PUB: 0x1002, SUB: 0x1003, DEALER: 0x1004,
   ROUTER: 0x1005, XPUB: 0x1006, XSUB: 0x1007, STREAM: 0x1008
-});
+} as const);
 
-const SocketOption = Object.freeze({
+export const SocketOption = Object.freeze({
   AFFINITY: 0x3001, RATE: 0x3003, RECOVERY_IVL: 0x3004,
   SNDBUF: 0x3005, RCVBUF: 0x3006, FD: 0x3007, EVENTS: 0x3008,
   TYPE: 0x3009, LINGER: 0x300A, RECONNECT_IVL: 0x300B,
@@ -34,16 +32,8 @@ const SocketOption = Object.freeze({
   XPUB_MANUAL_LAST_VALUE: 0x3304, XPUB_NODROP: 0x3305,
   XPUB_WELCOME_MSG: 0x3306, TOPICS_COUNT: 0x3307,
   ONLY_FIRST_SUBSCRIBE: 0x3308
-});
+} as const);
 
-const SendFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001, SNDMORE: 0x0002 });
-const ReceiveFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001 });
-const StreamDispatchMode = Object.freeze({ NONE: 0, LEN32BE: 1 });
-
-module.exports = {
-  SocketType,
-  SocketOption,
-  SendFlag,
-  ReceiveFlag,
-  StreamDispatchMode
-};
+export const SendFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001, SNDMORE: 0x0002 } as const);
+export const ReceiveFlag = Object.freeze({ NONE: 0, DONTWAIT: 0x0001 } as const);
+export const StreamDispatchMode = Object.freeze({ NONE: 0, LEN32BE: 1 } as const);

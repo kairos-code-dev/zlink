@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../src');
+const zlink = require('../dist');
 
 test('pair sockets send and receive multipart through canonical api', () => {
   const ctx = new zlink.Context();

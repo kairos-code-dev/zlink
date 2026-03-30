@@ -348,6 +348,37 @@ void test_spot_node_generic_data_plane_surface_removed ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_tls_configuration_is_node_owned ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *spot = zlink_spot_new (ctx);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_set_tls_server (spot, "server.crt", "server.key", 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_set_tls_client (spot, "ca.crt", "localhost", 0));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_server (node, "server.crt", "server.key", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_tls_client (node, "ca.crt", "localhost", 0));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_discovery_protocol_accepts_socket_family_and_roles ()
 {
     using namespace zlink::discovery_protocol;
@@ -511,6 +542,7 @@ int main (void)
 
     RUN_TEST (test_spot_callback_policy);
     RUN_TEST (test_spot_node_generic_data_plane_surface_removed);
+    RUN_TEST (test_spot_tls_configuration_is_node_owned);
     RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);
     RUN_TEST (test_discovery_protocol_derives_socket_roles_and_matching);
     RUN_TEST (test_discovery_new_accepts_socket_family);

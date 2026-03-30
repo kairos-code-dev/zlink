@@ -1046,6 +1046,7 @@ set(spot-sources
     src/services/spot/spot_mesh_pub_budget.cpp
     src/services/spot/spot_subject_access.cpp
     src/services/spot/spot_subject_handler.cpp
+    src/services/spot/spot_subject_option.cpp
     src/services/spot/spot_subject_poller.cpp
     src/services/spot/spot_subject_publish.cpp
     src/services/spot/spot_subject_query.cpp

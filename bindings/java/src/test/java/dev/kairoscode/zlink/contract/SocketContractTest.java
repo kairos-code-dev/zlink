@@ -6,10 +6,13 @@ import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SocketOption;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
+import dev.kairoscode.zlink.XPubSocket;
+import dev.kairoscode.zlink.options.SocketOptions;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class SocketContractTest {
     @Test
@@ -109,6 +113,28 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(StreamSocket.class, "streamSend"));
         assertFalse(hasPublicMethod(StreamSocket.class, "connect"));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachDiscovery"));
+    }
+
+    @Test
+    public void specializedOptionsAreRejectedOnWrongSocketTypes() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             PairSocket pair = new PairSocket(ctx);
+             SubSocket sub = new SubSocket(ctx);
+             StreamSocket stream = new StreamSocket(ctx);
+             XPubSocket xpub = new XPubSocket(ctx)) {
+            assertThrows(IllegalArgumentException.class,
+                () -> pair.setOption(SocketOptions.XPUB_MANUAL, 1));
+            assertThrows(IllegalArgumentException.class,
+                () -> pair.setSockOpt(SocketOption.SUBSCRIBE,
+                    "topic".getBytes(StandardCharsets.UTF_8)));
+            assertThrows(IllegalArgumentException.class,
+                () -> sub.setOption(SocketOptions.ROUTER_MANDATORY, 1));
+            assertThrows(IllegalArgumentException.class,
+                () -> stream.setOption(SocketOptions.XPUB_VERBOSE, 1));
+            assertDoesNotThrow(() -> xpub.setOption(SocketOptions.XPUB_MANUAL, 1));
+        }
     }
 
     private static boolean hasPublicMethod(Class<?> type, String name) {

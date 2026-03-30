@@ -6,6 +6,11 @@
 
 The zlink service layer provides two high-level services: Discovery and SPOT. This document covers the internal implementation details.
 
+For SPOT, transport-security ownership is intentionally narrow: the
+`SpotNode` owns TLS/WSS wiring for mesh/control sockets, while unified
+`Spot` remains a data-plane facade only. The facade may own an internal
+node, but it is not itself a TLS configuration surface.
+
 ## 2. Registry Internal Implementation
 
 ### 2.1 Data Structures
@@ -176,9 +181,9 @@ Frame 4~N: Service entries (repeated service_count times)
 - `spot_sub_t` -- Subscribe/receive handle (internal queue, pattern matching, condition variable-based blocking recv)
 
 ### 5.2 Concurrency Model
-- Publishing: Performed directly on the caller's thread, serialized by `_pub_sync` mutex (thread-safe)
+- Publishing: Performed directly on the caller's thread, serialized by `_publish_sync` mutex (thread-safe)
 - Receiving: Worker thread receives from SUB socket → distributes to spot_sub_t internal queues
-- Lock ordering: `_sync` → `_pub_sync` (deadlock prevention)
+- Lock ordering: `_sync` → `_publish_sync` (deadlock prevention)
 - Direct publishing without async queue (no message buffering on the publish path)
 
 ### 5.3 Subscription Aggregation

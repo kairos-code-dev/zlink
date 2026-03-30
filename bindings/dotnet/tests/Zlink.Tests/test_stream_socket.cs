@@ -315,14 +315,12 @@ public sealed class test_stream_socket
         using var ctx = new Context();
         using var stream = new Socket(ctx, SocketType.Stream);
 
-        var idleEx = Assert.Throws<ZlinkException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             stream.Receive(out Message _, ReceiveFlags.DontWait));
-        Assert.Equal(ErrorCode.EAgain, ZlinkException.MapErrorCode(idleEx.Errno));
 
         stream.AttachStreamRaw((_, _) => 0);
-        var busyEx = Assert.Throws<ZlinkException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             stream.Receive(out Message _, ReceiveFlags.DontWait));
-        Assert.NotEqual(0, busyEx.Errno);
         stream.DetachStream();
     }
 
@@ -350,7 +348,8 @@ public sealed class test_stream_socket
         using var sub = new Socket(ctx, SocketType.Sub);
         using var msg = Message.FromBytes("x"u8);
 
-        Assert.Throws<ZlinkException>(() => sub.Send(msg, SendFlags.DontWait));
+        Assert.Throws<InvalidOperationException>(() =>
+            sub.Send(msg, SendFlags.DontWait));
         Assert.Equal(1, msg.Size);
     }
 
@@ -365,7 +364,7 @@ public sealed class test_stream_socket
         using var msg = Message.FromBytes("x"u8);
 
         const uint rid = 1;
-        Assert.Throws<ZlinkException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             dealer.Send(StreamRoutingIdToPublicString(rid), msg,
                 SendFlags.DontWait));
         Assert.Equal(1, msg.Size);

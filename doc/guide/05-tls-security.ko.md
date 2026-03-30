@@ -7,6 +7,11 @@
 zlink는 OpenSSL을 통해 `tls://`와 `wss://` transport를 네이티브 지원한다.
 외부 프록시 없이 암호화된 통신을 직접 구성할 수 있다.
 
+SPOT 서비스에서 TLS/WSS 설정은 node owner 책임이다.
+`zlink_set_tls_server()` / `zlink_set_tls_client()`는 bind/connect 전에
+`SpotNode` handle에 적용해야 한다. unified `spot`과 SPOT child pub/sub
+handle은 TLS 설정 surface가 아니며 `ENOTSUP`로 실패한다.
+
 ## 2. TLS 서버 설정
 
 ```c
@@ -122,7 +127,7 @@ zlink_set_tls_client(socket, NULL, NULL, 1);
 - 프로덕션에서는 호스트명 검증 반드시 권장
 - 인증서의 CN 또는 SAN과 일치해야 함
 
-> 참고: `core/tests/test_stream_socket.cpp` — `trust_system = 0` 설정 후 사설 CA 사용
+> 참고: `core/tests/e2e/spot/spot_pubsub_scenario_shared.cpp` — `trust_system = 0` 설정 후 사설 CA 사용
 
 ## 6. 테스트용 인증서 생성
 

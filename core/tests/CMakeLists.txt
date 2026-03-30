@@ -562,6 +562,7 @@ set(SPOT_PUBSUB_CASES
     test_spot_peer_ws
     test_spot_peer_tls
     test_spot_peer_wss
+    test_spot_child_handles_reject_tls_configuration
     test_spot_sub_delivery_ready_immediate_first_publish
     test_spot_unified_wss_subscription_ready_first_delivery
     test_spot_multi_publisher
@@ -585,6 +586,7 @@ set(SPOT_PUBSUB_PEER_TEST_SPECS
     test_spot_pubsub_scenario_peer_ws=test_spot_peer_ws
     test_spot_pubsub_scenario_peer_tls=test_spot_peer_tls
     test_spot_pubsub_scenario_peer_wss=test_spot_peer_wss
+    test_spot_pubsub_scenario_child_handles_tls=test_spot_child_handles_reject_tls_configuration
     test_spot_pubsub_scenario_delivery_ready_first_publish=test_spot_sub_delivery_ready_immediate_first_publish
     test_spot_pubsub_scenario_unified_wss_ready_delivery=test_spot_unified_wss_subscription_ready_first_delivery)
 

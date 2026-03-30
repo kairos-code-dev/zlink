@@ -708,6 +708,31 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
+    void validateOptionAccess(int optionId, String optionName) {
+        SocketType type = resolveSocketType();
+        if (type == null)
+            return;
+        if (supportsOption(type, optionId))
+            return;
+        throw new IllegalArgumentException(
+          optionName + " is not supported by " + type + " sockets");
+    }
+
+    private static boolean supportsOption(SocketType type, int optionId) {
+        return switch (optionId) {
+            case 5 -> type == SocketType.DEALER || type == SocketType.ROUTER;
+            case 6, 7 -> type == SocketType.SUB || type == SocketType.XSUB;
+            case 33, 51, 56, 61 -> type == SocketType.DEALER
+                || type == SocketType.ROUTER;
+            case 40, 69, 71, 72, 78, 108 -> type == SocketType.PUB
+                || type == SocketType.XPUB;
+            case 73 -> type == SocketType.STREAM;
+            case 116 -> type == SocketType.PUB || type == SocketType.XPUB
+                || type == SocketType.SUB || type == SocketType.XSUB;
+            default -> true;
+        };
+    }
+
     private SocketType resolveSocketType() {
         if (socketTypeHint != null)
             return socketTypeHint;

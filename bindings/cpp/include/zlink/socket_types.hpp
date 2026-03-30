@@ -105,14 +105,14 @@ class dealer_socket_t : public message_socket_t
     }
 };
 
-class router_socket_t : public message_socket_t
+class router_socket_t : public routed_message_socket_t
 {
   public:
     using base_socket_t::get_option;
     using base_socket_t::set_option;
 
     explicit router_socket_t (context_t &ctx_)
-        : message_socket_t (ctx_, socket_type::router)
+        : routed_message_socket_t (ctx_, socket_type::router)
     {
     }
 
@@ -143,14 +143,14 @@ class router_socket_t : public message_socket_t
     }
 };
 
-class stream_socket_t : public message_socket_t
+class stream_socket_t : public routed_message_socket_t
 {
   public:
     using base_socket_t::get_option;
     using base_socket_t::set_option;
 
     explicit stream_socket_t (context_t &ctx_)
-        : message_socket_t (ctx_, socket_type::stream)
+        : routed_message_socket_t (ctx_, socket_type::stream)
     {
     }
 

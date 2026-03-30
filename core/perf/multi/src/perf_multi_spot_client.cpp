@@ -254,14 +254,9 @@ size_t resolve_spot_recv_worker_count(size_t slot_count)
 
 int resolve_spot_phase_quorum_percent(const std::string &transport)
 {
-    int default_percent = 90;
-    if (transport == "wss")
-        default_percent = 75;
-    else if (transport == "ws")
-        default_percent = 85;
-
+    (void) transport;
     return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_QUORUM_PERCENT",
-                                 default_percent,
+                                 90,
                                  1);
 }
 
@@ -1081,6 +1076,8 @@ int run_client_benchmark(const std::string &lib_name,
     }
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
+    sync_spot_internal_mesh_pub_hwm(
+      bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm));
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes(fallback_size);
     ctx_guard_t ctx;
     if (!ctx.valid())

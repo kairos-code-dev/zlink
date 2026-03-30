@@ -75,6 +75,8 @@ typedef std::chrono::seconds seconds_t;
 typedef std::chrono::nanoseconds nanoseconds_t;
 typedef std::chrono::duration<double> floating_seconds_t;
 
+static const long PERF_AUX_POLL_WAIT_MS = 100;
+
 inline int perf_idle_wait_ms(long timeout_)
 {
     if (timeout_ <= 0)
@@ -109,6 +111,11 @@ inline int perf_socket_poll(zlink_pollitem_t *items_, int nitems_, long timeout_
     if (rc < 0 && zlink_errno () == EAGAIN)
         return 0;
     return rc;
+}
+
+inline long perf_aux_poll_wait_ms()
+{
+    return PERF_AUX_POLL_WAIT_MS;
 }
 
 inline steady_clock_t::duration to_clock_duration (double seconds)
@@ -954,6 +961,21 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
       bench_hwm_from_env("PERF_RCVHWM", hwm_value);
     set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
     set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
+}
+
+inline void sync_spot_internal_mesh_pub_hwm(int hwm_value)
+{
+    if (hwm_value <= 0)
+        return;
+    if (std::getenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM") != NULL)
+        return;
+
+    const std::string value = std::to_string(hwm_value);
+#if defined(_WIN32)
+    _putenv_s("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str());
+#else
+    setenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str(), 1);
+#endif
 }
 
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)

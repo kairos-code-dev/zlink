@@ -85,6 +85,9 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 
 `DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM`
 
+callback 모드에서 패턴을 명시하지 않으면 기본 패턴은 다음으로 좁혀진다.
+`SPOT,STREAM`
+
 ### 옵션
 
 | 옵션 | 기본값 | 설명 |
@@ -99,6 +102,7 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 | `--output PATH` | — | 출력을 파일로 tee |
 | `--runs N` | `1` | 설정별 반복 횟수 |
 | `--recv MODE` | `recv` | 수신 모델(`recv` 또는 `callback`) |
+| `--callback` | 비활성 | `--recv callback` 별칭, `--pattern` 미지정 시 기본 패턴을 `SPOT,STREAM`으로 설정 |
 | `--pin-cpu` | 비활성 | CPU 고정 |
 | `--io-threads N` | — | 서버/클라이언트 io thread 동시 설정 |
 | `--server-io-threads N` | `4` | 서버 io threads |

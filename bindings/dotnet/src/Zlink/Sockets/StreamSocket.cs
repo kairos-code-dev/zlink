@@ -2,7 +2,7 @@
 
 namespace Zlink;
 
-public sealed class StreamSocket : MessageSocketBase
+public sealed class StreamSocket : RoutedMessageSocketBase
 {
     public StreamSocket(Context context)
         : base(context, SocketType.Stream)

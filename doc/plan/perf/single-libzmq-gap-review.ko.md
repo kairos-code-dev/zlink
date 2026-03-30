@@ -75,6 +75,166 @@
   설명되지 않고, current raw-msg diagnostic도 일관된 broad win을 못 만들었다.
   따라서 현재 우선순위는 다시 `send-side public admission +
   pipe serialization` 공통축이다.
+- 2026-03-30 `socket_base_msg.cpp` `prepare_direct_send_message()` already-clean
+  single-part no-op candidate도 same-day baseline 대비
+  public `PAIR tcp/inproc 2861.95/2808.45 -> 3200.24/2972.41 Kmsg/s`,
+  `DEALER_DEALER tcp/inproc 3230.05/2775.25 -> 3160.29/3007.07 Kmsg/s`,
+  raw `PAIR tcp/inproc 2965.60/3441.14 -> 3131.84/2891.68 Kmsg/s`,
+  `DEALER_DEALER tcp/inproc 3157.40/3041.54 -> 3048.70/3054.35 Kmsg/s`로
+  `PAIR` public 일부만 좋아지고 raw `PAIR inproc`, `DEALER_DEALER tcp`가 함께
+  악화돼 reject됐다.
+  same-entry message reset micro-tuning alone도 current broad candidate가
+  아니다.
+- 2026-03-30 `pipe.hpp` / `pipe.cpp`
+  `process_activate_read()` / `_in_active` split candidate도
+  same-day baseline 대비
+  `PAIR tcp/inproc 2981.66/3028.21 -> 3235.39/3087.14 Kmsg/s`,
+  `PUBSUB tcp/inproc 2357.77/2029.99 -> 2221.61/2354.50 Kmsg/s`,
+  `DEALER_DEALER tcp/inproc 3261.54/2935.31 -> 2972.66/3037.63 Kmsg/s`로
+  `PAIR`만 좋아지고 `PUBSUB tcp`, `DEALER_DEALER tcp`가 함께 내려가 reject됐다.
+  inbound activation local split alone도 current broad candidate가 아니다.
+- 2026-03-30 `pipe.hpp` / `pipe.cpp` same-order atomic credit publication
+  candidate도 same-day authority baseline 대비
+  public `PAIR tcp/inproc 2995.80/2839.52 -> 2816.88/3254.53 Kmsg/s`,
+  `PUBSUB tcp/inproc 2123.02/2082.10 -> 2091.22/2185.06 Kmsg/s`,
+  `DEALER_DEALER tcp/inproc 2999.91/2717.38 -> 2783.18/3049.99 Kmsg/s`로
+  `inproc` 일부만 좋아지고 `PAIR tcp`, `PUBSUB tcp`,
+  `DEALER_DEALER tcp`가 함께 내려가 reject됐다.
+  즉 `_peers_msgs_read/_msgs_written` credit publication만 atomic으로 떼는
+  local ownership split도 current broad candidate가 아니다.
+- 2026-03-30 non-thread-safe owner-thread `pipe` send candidate도
+  same-day authority baseline
+  [`perf_linux_20260330_082101_codex_20260330_owner_thread_pipe_send_baseline_public.txt`](/home/hep7/project/kairos/zlink/core/bench/with_zmq/results/single/report/perf_linux_20260330_082101_codex_20260330_owner_thread_pipe_send_baseline_public.txt)
+  을 다시 찍은 뒤
+  `pair.cpp` / `lb.cpp` / `router.cpp` / `dist.cpp`가
+  `_out_sync` 없이 owner-thread `write/flush` helper를 쓰도록 올렸지만,
+  authority gate
+  `ctest --test-dir core/build/core --output-on-failure -R '^(unittest_socket_runtime|test_public_inproc_multipart_send|test_multi_socket_contract_regressions|test_socket_with_handler|test_router_mandatory_hwm|test_stream_send_blocking_wakeup|test_stream_threadsafe|test_xpub_nodrop)$' -j1`
+  에서 `test_public_inproc_multipart_send`가
+  `Assertion failed: check () (.../msg.cpp:579)`로 abort해
+  correctness 단계에서 바로 reject됐다.
+  caller-owned non-thread-safe serialization reuse alone도
+  current broad candidate가 아니다.
+- 2026-03-30 `_out_sync` 아래 activation + credit publication만 atomic lane으로
+  떼는 combined structural candidate도
+  targeted gate는 통과했고 primary `multi dealer_dealer tcp 64B`를
+  same-day baseline `-17.28% -> -11.32%`까지 끌어올렸지만,
+  single public/raw가
+  `DEALER_DEALER public tcp/inproc -26.82% / -28.76%`,
+  `PAIR public tcp/inproc -29.83% / -28.31%`,
+  raw `PAIR tcp/inproc -20.69% / -24.67%`,
+  raw `DEALER_DEALER tcp/inproc -24.98% / -25.98%`로 mixed였고,
+  broader multi에서도 `router_router tcp 64B -6.74%`가 남아 reject됐다.
+  즉 activation + credit publication만 atomic으로 떼는 combined family도
+  current broad candidate가 아니다.
+- 2026-03-30 `socket_base_msg.cpp` `DEALER` single-part public send만
+  `public_api_sync`를 우회하는 sender-regime relax candidate도
+  targeted regression gate는 통과했고
+  `multi dealer_dealer tcp 64B 1954.17 -> 1590.91 Kmsg/s (-18.59%)`,
+  `single DEALER_DEALER tcp 64B 3636.79 -> 3140.98 Kmsg/s (-13.63%)`로
+  일부 회복했지만,
+  `single DEALER_DEALER inproc 64B 4171.98 -> 2830.89 Kmsg/s (-32.15%)`가
+  same-day baseline보다 더 나빠져 reject됐다.
+  `DEALER` single-part public sync bit 하나만 빼는 local sender-regime split도
+  current broad candidate가 아니다.
+- 2026-03-30 `socket_base_msg.cpp` / `multipart_send_txn.cpp`
+  logical multipart continuation entry-poll reuse candidate도
+  first frame만 기존 `send_scoped()`를 타고 continuation frame은
+  same public send scope에서 entry `process_commands(0, true)`를
+  건너뛰게 했지만,
+  targeted gate는 통과한 반면 primary `multi dealer_dealer tcp 64B`가
+  same-day authority baseline `1989.95 -> 1603.51 Kmsg/s (-19.42%)` 대비
+  `1960.62 -> 1589.48 Kmsg/s (-18.93%)`로
+  keep-worthy broad win을 만들지 못해 전부 원복했다.
+  logical multipart continuation에서 entry poll만 재사용하는
+  sender-regime family도 current broad candidate가 아니다.
+- 2026-03-30 `pipe.hpp` / `pipe.cpp` lifecycle lock/snapshot split candidate도
+  `_out_sync`에는 publication cluster만 남기고
+  `_state/_delay/_in_active`를 separate lifecycle exclusion + atomic snapshot으로
+  옮기려 했지만,
+  targeted regression gate는 통과한 반면
+  primary `multi dealer_dealer tcp 64B`가
+  `1972.07 -> 1561.22 Kmsg/s (-20.83%)`로
+  same-day authority baseline
+  `1989.95 -> 1603.51 Kmsg/s (-19.42%)`보다 더 악화돼 reject됐다.
+  lifecycle lock/snapshot split family도 current broad candidate가 아니다.
+- 2026-03-30 `pipe.hpp` / `pipe.cpp`
+  lifecycle cleanup atomic split candidate도
+  `process_activate_read()/process_pipe_term()/process_delimiter()/set_nodelay()`
+  쪽 lifecycle state를 atomic snapshot/CAS로 떼고
+  `_out_sync`를 publication cleanup에 더 가깝게 남기려 했지만,
+  targeted gate는 통과한 반면
+  primary `multi dealer_dealer tcp 64B`는
+  `1985.72 -> 1605.14 Kmsg/s (-19.17%)` baseline에서
+  `1978.99 -> 1625.42 Kmsg/s (-17.87%)`로 일부 회복하는 데 그쳤고,
+  single public/raw가
+  `PAIR public tcp/inproc -20.43% / -30.28%`,
+  `DEALER_DEALER public tcp/inproc -14.41% / -33.16%`,
+  raw `PAIR tcp/inproc -30.39% / -21.58%`,
+  raw `DEALER_DEALER tcp/inproc -35.64% / -24.72%`로 무너져 reject됐다.
+  publication duty와 termination/delimiter cleanup ordering을
+  atomic state만으로 다시 자르는 family alone도 current broad candidate가
+  아니다.
+- 2026-03-30 reference reread 결과,
+  current `pipe.cpp` / `pipe.hpp`의 `_out_sync`는
+  `write/flush + _out_pipe + _out_active + _peers_msgs_read` publication cluster와
+  `process_activate_read()/process_pipe_term()/process_delimiter()/set_nodelay()`
+  lifecycle/activation cluster를 아직 같은 lock domain에 묶어 둔다.
+  반면 `7bea9e3f` good state와 current libzmq `pipe.cpp`는
+  steady-state `write()/flush()`에서 같은 lifecycle coupling이 없고,
+  `socket_base.cpp` send entry도 current `socket_public_send_scope_t`와
+  직접 대응하는 extra public surface가 없다.
+  따라서 current next broad hypothesis는
+  helper-level send micro-tuning이나 local sender-regime tweak가 아니라,
+  `_out_sync` 아래 publication state와 lifecycle/activation state를
+  더 큰 의미 단위로 ownership split할 수 있는지 보는 family로 다시 좁힌다.
+  다만 just-tried lifecycle lock/snapshot split도 same-day baseline보다
+  더 악화됐으므로, 다음 round는 separate lock 도입 자체를 반복하지 말고
+  termination/delimiter cleanup ordering을 publication duty와 함께
+  더 크게 재배치하는 구조만 본다.
+- 같은 날 `claude --help`는 확인됐지만
+  non-interactive consult는 `--print` stdin/prompt 요구 오류로 usable output을
+  얻지 못했다.
+  따라서 이번 reference pass의 candidate 선택 근거는
+  current guide/review/hot-path + current tree / `7bea9e3f` /
+  libzmq code reread를 우선한다.
+- 같은 날 later consult 재시도도 같은
+  `Input must be provided either through stdin or as a prompt argument when using --print`
+  오류로 끝나 usable advisory를 추가로 얻지 못했다.
+- 2026-03-30 validation surface realignment 결과,
+  `cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON` 뒤
+  current root enumeration
+  `ctest --test-dir core/build -N`는 `core/tests` + sample/cpp contract를 함께
+  포함한 103개를 직접 열거했고,
+  actual `core/tests` authority suite는
+  `ctest --test-dir core/build/core -N`에서 87개로 확인됐다.
+  따라서 current regression gate는 build artifact root를 `core/build`에
+  유지하되, `core/tests` enumeration과 targeted regex는
+  `core/build/core` test root 기준으로 읽는다.
+- 같은 날 current workspace에서는
+  `test_monitor_socket_contract`,
+  `test_multi_socket_contract_regressions`,
+  `test_public_inproc_multipart_send`가
+  `core/build/bin/` 아래 `0`바이트 placeholder로 남아
+  first authority gate가 `permission denied`로 깨졌다.
+  `cmake --build core/build -j$(nproc)` 뒤에도 세 파일이 비어 있어
+  각 target의 `core/build/core/tests/CMakeFiles/.../link.txt`를 직접 실행해
+  executable을 재링크했고,
+  이후
+  `ctest --test-dir core/build/core --output-on-failure -R '^(test_socket_with_handler|test_monitor_socket_contract|test_multi_socket_contract_regressions|test_public_inproc_multipart_send|test_pubsub_filter_xpub|test_xpub_nodrop|test_spot_pubsub_scenario)$' -j1`
+  는 다시 전부 통과했다.
+  즉 current blocker는 code regression이 아니라 build artifact 손상이었고,
+  authority validation surface는 현재 복구된 상태다.
+- artifact 복구 직후 current-tree primary baseline으로
+  `BENCH_TRANSPORTS=tcp BENCH_MSG_SIZES=64 BENCH_MULTI_WARMUP_SECONDS=1 BENCH_MULTI_DURATION_SECONDS=3 python3 core/bench/with_zmq/multi/run_comparison.py dealer_dealer --build-dir core/build --runs 1`
+  를 다시 찍었고,
+  `multi dealer_dealer tcp 64B 1989.95 -> 1603.51 Kmsg/s (-19.42%)`
+  를 다음 structural candidate의 same-day prepatch authority baseline으로 둔다.
+- `core/tools/ralphloop/run_codex_execution_guide_loop.sh` `--init-only`
+  early-exit path 재배치 뒤
+  `bash -n doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh ...` 와
+  `./doc/plan/perf/run_single_libzmq_gap_ralph_loop.sh --help`
+  wrapper smoke는 다시 통과했다.
 - 2026-03-28 serial current-tree refresh에서는
   public
   `PAIR tcp/inproc -12.03% / -17.18%`,
@@ -682,6 +842,8 @@
   `public_api_inflight/public_api_closing/public_api_sync` split candidate
 - `socket_base_msg.cpp` direct single-part `send_scope` initial unlock +
   relock-around-`xsend()` candidate
+- `pipe.hpp` / `pipe.cpp`
+  `process_activate_read()` / `_in_active` split candidate
 - `socket_base_msg.cpp` `DEALER` single-part admission-only +
   `lb.cpp` send-state lock candidate
 - `socket_runtime.cpp` `public_api_sync` fast-mutex split candidate
@@ -768,10 +930,120 @@
   `~50 ticks` 수준으로 낮춰 잡았으므로,
   another admission-floor-only lifecycle fast path family도
   새 broad evidence 없이 다시 올리지 않는다.
+- 2026-03-30 `socket_base_msg.cpp` / `socket_runtime.cpp`
+  direct single-part `send_fast_or_retry` candidate도
+  same-day baseline 대비
+  public `PAIR tcp/inproc 3262.67/2977.59 -> 2971.35/3015.80 Kmsg/s`,
+  `DEALER_DEALER tcp/inproc 2922.44/3103.31 -> 2897.44/3234.80 Kmsg/s`,
+  raw `PAIR tcp/inproc 2997.60/2976.15 -> 3022.33/3035.96 Kmsg/s`,
+  `DEALER_DEALER tcp/inproc 2987.55/2826.13 -> 3059.53/2810.96 Kmsg/s`로
+  one-pattern win / one-pattern regression에 머물러 reject됐다.
+  즉 success-path scope object elision만으로는 current broad residual의
+  답이 아니다.
+- 2026-03-30 `pipe.hpp` / `pipe.cpp` same-order atomic credit publication
+  candidate도 same-day authority baseline 대비
+  public `PAIR tcp/inproc 2995.80/2839.52 -> 2816.88/3254.53 Kmsg/s`,
+  `PUBSUB tcp/inproc 2123.02/2082.10 -> 2091.22/2185.06 Kmsg/s`,
+  `DEALER_DEALER tcp/inproc 2999.91/2717.38 -> 2783.18/3049.99 Kmsg/s`로
+  `inproc` 일부만 좋아지고 `PAIR tcp`, `PUBSUB tcp`,
+  `DEALER_DEALER tcp`가 함께 내려가 reject됐다.
+  `_peers_msgs_read/_msgs_written` credit publication만 atomic으로 떼는
+  local ownership split alone도 current broad residual의 답이 아니다.
 - 긴 로그를 처음부터 다시 읽으며 local tweak 후보를 재채집하지 않는다.
   iteration 시작은 항상 이 summary와 최신 pivot부터 본다.
 
 ### 0.6 Next Exact Step
+
+### 0.6.1 Ralph Loop 운영 규칙 수정
+
+- 현재 residual round에서는 랄프루프를
+  "다음 candidate를 많이 생성하는 루프"가 아니라
+  "어떤 성능 질문에 답하는 실험인지 분리하는 루프"로 쓴다.
+- 특히 `single`과 `multi`를 같은 success criterion 아래에 두지 않는다.
+  둘은 서로 다른 workload 질문을 하므로, 같은 patch를 보더라도
+  keep/reject 의미가 다르다.
+- 그리고 current primary target은 `single` broad recovery가 아니라
+  `multi dealer_dealer` 개선으로 고정한다.
+
+#### Track A: `single`
+
+- 목적은 broad product claim이 아니라,
+  internal hot-path fixed cost와 local transport(`ipc`/`inproc`) residual을
+  진단하는 것이다.
+- `single` 결과는
+  "core hot path가 얼마나 두꺼운가"를 읽는 diagnostic surface로 취급한다.
+- `single` track keep 기준은
+  target pattern에서 same-day absolute throughput이 반복 측정으로
+  재현되게 오르는지다.
+- `single` track에서 relative diff는 보조지표로만 보고,
+  primary authority는 항상 `zlink absolute throughput`으로 둔다.
+- 다만 current round에서는 `single dealer_dealer`도 primary acceptance가 아니라
+  `multi dealer_dealer` 해석을 위한 diagnostic secondary로 둔다.
+
+#### Track B: `multi`
+
+- 목적은 실사용 topology와 fan-in/fan-out 환경에서의 actual competitiveness를
+  보는 것이다.
+- current primary workload는 `multi dealer_dealer`, 특히
+  `tcp/ipc 64B~1KB` 구간이다.
+- `multi` 결과는
+  "single residual이 실제 workload 열세로 번역되는가"를 판단하는 surface로
+  취급한다.
+- `multi` track keep 기준은
+  target workload family에서 broad win 또는 clear no-regression이다.
+- `single`에서만 좋아지고 `multi`에 번역되지 않는 patch는
+  diagnostic value는 남겨도 retained code로는 두지 않는다.
+- 이번 round의 `pipe` lifecycle cleanup atomic split도
+  `multi dealer_dealer` 일부 회복만 만들고 public/raw guardrail을 깨서
+  위 규칙대로 retain하지 않는다.
+
+#### Candidate Class 분리
+
+- `micro` candidate:
+  - call elision
+  - duplicate branch 제거
+  - metadata/flag/check 같은 prep floor shaving
+- `structural` candidate:
+  - `pipe`
+  - `mailbox`
+  - wake/activation ownership
+  - public runtime / lifecycle boundary 재배치
+- `micro`와 `structural`은 같은 기대치로 평가하지 않는다.
+  `micro`는 narrow target에서 작아도 재현 가능한 개선이면 의미가 있고,
+  broad 큰 폭 개선은 주로 `structural`에서만 기대한다.
+
+#### Baseline / Keep 판정 규칙
+
+- keep/reject 판정은 항상 아래 순서를 지킨다.
+  1. same-day prepatch baseline
+  2. patch 적용 후 같은 명령 rerun
+  3. 필요하면 즉시 rerun으로 재현성 확인
+- current round의 기본 명령 순서는
+  `multi dealer_dealer` target baseline -> patch -> rerun 이다.
+- `single dealer_dealer`는 candidate 해석과 no-regression 확인이 필요할 때만
+  뒤따라 붙인다.
+- 탐색 단계의 `runs=1` 결과는 candidate triage 용도로만 쓴다.
+- keep 판정은 기본적으로 `runs>=3` 반복 측정으로 올린다.
+- baseline이 흔들릴 때는 relative diff가 아니라
+  `zlink absolute throughput`과 same-day prepatch 대비 변화량만 본다.
+
+#### 종료 / 전환 조건
+
+- 아래 둘 이상이 동시에 성립하면 current `single` micro round를 종료하고
+  structural-only round로 전환한다.
+  - 연속된 `micro` candidate 3개 이상이 mixed/noise로 reject됨
+  - `single` gap이 `multi` target workload에는 그대로 번역되지 않음
+  - patch가 one-pattern win / one-pattern regression으로 반복됨
+- 아래가 성립하면 `single` 수치 chase 자체를 중단하고
+  `multi` 또는 product-facing workload로 우선순위를 옮긴다.
+  - `multi` target은 이미 competitive
+  - 남은 `single` gap이 local diagnostic 의미만 있고 product loss로 연결되지 않음
+- 즉 current loop의 다음 목적은
+  "모든 single gap을 줄이는 것"이 아니라
+  "어떤 gap이 product-facing target까지 번역되는지 분리하는 것"이다.
+- current immediate next step도 `single broad recovery`가 아니라
+  `multi dealer_dealer` 개선 후보를 먼저 세우고,
+  `single dealer_dealer`는 그 후보의 fixed-cost 성격을 읽는 보조 축으로 쓴다.
 
 - restart 시 먼저 bisect 결론을 기준으로
   `historical first direct cause`와 `current residual direct cause`를 분리해
@@ -814,6 +1086,23 @@
 - 같은 이유로 logical multipart scope 아래서 entry `process_commands()`
   reuse만 추가하는 sender-regime family도 absolute throughput을 거의 못
   움직였으므로, next step은 또 다른 local entry-state reuse가 아니다.
+- 같은 이유로 direct single-part success path에서
+  public send scope object를 retry가 필요할 때만 adopted scope로 넘기는
+  `send_fast_or_retry` family도 broad fix 후보에서 내린다.
+- 같은 이유로 `process_activate_read()` / `_in_active`만 `_out_sync` 밖으로
+  떼는 local inbound activation split family도
+  `PAIR` one-pattern win에 머물렀으므로 broad fix 후보에서 내린다.
+- 같은 이유로 `_peers_msgs_read/_msgs_written` credit publication만
+  atomic으로 떼는 local ownership split family도
+  `inproc` one-side win / `tcp` regression에 머물렀으므로
+  broad fix 후보에서 내린다.
+- 같은 이유로 non-thread-safe owner-thread `pipe` send family도
+  `test_public_inproc_multipart_send` `msg.cpp:579` assert로
+  public multipart cleanup invariant를 깨뜨렸으므로
+  broad fix 후보에서 내린다.
+- 같은 이유로 activation + credit publication combined lane split family도
+  `multi dealer_dealer` improvement를 broader multi guardrail 안에서
+  유지하지 못했으므로 broad fix 후보에서 내린다.
 - 같은 이유로 `recv_routed()` export에서 source-rid output 전체 zero를
   `size=0` reset으로 줄이는 local zeroing-floor family도
   zlink absolute throughput을 거의 못 움직였으므로,

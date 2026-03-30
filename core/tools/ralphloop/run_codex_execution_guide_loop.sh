@@ -384,6 +384,30 @@ fi
 SESSION_SCOPE_ID="$(sanitize_scope_token "${DISPLAY_NAME}_${GATE_LABEL}")"
 
 mkdir -p "${LOGS_DIR}"
+
+if [[ "${INIT_ONLY}" == "1" ]]; then
+  timestamp="$(date '+%Y%m%d_%H%M%S')"
+  session_dir="${LOGS_DIR}/codex_execution_guide_loop_${SESSION_SCOPE_ID}_${timestamp}"
+  gate_dir="${session_dir}/gate"
+  gate_status_file="${gate_dir}/${GATE_LABEL}.status"
+  mkdir -p "${session_dir}"
+  mkdir -p "${gate_dir}"
+
+  cat <<EOF
+=== Codex execution guide loop start ===
+Guide: ${GUIDE_PATH}
+Legacy secondary plan: ${MASTER_PLAN_PATH}
+Session dir: ${session_dir}
+Gate dir: ${gate_dir}
+Supervisor lock: init-only skipped
+Max iterations: 0
+Gate status file: ${gate_status_file}
+Stress count: ${STRESS_COUNT}
+=== Init-only requested; exiting without starting Codex ===
+EOF
+  exit 0
+fi
+
 terminate_existing_supervisors
 terminate_existing_codex_children
 acquire_supervisor_lock
@@ -411,11 +435,6 @@ Max iterations: ${max_iterations_display}
 Gate status file: ${gate_status_file}
 Stress count: ${STRESS_COUNT}
 EOF
-
-if [[ "${INIT_ONLY}" == "1" ]]; then
-  echo "=== Init-only requested; exiting without starting Codex ==="
-  exit 0
-fi
 
 load_gate_field() {
   local file_path="$1"

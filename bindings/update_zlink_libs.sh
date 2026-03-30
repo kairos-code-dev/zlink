@@ -347,11 +347,11 @@ node_lock.write_text(
 )
 if old_lock_ver != expect:
     updated.append(str(node_lock.relative_to(repo_root)))
-replace_regex(node_version_test, r"assert\.equal\(v\[0\],\s*\d+\);",
+replace_regex_optional(node_version_test, r"assert\.equal\(v\[0\],\s*\d+\);",
               f"assert.equal(v[0], {major});")
-replace_regex(node_version_test, r"assert\.equal\(v\[1\],\s*\d+\);",
+replace_regex_optional(node_version_test, r"assert\.equal\(v\[1\],\s*\d+\);",
               f"assert.equal(v[1], {minor});")
-replace_regex(node_version_test, r"assert\.equal\(v\[2\],\s*\d+\);",
+replace_regex_optional(node_version_test, r"assert\.equal\(v\[2\],\s*\d+\);",
               f"assert.equal(v[2], {patch});")
 
 replace_regex(python_pyproject, r'^version\s*=\s*"[^"]+"$',

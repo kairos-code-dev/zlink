@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.23] - 2026-03-31
+
+### Fixed
+
+**STREAM ASIO Write-State Simplification**
+- Collapsed the duplicated STREAM async-write/speculative-write state machines into a single speculative write path with one shared async arm helper, so output wakeup, partial-write fallback, and post-HWM drain semantics are defined in one place instead of split across two near-duplicate implementations.
+- Fixed the Linux `test_stream_send_blocking_wakeup` release failure by continuing the STREAM encoder/pipe drain after writable wakeup instead of stopping after the first synchronous batch write, which had left blocked senders stranded behind HWM on some runner timings.
+- Revalidated the core release gate and targeted Linux TCP multi-pattern perf against the recorded baseline so the stability fix preserves the current STREAM fast path without introducing a new measurable regression in the exercised callback/recv benchmark slices.
+
 ## [5.0.22] - 2026-03-31
 
 ### Fixed

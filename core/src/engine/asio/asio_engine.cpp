@@ -829,25 +829,25 @@ void zlink::asio_engine_t::start_async_write ()
         return;
     }
 
-    //  Try a synchronous write first when supported (libzlink-like path).
-    const bool use_speculative_write = use_stream_speculative_write ();
-    if (use_speculative_write) {
-        const std::size_t bytes =
-          _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
-                                  _outsize);
-        if (bytes == 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                error (connection_error);
-                return;
-            }
-        } else {
-            _outpos += bytes;
-            _outsize -= bytes;
-            if (_outsize == 0) {
-                return;
-            }
-        }
+    // STREAM owns one speculative write state machine. Keep synchronous
+    // attempts there so wakeup, partial-write, and drain semantics don't
+    // diverge across two near-duplicate implementations.
+    if (!_handshaking && _options.type == ZLINK_CORE_SOCKET_STREAM
+        && use_stream_speculative_write ()) {
+        speculative_write ();
+        return;
     }
+
+    schedule_async_write ();
+}
+
+void zlink::asio_engine_t::schedule_async_write ()
+{
+    zlink_assert (!_terminating);
+    zlink_assert (!_write_pending);
+    zlink_assert (!_io_error);
+    zlink_assert (_outsize > 0);
+    zlink_assert (_outpos != NULL);
 
     _write_pending = true;
     _async_zero_copy = true;
@@ -1573,7 +1573,7 @@ void zlink::asio_engine_t::speculative_write ()
     const bool use_speculative_write = use_stream_speculative_write ();
     if (!use_speculative_write) {
         ENGINE_DBG ("speculative_write: transport prefers async");
-        start_async_write ();
+        schedule_async_write ();
         return;
     }
 
@@ -1598,7 +1598,7 @@ void zlink::asio_engine_t::speculative_write ()
             //  would_block - fall back to async write.
             //  Copy data to write buffer for async operation (buffer lifetime).
             ENGINE_DBG ("speculative_write: would_block, falling back to async");
-            start_async_write ();
+            schedule_async_write ();
             return;
         }
         //  Actual error
@@ -1621,7 +1621,7 @@ void zlink::asio_engine_t::speculative_write ()
         //  Copy remaining data to write buffer for async operation.
         ENGINE_DBG ("speculative_write: partial write, async for remaining %zu",
                     _outsize);
-        start_async_write ();
+        schedule_async_write ();
     } else {
         //  Complete write succeeded.
         //  Try to get more data and continue speculative writing.
@@ -1632,13 +1632,13 @@ void zlink::asio_engine_t::speculative_write ()
             return;
 
         if (asio_single_write_on) {
-            start_async_write ();
+            schedule_async_write ();
             return;
         }
 
         if (stream_tcp_speculative && stream_spec_budget > 0
             && stream_spec_bytes >= stream_spec_budget) {
-            start_async_write ();
+            schedule_async_write ();
             return;
         }
 
@@ -1654,7 +1654,7 @@ void zlink::asio_engine_t::speculative_write ()
             if (more_bytes == 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
                     //  would_block - remaining data via async
-                    start_async_write ();
+                    schedule_async_write ();
                     return;
                 }
                 //  Actual error
@@ -1669,13 +1669,13 @@ void zlink::asio_engine_t::speculative_write ()
 
             if (_outsize > 0) {
                 //  Partial write - async for remaining
-                start_async_write ();
+                schedule_async_write ();
                 return;
             }
 
             if (stream_tcp_speculative && stream_spec_budget > 0
                 && stream_spec_bytes >= stream_spec_budget) {
-                start_async_write ();
+                schedule_async_write ();
                 return;
             }
         }

@@ -22,6 +22,7 @@ set(PERF_EXTERNAL_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external")
 if(NOT EXISTS "${PERF_EXTERNAL_INCLUDE_DIR}")
     set(PERF_EXTERNAL_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/external")
 endif()
+set(PERF_BOOST_INCLUDE_DIR "${PERF_EXTERNAL_INCLUDE_DIR}/boost")
 
 if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     if(MSVC)
@@ -113,7 +114,7 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
         OpenSSL::Crypto)
     target_include_directories(
         perf_stream_client PRIVATE
-        ${PERF_EXTERNAL_INCLUDE_DIR}
+        ${PERF_BOOST_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/multi/common)
     target_compile_options(perf_stream_client PRIVATE ${PERF_CXX_FLAGS})
     target_compile_features(perf_stream_client PRIVATE cxx_std_17)

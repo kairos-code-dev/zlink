@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.14] - 2026-03-31
+
+### Fixed
+
+**Release Build Include Paths**
+- Corrected the `perf_stream_client` Boost include root from the generic external directory to the bundled Boost root so Linux and macOS release builds can resolve `<boost/asio.hpp>` while compiling the required stream process fixture.
+
 ## [5.0.13] - 2026-03-31
 
 ### Fixed

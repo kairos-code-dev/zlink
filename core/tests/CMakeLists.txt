@@ -338,6 +338,24 @@ if(TARGET test_single_spot_benchmark_process)
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
+if(TARGET test_multi_stream_benchmark_process)
+  if(TARGET comp_src_stream_server)
+    add_dependencies(
+      test_multi_stream_benchmark_process
+      comp_src_stream_server)
+  endif()
+  if(TARGET perf_stream_client)
+    add_dependencies(
+      test_multi_stream_benchmark_process
+      perf_stream_client)
+  endif()
+  set_tests_properties(
+    test_multi_stream_benchmark_process
+    PROPERTIES
+      TIMEOUT 120
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
 if(TARGET test_stream_socket)
   set_tests_properties(test_stream_socket PROPERTIES TIMEOUT 60)
 endif()

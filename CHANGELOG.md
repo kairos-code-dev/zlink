@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.13] - 2026-03-31
+
+### Fixed
+
+**Release Build Fixtures**
+- Added the missing Boost/perf include paths for `perf_stream_client` so release builds can compile the stream process fixture on Linux and macOS instead of failing while building a required core integration helper binary.
+- Declared the `test_multi_stream_benchmark_process` dependency on `perf_stream_client` and `comp_src_stream_server` explicitly so clean builds use the intended fixture ownership instead of relying on incidental build ordering.
+
 ## [5.0.12] - 2026-03-31
 
 ### Fixed

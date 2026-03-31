@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.10] - 2026-03-31
+
+### Fixed
+
+**Release Workflow Alignment**
+- Switched the macOS and Windows scripted test paths to the repository lane runner so serial integration and e2e suites no longer execute concurrently inside release builds.
+- Removed failure masking from the Linux GitHub Actions release jobs so artifact verification now reflects the actual build result instead of a hidden script failure.
+- Replaced the ad-hoc Windows x64 GitHub Actions OpenSSL/setup path with the repository Windows build script and vcpkg-backed OpenSSL resolution so release packaging follows the same surface as local Windows builds.
+
 ## [5.0.9] - 2026-03-31
 
 ### Fixed

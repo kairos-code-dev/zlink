@@ -289,50 +289,18 @@ try {
         if ($Architecture -eq "arm64") {
             Write-Host "Skipping tests: Cannot run ARM64 binaries on x64 host"
         } else {
-            # Run tests with ctest
-            Write-Host "Running ctest..."
-
-            # Ensure the DLL directory is in the PATH so tests can find zlink.dll
+            $TestDir = Join-Path $BUILD_DIR "core"
             $OLD_PATH = $env:PATH
             $DLL_DIR = (Resolve-Path ("bin\\$BuildType")).Path
             $env:PATH = "$DLL_DIR;$env:PATH"
-            Write-Host "Temporarily added $DLL_DIR to PATH for testing"
-
-            # Run ctest and capture exit code
-            $ctestOutput = ""
-            $ctestExitCode = 0
 
             try {
-                # Run ctest with output on failure
-                ctest --output-on-failure -C $BuildType --parallel 2>&1 | Tee-Object -Variable ctestOutput | Write-Host
-                $ctestExitCode = $LASTEXITCODE
-            } catch {
-                $ctestExitCode = 1
+                Write-Host "Temporarily added $DLL_DIR to PATH for testing"
+                & bash "$RepoRoot/core/tests/run_test_lanes.sh" `
+                    --build-dir "$TestDir" `
+                    --include-e2e
             } finally {
-                # Restore original path
                 $env:PATH = $OLD_PATH
-            }
-
-            if ($ctestExitCode -ne 0) {
-                Write-Host ""
-                Write-Host "Some tests failed. Checking results..."
-
-                # Count failed tests
-                $failedCount = 0
-                if ($ctestOutput -match "(\d+) tests? failed") {
-                    $failedCount = [int]$matches[1]
-                }
-
-                Write-Host "Failed tests: $failedCount"
-
-                # Allow up to 20 test failures (TIPC, fuzzer tests may not work in all environments)
-                if ($failedCount -gt 20) {
-                    throw "Too many test failures ($failedCount). Build may be broken."
-                }
-
-                Write-Host "Acceptable number of test failures. Continuing..."
-            } else {
-                Write-Host "All tests passed!"
             }
         }
     }

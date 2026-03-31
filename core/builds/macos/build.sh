@@ -72,6 +72,11 @@ if [ "$RUN_TESTS" = "ON" ]; then
     BUILD_TESTS_FLAG="ON"
 fi
 
+BUILD_STATIC_FLAG="OFF"
+if [ "$RUN_TESTS" = "ON" ]; then
+    BUILD_STATIC_FLAG="ON"
+fi
+
 # Configure build
 if [ -z "$OPENSSL_ROOT_DIR" ]; then
     if command -v brew >/dev/null 2>&1; then
@@ -91,7 +96,7 @@ cmake "$LIBZLINK_SRC_ABS" \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DBUILD_SHARED=ON \
-    -DBUILD_STATIC=OFF \
+    -DBUILD_STATIC="$BUILD_STATIC_FLAG" \
     -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
     -DZLINK_CXX_STANDARD=17 \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
@@ -142,27 +147,10 @@ cd "$REPO_ROOT"
 if [ "$RUN_TESTS" = "ON" ]; then
     echo ""
     echo "Step 5: Running tests..."
-    cd "$BUILD_DIR"
-
-    # Build test executables
-    make -j$(sysctl -n hw.ncpu)
-
-    # Run tests with ctest
-    # Note: Some tests may be skipped based on platform capabilities
-    # TIPC tests are Linux-only and will fail on macOS
-    ctest --output-on-failure -j$(sysctl -n hw.ncpu) || {
-        echo ""
-        echo "Some tests failed. Checking results..."
-        # Allow some tests to fail (TIPC tests are Linux-only, some platform-specific tests may fail)
-        FAILED_TESTS=$(ctest --rerun-failed --output-on-failure 2>&1 | grep -c "Failed" || true)
-        if [ "$FAILED_TESTS" -gt 20 ]; then
-            echo "Too many test failures ($FAILED_TESTS). Build may be broken."
-            exit 1
-        fi
-        echo "Acceptable number of test failures. Continuing..."
-    }
-
-    cd "$REPO_ROOT"
+    TEST_DIR="$BUILD_DIR/core"
+    bash "$REPO_ROOT/core/tests/run_test_lanes.sh" \
+        --build-dir "$TEST_DIR" \
+        --include-e2e
 fi
 
 # Step 6: Verify build

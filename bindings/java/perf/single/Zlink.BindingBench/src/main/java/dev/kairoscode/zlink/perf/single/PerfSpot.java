@@ -7,6 +7,7 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.spot.Spot;
+import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;

@@ -21,6 +21,7 @@ test('spot exposes unified publish and subscribe surface', () => {
   sub.close();
   monitor.close();
   spot.close();
+  node.close();
   ctx.close();
 });
 
@@ -48,6 +49,7 @@ test('spot trySubscribe receives published payload after one immediate turn', as
 
   monitor.close();
   spot.close();
+  node.close();
   ctx.close();
 });
 
@@ -84,6 +86,7 @@ test('spot subscribeHandler delivers callback payloads', async () => {
 
   monitor.close();
   spot.close();
+  node.close();
   ctx.close();
 });
 

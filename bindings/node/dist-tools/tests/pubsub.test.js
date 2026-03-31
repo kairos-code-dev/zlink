@@ -17,6 +17,7 @@ test('spot exposes unified publish and subscribe surface', () => {
     sub.close();
     monitor.close();
     spot.close();
+    node.close();
     ctx.close();
 });
 test('spot trySubscribe receives published payload after one immediate turn', async () => {
@@ -40,6 +41,7 @@ test('spot trySubscribe receives published payload after one immediate turn', as
     assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['payload']);
     monitor.close();
     spot.close();
+    node.close();
     ctx.close();
 });
 test('spot subscribeHandler delivers callback payloads', async () => {
@@ -72,6 +74,7 @@ test('spot subscribeHandler delivers callback payloads', async () => {
     assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['payload']);
     monitor.close();
     spot.close();
+    node.close();
     ctx.close();
 });
 test('canonical pub/sub surface hides opposite-direction methods', () => {

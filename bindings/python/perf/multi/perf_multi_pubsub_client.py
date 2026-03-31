@@ -12,12 +12,14 @@ from perf_multi_common import (
 )
 
 
-def _drain_ready(poller, active, latencies):
+def _drain_ready(poller, active, latencies, deadline=None):
     count = 0
     events = poller.poll(50)
     for event in events:
         sock = event["socket"]
         while True:
+            if deadline is not None and time.perf_counter() >= deadline:
+                return count
             received = sock.try_recv()
             if received is None:
                 break
@@ -41,6 +43,7 @@ def main(argv=None):
         sockets = [zlink.SubSocket(ctx) for _ in range(args.clients)]
         try:
             for sock in sockets:
+                sock.options.linger_ms = 0
                 sock.connect(args.endpoint)
                 sock.set_subscription(TOPIC)
 
@@ -50,12 +53,12 @@ def main(argv=None):
 
                 warmup_deadline = time.perf_counter() + args.warmup
                 while time.perf_counter() < warmup_deadline:
-                    _drain_ready(poller, False, latencies)
+                    _drain_ready(poller, False, latencies, warmup_deadline)
 
                 started = time.perf_counter()
                 deadline = started + args.duration
                 while time.perf_counter() < deadline:
-                    count += _drain_ready(poller, True, latencies)
+                    count += _drain_ready(poller, True, latencies, deadline)
 
             elapsed = time.perf_counter() - started
             metrics = result_metrics(

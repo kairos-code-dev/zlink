@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ServiceEvent;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.service.spot.Spot;
+import dev.kairoscode.zlink.service.spot.SpotNode;
 
 public final class SpotMonitorSample {
     private static final long SPOT_FILTER_APPLIED = 1L << 13;

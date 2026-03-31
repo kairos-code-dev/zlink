@@ -887,6 +887,10 @@ export class SpotNode {
     this._native = requireNative().spotNodeNew(ctx.nativeHandle());
   }
 
+  nativeHandle(): unknown {
+    return this._native;
+  }
+
   bind(endpoint: string): void {
     requireNative().spotNodeBind(this._native, endpoint);
   }
@@ -975,7 +979,7 @@ export class Spot {
   private _native: unknown | null;
 
   constructor(node: SpotNode) {
-    this._native = requireNative().spotNew((node as SpotNode)._native);
+    this._native = requireNative().spotNew(node.nativeHandle());
     requireNative().spotEnableSendReadyNoop(this._native);
   }
 

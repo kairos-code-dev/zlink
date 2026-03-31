@@ -54,5 +54,6 @@ test('service monitors expose tryRecv empty path', () => {
     assert.equal(monitor.tryRecv(), null);
     monitor.close();
     spot.close();
+    node.close();
     ctx.close();
 });

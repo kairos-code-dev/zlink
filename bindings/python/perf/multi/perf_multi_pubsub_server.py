@@ -23,6 +23,7 @@ def main():
 
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
+            publisher.options.linger_ms = 0
             publisher.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
             while not stop_event.is_set():

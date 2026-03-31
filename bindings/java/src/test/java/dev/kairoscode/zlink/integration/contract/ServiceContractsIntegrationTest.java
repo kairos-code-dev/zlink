@@ -13,6 +13,9 @@ import dev.kairoscode.zlink.service.registry.RegistryQueryClient;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import org.junit.jupiter.api.Test;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -72,8 +75,17 @@ class ServiceContractsIntegrationTest {
              Spot spot = new Spot(node);
              ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
             assertTrue(monitor.tryRecv().isEmpty());
+            CountDownLatch ready = new CountDownLatch(1);
+            AtomicReference<ServiceEvent> eventRef = new AtomicReference<>();
+            monitor.onEvent(event -> {
+                if ((event.eventType() & SPOT_FILTER_APPLIED) != 0) {
+                    eventRef.set(event);
+                    ready.countDown();
+                }
+            });
             spot.setSubscription("svc-topic");
-            ServiceEvent event = monitor.recv();
+            assertTrue(await(ready), "spot filter applied");
+            ServiceEvent event = eventRef.get();
             assertEquals(SPOT_FILTER_APPLIED, event.eventType() & SPOT_FILTER_APPLIED);
             assertEquals("svc-topic", event.subject());
             assertTrue(monitor.snapshot().readyCount() >= 0);
@@ -94,8 +106,14 @@ class ServiceContractsIntegrationTest {
              ServiceMonitor monitor = subscriber.monitorOpen((int) SPOT_FILTER_APPLIED)) {
             serverNode.bind(endpoint);
             clientNode.connectPeer(endpoint);
+            CountDownLatch ready = new CountDownLatch(1);
+            monitor.onEvent(event -> {
+                if ((event.eventType() & SPOT_FILTER_APPLIED) != 0) {
+                    ready.countDown();
+                }
+            });
             subscriber.setSubscription("perf-topic");
-            monitor.recv();
+            assertTrue(await(ready), "spot filter applied");
             try (var payload = dev.kairoscode.zlink.Message.copyOfUtf8("perf-body")) {
                 publisher.publish("perf-topic", payload);
             }
@@ -103,6 +121,15 @@ class ServiceContractsIntegrationTest {
                 assertEquals("perf-topic", received.topicId());
                 assertEquals("perf-body", received.firstPart().toUtf8String());
             }
+        }
+    }
+
+    private static boolean await(CountDownLatch latch) {
+        try {
+            return latch.await(TestSupport.DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("await interrupted", ex);
         }
     }
 }

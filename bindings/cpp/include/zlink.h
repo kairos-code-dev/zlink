@@ -608,6 +608,7 @@ ZLINK_EXPORT int zlink_recv_handler (
  * - raw `SUB`
  * - raw `XSUB`
  * - unified `spot`
+ * - `spot node`
  *
  * The subject starts in recv model. After a successful attach,
  * `zlink_subscribe()` and data-plane poller `ZLINK_POLLIN` registration on the
@@ -634,6 +635,7 @@ ZLINK_EXPORT int zlink_subscribe_handler (
  * - raw `ROUTER`
  * - raw `STREAM`
  * - unified `spot`
+ * - `spot node`
  *
  * Send-ready is independent from receive callback mode. After a successful
  * attach, data-plane poller `ZLINK_POLLOUT` registration on the same subject
@@ -1061,7 +1063,7 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
  */
 ZLINK_EXPORT void *zlink_spot_new (void *node);
 
-/** @brief Destroy a unified SPOT handle and its owned spot node. */
+/** @brief Destroy a unified SPOT handle. */
 ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
 
 /* SPOT Node --------------------------------------------------------------- */

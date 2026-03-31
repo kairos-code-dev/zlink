@@ -9,6 +9,7 @@ set(REGISTERED_TESTS)
 set(SPLIT_ONLY_TEST_TARGETS)
 set(INTEGRATION_TEST_ROOT "integration")
 set(E2E_TEST_ROOT "e2e")
+set(BENCHMARK_PROCESS_TEST_ROOT "benchmark_process")
 
 set(tests
   ${INTEGRATION_TEST_ROOT}/test_ancillaries
@@ -16,12 +17,6 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_enhanced
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_socket_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_dealer_dealer_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/test_socket_with_handler
   ${INTEGRATION_TEST_ROOT}/test_connect_resolve
   ${INTEGRATION_TEST_ROOT}/test_capabilities
@@ -44,6 +39,18 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/routing-id/test_stream_routing_id_size
   ${E2E_TEST_ROOT}/spot/test_spot_pubsub_scenario
   ${E2E_TEST_ROOT}/spot/test_spot_service_introspection)
+
+set(BENCHMARK_PROCESS_TESTS)
+if(ZLINK_BUILD_BENCHMARK_PROCESS_TESTS)
+  list(APPEND BENCHMARK_PROCESS_TESTS
+       ${BENCHMARK_PROCESS_TEST_ROOT}/monitoring/test_multi_dealer_dealer_benchmark_process
+       ${BENCHMARK_PROCESS_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
+       ${BENCHMARK_PROCESS_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
+       ${BENCHMARK_PROCESS_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
+       ${BENCHMARK_PROCESS_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
+       ${BENCHMARK_PROCESS_TEST_ROOT}/monitoring/test_single_spot_benchmark_process)
+  list(APPEND tests ${BENCHMARK_PROCESS_TESTS})
+endif()
 
 set(ROUTER_ROUTER_ZLINK_CONNECT_TEST
     "scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect")
@@ -205,9 +212,6 @@ foreach(test_source ${tests})
     endif()
 
     set_tests_properties(${test} PROPERTIES TIMEOUT 10)
-    if(${test} STREQUAL "test_multi_stream_benchmark_process")
-      set_tests_properties(${test} PROPERTIES TIMEOUT 120)
-    endif()
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
 
     # Automatically set library path for tests to find libzlink shared library
@@ -636,16 +640,48 @@ if(TARGET test_scenario_router_router_zlink_connect)
 endif()
 
 set(REGRESSION_SERIAL_TESTS)
+set(BENCHMARK_PROCESS_SERIAL_TESTS)
+
+if(TARGET test_multi_dealer_dealer_benchmark_process)
+  list(APPEND BENCHMARK_PROCESS_SERIAL_TESTS
+       test_multi_dealer_dealer_benchmark_process)
+endif()
+if(TARGET test_multi_pubsub_benchmark_process)
+  list(APPEND BENCHMARK_PROCESS_SERIAL_TESTS
+       test_multi_pubsub_benchmark_process)
+endif()
+if(TARGET test_multi_spot_benchmark_process)
+  list(APPEND BENCHMARK_PROCESS_SERIAL_TESTS
+       test_multi_spot_benchmark_process)
+endif()
+if(TARGET test_multi_stream_benchmark_process)
+  list(APPEND BENCHMARK_PROCESS_SERIAL_TESTS
+       test_multi_stream_benchmark_process)
+endif()
+if(TARGET test_single_pair_benchmark_process)
+  list(APPEND BENCHMARK_PROCESS_SERIAL_TESTS
+       test_single_pair_benchmark_process)
+endif()
+if(TARGET test_single_spot_benchmark_process)
+  list(APPEND BENCHMARK_PROCESS_SERIAL_TESTS
+       test_single_spot_benchmark_process)
+endif()
 
 set(INTEGRATION_SERIAL_TESTS ${REGISTERED_TESTS})
-list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS})
+list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS
+     ${E2E_SERIAL_TESTS}
+     ${REGRESSION_SERIAL_TESTS}
+     ${BENCHMARK_PROCESS_SERIAL_TESTS})
 list(APPEND INTEGRATION_SERIAL_TESTS
      ${SERVICE_INTROSPECTION_TEST_NAMES}
      ${SERVICE_DISCOVERY_TEST_NAMES}
      ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
      ${SPOT_PUBSUB_PEER_TEST_NAMES}
      ${SPOT_PUBSUB_LOCAL_TEST_NAMES})
-list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS})
+list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS
+     ${E2E_SERIAL_TESTS}
+     ${REGRESSION_SERIAL_TESTS}
+     ${BENCHMARK_PROCESS_SERIAL_TESTS})
 list(REMOVE_DUPLICATES INTEGRATION_SERIAL_TESTS)
 
 if(INTEGRATION_SERIAL_TESTS)
@@ -661,6 +697,13 @@ endif()
 if(REGRESSION_SERIAL_TESTS)
   set_tests_properties(${REGRESSION_SERIAL_TESTS} PROPERTIES RUN_SERIAL TRUE)
   set_property(TEST ${REGRESSION_SERIAL_TESTS} APPEND PROPERTY LABELS "regression;serial")
+endif()
+
+if(BENCHMARK_PROCESS_SERIAL_TESTS)
+  set_tests_properties(${BENCHMARK_PROCESS_SERIAL_TESTS} PROPERTIES RUN_SERIAL TRUE)
+  set_property(TEST ${BENCHMARK_PROCESS_SERIAL_TESTS}
+               APPEND
+               PROPERTY LABELS "benchmark_process;serial")
 endif()
 
 # Check whether all tests in the current folder are present
@@ -693,6 +736,12 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_hwm_pubsub
     test_heartbeats
     test_monitor_enhanced
+    test_multi_dealer_dealer_benchmark_process
+    test_multi_pubsub_benchmark_process
+    test_multi_spot_benchmark_process
+    test_multi_stream_benchmark_process
+    test_single_pair_benchmark_process
+    test_single_spot_benchmark_process
     test_msg_ffn
     test_msg_flags
     test_pair_inproc

@@ -238,32 +238,6 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
     return true;
 }
 
-inline bool settle_after_connect_ready (int settle_ms)
-{
-    if (settle_ms <= 0)
-        return true;
-
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (settle_ms);
-
-    while (!g_stop_requested.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < deadline) {
-        const long remaining_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            deadline - std::chrono::steady_clock::now ())
-            .count ();
-        const int rc = perf_socket_poll (NULL, 0, remaining_ms > 0 ? remaining_ms
-                                                                   : 0);
-        if (rc >= 0)
-            return true;
-        if (zlink_errno () != EINTR)
-            return false;
-    }
-
-    return !g_stop_requested.load (std::memory_order_acquire);
-}
-
 inline int run_client_benchmark (const std::string &lib_name,
                                  const std::string &transport,
                                  const std::string &endpoint,
@@ -319,16 +293,6 @@ inline int run_client_benchmark (const std::string &lib_name,
 
     g_stop_requested.store (false, std::memory_order_release);
     install_signal_handlers ();
-
-    if (!settle_after_connect_ready (settings.settle_ms)) {
-        if (bench_debug_enabled ())
-            std::cerr
-              << "[multi-dealer-dealer-client] settle after connect ready failed"
-              << std::endl;
-        close_client_monitors (&monitors);
-        close_client_sockets (&sockets);
-        return 1;
-    }
 
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         if (g_stop_requested.load (std::memory_order_acquire)) {

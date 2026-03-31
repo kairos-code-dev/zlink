@@ -1572,16 +1572,20 @@ endif()
 set(ZLINK_BUILD_TESTS
     ${BUILD_TESTS}
     CACHE BOOL "Build the tests for Zlink")
+option(ZLINK_BUILD_BENCHMARK_PROCESS_TESTS
+       "Build long-running benchmark-process tests under core/tests"
+       OFF)
 
 set(ZLINK_PERF_SUBDIR_ADDED FALSE)
 
+if((ZLINK_BUILD_BENCHMARK_PROCESS_TESTS OR BUILD_BENCHMARKS)
+   AND BUILD_SHARED
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/perf/CMakeLists.txt")
+  add_subdirectory(perf)
+  set(ZLINK_PERF_SUBDIR_ADDED TRUE)
+endif()
+
 if(ZLINK_BUILD_TESTS)
-  if(BUILD_SHARED AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/perf/CMakeLists.txt")
-    # core/tests process fixtures launch these binaries directly, so they must
-    # exist in every clean test build instead of depending on stale outputs.
-    add_subdirectory(perf)
-    set(ZLINK_PERF_SUBDIR_ADDED TRUE)
-  endif()
   enable_testing() # Enable testing only works in root scope
   add_subdirectory(tests)
 endif()

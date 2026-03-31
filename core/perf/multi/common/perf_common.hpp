@@ -679,6 +679,8 @@ inline bool socket_monitor_event_ready(
 {
     if (event_.event != success_event_)
         return false;
+    if (success_event_ == ZLINK_EVENT_CONNECTION_READY_CHANGED)
+        return true;
     return event_.value > 0;
 }
 

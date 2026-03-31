@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.19] - 2026-03-31
+
+### Fixed
+
+**Core Test Surface Boundaries**
+- Moved the long-running benchmark-process tests into `core/tests/benchmark_process/` so the default `core/tests` gate covers only the core unit, integration, and e2e suites.
+- Added the opt-in `ZLINK_BUILD_BENCHMARK_PROCESS_TESTS` build switch and `benchmark_process` lane so perf-backed process fixtures can still be built and run explicitly for release verification.
+- Stopped default `ZLINK_BUILD_TESTS` builds from pulling `core/perf` into the core test graph, removing the hidden perf fixture dependency from the normal core release gate.
+
 ## [5.0.18] - 2026-03-31
 
 ### Fixed

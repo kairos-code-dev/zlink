@@ -222,9 +222,9 @@ int resolve_spot_connect_ready_timeout_ms(const std::string &transport,
 {
     int timeout_ms = std::max(1, base_timeout_ms);
     if (transport == "wss") {
-        timeout_ms = std::max(timeout_ms * 2, 30000);
+        timeout_ms = std::max(timeout_ms, 20000);
     } else if (transport == "tls") {
-        timeout_ms = std::max(timeout_ms * 2, 20000);
+        timeout_ms = std::max(timeout_ms, 10000);
     }
 
     return resolve_multi_int_env("PERF_MULTI_SPOT_CONNECT_READY_TIMEOUT_MS",

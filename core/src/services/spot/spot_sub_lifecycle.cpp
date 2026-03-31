@@ -261,8 +261,6 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     int first_error = 0;
     std::vector<std::pair<std::string, std::string> > ready_ack_updates;
     bool had_filters = false;
-    const bool node_shutting_down = _node && _node->is_shutting_down ();
-
     {
         scoped_lock_t lock (_sync);
         had_filters = !_topics.empty () || !_patterns.empty ();
@@ -320,7 +318,7 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     spot_sub_diag_log ("destroy.after-stop-monitor-bridge");
 
     release_all_ready_ack_endpoints (&ready_ack_updates);
-    if (_node && !node_shutting_down) {
+    if (_node && !_node->is_shutting_down ()) {
         const std::string ack_source_id = ready_ack_source_id ();
         for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
             (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
@@ -333,7 +331,7 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         _node->remove_spot_sub (this);
     if (notify_node_ && _node)
         _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
-    if (notify_node_ && _node && had_filters && !node_shutting_down) {
+    if (notify_node_ && _node && had_filters && !_node->is_shutting_down ()) {
         _node->schedule_subscription_replay ();
         preserve_first_error (_node->replay_subscriptions_if_active_peers (),
                               &first_error);
@@ -359,8 +357,7 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
             spot_sub_diag_log ("destroy.before-destroy-attachment");
         if (socket && _node)
             preserve_first_error (
-              node_shutting_down ? _node->destroy_attachment_async (_attachment_id)
-                                 : _node->destroy_attachment (_attachment_id),
+              _node->destroy_attachment_async (_attachment_id),
               &first_error);
         if (socket && _node)
             spot_sub_diag_log ("destroy.after-destroy-attachment");

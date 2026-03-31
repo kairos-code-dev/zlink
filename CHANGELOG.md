@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.24] - 2026-03-31
+
+### Fixed
+
+**SPOT Attachment Lifecycle Surface Simplification**
+- Moved SPOT facade attachment shutdown off the synchronous public destroy path so `zlink_spot_destroy()` no longer waits for each internal inproc attachment socket to finish closing before returning control to the caller.
+- Kept endpoint detach and runtime ownership cleanup intact while leaving the final socket drain to the existing node/runtime lifecycle, which removes shutdown latency from the facade API surface and reduces macOS release-runner sensitivity.
+- Revalidated the full core gate locally after the lifecycle change, including the macOS-derived blocker set around `unittest_spot_subject_access`, `reconnect_options`, `stream_threadsafe`, and WSS/first-publish SPOT scenarios.
+
 ## [5.0.23] - 2026-03-31
 
 ### Fixed

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.7] - 2026-03-31
+
+### Fixed
+
+**Release Packaging Metadata**
+- Added the Conan source metadata required for the `core/v5.0.7` release tag so the GitHub Actions core release packaging workflow can publish the same SPOT/API stabilization changes that landed in `5.0.6`.
+
 ## [5.0.6] - 2026-03-31
 
 ### Changed

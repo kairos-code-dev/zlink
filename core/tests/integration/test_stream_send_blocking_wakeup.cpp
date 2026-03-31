@@ -31,6 +31,7 @@ const int kSocketBufBytes = 4096;
 const int kProbeTimeoutMs = 250;
 const int kLingerMs = 0;
 const int kFillDeadlineMs = 5000;
+const int kReopenDeadlineMs = 5000;
 
 struct stream_route_probe_t
 {
@@ -309,21 +310,12 @@ bool drain_stream_until_send_reopens (void *server_,
         return false;
 
     unsigned char drain_buf[64 * 1024];
-    int drained = 0;
-    const int drain_target =
-      static_cast<int> (payload_size_ * ((kStreamHwm + 1) / 2 + 2));
-    const auto drain_deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (1000);
-    while (std::chrono::steady_clock::now () < drain_deadline
-           && drained < drain_target) {
-        const int n = recv_raw (raw_fd_, drain_buf, sizeof (drain_buf));
-        if (n > 0)
-            drained += n;
-    }
-
     const auto reopen_deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (1500);
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (kReopenDeadlineMs);
     while (std::chrono::steady_clock::now () < reopen_deadline) {
+        (void) recv_raw (raw_fd_, drain_buf, sizeof (drain_buf));
+
         const int send_rc = test_stream_send_bytes (
           server_, rid_, payload_, payload_size_, ZLINK_DONTWAIT);
         if (send_rc == static_cast<int> (payload_size_))
@@ -331,7 +323,6 @@ bool drain_stream_until_send_reopens (void *server_,
 
         TEST_ASSERT_EQUAL_INT (-1, send_rc);
         TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
-        (void) recv_raw (raw_fd_, drain_buf, sizeof (drain_buf));
     }
 
     return false;
@@ -370,32 +361,8 @@ void test_stream_queue_reopens_after_peer_reads ()
       -1, test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, 0));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
-    unsigned char drain_buf[64 * 1024];
-    int drained = 0;
-    const int drain_target = static_cast<int> (kPayloadSize * ((kStreamHwm + 1) / 2 + 2));
-    const auto drain_deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (1000);
-    while (std::chrono::steady_clock::now () < drain_deadline
-           && drained < drain_target) {
-        const int n = recv_raw (raw_fd, drain_buf, sizeof (drain_buf));
-        if (n > 0)
-            drained += n;
-    }
-
-    bool reopened = false;
-    const auto reopen_deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (1500);
-    while (std::chrono::steady_clock::now () < reopen_deadline) {
-        const int send_rc =
-          test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, ZLINK_DONTWAIT);
-        if (send_rc == static_cast<int> (kPayloadSize)) {
-            reopened = true;
-            break;
-        }
-        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
-        (void) recv_raw (raw_fd, drain_buf, sizeof (drain_buf));
-    }
-    TEST_ASSERT_TRUE (reopened);
+    TEST_ASSERT_TRUE (drain_stream_until_send_reopens (
+      server, raw_fd, &rid, &payload[0], payload.size ()));
 
     close_raw_fd (raw_fd);
     test_context_socket_close (server);

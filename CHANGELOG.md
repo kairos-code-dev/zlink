@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.20] - 2026-03-31
+
+### Fixed
+
+**Release Gate Stability**
+- Reworked the STREAM send-blocking wakeup regression to wait for actual queue reopen progress instead of assuming a fixed backlog drain size, so Linux x64 release validation no longer fails on slower runner socket-buffer behavior.
+- Rebuilt the core release metadata for the benchmark-process split so the default `core/tests` gate remains at 78 tests while the optional `benchmark_process` lane stays opt-in.
+
 ## [5.0.19] - 2026-03-31
 
 ### Fixed

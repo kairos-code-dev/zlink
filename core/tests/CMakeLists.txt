@@ -10,12 +10,6 @@ set(SPLIT_ONLY_TEST_TARGETS)
 set(INTEGRATION_TEST_ROOT "integration")
 set(E2E_TEST_ROOT "e2e")
 
-set(STREAM_SCENARIO_ROOT "${CMAKE_SOURCE_DIR}/core/bench/with_stream/stacks")
-if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
-  set(STREAM_SCENARIO_ROOT
-      "${CMAKE_SOURCE_DIR}/core/bench/benchwithstreamcompare/stacks")
-endif()
-
 set(tests
   ${INTEGRATION_TEST_ROOT}/test_ancillaries
   ${INTEGRATION_TEST_ROOT}/test_thread_safe_contract_policy
@@ -49,91 +43,12 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/routing-id/test_router_auto_id_format
   ${INTEGRATION_TEST_ROOT}/routing-id/test_stream_routing_id_size
   ${E2E_TEST_ROOT}/spot/test_spot_pubsub_scenario
-  ${E2E_TEST_ROOT}/spot/test_spot_service_introspection
-  ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
-  ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
-  ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
+  ${E2E_TEST_ROOT}/spot/test_spot_service_introspection)
 
 set(ROUTER_ROUTER_ZLINK_CONNECT_TEST
     "scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect")
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/${ROUTER_ROUTER_ZLINK_CONNECT_TEST}.cpp")
   list(APPEND tests ${ROUTER_ROUTER_ZLINK_CONNECT_TEST})
-endif()
-
-set(STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT
-    "${STREAM_SCENARIO_ROOT}/zmq/libzmq_dist")
-
-if(NOT DEFINED STREAM_SCENARIO_ZMQ_DIST_ROOT)
-  set(
-    STREAM_SCENARIO_ZMQ_DIST_ROOT
-    "${STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT}"
-    CACHE PATH "Bundled libzmq distribution root for stream scenario tests")
-elseif(NOT EXISTS "${STREAM_SCENARIO_ZMQ_DIST_ROOT}"
-       AND EXISTS "${STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT}")
-  set(
-    STREAM_SCENARIO_ZMQ_DIST_ROOT
-    "${STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT}"
-    CACHE PATH "Bundled libzmq distribution root for stream scenario tests"
-          FORCE)
-endif()
-
-set(STREAM_SCENARIO_ZMQ_ARCH "")
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|X86_64|amd64|AMD64|x64)$")
-  set(STREAM_SCENARIO_ZMQ_ARCH "x64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|AARCH64|arm64|ARM64)$")
-  set(STREAM_SCENARIO_ZMQ_ARCH "arm64")
-endif()
-
-set(STREAM_SCENARIO_ZMQ_PLATFORM "")
-if(WIN32)
-  set(STREAM_SCENARIO_ZMQ_PLATFORM "windows")
-elseif(APPLE)
-  set(STREAM_SCENARIO_ZMQ_PLATFORM "macos")
-elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
-  set(STREAM_SCENARIO_ZMQ_PLATFORM "linux")
-endif()
-
-set(STREAM_SCENARIO_ZMQ_ROOT "")
-if(STREAM_SCENARIO_ZMQ_PLATFORM AND STREAM_SCENARIO_ZMQ_ARCH)
-  set(
-    STREAM_SCENARIO_ZMQ_ROOT
-    "${STREAM_SCENARIO_ZMQ_DIST_ROOT}/${STREAM_SCENARIO_ZMQ_PLATFORM}-${STREAM_SCENARIO_ZMQ_ARCH}")
-endif()
-
-set(STREAM_SCENARIO_ZMQ_LIBRARY "")
-set(STREAM_SCENARIO_ZMQ_RUNTIME_DIR "")
-set(STREAM_SCENARIO_ZMQ_INCLUDE_DIR "")
-if(STREAM_SCENARIO_ZMQ_ROOT)
-  if(WIN32)
-    file(
-      GLOB
-      STREAM_SCENARIO_ZMQ_LIBRARY
-      "${STREAM_SCENARIO_ZMQ_ROOT}/lib/*.lib")
-    set(STREAM_SCENARIO_ZMQ_RUNTIME_DIR "${STREAM_SCENARIO_ZMQ_ROOT}/bin")
-  else()
-    file(
-      GLOB
-      STREAM_SCENARIO_ZMQ_LIBRARY
-      "${STREAM_SCENARIO_ZMQ_ROOT}/lib/libzmq.so"
-      "${STREAM_SCENARIO_ZMQ_ROOT}/lib/libzmq.so.*"
-      "${STREAM_SCENARIO_ZMQ_ROOT}/lib/libzmq.dylib")
-    set(STREAM_SCENARIO_ZMQ_RUNTIME_DIR "${STREAM_SCENARIO_ZMQ_ROOT}/lib")
-  endif()
-  set(STREAM_SCENARIO_ZMQ_INCLUDE_DIR "${STREAM_SCENARIO_ZMQ_ROOT}/include")
-endif()
-
-set(STREAM_SCENARIO_ZMQ_LIBRARY_FILE "")
-if(STREAM_SCENARIO_ZMQ_LIBRARY)
-  list(GET STREAM_SCENARIO_ZMQ_LIBRARY 0 STREAM_SCENARIO_ZMQ_LIBRARY_FILE)
-endif()
-
-if(EXISTS "${STREAM_SCENARIO_ZMQ_INCLUDE_DIR}/zmq.h"
-   AND STREAM_SCENARIO_ZMQ_LIBRARY_FILE)
-  list(APPEND tests ${STREAM_SCENARIO_ROOT}/zmq/test_scenario_stream_zmq)
-else()
-  message(
-    STATUS
-      "stream scenario zmq test disabled: libzmq bundle not found under ${STREAM_SCENARIO_ZMQ_ROOT}")
 endif()
 
 if(NOT WIN32)
@@ -312,10 +227,6 @@ if(TARGET test_thread_safe_contract_policy)
       TEST_REPO_ROOT="${CMAKE_SOURCE_DIR}")
 endif()
 
-target_sources(
-  test_scenario_stream_client
-  PRIVATE ${STREAM_SCENARIO_ROOT}/client/stream_client_core.cpp)
-
 if(TARGET test_spot_pubsub_scenario)
   target_sources(
     test_spot_pubsub_scenario
@@ -326,30 +237,6 @@ if(TARGET test_spot_pubsub_scenario)
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_callback_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_node_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_discovery_cases.cpp)
-endif()
-
-if(TARGET test_scenario_stream_zmq)
-  target_include_directories(
-    test_scenario_stream_zmq PRIVATE ${STREAM_SCENARIO_ZMQ_INCLUDE_DIR})
-  target_link_libraries(test_scenario_stream_zmq
-                        ${STREAM_SCENARIO_ZMQ_LIBRARY_FILE})
-
-  if(WIN32)
-    set_tests_properties(
-      test_scenario_stream_zmq
-      PROPERTIES ENVIRONMENT
-                 "PATH=${STREAM_SCENARIO_ZMQ_RUNTIME_DIR};$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
-  elseif(APPLE)
-    set_tests_properties(
-      test_scenario_stream_zmq
-      PROPERTIES ENVIRONMENT
-                 "DYLD_LIBRARY_PATH=${STREAM_SCENARIO_ZMQ_RUNTIME_DIR}:$<TARGET_FILE_DIR:libzlink>:$ENV{DYLD_LIBRARY_PATH}")
-  else()
-    set_tests_properties(
-      test_scenario_stream_zmq
-      PROPERTIES ENVIRONMENT
-                 "LD_LIBRARY_PATH=${STREAM_SCENARIO_ZMQ_RUNTIME_DIR}:$<TARGET_FILE_DIR:libzlink>:$ENV{LD_LIBRARY_PATH}")
-  endif()
 endif()
 
 # override timeout for these tests
@@ -722,26 +609,10 @@ if(TARGET test_scenario_router_router_zlink_connect)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
 endif()
-set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
-set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
-set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
-if(TARGET test_scenario_stream_zmq)
-  set_tests_properties(test_scenario_stream_zmq PROPERTIES TIMEOUT 120)
-  set_tests_properties(test_scenario_stream_zmq PROPERTIES LABELS "scenario;stream;zmq")
-endif()
 
 set(E2E_SERIAL_TESTS
     test_spot_pubsub_scenario
-    test_spot_service_introspection
-    test_scenario_stream_client
-    test_scenario_stream_zlink
-    test_scenario_stream_asio)
-if(TARGET test_scenario_stream_zmq)
-  list(APPEND E2E_SERIAL_TESTS test_scenario_stream_zmq)
-endif()
+    test_spot_service_introspection)
 if(TARGET test_scenario_router_router_zlink_connect)
   list(APPEND E2E_SERIAL_TESTS test_scenario_router_router_zlink_connect)
 endif()

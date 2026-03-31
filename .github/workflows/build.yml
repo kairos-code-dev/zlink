@@ -129,6 +129,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+
       - name: Install OpenSSL (ARM64) via vcpkg
         shell: pwsh
         run: |

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.12] - 2026-03-31
+
+### Fixed
+
+**Core Release Surface**
+- Removed the `bench/with_stream` scenario binaries from the default `core/tests` CTest surface so `core/build` now runs only the repository's core test suites instead of bench-derived scenario programs.
+- Added the Visual Studio ARM64 developer environment setup to the Windows ARM64 GitHub Actions job so the repository Windows build script can resolve the required MSVC toolchain during release builds.
+
 ## [5.0.11] - 2026-03-31
 
 ### Fixed

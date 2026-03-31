@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.17] - 2026-03-31
+
+### Fixed
+
+**Perf Fixture Header Resolution**
+- Added the bundled Boost include root to the shared `core/perf` target helpers so `perf_spot`, `perf_pubsub`, `perf_pair`, and the multi-process fixture binaries can compile core internal headers that include `<boost/asio.hpp>` during Linux and macOS native release builds.
+
 ## [5.0.16] - 2026-03-31
 
 ### Fixed

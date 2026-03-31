@@ -38,6 +38,7 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
             target_link_libraries(${name} PRIVATE dl)
         endif()
         target_include_directories(${name} PRIVATE
+            ${PERF_BOOST_INCLUDE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/single/common
             ${PERF_EXTERNAL_INCLUDE_DIR})
         target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
@@ -60,6 +61,7 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
             target_link_libraries(${name} PRIVATE dl)
         endif()
         target_include_directories(${name} PRIVATE
+            ${PERF_BOOST_INCLUDE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/../bench/with_zmq/single/common
             ${CMAKE_CURRENT_SOURCE_DIR}/single/common
             ${PERF_EXTERNAL_INCLUDE_DIR})
@@ -83,6 +85,7 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
             target_link_libraries(${name} PRIVATE dl)
         endif()
         target_include_directories(${name} PRIVATE
+            ${PERF_BOOST_INCLUDE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/multi/common)
         target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
         target_compile_features(${name} PRIVATE cxx_std_11)

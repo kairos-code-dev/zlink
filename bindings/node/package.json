@@ -38,9 +38,7 @@
     "pretest": "npm run build && npm run typecheck && npm run rebuild-native",
     "test": "./run_tests.sh",
     "presamples": "npm run build && npm run rebuild-native",
-    "samples": "./run_samples.sh",
-    "perf:single": "./perf/run_benchmarks.sh",
-    "perf:multi": "./perf/run_benchmarks_multi.sh"
+    "samples": "./run_samples.sh"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",

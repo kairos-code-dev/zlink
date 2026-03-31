@@ -2,11 +2,11 @@
 
 package dev.kairoscode.zlink.service.spot;
 
-import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendReadyHandler;
 import dev.kairoscode.zlink.ServiceMonitor;
@@ -43,6 +43,12 @@ public final class Spot implements AutoCloseable {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    private static final int ERRNO_ENOTCONN = 107;
+    private static final int ERRNO_ENOTCONN_WIN = 10057;
+    private static final int ERRNO_EHOSTUNREACH = 113;
+    private static final int ERRNO_EHOSTUNREACH_WIN = 10065;
+    private static final int ERRNO_ETIMEDOUT = 110;
+    private static final int ERRNO_ETIMEDOUT_WIN = 10060;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_SUBSCRIBE_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -69,10 +75,10 @@ public final class Spot implements AutoCloseable {
     private MemorySegment sendReadyCallbackStub = MemorySegment.NULL;
     private volatile RuntimeException callbackFailure;
 
-    /** Creates a unified spot handle owned by the supplied context. */
-    public Spot(Context ctx) {
-        Objects.requireNonNull(ctx, "ctx");
-        this.handle = Native.spotNew(ctx.handle());
+    /** Creates a unified spot facade bound to the supplied node. */
+    public Spot(SpotNode node) {
+        Objects.requireNonNull(node, "node");
+        this.handle = Native.spotNew(node.handle());
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError("zlink_spot_new");
     }
@@ -132,13 +138,18 @@ public final class Spot implements AutoCloseable {
                         part.copyTo(dest);
                     }
                     int rc = nonBlocking
-                        ? Native.tryPublishResult(handle, topic, vec, partCount)
+                        ? Native.publish(handle, topic, vec, partCount,
+                            SendFlag.DONTWAIT.getValue())
                         : Native.publish(handle, topic, vec, partCount, 0);
                     if (nonBlocking) {
-                        if (rc >= 0) {
-                            if (rc == SendResult.SENT.nativeValue())
-                                success = true;
-                            return SendResult.fromNativeValue(rc);
+                        if (rc == 0) {
+                            success = true;
+                            return SendResult.SENT;
+                        }
+                        if (rc < 0) {
+                            SendResult mapped = tryMapSendErrno(Native.errno());
+                            if (mapped != null)
+                                return mapped;
                         }
                     } else {
                         if (rc != 0)
@@ -155,8 +166,18 @@ public final class Spot implements AutoCloseable {
             if (errno == ERRNO_EINTR)
                 continue;
             throw ZlinkException.fromLastError(
-                nonBlocking ? "zlink_try_publish_result" : "zlink_publish");
+                "zlink_publish");
         }
+    }
+
+    private static SendResult tryMapSendErrno(int errno) {
+        return switch (errno) {
+            case ERRNO_EAGAIN, ERRNO_EWOULDBLOCK_WIN -> SendResult.BACKPRESSURED;
+            case ERRNO_ENOTCONN, ERRNO_ENOTCONN_WIN, ERRNO_EHOSTUNREACH,
+                ERRNO_EHOSTUNREACH_WIN, ERRNO_ETIMEDOUT,
+                ERRNO_ETIMEDOUT_WIN -> SendResult.NOT_READY;
+            default -> null;
+        };
     }
 
     /** Subscribes to one topic or pattern string. */

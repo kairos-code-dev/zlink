@@ -37,7 +37,8 @@ public sealed class SocketMonitor : IDisposable
     public SocketMonitorEvent Receive()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native);
+        int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
+            0);
         ZlinkException.ThrowIfError(rc);
         return SocketMonitorEvent.FromNative(ref native);
     }
@@ -45,8 +46,8 @@ public sealed class SocketMonitor : IDisposable
     public SocketMonitorEvent? TryReceive()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_try_socket_monitor_recv(_handle,
-            out var native);
+        int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
+            1);
         if (rc == 0)
             return SocketMonitorEvent.FromNative(ref native);
         if (ZlinkException.MapErrorCode(NativeMethods.zlink_errno())

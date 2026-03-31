@@ -129,7 +129,7 @@ class pubsub_client_bench_t
             zlink::socket_t &sock = _holders.back ()->sock ();
             _monitors.push_back (perf::multi::connect_monitor_t ());
 
-            (void) sock.set (zlink::socket_options::subscribe, std::string ());
+            (void) sock.set_subscription (std::string ());
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
@@ -209,7 +209,8 @@ class pubsub_client_bench_t
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
-                zlink::socket_t *sock = _poll_events[i].socket;
+                zlink::socket_t *sock =
+                  static_cast<zlink::socket_t *> (_poll_events[i].user);
                 if (!sock)
                     continue;
 

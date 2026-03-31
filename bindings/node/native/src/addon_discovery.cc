@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "addon_api.h"
+#include <errno.h>
 
 namespace {
 
@@ -768,7 +769,7 @@ napi_value service_monitor_recv(napi_env env, napi_callback_info info)
 
     zlink_service_monitor_event_t event;
     memset(&event, 0, sizeof(event));
-    int rc = zlink_service_monitor_recv(monitor, &event);
+    int rc = zlink_service_monitor_recv(monitor, &event, 0);
     if (rc != 0)
         return throw_last_error(env, "service_monitor_recv failed");
 
@@ -800,7 +801,7 @@ napi_value service_monitor_try_recv(napi_env env, napi_callback_info info)
 
     zlink_service_monitor_event_t event;
     memset(&event, 0, sizeof(event));
-    int rc = zlink_try_service_monitor_recv(monitor, &event);
+    int rc = zlink_service_monitor_recv(monitor, &event, ZLINK_DONTWAIT);
     if (rc != 0) {
         if (zlink_errno() == EAGAIN) {
             napi_value none;

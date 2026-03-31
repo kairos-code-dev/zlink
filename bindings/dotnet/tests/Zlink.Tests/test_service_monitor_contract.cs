@@ -29,7 +29,8 @@ public sealed class test_service_monitor_contract
             return;
 
         using var ctx = new Context();
-        using var spot = new Spot(ctx);
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
         using ServiceMonitor monitor = spot.OpenMonitor();
 
         monitor.Close();
@@ -44,7 +45,8 @@ public sealed class test_service_monitor_contract
             return;
 
         using var ctx = new Context();
-        using var spot = new Spot(ctx);
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
         using ServiceMonitor monitor = spot.OpenMonitor();
 
         Assert.Null(monitor.TryReceive());

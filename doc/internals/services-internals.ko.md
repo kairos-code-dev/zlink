@@ -9,8 +9,8 @@ zlink 서비스 계층은 Discovery와 SPOT 두 가지 고수준 서비스를 �
 
 SPOT에서 transport security 소유권은 의도적으로 좁게 유지한다.
 `SpotNode`가 mesh/control 소켓의 TLS/WSS wiring을 책임지고, unified `Spot`은
-data-plane facade로만 남는다. facade가 내부 node를 소유할 수는 있지만,
-그 자체가 TLS 설정 surface는 아니다.
+빌린 data-plane facade로만 남는다. facade는 node lifecycle을 소유하지
+않으며, 그 자체가 TLS 설정 surface는 아니다.
 
 ## 2. Registry 내부 구현
 

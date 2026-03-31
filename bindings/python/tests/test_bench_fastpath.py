@@ -152,6 +152,8 @@ class BenchFastpathTests(unittest.TestCase):
         except OSError:
             self.skipTest("zlink native library not found")
 
+        pub_node = None
+        sub_node = None
         spot_pub = None
         spot_sub = None
 
@@ -159,8 +161,10 @@ class BenchFastpathTests(unittest.TestCase):
             count = 64
             send_none = 0
             recv_none = 0
-            spot_pub = zlink.Spot(ctx)
-            spot_sub = zlink.Spot(ctx)
+            pub_node = zlink.SpotNode(ctx)
+            sub_node = zlink.SpotNode(ctx)
+            spot_pub = zlink.Spot(pub_node)
+            spot_sub = zlink.Spot(sub_node)
             spot_sub.set_subscription("bench")
 
             spot_payload = b"spot-fastpath"
@@ -186,6 +190,10 @@ class BenchFastpathTests(unittest.TestCase):
                 spot_sub.close()
             if spot_pub is not None:
                 spot_pub.close()
+            if sub_node is not None:
+                sub_node.close()
+            if pub_node is not None:
+                pub_node.close()
             ctx.close()
 
 

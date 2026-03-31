@@ -268,17 +268,18 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Spot(ctx) as spot:
-                observed = []
+            with zlink.SpotNode(ctx) as node:
+                with zlink.Spot(node) as spot:
+                    observed = []
 
-                def on_message(message):
-                    observed.append(message.topic)
-                    message.close()
+                    def on_message(message):
+                        observed.append(message.topic)
+                        message.close()
 
-                spot.set_handler(on_message)
-                with zlink.Poller() as poller:
-                    with self.assertRaises(zlink.ZlinkError):
-                        poller.add_socket(spot, zlink.PollEvent.POLLIN)
+                    spot.set_handler(on_message)
+                    with zlink.Poller() as poller:
+                        with self.assertRaises(zlink.ZlinkError):
+                            poller.add_socket(spot, zlink.PollEvent.POLLIN)
 
     def test_spot_recv_returns_subscribed_domain_type(self):
         try:
@@ -287,26 +288,27 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Spot(ctx) as spot:
-                with spot.open_monitor(
-                    zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
-                ) as monitor:
-                    spot.set_send_ready_handler(lambda _: None)
-                    spot.set_subscription(b"room:lobby")
-                    while True:
-                        event = monitor.recv()
-                        if (
-                            event.event_type
-                            == zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
-                        ):
-                            break
+            with zlink.SpotNode(ctx) as node:
+                with zlink.Spot(node) as spot:
+                    with spot.open_monitor(
+                        zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
+                    ) as monitor:
+                        spot.set_send_ready_handler(lambda _: None)
+                        spot.set_subscription(b"room:lobby")
+                        while True:
+                            event = monitor.recv()
+                            if (
+                                event.event_type
+                                == zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
+                            ):
+                                break
 
-                    spot.publish(b"room:lobby", [b"hello"])
-                    with spot.recv() as received:
-                        self.assertIsInstance(received, zlink.Subscribed)
-                        self.assertEqual(received.topic, b"room:lobby")
-                        self.assertEqual(received.to_bytes_list(), [b"hello"])
-                        self.assertIsNotNone(received.routing_id)
+                        spot.publish(b"room:lobby", [b"hello"])
+                        with spot.recv() as received:
+                            self.assertIsInstance(received, zlink.Subscribed)
+                            self.assertEqual(received.topic, b"room:lobby")
+                            self.assertEqual(received.to_bytes_list(), [b"hello"])
+                            self.assertIsNotNone(received.routing_id)
 
     def test_spot_try_recv_returns_none_when_no_message(self):
         try:
@@ -315,8 +317,9 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Spot(ctx) as spot:
-                self.assertIsNone(spot.try_recv())
+            with zlink.SpotNode(ctx) as node:
+                with zlink.Spot(node) as spot:
+                    self.assertIsNone(spot.try_recv())
 
     def test_spot_callback_receives_subscribed_domain_type(self):
         result = subprocess.run(

@@ -974,8 +974,8 @@ export class Spot {
   /** @internal */
   private _native: unknown | null;
 
-  constructor(ctx: Context) {
-    this._native = requireNative().spotNew(ctx.nativeHandle());
+  constructor(node: SpotNode) {
+    this._native = requireNative().spotNew((node as SpotNode)._native);
     requireNative().spotEnableSendReadyNoop(this._native);
   }
 

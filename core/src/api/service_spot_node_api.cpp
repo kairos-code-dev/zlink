@@ -43,31 +43,7 @@ static int copy_snapshot_rows (const std::vector<Row> &rows_,
 }
 }
 
-void *zlink_spot_new (void *ctx_)
-{
-    if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
-      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_)));
-    if (!node)
-        return NULL;
-
-    spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
-    if (!spot) {
-        zlink::spot_node_access_t::delete_handle (node);
-        errno = ENOMEM;
-        return NULL;
-    }
-
-    spot->node = node;
-    spot->owns_node = true;
-    return static_cast<void *> (spot);
-}
-
-void *zlink_spot_wrap_node (void *node_)
+void *zlink_spot_new (void *node_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node)
@@ -80,7 +56,6 @@ void *zlink_spot_wrap_node (void *node_)
     }
 
     spot->node = node;
-    spot->owns_node = false;
     return static_cast<void *> (spot);
 }
 
@@ -105,15 +80,9 @@ int zlink_spot_destroy (void **spot_p_)
         return -1;
     }
 
-    const bool owns_node = spot->owns_node;
     zlink::destroy_spot_handle_for_testing (spot);
     *spot_p_ = NULL;
-
-    if (!owns_node)
-        return 0;
-
-    void *node_handle = node;
-    return zlink_spot_node_destroy (&node_handle);
+    return 0;
 }
 
 void *zlink_spot_node_new (void *ctx_)

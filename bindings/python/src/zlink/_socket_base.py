@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+import errno
 import warnings
 
 from ._enums import SendResult, SocketOption, SocketType
@@ -61,6 +62,16 @@ def _int32_bytes(value):
 
 def _bool_bytes(value):
     return _int32_bytes(1 if value else 0)
+
+
+def _try_send_result_from_errno():
+    err = lib().zlink_errno()
+    if err in (errno.EAGAIN, 10035):
+        return SendResult.BACKPRESSURED
+    if err in (errno.ENOTCONN, 10057, errno.EHOSTUNREACH, 10065,
+               errno.ETIMEDOUT, 10060):
+        return SendResult.NOT_READY
+    return None
 
 
 def _read_int32(raw):
@@ -494,9 +505,13 @@ class MessageSocket(Socket):
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        return self._send_result(
-            lib().zlink_try_send_result(self._handle, parts_array, part_count)
-        )
+        rc = lib().zlink_send(self._handle, parts_array, part_count, 1)
+        if rc == 0:
+            return SendResult.SENT
+        result = _try_send_result_from_errno()
+        if result is None:
+            _raise_last_error()
+        return result
 
     def recv(self):
         routing, owner = _recv_native_parts(self._handle, 0)
@@ -556,11 +571,15 @@ class RoutedMessageSocket(MessageSocket):
         for index, native in enumerate(native_parts):
             parts_array[index] = native
         target = _copy_routing_id(routing_id)
-        return self._send_result(
-            lib().zlink_try_send_rid_result(
-                self._handle, ctypes.byref(target), parts_array, part_count
-            )
+        rc = lib().zlink_send_rid(
+            self._handle, ctypes.byref(target), parts_array, part_count, 1
         )
+        if rc == 0:
+            return SendResult.SENT
+        result = _try_send_result_from_errno()
+        if result is None:
+            _raise_last_error()
+        return result
 
 
 class PublisherSocket(Socket):
@@ -584,11 +603,13 @@ class PublisherSocket(Socket):
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        return self._send_result(
-            lib().zlink_try_publish_result(
-                self._handle, topic_bytes, parts_array, part_count
-            )
-        )
+        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, 1)
+        if rc == 0:
+            return SendResult.SENT
+        result = _try_send_result_from_errno()
+        if result is None:
+            _raise_last_error()
+        return result
 
 
 class SubscriberSocket(Socket):

@@ -9,10 +9,7 @@ internal static partial class NativeMethods
     internal static extern IntPtr zlink_registry_new(IntPtr ctx);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_new(IntPtr ctx);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_wrap_node(IntPtr node);
+    internal static extern IntPtr zlink_spot_new(IntPtr node);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_destroy(ref IntPtr spot);
@@ -21,11 +18,6 @@ internal static partial class NativeMethods
     internal static extern int zlink_publish(IntPtr subject,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId, IntPtr parts,
         nuint partCount, int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_try_publish_result(IntPtr subject,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId, IntPtr parts,
-        nuint partCount);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_subscription(IntPtr handle,

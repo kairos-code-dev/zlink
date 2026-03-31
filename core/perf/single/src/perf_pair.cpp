@@ -87,10 +87,11 @@ void pair_recv_handler (const zlink_routing_id_t *,
         return;
     }
 
-    single_note_callback_receive (state);
     if (header_ok && header.run_id == state->run_id
-        && header.msg_size == state->msg_size)
+        && header.msg_size == state->msg_size) {
+        single_note_callback_receive (state, header);
         (void) single_enqueue_metric_event (state, header);
+    }
 }
 
 inline int send_single_part_blocking (void *socket, zlink_msg_t *part)

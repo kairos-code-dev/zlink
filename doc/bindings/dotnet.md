@@ -25,6 +25,9 @@
 | `SpotNode` | Topology and discovery attach |
 | `Spot` | Unified SPOT publish / subscribe facade |
 
+`Spot` is created from `SpotNode`; it is not a context-owned service
+constructor.
+
 ## 3. Basic Example
 
 ```csharp

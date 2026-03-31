@@ -5,7 +5,8 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_t spot (ctx);
+    zlink::service::spot_node_t node (ctx);
+    zlink::service::spot_t spot (node);
     assert (spot.valid ());
     zlink::service_monitor_handle_t sub_monitor (
       spot, zlink::service_monitor_event::spot_filter_applied

@@ -69,15 +69,15 @@ int zlink_get_routing_id(void *node,
 
 `SpotNode`는 topology 및 lifecycle owner입니다. `service_name`은 연결된
 Discovery 인스턴스에서 결정됩니다. SpotNode는 generic data-plane facade를
-직접 노출하지 않습니다 — publish/subscribe/recv callback API는
-`zlink_spot_new()`를 사용하세요. TLS/WSS 설정도 `SpotNode`의 책임이며,
-`zlink_set_tls_server()` / `zlink_set_tls_client()`는 bind/connect 전에
-node handle에 적용해야 합니다.
+직접 노출하지 않습니다. publish/subscribe/recv callback API는
+`zlink_spot_new(node)`로 unified `Spot` facade를 만들어 사용하세요.
+TLS/WSS 설정도 `SpotNode`의 책임이며, `zlink_set_tls_server()` /
+`zlink_set_tls_client()`는 bind/connect 전에 node handle에 적용해야 합니다.
 
 ### Unified Spot
 
 ```c
-void *zlink_spot_new(void *ctx);
+void *zlink_spot_new(void *node);
 int zlink_spot_destroy(void **spot_p);
 
 int zlink_publish(void *spot,
@@ -136,13 +136,13 @@ int zlink_get_routing_id(void *spot,
                          zlink_routing_id_t *out);
 ```
 
-`zlink_spot_new()`는 내부 spot node를 소유하는 unified handle을 생성합니다.
-publish와 subscribe 동작을 모두 제공합니다. publish-only 혹은 subscribe-only
-public child handle은 더 이상 제공하지 않습니다.
+`zlink_spot_new(node)`는 기존 spot node를 빌리는 unified facade를
+생성합니다. publish와 subscribe 동작을 모두 제공합니다. publish-only 혹은
+subscribe-only public child handle은 더 이상 제공하지 않습니다.
 
 unified `Spot`은 transport security 설정 surface가 아닙니다. unified `Spot`
 handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하면
-`ENOTSUP`로 실패합니다. TLS/WSS는 소유된 `SpotNode`에 먼저 설정해야 합니다.
+`ENOTSUP`로 실패합니다. TLS/WSS는 backing `SpotNode`에 먼저 설정해야 합니다.
 
 `zlink_subscribe()`는 recv 모드에서 동기식 pull 방식의 수신을 제공합니다.
 다음 메시지와 source routing ID, topic을 반환합니다. 성공 시 `source_rid_out_`,
@@ -433,7 +433,7 @@ void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 zlink_subscribe_handler(spot, on_spot_message, NULL);
 zlink_set_subscription (spot, "room:lobby");
 
@@ -442,7 +442,7 @@ zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_publish(spot, "room:lobby", &part, 1, 0);
 
-/* zlink_spot_destroy는 spot과 내부 소유 node를 함께 파괴합니다 */
+/* zlink_spot_destroy는 빌린 spot facade만 파괴합니다 */
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
 ```
@@ -454,7 +454,7 @@ void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 zlink_set_subscription (spot, "room:lobby");
 
 /* 발행 */
@@ -477,7 +477,7 @@ if (rc == 0) {
         zlink_msg_close(&recv_parts[i]);
 }
 
-/* zlink_spot_destroy는 spot과 내부 소유 node를 함께 파괴합니다 */
+/* zlink_spot_destroy는 빌린 spot facade만 파괴합니다 */
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
 ```

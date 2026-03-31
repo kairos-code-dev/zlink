@@ -129,7 +129,7 @@ class _BaseMonitor:
 class MonitorSocket(_BaseMonitor):
     def recv(self):
         native = ZlinkMonitorEvent()
-        rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native))
+        rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native), 0)
         if rc != 0:
             _raise_last_error()
         return SocketMonitorEvent(
@@ -144,7 +144,7 @@ class MonitorSocket(_BaseMonitor):
 class ServiceMonitor(_BaseMonitor):
     def recv(self):
         native = ZlinkServiceEvent()
-        rc = lib().zlink_service_monitor_recv(self._handle, ctypes.byref(native))
+        rc = lib().zlink_service_monitor_recv(self._handle, ctypes.byref(native), 0)
         if rc != 0:
             _raise_last_error()
         return ServiceMonitorEvent(

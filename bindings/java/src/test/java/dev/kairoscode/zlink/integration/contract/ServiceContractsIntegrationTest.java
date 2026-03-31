@@ -68,7 +68,8 @@ class ServiceContractsIntegrationTest {
         }
 
         try (Context ctx = new Context();
-             Spot spot = new Spot(ctx);
+             SpotNode node = new SpotNode(ctx);
+             Spot spot = new Spot(node);
              ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
             assertTrue(monitor.tryRecv().isEmpty());
             spot.setSubscription("svc-topic");

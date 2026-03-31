@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const zlink = require('../dist');
 test('spot exposes unified publish and subscribe surface', () => {
     const ctx = new zlink.Context();
-    const spot = new zlink.Spot(ctx);
+    const node = new zlink.SpotNode(ctx);
+    const spot = new zlink.Spot(node);
     const sub = new zlink.SubSocket(ctx);
     const monitor = spot.openMonitor();
     spot.setSubscription('topic');
@@ -20,7 +21,8 @@ test('spot exposes unified publish and subscribe surface', () => {
 });
 test('spot trySubscribe receives published payload after one immediate turn', async () => {
     const ctx = new zlink.Context();
-    const spot = new zlink.Spot(ctx);
+    const node = new zlink.SpotNode(ctx);
+    const spot = new zlink.Spot(node);
     const topic = 'spot:direct';
     const monitor = spot.openMonitor(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
     spot.setSubscription(topic);
@@ -42,7 +44,8 @@ test('spot trySubscribe receives published payload after one immediate turn', as
 });
 test('spot subscribeHandler delivers callback payloads', async () => {
     const ctx = new zlink.Context();
-    const spot = new zlink.Spot(ctx);
+    const node = new zlink.SpotNode(ctx);
+    const spot = new zlink.Spot(node);
     const topic = 'spot:callback';
     const monitor = spot.openMonitor(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
     const received = await new Promise((resolve, reject) => {

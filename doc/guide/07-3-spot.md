@@ -102,7 +102,7 @@ zlink_spot_node_attach_discovery(node, discovery);
 
 > `SpotNode` is the topology and lifecycle owner for mesh participation.
 > It does not expose the generic data-plane facade (publish/subscribe).
-> For publish/subscribe, use `zlink_spot_new(ctx)`.
+> For publish/subscribe, create a facade with `zlink_spot_new(node)`.
 
 **Note:** It is recommended to call `attach_discovery()` after bind.
 Once Discovery is attached, peers are automatically discovered and
@@ -127,16 +127,17 @@ topology visibility. This is an intended limitation.
 ### 4.1 Create a unified handle
 
 ```c
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 ```
 
-`zlink_spot_new()` creates a unified handle that owns an internal spot node.
-It provides both publish and subscribe behavior. There are no public standalone
-`spot_pub` / `spot_sub` constructors.
+`zlink_spot_new(node)` creates a unified facade that borrows an existing
+spot node. It provides both publish and subscribe behavior. There are no
+public standalone `spot_pub` / `spot_sub` constructors.
 
 Transport security is not configured through unified `spot`. If the service
-must use `tls://` or `wss://`, configure TLS on the owned `SpotNode` first.
-The internal `inproc` linkage inside unified `spot` is not a TLS surface.
+must use `tls://` or `wss://`, configure TLS on the backing `SpotNode`
+first. The internal `inproc` linkage inside unified `spot` is not a TLS
+surface.
 
 ### 4.2 Publishing
 
@@ -168,7 +169,7 @@ Send-ready remains a separate axis.
 In recv model, pull messages with `zlink_subscribe()`.
 
 ```c
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 zlink_set_subscription(spot, "chat:room1:message");
 
 /* Pull next message */
@@ -204,7 +205,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 /* Register handler at unified spot creation */
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 zlink_subscribe_handler(spot, on_message, NULL);
 ```
 
@@ -295,9 +296,10 @@ zlink_discovery_destroy(&discovery);
 `Discovery`. All external use of `spot` must stop before calling
 `SpotNode` destroy.
 
-> `zlink_spot_new(ctx)` creates its own internal node, so `spot` destroy
-> tears that down automatically. For discovery-attached spot nodes,
-> `zlink_discovery_destroy()` cascades shutdown to attached participants.
+> `zlink_spot_destroy()` only releases the borrowed facade. The backing
+> `SpotNode` remains the lifecycle owner. For discovery-attached spot
+> nodes, `zlink_discovery_destroy()` cascades shutdown to attached
+> participants.
 
 ---
 [← Discovery](07-1-discovery.md) | [Registry →](07-4-registry.md) | [Routing ID →](08-routing-id.md)

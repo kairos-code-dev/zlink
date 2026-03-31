@@ -53,7 +53,8 @@ void test_socket_monitor_open_recv_snapshot ()
 void test_service_monitor_open_snapshot ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_t spot (ctx);
+    zlink::service::spot_node_t node (ctx);
+    zlink::service::spot_t spot (node);
     assert (spot.valid ());
 
     zlink::service_monitor_handle_t monitor (spot);

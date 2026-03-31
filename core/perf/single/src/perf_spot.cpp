@@ -155,7 +155,7 @@ void spot_client_handler (const zlink_routing_id_t *,
     if (!state || !header_ok)
         return;
 
-    single_note_callback_receive (state);
+    single_note_callback_receive (state, header);
     (void) single_enqueue_metric_event (state, header);
 }
 
@@ -360,8 +360,6 @@ int run_case (const std::string &lib_name_,
     ctx_guard_t ctx;
     if (!ctx.valid ())
         return 1;
-
-    sync_single_spot_internal_mesh_pub_hwm ();
 
     void *pub_node = zlink_spot_node_new (ctx.get ());
     void *sub_node = zlink_spot_node_new (ctx.get ());

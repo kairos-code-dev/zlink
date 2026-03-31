@@ -58,8 +58,8 @@ unbind/disconnect helpers.
 - `new Discovery(ctx, serviceType, serviceName)`
 - `new Registry(ctx)` + `registry.bind(pubEndpoint, routerEndpoint)`
 - `new RegistryQueryClient(ctx)`
-- `new Spot(ctx)`
 - `new SpotNode(ctx)`
+- `new Spot(node)`
 
 `Spot` follows the same multipart/domain-return direction:
 `publish()` / `tryPublish()`, `setSubscription()` / `unsetSubscription()`,

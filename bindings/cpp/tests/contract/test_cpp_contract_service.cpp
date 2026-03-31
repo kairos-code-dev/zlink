@@ -113,7 +113,8 @@ void test_spot_node_snapshot_and_service_monitor ()
 void test_unified_spot_self_delivery_recv_contract ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_t spot (ctx);
+    zlink::service::spot_node_t node (ctx);
+    zlink::service::spot_t spot (node);
     assert (spot.valid ());
 
     zlink::service_monitor_handle_t sub_monitor (

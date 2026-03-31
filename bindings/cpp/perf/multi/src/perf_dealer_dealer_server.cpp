@@ -50,12 +50,9 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
                           + std::chrono::seconds (deadline_seconds);
 
     zlink::poller_t poller;
-    (void) poller.add (server.sock (), zlink::poll_event::pollin);
+    (void) poller.add (server.sock (), zlink::poll_event::pollin, &server.sock ());
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    std::vector<char> recv_buffer (
-      std::max<size_t> (msg_size, std::strlen (perf::multi::k_stop_token)));
-
     bool stop_requested = false;
     bool failed = false;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
@@ -80,13 +77,14 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
             continue;
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            zlink::socket_t *sock = events[i].socket;
+            zlink::socket_t *sock =
+              static_cast<zlink::socket_t *> (events[i].user);
             if (!sock)
                 continue;
 
             for (;;) {
-                const int rc = sock->recv (
-                  recv_buffer.data (), recv_buffer.size (), zlink::recv_flag::dontwait);
+                zlink::message_t inbound;
+                const int rc = sock->recv (inbound, zlink::recv_flag::dontwait);
                 if (rc < 0) {
                     const int err = errno;
                     if (err == EAGAIN)
@@ -98,15 +96,7 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
                     break;
                 }
 
-                int more = 0;
-                if (sock->get (zlink::socket_options::rcvmore, more) != 0 || more != 0) {
-                    stop_requested = true;
-                    failed = true;
-                    break;
-                }
-
-                if (perf::multi::is_stop_token (recv_buffer.data (),
-                                                static_cast<size_t> (rc))) {
+                if (perf::multi::is_stop_token (inbound.data (), inbound.size ())) {
                     stop_requested = true;
                     break;
                 }

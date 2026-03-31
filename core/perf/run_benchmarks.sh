@@ -4,6 +4,8 @@ set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
+MAKE_BIN="$(command -v gmake || command -v make)"
 
 SECONDS=0
 SHOW_TOTAL_TIME=0
@@ -538,6 +540,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -G "${CMAKE_GENERATOR}" \
       -A "${CMAKE_ARCH}" \
       -DCMAKE_BUILD_TYPE=Release \
+      -DENABLE_LTO=OFF \
       -DBUILD_BENCHMARKS=ON \
       -DZLINK_BUILD_TESTS=OFF \
       -DZLINK_BUILD_BENCH_ZMQ=OFF \
@@ -549,6 +552,8 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
+      -DENABLE_LTO=OFF \
       -DBUILD_BENCHMARKS=ON \
       -DZLINK_BUILD_TESTS=OFF \
       -DZLINK_BUILD_BENCH_ZMQ=OFF \
@@ -562,6 +567,7 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     cmake --build "${BUILD_DIR}" --config Release
   else
+    bash "${NORMALIZE_TIMESTAMPS_SH}" "${BUILD_DIR}"
     cmake --build "${BUILD_DIR}"
   fi
 fi
@@ -677,6 +683,9 @@ print_effective_option() {
 
 EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
 EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
+if [[ -z "${ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM:-}" && -n "${EFFECTIVE_SEND_HWM}" ]]; then
+  RUN_ENV+=(ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM="${EFFECTIVE_SEND_HWM}")
+fi
 DISPLAY_PATTERN_CSV="${PATTERN_CSV}"
 DISPLAY_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}"
 DISPLAY_WARMUP_SECONDS="${SINGLE_WARMUP_SECONDS}"

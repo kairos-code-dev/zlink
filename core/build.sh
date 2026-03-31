@@ -5,7 +5,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
+NORMALIZE_TIMESTAMPS_SH="${SCRIPT_DIR}/tools/normalize_build_timestamps.sh"
 export TMPDIR=/tmp
+MAKE_BIN="$(command -v gmake || command -v make)"
 
 echo "=== Clean Build ==="
 rm -rf "$BUILD_DIR"
@@ -13,6 +15,7 @@ mkdir -p "$BUILD_DIR"
 echo "=== CMake Configure ==="
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTS=ON -DWITH_DOCS=OFF -DWITH_TLS=ON -DBUILD_BENCHMARKS=ON \
+  -DCMAKE_MAKE_PROGRAM="${MAKE_BIN}" \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 if [ -f "${BUILD_DIR}/compile_commands.json" ]; then
@@ -21,6 +24,7 @@ if [ -f "${BUILD_DIR}/compile_commands.json" ]; then
 fi
 
 echo "=== Build ==="
+bash "${NORMALIZE_TIMESTAMPS_SH}" "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
 echo "=== Run Tests ==="

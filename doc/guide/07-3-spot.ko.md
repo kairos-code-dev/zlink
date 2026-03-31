@@ -105,7 +105,7 @@ zlink_spot_node_attach_discovery(node, discovery);
 
 > `SpotNode`는 mesh 참여를 위한 토폴로지 및 라이프사이클 소유자이다.
 > 범용 data-plane facade(publish/subscribe)를 노출하지 않는다.
-> publish/subscribe를 사용하려면 `zlink_spot_new(ctx)`를 사용한다.
+> publish/subscribe를 사용하려면 `zlink_spot_new(node)`로 facade를 만든다.
 
 **주의:** `attach_discovery()`는 bind 이후에 호출하는 것을 권장한다.
 Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 연결한다.
@@ -129,16 +129,16 @@ zlink_spot_node_connect_peer(node, "tcp://node3:9000");
 ### 4.1 생성
 
 ```c
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 ```
 
-`zlink_spot_new()`는 내부 spot node를 소유하는 unified handle을 생성한다.
-publish와 subscribe를 함께 제공한다. public standalone `spot_pub` / `spot_sub`
-생성자는 제공하지 않는다.
+`zlink_spot_new(node)`는 기존 spot node를 빌리는 unified facade를
+생성한다. publish와 subscribe를 함께 제공한다. public standalone
+`spot_pub` / `spot_sub` 생성자는 제공하지 않는다.
 
 transport security는 unified `spot`에서 설정하지 않는다. `tls://` 또는
-`wss://`를 써야 하면 먼저 소유된 `SpotNode`에 TLS를 설정해야 한다. unified
-`spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
+`wss://`를 써야 하면 먼저 backing `SpotNode`에 TLS를 설정해야 한다.
+unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
 
 ### 4.2 발행
 
@@ -170,7 +170,7 @@ send-ready는 별도 축이다.
 recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
 
 ```c
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 zlink_set_subscription(spot, "chat:room1:message");
 
 /* 다음 메시지 수신 */
@@ -205,7 +205,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 /* unified spot 생성 시 handler 등록 */
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 zlink_subscribe_handler(spot, on_message, NULL);
 ```
 
@@ -294,8 +294,8 @@ zlink_discovery_destroy(&discovery);
 `Discovery` 순서로 정리한다. `SpotNode` destroy 전에 관련 `spot`의 외부 사용을
 중단해야 한다.
 
-> `zlink_spot_new(ctx)`는 자체 내부 node를 생성하므로, `spot` destroy 시
-> 자동으로 정리된다. Discovery에 attach된 spot node의 경우,
+> `zlink_spot_destroy()`는 빌린 facade만 정리한다. backing `SpotNode`가
+> lifecycle owner이며, Discovery에 attach된 spot node의 경우
 > `zlink_discovery_destroy()`가 attach된 참여자에게 종료를 전파한다.
 
 ---

@@ -23,6 +23,28 @@ static const char *k_pattern_env = "ROUTER_ROUTER";
 static const char *k_pattern_result = "MULTI_ROUTER_ROUTER";
 static const char k_payload_fill = 'r';
 
+bool take_router_payload (std::vector<zlink::message_t> &parts,
+                          zlink::message_t **payload_out)
+{
+    if (payload_out)
+        *payload_out = NULL;
+
+    if (parts.size () == 1) {
+        if (payload_out)
+            *payload_out = &parts[0];
+        return true;
+    }
+
+    if (parts.size () == 2 && parts[0].size () == 0) {
+        if (payload_out)
+            *payload_out = &parts[1];
+        return true;
+    }
+
+    errno = EPROTO;
+    return false;
+}
+
 bool recv_router_payload_header (zlink::socket_t &sock,
                                  size_t payload_size,
                                  zlink::recv_flag flags,
@@ -32,31 +54,16 @@ bool recv_router_payload_header (zlink::socket_t &sock,
     if (header_ok_out)
         *header_ok_out = false;
 
-    zlink::message_t routing_id;
-    if (sock.recv (routing_id, flags) < 0)
+    zlink::received_t received;
+    if (sock.receive (received, flags) < 0)
         return false;
-    if (!routing_id.more ()) {
-        errno = EPROTO;
+
+    zlink::message_t *payload = NULL;
+    if (!take_router_payload (received.parts, &payload) || !payload) {
         return false;
     }
 
-    zlink::message_t payload_or_delim;
-    if (sock.recv (payload_or_delim, zlink::recv_flag::none) < 0)
-        return false;
-
-    zlink::message_t payload;
-    if (payload_or_delim.more ()) {
-        if (payload_or_delim.size () != 0) {
-            errno = EPROTO;
-            return false;
-        }
-        if (sock.recv (payload, zlink::recv_flag::none) < 0)
-            return false;
-    } else {
-        payload = std::move (payload_or_delim);
-    }
-
-    if (payload.more () || payload.size () != payload_size) {
+    if (payload->size () != payload_size) {
         errno = EPROTO;
         return false;
     }
@@ -64,7 +71,7 @@ bool recv_router_payload_header (zlink::socket_t &sock,
     bool header_ok = false;
     if (header_out) {
         header_ok = perf_metric::decode_payload_header (
-          payload.data (), payload.size (), header_out);
+          payload->data (), payload->size (), header_out);
     }
     if (header_ok_out)
         *header_ok_out = header_ok;
@@ -127,6 +134,7 @@ class router_router_client_bench_t
           _run_id (static_cast<uint32_t> (perf_metric::now_us ())),
           _seq (1),
           _server_id ("SERVER"),
+          _server_rid (zlink::empty_routing_id ()),
           _phase_cfg (),
           _result ()
     {
@@ -137,7 +145,8 @@ class router_router_client_bench_t
 
         _phase_cfg.warmup_seconds = std::max (0, _settings.warmup_seconds);
         _phase_cfg.settle_ms = std::max (0, _settings.settle_ms);
-        _phase_cfg.active_seconds = std::max (1, _settings.duration_seconds);
+            _phase_cfg.active_seconds = std::max (1, _settings.duration_seconds);
+        (void) zlink::routing_id_from (_server_id, &_server_rid);
     }
 
     bool run ()
@@ -170,8 +179,8 @@ class router_router_client_bench_t
             zlink::socket_t &sock = _holders.back ()->sock ();
 
             const std::string routing_id = std::string ("rr_") + std::to_string (i);
-            (void) sock.set (zlink::socket_options::routing_id, routing_id);
-            (void) sock.set (zlink::socket_options::probe_router, 1);
+            (void) sock.set_routing_id (routing_id);
+            (void) sock.set (zlink::router_options::probe, 1);
 
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
@@ -254,24 +263,14 @@ class router_router_client_bench_t
             state.id_sent = false;
         }
 
-        if (!state.id_sent) {
-            const int id_sent = state.sock->send (
-              _server_id.data (),
-              _server_id.size (),
-              zlink::send_flag::sndmore | zlink::send_flag::dontwait);
-            if (id_sent != static_cast<int> (_server_id.size ())) {
-                if (id_sent < 0 && errno == EAGAIN) {
-                    state.send_pending = true;
-                    return set_pollout (state, true);
-                }
-                return false;
-            }
-            state.id_sent = true;
-        }
+        zlink::message_t payload (state.payload.size ());
+        if (!payload.valid ())
+            return false;
+        std::memcpy (payload.data (), state.payload.data (), state.payload.size ());
 
-        const int payload_sent = state.sock->send (
-          state.payload.data (), state.payload.size (), zlink::send_flag::dontwait);
-        if (payload_sent == static_cast<int> (state.payload.size ())) {
+        const int payload_sent =
+          state.sock->send (_server_rid, payload, zlink::send_flag::dontwait);
+        if (payload_sent == 0) {
             state.awaiting_reply = true;
             state.send_pending = false;
             state.id_sent = false;
@@ -328,8 +327,7 @@ class router_router_client_bench_t
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =
                   static_cast<socket_state_t *> (_poll_events[i].user);
-                zlink::socket_t *ready_sock = _poll_events[i].socket;
-                if (!state || !ready_sock)
+                if (!state || !state->sock)
                     continue;
 
                 if ((_poll_events[i].revents
@@ -347,7 +345,7 @@ class router_router_client_bench_t
                 for (;;) {
                     perf_metric::header_t header;
                     bool header_ok = false;
-                    if (!recv_router_payload_header (*ready_sock,
+                    if (!recv_router_payload_header (*state->sock,
                                                      _socket_states[0].payload.size (),
                                                      zlink::recv_flag::dontwait,
                                                      &header,
@@ -404,8 +402,7 @@ class router_router_client_bench_t
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =
                   static_cast<socket_state_t *> (_poll_events[i].user);
-                zlink::socket_t *sock = _poll_events[i].socket;
-                if (!state || !sock)
+                if (!state || !state->sock)
                     continue;
 
                 if ((_poll_events[i].revents
@@ -423,7 +420,7 @@ class router_router_client_bench_t
                 for (;;) {
                     perf_metric::header_t header;
                     bool header_ok = false;
-                    if (!recv_router_payload_header (*sock,
+                    if (!recv_router_payload_header (*state->sock,
                                                      _socket_states[0].payload.size (),
                                                      zlink::recv_flag::dontwait,
                                                      &header,
@@ -480,16 +477,13 @@ class router_router_client_bench_t
             return;
 
         zlink::socket_t *sock = _socket_states[0].sock;
-        const int stop_id_sent = sock->send (_server_id.data (),
-                                             _server_id.size (),
-                                             zlink::send_flag::sndmore
-                                               | zlink::send_flag::dontwait);
-        if (stop_id_sent != static_cast<int> (_server_id.size ()))
-            return;
-
         const char *stop = perf::multi::k_stop_token;
         const size_t stop_len = std::strlen (stop);
-        (void) sock->send (stop, stop_len, zlink::send_flag::dontwait);
+        zlink::message_t stop_msg (stop_len);
+        if (!stop_msg.valid ())
+            return;
+        std::memcpy (stop_msg.data (), stop, stop_len);
+        (void) sock->send (_server_rid, stop_msg, zlink::send_flag::dontwait);
     }
 
     void print_result () const
@@ -526,6 +520,7 @@ class router_router_client_bench_t
     const uint32_t _run_id;
     uint64_t _seq;
     const std::string _server_id;
+    zlink_routing_id_t _server_rid;
 
     phase_config_t _phase_cfg;
     bench_result_t _result;

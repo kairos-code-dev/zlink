@@ -436,12 +436,25 @@ inline bool single_enqueue_metric_event (
 }
 
 template <typename StateT>
-inline void single_note_callback_receive (StateT *state_)
+inline void single_note_callback_receive (
+  StateT *state_, const perf_single_metric::header_t &header_)
 {
     if (!state_)
         return;
+
+    if (header_.phase
+        == static_cast<uint32_t> (perf_single_metric::phase_warmup)) {
+        single_increment_counter (state_->warmup_received);
+    } else if (header_.phase
+               == static_cast<uint32_t> (
+                 perf_single_metric::phase_active)) {
+        single_increment_counter (state_->active_received);
+    }
+
     if (state_->probe)
         state_->probe->sample_recv_if_due ();
+
+    state_->cv.notify_all ();
 }
 
 template <typename StateT>
@@ -453,13 +466,8 @@ inline void single_account_metric_event (
         return;
 
     if (event_.phase
-        == static_cast<uint32_t> (perf_single_metric::phase_warmup)) {
-        single_increment_counter (state_->warmup_received);
-    } else if (event_.phase
-               == static_cast<uint32_t> (
-                 perf_single_metric::phase_active)) {
+        == static_cast<uint32_t> (perf_single_metric::phase_active)) {
         const uint64_t now_us = perf_single_metric::now_us ();
-        single_increment_counter (state_->active_received);
         const double latency_us =
           now_us >= event_.sent_ts_us
             ? static_cast<double> (now_us - event_.sent_ts_us)
@@ -896,7 +904,8 @@ inline bool wait_for_socket_monitor_event(void *monitor_,
 
         for (;;) {
             zlink_socket_monitor_event_t event;
-            if (zlink_socket_monitor_recv(monitor_, &event) != 0) {
+            if (zlink_socket_monitor_recv(monitor_, &event, ZLINK_DONTWAIT)
+                != 0) {
                 if (errno == EAGAIN || errno == EINTR)
                     break;
                 return false;
@@ -945,7 +954,8 @@ inline bool wait_for_service_monitor_event(void *monitor_,
 
         for (;;) {
             zlink_service_monitor_event_t event;
-            if (zlink_service_monitor_recv(monitor_, &event) != 0) {
+            if (zlink_service_monitor_recv(monitor_, &event, ZLINK_DONTWAIT)
+                != 0) {
                 if (errno == EAGAIN || errno == EINTR)
                     break;
                 return false;
@@ -1213,23 +1223,6 @@ inline int resolve_single_socket_hwm(bool send_)
     const int base_hwm = parse_positive_env("PERF_SINGLE_HWM", 1000);
     return send_ ? parse_positive_env("PERF_SINGLE_SNDHWM", base_hwm)
                  : parse_positive_env("PERF_SINGLE_RCVHWM", base_hwm);
-}
-
-inline void sync_single_spot_internal_mesh_pub_hwm()
-{
-    if (std::getenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM") != NULL)
-        return;
-
-    const int sndhwm = resolve_single_socket_hwm(true);
-    if (sndhwm <= 0)
-        return;
-
-    const std::string value = std::to_string(sndhwm);
-#if defined(_WIN32)
-    _putenv_s("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str());
-#else
-    setenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str(), 1);
-#endif
 }
 
 inline int resolve_single_queue_sample_ms()

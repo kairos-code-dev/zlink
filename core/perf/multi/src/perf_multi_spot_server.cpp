@@ -42,6 +42,20 @@ static const uint32_t k_metric_run_id = 1U;
 static std::atomic<bool> g_queue_probe_pending(false);
 static std::atomic<size_t> g_queue_probe_size(0);
 
+void ensure_multi_spot_mesh_pub_budget_default()
+{
+    const char *existing =
+      std::getenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM");
+    if (existing && *existing)
+        return;
+
+#if defined(_WIN32)
+    _putenv_s("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", "100");
+#else
+    setenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", "100", 1);
+#endif
+}
+
 struct spot_server_state_t
 {
     spot_server_state_t() :
@@ -643,6 +657,7 @@ int run_server_benchmark(const std::string &lib_name,
                          const std::string &transport)
 {
     set_perf_multi_pattern_env(k_pattern);
+    ensure_multi_spot_mesh_pub_budget_default();
 
     if (!is_supported_transport(transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
@@ -654,13 +669,10 @@ int run_server_benchmark(const std::string &lib_name,
         return 1;
     }
 
+    const multi_bench_settings_t settings = resolve_multi_bench_settings();
     ctx_guard_t ctx;
     if (!ctx.valid())
         return 1;
-
-    const multi_bench_settings_t settings = resolve_multi_bench_settings();
-    sync_spot_internal_mesh_pub_hwm(
-      bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm));
     std::vector<size_t> msg_sizes = resolve_bench_msg_sizes(64);
     if (msg_sizes.empty())
         msg_sizes.push_back(64);

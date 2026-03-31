@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.6] - 2026-03-31
+
+### Changed
+
+**SPOT Surface Simplification**
+- Removed the owned `spot(ctx)` construction path and standardized SPOT usage around `spot_node -> spot` so lifecycle, topology, and discovery ownership stay on the node side across the core API and bindings.
+- Removed core-level `try_*` send/publish/monitor entry points and pushed non-blocking convenience handling back into bindings, keeping the core public surface aligned around canonical calls plus flags.
+
+### Fixed
+
+**SPOT And Multi-Bench Stability**
+- Preserved pending SPOT pub/sub defaults across lazy child-handle creation, restored deterministic self-delivery and delivery-ready coverage in the SPOT end-to-end suite, and stabilized the single/multi SPOT benchmark paths under full serial test runs.
+- Fixed the multi DEALER/DEALER TLS benchmark client to wait for actual connect-ready state before starting traffic, eliminating a serial full-suite startup race that could leave the server with an empty first receive window.
+
 ## [5.0.4] - 2026-03-16
 
 ### Added

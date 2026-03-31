@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "addon_api.h"
+#include <errno.h>
 
 namespace {
 
@@ -366,9 +367,9 @@ napi_value spot_new(napi_env env, napi_callback_info info)
     napi_value argv[1];
     size_t argc = 1;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *ctx = NULL;
-    napi_get_value_external(env, argv[0], &ctx);
-    void *spot = zlink_spot_new(ctx);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    void *spot = zlink_spot_new(node);
     if (!spot)
         return throw_last_error(env, "spot_new failed");
     napi_value ext;
@@ -465,7 +466,31 @@ napi_value spot_try_publish(napi_env env, napi_callback_info info)
             return NULL;
     }
 
-    int rc = zlink_try_publish_result(spot, topic.c_str(), parts.data(), parts.size());
+    int rc = zlink_publish(spot, topic.c_str(), parts.data(), parts.size(),
+                           ZLINK_DONTWAIT);
+    if (rc == 0) {
+        rc = ZLINK_SEND_RESULT_SENT;
+    } else {
+        switch (zlink_errno()) {
+        case EAGAIN:
+            rc = ZLINK_SEND_RESULT_BACKPRESSURED;
+            break;
+#ifdef ENOTCONN
+        case ENOTCONN:
+#endif
+#ifdef EHOSTUNREACH
+        case EHOSTUNREACH:
+#endif
+#ifdef ETIMEDOUT
+        case ETIMEDOUT:
+#endif
+            rc = ZLINK_SEND_RESULT_NOT_READY;
+            break;
+        default:
+            rc = -1;
+            break;
+        }
+    }
     if (rc < 0) {
         close_msg_vector(parts);
         return throw_last_error(env, "tryPublish failed");

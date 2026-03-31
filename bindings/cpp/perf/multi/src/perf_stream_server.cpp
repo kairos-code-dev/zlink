@@ -164,9 +164,9 @@ inline send_status_t try_send_stream_message (pending_stream_message_t *message)
         return send_fatal;
     }
 
-    const int rc = zlink_try_send_rid_result (
-      g_server_socket, &message->rid, &part, 1);
-    if (rc == ZLINK_SEND_RESULT_SENT) {
+    const int rc =
+      zlink_send_rid (g_server_socket, &message->rid, &part, 1, ZLINK_DONTWAIT);
+    if (rc == 0) {
         (void) zlink_msg_close (&part);
         message->has_payload = false;
         message->rid.size = 0;
@@ -179,11 +179,10 @@ inline send_status_t try_send_stream_message (pending_stream_message_t *message)
     }
     (void) zlink_msg_close (&part);
 
-    if (rc == ZLINK_SEND_RESULT_BACKPRESSURED || rc == ZLINK_SEND_RESULT_NOT_READY)
-        return send_blocked;
     if (rc < 0) {
         const int err = zlink_errno ();
-        if (err == EINTR || err == EAGAIN)
+        if (err == EINTR || err == EAGAIN || err == ENOTCONN
+            || err == EHOSTUNREACH || err == ETIMEDOUT)
             return send_blocked;
     }
     return send_fatal;

@@ -4701,7 +4701,11 @@ def main():
 
     run_status = "complete" if expected_result_lines == actual_result_lines else "partial"
     max_files = resolve_results_max_files()
-    prune_result_files(os.path.dirname(result_file), max_files)
+    prune_result_files(
+        os.path.dirname(result_file),
+        max_files,
+        exclude_names=[os.path.basename(result_file)],
+    )
     print(f"\nSaved result file: {result_file} (status={run_status})")
 
     print("\n## Status Summary")

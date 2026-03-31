@@ -84,6 +84,9 @@ router.send(rid, reply);
 - `spot_node_t`
 - `spot_t`
 
+`spot_t`는 `spot_node_t`로부터만 생성한다. topology/lifecycle은
+`spot_node_t`, publish/subscribe facade는 `spot_t`가 맡는다.
+
 이 문서는 구형 `receiver_t`, `spot_pub_t`, `spot_sub_t`, STREAM 전용
 `stream_attach*`/`stream_send*` API를 더 이상 설명하지 않는다.
 

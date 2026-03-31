@@ -76,7 +76,7 @@ xpub.subscribe();
 // @ts-expect-error xpub cannot use generic send
 xpub.send(zlink.Message.copyOf('ok'));
 
-const spot = new zlink.Spot(ctx);
+const spot = new zlink.Spot(node);
 spot.publish('topic', zlink.Message.copyOf('ok'));
 spot.tryPublish('topic', [zlink.Message.copyOf('ok')]);
 spot.setSubscription('topic');

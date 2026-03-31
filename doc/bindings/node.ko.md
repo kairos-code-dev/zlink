@@ -77,8 +77,8 @@ console.log(bytes);
 - `new Discovery(ctx, serviceType, serviceName)`
 - `Registry.bind(pubEndpoint, routerEndpoint)`
 - `new RegistryQueryClient(ctx)`
-- `new Spot(ctx)`
 - `new SpotNode(ctx)`
+- `new Spot(node)`
 
 `Receiver`는 aligned public API에서 제거되었습니다.
 `Discovery`는 비어 있지 않은 `serviceName`이 필요합니다.

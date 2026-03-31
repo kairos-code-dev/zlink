@@ -84,6 +84,9 @@ The service wrappers are intentionally limited to:
 - `spot_node_t`
 - `spot_t`
 
+`spot_t` is constructed from `spot_node_t` only. `spot_node_t` owns
+topology/lifecycle, while `spot_t` is the publish/subscribe facade.
+
 This binding no longer documents legacy `receiver_t`, `spot_pub_t`,
 `spot_sub_t`, or STREAM-only `stream_attach*` and `stream_send*` helpers.
 

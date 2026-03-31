@@ -12,7 +12,7 @@ namespace zlink
 {
 namespace
 {
-static const int default_mesh_pub_sndhwm = 100;
+static const int default_mesh_pub_sndhwm = 1000;
 }
 
 int spot_mesh_pub_budget_t::resolve_default (const std::string &endpoint_,

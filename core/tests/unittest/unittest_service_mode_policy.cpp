@@ -168,7 +168,9 @@ void test_spot_callback_policy ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *spot = zlink_spot_new (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
 
     void *poller = zlink_poller_new ();
@@ -212,6 +214,7 @@ void test_spot_callback_policy ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -348,11 +351,10 @@ void test_spot_tls_configuration_is_node_owned ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *spot = zlink_spot_new (ctx);
-    TEST_ASSERT_NOT_NULL (spot);
-
     void *node = zlink_spot_node_new (ctx);
     TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
@@ -369,8 +371,8 @@ void test_spot_tls_configuration_is_node_owned ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_tls_client (node, "ca.crt", "localhost", 0));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 

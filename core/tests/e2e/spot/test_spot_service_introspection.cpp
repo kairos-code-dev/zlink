@@ -982,8 +982,12 @@ static void test_spot_unified_spot_basic ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *pub_spot = zlink_spot_new (ctx);
-    void *sub_spot = zlink_spot_new (ctx);
+    void *pub_node = zlink_spot_node_new (ctx);
+    void *sub_node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (pub_node);
+    TEST_ASSERT_NOT_NULL (sub_node);
+    void *pub_spot = zlink_spot_new (pub_node);
+    void *sub_spot = zlink_spot_new (sub_node);
     TEST_ASSERT_NOT_NULL (pub_spot);
     TEST_ASSERT_NOT_NULL (sub_spot);
     set_linger_zero (pub_spot);
@@ -1003,6 +1007,8 @@ static void test_spot_unified_spot_basic ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&sub_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&pub_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -1011,20 +1017,56 @@ static void test_spot_unified_spot_callback_self_delivery ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *spot = zlink_spot_new (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
     set_linger_zero (spot);
 
     subscribe_probe_t probe;
+    zlink_service_monitor_open_options_t sub_opts;
+    memset (&sub_opts, 0, sizeof (sub_opts));
+    sub_opts.events = ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_MONITOR_EVENT_ERROR;
+    void *sub_monitor = zlink_service_monitor_open (spot, &sub_opts);
+    TEST_ASSERT_NOT_NULL (sub_monitor);
+
+    zlink_service_monitor_open_options_t pub_opts;
+    memset (&pub_opts, 0, sizeof (pub_opts));
+    pub_opts.events = ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
+                      | ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED
+                      | ZLINK_MONITOR_EVENT_ERROR;
+    void *pub_monitor = zlink_service_monitor_open (spot, &pub_opts);
+    TEST_ASSERT_NOT_NULL (pub_monitor);
+
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_subscribe_handler (spot, &subscribe_probe_handler, &probe));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (spot, "topic.unified.cb"));
+    TEST_ASSERT_TRUE (wait_for_service_event (
+      sub_monitor, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 5000));
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (5000);
+    bool send_ready = false;
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_monitor_snapshot_t snapshot;
+        if (zlink_monitor_snapshot (pub_monitor, &snapshot) == 0
+            && (snapshot.state_flags & ZLINK_MONITOR_STATE_SEND_READY) != 0) {
+            send_ready = true;
+            break;
+        }
+        (void) wait_for_service_event (
+          pub_monitor, ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED, NULL, 200);
+    }
+    TEST_ASSERT_TRUE (send_ready);
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (spot, "topic.unified.cb", "callback"));
     TEST_ASSERT_TRUE (wait_for_callback_payload (
       &probe, "topic.unified.cb", "callback", 3000));
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 

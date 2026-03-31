@@ -713,7 +713,9 @@ inline bool wait_for_socket_monitor_event(ready_monitor_t &monitor_,
 
         for (;;) {
             zlink_socket_monitor_event_t event;
-            if (zlink_socket_monitor_recv(monitor_.monitor, &event) != 0) {
+            if (zlink_socket_monitor_recv(monitor_.monitor, &event,
+                                          ZLINK_DONTWAIT)
+                != 0) {
                 const int err = zlink_errno();
                 if (err == EAGAIN || err == EINTR)
                     break;
@@ -761,7 +763,9 @@ inline bool wait_for_service_monitor_event(ready_monitor_t &monitor_,
 
         for (;;) {
             zlink_service_monitor_event_t event;
-            if (zlink_service_monitor_recv(monitor_.monitor, &event) != 0) {
+            if (zlink_service_monitor_recv(monitor_.monitor, &event,
+                                           ZLINK_DONTWAIT)
+                != 0) {
                 const int err = zlink_errno();
                 if (err == EAGAIN || err == EINTR)
                     break;
@@ -961,21 +965,6 @@ inline void apply_benchmark_hwm(void *socket_, int hwm_value)
       bench_hwm_from_env("PERF_RCVHWM", hwm_value);
     set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
     set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
-}
-
-inline void sync_spot_internal_mesh_pub_hwm(int hwm_value)
-{
-    if (hwm_value <= 0)
-        return;
-    if (std::getenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM") != NULL)
-        return;
-
-    const std::string value = std::to_string(hwm_value);
-#if defined(_WIN32)
-    _putenv_s("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str());
-#else
-    setenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", value.c_str(), 1);
-#endif
 }
 
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)

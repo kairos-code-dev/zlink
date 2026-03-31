@@ -9,7 +9,9 @@ set -e
 # Get script directory and repo root early (before any cd commands)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+NORMALIZE_TIMESTAMPS_SH="$REPO_ROOT/core/tools/normalize_build_timestamps.sh"
 export TMPDIR=/tmp
+MAKE_BIN="$(command -v gmake || command -v make)"
 
 # Read VERSION file
 if [ -f "$REPO_ROOT/VERSION" ]; then
@@ -93,6 +95,7 @@ fi
 cmake "$LIBZLINK_SRC_ABS" \
     $CMAKE_ARCH_FLAGS \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DCMAKE_MAKE_PROGRAM="$MAKE_BIN" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DBUILD_SHARED=ON \
@@ -111,6 +114,7 @@ fi
 # Step 3: Build libzlink
 echo ""
 echo "Step 3: Building libzlink for ${ARCH}..."
+bash "$NORMALIZE_TIMESTAMPS_SH" "$BUILD_DIR"
 make -j$(nproc)
 
 # Step 4: Install

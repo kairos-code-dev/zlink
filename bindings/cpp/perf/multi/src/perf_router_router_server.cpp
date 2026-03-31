@@ -11,49 +11,36 @@
 
 namespace {
 
+bool take_router_payload (std::vector<zlink::message_t> &parts,
+                          zlink::message_t &payload)
+{
+    if (parts.size () == 1) {
+        payload = std::move (parts[0]);
+        return true;
+    }
+
+    if (parts.size () == 2 && parts[0].size () == 0) {
+        payload = std::move (parts[1]);
+        return true;
+    }
+
+    errno = EPROTO;
+    return false;
+}
+
 struct reply_state_t
 {
     bool pending;
-    bool id_sent;
-    zlink::message_t client_id;
+    zlink_routing_id_t client_id;
     zlink::message_t payload;
 
-    reply_state_t () : pending (false), id_sent (false), client_id (), payload () {}
+    reply_state_t ()
+        : pending (false),
+          client_id (zlink::empty_routing_id ()),
+          payload ()
+    {
+    }
 };
-
-bool recv_router_request (zlink::socket_t &sock,
-                          zlink::message_t &client_id,
-                          zlink::message_t &payload)
-{
-    const int id_rc = sock.recv (client_id, zlink::recv_flag::dontwait);
-    if (id_rc < 0)
-        return false;
-    if (!client_id.more ()) {
-        errno = EPROTO;
-        return false;
-    }
-
-    zlink::message_t payload_or_delim;
-    if (sock.recv (payload_or_delim, zlink::recv_flag::none) < 0)
-        return false;
-
-    if (payload_or_delim.more ()) {
-        if (payload_or_delim.size () != 0) {
-            errno = EPROTO;
-            return false;
-        }
-        if (sock.recv (payload, zlink::recv_flag::none) < 0)
-            return false;
-    } else {
-        payload = std::move (payload_or_delim);
-    }
-
-    if (payload.more ()) {
-        errno = EPROTO;
-        return false;
-    }
-    return true;
-}
 
 long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline)
 {
@@ -75,27 +62,9 @@ bool try_send_reply (zlink::socket_t &sock,
     if (!reply.pending)
         return true;
 
-    if (!reply.id_sent) {
-        const int id_sent = sock.send (reply.client_id.data (),
-                                       reply.client_id.size (),
-                                       zlink::send_flag::sndmore
-                                         | zlink::send_flag::dontwait);
-        if (id_sent != static_cast<int> (reply.client_id.size ())) {
-            if (id_sent < 0 && errno == EAGAIN) {
-                return poller.modify (
-                         sock,
-                         zlink::poll_event::pollin | zlink::poll_event::pollout)
-                       == 0;
-            }
-            return false;
-        }
-        reply.id_sent = true;
-    }
-
-    const int payload_sent = sock.send (reply.payload.data (),
-                                        reply.payload.size (),
-                                        zlink::send_flag::dontwait);
-    if (payload_sent != static_cast<int> (reply.payload.size ())) {
+    const int payload_sent =
+      sock.send (reply.client_id, reply.payload, zlink::send_flag::dontwait);
+    if (payload_sent != 0) {
         if (payload_sent < 0 && errno == EAGAIN) {
             return poller.modify (
                      sock,
@@ -106,8 +75,7 @@ bool try_send_reply (zlink::socket_t &sock,
     }
 
     reply.pending = false;
-    reply.id_sent = false;
-    reply.client_id = zlink::message_t ();
+    reply.client_id = zlink::empty_routing_id ();
     reply.payload = zlink::message_t ();
     return poller.modify (sock, zlink::poll_event::pollin) == 0;
 }
@@ -131,8 +99,7 @@ bool perf_router_router_server (const std::string &transport, size_t)
     if (!server.valid ())
         return false;
 
-    (void) server.sock ().set (zlink::socket_options::routing_id,
-                               std::string ("SERVER"));
+    (void) server.sock ().set_routing_id (std::string ("SERVER"));
     perf::multi::apply_benchmark_socket_options (
       server.sock (), settings, transport);
     if (!perf::multi::setup_tls_server (server.sock (), transport))
@@ -156,7 +123,7 @@ bool perf_router_router_server (const std::string &transport, size_t)
                           + std::chrono::seconds (deadline_seconds);
 
     zlink::poller_t poller;
-    (void) poller.add (server.sock (), zlink::poll_event::pollin);
+    (void) poller.add (server.sock (), zlink::poll_event::pollin, &server.sock ());
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     reply_state_t reply;
@@ -176,7 +143,8 @@ bool perf_router_router_server (const std::string &transport, size_t)
             continue;
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            zlink::socket_t *sock = events[i].socket;
+            zlink::socket_t *sock =
+              static_cast<zlink::socket_t *> (events[i].user);
             if (!sock)
                 continue;
 
@@ -200,13 +168,22 @@ bool perf_router_router_server (const std::string &transport, size_t)
                 if (reply.pending)
                     break;
 
-                zlink::message_t client_id;
-                zlink::message_t payload;
-                if (!recv_router_request (*sock, client_id, payload)) {
+                zlink::received_t received;
+                if (sock->receive (received, zlink::recv_flag::dontwait) < 0) {
                     const int err = errno;
                     if (err == EAGAIN)
                         break;
                     if (err == EINTR)
+                        continue;
+                    stop_requested = true;
+                    failed = true;
+                    break;
+                }
+
+                zlink::message_t payload;
+                if (!take_router_payload (received.parts, payload)) {
+                    const int err = errno;
+                    if (err == EPROTO)
                         continue;
                     stop_requested = true;
                     failed = true;
@@ -221,8 +198,7 @@ bool perf_router_router_server (const std::string &transport, size_t)
                     continue;
 
                 reply.pending = true;
-                reply.id_sent = false;
-                reply.client_id = std::move (client_id);
+                reply.client_id = received.routing_id;
                 reply.payload = std::move (payload);
                 if (!try_send_reply (*sock, poller, reply)) {
                     stop_requested = true;

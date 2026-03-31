@@ -375,6 +375,16 @@ int spot_node_t::set_sub_option (int option_,
     return _handle_defaults.set_sub_option (option_, optval_, optvallen_);
 }
 
+spot_node_t::pub_defaults_t spot_node_t::load_pub_defaults () const
+{
+    return _handle_defaults.load_pub_defaults ();
+}
+
+spot_node_t::sub_defaults_t spot_node_t::load_sub_defaults () const
+{
+    return _handle_defaults.load_sub_defaults ();
+}
+
 int spot_node_t::apply_pub_defaults (spot_pub_t *pub_,
                                      const pub_defaults_t &defaults_)
 {

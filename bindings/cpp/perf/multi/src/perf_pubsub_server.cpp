@@ -129,9 +129,8 @@ bool perf_pubsub_server (const std::string &transport, size_t msg_size)
 
     perf::multi::print_ready (endpoint);
 
-    if (!perf::multi::wait_connect_ready_count (connect_monitor,
-                                                settings.clients,
-                                                settings.connect_ready_timeout_ms)) {
+    if (!perf::multi::wait_connect_ready (connect_monitor,
+                                          settings.connect_ready_timeout_ms)) {
         perf::multi::close_connect_monitor (connect_monitor);
         std::cerr << "PUBSUB_SERVER_FAIL,stage=connect_ready,transport="
                   << transport << ",size=" << msg_size << std::endl;

@@ -15,6 +15,14 @@ internal sealed class SocketKernel : IDisposable
     private const int StackSendPartLimit = 8;
     private const int TopicBufferSize = 4096;
     private const int DontWaitFlag = 1;
+    private const int ErrnoEAgain = 11;
+    private const int ErrnoEWouldBlockWin = 10035;
+    private const int ErrnoENotConn = 107;
+    private const int ErrnoENotConnWin = 10057;
+    private const int ErrnoEHostUnreach = 113;
+    private const int ErrnoEHostUnreachWin = 10065;
+    private const int ErrnoETimedOut = 110;
+    private const int ErrnoETimedOutWin = 10060;
 
     private readonly SocketHandle _handle;
     private readonly SocketOptionAccessor _options;
@@ -837,6 +845,23 @@ internal sealed class SocketKernel : IDisposable
         };
     }
 
+    private static SendResult? TryMapSendResultFromErrno()
+    {
+        int errno = NativeMethods.zlink_errno();
+        return errno switch
+        {
+            ErrnoEAgain => SendResult.Backpressured,
+            ErrnoEWouldBlockWin => SendResult.Backpressured,
+            ErrnoENotConn => SendResult.NotReady,
+            ErrnoENotConnWin => SendResult.NotReady,
+            ErrnoEHostUnreach => SendResult.NotReady,
+            ErrnoEHostUnreachWin => SendResult.NotReady,
+            ErrnoETimedOut => SendResult.NotReady,
+            ErrnoETimedOutWin => SendResult.NotReady,
+            _ => null
+        };
+    }
+
     private void EnsureSupports(string memberName,
         SocketTypePolicy.SocketCapability capability)
     {
@@ -1069,16 +1094,20 @@ internal sealed class SocketKernel : IDisposable
             int rc;
             fixed (ZlinkMsg* nativePtr = nativeParts)
             {
-                rc = NativeMethods.zlink_try_send_result(Handle,
-                    (IntPtr)nativePtr, (nuint)parts.Length);
+                rc = NativeMethods.zlink_send(Handle, (IntPtr)nativePtr,
+                    (nuint)parts.Length, DontWaitFlag);
             }
-            if (rc < 0)
+            if (rc == 0)
+                return SendResult.Sent;
+
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult == null)
             {
                 RestoreManagedParts(parts, nativeParts, built);
                 built = 0;
                 throw ZlinkException.FromLastError();
             }
-            return MapSendResult(rc);
+            return sendResult.Value;
         }
         catch
         {
@@ -1125,14 +1154,19 @@ internal sealed class SocketKernel : IDisposable
         {
             message.MoveTo(ref nativePart);
             moved = true;
-            int rc = NativeMethods.zlink_try_send_result(Handle, ref nativePart, 1);
-            if (rc < 0)
+            int rc = NativeMethods.zlink_send(Handle, (IntPtr)(&nativePart), 1,
+                DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult == null)
             {
                 message.RestoreFrom(ref nativePart);
                 moved = false;
                 throw ZlinkException.FromLastError();
             }
-            return MapSendResult(rc);
+            return sendResult.Value;
         }
         catch
         {
@@ -1196,16 +1230,20 @@ internal sealed class SocketKernel : IDisposable
             int rc;
             fixed (ZlinkMsg* nativePtr = nativeParts)
             {
-                rc = NativeMethods.zlink_try_publish_result(Handle, topic,
-                    (IntPtr)nativePtr, (nuint)parts.Length);
+                rc = NativeMethods.zlink_publish(Handle, topic,
+                    (IntPtr)nativePtr, (nuint)parts.Length, DontWaitFlag);
             }
-            if (rc < 0)
+            if (rc == 0)
+                return SendResult.Sent;
+
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult == null)
             {
                 RestoreManagedParts(parts, nativeParts, built);
                 built = 0;
                 throw ZlinkException.FromLastError();
             }
-            return MapSendResult(rc);
+            return sendResult.Value;
         }
         catch
         {
@@ -1253,15 +1291,19 @@ internal sealed class SocketKernel : IDisposable
         {
             message.MoveTo(ref nativePart);
             moved = true;
-            int rc = NativeMethods.zlink_try_publish_result(Handle, topic,
-                (IntPtr)(&nativePart), 1);
-            if (rc < 0)
+            int rc = NativeMethods.zlink_publish(Handle, topic,
+                (IntPtr)(&nativePart), 1, DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult == null)
             {
                 message.RestoreFrom(ref nativePart);
                 moved = false;
                 throw ZlinkException.FromLastError();
             }
-            return MapSendResult(rc);
+            return sendResult.Value;
         }
         catch
         {
@@ -1325,16 +1367,20 @@ internal sealed class SocketKernel : IDisposable
             int rc;
             fixed (ZlinkMsg* nativePtr = nativeParts)
             {
-                rc = NativeMethods.zlink_try_send_rid_result(Handle, ref routingId,
-                    (IntPtr)nativePtr, (nuint)parts.Length);
+                rc = NativeMethods.zlink_send_rid(Handle, ref routingId,
+                    (IntPtr)nativePtr, (nuint)parts.Length, DontWaitFlag);
             }
-            if (rc < 0)
+            if (rc == 0)
+                return SendResult.Sent;
+
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult == null)
             {
                 RestoreManagedParts(parts, nativeParts, built);
                 built = 0;
                 throw ZlinkException.FromLastError();
             }
-            return MapSendResult(rc);
+            return sendResult.Value;
         }
         catch
         {
@@ -1383,15 +1429,19 @@ internal sealed class SocketKernel : IDisposable
         {
             message.MoveTo(ref nativePart);
             moved = true;
-            int rc = NativeMethods.zlink_try_send_rid_result(Handle,
-                ref routingId, ref nativePart, 1);
-            if (rc < 0)
+            int rc = NativeMethods.zlink_send_rid(Handle, ref routingId,
+                (IntPtr)(&nativePart), 1, DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult == null)
             {
                 message.RestoreFrom(ref nativePart);
                 moved = false;
                 throw ZlinkException.FromLastError();
             }
-            return MapSendResult(rc);
+            return sendResult.Value;
         }
         catch
         {

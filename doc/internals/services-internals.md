@@ -8,8 +8,8 @@ The zlink service layer provides two high-level services: Discovery and SPOT. Th
 
 For SPOT, transport-security ownership is intentionally narrow: the
 `SpotNode` owns TLS/WSS wiring for mesh/control sockets, while unified
-`Spot` remains a data-plane facade only. The facade may own an internal
-node, but it is not itself a TLS configuration surface.
+`Spot` remains a borrowed data-plane facade only. The facade never owns
+node lifecycle and is not itself a TLS configuration surface.
 
 ## 2. Registry Internal Implementation
 

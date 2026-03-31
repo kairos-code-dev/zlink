@@ -22,7 +22,8 @@ final class PerfSpot {
         CountDownLatch finished = new CountDownLatch(1);
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         try (Context ctx = new Context();
-             Spot spot = new Spot(ctx);
+             SpotNode node = new SpotNode(ctx);
+             Spot spot = new Spot(node);
              ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
             spot.onSubscribe((routingId, recvTopic, received) -> {
                 try (received) {

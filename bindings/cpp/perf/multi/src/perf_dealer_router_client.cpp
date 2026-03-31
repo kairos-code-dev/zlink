@@ -120,7 +120,7 @@ class dealer_router_client_bench_t
             zlink::socket_t &sock = _holders.back ()->sock ();
 
             const std::string routing_id = std::string ("dr_") + std::to_string (i);
-            (void) sock.set (zlink::socket_options::routing_id, routing_id);
+            (void) sock.set_routing_id (routing_id);
 
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
@@ -258,8 +258,7 @@ class dealer_router_client_bench_t
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =
                   static_cast<socket_state_t *> (_poll_events[i].user);
-                zlink::socket_t *ready_sock = _poll_events[i].socket;
-                if (!state || !ready_sock)
+                if (!state || !state->sock)
                     continue;
 
                 if ((_poll_events[i].revents
@@ -276,7 +275,7 @@ class dealer_router_client_bench_t
 
                 for (;;) {
                     zlink::message_t reply;
-                    if (ready_sock->recv (reply, zlink::recv_flag::dontwait) < 0) {
+                    if (state->sock->recv (reply, zlink::recv_flag::dontwait) < 0) {
                         const int err = errno;
                         if (err == EAGAIN)
                             break;
@@ -284,8 +283,6 @@ class dealer_router_client_bench_t
                             continue;
                         return false;
                     }
-                    if (reply.more ())
-                        continue;
 
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (
@@ -336,8 +333,7 @@ class dealer_router_client_bench_t
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =
                   static_cast<socket_state_t *> (_poll_events[i].user);
-                zlink::socket_t *sock = _poll_events[i].socket;
-                if (!state || !sock)
+                if (!state || !state->sock)
                     continue;
 
                 if ((_poll_events[i].revents
@@ -354,7 +350,7 @@ class dealer_router_client_bench_t
 
                 for (;;) {
                     zlink::message_t reply;
-                    if (sock->recv (reply, zlink::recv_flag::dontwait) < 0) {
+                    if (state->sock->recv (reply, zlink::recv_flag::dontwait) < 0) {
                         const int err = errno;
                         if (err == EAGAIN)
                             break;
@@ -362,8 +358,6 @@ class dealer_router_client_bench_t
                             continue;
                         return false;
                     }
-                    if (reply.more ())
-                        continue;
 
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (

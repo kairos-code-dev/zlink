@@ -7,7 +7,8 @@ const FILTER_APPLIED = zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED;
 const topic = 'spot:callback';
 async function main() {
     const ctx = new zlink.Context();
-    const spot = new zlink.Spot(ctx);
+    const node = new zlink.SpotNode(ctx);
+    const spot = new zlink.Spot(node);
     const monitor = spot.openMonitor(FILTER_APPLIED);
     try {
         const receivedPromise = new Promise((resolve, reject) => {

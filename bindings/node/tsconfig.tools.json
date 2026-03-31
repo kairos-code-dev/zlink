@@ -10,7 +10,6 @@
   },
   "include": [
     "examples/**/*.ts",
-    "perf/**/*.ts",
     "tests/**/*.ts"
   ],
   "exclude": [
@@ -19,7 +18,6 @@
     "build",
     "native",
     "node_modules",
-    "perf/results/**",
     "tests/socket_surface.typecheck.ts"
   ]
 }

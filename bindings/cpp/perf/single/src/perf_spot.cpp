@@ -45,7 +45,8 @@ void run_pattern_spot (const std::string &transport,
         return;
     }
 
-    zlink::service::spot_t spot (ctx.ctx ());
+    zlink::service::spot_node_t node (ctx.ctx ());
+    zlink::service::spot_t spot (node);
     if (!spot.valid ()) {
         if (perf_debug_enabled ())
             std::cerr << "spot: invalid service handle" << std::endl;

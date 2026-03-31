@@ -25,6 +25,9 @@
 | `SpotNode` | topology / discovery attach |
 | `Spot` | unified SPOT publish / subscribe facade |
 
+`Spot`은 `SpotNode`로부터 생성한다. `Context`에서 직접 만드는 service
+constructor는 제공하지 않는다.
+
 ## 3. 기본 예제
 
 ```csharp

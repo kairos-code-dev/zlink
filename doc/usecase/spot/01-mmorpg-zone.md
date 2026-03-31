@@ -60,9 +60,10 @@ void *ctx = zlink_ctx_new();
 void *discovery = zlink_discovery_new(ctx, ZLINK_SERVICE_TYPE_SPOT, "game-world");
 zlink_discovery_connect_registry(discovery, "tcp://registry:5551");
 
-void *spot = zlink_spot_new(ctx);
-zlink_spot_bind(spot, "tcp://*:9000");
-zlink_spot_attach_discovery(spot, discovery);
+void *node = zlink_spot_node_new(ctx);
+zlink_spot_node_bind(node, "tcp://*:9000");
+zlink_spot_node_attach_discovery(node, discovery);
+void *spot = zlink_spot_new(node);
 
 /* 자기 존 상태를 publish */
 char topic[64];

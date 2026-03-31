@@ -10,19 +10,23 @@ Discord 같은 대규모 시스템은 자체 라우팅을 구현하지만 개발
 
 ## 핵심 아이디어
 
-채팅 채널을 SPOT 인스턴스로 나눈다.
+채팅 채널을 SPOT node + facade 조합으로 나눈다.
 
-- **aggregator**: 채널당 1개 SPOT 인스턴스 (`zlink_spot_new`).
+- **aggregator**: 채널당 1개 SPOT node + facade
+  (`zlink_spot_node_new` + `zlink_spot_new`).
   채널로 들어오는 메시지를 수집하고, 1~3초 캐싱했다가 한번에 배치 발행한다.
-- **receiver**: 서버당 1개 SPOT 인스턴스 (`zlink_spot_new`).
+- **receiver**: 서버당 1개 SPOT node + facade
+  (`zlink_spot_node_new` + `zlink_spot_new`).
   배치된 메시지를 수신하고, 해당 서버에 접속한 유저에게 전달한다.
 
-둘 다 일반 SPOT 핸들이다. 로컬 SPOT Node에 inproc으로 연결되며,
-서버 간 통신은 SPOT Node끼리 tcp mesh로 처리한다.
+facade는 로컬 SPOT Node 위에 붙고, 서버 간 통신은 SPOT Node끼리 tcp mesh로
+처리한다.
 
 ```
-  aggregator = zlink_spot_new(ctx)   (channel per 1 instance, collect + batch)
-  receiver   = zlink_spot_new(ctx)   (server per 1 instance, deliver to users)
+  aggregator_node = zlink_spot_node_new(ctx)
+  aggregator      = zlink_spot_new(aggregator_node)   (channel per 1 instance, collect + batch)
+  receiver_node   = zlink_spot_node_new(ctx)
+  receiver        = zlink_spot_new(receiver_node)     (server per 1 instance, deliver to users)
 
   ┌──────────────────── Server ────────────────────┐
   │                                                 │
@@ -156,18 +160,19 @@ Discord 같은 대규모 시스템은 자체 라우팅을 구현하지만 개발
 |------|------|
 | 총 그룹 | 60,000개 (활성 ~6,000개) |
 | 메시지 발생률 | ~10,000 msg/sec |
-| Aggregator 서버 | **6대** (10,000 SPOT handles/서버) |
-| Receiver 서버 | **20대** (50,000 users/서버, 1 SPOT handle) |
+| Aggregator 서버 | **6대** (10,000 SPOT facades/서버) |
+| Receiver 서버 | **20대** (50,000 users/서버, 1 SPOT facade) |
 | 총 서버 | **26대** |
 | 네트워크 부하 (1초 배치) | ~60,000 msg/sec |
 
 ## 핵심 코드
 
 ```c
-/* ── aggregator: 채널당 1개 SPOT 인스턴스 ── */
+/* ── aggregator: 채널당 1개 SPOT node + facade ── */
 /* 채널 "ch:123"의 메시지를 수집하고 배치 발행 */
 
-void *aggr = zlink_spot_new(ctx);  /* 일반 SPOT 핸들 */
+void *aggr_node = zlink_spot_node_new(ctx);
+void *aggr = zlink_spot_new(aggr_node);  /* node 위의 SPOT facade */
 
 zlink_set_subscription(aggr, "ch:123:in");
 
@@ -186,10 +191,11 @@ void on_collect(const zlink_routing_id_t *rid,
 zlink_subscribe_handler(aggr, on_collect, &batch);
 
 
-/* ── receiver: 서버당 1개 SPOT 인스턴스 ── */
+/* ── receiver: 서버당 1개 SPOT node + facade ── */
 /* 이 서버 유저가 속한 채널의 배치를 수신하여 전달 */
 
-void *recv_spot = zlink_spot_new(ctx);  /* 일반 SPOT 핸들 */
+void *recv_node = zlink_spot_node_new(ctx);
+void *recv_spot = zlink_spot_new(recv_node);  /* node 위의 SPOT facade */
 
 zlink_set_subscription(recv_spot, "ch:123:out");
 zlink_set_subscription(recv_spot, "ch:456:out");

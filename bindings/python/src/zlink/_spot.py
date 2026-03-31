@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+import errno
 
 from ._enums import (
     SendResult,
@@ -42,6 +43,16 @@ _SPOT_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_size_t,
     ctypes.c_void_p,
 )
+
+
+def _try_send_result_from_errno():
+    err = lib().zlink_errno()
+    if err in (errno.EAGAIN, 10035):
+        return SendResult.BACKPRESSURED
+    if err in (errno.ENOTCONN, 10057, errno.EHOSTUNREACH, 10065,
+               errno.ETIMEDOUT, 10060):
+        return SendResult.NOT_READY
+    return None
 
 
 def _decode_fixed(buf):
@@ -233,7 +244,7 @@ class SpotNode:
         return open_service_monitor(self, events)
 
     def wrap_handle(self):
-        handle = lib().zlink_spot_wrap_node(self._handle)
+        handle = lib().zlink_spot_new(self._handle)
         if not handle:
             _raise_last_error()
         return Spot._from_native_handle(handle)
@@ -361,16 +372,15 @@ class Spot:
         obj._send_ready_handler_cb = None
         return obj
 
-    def __init__(self, ctx_or_node):
+    def __init__(self, node):
         self._handler = None
         self._handler_cb = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
         self._own = True
-        if isinstance(ctx_or_node, SpotNode):
-            self._handle = lib().zlink_spot_wrap_node(ctx_or_node._handle)
-        else:
-            self._handle = lib().zlink_spot_new(ctx_or_node._handle)
+        if not isinstance(node, SpotNode):
+            raise TypeError("Spot requires a SpotNode")
+        self._handle = lib().zlink_spot_new(node._handle)
         if not self._handle:
             _raise_last_error()
 
@@ -413,12 +423,15 @@ class Spot:
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        result = lib().zlink_try_publish_result(
-            self._handle, topic_bytes, parts_array, part_count
+        result = lib().zlink_publish(
+            self._handle, topic_bytes, parts_array, part_count, 1
         )
-        if int(result) < 0:
+        if int(result) == 0:
+            return SendResult.SENT
+        mapped = _try_send_result_from_errno()
+        if mapped is None:
             _raise_last_error()
-        return SendResult(result)
+        return mapped
 
     def _recv_subscribed(self, flags):
         routing_id = ZlinkRoutingId()

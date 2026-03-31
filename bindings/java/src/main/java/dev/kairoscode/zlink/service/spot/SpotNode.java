@@ -111,9 +111,9 @@ public final class SpotNode implements AutoCloseable {
 
     /** Returns a unified spot wrapper bound to this node. */
     public Spot wrapHandle() {
-        MemorySegment spot = Native.spotWrapNode(handle);
+        MemorySegment spot = Native.spotNew(handle);
         if (spot == null || spot.address() == 0) {
-            throw ZlinkException.fromLastError("zlink_spot_wrap_node");
+            throw ZlinkException.fromLastError("zlink_spot_new");
         }
         return new Spot(spot);
     }

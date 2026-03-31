@@ -925,10 +925,28 @@ int resolve_spot_phase_timeout_ms(const multi_bench_settings_t &settings,
     int timeout_ms =
       std::max(settings.connect_ready_timeout_ms,
                std::max(1, settings.duration_seconds) * 5000);
+
+    // Large recv-mode fan-in cases can accumulate a substantial warmup backlog
+    // before the active phase becomes visible on the client. Give the phase
+    // transition enough time to drain queued warmup traffic instead of failing
+    // the benchmark while the service is still making forward progress.
+    if (msg_size >= 65536) {
+        const int base_large_timeout =
+          settings.clients >= 100 ? 60000 : 30000;
+        timeout_ms = std::max (
+          timeout_ms,
+          std::max (base_large_timeout,
+                    settings.connect_ready_timeout_ms * 6));
+    }
     if (msg_size >= 131072) {
         timeout_ms =
           std::max(timeout_ms,
-                   std::max(30000, settings.connect_ready_timeout_ms * 6));
+                   std::max(90000, settings.connect_ready_timeout_ms * 12));
+    }
+    if (msg_size >= 262144) {
+        timeout_ms =
+          std::max(timeout_ms,
+                   std::max(120000, settings.connect_ready_timeout_ms * 18));
     }
 
     return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_TIMEOUT_MS",
@@ -1076,8 +1094,6 @@ int run_client_benchmark(const std::string &lib_name,
     }
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
-    sync_spot_internal_mesh_pub_hwm(
-      bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm));
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes(fallback_size);
     ctx_guard_t ctx;
     if (!ctx.valid())

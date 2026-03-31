@@ -99,6 +99,7 @@ Registry:
 
 Spot:
 
+- `new Spot(node)`
 - `publish(topic, Message|List<Message>)`
 - `subscribe(...)`, `unsubscribe(...)`
 - `recv()`

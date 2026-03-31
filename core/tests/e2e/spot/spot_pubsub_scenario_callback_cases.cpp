@@ -196,7 +196,10 @@ void test_spot_facade_handler_receives_source_rid ()
       zlink_spot_node_connect_peer (sub_node, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub, "zone:auto:test"));
-    msleep (100);
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_publish, pub, "zone:auto:test", "ping", 0));
@@ -284,7 +287,14 @@ void test_spot_recv_callback_isolated_by_service_with_discovery ()
       zlink_set_subscription (sub_a_handle, "zone:auto:test"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_b_handle, "zone:auto:test"));
-    msleep (300);
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      pub_a, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      sub_a, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      pub_b, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      sub_b, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_publish, pub_a_handle, "zone:auto:test", "ping", 0));

@@ -14,7 +14,8 @@ public final class SpotMonitorSample {
         SampleSupport.ensureNative();
         String topic = SampleSupport.uniqueTopic("sample.topic");
         try (Context ctx = new Context();
-             Spot spot = new Spot(ctx);
+             SpotNode node = new SpotNode(ctx);
+             Spot spot = new Spot(node);
              ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
             if (monitor.tryRecv().isPresent()) {
                 throw new IllegalStateException(

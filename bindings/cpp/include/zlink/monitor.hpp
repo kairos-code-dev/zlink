@@ -69,7 +69,7 @@ class monitor_handle_t
     ZLINK_CPP_NODISCARD zlink_socket_monitor_event_t receive ()
     {
         zlink_socket_monitor_event_t event;
-        const int rc = zlink_socket_monitor_recv (_monitor, &event);
+        const int rc = zlink_socket_monitor_recv (_monitor, &event, 0);
         throw_on_error (rc);
         return event;
     }
@@ -77,7 +77,7 @@ class monitor_handle_t
     ZLINK_CPP_NODISCARD maybe_t<zlink_socket_monitor_event_t> try_receive ()
     {
         zlink_socket_monitor_event_t event;
-        const int rc = zlink_try_socket_monitor_recv (_monitor, &event);
+        const int rc = zlink_socket_monitor_recv (_monitor, &event, ZLINK_DONTWAIT);
         if (rc == 0)
             return maybe_t<zlink_socket_monitor_event_t> (event);
         if (errno == EAGAIN)

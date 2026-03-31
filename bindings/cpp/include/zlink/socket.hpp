@@ -200,6 +200,20 @@ inline send_result_t to_send_result (int result_) noexcept
     }
 }
 
+inline int classify_try_send_errno () noexcept
+{
+    switch (errno) {
+    case EAGAIN:
+        return ZLINK_SEND_RESULT_BACKPRESSURED;
+    case ENOTCONN:
+    case EHOSTUNREACH:
+    case ETIMEDOUT:
+        return ZLINK_SEND_RESULT_NOT_READY;
+    default:
+        return -1;
+    }
+}
+
 class socket_t
 {
   public:
@@ -356,16 +370,22 @@ class socket_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        const int rc = zlink_try_send_result (
+        const int rc = zlink_send (
           _socket, native_parts.empty () ? NULL : &native_parts[0],
-          native_parts.size ());
-        if (rc < 0) {
+          native_parts.size (), ZLINK_DONTWAIT);
+        if (rc == 0) {
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int send_result = detail::classify_try_send_errno ();
+        if (send_result < 0) {
             detail::restore_parts_from_native (parts_, native_parts);
             return -1;
         }
 
-        result_ = detail::to_send_result (rc);
-        if (rc != ZLINK_SEND_RESULT_SENT)
+        result_ = detail::to_send_result (send_result);
+        if (send_result != ZLINK_SEND_RESULT_SENT)
             detail::restore_parts_from_native (parts_, native_parts);
         return 0;
     }
@@ -441,16 +461,22 @@ class socket_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        const int rc = zlink_try_send_rid_result (
+        const int rc = zlink_send_rid (
           _socket, &target_rid_, native_parts.empty () ? NULL : &native_parts[0],
-          native_parts.size ());
-        if (rc < 0) {
+          native_parts.size (), ZLINK_DONTWAIT);
+        if (rc == 0) {
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int send_result = detail::classify_try_send_errno ();
+        if (send_result < 0) {
             detail::restore_parts_from_native (parts_, native_parts);
             return -1;
         }
 
-        result_ = detail::to_send_result (rc);
-        if (rc != ZLINK_SEND_RESULT_SENT)
+        result_ = detail::to_send_result (send_result);
+        if (send_result != ZLINK_SEND_RESULT_SENT)
             detail::restore_parts_from_native (parts_, native_parts);
         return 0;
     }
@@ -561,16 +587,23 @@ class socket_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        const int rc = zlink_try_publish_result (
+        const int rc = zlink_publish (
           _socket, topic_id_.c_str (),
-          native_parts.empty () ? NULL : &native_parts[0], native_parts.size ());
-        if (rc < 0) {
+          native_parts.empty () ? NULL : &native_parts[0], native_parts.size (),
+          ZLINK_DONTWAIT);
+        if (rc == 0) {
+            result_ = send_result_t::sent;
+            return 0;
+        }
+
+        const int send_result = detail::classify_try_send_errno ();
+        if (send_result < 0) {
             detail::restore_parts_from_native (parts_, native_parts);
             return -1;
         }
 
-        result_ = detail::to_send_result (rc);
-        if (rc != ZLINK_SEND_RESULT_SENT)
+        result_ = detail::to_send_result (send_result);
+        if (send_result != ZLINK_SEND_RESULT_SENT)
             detail::restore_parts_from_native (parts_, native_parts);
         return 0;
     }

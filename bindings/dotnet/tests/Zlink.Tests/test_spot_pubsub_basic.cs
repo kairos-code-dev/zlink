@@ -14,7 +14,8 @@ public sealed class test_spot_pubsub_basic
             return;
 
         using var ctx = new Context();
-        using var spot = new Spot(ctx);
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
 
         spot.SetSubscription("zone:12:*");
         spot.UnsetSubscription("zone:12:*");
@@ -27,7 +28,8 @@ public sealed class test_spot_pubsub_basic
             return;
 
         using var ctx = new Context();
-        using var spot = new Spot(ctx);
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
         spot.SetSubscription("own:topic");
 
         using var msg = Message.FromString("owned-spot");
@@ -43,7 +45,8 @@ public sealed class test_spot_pubsub_basic
             return;
 
         using var ctx = new Context();
-        using var spot = new Spot(ctx);
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
         spot.SetSubscription("cb:topic");
         spot.SubscribeHandler((topic, parts) =>
         {
@@ -61,7 +64,8 @@ public sealed class test_spot_pubsub_basic
             return;
 
         using var ctx = new Context();
-        using var spot = new Spot(ctx);
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
 
         string tooLongTopic = new string('a', 256);
 

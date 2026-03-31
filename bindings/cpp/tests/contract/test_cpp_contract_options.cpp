@@ -114,7 +114,8 @@ void test_socket_common_and_router_options ()
 void test_spot_options ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_t spot (ctx);
+    zlink::service::spot_node_t node (ctx);
+    zlink::service::spot_t spot (node);
     assert (spot.valid ());
 
     const int linger = 0;

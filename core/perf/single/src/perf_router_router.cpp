@@ -97,10 +97,11 @@ void router_router_recv_handler (const zlink_routing_id_t *source_rid_,
         return;
     }
 
-    single_note_callback_receive (state);
     if (header_ok && header.run_id == state->run_id
-        && header.msg_size == state->msg_size)
+        && header.msg_size == state->msg_size) {
+        single_note_callback_receive (state, header);
         (void) single_enqueue_metric_event (state, header);
+    }
 }
 
 inline bool setup_router_router_session (void *router1,

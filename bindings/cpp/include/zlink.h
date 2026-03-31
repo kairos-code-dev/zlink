@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 5
+#define ZLINK_VERSION_PATCH 6
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -774,10 +774,6 @@ ZLINK_EXPORT int zlink_send (void *s_,
                              size_t part_count_,
                              zlink_send_flags_t flags_);
 
-ZLINK_EXPORT int zlink_try_send_result (void *s_,
-                                        zlink_msg_t *parts_,
-                                        size_t part_count_);
-
 /**
  * @brief Send a multipart message to a specific peer routing id.
  *
@@ -790,12 +786,6 @@ ZLINK_EXPORT int zlink_send_rid (void *s_,
                                  zlink_msg_t *parts_,
                                  size_t part_count_,
                                  zlink_send_flags_t flags_);
-
-ZLINK_EXPORT int zlink_try_send_rid_result (
-  void *s_,
-  const zlink_routing_id_t *target_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
 
 /**
  * @brief Receive a multipart message from a socket or handle.
@@ -822,11 +812,6 @@ ZLINK_EXPORT int zlink_publish (void *subject_,
                                 zlink_msg_t *parts_,
                                 size_t part_count_,
                                 zlink_send_flags_t flags_);
-
-ZLINK_EXPORT int zlink_try_publish_result (void *subject_,
-                                           const char *topic_id_,
-                                           zlink_msg_t *parts_,
-                                           size_t part_count_);
 
 ZLINK_EXPORT int zlink_set_subscription (void *handle_,
                                          const char *filter_);
@@ -930,10 +915,9 @@ ZLINK_EXPORT int zlink_socket_monitor_handler (
   void *userdata_);
 
 ZLINK_EXPORT int zlink_socket_monitor_recv (
-  void *monitor_, zlink_socket_monitor_event_t *out_);
-
-ZLINK_EXPORT int zlink_try_socket_monitor_recv (
-  void *monitor_, zlink_socket_monitor_event_t *out_);
+  void *monitor_,
+  zlink_socket_monitor_event_t *out_,
+  zlink_send_flags_t flags_);
 
 /** @brief Read the current snapshot for a socket or service monitor handle. */
 ZLINK_EXPORT int zlink_monitor_snapshot (void *monitor_,
@@ -1069,21 +1053,13 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
 /* SPOT -------------------------------------------------------------------- */
 
 /**
- * @brief Create a unified SPOT handle that owns an internal spot node.
+ * @brief Create a unified SPOT facade over an existing SPOT node.
  *
- * The returned handle uses generic publish/subscribe APIs and lazily creates
- * side sockets as needed.
+ * The returned handle borrows `node`, lazily creates side sockets as needed,
+ * and must be released with `zlink_spot_destroy()`. Destroying the facade does
+ * not destroy the underlying node.
  */
-ZLINK_EXPORT void *zlink_spot_new (void *ctx);
-
-/**
- * @brief Create a unified SPOT handle wrapper over an existing SPOT node.
- *
- * The returned handle borrows `node` and must be released with
- * `zlink_spot_destroy()`. Destroying the wrapper does not destroy the
- * underlying node.
- */
-ZLINK_EXPORT void *zlink_spot_wrap_node (void *node);
+ZLINK_EXPORT void *zlink_spot_new (void *node);
 
 /** @brief Destroy a unified SPOT handle and its owned spot node. */
 ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
@@ -1093,9 +1069,9 @@ ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
 /**
  * @brief Create a SPOT node runtime for topology, discovery, and lifecycle.
  *
- * SPOT node handles own the internal pub/sub runtime that backs `zlink_spot()`
- * but do not expose the generic data-plane facade directly. Use
- * `zlink_spot_new()` for publish/subscribe/recv callback APIs.
+ * SPOT node handles own the internal pub/sub runtime that backs
+ * `zlink_spot_new(node)` but do not expose the generic data-plane facade
+ * directly.
  */
 ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
 
@@ -1314,10 +1290,9 @@ ZLINK_EXPORT int zlink_service_monitor_handler (
   void *userdata_);
 
 ZLINK_EXPORT int zlink_service_monitor_recv (
-  void *monitor_, zlink_service_monitor_event_t *out_);
-
-ZLINK_EXPORT int zlink_try_service_monitor_recv (
-  void *monitor_, zlink_service_monitor_event_t *out_);
+  void *monitor_,
+  zlink_service_monitor_event_t *out_,
+  zlink_send_flags_t flags_);
 
 typedef enum zlink_spot_node_state_t
 {

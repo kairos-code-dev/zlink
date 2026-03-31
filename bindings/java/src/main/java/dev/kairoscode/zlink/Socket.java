@@ -31,6 +31,12 @@ public abstract class Socket implements AutoCloseable {
     static final int ERRNO_EINTR = 4;
     static final int ERRNO_EAGAIN = 11;
     static final int ERRNO_EWOULDBLOCK_WIN = 10035;
+    static final int ERRNO_ENOTCONN = 107;
+    static final int ERRNO_ENOTCONN_WIN = 10057;
+    static final int ERRNO_EHOSTUNREACH = 113;
+    static final int ERRNO_EHOSTUNREACH_WIN = 10065;
+    static final int ERRNO_ETIMEDOUT = 110;
+    static final int ERRNO_ETIMEDOUT_WIN = 10060;
     static final int TOPIC_CAPACITY = 256;
     private static final byte[] EMPTY_BYTES = new byte[0];
 
@@ -930,14 +936,18 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(message, "message");
         while (true) {
             Integer rc = withNativeSendFrame(message,
-              nativeMsg -> Native.trySendResult(handle, nativeMsg, 1));
+              nativeMsg -> Native.sendMultipart(handle, nativeMsg, 1,
+                SendFlag.DONTWAIT.getValue()));
             if (rc >= 0)
-                return SendResult.fromNativeValue(rc);
+                return SendResult.SENT;
 
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            throw ZlinkException.fromLastError("zlink_try_send_result");
+            SendResult mapped = tryMapSendErrno(errno);
+            if (mapped != null)
+                return mapped;
+            throw ZlinkException.fromLastError("zlink_send");
         }
     }
 
@@ -1062,8 +1072,7 @@ public abstract class Socket implements AutoCloseable {
             if (errno == ERRNO_EINTR)
                 continue;
             throw ZlinkException.fromLastError(
-                routingId == null ? "zlink_try_send_result"
-                    : "zlink_try_send_rid_result");
+                routingId == null ? "zlink_send" : "zlink_send_rid");
         }
     }
 
@@ -1115,12 +1124,16 @@ public abstract class Socket implements AutoCloseable {
                     anchors[i] = parts.get(i).transferTo(nativeMsg);
                 }
                 int rc = routingId == null
-                    ? Native.trySendResult(handle, nativeParts, count)
-                    : Native.trySendResult(handle, nativeRoutingId(arena, routingId),
-                        nativeParts, count);
-                if (rc == SendResult.SENT.nativeValue())
+                    ? Native.sendMultipart(handle, nativeParts, count,
+                        SendFlag.DONTWAIT.getValue())
+                    : Native.sendMultipart(handle, nativeRoutingId(arena, routingId),
+                        nativeParts, count, SendFlag.DONTWAIT.getValue());
+                if (rc == 0)
                     success = true;
-                return rc;
+                if (rc >= 0)
+                    return SendResult.SENT.nativeValue();
+                SendResult mapped = tryMapSendErrno(Native.errno());
+                return mapped == null ? -1 : mapped.nativeValue();
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);
@@ -1157,7 +1170,7 @@ public abstract class Socket implements AutoCloseable {
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            throw ZlinkException.fromLastError("zlink_try_publish_result");
+            throw ZlinkException.fromLastError("zlink_publish");
         }
     }
 
@@ -1193,6 +1206,16 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
+    static SendResult tryMapSendErrno(int errno) {
+        return switch (errno) {
+            case ERRNO_EAGAIN, ERRNO_EWOULDBLOCK_WIN -> SendResult.BACKPRESSURED;
+            case ERRNO_ENOTCONN, ERRNO_ENOTCONN_WIN, ERRNO_EHOSTUNREACH,
+                ERRNO_EHOSTUNREACH_WIN, ERRNO_ETIMEDOUT,
+                ERRNO_ETIMEDOUT_WIN -> SendResult.NOT_READY;
+            default -> null;
+        };
+    }
+
     private int tryPublishPartsOnceResult(String topicId, List<Message> parts) {
         try (Arena arena = Arena.ofConfined()) {
             int count = parts.size();
@@ -1209,11 +1232,14 @@ public abstract class Socket implements AutoCloseable {
                         msgSize);
                     anchors[i] = parts.get(i).transferTo(nativeMsg);
                 }
-                int rc = Native.tryPublishResult(handle, nativeTopic, nativeParts,
-                    count);
-                if (rc == SendResult.SENT.nativeValue())
+                int rc = Native.publish(handle, nativeTopic, nativeParts, count,
+                    SendFlag.DONTWAIT.getValue());
+                if (rc == 0)
                     success = true;
-                return rc;
+                if (rc >= 0)
+                    return SendResult.SENT.nativeValue();
+                SendResult mapped = tryMapSendErrno(Native.errno());
+                return mapped == null ? -1 : mapped.nativeValue();
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);

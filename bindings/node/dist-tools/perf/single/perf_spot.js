@@ -5,7 +5,8 @@ const zlink = require('../../dist');
 const { createPayload, latencyUsFromPayload, stampPayload } = require('../common/perf_metrics');
 async function runSpotBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
-    const spot = new zlink.Spot(ctx);
+    const node = new zlink.SpotNode(ctx);
+    const spot = new zlink.Spot(node);
     const topic = 'perf:spot';
     const payload = createPayload(msgSize);
     const latenciesUs = [];

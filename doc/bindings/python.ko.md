@@ -81,7 +81,7 @@ canonical 송신/설정 API:
 - `Socket.set_routing_id()`, `subscribe()`, `unsubscribe()`
 - `Registry.bind()`
 - `Discovery(ctx, service_type, service_name)`
-- `Spot(node_or_ctx)`
+- `Spot(node)`
 
 예제는 `bindings/python/examples/` 아래에 둡니다.
 

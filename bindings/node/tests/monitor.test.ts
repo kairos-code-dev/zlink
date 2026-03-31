@@ -54,7 +54,8 @@ test('socket monitor receives bind state events', async () => {
 
 test('service monitors expose tryRecv empty path', () => {
   const ctx = new zlink.Context();
-  const spot = new zlink.Spot(ctx);
+  const node = new zlink.SpotNode(ctx);
+  const spot = new zlink.Spot(node);
   const monitor = spot.openMonitor();
 
   assert.equal(typeof monitor.recv, 'function');

@@ -66,7 +66,7 @@ public final class ServiceMonitor implements AutoCloseable {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment event = arena.allocate(NativeLayouts.SERVICE_EVENT_LAYOUT);
-            int rc = Native.serviceMonitorRecv(handle, event);
+            int rc = Native.serviceMonitorRecv(handle, event, 0);
             if (rc != 0) {
                 throw ZlinkException.fromLastError("zlink_service_monitor_recv");
             }
@@ -79,7 +79,8 @@ public final class ServiceMonitor implements AutoCloseable {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment event = arena.allocate(NativeLayouts.SERVICE_EVENT_LAYOUT);
-            int rc = Native.tryServiceMonitorRecv(handle, event);
+            int rc = Native.serviceMonitorRecv(handle, event,
+              ReceiveFlag.DONTWAIT.getValue());
             if (rc == 0) {
                 return Optional.of(ServiceEvent.fromNative(event));
             }
@@ -87,7 +88,7 @@ public final class ServiceMonitor implements AutoCloseable {
         int errno = Native.errno();
         if (errno == Socket.ERRNO_EAGAIN || errno == Socket.ERRNO_EWOULDBLOCK_WIN)
             return Optional.empty();
-        throw ZlinkException.fromLastError("zlink_try_service_monitor_recv");
+        throw ZlinkException.fromLastError("zlink_service_monitor_recv");
     }
 
     /** Returns the current service monitor snapshot. */

@@ -69,15 +69,16 @@ int zlink_get_routing_id(void *node,
 
 `SpotNode` is the topology and lifecycle owner. Its `service_name` is
 determined by the attached Discovery instance. SpotNode does not expose
-the generic data-plane facade directly — use `zlink_spot_new()` for
-publish/subscribe/recv callback APIs. TLS/WSS configuration is also
-owned by `SpotNode`; use `zlink_set_tls_server()` / `zlink_set_tls_client()`
-with the node handle before bind/connect.
+the generic data-plane facade directly. Create a unified `Spot` facade
+with `zlink_spot_new(node)` for publish/subscribe/recv callback APIs.
+TLS/WSS configuration is also owned by `SpotNode`; use
+`zlink_set_tls_server()` / `zlink_set_tls_client()` with the node handle
+before bind/connect.
 
 ### Unified Spot
 
 ```c
-void *zlink_spot_new(void *ctx);
+void *zlink_spot_new(void *node);
 int zlink_spot_destroy(void **spot_p);
 
 int zlink_publish(void *spot,
@@ -136,13 +137,13 @@ int zlink_get_routing_id(void *spot,
                          zlink_routing_id_t *out);
 ```
 
-`zlink_spot_new()` creates a unified handle that owns an internal spot node.
-It provides both publish and subscribe behavior. There is no separate public
-publish-only or subscribe-only child handle.
+`zlink_spot_new(node)` creates a unified facade that borrows an existing
+spot node. It provides both publish and subscribe behavior. There is no
+separate public publish-only or subscribe-only child handle.
 
 Unified `Spot` is not a transport-security configuration surface. Calling
 `zlink_set_tls_server()` or `zlink_set_tls_client()` with a unified `Spot`
-handle fails with `ENOTSUP`. Configure TLS/WSS on the owned `SpotNode`
+handle fails with `ENOTSUP`. Configure TLS/WSS on the backing `SpotNode`
 before the node participates in bind/connect/discovery.
 
 `zlink_subscribe()` provides synchronous pull-style receive in recv
@@ -433,7 +434,7 @@ void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 zlink_subscribe_handler(spot, on_spot_message, NULL);
 zlink_set_subscription (spot, "room:lobby");
 
@@ -442,7 +443,7 @@ zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_publish(spot, "room:lobby", &part, 1, 0);
 
-/* zlink_spot_destroy destroys the spot and its owned internal node */
+/* zlink_spot_destroy destroys only the borrowed spot facade */
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
 ```
@@ -454,7 +455,7 @@ void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://127.0.0.1:5555");
 
-void *spot = zlink_spot_new(ctx);
+void *spot = zlink_spot_new(node);
 zlink_set_subscription (spot, "room:lobby");
 
 /* publish */
@@ -477,7 +478,7 @@ if (rc == 0) {
         zlink_msg_close(&recv_parts[i]);
 }
 
-/* zlink_spot_destroy destroys the spot and its owned internal node */
+/* zlink_spot_destroy destroys only the borrowed spot facade */
 zlink_spot_destroy(&spot);
 zlink_spot_node_destroy(&node);
 ```

@@ -22,7 +22,9 @@ void test_spot_subject_access_resolves_composite_and_node_poller_sockets ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *spot = zlink_spot_new (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
 
     spot_handle_t *handle = as_spot_handle (spot);
@@ -55,6 +57,7 @@ void test_spot_subject_access_resolves_composite_and_node_poller_sockets ()
     TEST_ASSERT_NOT_NULL (node_sub_socket);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -63,7 +66,9 @@ void test_spot_subject_access_routes_subscription_and_routing_state ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *spot = zlink_spot_new (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
 
     spot_handle_t *handle = as_spot_handle (spot);
@@ -122,6 +127,7 @@ void test_spot_subject_access_routes_subscription_and_routing_state ()
     TEST_ASSERT_EQUAL_INT (0, topics_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
@@ -130,7 +136,9 @@ void test_spot_subject_access_routes_composite_and_node_options ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *spot = zlink_spot_new (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
 
     spot_handle_t *handle = as_spot_handle (spot);
@@ -141,6 +149,13 @@ void test_spot_subject_access_routes_composite_and_node_options ()
     TEST_ASSERT_SUCCESS_ERRNO (
       spot_subject_set_common_option (spot, ZLINK_OPT_LINGER, &linger,
                                       sizeof (linger)));
+    TEST_ASSERT_NULL (handle->pub);
+    TEST_ASSERT_NULL (handle->sub);
+
+    TEST_ASSERT_NOT_NULL (resolve_spot_pub_subject_poller_socket (spot));
+    TEST_ASSERT_NOT_NULL (resolve_spot_sub_subject_poller_socket (spot));
+    TEST_ASSERT_NOT_NULL (handle->pub);
+    TEST_ASSERT_NOT_NULL (handle->sub);
 
     int actual = 0;
     size_t actual_size = sizeof (actual);
@@ -166,6 +181,58 @@ void test_spot_subject_access_routes_composite_and_node_options ()
     TEST_ASSERT_EQUAL_INT (sndtimeo, actual);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    spot_handle_t *handle = as_spot_handle (spot);
+    TEST_ASSERT_NOT_NULL (handle);
+    TEST_ASSERT_NULL (handle->pub);
+
+    const int sndhwm = 321;
+    const int sndtimeo = 654;
+    const int nodrop = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      spot_subject_set_common_option (spot, ZLINK_OPT_SNDHWM, &sndhwm,
+                                      sizeof (sndhwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      spot_subject_set_common_option (spot, ZLINK_OPT_SNDTIMEO, &sndtimeo,
+                                      sizeof (sndtimeo)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      spot_subject_set_pub_option (spot, ZLINK_PUB_OPT_NODROP, &nodrop,
+                                   sizeof (nodrop)));
+    TEST_ASSERT_NULL (handle->pub);
+
+    int actual = 0;
+    size_t actual_size = sizeof (actual);
+    TEST_ASSERT_SUCCESS_ERRNO (spot_subject_get_common_option (
+      spot, ZLINK_OPT_SNDHWM, &actual, &actual_size));
+    TEST_ASSERT_EQUAL_INT (sndhwm, actual);
+
+    actual = 0;
+    actual_size = sizeof (actual);
+    TEST_ASSERT_SUCCESS_ERRNO (spot_subject_get_common_option (
+      spot, ZLINK_OPT_SNDTIMEO, &actual, &actual_size));
+    TEST_ASSERT_EQUAL_INT (sndtimeo, actual);
+
+    actual = 0;
+    actual_size = sizeof (actual);
+    TEST_ASSERT_SUCCESS_ERRNO (spot_subject_get_pub_option (
+      spot, ZLINK_PUB_OPT_NODROP, &actual, &actual_size));
+    TEST_ASSERT_EQUAL_INT (nodrop, actual);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 } // namespace
@@ -178,5 +245,6 @@ int main ()
     RUN_TEST (test_spot_subject_access_resolves_composite_and_node_poller_sockets);
     RUN_TEST (test_spot_subject_access_routes_subscription_and_routing_state);
     RUN_TEST (test_spot_subject_access_routes_composite_and_node_options);
+    RUN_TEST (test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create);
     return UNITY_END ();
 }

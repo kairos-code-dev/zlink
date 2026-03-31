@@ -305,6 +305,15 @@ public sealed class Spot : IDisposable
     private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
     private const int TopicCacheLimit = 1024;
+    private const int DontWaitFlag = 1;
+    private const int ErrnoEAgain = 11;
+    private const int ErrnoEWouldBlockWin = 10035;
+    private const int ErrnoENotConn = 107;
+    private const int ErrnoENotConnWin = 10057;
+    private const int ErrnoEHostUnreach = 113;
+    private const int ErrnoEHostUnreachWin = 10065;
+    private const int ErrnoETimedOut = 110;
+    private const int ErrnoETimedOutWin = 10060;
     private IntPtr _handle;
     private readonly bool _ownsHandle;
     private SpotSubHandler? _subscribeHandler;
@@ -316,23 +325,13 @@ public sealed class Spot : IDisposable
 
     internal IntPtr Handle => _handle;
 
-    public Spot(Context context)
-    {
-        if (context == null)
-            throw new ArgumentNullException(nameof(context));
-        _handle = NativeMethods.zlink_spot_new(context.Handle);
-        if (_handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        _ownsHandle = true;
-    }
-
     public Spot(SpotNode node)
     {
         if (node == null)
             throw new ArgumentNullException(nameof(node));
         if (node.Handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(node));
-        _handle = NativeMethods.zlink_spot_wrap_node(node.Handle);
+        _handle = NativeMethods.zlink_spot_new(node.Handle);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         _ownsHandle = true;
@@ -760,16 +759,20 @@ public sealed class Spot : IDisposable
 
             fixed (ZlinkMsg* nativePtr = nativeParts)
             {
-                int rc = NativeMethods.zlink_try_publish_result(_handle, topic,
-                    (IntPtr)nativePtr, (nuint)parts.Length);
-                if (rc < 0)
+                int rc = NativeMethods.zlink_publish(_handle, topic,
+                    (IntPtr)nativePtr, (nuint)parts.Length, DontWaitFlag);
+                if (rc == 0)
+                    return SendResult.Sent;
+
+                SendResult? sendResult = TryMapSendResultFromErrno();
+                if (sendResult == null)
                 {
                     for (int i = 0; i < built; i++)
                         parts[i].RestoreFrom(ref nativeParts[i]);
                     built = 0;
                     throw ZlinkException.FromLastError();
                 }
-                return MapSendResult(rc);
+                return sendResult.Value;
             }
         }
         catch
@@ -793,15 +796,19 @@ public sealed class Spot : IDisposable
         {
             message.MoveTo(ref nativePart);
             moved = true;
-            int rc = NativeMethods.zlink_try_publish_result(_handle, topic,
-                (IntPtr)(&nativePart), 1);
-            if (rc < 0)
+            int rc = NativeMethods.zlink_publish(_handle, topic,
+                (IntPtr)(&nativePart), 1, DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult == null)
             {
                 message.RestoreFrom(ref nativePart);
                 moved = false;
                 throw ZlinkException.FromLastError();
             }
-            return MapSendResult(rc);
+            return sendResult.Value;
         }
         catch
         {
@@ -833,6 +840,23 @@ public sealed class Spot : IDisposable
             2 => SendResult.NotReady,
             _ => throw new InvalidOperationException(
                 $"Unexpected send result code '{rc}'.")
+        };
+    }
+
+    private static SendResult? TryMapSendResultFromErrno()
+    {
+        int errno = NativeMethods.zlink_errno();
+        return errno switch
+        {
+            ErrnoEAgain => SendResult.Backpressured,
+            ErrnoEWouldBlockWin => SendResult.Backpressured,
+            ErrnoENotConn => SendResult.NotReady,
+            ErrnoENotConnWin => SendResult.NotReady,
+            ErrnoEHostUnreach => SendResult.NotReady,
+            ErrnoEHostUnreachWin => SendResult.NotReady,
+            ErrnoETimedOut => SendResult.NotReady,
+            ErrnoETimedOutWin => SendResult.NotReady,
+            _ => null
         };
     }
 }

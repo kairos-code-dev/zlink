@@ -81,7 +81,7 @@ Canonical send/configuration APIs:
 - `Socket.set_routing_id()`, `subscribe()`, `unsubscribe()`
 - `Registry.bind()`
 - `Discovery(ctx, service_type, service_name)`
-- `Spot(node_or_ctx)`
+- `Spot(node)`
 
 Examples live under `bindings/python/examples/`:
 

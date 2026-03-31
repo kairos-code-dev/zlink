@@ -136,7 +136,9 @@ inline bool wait_for_pub_delivery_ready_count (ready_monitor_t &monitor,
 
         for (;;) {
             zlink_socket_monitor_event_t event;
-            if (zlink_socket_monitor_recv (monitor.monitor, &event) != 0) {
+            if (zlink_socket_monitor_recv (
+                  monitor.monitor, &event, ZLINK_DONTWAIT)
+                != 0) {
                 const int err = zlink_errno ();
                 if (err == EAGAIN || err == EINTR)
                     break;

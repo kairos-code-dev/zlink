@@ -194,12 +194,7 @@ void account_pubsub_metric_header (
     if (!state_)
         return;
 
-    single_note_callback_receive (state_);
-    single_callback_metric_event_t event;
-    event.phase = header_.phase;
-    event.sent_ts_us = header_.sent_ts_us;
-    single_account_metric_event (state_, event);
-    single_notify_metric_waiters (state_);
+    single_note_callback_receive (state_, header_);
 }
 
 void pubsub_recv_handler (const zlink_routing_id_t *,
@@ -224,6 +219,7 @@ void pubsub_recv_handler (const zlink_routing_id_t *,
     if (!header_ok)
         return;
 
+    single_note_callback_receive (state, header);
     (void) single_enqueue_metric_event (state, header);
 }
 

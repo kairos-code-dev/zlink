@@ -39,6 +39,8 @@ void test_spot_sub_delivery_ready_immediate_first_publish ()
     TEST_ASSERT_TRUE (wait_for_service_event (
       &sub_monitor_probe, ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED,
       endpoint, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_publish, pub, "delivery:topic", "first", 0));

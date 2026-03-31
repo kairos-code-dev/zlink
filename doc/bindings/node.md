@@ -77,8 +77,8 @@ Aligned service entry points:
 - `new Discovery(ctx, serviceType, serviceName)`
 - `Registry.bind(pubEndpoint, routerEndpoint)`
 - `new RegistryQueryClient(ctx)`
-- `new Spot(ctx)`
 - `new SpotNode(ctx)`
+- `new Spot(node)`
 
 `Receiver` is removed from the aligned public API.
 `Discovery` requires a non-empty `serviceName`.

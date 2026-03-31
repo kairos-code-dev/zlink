@@ -8,7 +8,7 @@ test('service objects expose aligned monitor and query surface', () => {
     const registry = new zlink.Registry(ctx);
     const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'svc');
     const node = new zlink.SpotNode(ctx);
-    const spot = new zlink.Spot(ctx);
+    const spot = new zlink.Spot(node);
     const query = new zlink.RegistryQueryClient(ctx);
     registry.bind('inproc://registry-pub', 'inproc://registry-router');
     query.connect('inproc://registry-router');

@@ -127,7 +127,45 @@ zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_)
     if (spot_->pub)
         return spot_->pub;
 
-    spot_->pub = spot_->node->create_spot_pub ();
+    zlink::spot_pub_t *pub = spot_->node->create_spot_pub ();
+    if (!pub)
+        return NULL;
+
+    const zlink::spot_node_t::pub_defaults_t &defaults =
+      spot_->pending_pub_defaults;
+    if ((defaults.sndhwm.enabled
+         && pub->set_option (ZLINK_SPOT_PUB_OPT_SNDHWM, &defaults.sndhwm.value,
+                             defaults.sndhwm.size)
+              != 0)
+        || (defaults.sndtimeo.enabled
+            && pub->set_option (ZLINK_SPOT_PUB_OPT_SNDTIMEO,
+                                &defaults.sndtimeo.value,
+                                defaults.sndtimeo.size)
+                 != 0)
+        || (defaults.linger.enabled
+            && pub->set_option (ZLINK_SPOT_PUB_OPT_LINGER,
+                                &defaults.linger.value, defaults.linger.size)
+                 != 0)
+        || (defaults.nodrop.enabled
+            && pub->set_option (ZLINK_SPOT_PUB_OPT_NODROP,
+                                &defaults.nodrop.value, defaults.nodrop.size)
+                 != 0)
+        || (defaults.sndbuf.enabled
+            && pub->set_option (ZLINK_SPOT_PUB_OPT_SNDBUF,
+                                &defaults.sndbuf.value, defaults.sndbuf.size)
+                 != 0)
+        || (defaults.rcvbuf.enabled
+            && pub->set_option (ZLINK_SPOT_PUB_OPT_RCVBUF,
+                                &defaults.rcvbuf.value, defaults.rcvbuf.size)
+                 != 0)) {
+        const int err = errno;
+        (void) pub->destroy ();
+        delete pub;
+        errno = err;
+        return NULL;
+    }
+
+    spot_->pub = pub;
     return spot_->pub;
 }
 

@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.10)
 project(zlink_cpp LANGUAGES CXX)
 
 set(ZLINK_CORE_DIR "${CMAKE_SOURCE_DIR}/core" CACHE PATH "Path to zlink core")
+set(ZLINK_CPP_STANDALONE FALSE)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  set(ZLINK_CPP_STANDALONE TRUE)
+endif()
 
 add_library(zlink-cpp INTERFACE)
 target_include_directories(zlink-cpp INTERFACE
@@ -57,17 +61,19 @@ endif()
 if(ZLINK_CPP_BUILD_SAMPLES)
   function(add_cpp_sample target_name source_file)
     add_cpp_binding_executable(${target_name} ${source_file})
-    if(UNIX AND NOT WIN32)
-      add_test(NAME sample_smoke_${target_name}
-        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
-    else()
-      add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
+    if(ZLINK_CPP_STANDALONE)
+      if(UNIX AND NOT WIN32)
+        add_test(NAME sample_smoke_${target_name}
+          COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+      else()
+        add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
+      endif()
+      set_tests_properties(sample_smoke_${target_name} PROPERTIES
+        LABELS "sample-smoke"
+        TIMEOUT 120
+      )
+      configure_cpp_binding_runtime(sample_smoke_${target_name})
     endif()
-    set_tests_properties(sample_smoke_${target_name} PROPERTIES
-      LABELS "sample-smoke"
-      TIMEOUT 120
-    )
-    configure_cpp_binding_runtime(sample_smoke_${target_name})
   endfunction()
 
   add_cpp_sample(
@@ -115,17 +121,19 @@ endif()
 if(ZLINK_CPP_BUILD_TESTS)
   function(add_cpp_contract_test target_name source_file)
     add_cpp_binding_executable(${target_name} ${source_file})
-    if(UNIX AND NOT WIN32)
-      add_test(NAME ${target_name}
-        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
-    else()
-      add_test(NAME ${target_name} COMMAND ${target_name})
+    if(ZLINK_CPP_STANDALONE)
+      if(UNIX AND NOT WIN32)
+        add_test(NAME ${target_name}
+          COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+      else()
+        add_test(NAME ${target_name} COMMAND ${target_name})
+      endif()
+      set_tests_properties(${target_name} PROPERTIES
+        LABELS "contract"
+        TIMEOUT 120
+      )
+      configure_cpp_binding_runtime(${target_name})
     endif()
-    set_tests_properties(${target_name} PROPERTIES
-      LABELS "contract"
-      TIMEOUT 120
-    )
-    configure_cpp_binding_runtime(${target_name})
   endfunction()
 
   add_cpp_contract_test(

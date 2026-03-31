@@ -497,58 +497,6 @@ int zlink_publish (void *subject_,
                                      flags_);
 }
 
-namespace
-{
-int classify_try_send_errno (int err_)
-{
-    switch (err_) {
-        case EAGAIN:
-            return ZLINK_SEND_RESULT_BACKPRESSURED;
-        case ENOTCONN:
-        case EHOSTUNREACH:
-        case ETIMEDOUT:
-            return ZLINK_SEND_RESULT_NOT_READY;
-        default:
-            errno = err_;
-            return -1;
-    }
-}
-}
-
-int zlink_try_send_result (void *s_,
-                           zlink_msg_t *parts_,
-                           size_t part_count_)
-{
-    const int rc = zlink_send (s_, parts_, part_count_, ZLINK_DONTWAIT);
-    if (rc == 0)
-        return ZLINK_SEND_RESULT_SENT;
-    return classify_try_send_errno (errno);
-}
-
-int zlink_try_send_rid_result (void *s_,
-                               const zlink_routing_id_t *target_rid_,
-                               zlink_msg_t *parts_,
-                               size_t part_count_)
-{
-    const int rc =
-      zlink_send_rid (s_, target_rid_, parts_, part_count_, ZLINK_DONTWAIT);
-    if (rc == 0)
-        return ZLINK_SEND_RESULT_SENT;
-    return classify_try_send_errno (errno);
-}
-
-int zlink_try_publish_result (void *subject_,
-                              const char *topic_id_,
-                              zlink_msg_t *parts_,
-                              size_t part_count_)
-{
-    const int rc =
-      zlink_publish (subject_, topic_id_, parts_, part_count_, ZLINK_DONTWAIT);
-    if (rc == 0)
-        return ZLINK_SEND_RESULT_SENT;
-    return classify_try_send_errno (errno);
-}
-
 int zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,

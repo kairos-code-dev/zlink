@@ -30,6 +30,26 @@ static const int32_t k_legacy_opt_subscribe = 6;
 static const int32_t k_legacy_opt_unsubscribe = 7;
 static const int32_t k_legacy_opt_xpub_verbose = 40;
 
+int classify_try_send_errno()
+{
+    switch (zlink_errno()) {
+    case EAGAIN:
+        return ZLINK_SEND_RESULT_BACKPRESSURED;
+#ifdef ENOTCONN
+    case ENOTCONN:
+#endif
+#ifdef EHOSTUNREACH
+    case EHOSTUNREACH:
+#endif
+#ifdef ETIMEDOUT
+    case ETIMEDOUT:
+#endif
+        return ZLINK_SEND_RESULT_NOT_READY;
+    default:
+        return -1;
+    }
+}
+
 struct stream_js_payload_t
 {
     std::vector<unsigned char> routing_id;
@@ -1403,7 +1423,13 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
         return NULL;
     }
 
-    int rc = zlink_try_publish_result(sock, topic.c_str(), parts.data(), parts.size());
+    int rc = zlink_publish(sock, topic.c_str(), parts.data(), parts.size(),
+                           ZLINK_DONTWAIT);
+    if (rc == 0) {
+        rc = ZLINK_SEND_RESULT_SENT;
+    } else {
+        rc = classify_try_send_errno();
+    }
     if (rc < 0) {
         close_msg_vector(parts);
         return throw_last_error(env, "tryPublish failed");
@@ -1429,7 +1455,11 @@ napi_value socket_try_send(napi_env env, napi_callback_info info)
     zlink_msg_t msg;
     if (!init_msg_from_bytes(&msg, data, len))
         return throw_last_error(env, "trySend failed");
-    int rc = zlink_try_send_result(sock, &msg, 1);
+    int rc = zlink_send(sock, &msg, 1, ZLINK_DONTWAIT);
+    if (rc == 0)
+        rc = ZLINK_SEND_RESULT_SENT;
+    else
+        rc = classify_try_send_errno();
     if (rc < 0)
         return throw_last_error(env, "trySend failed");
     napi_value out;
@@ -1449,7 +1479,11 @@ napi_value socket_try_send_parts(napi_env env, napi_callback_info info)
     if (!build_msg_vector(env, argv[1], &parts))
         return NULL;
 
-    int rc = zlink_try_send_result(sock, parts.data(), parts.size());
+    int rc = zlink_send(sock, parts.data(), parts.size(), ZLINK_DONTWAIT);
+    if (rc == 0)
+        rc = ZLINK_SEND_RESULT_SENT;
+    else
+        rc = classify_try_send_errno();
     if (rc < 0) {
         close_msg_vector(parts);
         return throw_last_error(env, "trySendParts failed");
@@ -1480,7 +1514,11 @@ napi_value socket_try_send_routing(napi_env env, napi_callback_info info)
     zlink_msg_t msg;
     if (!init_msg_from_bytes(&msg, data, len))
         return throw_last_error(env, "trySendTo failed");
-    int rc = zlink_try_send_rid_result(sock, &routing_id, &msg, 1);
+    int rc = zlink_send_rid(sock, &routing_id, &msg, 1, ZLINK_DONTWAIT);
+    if (rc == 0)
+        rc = ZLINK_SEND_RESULT_SENT;
+    else
+        rc = classify_try_send_errno();
     if (rc < 0)
         return throw_last_error(env, "trySendTo failed");
     napi_value out;
@@ -1504,7 +1542,12 @@ napi_value socket_try_send_routing_parts(napi_env env, napi_callback_info info)
     if (!build_msg_vector(env, argv[2], &parts))
         return NULL;
 
-    int rc = zlink_try_send_rid_result(sock, &routing_id, parts.data(), parts.size());
+    int rc = zlink_send_rid(sock, &routing_id, parts.data(), parts.size(),
+                            ZLINK_DONTWAIT);
+    if (rc == 0)
+        rc = ZLINK_SEND_RESULT_SENT;
+    else
+        rc = classify_try_send_errno();
     if (rc < 0) {
         close_msg_vector(parts);
         return throw_last_error(env, "trySendPartsTo failed");
@@ -2161,7 +2204,7 @@ napi_value monitor_recv(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &mon);
     (void) argv;
     zlink_monitor_event_t evt;
-    int rc = zlink_socket_monitor_recv(mon, &evt);
+    int rc = zlink_socket_monitor_recv(mon, &evt, 0);
     if (rc != 0)
         return throw_last_error(env, "monitor_recv failed");
     napi_value obj;
@@ -2187,7 +2230,7 @@ napi_value monitor_try_recv(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &mon);
 
     zlink_monitor_event_t evt;
-    int rc = zlink_try_socket_monitor_recv(mon, &evt);
+    int rc = zlink_socket_monitor_recv(mon, &evt, ZLINK_DONTWAIT);
     if (rc != 0) {
         if (zlink_errno() == EAGAIN) {
             napi_value none;

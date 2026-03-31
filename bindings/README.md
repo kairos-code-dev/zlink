@@ -638,6 +638,11 @@ NotReady
 - perf 코드는 다음 기준을 반드시 따른다.
   - `core/perf` 에서 제공하는 패턴과 시나리오를 기준으로 한다
   - `doc/perf` 정책을 준수한다
+- perf 코드를 작성하거나 리뷰할 때는 반드시 다음 정책 문서를 읽고 준수해야
+  한다.
+  - [`doc/perf/PERF_POLICY.md`](../doc/perf/PERF_POLICY.md) — 공통 perf 정책
+  - [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](../doc/perf/PERF_SINGLE_TEST_POLICY.md) — single suite 정책
+  - [`doc/perf/PERF_MULTI_TEST_POLICY.md`](../doc/perf/PERF_MULTI_TEST_POLICY.md) — multi suite 정책
 - core perf가 C API 형태로 제공되더라도, 각 언어 perf 코드는 성능 테스트의
   목적을 해치지 않는 범위에서 해당 언어의 스타일에 맞게 작성한다.
 - 즉 perf 코드는 다음 둘을 동시에 만족해야 한다.

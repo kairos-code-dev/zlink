@@ -163,19 +163,12 @@ int recv_service_monitor_event_unchecked (void *monitor_,
 }
 
 int zlink_socket_monitor_recv (void *monitor_,
-                               zlink_socket_monitor_event_t *out_)
+                               zlink_socket_monitor_event_t *out_,
+                               zlink_send_flags_t flags_)
 {
     if (require_monitor_recv_model (monitor_, false) != 0)
         return -1;
-    return recv_socket_monitor_event_unchecked (monitor_, out_, 0);
-}
-
-int zlink_try_socket_monitor_recv (void *monitor_,
-                                   zlink_socket_monitor_event_t *out_)
-{
-    if (require_monitor_recv_model (monitor_, false) != 0)
-        return -1;
-    return recv_socket_monitor_event_unchecked (monitor_, out_, ZLINK_DONTWAIT);
+    return recv_socket_monitor_event_unchecked (monitor_, out_, flags_);
 }
 
 int zlink_monitor_snapshot (void *monitor_,
@@ -208,17 +201,10 @@ int zlink_monitor_snapshot (void *monitor_,
 }
 
 int zlink_service_monitor_recv (void *monitor_,
-                                zlink_service_monitor_event_t *out_)
+                                zlink_service_monitor_event_t *out_,
+                                zlink_send_flags_t flags_)
 {
     if (require_monitor_recv_model (monitor_, true) != 0)
         return -1;
-    return recv_service_monitor_event_unchecked (monitor_, out_, 0);
-}
-
-int zlink_try_service_monitor_recv (void *monitor_,
-                                    zlink_service_monitor_event_t *out_)
-{
-    if (require_monitor_recv_model (monitor_, true) != 0)
-        return -1;
-    return recv_service_monitor_event_unchecked (monitor_, out_, ZLINK_DONTWAIT);
+    return recv_service_monitor_event_unchecked (monitor_, out_, flags_);
 }

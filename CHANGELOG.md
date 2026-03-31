@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.15] - 2026-03-31
+
+### Fixed
+
+**Core Source Root Resolution**
+- Switched core-internal CMake asset and bundled Boost path resolution from `PROJECT_SOURCE_DIR` to `CMAKE_CURRENT_SOURCE_DIR` so root-wrapper builds on Linux and macOS resolve `core/external/boost` correctly during native release builds.
+
 ## [5.0.14] - 2026-03-31
 
 ### Fixed

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.16] - 2026-03-31
+
+### Fixed
+
+**Native Build Script Inputs**
+- Passed `ZLINK_BOOST_INCLUDE_DIR=core/external/boost` explicitly from the Linux, macOS, and Windows native build scripts so GitHub Actions release builds no longer depend on implicit source-root detection for bundled Boost headers.
+
 ## [5.0.15] - 2026-03-31
 
 ### Fixed

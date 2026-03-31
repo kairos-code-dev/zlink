@@ -128,9 +128,13 @@ try {
 
     # Configure build
     $BoostIncludeArgs = @()
+    $BundledBoostDir = Join-Path $ROOT_DIR_ABS "core\\external\\boost"
+    if (Test-Path "$BundledBoostDir\\boost\\asio.hpp") {
+        $BoostIncludeArgs += "-DZLINK_BOOST_INCLUDE_DIR=$BundledBoostDir"
+    }
     $VcpkgInstalled = Join-Path $ROOT_DIR_ABS "core\\deps\\vcpkg\\installed\\$VCPKG_TRIPLET"
     $BoostIncludeDir = Join-Path $VcpkgInstalled "include"
-    if ((Test-Path "$BoostIncludeDir\\boost\\asio.hpp") -and (Test-Path "$BoostIncludeDir\\boost\\beast.hpp")) {
+    if (($BoostIncludeArgs.Count -eq 0) -and (Test-Path "$BoostIncludeDir\\boost\\asio.hpp") -and (Test-Path "$BoostIncludeDir\\boost\\beast.hpp")) {
         $BoostIncludeArgs += "-DZLINK_BOOST_INCLUDE_DIR=$BoostIncludeDir"
     }
 

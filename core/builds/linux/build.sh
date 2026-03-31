@@ -92,6 +92,11 @@ if [ "$RUN_TESTS" = "ON" ]; then
 fi
 
 # Configure build
+BOOST_INCLUDE_ARGS=""
+if [ -f "$REPO_ROOT/core/external/boost/boost/asio.hpp" ]; then
+    BOOST_INCLUDE_ARGS="-DZLINK_BOOST_INCLUDE_DIR=$REPO_ROOT/core/external/boost"
+fi
+
 cmake "$LIBZLINK_SRC_ABS" \
     $CMAKE_ARCH_FLAGS \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
@@ -103,6 +108,7 @@ cmake "$LIBZLINK_SRC_ABS" \
     -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
     -DBUILD_BENCHMARKS=OFF \
     -DZLINK_CXX_STANDARD=17 \
+    $BOOST_INCLUDE_ARGS \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
 

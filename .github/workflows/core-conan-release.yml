@@ -75,8 +75,8 @@ jobs:
           CONAN_PASSWORD: ${{ secrets.CONAN_PASSWORD }}
         run: |
           if [ -z "${CONAN_REMOTE_URL}" ] || [ -z "${CONAN_LOGIN_USERNAME}" ] || [ -z "${CONAN_PASSWORD}" ]; then
-            echo "CONAN_REMOTE_URL, CONAN_LOGIN_USERNAME, CONAN_PASSWORD secrets are required" >&2
-            exit 1
+            echo "Skipping Conan upload because CONAN_REMOTE_URL, CONAN_LOGIN_USERNAME, or CONAN_PASSWORD is not configured."
+            exit 0
           fi
 
           REMOTE_NAME="${{ github.event.inputs.conan_remote }}"

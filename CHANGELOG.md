@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.8] - 2026-03-31
+
+### Fixed
+
+**Release Workflow Robustness**
+- Changed the Conan release workflow to skip the upload step when Conan remote secrets are not configured, so public release validation still succeeds after package creation instead of hard-failing on missing repository credentials.
+
 ## [5.0.7] - 2026-03-31
 
 ### Fixed

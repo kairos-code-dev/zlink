@@ -289,7 +289,7 @@ try {
         if ($Architecture -eq "arm64") {
             Write-Host "Skipping tests: Cannot run ARM64 binaries on x64 host"
         } else {
-            $TestDir = Join-Path $BUILD_DIR "core"
+            $TestDir = $BUILD_DIR
             $OLD_PATH = $env:PATH
             $DLL_DIR = (Resolve-Path ("bin\\$BuildType")).Path
             $env:PATH = "$DLL_DIR;$env:PATH"

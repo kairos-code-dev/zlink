@@ -1,4 +1,6 @@
 sources:
+  "5.0.11":
+    url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v5.0.11.tar.gz"
   "5.0.10":
     url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v5.0.10.tar.gz"
   "5.0.9":

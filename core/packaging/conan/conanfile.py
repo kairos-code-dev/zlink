@@ -36,6 +36,9 @@ class ZlinkConan(ConanFile):
         tc = CMakeToolchain(self)
         tc.variables["BUILD_SHARED"] = bool(self.options.shared)
         tc.variables["BUILD_STATIC"] = not bool(self.options.shared)
+        tc.variables["BUILD_TESTS"] = False
+        tc.variables["ZLINK_BUILD_TESTS"] = False
+        tc.variables["BUILD_BENCHMARKS"] = False
         tc.variables["WITH_TLS"] = bool(self.options.with_tls)
         tc.variables["ZLINK_CXX_STANDARD"] = "17"
         tc.generate()

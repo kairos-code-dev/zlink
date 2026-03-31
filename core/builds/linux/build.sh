@@ -154,7 +154,7 @@ cd "$REPO_ROOT"
 if [ "$RUN_TESTS" = "ON" ]; then
     echo ""
     echo "Step 5: Running tests..."
-    TEST_DIR="$BUILD_DIR/core"
+    TEST_DIR="$BUILD_DIR"
     bash "$REPO_ROOT/core/tests/run_test_lanes.sh" \
         --build-dir "$TEST_DIR" \
         --include-e2e

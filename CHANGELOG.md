@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.11] - 2026-03-31
+
+### Fixed
+
+**Release Build Packaging**
+- Corrected the scripted lane-runner build directory on Linux, macOS, and Windows release builds so the repository test lanes execute against the configured top-level CTest tree instead of a non-root subdirectory.
+- Disabled tests and benchmark/perf targets in the Conan package recipe so release packaging only builds the installable library surface instead of compiling the full test and perf graph inside Conan.
+
 ## [5.0.10] - 2026-03-31
 
 ### Fixed

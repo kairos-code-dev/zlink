@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.21] - 2026-03-31
+
+### Fixed
+
+**Release CI Stability**
+- Stopped the STREAM recv-handler handoff tests from closing sockets while dispatch callbacks were still active, removing the macOS callback teardown race that surfaced as `mutex lock failed` during the serial integration lane.
+- Strengthened the STREAM send-blocking wakeup regression to retry the preserved-message resend against actual reopened capacity instead of assuming one successful probe send left enough headroom for the next retry on slower runners.
+- Raised the slow-runner wait and CTest timeout budgets for the WSS SPOT peer/member-peer and subject-access release cases so Linux/macOS native validation no longer times out after the functional assertions have already passed.
+
 ## [5.0.20] - 2026-03-31
 
 ### Fixed

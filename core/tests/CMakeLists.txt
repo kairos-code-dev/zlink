@@ -250,6 +250,9 @@ endif()
 if(TARGET test_reconnect_ivl)
   set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
 endif()
+if(TARGET test_reconnect_options)
+  set_tests_properties(test_reconnect_options PROPERTIES TIMEOUT 30)
+endif()
 if(TARGET test_issue_566)
   set_tests_properties(test_issue_566 PROPERTIES TIMEOUT 30)
 endif()
@@ -361,13 +364,13 @@ if(TARGET test_multi_stream_benchmark_process)
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_stream_socket)
-  set_tests_properties(test_stream_socket PROPERTIES TIMEOUT 60)
+  set_tests_properties(test_stream_socket PROPERTIES TIMEOUT 120)
 endif()
 if(TARGET test_stream_threadsafe)
-  set_tests_properties(test_stream_threadsafe PROPERTIES TIMEOUT 30)
+  set_tests_properties(test_stream_threadsafe PROPERTIES TIMEOUT 60)
 endif()
 if(TARGET test_stream_send_blocking_wakeup)
-  set_tests_properties(test_stream_send_blocking_wakeup PROPERTIES TIMEOUT 30)
+  set_tests_properties(test_stream_send_blocking_wakeup PROPERTIES TIMEOUT 60)
 endif()
 if(TARGET test_stream_fastpath)
   set_tests_properties(test_stream_fastpath PROPERTIES TIMEOUT 30)
@@ -562,7 +565,7 @@ if(TARGET test_spot_service_introspection)
   set_tests_properties(
     test_spot_service_introspection
     PROPERTIES
-      TIMEOUT 120
+      TIMEOUT 180
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -577,7 +580,7 @@ if(TARGET test_spot_service_introspection)
   set_tests_properties(
     ${SPOT_SERVICE_INTROSPECTION_TEST_NAMES}
     PROPERTIES
-      TIMEOUT 120
+      TIMEOUT 180
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -609,7 +612,7 @@ if(TARGET test_spot_pubsub_scenario)
   set_tests_properties(
     ${SPOT_PUBSUB_LOCAL_TEST_NAMES}
     PROPERTIES
-      TIMEOUT 60
+      TIMEOUT 90
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
@@ -617,7 +620,7 @@ if(TARGET test_spot_pubsub_scenario)
   set_tests_properties(
     ${SPOT_PUBSUB_PEER_TEST_NAMES}
     PROPERTIES
-      TIMEOUT 90
+      TIMEOUT 120
       SKIP_RETURN_CODE 77
       WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")

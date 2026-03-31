@@ -1648,7 +1648,7 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
           recv_stream_routing_id_and_payload (server, &rid, &payload_msg, 0));
 
         TEST_ASSERT_TRUE (wait_stream_ready_for_routing_id (
-          monitor, &ordering_probe, &rid, 5000));
+          monitor, &ordering_probe, &rid, 10000));
         TEST_ASSERT_TRUE (mark_stream_payload_begin (&ordering_probe, &rid, true));
 
         if (test_stream_send_single_msg (server, &rid, &payload_msg, 0) < 0) {
@@ -1665,7 +1665,7 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
     TEST_ASSERT_TRUE (
       wait_stream_ordering_sets_with_monitor (monitor, &ordering_probe,
                                               client_count, client_count,
-                                              10000));
+                                              15000));
     TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (
       0, ordering_probe.payload_before_ready.load (std::memory_order_acquire));

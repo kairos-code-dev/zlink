@@ -457,6 +457,14 @@ int zlink::stream_t::stream_dispatch_stop ()
     _dispatch_raw_callback.store (NULL, std::memory_order_release);
     _dispatch_msg_handler.store (NULL, std::memory_order_release);
     _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
+
+    if (_dispatch_inflight.load (std::memory_order_acquire) == 0)
+        return 0;
+
+    std::unique_lock<std::mutex> quiesce_lock (_dispatch_quiesce_mu);
+    _dispatch_quiesce_cv.wait (quiesce_lock, [this] {
+        return _dispatch_inflight.load (std::memory_order_acquire) == 0;
+    });
     return 0;
 }
 
@@ -722,7 +730,11 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     if (raw_callback) {
         const int cb_rc =
           raw_callback (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg));
-        _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
+        const uint32_t remaining =
+          _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel) - 1;
+        if (remaining == 0
+            && !_dispatch_active.load (std::memory_order_acquire))
+            _dispatch_quiesce_cv.notify_all ();
         if (cb_rc != 0)
             stop_dispatch_from_callback ();
         return 1;
@@ -730,7 +742,11 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
 
     handler (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg), 1,
              _dispatch_msg_handler_userdata.load (std::memory_order_acquire));
-    _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
+    const uint32_t remaining =
+      _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel) - 1;
+    if (remaining == 0
+        && !_dispatch_active.load (std::memory_order_acquire))
+        _dispatch_quiesce_cv.notify_all ();
     return 1;
 }
 

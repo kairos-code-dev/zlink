@@ -296,10 +296,20 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     if (has_handler)
         spot_sub_diag_log ("destroy.after-sub-dispatch-stop");
     {
+        clock_t clock;
+        const uint64_t callback_wait_deadline = clock.now_ms () + 10000;
         scoped_lock_t lock (_sync);
-        if (_callback_inflight.get () > 0) {
-            errno = EBUSY;
-            return -1;
+        while (_callback_inflight.get () > 0) {
+            const uint64_t now = clock.now_ms ();
+            if (now >= callback_wait_deadline) {
+                errno = ETIMEDOUT;
+                return -1;
+            }
+
+            const int wait_ms =
+              static_cast<int> (callback_wait_deadline - now);
+            if (_callback_cv.wait (&_sync, wait_ms) != 0 && errno != EAGAIN)
+                return -1;
         }
         _active_direct_handler.store (NULL, std::memory_order_release);
         _handler_state.store (handler_none, std::memory_order_release);

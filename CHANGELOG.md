@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.18] - 2026-03-31
+
+### Fixed
+
+**Release Runtime Stability**
+- Waited for STREAM and SPOT callback dispatch to quiesce during teardown so Linux and macOS release builds no longer trip callback-after-destroy races in the serial core suites.
+- Tightened perf monitor readiness handling so `CONNECTION_READY_CHANGED` only counts as ready when the event value is positive, preventing DEALER/DEALER TLS clients from starting before the transport is actually writable.
+- Increased multi-SPOT TLS/WSS ready budgets for high-fan-in client setups so the native release suites stop failing on slow CI runners while still using monitor-driven readiness gates.
+
 ## [5.0.17] - 2026-03-31
 
 ### Fixed

@@ -64,10 +64,6 @@ void test_spot_node_discovery_direct_and_child_interop ()
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
       sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
-    TEST_ASSERT_TRUE (wait_for_spot_ready_state (
-      pub, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
-    TEST_ASSERT_TRUE (wait_for_spot_ready_state (
-      sub, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
       &zlink_publish, pub, "interop:node", "node-hop", 0));

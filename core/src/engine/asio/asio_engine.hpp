@@ -107,9 +107,6 @@ class asio_engine_t : public i_engine
     //  Start asynchronous write operation
     void start_async_write ();
 
-    //  Arm one async write for the already prepared output buffer.
-    void schedule_async_write ();
-
     //  Speculative (synchronous) write attempt.
     //  Tries to write immediately using transport->write_some().
     //  Falls back to async write if would_block or partial write occurs.

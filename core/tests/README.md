@@ -9,7 +9,6 @@
 | `core/tests/unittest/` | small internal tests labeled `unittest` |
 | `core/tests/integration/` | focused functional tests labeled `integration` |
 | `core/tests/e2e/` | executable-level smoke tests labeled `e2e` |
-| `core/tests/benchmark_process/` | long-running process-orchestration tests that depend on `core/perf` binaries |
 | `core/tests/testutil*` | shared test helpers |
 | `core/tests/run_test_lanes.sh` | sequential lane runner |
 
@@ -17,7 +16,7 @@
 
 Tests are classified along two axes:
 
-- category: `unittest`, `integration`, `e2e`, `regression`, `benchmark_process`
+- category: `unittest`, `integration`, `e2e`, `regression`
 - execution mode: `parallel-safe`, `serial`
 
 Current policy is intentionally conservative:
@@ -26,7 +25,6 @@ Current policy is intentionally conservative:
 - `integration` => `serial`
 - `e2e` => `serial`
 - `regression` => `serial`
-- `benchmark_process` => `serial`
 
 `RESOURCE_LOCK` only coordinates tests inside one `ctest` process. Do not run
 multiple `ctest` commands concurrently for serial lanes.
@@ -53,9 +51,6 @@ ctest --test-dir core/build --output-on-failure -L unittest -j"$(nproc)"
 ctest --test-dir core/build --output-on-failure -L integration -j1
 ctest --test-dir core/build --output-on-failure -L e2e -j1
 ctest --test-dir core/build --output-on-failure -L regression -j1
-cmake -S . -B core/build -DZLINK_BUILD_TESTS=ON -DZLINK_BUILD_BENCHMARK_PROCESS_TESTS=ON
-cmake --build core/build -j"$(nproc)"
-ctest --test-dir core/build --output-on-failure -L benchmark_process -j1
 ```
 
 Sequential lane runner:
@@ -64,7 +59,6 @@ Sequential lane runner:
 ./core/tests/run_test_lanes.sh
 ./core/tests/run_test_lanes.sh --include-e2e
 ./core/tests/run_test_lanes.sh --include-e2e --include-regression
-./core/tests/run_test_lanes.sh --include-benchmark-process
 ```
 
 Thread-safe contract stress runner:
@@ -100,8 +94,6 @@ Default runner behavior:
 - `integration` serially
 - `e2e` only when `--include-e2e` is specified
 - `regression` only when `--include-regression` is specified
-- `benchmark_process` only when `--include-benchmark-process` is specified and
-  the build was configured with `-DZLINK_BUILD_BENCHMARK_PROCESS_TESTS=ON`
 
 SPOT WSS first-delivery note:
 
@@ -124,8 +116,6 @@ ctest --test-dir core/build \
 - Add new representative executable-level smoke tests under `core/tests/e2e/`.
 - Add long-running or historical flake coverage under the `regression` lane
   unless it must remain in the default integration path.
-- Add process-orchestration tests that require `core/perf` binaries under
-  `core/tests/benchmark_process/`.
 - Start new tests in the safest lane first. Only promote to `parallel-safe`
   after confirming the test does not depend on live socket timing, discovery
   state, global env mutation, or teardown ordering.
@@ -136,8 +126,6 @@ ctest --test-dir core/build \
 
 - Some scenario-style e2e tests still live outside `core/tests/` because they
   are tied to benchmark/source-stack fixtures under `core/bench/`.
-- `core/tests/benchmark_process/` is excluded from the default core gate. Build
-  it only for release verification or while working on perf/process fixtures.
 - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
   Its top-level CTest entry is intentionally not registered; use the
   `test_thread_safe_scaling_raw` and `test_thread_safe_scaling_spot` cases

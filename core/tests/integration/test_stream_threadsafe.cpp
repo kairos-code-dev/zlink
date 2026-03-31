@@ -1283,7 +1283,6 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe (
     }
     TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_queued_worker_probe = NULL;
     test_context_socket_close_zero_linger (server);
 #endif
@@ -1367,7 +1366,6 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_
     TEST_ASSERT_EQUAL_INT (
       sent_messages.load (std::memory_order_acquire), probe.processed_messages);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_queued_worker_probe = NULL;
     test_context_socket_close_zero_linger (server);
 #endif

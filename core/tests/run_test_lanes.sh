@@ -31,12 +31,10 @@ Options:
   --build-dir PATH       Build directory containing CTest metadata
                          (default: ${BUILD_DIR})
   --lanes LIST           Comma-separated lane list. Supported lanes:
-                         unittest,integration,e2e,regression,benchmark_process
+                         unittest,integration,e2e,regression
                          (default: ${LANES})
   --include-e2e          Append e2e to the default lane list
   --include-regression   Append regression to the selected lane list
-  --include-benchmark-process
-                         Append benchmark_process to the selected lane list
   --unittest-jobs N      Parallel jobs for the unittest lane
                          (default: ${UNITTEST_JOBS})
   -h, --help             Show this help text
@@ -45,7 +43,6 @@ Examples:
   $(basename "$0")
   $(basename "$0") --include-e2e
   $(basename "$0") --include-e2e --include-regression
-  $(basename "$0") --include-benchmark-process
   $(basename "$0") --lanes unittest,integration
 EOF
 }
@@ -69,12 +66,6 @@ while [[ $# -gt 0 ]]; do
     --include-regression)
       if [[ ",${LANES}," != *",regression,"* ]]; then
         LANES="${LANES},regression"
-      fi
-      shift
-      ;;
-    --include-benchmark-process)
-      if [[ ",${LANES}," != *",benchmark_process,"* ]]; then
-        LANES="${LANES},benchmark_process"
       fi
       shift
       ;;
@@ -116,7 +107,7 @@ for lane in "${LANE_ARRAY[@]}"; do
     unittest)
       run_lane "${lane}" "${UNITTEST_JOBS}"
       ;;
-    integration|e2e|regression|benchmark_process)
+    integration|e2e|regression)
       run_lane "${lane}" 1
       ;;
     "")

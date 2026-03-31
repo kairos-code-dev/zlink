@@ -31,7 +31,7 @@ include(CheckTypeSize)
 include(CMakePackageConfigHelpers)
 
 list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}")
-set(ZLINK_CMAKE_MODULES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/builds/cmake/Modules)
+set(ZLINK_CMAKE_MODULES_DIR ${PROJECT_SOURCE_DIR}/builds/cmake/Modules)
 list(APPEND CMAKE_MODULE_PATH ${ZLINK_CMAKE_MODULES_DIR})
 
 include(TestZLINKVersion)
@@ -199,7 +199,7 @@ set(ZLINK_BOOST_INCLUDE_DIR "" CACHE PATH "Boost include directory (override bun
 if(ZLINK_BOOST_INCLUDE_DIR)
   set(BUNDLED_BOOST_INCLUDE_DIR "${ZLINK_BOOST_INCLUDE_DIR}")
 else()
-  set(BUNDLED_BOOST_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/boost")
+  set(BUNDLED_BOOST_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/external/boost")
 endif()
 if(EXISTS "${BUNDLED_BOOST_INCLUDE_DIR}/boost/asio.hpp")
   message(STATUS "ASIO headers found: ${BUNDLED_BOOST_INCLUDE_DIR}")
@@ -889,12 +889,6 @@ endif()
 zlink_set_with_default(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${zlink_library_directory}")
 zlink_set_with_default(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-if(APPLE)
-  # Ensure test companions and helper processes can resolve libzlink directly
-  # from the build tree without depending on inherited DYLD state.
-  set(CMAKE_BUILD_RPATH "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-endif()
-
 # -----------------------------------------------------------------------------
 # platform specifics
 
@@ -1224,7 +1218,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/version.rc.in ${CMAKE_CURRENT_BIN
 # Delete any src/platform.hpp left by configure
 file(REMOVE ${CMAKE_CURRENT_SOURCE_DIR}/src/platform.hpp)
 
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/builds/cmake/platform.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/platform.hpp)
+configure_file(${PROJECT_SOURCE_DIR}/builds/cmake/platform.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/platform.hpp)
 list(APPEND sources ${CMAKE_CURRENT_BINARY_DIR}/platform.hpp)
 
 set(prefix ${CMAKE_INSTALL_PREFIX})
@@ -1241,9 +1235,9 @@ endif()
 
 if(MSVC)
   if(CMAKE_CL_64)
-    set(nsis-template ${CMAKE_CURRENT_SOURCE_DIR}/builds/cmake/NSIS.template64.in)
+    set(nsis-template ${PROJECT_SOURCE_DIR}/builds/cmake/NSIS.template64.in)
   else()
-    set(nsis-template ${CMAKE_CURRENT_SOURCE_DIR}/builds/cmake/NSIS.template32.in)
+    set(nsis-template ${PROJECT_SOURCE_DIR}/builds/cmake/NSIS.template32.in)
   endif()
 
   add_custom_command(
@@ -1572,18 +1566,6 @@ endif()
 set(ZLINK_BUILD_TESTS
     ${BUILD_TESTS}
     CACHE BOOL "Build the tests for Zlink")
-option(ZLINK_BUILD_BENCHMARK_PROCESS_TESTS
-       "Build long-running benchmark-process tests under core/tests"
-       OFF)
-
-set(ZLINK_PERF_SUBDIR_ADDED FALSE)
-
-if((ZLINK_BUILD_BENCHMARK_PROCESS_TESTS OR BUILD_BENCHMARKS)
-   AND BUILD_SHARED
-   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/perf/CMakeLists.txt")
-  add_subdirectory(perf)
-  set(ZLINK_PERF_SUBDIR_ADDED TRUE)
-endif()
 
 if(ZLINK_BUILD_TESTS)
   enable_testing() # Enable testing only works in root scope
@@ -1604,10 +1586,6 @@ if(BUILD_BENCHMARKS AND BUILD_SHARED)
 
   function(zlink_add_optional_bench option_var preferred_subdir)
     if(NOT ${option_var})
-      return()
-    endif()
-
-    if("${preferred_subdir}" STREQUAL "perf" AND ZLINK_PERF_SUBDIR_ADDED)
       return()
     endif()
 
@@ -1706,7 +1684,7 @@ if((NOT CMAKE_VERSION VERSION_LESS 3.0) AND (BUILD_SHARED OR BUILD_STATIC))
   export(EXPORT ${PROJECT_NAME}-targets FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
 endif()
 configure_package_config_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/builds/cmake/ZlinkConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  ${PROJECT_SOURCE_DIR}/builds/cmake/ZlinkConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
   INSTALL_DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
 write_basic_package_version_file(
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake

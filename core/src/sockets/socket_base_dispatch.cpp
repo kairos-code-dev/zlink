@@ -346,13 +346,6 @@ void *zlink::socket_base_t::socket_send_ready_handler_userdata () const
     return userdata;
 }
 
-void zlink::socket_base_t::socket_clear_send_ready_handler_for_close ()
-{
-    dispatch_bridge_t &dispatch = dispatch_runtime ();
-    dispatch.store_send_ready_handler (NULL, NULL, NULL);
-    dispatch.send_ready_armed.store (false, std::memory_order_release);
-}
-
 void zlink::socket_base_t::invoke_socket_msg_handler (
   zlink_socket_msg_handler_fn handler_,
   const zlink_routing_id_t *source_rid_,

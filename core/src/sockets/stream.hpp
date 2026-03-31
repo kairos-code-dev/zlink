@@ -4,7 +4,6 @@
 #define __ZLINK_STREAM_HPP_INCLUDED__
 
 #include <atomic>
-#include <condition_variable>
 #include <map>
 #include <mutex>
 #include <string>
@@ -101,8 +100,6 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     std::atomic<zlink_stream_on_raw_fn> _dispatch_raw_callback;
     std::atomic<zlink_socket_msg_handler_fn> _dispatch_msg_handler;
     std::atomic<void *> _dispatch_msg_handler_userdata;
-    mutable std::mutex _dispatch_quiesce_mu;
-    std::condition_variable _dispatch_quiesce_cv;
     mutable std::recursive_mutex _api_mutex;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)

@@ -140,11 +140,6 @@ int zlink_close (void *s_)
     unregister_monitor_handlers (handle.socket);
 
     if (handle.socket->api_sync_mutex ()) {
-        if (zlink::socket_base_t::current_send_ready_dispatch_socket ()
-            == handle.socket) {
-            errno = EBUSY;
-            return -1;
-        }
         if (handle.socket->socket_msg_dispatch_active ()) {
             if (zlink::socket_base_t::current_socket_msg_dispatch_socket ()
                 == handle.socket) {
@@ -158,28 +153,21 @@ int zlink_close (void *s_)
             return -1;
         }
 
-        handle.socket->socket_clear_send_ready_handler_for_close ();
         handle.socket->stop ();
         stream_api_lock_t api_lock (handle);
         (void) handle.socket->stream_dispatch_stop ();
         return handle.socket->close ();
     }
 
-    if (zlink::socket_base_t::current_send_ready_dispatch_socket ()
-        == handle.socket) {
-        errno = EBUSY;
-        return -1;
-    }
     if (handle.socket->socket_msg_dispatch_active ()) {
         if (zlink::socket_base_t::current_socket_msg_dispatch_socket ()
             == handle.socket) {
-                errno = EBUSY;
-                return -1;
+            errno = EBUSY;
+            return -1;
         }
         (void) handle.socket->socket_msg_dispatch_stop ();
     }
 
-    handle.socket->socket_clear_send_ready_handler_for_close ();
     (void) handle.socket->stream_dispatch_stop ();
     return handle.socket->close ();
 }

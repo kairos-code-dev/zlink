@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.9] - 2026-03-31
+
+### Fixed
+
+**Core Test And CI Stability**
+- Added the `core/perf` process fixtures to clean test builds so the monitored benchmark/process regressions no longer depend on stale build outputs and now pass from an empty `core/build/` tree.
+- Applied the configured multi DEALER/DEALER settle window after connect-ready so the TLS large-sequence process regression no longer flakes under full-suite load.
+- Strengthened the SPOT discovery interop scenario to wait for child-handle readiness, eliminating a discovery-to-data-plane race in the serial end-to-end suite.
+
 ## [5.0.8] - 2026-03-31
 
 ### Fixed

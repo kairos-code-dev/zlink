@@ -889,6 +889,12 @@ endif()
 zlink_set_with_default(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${zlink_library_directory}")
 zlink_set_with_default(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+if(APPLE)
+  # Ensure test companions and helper processes can resolve libzlink directly
+  # from the build tree without depending on inherited DYLD state.
+  set(CMAKE_BUILD_RPATH "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+endif()
+
 # -----------------------------------------------------------------------------
 # platform specifics
 
@@ -1567,7 +1573,15 @@ set(ZLINK_BUILD_TESTS
     ${BUILD_TESTS}
     CACHE BOOL "Build the tests for Zlink")
 
+set(ZLINK_PERF_SUBDIR_ADDED FALSE)
+
 if(ZLINK_BUILD_TESTS)
+  if(BUILD_SHARED AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/perf/CMakeLists.txt")
+    # core/tests process fixtures launch these binaries directly, so they must
+    # exist in every clean test build instead of depending on stale outputs.
+    add_subdirectory(perf)
+    set(ZLINK_PERF_SUBDIR_ADDED TRUE)
+  endif()
   enable_testing() # Enable testing only works in root scope
   add_subdirectory(tests)
 endif()
@@ -1586,6 +1600,10 @@ if(BUILD_BENCHMARKS AND BUILD_SHARED)
 
   function(zlink_add_optional_bench option_var preferred_subdir)
     if(NOT ${option_var})
+      return()
+    endif()
+
+    if("${preferred_subdir}" STREQUAL "perf" AND ZLINK_PERF_SUBDIR_ADDED)
       return()
     endif()
 

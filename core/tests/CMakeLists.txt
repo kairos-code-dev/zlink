@@ -224,6 +224,16 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}")
 include_directories("${BUNDLED_BOOST_INCLUDE_DIR}")
 
 if(WIN32)
+  set(ZLINK_TEST_RUNTIME_ENV "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
+elseif(APPLE)
+  set(ZLINK_TEST_RUNTIME_ENV
+      "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{DYLD_LIBRARY_PATH}")
+else()
+  set(ZLINK_TEST_RUNTIME_ENV
+      "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{LD_LIBRARY_PATH}")
+endif()
+
+if(WIN32)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)
 endif()
 
@@ -286,13 +296,7 @@ foreach(test_source ${tests})
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
 
     # Automatically set library path for tests to find libzlink shared library
-    if(WIN32)
-      set_tests_properties(${test} PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
-    elseif(APPLE)
-      set_tests_properties(${test} PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{DYLD_LIBRARY_PATH}")
-    else()
-      set_tests_properties(${test} PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{LD_LIBRARY_PATH}")
-    endif()
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "${ZLINK_TEST_RUNTIME_ENV}")
   endif()
 
   if(QNX)
@@ -463,6 +467,7 @@ function(add_env_case_test test_name target_name test_case)
   add_test(
     NAME ${test_name}
     COMMAND ${CMAKE_COMMAND} -E env
+            "${ZLINK_TEST_RUNTIME_ENV}"
             ZLINK_TEST_CASE=${test_case}
             $<TARGET_FILE:${target_name}>)
 endfunction()
@@ -677,7 +682,7 @@ if(TARGET test_spot_pubsub_scenario)
       WORKING_DIRECTORY "${SPOT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}"
       ENVIRONMENT
-        "ZLINK_TEST_SUITE_MODE=e2e;ZLINK_SPOT_RUN_MULTI_NODE_DISCOVERY=1;ZLINK_SPOT_MULTI_NODE_FIELD_WIDTH=4;ZLINK_SPOT_MULTI_NODE_FIELD_HEIGHT=4;ZLINK_SPOT_MULTI_NODE_COUNT=2")
+        "${ZLINK_TEST_RUNTIME_ENV};ZLINK_TEST_SUITE_MODE=e2e;ZLINK_SPOT_RUN_MULTI_NODE_DISCOVERY=1;ZLINK_SPOT_MULTI_NODE_FIELD_WIDTH=4;ZLINK_SPOT_MULTI_NODE_FIELD_HEIGHT=4;ZLINK_SPOT_MULTI_NODE_COUNT=2")
 
   add_env_case_tests_from_specs(
     test_spot_pubsub_scenario

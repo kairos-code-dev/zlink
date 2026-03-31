@@ -250,7 +250,6 @@ static bool wait_for_existing_subscription_ready (void *sub_node_,
 
 static bool wait_for_pub_ready (void *pub_node_)
 {
-    const int ready_timeout_ms = 10000;
     void *pub_handle = default_pub_handle (pub_node_);
     zlink_service_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
@@ -263,8 +262,7 @@ static bool wait_for_pub_ready (void *pub_node_)
         return false;
 
     const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (ready_timeout_ms);
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_monitor_snapshot_t snapshot;
         if (zlink_monitor_snapshot (monitor, &snapshot) == 0
@@ -273,7 +271,7 @@ static bool wait_for_pub_ready (void *pub_node_)
             return true;
         }
         (void) wait_for_service_event (monitor, ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED,
-                                       NULL, 250);
+                                       NULL, 200);
     }
 
     zlink_monitor_close (&monitor);
@@ -1321,9 +1319,9 @@ static void test_registry_and_discovery_member_peer_queries ()
       zlink_discovery_set_metadata (discovery_b, NULL, 0));
 
     TEST_ASSERT_TRUE (connect_discovery_registry_until_ready (
-      discovery_a, registry_router, 5000));
+      discovery_a, registry_router, 2000));
     TEST_ASSERT_TRUE (connect_discovery_registry_until_ready (
-      discovery_b, registry_router, 5000));
+      discovery_b, registry_router, 2000));
 
     void *node_a = create_node (ctx, "spot-metadata");
     void *node_b = create_node (ctx, "spot-metadata");
@@ -1341,9 +1339,9 @@ static void test_registry_and_discovery_member_peer_queries ()
       zlink_spot_node_attach_discovery (node_b, discovery_b));
 
     TEST_ASSERT_TRUE (wait_for_registry_member_count (
-      registry, ZLINK_SERVICE_TYPE_SPOT, "spot-metadata", 2, 10000));
+      registry, ZLINK_SERVICE_TYPE_SPOT, "spot-metadata", 2, 5000));
     TEST_ASSERT_TRUE (
-      wait_for_discovery_member_count (discovery_a, 1, 10000));
+      wait_for_discovery_member_count (discovery_a, 1, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (default_sub_handle (node_b), "topic.metadata"));
@@ -1351,7 +1349,7 @@ static void test_registry_and_discovery_member_peer_queries ()
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (node_a, "topic.metadata", "member-query"));
     TEST_ASSERT_TRUE (wait_for_subscribe_payload (
-      node_b, "topic.metadata", "member-query", 10000));
+      node_b, "topic.metadata", "member-query", 5000));
 
     size_t count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_member_peers (

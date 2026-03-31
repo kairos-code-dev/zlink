@@ -95,7 +95,6 @@ void test_spot_unified_wss_subscription_ready_first_delivery ()
         return;
     }
 
-    const int wss_timeout_ms = 15000;
     tls_test_files_t files = make_tls_test_files ();
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -133,21 +132,20 @@ void test_spot_unified_wss_subscription_ready_first_delivery ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub, "wss:ready:first-delivery"));
     TEST_ASSERT_TRUE (wait_for_service_event (
-      &sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, wss_timeout_ms));
+      &sub_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 10000));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &sub_monitor_probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED,
-      endpoint, wss_timeout_ms));
+      endpoint, 10000));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1,
-      wss_timeout_ms));
+      10000));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1,
-      wss_timeout_ms));
+      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 10000));
 
     TEST_ASSERT_SUCCESS_ERRNO (publish_text (
       &zlink_publish, pub, "wss:ready:first-delivery", "wss-ready", 0));
     TEST_ASSERT_TRUE (wait_for_spot_message (
-      sub, "wss:ready:first-delivery", "wss-ready", 9, wss_timeout_ms));
+      sub, "wss:ready:first-delivery", "wss-ready", 9, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (close_service_monitor_with_probe (&sub_monitor));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_node));

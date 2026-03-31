@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.22] - 2026-03-31
+
+### Fixed
+
+**Release CI Root Cause Fixes**
+- Removed the timeout and wait-budget relaxations that had been masking slow-runner failures in the core release gate, restoring the original fail-fast timing contracts for unit, integration, and e2e suites.
+- Cleared STREAM send-ready handler registrations during socket close and rejected close-from-send-ready-callback, closing a callback-after-destroy race that could surface on macOS as `mutex lock failed` in the serial STREAM lifecycle tests.
+- Revalidated the default core gate with the original timing surface so the full `unittest`, `integration`, and `e2e` lanes pass locally without retry logic or timeout inflation.
+
 ## [5.0.21] - 2026-03-31
 
 ### Fixed

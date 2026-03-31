@@ -852,9 +852,6 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
     const bool is_ipc = transport_ == peer_transport_ipc;
     const bool use_tls =
       transport_ == peer_transport_tls || transport_ == peer_transport_wss;
-    const int subscription_ready_timeout_ms = use_tls ? 15000 : 5000;
-    const int delivery_timeout_ms = use_tls ? 5000 : 3000;
-    const int close_timeout_ms = use_tls ? 15000 : 5000;
 
     const char *topic = NULL;
     const char *payload = NULL;
@@ -956,11 +953,10 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
     step_log ("spot peer transport: subscribe node_b");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, topic));
     TEST_ASSERT_TRUE (wait_for_service_event (
-      &node_b_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL,
-      subscription_ready_timeout_ms));
+      &node_b_monitor_probe, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, 3000));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &node_b_monitor_probe, ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED, endpoint_a,
-      subscription_ready_timeout_ms));
+      use_tls ? 10000 : 3000));
 
     zlink_msg_t parts[1];
     const size_t payload_size = strlen (payload);
@@ -973,8 +969,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
 
     step_log ("spot peer transport: wait delivery");
     TEST_ASSERT_TRUE (
-      wait_for_spot_message (sub, topic, payload, payload_size,
-                             delivery_timeout_ms));
+      wait_for_spot_message (sub, topic, payload, payload_size, 2000));
 
     step_log ("spot peer transport: disconnect peer");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -990,7 +985,7 @@ void run_spot_peer_transport_test (peer_transport_t transport_)
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&node_b));
     TEST_ASSERT_TRUE (wait_for_service_event (
       &node_b_monitor_probe, ZLINK_MONITOR_EVENT_CLOSED, NULL,
-      close_timeout_ms));
+      use_tls ? 10000 : 3000));
     TEST_ASSERT_SUCCESS_ERRNO (
       close_service_monitor_with_probe (&node_b_monitor));
     msleep (use_tls ? 50 : 10);

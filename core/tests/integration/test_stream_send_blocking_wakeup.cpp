@@ -31,7 +31,7 @@ const int kSocketBufBytes = 4096;
 const int kProbeTimeoutMs = 250;
 const int kLingerMs = 0;
 const int kFillDeadlineMs = 5000;
-const int kReopenDeadlineMs = 10000;
+const int kReopenDeadlineMs = 5000;
 
 struct stream_route_probe_t
 {
@@ -328,31 +328,6 @@ bool drain_stream_until_send_reopens (void *server_,
     return false;
 }
 
-bool retry_stream_msg_send_until_ready (void *server_,
-                                        int raw_fd_,
-                                        const zlink_routing_id_t *rid_,
-                                        zlink_msg_t *msg_)
-{
-    if (!server_ || raw_fd_ < 0 || !rid_ || !msg_)
-        return false;
-
-    unsigned char drain_buf[64 * 1024];
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (kReopenDeadlineMs);
-    while (std::chrono::steady_clock::now () < deadline) {
-        const int send_rc =
-          test_stream_send_single_msg (server_, rid_, msg_, ZLINK_DONTWAIT);
-        if (send_rc == static_cast<int> (kPayloadSize))
-            return true;
-
-        TEST_ASSERT_EQUAL_INT (-1, send_rc);
-        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
-        (void) recv_raw (raw_fd_, drain_buf, sizeof (drain_buf));
-    }
-
-    return false;
-}
 } // namespace
 
 void test_stream_queue_reopens_after_peer_reads ()
@@ -471,8 +446,9 @@ void test_stream_nonblocking_send_preserves_message_for_retry ()
     TEST_ASSERT_TRUE (drain_stream_until_send_reopens (
       server, raw_fd, &rid, &probe_payload[0], probe_payload.size ()));
 
-    TEST_ASSERT_TRUE (
-      retry_stream_msg_send_until_ready (server, raw_fd, &rid, &msg));
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (kPayloadSize),
+      test_stream_send_single_msg (server, &rid, &msg, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&msg));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));

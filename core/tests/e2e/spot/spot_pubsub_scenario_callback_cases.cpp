@@ -151,14 +151,13 @@ void test_spot_recv_callback_isolated_by_handle ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub_a_handle, "zone:auto:test"));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1,
-      10000));
+      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_SEND_READY, 1, 5000));
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      sub_a, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 10000));
+      sub_a, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       publish_text (&zlink_publish, pub, "zone:auto:test", "ping", 0));
-    TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe_a.calls, 1, 5000));
+    TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe_a.calls, 1, 3000));
     TEST_ASSERT_EQUAL_INT (0, probe_b.calls.load ());
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_b));

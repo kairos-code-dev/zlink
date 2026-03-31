@@ -321,6 +321,7 @@ class socket_base_t : public own_t,
     void store_last_recv_source_rid (const zlink_routing_id_t *source_rid_);
     void clear_last_recv_source_rid ();
     bool copy_last_recv_source_rid (zlink_routing_id_t *out_) const;
+    void socket_clear_send_ready_handler_for_close ();
   protected:
     static void dispatch_spot_handler_from_io (
       const zlink_routing_id_t *source_rid_,

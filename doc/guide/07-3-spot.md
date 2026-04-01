@@ -108,6 +108,17 @@ zlink_spot_node_attach_discovery(node, discovery);
 Once Discovery is attached, peers are automatically discovered and
 connected through the Registry.
 
+**Ephemeral port:** `zlink_spot_node_bind()` supports port 0 for dynamic
+port allocation. Use `zlink_spot_node_status_snapshot()` to retrieve the
+actual assigned endpoint from `local_endpoint`:
+
+```c
+zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
+zlink_spot_node_status_t status;
+zlink_spot_node_status_snapshot(node, &status);
+/* status.local_endpoint contains e.g. "tcp://127.0.0.1:43521" */
+```
+
 ### 3.2 Manual Mesh
 
 ```c

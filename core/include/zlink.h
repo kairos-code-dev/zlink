@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 25
+#define ZLINK_VERSION_PATCH 26
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -1101,7 +1101,12 @@ ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
  */
 ZLINK_EXPORT int zlink_spot_node_destroy (void **node_p);
 
-/** @brief Bind the SPOT node to an endpoint. */
+/** @brief Bind the SPOT node to an endpoint.
+ *
+ * Supports port 0 for ephemeral port allocation (e.g. "tcp://127.0.0.1:0").
+ * After a successful bind, use zlink_spot_node_status_snapshot() to retrieve
+ * the resolved endpoint (local_endpoint field) with the actual assigned port.
+ */
 ZLINK_EXPORT int zlink_spot_node_bind (void *node, const char *endpoint);
 
 /**

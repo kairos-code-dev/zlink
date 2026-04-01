@@ -16,6 +16,8 @@
 
 namespace zlink
 {
+class service_monitor_handle_t;
+
 namespace service
 {
 
@@ -174,7 +176,7 @@ class spot_node_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    ~spot_node_t () { (void) destroy (); }
+    ~spot_node_t () { (void) close (); }
 
     spot_node_t (spot_node_t &&other) noexcept
         : _node (other._node), _last_error (other._last_error)
@@ -188,7 +190,7 @@ class spot_node_t
         if (this == &other)
             return *this;
 
-        (void) destroy ();
+        (void) close ();
         _node = other._node;
         _last_error = other._last_error;
         other._node = NULL;
@@ -208,6 +210,15 @@ class spot_node_t
         return zlink_spot_node_bind (_node, endpoint_.c_str ());
     }
 
+    std::string last_endpoint () const
+    {
+        zlink_spot_node_status_t status;
+        if (zlink_spot_node_status_snapshot (_node, &status) == 0
+            && status.local_endpoint[0] != '\0')
+            return std::string (status.local_endpoint);
+        return std::string ();
+    }
+
     ZLINK_CPP_NODISCARD int connect_peer (const std::string &endpoint_)
     {
         return zlink_spot_node_connect_peer (_node, endpoint_.c_str ());
@@ -223,19 +234,21 @@ class spot_node_t
         return zlink_spot_node_attach_discovery (_node, discovery_.handle ());
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    ZLINK_CPP_NODISCARD int set_routing_id (const routing_id_t &routing_id_)
     {
-        return zlink_set_routing_id (_node, data_, size_);
+        return zlink_set_routing_id (
+          _node, routing_id_.to_string ().data (), routing_id_.size ());
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &data_)
+    ZLINK_CPP_NODISCARD int get_routing_id (routing_id_t &out_) const
     {
-        return set_routing_id (data_.data (), data_.size ());
-    }
-
-    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t *out_) const
-    {
-        return zlink_get_routing_id (_node, out_);
+        zlink_routing_id_t native;
+        std::memset (&native, 0, sizeof (native));
+        const int rc = zlink_get_routing_id (_node, &native);
+        if (rc != 0)
+            return rc;
+        out_ = routing_id_t (native.data, native.size);
+        return 0;
     }
 
     ZLINK_CPP_NODISCARD int set_tls_server (const std::string &cert_,
@@ -322,7 +335,10 @@ class spot_node_t
           _node, filter_, entries_, count_);
     }
 
-    ZLINK_CPP_NODISCARD int destroy ()
+    ZLINK_CPP_NODISCARD service_monitor_handle_t
+    monitor_open (service_monitor_event events_ = service_monitor_event::all);
+
+    ZLINK_CPP_NODISCARD int close ()
     {
         if (!_node)
             return 0;
@@ -351,7 +367,7 @@ class spot_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    ~spot_t () { (void) destroy (); }
+    ~spot_t () { (void) close (); }
 
     spot_t (spot_t &&other) noexcept
         : _spot (other._spot), _last_error (other._last_error)
@@ -365,7 +381,7 @@ class spot_t
         if (this == &other)
             return *this;
 
-        (void) destroy ();
+        (void) close ();
         _spot = other._spot;
         _last_error = other._last_error;
         other._spot = NULL;
@@ -382,13 +398,13 @@ class spot_t
 
     void publish (const std::string &topic_, std::vector<message_t> &parts_)
     {
-        const int rc = publish (topic_, parts_, send_flag::none);
+        const int rc = publish_impl (topic_, parts_, send_flag::none);
         throw_on_error (rc);
     }
 
     void publish (const std::string &topic_, message_t &part_)
     {
-        const int rc = publish (topic_, part_, send_flag::none);
+        const int rc = publish_impl (topic_, part_, send_flag::none);
         throw_on_error (rc);
     }
 
@@ -396,7 +412,7 @@ class spot_t
     try_publish (const std::string &topic_, std::vector<message_t> &parts_)
     {
         send_result_t result = send_result_t::sent;
-        const int rc = try_publish (result, topic_, parts_);
+        const int rc = try_publish_impl (result, topic_, parts_);
         throw_on_error (rc);
         return result;
     }
@@ -405,195 +421,33 @@ class spot_t
     try_publish (const std::string &topic_, message_t &part_)
     {
         send_result_t result = send_result_t::sent;
-        const int rc = try_publish (result, topic_, part_);
+        const int rc = try_publish_impl (result, topic_, part_);
         throw_on_error (rc);
         return result;
     }
 
-    ZLINK_CPP_NODISCARD int
-    publish (const std::string &topic_,
-             std::vector<message_t> &parts_,
-             send_flag flags_)
+    ZLINK_CPP_NODISCARD subscribed_t subscribe ()
     {
-        if (!_spot) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
-            return -1;
-        }
-
-        if (parts_.empty ()) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0)
-            return -1;
-
-        const int rc = zlink_publish (
-          _spot, topic_.c_str (), native.data (), native.size (),
-          static_cast<zlink_send_flags_t> (flags_));
-        if (rc != 0) {
-            const int err = errno;
-            for (size_t i = 0; i < native.size (); ++i)
-                (void) zlink_msg_close (&native[i]);
-            errno = err;
-        }
-        return rc;
+        subscribed_t subscribed;
+        const int rc = subscribe_impl (
+          subscribed.parts, subscribed.topic, recv_flag::none,
+          &subscribed.routing_id);
+        throw_on_error (rc);
+        return subscribed;
     }
 
-    ZLINK_CPP_NODISCARD int
-    publish (const std::string &topic_,
-             message_t &part_,
-             send_flag flags_)
+    ZLINK_CPP_NODISCARD maybe_t<subscribed_t> try_subscribe ()
     {
-        if (!_spot) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
-            return -1;
-        }
-
-        zlink_msg_t native;
-        if (zlink_msg_init_size (&native, part_.size ()) != 0)
-            return -1;
-        if (part_.size () > 0 && part_.data ())
-            std::memcpy (zlink_msg_data (&native), part_.data (), part_.size ());
-
-        const int rc = zlink_publish (
-          _spot, topic_.c_str (), &native, 1,
-          static_cast<zlink_send_flags_t> (flags_));
-        if (rc != 0) {
-            const int err = errno;
-            (void) zlink_msg_close (&native);
-            errno = err;
-        }
-        return rc;
-    }
-
-    ZLINK_CPP_NODISCARD int
-    try_publish (send_result_t &result_out_,
-                 const std::string &topic_,
-                 std::vector<message_t> &parts_)
-    {
-        if (!_spot) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
-            return -1;
-        }
-
-        if (parts_.empty ()) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (parts_, native) != 0)
-            return -1;
-
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc = zlink_try_publish (
-          _spot, topic_.c_str (), native.data (), native.size (),
-          &native_result);
-        if (rc == 0) {
-            result_out_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT) {
-                for (size_t i = 0; i < native.size (); ++i) {
-                    if (parts_[i].init () == 0)
-                        (void) zlink_msg_move (parts_[i].handle (), &native[i]);
-                    (void) zlink_msg_close (&native[i]);
-                }
-            }
-            return 0;
-        }
-
-        const int err = errno;
-        for (size_t i = 0; i < native.size (); ++i)
-            (void) zlink_msg_close (&native[i]);
-        errno = err;
-        return -1;
-    }
-
-    ZLINK_CPP_NODISCARD int
-    try_publish (send_result_t &result_out_,
-                 const std::string &topic_,
-                 message_t &part_)
-    {
-        if (!_spot) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
-            return -1;
-        }
-
-        zlink_msg_t native;
-        if (zlink_msg_init_size (&native, part_.size ()) != 0)
-            return -1;
-        if (part_.size () > 0 && part_.data ())
-            std::memcpy (zlink_msg_data (&native), part_.data (), part_.size ());
-
-        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
-        const int rc =
-          zlink_try_publish (_spot, topic_.c_str (), &native, 1, &native_result);
-        if (rc == 0) {
-            result_out_ = detail::to_send_result (native_result);
-            if (native_result != ZLINK_SEND_RESULT_SENT) {
-                if (part_.init () == 0)
-                    (void) zlink_msg_move (part_.handle (), &native);
-                (void) zlink_msg_close (&native);
-            }
-            return 0;
-        }
-
-        const int err = errno;
-        (void) zlink_msg_close (&native);
-        errno = err;
-        return -1;
-    }
-
-    ZLINK_CPP_NODISCARD int
-    publish (const std::string &topic_,
-             const void *data_,
-             size_t size_,
-             send_flag flags_)
-    {
-        message_t part = message_t::from_bytes (data_, size_);
-        if (!part.valid ())
-            return -1;
-        return publish (topic_, part, flags_);
-    }
-
-    ZLINK_CPP_NODISCARD int
-    publish (const std::string &topic_,
-             const std::string &text_,
-             send_flag flags_)
-    {
-        return publish (topic_, text_.data (), text_.size (), flags_);
-    }
-
-    ZLINK_CPP_NODISCARD int
-    publish_zero (const std::string &topic_,
-                  void *data_,
-                  size_t size_,
-                  zlink_free_fn *ffn_,
-                  void *hint_ = NULL,
-                  send_flag flags_ = send_flag::none)
-    {
-        if (!_spot) {
-            errno = _last_error != 0 ? _last_error : EFAULT;
-            return -1;
-        }
-        if (size_ > 0 && !data_) {
-            errno = EINVAL;
-            return -1;
-        }
-
-        zlink_msg_t part;
-        if (zlink_msg_init_data (&part, data_, size_, ffn_, hint_) != 0)
-            return -1;
-
-        const int rc = zlink_publish (
-          _spot, topic_.c_str (), &part, 1, static_cast<zlink_send_flags_t> (flags_));
-        if (rc != 0) {
-            const int err = errno;
-            (void) zlink_msg_close (&part);
-            errno = err;
-        }
-        return rc;
+        subscribed_t subscribed;
+        const int rc = subscribe_impl (
+          subscribed.parts, subscribed.topic, recv_flag::dontwait,
+          &subscribed.routing_id);
+        if (rc == 0)
+            return maybe_t<subscribed_t> (std::move (subscribed));
+        if (errno == EAGAIN)
+            return maybe_t<subscribed_t> ();
+        throw_on_error (rc);
+        return maybe_t<subscribed_t> ();
     }
 
     ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)
@@ -604,16 +458,6 @@ class spot_t
     ZLINK_CPP_NODISCARD int unset_subscription (const std::string &filter_)
     {
         return zlink_unset_subscription (_spot, filter_.c_str ());
-    }
-
-    ZLINK_CPP_NODISCARD int subscribe (const std::string &filter_)
-    {
-        return set_subscription (filter_);
-    }
-
-    ZLINK_CPP_NODISCARD int unsubscribe (const std::string &filter_)
-    {
-        return unset_subscription (filter_);
     }
 
     ZLINK_CPP_NODISCARD int
@@ -655,26 +499,167 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
-    subscribe_handler (zlink_subscribe_handler_fn handler_,
-                       void *userdata_ = NULL)
+    on_subscribe (zlink_subscribe_handler_fn handler_,
+                  void *userdata_ = NULL)
     {
         return zlink_subscribe_handler (_spot, handler_, userdata_);
     }
 
     ZLINK_CPP_NODISCARD int
-    send_ready_handler (zlink_send_ready_handler_fn handler_,
-                        void *userdata_ = NULL)
+    on_send_ready (zlink_send_ready_handler_fn handler_,
+                   void *userdata_ = NULL)
     {
         return zlink_send_ready_handler (_spot, handler_, userdata_);
     }
 
+    ZLINK_CPP_NODISCARD service_monitor_handle_t
+    monitor_open (service_monitor_event events_ = service_monitor_event::all);
+
+    void *handle () const { return _spot; }
+
+  private:
     ZLINK_CPP_NODISCARD int
-    recv (std::vector<message_t> &parts_,
-          std::string &topic_,
-          recv_flag flags_ = recv_flag::none,
-          zlink_routing_id_t *source_rid_out_ = NULL,
-          size_t *topic_len_out_ = NULL,
-          bool *truncated_out_ = NULL)
+    publish_impl (const std::string &topic_,
+                  std::vector<message_t> &parts_,
+                  send_flag flags_)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        if (parts_.empty ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        std::vector<zlink_msg_t> native;
+        if (detail::move_parts_to_native (parts_, native) != 0)
+            return -1;
+
+        const int rc = zlink_publish (
+          _spot, topic_.c_str (), native.data (), native.size (),
+          static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0) {
+            const int err = errno;
+            for (size_t i = 0; i < native.size (); ++i)
+                (void) zlink_msg_close (&native[i]);
+            errno = err;
+        }
+        return rc;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    publish_impl (const std::string &topic_,
+                  message_t &part_,
+                  send_flag flags_)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        zlink_msg_t native;
+        if (zlink_msg_init_size (&native, part_.size ()) != 0)
+            return -1;
+        if (part_.size () > 0 && part_.data ())
+            std::memcpy (zlink_msg_data (&native), part_.data (), part_.size ());
+
+        const int rc = zlink_publish (
+          _spot, topic_.c_str (), &native, 1,
+          static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0) {
+            const int err = errno;
+            (void) zlink_msg_close (&native);
+            errno = err;
+        }
+        return rc;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    try_publish_impl (send_result_t &result_out_,
+                      const std::string &topic_,
+                      std::vector<message_t> &parts_)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        if (parts_.empty ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        std::vector<zlink_msg_t> native;
+        if (detail::move_parts_to_native (parts_, native) != 0)
+            return -1;
+
+        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
+        const int rc = zlink_try_publish (
+          _spot, topic_.c_str (), native.data (), native.size (),
+          &native_result);
+        if (rc == 0) {
+            result_out_ = detail::to_send_result (native_result);
+            if (native_result != ZLINK_SEND_RESULT_SENT) {
+                for (size_t i = 0; i < native.size (); ++i) {
+                    if (parts_[i].init () == 0)
+                        (void) zlink_msg_move (parts_[i].handle (), &native[i]);
+                    (void) zlink_msg_close (&native[i]);
+                }
+            }
+            return 0;
+        }
+
+        const int err = errno;
+        for (size_t i = 0; i < native.size (); ++i)
+            (void) zlink_msg_close (&native[i]);
+        errno = err;
+        return -1;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    try_publish_impl (send_result_t &result_out_,
+                      const std::string &topic_,
+                      message_t &part_)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        zlink_msg_t native;
+        if (zlink_msg_init_size (&native, part_.size ()) != 0)
+            return -1;
+        if (part_.size () > 0 && part_.data ())
+            std::memcpy (zlink_msg_data (&native), part_.data (), part_.size ());
+
+        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
+        const int rc =
+          zlink_try_publish (_spot, topic_.c_str (), &native, 1, &native_result);
+        if (rc == 0) {
+            result_out_ = detail::to_send_result (native_result);
+            if (native_result != ZLINK_SEND_RESULT_SENT) {
+                if (part_.init () == 0)
+                    (void) zlink_msg_move (part_.handle (), &native);
+                (void) zlink_msg_close (&native);
+            }
+            return 0;
+        }
+
+        const int err = errno;
+        (void) zlink_msg_close (&native);
+        errno = err;
+        return -1;
+    }
+
+    ZLINK_CPP_NODISCARD int
+    subscribe_impl (std::vector<message_t> &parts_,
+                    std::string &topic_,
+                    recv_flag flags_ = recv_flag::none,
+                    routing_id_t *source_rid_out_ = NULL,
+               size_t *topic_len_out_ = NULL,
+               bool *truncated_out_ = NULL)
     {
         if (!_spot) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -685,8 +670,10 @@ class spot_t
         size_t part_count = 0;
         char topic_buffer[256];
         size_t topic_length = sizeof (topic_buffer);
-        zlink_routing_id_t source_rid;
-        zlink_routing_id_t *rid_ptr = source_rid_out_ ? source_rid_out_ : &source_rid;
+        routing_id_t source_rid;
+        zlink_routing_id_t *rid_ptr =
+          source_rid_out_ ? routing_id_native (*source_rid_out_)
+                          : routing_id_native (source_rid);
 
         const int rc = zlink_subscribe (
           _spot, rid_ptr, &parts_native, &part_count, topic_buffer, &topic_length,
@@ -707,39 +694,16 @@ class spot_t
         return detail::assign_parts_from_native (parts_native, part_count, parts_);
     }
 
-    ZLINK_CPP_NODISCARD subscribed_t receive ()
-    {
-        subscribed_t subscribed;
-        const int rc = recv (subscribed.parts, subscribed.topic, recv_flag::none,
-                             &subscribed.routing_id);
-        throw_on_error (rc);
-        return subscribed;
-    }
-
-    ZLINK_CPP_NODISCARD maybe_t<subscribed_t> try_receive ()
-    {
-        subscribed_t subscribed;
-        const int rc =
-          recv (subscribed.parts, subscribed.topic, recv_flag::dontwait,
-                &subscribed.routing_id);
-        if (rc == 0)
-            return maybe_t<subscribed_t> (std::move (subscribed));
-        if (errno == EAGAIN)
-            return maybe_t<subscribed_t> ();
-        throw_on_error (rc);
-        return maybe_t<subscribed_t> ();
-    }
-
     ZLINK_CPP_NODISCARD int
-    recv (message_t &part_,
-          std::string &topic_,
-          recv_flag flags_ = recv_flag::none,
-          zlink_routing_id_t *source_rid_out_ = NULL,
-          size_t *topic_len_out_ = NULL,
-          bool *truncated_out_ = NULL)
+    subscribe_impl (message_t &part_,
+                    std::string &topic_,
+                    recv_flag flags_ = recv_flag::none,
+                    routing_id_t *source_rid_out_ = NULL,
+               size_t *topic_len_out_ = NULL,
+               bool *truncated_out_ = NULL)
     {
         std::vector<message_t> parts;
-        if (recv (
+        if (subscribe_impl (
               parts, topic_, flags_, source_rid_out_, topic_len_out_,
               truncated_out_)
             != 0)
@@ -753,6 +717,8 @@ class spot_t
         part_ = std::move (parts[0]);
         return 0;
     }
+
+  public:
 
     template<typename T>
     ZLINK_CPP_NODISCARD
@@ -838,22 +804,24 @@ class spot_t
           _spot, static_cast<zlink_sub_option_t> (key_.option), &value_, &size);
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    ZLINK_CPP_NODISCARD int set_routing_id (const routing_id_t &routing_id_)
     {
-        return zlink_set_routing_id (_spot, data_, size_);
+        return zlink_set_routing_id (
+          _spot, routing_id_.to_string ().data (), routing_id_.size ());
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &data_)
+    ZLINK_CPP_NODISCARD int get_routing_id (routing_id_t &out_) const
     {
-        return set_routing_id (data_.data (), data_.size ());
+        zlink_routing_id_t native;
+        std::memset (&native, 0, sizeof (native));
+        const int rc = zlink_get_routing_id (_spot, &native);
+        if (rc != 0)
+            return rc;
+        out_ = routing_id_t (native.data, native.size);
+        return 0;
     }
 
-    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t *out_) const
-    {
-        return zlink_get_routing_id (_spot, out_);
-    }
-
-    ZLINK_CPP_NODISCARD int destroy ()
+    ZLINK_CPP_NODISCARD int close ()
     {
         if (!_spot)
             return 0;
@@ -864,8 +832,6 @@ class spot_t
             _spot = NULL;
         return rc;
     }
-
-    void *handle () const { return _spot; }
 
   private:
     void *_spot;

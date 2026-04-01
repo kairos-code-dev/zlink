@@ -54,11 +54,12 @@ int spot_node_t::bind (const char *endpoint_)
     if (send_data_plane_command ("bind_pub", endpoint_) != 0)
         return -1;
 
+    // _bound_endpoint is set by the data plane handler with the resolved
+    // endpoint (supports port 0 / ephemeral port allocation).
     std::vector<spot_pub_t *> pubs;
     bool should_register = false;
     {
         scoped_lock_t lock (_sync);
-        _bound_endpoint = endpoint_;
         _server_tls_locked = true;
         _summary_last_changed_ms = zlink::clock_t ().now_ms ();
         pubs.assign (_pubs.begin (), _pubs.end ());

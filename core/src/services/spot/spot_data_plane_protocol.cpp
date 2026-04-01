@@ -716,34 +716,57 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             key = node_->_tls_key;
         }
 
-        std::string ctrl_bind_endpoint;
-        if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
-              arg, runtime_->node_id, &ctrl_bind_endpoint)) {
-            if (send_errno_reply (ctrl_, EINVAL) != 0)
-                return -1;
-            return 0;
-        }
-
         const int mesh_pub_sndhwm =
           spot_mesh_pub_budget_t::resolve_initial_bind_sndhwm (runtime_, arg);
 
+        // Step 1: bind mesh_pub first (supports port 0 / ephemeral).
         if (mesh_pub_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
                                    &mesh_pub_sndhwm,
                                    sizeof (mesh_pub_sndhwm))
               != 0
             || spot_node_t::apply_tls_server (mesh_pub_, cert, key) != 0
             || spot_node_t::apply_tls_server (peer_ctrl_sub_, cert, key) != 0
-            || mesh_pub_->bind (arg.c_str ()) != 0
-            || peer_ctrl_sub_->bind (ctrl_bind_endpoint.c_str ()) != 0) {
+            || mesh_pub_->bind (arg.c_str ()) != 0) {
+            if (send_errno_reply (ctrl_, errno != 0 ? errno : EIO) != 0)
+                return -1;
+            return 0;
+        }
+
+        // Step 2: resolve the actual bound endpoint.
+        std::string resolved_endpoint = arg;
+        {
+            char resolved[256] = {0};
+            size_t resolved_size = sizeof (resolved);
+            if (mesh_pub_->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
+                                       resolved, &resolved_size)
+                == 0) {
+                const size_t len =
+                  resolved_size > 0 ? strnlen (resolved, resolved_size) : 0;
+                if (len > 0)
+                    resolved_endpoint.assign (resolved, len);
+            }
+        }
+
+        // Step 3: derive ctrl endpoint from the resolved endpoint.
+        std::string ctrl_bind_endpoint;
+        if (!spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+              resolved_endpoint, runtime_->node_id, &ctrl_bind_endpoint)) {
+            if (send_errno_reply (ctrl_, EINVAL) != 0)
+                return -1;
+            return 0;
+        }
+
+        if (peer_ctrl_sub_->bind (ctrl_bind_endpoint.c_str ()) != 0) {
             if (send_errno_reply (ctrl_, errno != 0 ? errno : EIO) != 0)
                 return -1;
             return 0;
         }
 
         runtime_->peer_ctrl_endpoint = ctrl_bind_endpoint;
+        runtime_->bound_endpoint = resolved_endpoint;
         {
             scoped_lock_t lock (node_->_sync);
-            runtime_->bound_endpoint = arg;
+            node_->_bound_endpoint = resolved_endpoint;
             node_->_server_tls_locked = true;
         }
         return send_ok_reply (ctrl_);

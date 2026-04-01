@@ -60,23 +60,27 @@ int main ()
       static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
       2000, 1));
 
+    const std::string topic = "prices";
     callback_state_t state;
     state.ready = false;
-    assert (subscriber.set_subscription ("topic:alpha") == 0);
+    assert (subscriber.set_subscription (topic) == 0);
     assert (subscriber.subscribe_handler (&subscribe_callback, &state) == 0);
 
     const zlink::subscription_event_t event =
       publisher.receive_subscription_event ();
     assert (event.subscribed);
-    assert (event.topic == "topic:alpha");
+    assert (event.topic == topic);
 
-    zlink::message_t outbound =
-      detail::make_message ("pubsub-callback");
-    publisher.publish ("topic:alpha", outbound);
+    const std::string sent = "101.25";
+    zlink::message_t outbound = detail::make_message (sent);
+    publisher.publish (topic, outbound);
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 2000));
-    assert (state.topic == "topic:alpha");
-    assert (state.payload == "pubsub-callback");
+    assert (state.topic == topic);
+    assert (state.payload == "101.25");
+    std::printf (
+      "[pubsub/callback] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
+      topic.c_str (), sent.c_str (), state.topic.c_str (), state.payload.c_str ());
     return 0;
 }

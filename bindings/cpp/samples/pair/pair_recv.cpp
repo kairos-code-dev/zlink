@@ -22,11 +22,15 @@ int main ()
       static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
       2000, 1));
 
-    zlink::message_t outbound = detail::make_message ("pair-recv");
+    const std::string sent = "hello-pair";
+    zlink::message_t outbound = detail::make_message (sent);
     client.send (outbound);
 
     const zlink::received_t inbound = server.receive ();
     assert (inbound.parts.size () == 1);
-    assert (inbound.parts[0].to_string () == "pair-recv");
+    const std::string received = inbound.parts[0].to_string ();
+    assert (received == "hello-pair");
+    std::printf ("[pair/recv] send: \"%s\" → recv: \"%s\"\n",
+                 sent.c_str (), received.c_str ());
     return 0;
 }

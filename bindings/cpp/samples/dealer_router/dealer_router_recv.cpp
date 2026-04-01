@@ -23,20 +23,24 @@ int main ()
       static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
       2000, 1));
 
-    zlink::message_t outbound =
-      detail::make_message ("dealer-router-recv");
+    const std::string sent = "ping";
+    zlink::message_t outbound = detail::make_message (sent);
     dealer.send (outbound);
 
     const zlink::received_t inbound = router.receive ();
     assert (inbound.routing_id.size > 0);
     assert (inbound.parts.size () == 1);
-    assert (inbound.parts[0].to_string () == "dealer-router-recv");
+    assert (inbound.parts[0].to_string () == "ping");
 
-    zlink::message_t reply = detail::make_message ("dealer-reply");
+    const std::string reply_payload = "pong";
+    zlink::message_t reply = detail::make_message (reply_payload);
     router.send (inbound.routing_id, reply);
 
     const zlink::received_t echoed = dealer.receive ();
     assert (echoed.parts.size () == 1);
-    assert (echoed.parts[0].to_string () == "dealer-reply");
+    const std::string received = echoed.parts[0].to_string ();
+    assert (received == "pong");
+    std::printf ("[dealer-router/recv] send: \"%s\" → recv: \"%s\"\n",
+                 sent.c_str (), received.c_str ());
     return 0;
 }

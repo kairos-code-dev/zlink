@@ -13,25 +13,25 @@ class subscriber_socket_t : public base_socket_t
   public:
     ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)
     {
-        return socket_base ().set_subscription (filter_);
+        return base_socket_t::set_subscription (filter_);
     }
 
     ZLINK_CPP_NODISCARD int unset_subscription (const std::string &filter_)
     {
-        return socket_base ().unset_subscription (filter_);
+        return base_socket_t::unset_subscription (filter_);
     }
 
     ZLINK_CPP_NODISCARD int subscription_at (size_t index_,
                                              std::string &filter_,
                                              bool *is_pattern_ = NULL)
     {
-        return socket_base ().subscription_at (index_, filter_, is_pattern_);
+        return base_socket_t::subscription_at (index_, filter_, is_pattern_);
     }
 
     ZLINK_CPP_NODISCARD subscribed_t subscribe ()
     {
         subscribed_t subscribed;
-        const int rc = socket_base ().subscribe (subscribed);
+        const int rc = base_socket_t::subscribe (subscribed);
         throw_on_error (rc);
         return subscribed;
     }
@@ -39,7 +39,7 @@ class subscriber_socket_t : public base_socket_t
     ZLINK_CPP_NODISCARD maybe_t<subscribed_t> try_subscribe ()
     {
         subscribed_t subscribed;
-        const int rc = socket_base ().subscribe (subscribed, recv_flag::dontwait);
+        const int rc = base_socket_t::subscribe (subscribed, recv_flag::dontwait);
         if (rc == 0)
             return maybe_t<subscribed_t> (std::move (subscribed));
         if (errno == EAGAIN)
@@ -52,7 +52,7 @@ class subscriber_socket_t : public base_socket_t
     subscribe_handler (zlink_subscribe_handler_fn handler_,
                        void *userdata_ = NULL)
     {
-        return socket_base ().subscribe_handler (handler_, userdata_);
+        return base_socket_t::subscribe_handler (handler_, userdata_);
     }
 
   protected:

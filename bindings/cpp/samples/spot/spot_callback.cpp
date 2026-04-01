@@ -69,10 +69,11 @@ int main ()
     assert (pub_node.bind (endpoint) == 0);
     assert (sub_node.connect_peer (endpoint) == 0);
 
+    const std::string topic = "room:lobby";
     callback_state_t state;
     state.ready = false;
     assert (sub_spot.subscribe_handler (&subscribe_callback, &state) == 0);
-    assert (sub_spot.subscribe ("topic:alpha") == 0);
+    assert (sub_spot.subscribe (topic) == 0);
     assert (detail::wait_for_service_monitor_event (
       sub_monitor,
       static_cast<uint32_t> (
@@ -87,14 +88,17 @@ int main ()
     assert (detail::wait_for_service_monitor_state (
       pub_monitor, ZLINK_MONITOR_STATE_SEND_READY, 10000));
 
-    zlink::message_t outbound =
-      detail::make_message ("spot-callback");
-    pub_spot.publish ("topic:alpha", outbound);
+    const std::string sent = "hello-spot";
+    zlink::message_t outbound = detail::make_message (sent);
+    pub_spot.publish (topic, outbound);
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 10000));
-    assert (state.topic == "topic:alpha");
-    assert (state.payload == "spot-callback");
+    assert (state.topic == topic);
+    assert (state.payload == "hello-spot");
+    std::printf (
+      "[spot/callback] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
+      topic.c_str (), sent.c_str (), state.topic.c_str (), state.payload.c_str ());
     lock.unlock ();
     assert (pub_monitor.close () == 0);
     assert (sub_monitor.close () == 0);

@@ -250,7 +250,7 @@ class xpub_socket_t : public detail::pub_option_socket_base_t
     ZLINK_CPP_NODISCARD subscription_event_t receive_subscription_event ()
     {
         subscription_event_t event;
-        const int rc = socket_base ().subscription_event (event);
+        const int rc = base_socket_t::subscription_event (event);
         throw_on_error (rc);
         return event;
     }
@@ -260,7 +260,7 @@ class xpub_socket_t : public detail::pub_option_socket_base_t
     {
         subscription_event_t event;
         const int rc =
-          socket_base ().subscription_event (event, recv_flag::dontwait);
+          base_socket_t::subscription_event (event, recv_flag::dontwait);
         if (rc == 0)
             return maybe_t<subscription_event_t> (std::move (event));
         if (errno == EAGAIN)

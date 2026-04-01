@@ -9,7 +9,7 @@ struct callback_state_t
     std::mutex mutex;
     std::condition_variable cv;
     bool ready;
-    std::string routing_id;
+    zlink_routing_id_t routing_id;
     std::string payload;
 };
 
@@ -25,7 +25,7 @@ void router_callback (const zlink_routing_id_t *source_rid_,
 
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        state->routing_id = zlink::routing_id_to_string (*source_rid_);
+        state->routing_id = *source_rid_;
         state->payload.assign (
           static_cast<const char *> (zlink_msg_data (&parts_[0])),
           zlink_msg_size (&parts_[0]));
@@ -61,15 +61,27 @@ int main ()
 
     callback_state_t state;
     state.ready = false;
+    std::memset (&state.routing_id, 0, sizeof (state.routing_id));
     assert (router.recv_handler (&router_callback, &state) == 0);
 
-    zlink::message_t outbound =
-      detail::make_message ("dealer-router-callback");
+    const std::string sent = "ping";
+    zlink::message_t outbound = detail::make_message (sent);
     dealer.send (outbound);
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 2000));
-    assert (!state.routing_id.empty ());
-    assert (state.payload == "dealer-router-callback");
+    assert (state.routing_id.size > 0);
+    assert (state.payload == "ping");
+    lock.unlock ();
+
+    zlink::message_t reply = detail::make_message ("pong");
+    router.send (state.routing_id, reply);
+
+    const zlink::received_t echoed = dealer.receive ();
+    assert (echoed.parts.size () == 1);
+    const std::string received = echoed.parts[0].to_string ();
+    assert (received == "pong");
+    std::printf ("[dealer-router/callback] send: \"%s\" → recv: \"%s\"\n",
+                 sent.c_str (), received.c_str ());
     return 0;
 }

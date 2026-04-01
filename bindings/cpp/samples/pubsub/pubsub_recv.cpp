@@ -22,20 +22,24 @@ int main ()
       static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
       2000, 1));
 
-    assert (subscriber.set_subscription ("topic:alpha") == 0);
+    const std::string topic = "prices";
+    assert (subscriber.set_subscription (topic) == 0);
 
     const zlink::subscription_event_t event =
       publisher.receive_subscription_event ();
     assert (event.subscribed);
-    assert (event.topic == "topic:alpha");
+    assert (event.topic == topic);
 
-    zlink::message_t outbound =
-      detail::make_message ("pubsub-recv");
-    publisher.publish ("topic:alpha", outbound);
+    const std::string sent = "101.25";
+    zlink::message_t outbound = detail::make_message (sent);
+    publisher.publish (topic, outbound);
 
     const zlink::subscribed_t inbound = subscriber.subscribe ();
-    assert (inbound.topic == "topic:alpha");
+    assert (inbound.topic == topic);
     assert (inbound.parts.size () == 1);
-    assert (inbound.parts[0].to_string () == "pubsub-recv");
+    const std::string received = inbound.parts[0].to_string ();
+    assert (received == "101.25");
+    std::printf ("[pubsub/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
+                 topic.c_str (), sent.c_str (), topic.c_str (), received.c_str ());
     return 0;
 }

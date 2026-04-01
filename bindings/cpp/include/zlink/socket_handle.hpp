@@ -2,7 +2,7 @@
 #ifndef ZLINK_CPP_SOCKET_HANDLE_HPP_INCLUDED
 #define ZLINK_CPP_SOCKET_HANDLE_HPP_INCLUDED
 
-#include "socket.hpp"
+#include "common.hpp"
 
 namespace zlink
 {
@@ -10,49 +10,73 @@ namespace zlink
 class socket_handle_t
 {
   public:
-    socket_handle_t () noexcept {}
+    socket_handle_t () noexcept : _socket (NULL), _own (false) {}
 
     explicit socket_handle_t (void *socket_, bool own_ = true) noexcept
-        : _socket (own_ ? detail::socket_t::adopt (socket_)
-                        : detail::socket_t::wrap (socket_))
+        : _socket (socket_), _own (own_)
     {
     }
 
-    ~socket_handle_t () {}
+    ~socket_handle_t () { (void) close (); }
 
     socket_handle_t (socket_handle_t &&other) noexcept
-        : _socket (std::move (other._socket))
+        : _socket (other._socket), _own (other._own)
     {
+        other._socket = NULL;
+        other._own = false;
     }
 
     socket_handle_t &operator= (socket_handle_t &&other) noexcept
     {
         if (this == &other)
             return *this;
-        _socket = std::move (other._socket);
+
+        (void) close ();
+        _socket = other._socket;
+        _own = other._own;
+        other._socket = NULL;
+        other._own = false;
         return *this;
     }
 
     socket_handle_t (const socket_handle_t &) = delete;
     socket_handle_t &operator= (const socket_handle_t &) = delete;
 
-    bool valid () const noexcept { return _socket.valid (); }
-    void *handle () noexcept { return _socket.handle (); }
-    const void *handle () const noexcept { return _socket.handle (); }
+    bool valid () const noexcept { return _socket != NULL; }
+    void *handle () noexcept { return _socket; }
+    const void *handle () const noexcept { return _socket; }
 
-    ZLINK_CPP_NODISCARD int close () noexcept { return _socket.close (); }
-
-  protected:
-    explicit socket_handle_t (detail::socket_t &&socket_) noexcept
-        : _socket (std::move (socket_))
+    ZLINK_CPP_NODISCARD int close () noexcept
     {
+        if (!_socket) {
+            _own = false;
+            return 0;
+        }
+
+        if (!_own) {
+            _socket = NULL;
+            return 0;
+        }
+
+        void *socket = _socket;
+        const int rc = zlink_close (socket);
+        if (rc == 0) {
+            _socket = NULL;
+            _own = false;
+        }
+        return rc;
     }
 
-    detail::socket_t &socket_base () noexcept { return _socket; }
-    const detail::socket_t &socket_base () const noexcept { return _socket; }
+  protected:
+    void reset_handle (void *socket_, bool own_) noexcept
+    {
+        _socket = socket_;
+        _own = own_;
+    }
 
   private:
-    detail::socket_t _socket;
+    void *_socket;
+    bool _own;
 };
 
 } // namespace zlink

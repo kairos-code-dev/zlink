@@ -58,26 +58,28 @@ int main ()
     const int raw_fd = detail::connect_raw_tcp (endpoint);
     assert (raw_fd >= 0);
 
-    const char request[] = "stream-callback";
+    const char request[] = "hello-stream";
     assert (detail::send_raw_tcp (
               raw_fd, request, sizeof (request) - 1)
             == static_cast<int> (sizeof (request) - 1));
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 2000));
-    assert (state.payload == "stream-callback");
+    assert (state.payload == "hello-stream");
     lock.unlock ();
 
     zlink::message_t reply =
-      detail::make_message ("stream-callback-reply");
+      detail::make_message ("hello-stream");
     server.send (state.routing_id, reply);
 
     char response[64];
     const int received =
       detail::recv_raw_tcp (raw_fd, response, sizeof (response));
     assert (received
-            == static_cast<int> (std::strlen ("stream-callback-reply")));
-    assert (std::memcmp (response, "stream-callback-reply", received) == 0);
+            == static_cast<int> (std::strlen ("hello-stream")));
+    assert (std::memcmp (response, "hello-stream", received) == 0);
+    std::printf ("[stream/callback] send: \"%s\" → recv: \"%.*s\"\n",
+                 request, received, response);
 
     detail::close_raw_tcp (raw_fd);
     return 0;

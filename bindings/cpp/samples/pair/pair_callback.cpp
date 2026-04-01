@@ -60,12 +60,14 @@ int main ()
     state.ready = false;
     assert (server.recv_handler (&pair_callback, &state) == 0);
 
-    zlink::message_t outbound =
-      detail::make_message ("pair-callback");
+    const std::string sent = "hello-pair";
+    zlink::message_t outbound = detail::make_message (sent);
     client.send (outbound);
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 2000));
-    assert (state.payload == "pair-callback");
+    assert (state.payload == "hello-pair");
+    std::printf ("[pair/callback] send: \"%s\" → recv: \"%s\"\n",
+                 sent.c_str (), state.payload.c_str ());
     return 0;
 }

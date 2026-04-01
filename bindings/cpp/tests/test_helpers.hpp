@@ -201,12 +201,18 @@ inline int monitor_recv_nowait(zlink::monitor_handle_t &monitor,
 
 inline size_t auto_routing_id_size(zlink::context_t &ctx, zlink::socket_type type)
 {
-    zlink::detail::socket_t socket(ctx, type);
+    void *socket =
+      zlink_socket(ctx.handle(), static_cast<zlink_socket_type_t>(type));
+    assert(socket != NULL);
     unsigned char routing_id[255];
     std::memset(routing_id, 0, sizeof(routing_id));
     size_t size = sizeof(routing_id);
     assert(
-      socket.get_option(zlink::socket_option::routing_id, routing_id, &size) == 0);
+      zlink_get_option(
+        socket, static_cast<zlink_option_t>(zlink::socket_option::routing_id),
+        routing_id, &size)
+      == 0);
+    assert(zlink_close(socket) == 0);
     return size;
 }
 

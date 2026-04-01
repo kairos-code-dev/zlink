@@ -1,0 +1,9 @@
+/* Ensure ASCII art diagrams render with proper monospace alignment */
+.md-typeset pre > code {
+  font-variant-ligatures: none;
+}
+
+/* Slightly larger code font for readability */
+.md-typeset code {
+  font-size: 0.82em;
+}

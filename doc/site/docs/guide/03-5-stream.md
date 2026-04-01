@@ -1,0 +1,344 @@
+# STREAM Socket
+
+## 1. Overview
+
+STREAM is a **server-only** socket for communicating with **external raw clients**.
+
+Core rules:
+- `ZLINK_STREAM` supports `zlink_bind()` only.
+- Calling `zlink_connect()` on `ZLINK_STREAM` returns `EOPNOTSUPP`.
+- Clients must use OS/Asio/WebSocket raw client stacks, not zlink STREAM sockets.
+- Wire format is `4-byte length (big-endian) + body`.
+- At the zlink API level, messages are exposed as 2 frames: `[routing_id(4B)][payload]`.
+
+Valid combination:
+
+```
+external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
+```
+
+> STREAM is not directly compatible with zlink internal sockets (PAIR/PUB/SUB/DEALER/ROUTER).
+
+---
+
+## 2. Server Create/Bind
+
+=== "C"
+
+    ```c
+    void *stream = zlink_socket(ctx, ZLINK_STREAM);
+    int linger = 0;
+    zlink_set_option(stream, ZLINK_OPT_LINGER, &linger, sizeof(linger));
+    zlink_bind(stream, "tcp://0.0.0.0:8080");
+    ```
+
+=== "C++"
+
+    ```cpp
+    zlink::context_t ctx;
+    zlink::stream_socket_t stream(ctx);
+    stream.set_option(zlink::opt::linger, 0);
+    stream.bind("tcp://0.0.0.0:8080");
+    ```
+
+=== "Java"
+
+    ```java
+    Context ctx = new Context();
+    StreamSocket stream = new StreamSocket(ctx);
+    stream.setLinger(0);
+    stream.bind("tcp://0.0.0.0:8080");
+    ```
+
+=== "Python"
+
+    ```python
+    ctx = zlink.Context()
+    stream = zlink.StreamSocket(ctx)
+    stream.set_option(zlink.OPT_LINGER, 0)
+    stream.bind("tcp://0.0.0.0:8080")
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    const ctx = new zlink.Context();
+    const stream = new zlink.StreamSocket(ctx);
+    stream.setOption(zlink.OPT_LINGER, 0);
+    stream.bind("tcp://0.0.0.0:8080");
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    using var ctx = new Context();
+    using var stream = new StreamSocket(ctx);
+    stream.Linger = 0;
+    stream.Bind("tcp://0.0.0.0:8080");
+    ```
+
+=== "Rust"
+
+    ```rust
+    let ctx = zlink::Context::new()?;
+    let stream = ctx.stream_socket()?;
+    stream.set_linger(0)?;
+    stream.bind("tcp://0.0.0.0:8080")?;
+    ```
+
+Supported server transports:
+- `tcp://`
+- `tls://`
+- `ws://`
+- `wss://`
+
+---
+
+## 3. STREAM-Specific Behavior
+
+STREAM uses the same recv/callback model as other sockets.
+STREAM-specific behavior:
+
+- `source_rid` is auto-assigned per connection by the server,
+  always fixed 4 bytes (`uint32`, big-endian).
+- Connect/disconnect events are delivered as messages:
+
+| payload | meaning |
+|---|---|
+| `0x01` (1 byte) | connect event |
+| `0x00` (1 byte) | disconnect event |
+| otherwise | regular data |
+
+---
+
+## 4. Callback Example
+
+In STREAM callbacks, connect/disconnect events must be distinguished from data.
+
+=== "C"
+
+    ```c
+    void on_message(const zlink_routing_id_t *source_rid,
+                    zlink_msg_t *parts, size_t part_count,
+                    void *userdata)
+    {
+        for (size_t i = 0; i < part_count; i++) {
+            void *data = zlink_msg_data(&parts[i]);
+            size_t size = zlink_msg_size(&parts[i]);
+
+            if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
+                /* new client connected */
+            } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
+                /* client disconnected */
+            } else {
+                /* echo reply */
+                zlink_msg_t reply;
+                zlink_msg_init_size(&reply, size);
+                memcpy(zlink_msg_data(&reply), data, size);
+                zlink_send_rid(stream, source_rid, &reply, 1, 0);
+            }
+            zlink_msg_close(&parts[i]);
+        }
+    }
+
+    /* Attach callback dispatch (permanent, cannot be undone) */
+    zlink_recv_handler(stream, on_message, NULL);
+    ```
+
+=== "C++"
+
+    ```cpp
+    stream.on_message([&](const zlink::routing_id_t& source_rid,
+                          std::span<zlink::message_t> parts) {
+        for (auto& part : parts) {
+            auto data = part.data();
+            if (data.size() == 1 && data[0] == 0x01) {
+                // new client connected
+            } else if (data.size() == 1 && data[0] == 0x00) {
+                // client disconnected
+            } else {
+                // echo reply
+                stream.send_rid(source_rid, part);
+            }
+        }
+    });
+    ```
+
+=== "Java"
+
+    ```java
+    stream.onMessage((sourceRid, parts) -> {
+        for (Message part : parts) {
+            byte[] data = part.data();
+            if (data.length == 1 && data[0] == 0x01) {
+                // new client connected
+            } else if (data.length == 1 && data[0] == 0x00) {
+                // client disconnected
+            } else {
+                // echo reply
+                stream.sendRid(sourceRid, part);
+            }
+        }
+    });
+    ```
+
+=== "Python"
+
+    ```python
+    def on_message(source_rid, parts):
+        for part in parts:
+            data = part.data()
+            if data == b"\x01":
+                pass  # new client connected
+            elif data == b"\x00":
+                pass  # client disconnected
+            else:
+                # echo reply
+                stream.send_rid(source_rid, data)
+
+    stream.on_message(on_message)
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    stream.onMessage((sourceRid: Buffer, parts: Buffer[]) => {
+        for (const part of parts) {
+            if (part.length === 1 && part[0] === 0x01) {
+                // new client connected
+            } else if (part.length === 1 && part[0] === 0x00) {
+                // client disconnected
+            } else {
+                // echo reply
+                stream.sendRid(sourceRid, part);
+            }
+        }
+    });
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    stream.OnMessage((sourceRid, parts) => {
+        foreach (var part in parts) {
+            var data = part.Data;
+            if (data.Length == 1 && data.Span[0] == 0x01) {
+                // new client connected
+            } else if (data.Length == 1 && data.Span[0] == 0x00) {
+                // client disconnected
+            } else {
+                // echo reply
+                stream.SendRid(sourceRid, part);
+            }
+        }
+    });
+    ```
+
+=== "Rust"
+
+    ```rust
+    stream.on_message(|source_rid, parts| {
+        for part in parts {
+            let data = part.as_bytes();
+            if data == [0x01] {
+                // new client connected
+            } else if data == [0x00] {
+                // client disconnected
+            } else {
+                // echo reply
+                stream.send_rid(source_rid, part)?;
+            }
+        }
+        Ok(())
+    })?;
+    ```
+
+### Key Points
+
+| Item | Description |
+|---|---|
+| Attach API | `zlink_recv_handler()` |
+| Callback | `zlink_socket_msg_handler_fn` |
+| Lifetime | Permanent once attached (no detach) |
+| Framing | Raw bytes as received from the transport |
+| Send | `zlink_send_rid()` |
+
+> When the send queue is full (HWM), `zlink_send_rid()` blocks
+> (default) or returns `EAGAIN` with `ZLINK_DONTWAIT`. For advanced
+> backpressure patterns, see [Performance Guide](10-performance.md).
+
+- Only one callback can be attached at a time; calling attach while a
+  callback is already attached returns `-1` with `errno=EBUSY`.
+- The handler is permanent and cannot be detached for the lifetime of
+  the socket.
+- Close from inside the callback is not supported (fails with `EBUSY`).
+
+---
+
+## 5. Client Implementation Rule
+
+Clients must be implemented as raw socket/websocket clients.
+
+Conceptual POSIX TCP example:
+
+!!! note "C-only: raw POSIX socket framing"
+    This example shows raw POSIX socket calls for the client side.
+    Each language uses its own native TCP/WebSocket client library.
+
+```c
+// send: [4B length][body]
+uint32_t len_be = htonl(body_len);
+send(fd, &len_be, 4, 0);
+send(fd, body, body_len, 0);
+
+// recv: [4B length][body]
+recv(fd, &len_be, 4, MSG_WAITALL);
+uint32_t body_len = ntohl(len_be);
+recv(fd, body, body_len, MSG_WAITALL);
+```
+
+---
+
+## 6. Option and Runtime Policy
+
+Main supported options:
+- `ZLINK_OPT_MAXMSGSIZE`, `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF`, `ZLINK_OPT_BACKLOG`, `ZLINK_OPT_LINGER`
+- TLS/WSS server: `zlink_set_tls_server()` / TLS client: `zlink_set_tls_client()`
+
+Unsupported/changed:
+- Setting `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` on STREAM returns `EOPNOTSUPP`.
+
+### 6.1 Default STREAM runtime profile
+
+Defaults currently used by STREAM internals:
+- `ZLINK_OPT_BACKLOG`: `65536`
+- `ZLINK_OPT_SNDBUF`: `262144` when unset (`-1`)
+- `ZLINK_OPT_RCVBUF`: `262144` when unset (`-1`)
+- minimum in/out batch size: `12288`
+- STREAM accept concurrency default: `4` (clamped to max `128`)
+- STREAM session scheduling default: `rr`
+
+> STREAM runtime environment variables and internal tuning constants
+> are documented in [STREAM internals](../internals/stream-socket.md).
+
+---
+
+## 7. Errors and Constraints
+
+- `zlink_connect(stream, ...)` -> `EOPNOTSUPP`
+- On STREAM, non-4-byte `routing_id` frame is a protocol error
+- Messages larger than `MAXMSGSIZE` are dropped and connection is closed (disconnect event)
+
+---
+
+## 8. Reference Tests
+
+- `core/tests/test_stream_socket.cpp`
+- `core/tests/test_stream_fastpath.cpp`
+- `core/tests/routing-id/test_connect_rid_string_alias.cpp`
+- `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
+
+These tests use STREAM server + raw client paths.
+
+---
+[← ROUTER](03-4-router.md) | [Proxy →](03-6-proxy.md) | [Transport →](04-transports.md)

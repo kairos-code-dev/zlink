@@ -1,0 +1,373 @@
+# 소켓 패턴 개요 및 선택 가이드
+
+## 1. 개요
+
+zlink는 8종의 소켓 타입을 제공한다.
+각 소켓은 고유한 메시징 패턴을 구현하며, 유효한 소켓 조합 내에서만 통신이 가능하다.
+
+## 2. 소켓 요약
+
+| 소켓 | 패턴 | 방향 | 라우팅 전략 | 주요 용도 |
+|------|------|------|-------------|-----------|
+| **PAIR** | 1:1 양방향 | 양방향 | 단일 파이프 (1:1 독점) | 스레드 간 시그널링, 워커 조정 |
+| **PUB** | 발행 | 단방향 (송신) | `dist_t` (Fan-out) | 이벤트 브로드캐스트 |
+| **SUB** | 구독 | 단방향 (수신) | `fq_t` (Fair-queue) | 토픽 필터링 수신 |
+| **XPUB** | 고급 발행 | 양방향 | `dist_t` + 구독 수신 | 프록시/브로커, 구독 모니터링 |
+| **XSUB** | 고급 구독 | 단방향 (수신) | `fq_t` (필터 없이 전체 수신) | 프록시/브로커 |
+| **DEALER** | 비동기 요청 | 양방향 | 송신: `lb_t` (Round-robin), 수신: `fq_t` | 로드밸런싱, 비동기 요청 |
+| **ROUTER** | ID 라우팅 | 양방향 | routing_id 기반 지정 전송 | 서버, 브로커, 멀티 클라이언트 |
+| **STREAM** | RAW 통신 | 양방향 | routing_id 기반 (4B uint32) | 외부 클라이언트 연동 |
+
+## 3. 소켓 호환성 매트릭스
+
+유효한 소켓 조합만 연결이 가능하다. 비호환 소켓을 연결하면 핸드셰이크가 실패한다.
+
+| 소켓 | PAIR | PUB | SUB | XPUB | XSUB | DEALER | ROUTER | STREAM |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **PAIR** | **O** | | | | | | | |
+| **PUB** | | | **O** | | **O** | | | |
+| **SUB** | | **O** | | **O** | | | | |
+| **XPUB** | | | **O** | | **O** | | | |
+| **XSUB** | | **O** | | **O** | | | | |
+| **DEALER** | | | | | | **O** | **O** | |
+| **ROUTER** | | | | | | **O** | **O** | |
+| **STREAM** | | | | | | | | **외부** |
+
+> STREAM 소켓은 zlink 내부 소켓과 호환되지 않으며, 외부 RAW 클라이언트와만 통신한다.
+
+## 4. 라우팅 전략 요약
+
+| 전략 | 동작 | 사용 소켓 |
+|------|------|-----------|
+| **단일 파이프** | 하나의 피어와만 통신 (N:1 불가) | PAIR |
+| **Round-robin** (`lb_t`) | 연결된 피어에 순환 분배 | DEALER 송신 |
+| **Fair-queue** (`fq_t`) | 모든 피어에서 공정하게 수신 | DEALER/SUB 수신 |
+| **Fan-out** (`dist_t`) | 모든 구독자에게 복제 전송 | PUB/XPUB |
+| **ID 라우팅** | routing_id 프레임으로 특정 피어 지정 | ROUTER/STREAM |
+
+> 라우팅 전략의 내부 구현 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
+
+## 5. 패턴 선택 가이드
+
+### 의사결정 플로우
+
+```
+통신 상대가 외부 클라이언트(브라우저, 게임)인가?
+├── Yes → STREAM (ws/wss/tcp/tls)
+└── No → zlink 소켓 간 통신
+         ├── 1:1 전용인가?
+         │   └── Yes → PAIR
+         └── No → N:M 통신
+              ├── 발행-구독 (브로드캐스트)인가?
+              │   ├── 프록시/브로커 필요 → XPUB/XSUB
+              │   └── 단순 발행-구독 → PUB/SUB
+              └── 요청-응답 / 라우팅인가?
+                  └── DEALER/ROUTER
+```
+
+### 사용 사례별 추천
+
+| 사용 사례 | 추천 패턴 | 설명 |
+|-----------|-----------|------|
+| 스레드 간 시그널링 | PAIR + inproc | 가장 빠른 1:1 통신 |
+| 이벤트 브로드캐스트 | PUB/SUB | 토픽 기반 필터링 |
+| 메시지 브로커/프록시 | XPUB/XSUB | 구독 메시지 접근 및 변환 |
+| 비동기 요청-응답 서버 | DEALER↔DEALER | 비동기 양방향 통신 |
+| 로드밸런싱 | 다중 DEALER → ROUTER | Round-robin 분배 |
+| 특정 피어 전송 | ROUTER | routing_id로 대상 지정 |
+| 웹 클라이언트 연동 | STREAM + ws/wss | WebSocket RAW 통신 |
+| 외부 TCP 클라이언트 | STREAM + tcp/tls | Length-Prefix RAW 통신 |
+
+> 위치 투명성이 필요한 경우(자동 연결 · 로드밸런싱 · 토픽 메시)에는
+> 소켓 대신 서비스 레이어(SPOT)를 사용한다.
+> 상세는 [서비스 개요](07-0-services.ko.md)를 참고.
+
+## 6. 하위 문서
+
+각 소켓 타입의 상세 사용법은 개별 문서를 참고한다.
+
+| 문서 | 소켓 | 설명 |
+|------|------|------|
+| [03-1-pair.ko.md](03-1-pair.ko.md) | PAIR | 1:1 양방향 독점 연결 |
+| [03-2-pubsub.ko.md](03-2-pubsub.ko.md) | PUB/SUB/XPUB/XSUB | 발행-구독 패밀리 |
+| [03-3-dealer.ko.md](03-3-dealer.ko.md) | DEALER | 비동기 요청, Round-robin |
+| [03-4-router.ko.md](03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
+| [03-5-stream.ko.md](03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
+
+## 7. 공통 수신 인터페이스
+
+모든 소켓 타입에서 `zlink_recv()`와 recv callback은 동일한 인터페이스를 사용한다:
+
+!!! note "C API 시그니처 -- 각 바인딩은 이를 자체 관용적 recv 메서드로 래핑한다."
+
+    ```c
+    int zlink_recv (void *socket,
+                    zlink_routing_id_t *source_rid,  /* 송신자 routing_id */
+                    zlink_msg_t **parts,              /* 멀티파트 데이터 */
+                    size_t *part_count,               /* 프레임 수 */
+                    zlink_send_flags_t flags);
+    ```
+
+- **`source_rid`**: 모든 소켓에서 송신자 피어의 routing_id가 채워진다.
+  이것은 메시지 프레임이 아니라 zlink가 연결된 피어의 identity를
+  자동으로 resolve하는 별도 파라미터다.
+- **`parts` / `part_count`**: 모든 소켓에서 멀티파트가 기본이다.
+  `part_count=1`이면 단일 프레임, `part_count=2+`이면 멀티파트.
+
+> **libzmq와의 차이:** libzmq ROUTER는 `zmq_recv()`의 첫 프레임이
+> routing_id였지만, zlink에서는 모든 소켓 타입에서 routing_id가
+> 별도 파라미터로 분리되어 있다.
+
+PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
+- 수신: `zlink_subscribe()` / `zlink_subscribe_handler()`
+- 발행: `zlink_publish()`
+- `zlink_send()` / `zlink_recv()`는 PUB/SUB 4소켓 모두 `ENOTSUP`
+
+## 8. 용어 정리
+
+문서 전반에서 사용되는 전문 용어:
+
+| 용어 | 의미 |
+|------|------|
+| **hot path** | 고빈도로 호출되는 경로. `send`, `publish` 등 데이터 전송 API. 동시 호출에 최적화되어 있다 |
+| **control path** | 저빈도로 호출되는 경로. `bind`, `connect`, `set_option`, `monitor` 등 설정/관리 API. 내부 직렬화로 correctness를 보장한다 |
+| **correctness** | 여러 스레드가 같은 handle을 동시에 사용해도 데이터 손상이나 크래시 없이 올바르게 동작하는 성질 |
+| **fail-fast lifecycle gate** | `close`/`destroy` 호출 시 다른 스레드가 사용 중이면 즉시 `EBUSY`를 반환하고, close가 수락된 뒤 새 API 진입은 `ESHUTDOWN`을 반환하는 종료 계약 |
+| **admission guard** | API 진입 시 handle이 유효한지, 이미 종료 중인지를 검사하는 내부 게이트 |
+| **approximate limit** | 정확한 hard limit이 아닌 근사치 제한. HWM은 lock-free 성능을 위해 소폭 초과를 허용한다 |
+
+> 스레드 안전성 계약의 전체 설명은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
+
+## 9. 기본 사용 흐름
+
+모든 소켓 타입에 공통되는 기본 패턴:
+
+=== "C"
+
+    ```c
+    /* 1. Context 생성 */
+    void *ctx = zlink_ctx_new();
+
+    /* 2. 핸들러 콜백 정의 */
+    void on_message(const zlink_routing_id_t *source_rid,
+                    zlink_msg_t *parts, size_t part_count,
+                    void *userdata)
+    {
+        /* 수신 메시지 처리 */
+        for (size_t i = 0; i < part_count; i++)
+            zlink_msg_close(&parts[i]);
+    }
+
+    /* 3. 소켓 생성 (raw STREAM callback 예제) */
+    void *socket = zlink_socket(ctx, ZLINK_STREAM);
+    zlink_recv_handler(socket, on_message, NULL);
+
+    /* 4. 소켓 옵션 설정 (bind/connect 전) */
+    zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
+
+    /* 5. 연결 (bind 또는 connect) */
+    zlink_bind(socket, "tcp://*:5555");
+    // 또는
+    zlink_connect(socket, "tcp://127.0.0.1:5555");
+
+    /* 6. 메시지 송신 (수신은 콜백으로 처리) */
+    zlink_send(socket, data, size, flags);
+
+    /* 7. 정리 */
+    zlink_close(socket);
+    zlink_ctx_term(ctx);
+    ```
+
+=== "C++"
+
+    ```cpp
+    // 1. Context 생성
+    zlink::context_t ctx;
+
+    // 2. 핸들러 콜백 정의
+    auto on_message = [](const zlink::routing_id_t& source_rid,
+                         std::vector<zlink::message_t> parts,
+                         void* userdata) {
+        // 수신 메시지 처리
+    };
+
+    // 3. 소켓 생성 (raw STREAM callback 예제)
+    zlink::stream_socket_t socket(ctx);
+    socket.recv_handler(on_message, nullptr);
+
+    // 4. 소켓 옵션 설정 (bind/connect 전)
+    socket.set_option(ZLINK_OPT_<OPTION>, value);
+
+    // 5. 연결 (bind 또는 connect)
+    socket.bind("tcp://*:5555");
+    // 또는
+    socket.connect("tcp://127.0.0.1:5555");
+
+    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    socket.send(data);
+
+    // 7. 정리
+    socket.close();
+    ```
+
+=== "Java"
+
+    ```java
+    // 1. Context 생성
+    Context ctx = new Context();
+
+    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    StreamSocket socket = new StreamSocket(ctx);
+    socket.recvHandler((sourceRid, parts) -> {
+        // 수신 메시지 처리
+    });
+
+    // 4. 소켓 옵션 설정 (bind/connect 전)
+    socket.setOption(Option.<OPTION>, value);
+
+    // 5. 연결 (bind 또는 connect)
+    socket.bind("tcp://*:5555");
+    // 또는
+    socket.connect("tcp://127.0.0.1:5555");
+
+    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    socket.send(data);
+
+    // 7. 정리
+    socket.close();
+    ctx.close();
+    ```
+
+=== "Python"
+
+    ```python
+    # 1. Context 생성
+    ctx = zlink.Context()
+
+    # 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    socket = zlink.StreamSocket(ctx)
+    socket.recv_handler(lambda source_rid, parts: ...)
+
+    # 4. 소켓 옵션 설정 (bind/connect 전)
+    socket.set_option(zlink.Option.<OPTION>, value)
+
+    # 5. 연결 (bind 또는 connect)
+    socket.bind("tcp://*:5555")
+    # 또는
+    socket.connect("tcp://127.0.0.1:5555")
+
+    # 6. 메시지 송신 (수신은 콜백으로 처리)
+    socket.send(data)
+
+    # 7. 정리
+    socket.close()
+    ctx.term()
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    // 1. Context 생성
+    const ctx = new zlink.Context();
+
+    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    const socket = new zlink.StreamSocket(ctx);
+    socket.recvHandler((sourceRid, parts) => {
+        // 수신 메시지 처리
+    });
+
+    // 4. 소켓 옵션 설정 (bind/connect 전)
+    socket.setOption(zlink.Option.<OPTION>, value);
+
+    // 5. 연결 (bind 또는 connect)
+    socket.bind("tcp://*:5555");
+    // 또는
+    socket.connect("tcp://127.0.0.1:5555");
+
+    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    socket.send(data);
+
+    // 7. 정리
+    socket.close();
+    ctx.term();
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    // 1. Context 생성
+    using var ctx = new Context();
+
+    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    using var socket = new StreamSocket(ctx);
+    socket.RecvHandler((sourceRid, parts) => {
+        // 수신 메시지 처리
+    });
+
+    // 4. 소켓 옵션 설정 (bind/connect 전)
+    socket.SetOption(Option.<OPTION>, value);
+
+    // 5. 연결 (bind 또는 connect)
+    socket.Bind("tcp://*:5555");
+    // 또는
+    socket.Connect("tcp://127.0.0.1:5555");
+
+    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    socket.Send(data);
+    ```
+
+=== "Rust"
+
+    ```rust
+    // 1. Context 생성
+    let ctx = zlink::Context::new()?;
+
+    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    let socket = ctx.stream_socket()?;
+    socket.recv_handler(|source_rid, parts| {
+        // 수신 메시지 처리
+    })?;
+
+    // 4. 소켓 옵션 설정 (bind/connect 전)
+    socket.set_option(zlink::Option::<OPTION>, value)?;
+
+    // 5. 연결 (bind 또는 connect)
+    socket.bind("tcp://*:5555")?;
+    // 또는
+    socket.connect("tcp://127.0.0.1:5555")?;
+
+    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    socket.send(data)?;
+
+    // 7. 정리
+    socket.close()?;
+    ctx.term()?;
+    ```
+
+> 다음 옵션은 핸드셰이크/연결 과정에서 사용되므로
+> `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다:
+>
+> - `zlink_set_routing_id()`
+> - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()` 사용)
+> - `ZLINK_ROUTER_OPT_PROBE` (`zlink_set_router_option()` 사용)
+> - `zlink_set_tls_server()` / `zlink_set_tls_client()`
+>
+> 그 외 옵션(`SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO` 등)은
+> bind/connect 이후에도 변경 가능하다.
+
+> 위 예제는 raw `STREAM` callback 형태다. 다른 raw socket 계열은 recv/poller가
+> canonical 모델이다. 두 모드의 비교는
+> [Core API](02-core-api.ko.md) 섹션 3.2를 참고.
+
+> **Callback 모드 제약:** `zlink_recv_handler()` 설치 후 `zlink_recv()`는
+> `EBUSY`를 반환한다 (비가역 전환). 수신 관련 옵션 중 다음이 무효화된다:
+>
+> | 옵션 | 이유 |
+> |------|------|
+> | `ZLINK_OPT_RCVTIMEO` | `recv()`를 호출하지 않으므로 타임아웃 무효 |
+> | `ZLINK_RCVMORE` (제거됨) | 멀티파트 전체가 `parts[]` 배열로 원자적 전달 |
+>
+> `ZLINK_OPT_RCVHWM`은 callback 모드에서도 유효하다 (I/O 스레드 내부 큐에 적용).
+
+---
+[← Core API](02-core-api.ko.md) | [PAIR →](03-1-pair.ko.md)

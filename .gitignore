@@ -195,6 +195,11 @@ bindings/**/*.suo
 bindings/**/*.userosscache
 bindings/**/*.sln.docstates
 
+## Documentation output
+bindings/**/docs/_build/
+bindings/**/typedoc/
+bindings/**/_site/
+
 ## C/C++ wrapper build artifacts
 bindings/**/CMakeFiles/
 bindings/**/CMakeCache.txt
@@ -224,3 +229,4 @@ doc/plan/perf/logs/
 
 # Clangd cache
 core/.cache/
+doc/site/site/

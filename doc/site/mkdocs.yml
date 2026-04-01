@@ -1,0 +1,129 @@
+site_name: zlink Guide
+site_url: https://kairos-code-dev.github.io/zlink/
+site_description: zlink — Modern messaging library guide
+repo_url: https://github.com/kairos-code-dev/zlink
+repo_name: kairos-code-dev/zlink
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: ko
+          name: 한국어
+          build: true
+          nav_translations:
+            Guide: 가이드
+            Overview: 개요
+            Core API: 핵심 API
+            Socket Patterns: 소켓 패턴
+            Transports: 트랜스포트
+            TLS Security: TLS 보안
+            Monitoring: 모니터링
+            Services: 서비스
+            Routing ID: 라우팅 ID
+            Message API: 메시지 API
+            Performance: 성능
+            Thread Safety: 스레드 안전성
+            Socket Options: 소켓 옵션
+
+nav:
+  - Home: index.md
+  - Guide:
+    - Overview: guide/01-overview.md
+    - Core API: guide/02-core-api.md
+    - Socket Patterns:
+      - Overview: guide/03-0-socket-patterns.md
+      - PAIR: guide/03-1-pair.md
+      - PUB/SUB: guide/03-2-pubsub.md
+      - DEALER: guide/03-3-dealer.md
+      - ROUTER: guide/03-4-router.md
+      - STREAM: guide/03-5-stream.md
+      - Proxy: guide/03-6-proxy.md
+    - Transports: guide/04-transports.md
+    - TLS Security: guide/05-tls-security.md
+    - Monitoring: guide/06-monitoring.md
+    - Services:
+      - Overview: guide/07-0-services.md
+      - Discovery: guide/07-1-discovery.md
+      - SPOT: guide/07-3-spot.md
+      - Registry: guide/07-4-registry.md
+    - Routing ID: guide/08-routing-id.md
+    - Message API: guide/09-message-api.md
+    - Performance: guide/10-performance.md
+    - Thread Safety: guide/11-thread-safety.md
+    - Socket Options: guide/12-socket-options.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.snippets
+  - pymdownx.details
+  - pymdownx.mark
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - attr_list
+  - md_in_html
+  - def_list
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kairos-code-dev/zlink
+  generator: false

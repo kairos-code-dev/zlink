@@ -35,6 +35,94 @@ function collectLines(stream, onLine) {
   });
 }
 
+async function waitForLine(processRef, expected, label, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timeout = setTimeout(() => {
+      if (!done) {
+        done = true;
+        reject(new Error(`${label} timeout waiting for ${expected}`));
+      }
+    }, timeoutMs);
+    processRef.once('exit', (code) => {
+      if (!done) {
+        done = true;
+        clearTimeout(timeout);
+        reject(new Error(`${label} exited before ${expected}: ${code}`));
+      }
+    });
+    processRef.__waiters.push((line) => {
+      if (!done && line === expected) {
+        done = true;
+        clearTimeout(timeout);
+        resolve();
+        return true;
+      }
+      return false;
+    });
+  });
+}
+
+function attachProcessCapture(child, resultLines) {
+  child.__waiters = [];
+  collectLines(child.stdout, (line) => {
+    for (const waiter of child.__waiters) {
+      if (waiter(line)) {
+        return;
+      }
+    }
+    if (line.startsWith('RESULT,')) {
+      resultLines.push(line);
+      return;
+    }
+    console.log(line);
+  });
+  collectLines(child.stderr, (line) => {
+    console.error(line);
+  });
+}
+
+async function stopServer(server, label, timeoutMs = 5000) {
+  if (server.stdin.writable) {
+    server.stdin.write('STOP\n');
+    server.stdin.end();
+  }
+  let timer = null;
+  try {
+    const graceful = await Promise.race([
+      once(server, 'exit'),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs);
+      })
+    ]);
+    if (graceful !== null) {
+      const [code] = graceful;
+      if (code !== 0) {
+        throw new Error(`${label} failed: ${code}`);
+      }
+      return;
+    }
+
+    server.kill('SIGTERM');
+    const terminated = await Promise.race([
+      once(server, 'exit'),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs);
+      })
+    ]);
+    if (terminated !== null) {
+      return;
+    }
+
+    server.kill('SIGKILL');
+    await once(server, 'exit');
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 async function spawnMultiPair(serverScript, clientScript, args) {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
@@ -49,80 +137,28 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     '--recv', args.recv
   ];
 
+  const resultLines = [];
   const server = spawn(process.execPath, [serverPath, ...sharedArgs], {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe']
   });
-
-  const resultLines = [];
-  let readySeen = false;
-
-  collectLines(server.stdout, (line) => {
-    if (line === `READY,${endpoint}`) {
-      readySeen = true;
-      return;
-    }
-    if (line.startsWith('RESULT,')) {
-      resultLines.push(line);
-      return;
-    }
-    console.log(line);
-  });
-  collectLines(server.stderr, (line) => {
-    console.error(line);
-  });
-
-  const serverReady = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`server ready timeout: ${serverScript}`)), 5000);
-    const poll = setInterval(() => {
-      if (readySeen) {
-        clearInterval(poll);
-        clearTimeout(timeout);
-        resolve();
-      }
-    }, 10);
-    server.once('exit', (code) => {
-      clearInterval(poll);
-      clearTimeout(timeout);
-      if (!readySeen) {
-        reject(new Error(`server exited before READY (${serverScript}): ${code}`));
-      }
-    });
-  });
-
-  await serverReady;
+  attachProcessCapture(server, resultLines);
+  await waitForLine(server, `READY,${endpoint}`, serverScript, 5000);
 
   const client = spawn(process.execPath, [clientPath, ...sharedArgs], {
     cwd: process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  collectLines(client.stdout, (line) => {
-    if (line === 'CLIENT_READY') {
-      server.stdin.write('GO\n');
-      return;
-    }
-    if (line.startsWith('RESULT,')) {
-      resultLines.push(line);
-      return;
-    }
-    console.log(line);
-  });
-  collectLines(client.stderr, (line) => {
-    console.error(line);
-  });
+  attachProcessCapture(client, resultLines);
+  await waitForLine(client, 'CLIENT_READY', clientScript, 5000);
 
+  server.stdin.write('GO\n');
   const [clientCode] = await once(client, 'exit');
   if (clientCode !== 0) {
     throw new Error(`client failed (${clientScript}): ${clientCode}`);
   }
 
-  server.stdin.write('STOP\n');
-  server.stdin.end();
-  const [serverCode] = await once(server, 'exit');
-  if (serverCode !== 0) {
-    throw new Error(`server failed (${serverScript}): ${serverCode}`);
-  }
-
+  await stopServer(server, serverScript);
   return resultLines;
 }
 

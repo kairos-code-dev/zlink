@@ -59,6 +59,7 @@ public sealed class Poller : IDisposable
         EnsureNotDisposed();
         if (socket == null)
             throw new ArgumentNullException(nameof(socket));
+        EnumValidation.EnsurePollEvents(events, nameof(events));
 
         IntPtr userData = AllocateUserData();
         int rc = NativeMethods.zlink_poller_add(_handle, socket.Handle,
@@ -75,6 +76,7 @@ public sealed class Poller : IDisposable
     public void AddFd(int fd, PollEvents events, object? tag = null)
     {
         EnsureNotDisposed();
+        EnumValidation.EnsurePollEvents(events, nameof(events));
 
         IntPtr userData = AllocateUserData();
         int rc = NativeMethods.zlink_poller_add_fd(_handle, fd, userData,
@@ -93,6 +95,7 @@ public sealed class Poller : IDisposable
         EnsureNotDisposed();
         if (socket == null)
             throw new ArgumentNullException(nameof(socket));
+        EnumValidation.EnsurePollEvents(events, nameof(events));
 
         int index = FindSocket(socket.Handle);
         if (index < 0)
@@ -108,6 +111,7 @@ public sealed class Poller : IDisposable
     public void ModifyFd(int fd, PollEvents events)
     {
         EnsureNotDisposed();
+        EnumValidation.EnsurePollEvents(events, nameof(events));
 
         int index = FindFd(fd);
         if (index < 0)

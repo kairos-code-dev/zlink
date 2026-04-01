@@ -11,6 +11,7 @@ from perf_multi_common import (
     print_result_lines,
     result_metrics,
     stamp_payload,
+    wait_socket_event,
 )
 
 
@@ -22,7 +23,6 @@ def main(argv=None):
     count = 0
     latencies = []
     lock = threading.Lock()
-    stop = threading.Event()
 
     with zlink.Context() as ctx:
         sockets = [zlink.RouterSocket(ctx) for _ in range(args.clients)]
@@ -31,6 +31,7 @@ def main(argv=None):
                 sock.set_routing_id(f"CLIENT-{index}".encode("ascii"))
                 sock.router_options.connect_routing_id = b"SERVER"
                 sock.connect(args.endpoint)
+                wait_socket_event(sock, zlink.MonitorEvent.CONNECTION_READY_CHANGED)
 
             def worker(sock):
                 nonlocal count
@@ -40,9 +41,8 @@ def main(argv=None):
                     with sock.recv():
                         pass
 
-                started = time.perf_counter()
-                deadline = started + args.duration
-                while time.perf_counter() < deadline and not stop.is_set():
+                deadline = time.perf_counter() + args.duration
+                while time.perf_counter() < deadline:
                     sock.send_to(b"SERVER", stamp_payload(payload))
                     with sock.recv() as received:
                         sample = latency_us_from_message(received.to_bytes_list()[0])
@@ -65,7 +65,6 @@ def main(argv=None):
             )
             print_result_lines("MULTI_ROUTER_ROUTER", "tcp", args.msg_size, metrics)
         finally:
-            stop.set()
             for sock in sockets:
                 try:
                     sock.close()

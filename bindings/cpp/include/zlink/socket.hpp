@@ -200,20 +200,6 @@ inline send_result_t to_send_result (int result_) noexcept
     }
 }
 
-inline int classify_try_send_errno () noexcept
-{
-    switch (errno) {
-    case EAGAIN:
-        return ZLINK_SEND_RESULT_BACKPRESSURED;
-    case ENOTCONN:
-    case EHOSTUNREACH:
-    case ETIMEDOUT:
-        return ZLINK_SEND_RESULT_NOT_READY;
-    default:
-        return -1;
-    }
-}
-
 class socket_t
 {
   public:
@@ -370,24 +356,19 @@ class socket_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        const int rc = zlink_send (
+        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
+        const int rc = zlink_try_send (
           _socket, native_parts.empty () ? NULL : &native_parts[0],
-          native_parts.size (), ZLINK_DONTWAIT);
+          native_parts.size (), &native_result);
         if (rc == 0) {
-            result_ = send_result_t::sent;
+            result_ = detail::to_send_result (native_result);
+            if (native_result != ZLINK_SEND_RESULT_SENT)
+                detail::restore_parts_from_native (parts_, native_parts);
             return 0;
         }
 
-        const int send_result = detail::classify_try_send_errno ();
-        if (send_result < 0) {
-            detail::restore_parts_from_native (parts_, native_parts);
-            return -1;
-        }
-
-        result_ = detail::to_send_result (send_result);
-        if (send_result != ZLINK_SEND_RESULT_SENT)
-            detail::restore_parts_from_native (parts_, native_parts);
-        return 0;
+        detail::restore_parts_from_native (parts_, native_parts);
+        return -1;
     }
 
     ZLINK_CPP_NODISCARD int send (const zlink_routing_id_t &target_rid_,
@@ -461,24 +442,19 @@ class socket_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        const int rc = zlink_send_rid (
+        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
+        const int rc = zlink_try_send_rid (
           _socket, &target_rid_, native_parts.empty () ? NULL : &native_parts[0],
-          native_parts.size (), ZLINK_DONTWAIT);
+          native_parts.size (), &native_result);
         if (rc == 0) {
-            result_ = send_result_t::sent;
+            result_ = detail::to_send_result (native_result);
+            if (native_result != ZLINK_SEND_RESULT_SENT)
+                detail::restore_parts_from_native (parts_, native_parts);
             return 0;
         }
 
-        const int send_result = detail::classify_try_send_errno ();
-        if (send_result < 0) {
-            detail::restore_parts_from_native (parts_, native_parts);
-            return -1;
-        }
-
-        result_ = detail::to_send_result (send_result);
-        if (send_result != ZLINK_SEND_RESULT_SENT)
-            detail::restore_parts_from_native (parts_, native_parts);
-        return 0;
+        detail::restore_parts_from_native (parts_, native_parts);
+        return -1;
     }
 
     ZLINK_CPP_NODISCARD int recv (message_t &part_,
@@ -587,25 +563,20 @@ class socket_t
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
 
-        const int rc = zlink_publish (
+        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
+        const int rc = zlink_try_publish (
           _socket, topic_id_.c_str (),
           native_parts.empty () ? NULL : &native_parts[0], native_parts.size (),
-          ZLINK_DONTWAIT);
+          &native_result);
         if (rc == 0) {
-            result_ = send_result_t::sent;
+            result_ = detail::to_send_result (native_result);
+            if (native_result != ZLINK_SEND_RESULT_SENT)
+                detail::restore_parts_from_native (parts_, native_parts);
             return 0;
         }
 
-        const int send_result = detail::classify_try_send_errno ();
-        if (send_result < 0) {
-            detail::restore_parts_from_native (parts_, native_parts);
-            return -1;
-        }
-
-        result_ = detail::to_send_result (send_result);
-        if (send_result != ZLINK_SEND_RESULT_SENT)
-            detail::restore_parts_from_native (parts_, native_parts);
-        return 0;
+        detail::restore_parts_from_native (parts_, native_parts);
+        return -1;
     }
 
     ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)

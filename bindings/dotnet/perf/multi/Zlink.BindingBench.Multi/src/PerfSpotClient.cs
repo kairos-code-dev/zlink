@@ -94,7 +94,6 @@ internal static class PerfSpotClient
             bool failed = false;
             for (int i = 0; i < slots.Count; i++)
             {
-                DrainCallbackEvents(slots[i], config.Size, collectActive: false);
                 if (slots[i].CallbackState!.Fatal)
                     failed = true;
                 if (slots[i].CallbackState!.SawAnyPhase)
@@ -126,26 +125,24 @@ internal static class PerfSpotClient
         spin = new SpinWait();
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
-            bool progressed = false;
+            bool failed = false;
             for (int i = 0; i < slots.Count; i++)
             {
-                progressed |= DrainCallbackEvents(slots[i], config.Size,
-                    collectActive: true);
                 if (slots[i].CallbackState!.Fatal)
                 {
-                    Console.Error.WriteLine("multi_client_error:spot_callback_failed");
-                    return 2;
+                    failed = true;
+                    break;
                 }
             }
 
-            if (!progressed)
-                spin.SpinOnce();
-            else
-                spin.Reset();
-        }
+            if (failed)
+            {
+                Console.Error.WriteLine("multi_client_error:spot_callback_failed");
+                return 2;
+            }
 
-        for (int i = 0; i < slots.Count; i++)
-            _ = DrainCallbackEvents(slots[i], config.Size, collectActive: true);
+            spin.SpinOnce();
+        }
 
         var samples = new List<double>(Math.Max(0, config.LatencySampleCap));
         long measureCount = 0;
@@ -185,7 +182,7 @@ internal static class PerfSpotClient
                     if (recvMode == PerfRecvMode.Callback)
                     {
                         var callbackState = new SpotCallbackState(
-                            config.LatencySampleCap);
+                            config.Size, config.LatencySampleCap);
                         subscriber.SubscribeHandler((_, parts) =>
                         {
                             callbackState.OnMessage(parts);
@@ -309,7 +306,7 @@ internal static class PerfSpotClient
             bool sawData = false;
             for (int i = 0; i < slots.Count; i++)
             {
-                while (true)
+                while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
                 {
                     int n = ReceiveSpotPayload(slots[i].Subscriber, recv.AsSpan());
                     if (n <= 0)
@@ -335,6 +332,9 @@ internal static class PerfSpotClient
                         }
                     }
                 }
+
+                if (Stopwatch.GetTimestamp() >= benchDeadlineTicks)
+                    break;
             }
 
             if (!sawData)
@@ -350,33 +350,6 @@ internal static class PerfSpotClient
 
         return new SpotClientActiveStats(measureCount, benchStartTicks,
             benchEndTicks);
-    }
-
-    private static bool DrainCallbackEvents(SpotClientSlot slot, int expectedSize,
-        bool collectActive)
-    {
-        bool progressed = false;
-        SpotCallbackState state = slot.CallbackState!;
-        while (state.TryDequeue(out SpotMetricEvent evt))
-        {
-            progressed = true;
-            if (evt.RunId != ExpectedRunId || evt.MsgSize != (uint)expectedSize)
-                continue;
-
-            state.SawAnyPhase = true;
-            if (!collectActive || evt.Phase != (uint)PerfPhase.Active)
-                continue;
-
-            state.MeasureCount++;
-            if (evt.SentTsUs == 0)
-                continue;
-            ulong nowUs = EpochUs();
-            if (nowUs < evt.SentTsUs)
-                continue;
-            state.AddSample(nowUs - evt.SentTsUs);
-        }
-
-        return progressed;
     }
 
     private static int ReceiveSpotPayload(Spot subscriber, Span<byte> payloadBuffer)
@@ -565,46 +538,29 @@ internal static class PerfSpotClient
         internal uint Rng;
     }
 
-    private readonly struct SpotMetricEvent
-    {
-        internal SpotMetricEvent(uint runId, uint phase, uint msgSize,
-            ulong sentTsUs)
-        {
-            RunId = runId;
-            Phase = phase;
-            MsgSize = msgSize;
-            SentTsUs = sentTsUs;
-        }
-
-        internal uint RunId { get; }
-        internal uint Phase { get; }
-        internal uint MsgSize { get; }
-        internal ulong SentTsUs { get; }
-    }
-
     private sealed class SpotCallbackState
     {
-        private readonly SpotMetricEvent[] _events;
+        private readonly int _expectedMsgSize;
         private readonly double[] _samples;
-        private int _writeIndex;
-        private int _readIndex;
+        private readonly object _samplesLock = new object();
         private int _sampleWriteIndex;
+        private int _sawAnyPhase;
+        private int _fatal;
+        private long _measureCount;
 
-        internal SpotCallbackState(int latencySampleCap)
+        internal SpotCallbackState(int expectedMsgSize, int latencySampleCap)
         {
-            _events = new SpotMetricEvent[4096];
+            _expectedMsgSize = expectedMsgSize;
             _samples = new double[Math.Max(1, latencySampleCap)];
-            _writeIndex = 0;
-            _readIndex = 0;
             _sampleWriteIndex = 0;
-            SawAnyPhase = false;
-            Fatal = false;
-            MeasureCount = 0;
+            _sawAnyPhase = 0;
+            _fatal = 0;
+            _measureCount = 0;
         }
 
-        internal bool SawAnyPhase { get; set; }
-        internal bool Fatal { get; private set; }
-        internal long MeasureCount { get; set; }
+        internal bool SawAnyPhase => Volatile.Read(ref _sawAnyPhase) != 0;
+        internal bool Fatal => Volatile.Read(ref _fatal) != 0;
+        internal long MeasureCount => Interlocked.Read(ref _measureCount);
 
         internal void OnMessage(Message[] parts)
         {
@@ -618,16 +574,27 @@ internal static class PerfSpotClient
                     return;
                 }
 
-                int write = _writeIndex;
-                int next = (write + 1) % _events.Length;
-                if (next == Volatile.Read(ref _readIndex))
+                if (header.RunId != ExpectedRunId
+                    || header.MsgSize != (uint)_expectedMsgSize)
                 {
-                    Fatal = true;
                     return;
                 }
-                _events[write] = new SpotMetricEvent(header.RunId, header.Phase,
-                    header.MsgSize, header.SentTsUs);
-                Volatile.Write(ref _writeIndex, next);
+
+                Volatile.Write(ref _sawAnyPhase, 1);
+                if (header.Phase != (uint)PerfPhase.Active)
+                    return;
+
+                Interlocked.Increment(ref _measureCount);
+                if (header.SentTsUs == 0)
+                    return;
+                ulong nowUs = EpochUs();
+                if (nowUs < header.SentTsUs)
+                    return;
+                AddSample(nowUs - header.SentTsUs);
+            }
+            catch
+            {
+                Volatile.Write(ref _fatal, 1);
             }
             finally
             {
@@ -636,34 +603,26 @@ internal static class PerfSpotClient
             }
         }
 
-        internal bool TryDequeue(out SpotMetricEvent evt)
-        {
-            int read = _readIndex;
-            if (read == Volatile.Read(ref _writeIndex))
-            {
-                evt = default;
-                return false;
-            }
-
-            evt = _events[read];
-            Volatile.Write(ref _readIndex, (read + 1) % _events.Length);
-            return true;
-        }
-
         internal void AddSample(double latencyUs)
         {
-            int index = _sampleWriteIndex;
-            if ((uint)index >= (uint)_samples.Length)
-                return;
-            _samples[index] = latencyUs;
-            _sampleWriteIndex = index + 1;
+            lock (_samplesLock)
+            {
+                int index = _sampleWriteIndex;
+                if ((uint)index >= (uint)_samples.Length)
+                    return;
+                _samples[index] = latencyUs;
+                _sampleWriteIndex = index + 1;
+            }
         }
 
         internal void AppendSamples(List<double> destination)
         {
-            int count = Math.Min(_sampleWriteIndex, _samples.Length);
-            for (int i = 0; i < count; i++)
-                destination.Add(_samples[i]);
+            lock (_samplesLock)
+            {
+                int count = Math.Min(_sampleWriteIndex, _samples.Length);
+                for (int i = 0; i < count; i++)
+                    destination.Add(_samples[i]);
+            }
         }
     }
 

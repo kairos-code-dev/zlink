@@ -4,7 +4,13 @@ import ctypes
 
 from ._enums import RouterOption, SocketType
 from ._ffi import lib
-from ._core import SubscriptionEvent, ZlinkRoutingId, _is_eagain, _raise_last_error
+from ._core import (
+    SubscriptionEvent,
+    ZlinkRoutingId,
+    _is_eagain,
+    _raise_last_error,
+    _validated_routing_id_bytes,
+)
 from ._socket_base import (
     DealerOptionSocket,
     MessageSocket,
@@ -88,7 +94,8 @@ class RouterSocketOptions:
     @connect_routing_id.setter
     def connect_routing_id(self, routing_id):
         self._socket._set_router_bytes_option(
-            RouterOption.CONNECT_ROUTING_ID, routing_id
+            RouterOption.CONNECT_ROUTING_ID,
+            _validated_routing_id_bytes(routing_id),
         )
 
 

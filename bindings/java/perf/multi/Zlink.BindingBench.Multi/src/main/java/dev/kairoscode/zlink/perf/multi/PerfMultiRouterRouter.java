@@ -23,8 +23,7 @@ final class PerfMultiRouterRouter {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         if (!"recv".equalsIgnoreCase(config.recvMode())) {
-            return new PerfUtil.Result("unsupported", "callback_not_allowed", 0, 0,
-                0, 0, 0, Double.NaN, Double.NaN, "ms");
+            return PerfUtil.Result.unsupported("callback_not_allowed", config);
         }
         try (Context ctx = new Context();
              RouterSocket server = new RouterSocket(ctx);
@@ -48,7 +47,7 @@ final class PerfMultiRouterRouter {
                     }
                 }
             }
-            return metrics.finishMulti(config.size(), config.durationSeconds());
+            return metrics.finishMulti(config);
         }
     }
 
@@ -86,7 +85,8 @@ final class PerfMultiRouterRouter {
             // has already completed. This subprocess is short-lived, so process exit
             // reclaims the context after the socket handle is closed.
         }, "multi-rr-client-" + index), config.warmupSeconds(), config.durationSeconds());
-        return new PerfUtil.Result("ok", "-", 0, 0, 0, 0, 0, Double.NaN, Double.NaN, "ms");
+        return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
+            config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
     }
 
     private static void send(RouterSocket socket, int size, byte phase) {

@@ -24,7 +24,6 @@ namespace {
 
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_topic = "bench";
-static const char *k_service_name = "perf-spot";
 static const uint32_t k_run_id = 1U;
 
 int bench_pid ()
@@ -59,11 +58,6 @@ std::string bind_spot_endpoint (zlink::service::spot_node_t &node_,
             return endpoint;
     }
     return std::string ();
-}
-
-std::string make_tcp_endpoint (int port_)
-{
-    return std::string ("tcp://127.0.0.1:") + std::to_string (port_);
 }
 
 bool configure_spot_server_tls (zlink::service::spot_node_t &node_,
@@ -134,8 +128,6 @@ bool wait_for_service_ready_count (zlink::service_monitor_handle_t &monitor_,
 }
 
 bool run_phase (zlink::service::spot_t &spot_,
-                zlink::poller_t &poller_,
-                std::vector<zlink::poll_event_t> &events_,
                 std::vector<char> &payload_,
                 size_t msg_size_,
                 uint64_t &seq_,
@@ -146,7 +138,6 @@ bool run_phase (zlink::service::spot_t &spot_,
         return true;
 
     const auto deadline = std::chrono::steady_clock::now () + duration_;
-    bool waiting_writable = false;
 
     while (std::chrono::steady_clock::now () < deadline) {
         if (!perf_metric::stamp_payload (payload_.data (),
@@ -163,40 +154,16 @@ bool run_phase (zlink::service::spot_t &spot_,
         const int rc = spot_.publish (
           k_topic, payload_.data (), payload_.size (), zlink::send_flag::dontwait);
         if (rc == 0) {
-            if (waiting_writable) {
-                if (poller_.modify (spot_, static_cast<zlink::poll_event> (0)) != 0)
-                    return false;
-                waiting_writable = false;
-            }
             continue;
         }
 
-        if (errno != EAGAIN && errno != EINTR)
+        if (errno == EINTR)
+            continue;
+        if (errno != EAGAIN)
             return false;
-
-        if (!waiting_writable) {
-            if (poller_.modify (spot_, zlink::poll_event::pollout) != 0)
-                return false;
-            waiting_writable = true;
-        }
-
-        const auto remaining =
-          deadline - std::chrono::steady_clock::now ();
-        long wait_ms = static_cast<long> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (remaining).count ());
-        if (wait_ms < 1)
-            wait_ms = 1;
-
-        const int poll_rc = poller_.wait_all (events_, wait_ms);
-        if (poll_rc < 0) {
-            if (errno == EINTR)
-                continue;
-            return false;
-        }
+        std::this_thread::yield ();
     }
 
-    if (waiting_writable)
-        return poller_.modify (spot_, static_cast<zlink::poll_event> (0)) == 0;
     return true;
 }
 
@@ -218,11 +185,8 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
       perf::multi::resolve_multi_bench_settings ();
 
     perf::multi::ctx_guard_t ctx;
-    zlink::service::registry_t registry (ctx.ctx ());
-    zlink::service::discovery_t discovery (
-      ctx.ctx (), zlink::service_type::spot, k_service_name);
     zlink::service::spot_node_t node (ctx.ctx ());
-    if (!registry.valid () || !discovery.valid () || !node.valid ())
+    if (!node.valid ())
         return false;
 
     zlink::service::spot_t spot (node);
@@ -235,23 +199,8 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     const int base_port = settings.server_bind_port > 0
                             ? settings.server_bind_port
                             : 39500 + (bench_pid () % 1000) * 8;
-    const int registry_base_port = base_port + 64;
-    const std::string registry_pub_endpoint =
-      make_tcp_endpoint (registry_base_port + 1);
-    const std::string registry_router_endpoint =
-      make_tcp_endpoint (registry_base_port + 2);
-    if (registry.set_broadcast_interval (
-          static_cast<uint32_t> (std::max (100, settings.settle_ms)))
-          != 0
-        || registry.bind (registry_pub_endpoint, registry_router_endpoint) != 0
-        || discovery.connect_registry (registry_router_endpoint) != 0) {
-        return false;
-    }
-
     const std::string endpoint = bind_spot_endpoint (node, transport_, base_port);
     if (endpoint.empty ())
-        return false;
-    if (node.attach_discovery (discovery) != 0)
         return false;
 
     (void) spot.set (zlink::socket_options::sndhwm, settings.sndhwm);
@@ -264,14 +213,13 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
                        : 0);
 
     zlink::service_monitor_handle_t monitor (
-      node,
+      spot.handle (),
       zlink::service_monitor_event::spot_first_delivery_ready_changed
         | zlink::service_monitor_event::error);
     if (!monitor.valid ())
         return false;
 
-    perf::multi::print_ready (
-      endpoint + "|" + registry_pub_endpoint + "|" + registry_router_endpoint);
+    perf::multi::print_ready (endpoint);
 
     if (!wait_for_service_ready_count (
           monitor,
@@ -284,19 +232,11 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
                       << std::endl;
     }
 
-    zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
-    if (poller.add (spot, static_cast<zlink::poll_event> (0)) != 0)
-        return false;
-
     std::vector<char> payload (
       std::max<size_t> (msg_size_, perf_metric::header_size ()), 's');
     uint64_t seq = 1;
 
     if (!run_phase (spot,
-                    poller,
-                    events,
                     payload,
                     msg_size_,
                     seq,
@@ -305,8 +245,6 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
         return false;
     }
     if (!run_phase (spot,
-                    poller,
-                    events,
                     payload,
                     msg_size_,
                     seq,
@@ -315,8 +253,6 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
         return false;
     }
     if (!run_phase (spot,
-                    poller,
-                    events,
                     payload,
                     msg_size_,
                     seq,

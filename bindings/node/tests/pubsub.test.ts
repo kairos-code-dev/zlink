@@ -2,7 +2,18 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const net = require('node:net');
+const { once } = require('node:events');
 const zlink = require('../dist');
+
+async function reservePort() {
+  const server = net.createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const { port } = server.address();
+  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return port;
+}
 
 test('spot exposes unified publish and subscribe surface', () => {
   const ctx = new zlink.Context();
@@ -88,6 +99,122 @@ test('spot subscribeHandler delivers callback payloads', async () => {
   spot.close();
   node.close();
   ctx.close();
+});
+
+test('remote spot peer delivery works over tcp direct peer connect', async () => {
+  const ctx = new zlink.Context();
+  const serverNode = new zlink.SpotNode(ctx);
+  const clientNode = new zlink.SpotNode(ctx);
+  const serverSpot = new zlink.Spot(serverNode);
+  const clientSpot = new zlink.Spot(clientNode);
+  const topic = 'spot:remote';
+  const port = await reservePort();
+  const endpoint = `tcp://127.0.0.1:${port}`;
+
+  try {
+    serverNode.bind(endpoint);
+    clientNode.connectPeer(endpoint);
+    clientSpot.setSubscription(topic);
+
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      serverSpot.publish(topic, zlink.Message.copyOf('payload'));
+      const received = clientSpot.trySubscribe();
+      if (received) {
+        assert.equal(received.topic, topic);
+        assert.deepEqual(
+          received.parts.map((part) => part.toBuffer().toString()),
+          ['payload']
+        );
+        return;
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    assert.fail(`remote spot delivery timeout: ${JSON.stringify({
+      serverStatus: serverNode.statusSnapshot(),
+      clientStatus: clientNode.statusSnapshot(),
+      serverPeers: serverNode.peersSnapshot(),
+      clientPeers: clientNode.peersSnapshot(),
+      serverSubjects: serverNode.subjectsSnapshot(),
+      clientSubjects: clientNode.subjectsSnapshot()
+    })}`);
+  } finally {
+    clientSpot.close();
+    serverSpot.close();
+    clientNode.close();
+    serverNode.close();
+    ctx.close();
+  }
+});
+
+test('multiple remote spot peers on one context all receive over tcp direct peer connect', async () => {
+  const ctx = new zlink.Context();
+  const serverNode = new zlink.SpotNode(ctx);
+  const serverSpot = new zlink.Spot(serverNode);
+  const topic = 'spot:remote:multi';
+  const port = await reservePort();
+  const endpoint = `tcp://127.0.0.1:${port}`;
+  const clientNodes = [];
+  const clientSpots = [];
+
+  try {
+    serverNode.bind(endpoint);
+    for (let i = 0; i < 2; i += 1) {
+      const clientNode = new zlink.SpotNode(ctx);
+      const clientSpot = new zlink.Spot(clientNode);
+      clientNode.connectPeer(endpoint);
+      clientSpot.setSubscription(topic);
+      clientNodes.push(clientNode);
+      clientSpots.push(clientSpot);
+    }
+
+    const received = new Set();
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      serverSpot.publish(topic, zlink.Message.copyOf('payload'));
+      for (let i = 0; i < clientSpots.length; i += 1) {
+        if (received.has(i)) {
+          continue;
+        }
+        const subscribed = clientSpots[i].trySubscribe();
+        if (!subscribed) {
+          continue;
+        }
+        assert.equal(subscribed.topic, topic);
+        assert.deepEqual(
+          subscribed.parts.map((part) => part.toBuffer().toString()),
+          ['payload']
+        );
+        received.add(i);
+      }
+      if (received.size === clientSpots.length) {
+        return;
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    assert.fail(`multi remote spot delivery timeout: ${JSON.stringify({
+      serverStatus: serverNode.statusSnapshot(),
+      serverPeers: serverNode.peersSnapshot(),
+      serverSubjects: serverNode.subjectsSnapshot(),
+      clientStates: clientNodes.map((clientNode) => ({
+        status: clientNode.statusSnapshot(),
+        peers: clientNode.peersSnapshot(),
+        subjects: clientNode.subjectsSnapshot()
+      }))
+    })}`);
+  } finally {
+    for (const clientSpot of clientSpots) {
+      clientSpot.close();
+    }
+    for (const clientNode of clientNodes) {
+      clientNode.close();
+    }
+    serverSpot.close();
+    serverNode.close();
+    ctx.close();
+  }
 });
 
 test('canonical pub/sub surface hides opposite-direction methods', () => {

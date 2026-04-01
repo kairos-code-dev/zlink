@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Compatibility runner for dotnet perf.
 
-Accepts the core/perf run_comparison.py invocation shape used by
-run_benchmarks.sh/run_benchmarks_multi.sh and delegates execution to the
-policy runner at bindings/perf/run_policy_bench.py.
+Accepts the legacy run_comparison.py invocation shape and dispatches to the
+local single or multi shell runner inside bindings/dotnet/perf.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -18,8 +16,6 @@ from typing import Iterable, List, Set
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-ROOT_DIR = SCRIPT_DIR.parents[2]
-POLICY_RUNNER = ROOT_DIR / "bindings" / "perf" / "run_policy_bench.py"
 DEFAULT_RESULTS_DIR = SCRIPT_DIR / "results"
 
 
@@ -84,40 +80,22 @@ def main(argv: List[str]) -> int:
     before_report = _snapshot_files(report_dir)
     before_tmp = _snapshot_files(tmp_dir)
 
+    runner = SCRIPT_DIR / ("single/run_benchmarks.sh" if suite == "single" else "multi/run_benchmarks.sh")
     cmd: List[str] = [
-        sys.executable,
-        str(POLICY_RUNNER),
-        "--binding",
-        "dotnet",
-        "--suite",
-        suite,
+        str(runner),
         "--pattern",
         ",".join(patterns),
-        "--runs",
-        str(max(1, args.runs)),
         "--results-dir",
         str(results_dir),
-        "--result",
     ]
 
     if args.results_tag:
         cmd.extend(["--results-tag", args.results_tag])
-    if args.pin_cpu:
-        cmd.append("--pin-cpu")
-    if args.build_dir:
-        cmd.extend(["--build-dir", args.build_dir])
-
     if args.duration > 0:
-        if suite == "multi":
-            cmd.extend(["--multi-duration-seconds", str(args.duration)])
+        cmd.extend(["--duration", str(args.duration)])
 
     cmd.extend(unknown)
-
-    env = os.environ.copy()
-    if args.duration > 0 and suite == "single":
-        env["PERF_SINGLE_DURATION_SECONDS"] = str(args.duration)
-
-    rc = subprocess.call(cmd, env=env)
+    rc = subprocess.call(cmd)
 
     if args.result_file:
         out_path = Path(args.result_file)

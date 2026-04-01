@@ -6,16 +6,10 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEvent;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.Socket;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.OutputStream;
 import java.lang.management.ManagementFactory;
-import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -26,14 +20,25 @@ import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class PerfUtil {
-    private static final byte PHASE_ACTIVE = 0;
-    private static final byte PHASE_STOP = 1;
-    private static final byte PHASE_WARMUP = 2;
-    private static final int HEADER_SIZE = 9;
+    public static final int SINGLE_MAGIC = 0x53504631; // SPF1
+    public static final int MULTI_MAGIC = 0x4d504631; // MPF1
+    public static final int PHASE_UNKNOWN = 0;
+    public static final int PHASE_WARMUP = 1;
+    public static final int PHASE_ACTIVE = 2;
+    public static final int PHASE_DRAIN = 3;
+    public static final int HEADER_SIZE = 32;
+    private static final int GENERIC_MAGIC = 0x50455246; // PERF
+
+    private static final int MAX_LATENCY_SAMPLES = 4 * 1024 * 1024;
+    private static final int LATENCY_QUEUE_CAPACITY = 1 << 20;
     private static final DateTimeFormatter FILE_TS =
         DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+    private static final long BASE_EPOCH_US = System.currentTimeMillis() * 1_000L;
+    private static final long BASE_NANO = System.nanoTime();
     private static final com.sun.management.OperatingSystemMXBean OS_BEAN =
         ManagementFactory.getOperatingSystemMXBean()
             instanceof com.sun.management.OperatingSystemMXBean bean ? bean : null;
@@ -54,41 +59,93 @@ public final class PerfUtil {
     ) {
     }
 
-    public record Result(
-        String status,
-        String reason,
-        double throughput,
-        double bandwidth,
-        double latencyMean,
-        double latencyP95,
-        double latencyP99,
-        double cpuPct,
-        double memMb,
-        String latencyUnit
+    public record MetricHeader(
+        int magic,
+        int runId,
+        int phase,
+        int msgSize,
+        long seq,
+        long sentTsUs
     ) {
+    }
+
+    public static final class Result {
+        private final String status;
+        private final String reason;
+        private final String pattern;
+        private final String transport;
+        private final int size;
+        private final double throughput;
+        private final double bandwidth;
+        private final double latencyMean;
+        private final double latencyP95;
+        private final double latencyP99;
+        private final double cpuPct;
+        private final double memMb;
+
+        public Result(String status, String reason, String pattern, String transport,
+                      int size, double throughput, double bandwidth,
+                      double latencyMean, double latencyP95, double latencyP99,
+                      double cpuPct, double memMb) {
+            this.status = status;
+            this.reason = reason;
+            this.pattern = pattern;
+            this.transport = transport;
+            this.size = size;
+            this.throughput = throughput;
+            this.bandwidth = bandwidth;
+            this.latencyMean = latencyMean;
+            this.latencyP95 = latencyP95;
+            this.latencyP99 = latencyP99;
+            this.cpuPct = cpuPct;
+            this.memMb = memMb;
+        }
+
+        public static Result unsupported(String reason, Config config) {
+            return new Result("unsupported", reason, config.pattern(),
+                config.transport(), config.size(), 0.0d, 0.0d, 0.0d, 0.0d,
+                0.0d, Double.NaN, Double.NaN);
+        }
+
+        public String status() {
+            return status;
+        }
+
         public String toLine() {
-            return String.format(Locale.ROOT,
-                "RESULT status=%s reason=%s throughput=%.2f bandwidth=%.2f "
-                    + "lat_mean=%.2f lat_p95=%.2f lat_p99=%.2f lat_unit=%s "
-                    + "cpu_pct=%s mem_mb=%s",
-                status,
-                sanitize(reason),
-                throughput,
-                bandwidth,
-                latencyMean,
-                latencyP95,
-                latencyP99,
-                latencyUnit,
-                metric(cpuPct),
-                metric(memMb));
+            if ("unsupported".equals(status)) {
+                return String.format(Locale.ROOT, "UNSUPPORTED,java,%s,%s,%s",
+                    pattern, transport, sanitize(reason));
+            }
+            if (!"ok".equals(status)) {
+                return String.format(Locale.ROOT, "FAIL,java,%s,%s,%s,%s",
+                    pattern, transport, size, sanitize(reason));
+            }
+            String key = String.format(Locale.ROOT, "RESULT,current,%s,%s,%d",
+                pattern, transport, size);
+            return String.join(System.lineSeparator(),
+                metricLine(key, "throughput", throughput),
+                metricLine(key, "bandwidth", bandwidth),
+                metricLine(key, "latency", latencyMean),
+                metricLine(key, "latency_p95", latencyP95),
+                metricLine(key, "latency_p99", latencyP99),
+                metricLine(key, "cpu_pct", cpuPct),
+                metricLine(key, "mem_mb", memMb),
+                metricLine(key, "snd_pending_max", 0.0d),
+                metricLine(key, "rcv_pending_max", 0.0d),
+                metricLine(key, "rcv_pending_end", 0.0d));
+        }
+
+        private static String metricLine(String key, String metric, double value) {
+            return String.format(Locale.ROOT, "%s,%s,%s", key, metric, metric(value));
         }
     }
 
     public static final class Metrics {
-        private long[] latencies = new long[1024];
+        private long[] latencies = new long[Math.min(MAX_LATENCY_SAMPLES, 1 << 20)];
         private int size;
         private long count;
         private long sum;
+        private long sampleStride = 1L;
         private long cpuStartNanos;
         private long wallStartNanos;
         private long memStartBytes;
@@ -100,48 +157,127 @@ public final class PerfUtil {
         }
 
         public synchronized void recordMicros(long value) {
-            if (size == latencies.length) {
-                latencies = Arrays.copyOf(latencies, latencies.length * 2);
-            }
-            latencies[size++] = value;
             count++;
             sum += value;
+            if ((count % sampleStride) != 0L) {
+                return;
+            }
+            ensureCapacity();
+            if ((count % sampleStride) != 0L) {
+                return;
+            }
+            latencies[size++] = value;
         }
 
-        public synchronized void recordMillis(double value) {
+        public void recordMillis(double value) {
             recordMicros(Math.round(value * 1000.0d));
         }
 
-        public synchronized Result finishSingle(int payloadSize, int durationSeconds) {
-            return finish(payloadSize, durationSeconds, "us", 1.0d);
+        public synchronized Result finishSingle(Config config) {
+            return finish(config, 1.0d);
         }
 
-        public synchronized Result finishMulti(int payloadSize, int durationSeconds) {
-            return finish(payloadSize, durationSeconds, "ms", 1000.0d);
+        public synchronized Result finishMulti(Config config) {
+            return finish(config, 1000.0d);
         }
 
-        private Result finish(int payloadSize, int durationSeconds,
-                              String latencyUnit, double divisor) {
+        private Result finish(Config config, double latencyDivisor) {
             if (count == 0) {
-                return new Result("timeout", "no_active_samples", 0.0d, 0.0d,
-                    0.0d, 0.0d, 0.0d, Double.NaN, bytesToMb(usedMemoryBytes()),
-                    latencyUnit);
+                return new Result("fail", "no_active_samples", config.pattern(),
+                    config.transport(), config.size(), 0.0d, 0.0d, 0.0d,
+                    0.0d, 0.0d, Double.NaN, bytesToMb(usedMemoryBytes()));
             }
-            long[] copy = Arrays.copyOf(latencies, size);
-            Arrays.sort(copy);
-            double mean = (sum / (double) count) / divisor;
-            double p95 = copy[index(copy.length, 0.95d)] / divisor;
-            double p99 = copy[index(copy.length, 0.99d)] / divisor;
-            double throughput = count / (double) durationSeconds;
-            double bandwidth = throughput * payloadSize / 1_000_000.0d;
+            long[] sorted = Arrays.copyOf(latencies, size);
+            Arrays.sort(sorted);
+            double throughput = count / (double) config.durationSeconds();
+            double bandwidth = throughput * config.size() / 1_000_000.0d;
+            double mean = (sum / (double) count) / latencyDivisor;
+            double p95 = sorted[index(sorted.length, 0.95d)] / latencyDivisor;
+            double p99 = sorted[index(sorted.length, 0.99d)] / latencyDivisor;
             long wallDelta = Math.max(1L, System.nanoTime() - wallStartNanos);
-            long cpuDelta = OS_BEAN == null ? 0L : Math.max(0L,
-                OS_BEAN.getProcessCpuTime() - cpuStartNanos);
+            long cpuDelta = OS_BEAN == null ? 0L
+                : Math.max(0L, OS_BEAN.getProcessCpuTime() - cpuStartNanos);
             double cpuPct = OS_BEAN == null ? Double.NaN
-                : 100.0d * cpuDelta / (wallDelta * Runtime.getRuntime().availableProcessors());
+                : 100.0d * cpuDelta
+                    / (wallDelta * Runtime.getRuntime().availableProcessors());
             double memMb = bytesToMb(Math.max(memStartBytes, usedMemoryBytes()));
-            return new Result("ok", "-", throughput, bandwidth, mean, p95, p99,
-                cpuPct, memMb, latencyUnit);
+            return new Result("ok", "-", config.pattern(), config.transport(),
+                config.size(), throughput, bandwidth, mean, p95, p99, cpuPct,
+                memMb);
+        }
+
+        private void ensureCapacity() {
+            if (size < latencies.length) {
+                return;
+            }
+            if (latencies.length < MAX_LATENCY_SAMPLES) {
+                int next = Math.min(MAX_LATENCY_SAMPLES, latencies.length * 2);
+                latencies = Arrays.copyOf(latencies, next);
+                return;
+            }
+            int compacted = 0;
+            for (int i = 0; i < size; i += 2) {
+                latencies[compacted++] = latencies[i];
+            }
+            size = compacted;
+            sampleStride *= 2L;
+        }
+    }
+
+    public static final class LatencyCollector implements AutoCloseable {
+        private final long[] queue = new long[LATENCY_QUEUE_CAPACITY];
+        private final AtomicLong writeIndex = new AtomicLong();
+        private final AtomicLong readIndex = new AtomicLong();
+        private final AtomicReference<RuntimeException> failure = new AtomicReference<>();
+        private volatile boolean closed;
+        private Thread worker;
+
+        public void start(Metrics metrics, String threadName) {
+            worker = new Thread(() -> runWorker(metrics), threadName);
+            worker.setDaemon(true);
+            worker.start();
+        }
+
+        public void offerMicros(long value) {
+            long write = writeIndex.get();
+            long read = readIndex.get();
+            if (write - read >= queue.length) {
+                failure.compareAndSet(null,
+                    new IllegalStateException("latency queue overflow"));
+                return;
+            }
+            queue[(int) (write & (queue.length - 1))] = value;
+            writeIndex.lazySet(write + 1);
+        }
+
+        public void await(Duration timeout, String label) {
+            closed = true;
+            if (worker != null) {
+                join(worker, label, timeout);
+            }
+            RuntimeException queuedFailure = failure.get();
+            if (queuedFailure != null) {
+                throw queuedFailure;
+            }
+        }
+
+        private void runWorker(Metrics metrics) {
+            while (!closed || readIndex.get() < writeIndex.get()) {
+                long read = readIndex.get();
+                long write = writeIndex.get();
+                if (read >= write) {
+                    Thread.onSpinWait();
+                    continue;
+                }
+                long latencyUs = queue[(int) (read & (queue.length - 1))];
+                readIndex.lazySet(read + 1);
+                metrics.recordMicros(latencyUs);
+            }
+        }
+
+        @Override
+        public void close() {
+            closed = true;
         }
     }
 
@@ -200,36 +336,91 @@ public final class PerfUtil {
             endpoint, clients, controlPort);
     }
 
-    public static Message payload(int size, byte phase, long sendNanos) {
+    public static int runId() {
+        return (int) (System.nanoTime() & 0x7fff_ffffL);
+    }
+
+    public static Message singlePayload(int size, int phase, int runId, long seq) {
+        return payload(SINGLE_MAGIC, size, phase, runId, seq);
+    }
+
+    public static Message multiPayload(int size, int phase, int runId, long seq) {
+        return payload(MULTI_MAGIC, size, phase, runId, seq);
+    }
+
+    public static Message payload(int size, byte phase, long sentNanoTime) {
+        long nowUs = BASE_EPOCH_US + (sentNanoTime - BASE_NANO) / 1_000L;
+        return payload(GENERIC_MAGIC, size, phase, 0, 0L, nowUs);
+    }
+
+    private static Message payload(int magic, int size, int phase, int runId, long seq) {
+        return payload(magic, size, phase, runId, seq, nowUs());
+    }
+
+    private static Message payload(int magic, int size, int phase, int runId, long seq,
+                                   long sentTsUs) {
         int capacity = Math.max(size, HEADER_SIZE);
         ByteBuffer buffer = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN);
-        buffer.put(phase);
-        buffer.putLong(sendNanos);
+        buffer.putInt(magic);
+        buffer.putInt(runId);
+        buffer.putInt(phase);
+        buffer.putInt(size);
+        buffer.putLong(seq);
+        buffer.putLong(sentTsUs);
         while (buffer.hasRemaining()) {
             buffer.put((byte) 'a');
         }
-        return Message.copyOf(buffer.flip());
+        buffer.flip();
+        return Message.copyOf(buffer);
+    }
+
+    public static MetricHeader decodeExpectedSingle(Message message, int runId,
+                                                    int expectedSize) {
+        return decodeExpected(message, SINGLE_MAGIC, runId, expectedSize);
+    }
+
+    public static MetricHeader decodeExpectedMulti(Message message, int runId,
+                                                   int expectedSize) {
+        return decodeExpected(message, MULTI_MAGIC, runId, expectedSize);
+    }
+
+    private static MetricHeader decodeExpected(Message message, int expectedMagic,
+                                               int runId, int expectedSize) {
+        if (message == null || message.size() < HEADER_SIZE) {
+            return null;
+        }
+        int magic = message.readIntLe(0);
+        int actualRunId = message.readIntLe(4);
+        int phase = message.readIntLe(8);
+        int msgSize = message.readIntLe(12);
+        long seq = message.readLongLe(16);
+        long sentTsUs = message.readLongLe(24);
+        if (magic != expectedMagic || actualRunId != runId || msgSize != expectedSize) {
+            return null;
+        }
+        return new MetricHeader(magic, actualRunId, phase, msgSize, seq, sentTsUs);
+    }
+
+    public static long latencyMicros(MetricHeader header) {
+        return Math.max(0L, nowUs() - header.sentTsUs());
     }
 
     public static byte phase(Message message) {
-        byte[] data = message.toByteArray();
-        return data.length == 0 ? PHASE_ACTIVE : data[0];
-    }
-
-    public static long sentNanos(Message message) {
-        byte[] data = message.toByteArray();
-        if (data.length < HEADER_SIZE) {
-            return 0L;
+        if (message == null || message.size() < HEADER_SIZE) {
+            return (byte) PHASE_UNKNOWN;
         }
-        return ByteBuffer.wrap(data, 1, 8).order(ByteOrder.LITTLE_ENDIAN).getLong();
+        return (byte) message.readIntLe(8);
     }
 
     public static long latencyMicros(Message message) {
-        return Math.max(0L, (System.nanoTime() - sentNanos(message)) / 1_000L);
+        if (message == null || message.size() < HEADER_SIZE) {
+            return 0L;
+        }
+        return Math.max(0L, nowUs() - message.readLongLe(24));
     }
 
     public static double latencyMillis(Message message) {
-        return Math.max(0L, (System.nanoTime() - sentNanos(message)) / 1_000_000.0d);
+        return latencyMicros(message) / 1000.0d;
     }
 
     public static String endpoint(String transport, String token) {
@@ -278,46 +469,6 @@ public final class PerfUtil {
         }
     }
 
-    public static void waitForReadySignal(int controlPort) {
-        try (ServerSocket server = new ServerSocket()) {
-            server.bind(new InetSocketAddress("127.0.0.1", controlPort));
-            server.setSoTimeout(20_000);
-            try (java.net.Socket socket = server.accept();
-                 BufferedReader reader = socketToReader(socket)) {
-                String line = reader.readLine();
-                if (!"READY".equals(line)) {
-                    throw new IllegalStateException("invalid ready signal: " + line);
-                }
-            }
-        } catch (SocketTimeoutException ex) {
-            throw new IllegalStateException("ready signal timed out", ex);
-        } catch (IOException ex) {
-            throw new IllegalStateException("ready signal failed", ex);
-        }
-    }
-
-    public static void sendReadySignal(int controlPort) {
-        long deadline = System.nanoTime() + 20_000_000_000L;
-        while (System.nanoTime() < deadline) {
-            try (java.net.Socket socket = new java.net.Socket()) {
-                socket.connect(new InetSocketAddress("127.0.0.1", controlPort), 1_000);
-                OutputStream out = socket.getOutputStream();
-                out.write("READY\n".getBytes(StandardCharsets.UTF_8));
-                out.flush();
-                return;
-            } catch (IOException ex) {
-                try {
-                    Thread.sleep(50L);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("failed to send ready signal",
-                        interrupted);
-                }
-            }
-        }
-        throw new IllegalStateException("failed to send ready signal");
-    }
-
     public static void waitForMonitorEvent(MonitorSocket monitor, long expectedMask,
                                            int expectedCount, Duration timeout,
                                            String label) {
@@ -342,11 +493,48 @@ public final class PerfUtil {
         }
     }
 
+    public static void waitForReadySignal(int port) {
+        if (port <= 0) {
+            return;
+        }
+        try (ServerSocket server = new ServerSocket(port);
+             java.net.Socket socket = server.accept()) {
+            socket.setSoTimeout(10_000);
+            if (socket.getInputStream().read() < 0) {
+                throw new IllegalStateException("ready signal closed");
+            }
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException("failed waiting for ready signal", ex);
+        }
+    }
+
+    public static void sendReadySignal(int port) {
+        if (port <= 0) {
+            return;
+        }
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline) {
+            try (java.net.Socket socket = new java.net.Socket("127.0.0.1", port)) {
+                socket.getOutputStream().write(1);
+                socket.getOutputStream().flush();
+                return;
+            } catch (java.io.IOException ignored) {
+                try {
+                    Thread.sleep(25L);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("ready signal interrupted", ex);
+                }
+            }
+        }
+        throw new IllegalStateException("failed to send ready signal");
+    }
+
     public static Path ensureResultsDir(Path root, String suite, String leaf) {
         Path dir = root.resolve(suite).resolve(leaf);
         try {
             Files.createDirectories(dir);
-        } catch (IOException ex) {
+        } catch (java.io.IOException ex) {
             throw new IllegalStateException("failed to create results dir: " + dir, ex);
         }
         return dir;
@@ -356,6 +544,10 @@ public final class PerfUtil {
         String base = "perf_" + platform + "_" + recvMode + "_"
             + LocalDateTime.now().format(FILE_TS);
         return tag == null || tag.isBlank() ? base + ".txt" : base + "_" + tag + ".txt";
+    }
+
+    public static long nowUs() {
+        return BASE_EPOCH_US + (System.nanoTime() - BASE_NANO) / 1_000L;
     }
 
     private static String metric(double value) {
@@ -383,7 +575,7 @@ public final class PerfUtil {
     private static int freePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
-        } catch (IOException ex) {
+        } catch (java.io.IOException ex) {
             throw new IllegalStateException("failed to allocate port", ex);
         }
     }
@@ -392,11 +584,10 @@ public final class PerfUtil {
         Path dir = Path.of(System.getProperty("java.io.tmpdir"), "zlink-java-perf-ipc");
         try {
             Files.createDirectories(dir);
-        } catch (IOException ex) {
+        } catch (java.io.IOException ex) {
             throw new IllegalStateException("failed to create ipc dir", ex);
         }
-        String safeToken = token.toLowerCase(Locale.ROOT)
-            .replaceAll("[^a-z0-9]+", "");
+        String safeToken = token.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "");
         if (safeToken.length() > 8) {
             safeToken = safeToken.substring(0, 8);
         }
@@ -406,10 +597,5 @@ public final class PerfUtil {
 
     private static String cert(String name) {
         return Path.of("tests", "certs", name).toAbsolutePath().toString();
-    }
-
-    private static BufferedReader socketToReader(java.net.Socket socket) throws IOException {
-        return new BufferedReader(new java.io.InputStreamReader(socket.getInputStream(),
-            StandardCharsets.UTF_8));
     }
 }

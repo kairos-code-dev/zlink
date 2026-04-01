@@ -13,7 +13,7 @@ target_include_directories(zlink-cpp INTERFACE
   ${ZLINK_CORE_DIR}/include
 )
 
-target_compile_features(zlink-cpp INTERFACE cxx_std_11)
+target_compile_features(zlink-cpp INTERFACE cxx_std_17)
 
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
@@ -61,19 +61,17 @@ endif()
 if(ZLINK_CPP_BUILD_SAMPLES)
   function(add_cpp_sample target_name source_file)
     add_cpp_binding_executable(${target_name} ${source_file})
-    if(ZLINK_CPP_STANDALONE)
-      if(UNIX AND NOT WIN32)
-        add_test(NAME sample_smoke_${target_name}
-          COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
-      else()
-        add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
-      endif()
-      set_tests_properties(sample_smoke_${target_name} PROPERTIES
-        LABELS "sample-smoke"
-        TIMEOUT 120
-      )
-      configure_cpp_binding_runtime(sample_smoke_${target_name})
+    if(UNIX AND NOT WIN32)
+      add_test(NAME sample_smoke_${target_name}
+        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+    else()
+      add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
     endif()
+    set_tests_properties(sample_smoke_${target_name} PROPERTIES
+      LABELS "sample-smoke"
+      TIMEOUT 120
+    )
+    configure_cpp_binding_runtime(sample_smoke_${target_name})
   endfunction()
 
   add_cpp_sample(
@@ -121,19 +119,17 @@ endif()
 if(ZLINK_CPP_BUILD_TESTS)
   function(add_cpp_contract_test target_name source_file)
     add_cpp_binding_executable(${target_name} ${source_file})
-    if(ZLINK_CPP_STANDALONE)
-      if(UNIX AND NOT WIN32)
-        add_test(NAME ${target_name}
-          COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
-      else()
-        add_test(NAME ${target_name} COMMAND ${target_name})
-      endif()
-      set_tests_properties(${target_name} PROPERTIES
-        LABELS "contract"
-        TIMEOUT 120
-      )
-      configure_cpp_binding_runtime(${target_name})
+    if(UNIX AND NOT WIN32)
+      add_test(NAME ${target_name}
+        COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+    else()
+      add_test(NAME ${target_name} COMMAND ${target_name})
     endif()
+    set_tests_properties(${target_name} PROPERTIES
+      LABELS "contract"
+      TIMEOUT 120
+    )
+    configure_cpp_binding_runtime(${target_name})
   endfunction()
 
   add_cpp_contract_test(
@@ -159,6 +155,10 @@ if(ZLINK_CPP_BUILD_TESTS)
   add_cpp_contract_test(
     test_cpp_contract_service
     tests/contract/test_cpp_contract_service.cpp
+  )
+  add_cpp_contract_test(
+    test_cpp_contract_behavior
+    tests/contract/test_cpp_contract_behavior.cpp
   )
 endif()
 

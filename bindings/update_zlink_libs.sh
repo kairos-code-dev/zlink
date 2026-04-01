@@ -17,15 +17,15 @@ Examples:
 
 Description:
   - Downloads zlink release assets.
-  - Replaces internal native libraries in all bindings (cpp/dotnet/java/node/python).
+  - Replaces internal native libraries in all bindings (cpp/dotnet/java/go/rust/node/python).
   - Updates binding package/test version markers to expected version.
   - Verifies linux-x64 native libraries are major-version compatible with expected version.
-  - Runs binding tests (cpp/dotnet/java/node/python) after update.
+  - Runs binding tests (cpp/dotnet/java/go/rust/node/python) after update.
     Use `--skip-tests` when only native library refresh is required.
 
 Notes:
   - Requires GitHub CLI (`gh`) authentication.
-  - Requires test tooling in PATH (`ctest`, `dotnet`, `npm`, Java runtime, Python with pytest).
+  - Requires test tooling in PATH (`ctest`, `dotnet`, `npm`, `go`, `cargo`, Java runtime, Python with pytest).
   - `--repo` is optional. If omitted, repository is resolved from git origin.
   - Expected version is mandatory for safety:
       - Use --expect-version X.Y.Z, or
@@ -403,6 +403,8 @@ libs = {
     "dotnet": os.path.join(repo_root, "bindings/dotnet/runtimes/linux-x64/native/libzlink.so"),
     "java": os.path.join(repo_root, "bindings/java/src/main/resources/native/linux-x86_64/libzlink.so"),
     "cpp": os.path.join(repo_root, "bindings/cpp/native/linux-x86_64/libzlink.so"),
+    "go": os.path.join(repo_root, "bindings/go/native/linux-x86_64/libzlink.so"),
+    "rust": os.path.join(repo_root, "bindings/rust/native/linux-x86_64/libzlink.so"),
 }
 
 failed = False
@@ -474,5 +476,30 @@ echo "  - Python bindings tests"
     PYTHONPATH=src \
     "${py_bin}" -m pytest -q tests
 )
+
+if [[ -f "${REPO_ROOT}/bindings/go/go.mod" ]]; then
+  echo "  - Go bindings tests"
+  (
+    cd "${REPO_ROOT}/bindings/go"
+    CGO_LDFLAGS="-L${REPO_ROOT}/bindings/go/native/linux-x86_64" \
+      CGO_CFLAGS="-I${REPO_ROOT}/bindings/go/include" \
+      LD_LIBRARY_PATH="${REPO_ROOT}/bindings/go/native/linux-x86_64:${LD_LIBRARY_PATH:-}" \
+      go test ./...
+  )
+else
+  echo "  - Go bindings tests (skipped: go.mod not found)"
+fi
+
+if [[ -f "${REPO_ROOT}/bindings/rust/Cargo.toml" ]]; then
+  echo "  - Rust bindings tests"
+  (
+    cd "${REPO_ROOT}/bindings/rust"
+    ZLINK_LIBRARY_PATH="${REPO_ROOT}/bindings/rust/native/linux-x86_64" \
+      LD_LIBRARY_PATH="${REPO_ROOT}/bindings/rust/native/linux-x86_64:${LD_LIBRARY_PATH:-}" \
+      cargo test
+  )
+else
+  echo "  - Rust bindings tests (skipped: Cargo.toml not found)"
+fi
 
 echo "Done: bindings native libraries/version markers updated and all binding tests passed (target=${expect_version})."

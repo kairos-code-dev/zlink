@@ -98,7 +98,9 @@ internal static class PerfRawSocketCompat
             return state.PendingReceiveFrames.Count > 0;
         }
 
-        Received? received = nonBlocking ? socket.TryReceive() : socket.Receive();
+        Received? received = RequiresRoutedReceive(socket)
+            ? (nonBlocking ? socket.TryReceiveRouted() : socket.ReceiveRouted())
+            : (nonBlocking ? socket.TryReceive() : socket.Receive());
         if (received == null)
             return false;
 
@@ -189,6 +191,11 @@ internal static class PerfRawSocketCompat
     }
 
     private static bool RequiresRoutedSend(Socket socket)
+    {
+        return socket.Type == SocketType.Router || socket.Type == SocketType.Stream;
+    }
+
+    private static bool RequiresRoutedReceive(Socket socket)
     {
         return socket.Type == SocketType.Router || socket.Type == SocketType.Stream;
     }

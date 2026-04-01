@@ -133,6 +133,26 @@ copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/cpp/native/windows-
 copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/cpp/include/zlink.h"
 copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/cpp/include/zlink_utils.h"
 
+# Go bindings
+copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/go/native/linux-x86_64/libzlink.so"
+copy libzlink-linux-arm64/libzlink.so "$repo_root/bindings/go/native/linux-aarch64/libzlink.so"
+copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/go/native/darwin-x86_64/libzlink.dylib"
+copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/go/native/darwin-aarch64/libzlink.dylib"
+copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/go/native/windows-x86_64/zlink.dll"
+copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/go/native/windows-aarch64/zlink.dll"
+copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/go/include/zlink.h"
+copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/go/include/zlink_utils.h"
+
+# Rust bindings
+copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/rust/native/linux-x86_64/libzlink.so"
+copy libzlink-linux-arm64/libzlink.so "$repo_root/bindings/rust/native/linux-aarch64/libzlink.so"
+copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/rust/native/darwin-x86_64/libzlink.dylib"
+copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/rust/native/darwin-aarch64/libzlink.dylib"
+copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/rust/native/windows-x86_64/zlink.dll"
+copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/rust/native/windows-aarch64/zlink.dll"
+copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/rust/include/zlink.h"
+copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/rust/include/zlink_utils.h"
+
 popd >/dev/null
 
 echo "Done: fetched $tag and updated bindings binaries"

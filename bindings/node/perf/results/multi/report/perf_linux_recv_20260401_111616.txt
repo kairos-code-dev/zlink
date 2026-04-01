@@ -1,0 +1,40 @@
+## Effective Options (start)
+- pattern: STREAM
+- recv_mode: recv
+- duration_seconds: 1
+- warmup_seconds: 1
+- msg_sizes: 64
+- runs: 1
+- transports: tcp
+- results_dir: /home/hep7/project/kairos/zlink/bindings/node/perf/results
+- clients: 2
+
+## PATTERN: MULTI_STREAM
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 8.94 Kops/s | 0.57 MB/s | 0.107 | 0.220 | 0.427 |
+
+
+## Result Data
+RESULT,current,MULTI_STREAM,tcp,64,throughput,8942.00
+RESULT,current,MULTI_STREAM,tcp,64,bandwidth,0.57
+RESULT,current,MULTI_STREAM,tcp,64,latency,106.85
+RESULT,current,MULTI_STREAM,tcp,64,latency_p95,220.01
+RESULT,current,MULTI_STREAM,tcp,64,latency_p99,426.82
+
+## Effective Options (result)
+- pattern: STREAM
+- recv_mode: recv
+- duration_seconds: 1
+- warmup_seconds: 1
+- msg_sizes: 64
+- runs: 1
+- transports: tcp
+- results_dir: /home/hep7/project/kairos/zlink/bindings/node/perf/results
+- clients: 2
+- result_lines: 5
+## Status Summary
+- result_lines: 5
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5

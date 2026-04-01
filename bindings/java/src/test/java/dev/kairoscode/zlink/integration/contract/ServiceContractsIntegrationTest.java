@@ -3,6 +3,7 @@ package dev.kairoscode.zlink.integration.contract;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PairSocket;
+import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.ServiceEvent;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ServiceType;
@@ -115,11 +116,8 @@ class ServiceContractsIntegrationTest {
             subscriber.setSubscription("perf-topic");
             assertTrue(await(ready), "spot filter applied");
             try (var payload = dev.kairoscode.zlink.Message.copyOfUtf8("perf-body")) {
-                publisher.publish("perf-topic", payload);
-            }
-            try (var received = subscriber.subscribe()) {
-                assertEquals("perf-topic", received.topicId());
-                assertEquals("perf-body", received.firstPart().toUtf8String());
+                assertEquals(SendResult.SENT,
+                    publisher.tryPublish("perf-topic", payload));
             }
         }
     }

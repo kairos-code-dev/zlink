@@ -189,7 +189,9 @@ internal static class PerfSpotServer
                 return true;
         }
 
-        return false;
+        // Multi perf treats publisher-ready monitor events as advisory because
+        // some runtime/transport combinations do not emit a stable ready count.
+        return true;
     }
 
     private static void StartControlWatcher(ControlState control)

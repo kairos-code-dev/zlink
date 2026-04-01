@@ -4,8 +4,7 @@ param(
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RootDir = Resolve-Path (Join-Path $ScriptDir "../../..")
-$Runner = Join-Path $RootDir "bindings/perf/run_policy_bench.py"
+$Runner = Join-Path $ScriptDir "run_policy_bench.py"
 
 $PassArgs = @()
 for ($i = 0; $i -lt $ArgsList.Count; $i++) {

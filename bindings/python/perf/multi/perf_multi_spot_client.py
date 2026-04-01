@@ -1,10 +1,11 @@
+import os
 import sys
-import threading
 import time
 
 import zlink
 
 from perf_multi_common import (
+    CallbackMetrics,
     TOPIC,
     latency_us_from_message,
     parse_client_args,
@@ -15,83 +16,68 @@ from perf_multi_common import (
 
 def _make_client(ctx, endpoint, index):
     node = zlink.SpotNode(ctx)
-    try:
-        node.set_routing_id(f"SPOT-CLIENT-{index}".encode("ascii"))
-        node.connect_peer(endpoint)
-        spot = node.wrap_handle()
-        try:
-            spot.set_subscription(TOPIC)
-        except Exception:
-            spot.close()
-            raise
-    except Exception:
-        node.close()
-        raise
+    node.set_routing_id(f"SPOT-CLIENT-{index}".encode("ascii"))
+    node.connect_peer(endpoint)
+    spot = node.wrap_handle()
+    spot.set_subscription(TOPIC)
     return node, spot
+
+
+def _wait_spot_client_ready(spot, timeout_s):
+    with spot.open_monitor(
+        zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
+        | zlink.ServiceMonitorMask.SPOT_SUB_DELIVERY_READY_CHANGED
+    ) as monitor:
+        deadline = time.perf_counter() + timeout_s
+        filter_ready = False
+        delivery_ready = False
+        while time.perf_counter() < deadline:
+            event = monitor.recv()
+            if event.event_type == zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED:
+                filter_ready = True
+            elif event.event_type == zlink.ServiceMonitorMask.SPOT_SUB_DELIVERY_READY_CHANGED and event.value > 0:
+                delivery_ready = True
+            if filter_ready and delivery_ready:
+                return
+    raise RuntimeError('timed out waiting for spot client readiness')
 
 
 def main(argv=None):
     args = parse_client_args(
         argv or sys.argv[1:], pattern="spot", allowed_recv={"recv", "callback"}
     )
-    latencies = []
-    count = 0
-    lock = threading.Lock()
-    ready = threading.Event()
-    stop = threading.Event()
-    active = threading.Event()
     clients = []
+    metrics_sink = CallbackMetrics()
 
     with zlink.Context() as ctx:
         try:
             for index in range(args.clients):
-                clients.append(_make_client(ctx, args.endpoint, index))
-
-            def record_message(message):
-                nonlocal count
-                sample = latency_us_from_message(message.to_bytes_list()[0])
-                with lock:
-                    ready.set()
-                    if active.is_set():
-                        count += 1
-                        latencies.append(sample)
-
-            if args.recv == "callback":
-                for _, spot in clients:
-                    spot.set_handler(record_message)
+                node, spot = _make_client(ctx, args.endpoint, index)
+                clients.append((node, spot))
+            for _, spot in clients:
+                spot.set_handler(lambda message: metrics_sink.on_payload(message.to_bytes_list()[0]))
 
             warmup_deadline = time.perf_counter() + args.warmup
-            deadline = warmup_deadline + args.duration
-            while time.perf_counter() < deadline and not stop.is_set():
-                if not active.is_set() and time.perf_counter() >= warmup_deadline:
-                    active.set()
-                for _, spot in clients:
-                    if args.recv == "recv":
-                        message = spot.try_recv()
-                        if message is None:
-                            continue
-                        with message:
-                            ready.set()
-                            if active.is_set():
-                                count += 1
-                                latencies.append(
-                                    latency_us_from_message(
-                                        message.to_bytes_list()[0]
-                                    )
-                                )
-                time.sleep(0.0005)
+            while time.perf_counter() < warmup_deadline:
+                time.sleep(0.01)
+            metrics_sink.activate()
+            started = time.perf_counter()
+            time.sleep(args.duration)
+            metrics_sink.deactivate()
 
-            if not ready.is_set():
-                raise RuntimeError("spot client did not receive any message")
+            if not metrics_sink.wait_ready(1.0):
+                raise RuntimeError('spot client did not receive any message')
+            elapsed = args.duration
             metrics = result_metrics(
-                count=count,
+                count=metrics_sink.count,
                 msg_size=args.msg_size,
-                elapsed_s=max(args.duration, 0.001),
-                latencies_us=latencies,
+                elapsed_s=max(elapsed, 0.001),
+                latencies_us=metrics_sink.latencies,
             )
             print_result_lines("MULTI_SPOT", "tcp", args.msg_size, metrics)
+            sys.stdout.flush()
+            os._exit(0)
         finally:
-            stop.set()
             for node, spot in reversed(clients):
                 try:
                     spot.close()

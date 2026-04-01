@@ -18,18 +18,15 @@ pubNode.Bind(endpoint);
 subNode.ConnectPeer(endpoint);
 subscriber.SetSubscription(topic);
 DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
-while (DateTime.UtcNow < deadline)
-{
-    using Message message = Message.FromString("spot-recv");
-    if (publisher.TryPublish(topic, message) == SendResult.Sent)
-        break;
-    Thread.Sleep(10);
-}
-
 string payload = string.Empty;
 string receivedTopic = string.Empty;
 while (DateTime.UtcNow < deadline)
 {
+    using (Message message = Message.FromString("spot-recv"))
+    {
+        _ = publisher.TryPublish(topic, message);
+    }
+
     Subscribed? subscribed = subscriber.TrySubscribe();
     if (subscribed == null)
     {

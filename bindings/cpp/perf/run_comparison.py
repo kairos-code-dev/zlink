@@ -10,8 +10,7 @@ def main() -> int:
     parser.add_argument("--suite", choices=("single", "multi"), default="single")
     args, rest = parser.parse_known_args()
 
-    root = Path(__file__).resolve().parents[2]
-    runner = root / "bindings" / "perf" / "run_policy_bench.py"
+    runner = Path(__file__).resolve().parent / "run_policy_bench.py"
     cmd = [sys.executable, str(runner), "--binding", "cpp", "--suite", args.suite]
     cmd.extend(rest)
     return subprocess.call(cmd)

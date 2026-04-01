@@ -82,12 +82,11 @@ public sealed class test_ctx_options
     [Fact]
     public void context_invalid_option_throws()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
         using var ctx = new Context();
-        Assert.Throws<ZlinkException>(() => ctx.SetOption((ContextOption)(-1), 0));
-        Assert.Throws<ZlinkException>(() => ctx.GetOption((ContextOption)(-1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ctx.SetOption((ContextOption)(-1), 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ctx.GetOption((ContextOption)(-1)));
     }
 
     [Fact]

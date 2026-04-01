@@ -59,18 +59,31 @@ final class PerfPubSub {
                 Duration.ofSeconds(20), "pubsub subscriber ready");
             send(pub, topic, config.size(), (byte) 2);
             PerfUtil.await(primed, "pubsub preflight", Duration.ofSeconds(10));
-            Thread traffic = SingleSendLoops.oneWaySend(
-                () -> send(pub, topic, config.size(), (byte) 2),
-                () -> send(pub, topic, config.size(), (byte) 0),
-                () -> sendStopBurst(pub, topic, config.size()),
-                config.warmupSeconds(),
-                config.durationSeconds(),
-                metrics);
+            Thread traffic = new Thread(() -> {
+                long warmupEnd = System.nanoTime()
+                    + config.warmupSeconds() * 1_000_000_000L;
+                while (System.nanoTime() < warmupEnd) {
+                    send(pub, topic, config.size(), (byte) 2);
+                }
+                metrics.startResourceWindow();
+                long activeEnd = System.nanoTime()
+                    + config.durationSeconds() * 1_000_000_000L;
+                while (System.nanoTime() < activeEnd) {
+                    send(pub, topic, config.size(), (byte) 0);
+                }
+                long stopDeadline = System.nanoTime() + 1_000_000_000L;
+                while (finished.getCount() > 0L && System.nanoTime() < stopDeadline) {
+                    sendStopBurst(pub, topic, config.size());
+                }
+                if (finished.getCount() > 0L) {
+                    sendStopBurst(pub, topic, config.size());
+                }
+            }, "single-pubsub-sender");
             traffic.start();
             PerfUtil.await(finished, "pubsub callback", Duration.ofSeconds(
                 config.warmupSeconds() + config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "pubsub sender", Duration.ofSeconds(10));
-            return metrics.finishSingle(config.size(), config.durationSeconds());
+            return metrics.finishSingle(config);
         } finally {
             if (!sharedContext) {
                 subCtx.close();
@@ -86,7 +99,7 @@ final class PerfPubSub {
     }
 
     private static void sendStopBurst(PubSocket pub, String topic, int size) {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 16; i++) {
             send(pub, topic, size, (byte) 1);
         }
     }

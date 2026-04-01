@@ -2,6 +2,7 @@
 
 #include "../common/sample_common.hpp"
 
+
 int main ()
 {
     zlink::context_t ctx;
@@ -37,7 +38,6 @@ int main ()
     assert (pub_monitor.close () == 0);
     assert (sub_monitor.close () == 0);
     assert (spot.destroy () == 0);
-    assert (ctx.shutdown () == 0);
-    assert (ctx.term () == 0);
+    assert (node.destroy () == 0);
     return 0;
 }

@@ -1,0 +1,23 @@
+## Effective Options (start)
+- runs: 1
+- recv_mode: callback
+- duration_seconds: 0.2
+- warmup_seconds: 0.1
+- patterns: PAIR
+- transports: tcp,inproc
+- msg_sizes: 64
+
+RESULT,current,PAIR,tcp,64,throughput,96459.84
+RESULT,current,PAIR,tcp,64,bandwidth,6.17
+RESULT,current,PAIR,tcp,64,latency,49.23
+RESULT,current,PAIR,tcp,64,latency_p95,66.75
+RESULT,current,PAIR,tcp,64,latency_p99,76.79
+
+| Pattern | Transport | Size | Throughput | Bandwidth | Latency | Latency P95 | Latency P99 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| PAIR | tcp | 64 | 96459.84 | 6.17 | 49.23 | 66.75 | 76.79 |
+
+## Effective Options (result)
+- recv_mode: callback
+- result_lines: 5
+- status: complete

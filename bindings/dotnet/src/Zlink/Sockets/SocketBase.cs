@@ -56,6 +56,7 @@ public abstract class SocketBase : IDisposable
 
     public SocketMonitor OpenMonitor(SocketEvent events)
     {
+        EnumValidation.EnsureSocketEvents(events, nameof(events));
         return _kernel.OpenMonitor(events);
     }
 

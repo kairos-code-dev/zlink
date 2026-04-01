@@ -27,7 +27,7 @@ public class CommonSocketOptions {
 
     public void receiveTimeout(Duration timeout) {
         Objects.requireNonNull(timeout, "timeout");
-        receiveTimeoutMillis(Math.toIntExact(timeout.toMillis()));
+        receiveTimeoutMillis(toIntMillis(timeout, "timeout"));
     }
 
     public int sendTimeoutMillis() {
@@ -44,6 +44,15 @@ public class CommonSocketOptions {
 
     public void sendTimeout(Duration timeout) {
         Objects.requireNonNull(timeout, "timeout");
-        sendTimeoutMillis(Math.toIntExact(timeout.toMillis()));
+        sendTimeoutMillis(toIntMillis(timeout, "timeout"));
+    }
+
+    private static int toIntMillis(Duration timeout, String name) {
+        long millis = timeout.toMillis();
+        if (millis < Integer.MIN_VALUE || millis > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(name + " millis out of int range: "
+                + millis);
+        }
+        return (int) millis;
     }
 }

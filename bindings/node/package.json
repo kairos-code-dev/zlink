@@ -11,7 +11,7 @@
   },
   "homepage": "https://github.com/ulala-x/zlink",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -33,6 +33,9 @@
     "clean": "rm -rf dist dist-tools",
     "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && ln -sfn ../dist dist-tools/dist",
     "rebuild-native": "node-gyp rebuild",
+    "perf:single": "./perf/single/run_benchmarks.sh",
+    "perf:multi": "./perf/multi/run_benchmarks.sh",
+    "perf": "./perf/run_benchmarks.sh",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "prepare": "npm run build",
     "pretest": "npm run build && npm run typecheck && npm run rebuild-native",

@@ -1,0 +1,25 @@
+## Effective Options (start)
+- runs: 1
+- recv_mode: recv
+- duration_seconds: 0.2
+- warmup_seconds: 0.1
+- patterns: MULTI_SPOT
+- transports: tcp
+- msg_sizes: 64
+- clients: 2
+
+READY,tcp://127.0.0.1:31503
+RESULT,current,MULTI_SPOT,tcp,64,throughput,20995.00
+RESULT,current,MULTI_SPOT,tcp,64,bandwidth,1.34
+RESULT,current,MULTI_SPOT,tcp,64,latency,185314.26
+RESULT,current,MULTI_SPOT,tcp,64,latency_p95,263685.62
+RESULT,current,MULTI_SPOT,tcp,64,latency_p99,269038.74
+
+| Pattern | Transport | Size | Throughput | Bandwidth | Latency | Latency P95 | Latency P99 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| MULTI_SPOT | tcp | 64 | 20995.00 | 1.34 | 185314.26 | 263685.62 | 269038.74 |
+
+## Effective Options (result)
+- recv_mode: recv
+- result_lines: 5
+- status: complete

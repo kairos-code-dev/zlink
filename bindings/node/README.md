@@ -76,9 +76,25 @@ aligned canonical surface.
 
 ```bash
 cd bindings/node && npm run build
-cd bindings/node && node-gyp rebuild
+cd bindings/node && npm run rebuild-native
 cd bindings/node && npm test
 cd bindings/node && npm run samples
-cd bindings/node && npm run perf:single -- --recv recv --warmup 0.2 --duration 0.5
-cd bindings/node && node --test tests/*.test.js
+cd bindings/node && npm run perf:single -- --recv callback --pattern PAIR --warmup 0.2 --duration 0.5
+cd bindings/node && npm run perf:multi -- --recv recv --pattern STREAM --warmup 0.2 --duration 0.5
 ```
+
+## Perf Status
+
+- single perf is implemented for `PAIR`, `PUBSUB`, `DEALER_DEALER`,
+  `DEALER_ROUTER`, `ROUTER_ROUTER`, `SPOT`
+- single perf supports `--recv callback` only
+- multi perf is implemented for `MULTI_DEALER_DEALER`, `MULTI_PUBSUB`,
+  `STREAM`
+- multi perf supports:
+  - `MULTI_DEALER_DEALER`: `--recv recv`
+  - `MULTI_PUBSUB`: `--recv recv`
+  - `STREAM`: `--recv recv|callback`
+- perf structure and review criteria are defined by
+  [`bindings/README.md`](/home/hep7/project/kairos/zlink/bindings/README.md)
+  and the shared policy docs under
+  [`doc/perf/`](/home/hep7/project/kairos/zlink/doc/perf)

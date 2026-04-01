@@ -149,6 +149,41 @@ wait_for_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
 }
 
 inline bool
+wait_for_service_monitor_event_endpoint (
+  zlink::service_monitor_handle_t &monitor_,
+  uint32_t event_type_,
+  const std::string &endpoint_,
+  int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ());
+        if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
+            continue;
+
+        const zlink::maybe_t<zlink_service_monitor_event_t> event =
+          monitor_.try_receive ();
+        if (!event)
+            continue;
+        if (event->event_type != event_type_)
+            continue;
+        if ((event->detail_flags & ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT) == 0)
+            continue;
+        if (endpoint_ != event->endpoint)
+            continue;
+        return true;
+    }
+
+    return false;
+}
+
+inline bool
 wait_for_service_monitor_state (zlink::service_monitor_handle_t &monitor_,
                                 uint32_t state_flags_,
                                 int timeout_ms_)

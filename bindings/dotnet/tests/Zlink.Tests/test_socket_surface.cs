@@ -7,10 +7,14 @@ namespace Zlink.Tests;
 
 public sealed class test_socket_surface
 {
+    private static MethodInfo[] PublicInstanceMethods(Type type)
+    {
+        return type.GetMethods(BindingFlags.Instance | BindingFlags.Public);
+    }
+
     private static bool HasPublicInstanceMethod(Type type, string name)
     {
-        return type.GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Any(method => method.Name == name);
+        return PublicInstanceMethods(type).Any(method => method.Name == name);
     }
 
     private static bool HasPublicInstanceMethod(Type type, string name,
@@ -65,5 +69,59 @@ public sealed class test_socket_surface
             nameof(DealerSocket.SetRoutingId)));
         Assert.False(HasPublicInstanceMethod(typeof(PairSocket),
             nameof(DealerSocket.SetRoutingId)));
+    }
+
+    [Fact]
+    public void public_surface_removes_raw_flags_and_option_bags()
+    {
+        Type[] socketTypes =
+        {
+            typeof(SocketBase),
+            typeof(MessageSocketBase),
+            typeof(PublisherSocketBase),
+            typeof(SubscriberSocketBase),
+            typeof(PairSocket),
+            typeof(PubSocket),
+            typeof(SubSocket),
+            typeof(DealerSocket),
+            typeof(RouterSocket),
+            typeof(StreamSocket),
+            typeof(XPubSocket),
+            typeof(XSubSocket)
+        };
+
+        foreach (Type socketType in socketTypes)
+        {
+            Assert.False(HasPublicInstanceMethod(socketType, "SetOption"));
+            Assert.False(HasPublicInstanceMethod(socketType, "GetOption"));
+        }
+
+        Assert.Null(typeof(MessageSocketBase).GetMethod("Receive",
+            BindingFlags.Instance | BindingFlags.Public, binder: null,
+            types: new[] { typeof(int) }, modifiers: null));
+        Assert.Null(typeof(MessageSocketBase).GetMethod("TryReceive",
+            BindingFlags.Instance | BindingFlags.Public, binder: null,
+            types: new[] { typeof(int) }, modifiers: null));
+        Assert.Null(typeof(PublisherSocketBase).GetMethod("Publish",
+            BindingFlags.Instance | BindingFlags.Public, binder: null,
+            types: new[] { typeof(string), typeof(Message), typeof(int) },
+            modifiers: null));
+        Assert.Null(typeof(SocketMonitor).GetMethod("Receive",
+            BindingFlags.Instance | BindingFlags.Public, binder: null,
+            types: new[] { typeof(int) }, modifiers: null));
+        Assert.Null(typeof(SocketMonitor).GetMethod("TryReceive",
+            BindingFlags.Instance | BindingFlags.Public, binder: null,
+            types: new[] { typeof(int) }, modifiers: null));
+    }
+
+    [Fact]
+    public void monitor_surface_exposes_canonical_receive_methods_only()
+    {
+        Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor), "Receive"));
+        Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor), "TryReceive"));
+        Assert.True(HasPublicInstanceMethod(typeof(SocketMonitor),
+            "AttachHandler"));
+        Assert.False(HasPublicInstanceMethod(typeof(SocketMonitor), "Recv"));
+        Assert.False(HasPublicInstanceMethod(typeof(SocketMonitor), "TryRecv"));
     }
 }

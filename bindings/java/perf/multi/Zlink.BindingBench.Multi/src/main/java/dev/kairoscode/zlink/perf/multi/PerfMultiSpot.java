@@ -11,7 +11,7 @@ import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 final class PerfMultiSpot {
     private static final long SPOT_FILTER_APPLIED = 1L << 13;
@@ -38,31 +38,31 @@ final class PerfMultiSpot {
             for (int i = 0; i < config.clients(); i++) {
                 send(publisher, config.size(), (byte) 1);
             }
-            return new PerfUtil.Result("ok", "-", 0, 0, 0, 0, 0,
-                Double.NaN, Double.NaN, "ms");
+            return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
+                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
         }
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        CountDownLatch done = new CountDownLatch(config.clients());
+        CountDownLatch finishedClients = new CountDownLatch(config.clients());
         CountDownLatch ready = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
-        AtomicInteger stops = new AtomicInteger();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         MultiSendLoops.runClients(config.clients(), (index, warmup, duration) ->
-            new Thread(() -> runClientSlot(config, index, warmup, duration, done,
-                ready, go, stops, metrics), "multi-spot-client-" + index),
+            new Thread(() -> runClientSlot(config, index, warmup, duration,
+                finishedClients, ready, go, metrics), "multi-spot-client-" + index),
             config.warmupSeconds(), config.durationSeconds());
-        return metrics.finishMulti(config.size(), config.durationSeconds());
+        return metrics.finishMulti(config);
     }
 
     private static void runClientSlot(PerfUtil.Config config, int index,
                                       int warmup, int duration,
-                                      CountDownLatch done,
+                                      CountDownLatch finishedClients,
                                       CountDownLatch ready,
                                       CountDownLatch go,
-                                      AtomicInteger stops,
                                       PerfUtil.Metrics metrics) {
+        CountDownLatch localDone = new CountDownLatch(1);
+        AtomicBoolean localStopped = new AtomicBoolean(false);
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
              Spot subscriber = node.wrapHandle();
@@ -80,31 +80,61 @@ final class PerfMultiSpot {
             PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
             if ("callback".equalsIgnoreCase(config.recvMode())) {
                 subscriber.onSubscribe((routingId, topic, received) -> {
+                    if (received == null) {
+                        return;
+                    }
                     try (received) {
-                        handleDelivery(config, done, stops, metrics, received.firstPart());
+                        handleDelivery(localDone, localStopped, finishedClients,
+                            metrics, received);
                     }
                 });
-                PerfUtil.await(done, "spot multi callback", Duration.ofSeconds(
+                PerfUtil.await(localDone, "spot multi callback", Duration.ofSeconds(
                     warmup + duration + 20L));
                 return;
             }
-            while (done.getCount() > 0) {
+            while (localDone.getCount() > 0L) {
                 try (var received = subscriber.subscribe()) {
-                    handleDelivery(config, done, stops, metrics,
-                        received.firstPart());
+                    handleDelivery(localDone, localStopped, finishedClients,
+                        metrics, received);
                 }
             }
         }
     }
 
-    private static void handleDelivery(PerfUtil.Config config, CountDownLatch done,
-                                       AtomicInteger stops,
+    private static void handleDelivery(CountDownLatch localDone,
+                                       AtomicBoolean localStopped,
+                                       CountDownLatch finishedClients,
+                                       PerfUtil.Metrics metrics,
+                                       dev.kairoscode.zlink.Received received) {
+        if (received == null || received.parts().isEmpty()) {
+            return;
+        }
+        handleDelivery(localDone, localStopped, finishedClients, metrics,
+            received.firstPart());
+    }
+
+    private static void handleDelivery(CountDownLatch localDone,
+                                       AtomicBoolean localStopped,
+                                       CountDownLatch finishedClients,
+                                       PerfUtil.Metrics metrics,
+                                       dev.kairoscode.zlink.TopicMessage received) {
+        if (received == null || received.parts().isEmpty()) {
+            return;
+        }
+        handleDelivery(localDone, localStopped, finishedClients, metrics,
+            received.firstPart());
+    }
+
+    private static void handleDelivery(CountDownLatch localDone,
+                                       AtomicBoolean localStopped,
+                                       CountDownLatch finishedClients,
                                        PerfUtil.Metrics metrics,
                                        Message payload) {
         byte phase = PerfUtil.phase(payload);
         if (phase == 1) {
-            if (stops.incrementAndGet() <= config.clients()) {
-                done.countDown();
+            if (localStopped.compareAndSet(false, true)) {
+                finishedClients.countDown();
+                localDone.countDown();
             }
             return;
         }

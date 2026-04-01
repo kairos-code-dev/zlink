@@ -5,7 +5,7 @@
 > **Date**: 2026-03-21
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
-> 본 정책은 `perf/`의 C++ 벤치마크와 현재 perf suite가 구현된 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게 적용된다. `bindings/node`, `bindings/python`은 아직 perf suite가 구현되지 않았으므로 본 문서의 구조/운영 원칙만 향후 기준으로 삼는다.
+> 본 정책은 `perf/`의 C++ 벤치마크와 현재 perf suite가 구현된 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게 적용된다. `bindings/node`는 in-repo perf 자산이 존재하지만 아직 shared policy parity를 맞추는 정렬 대상이므로, 본 문서는 Node에도 현재 기준 계약으로 적용한다. `bindings/python`은 아직 perf suite가 구현되지 않았으므로 본 문서의 구조/운영 원칙만 향후 기준으로 삼는다.
 
 ---
 
@@ -214,7 +214,7 @@ perf/                                       # bindings/<lang>/perf/
 | C++ binding | `perf/single/` | `perf/multi/` | `perf_dispatch.hpp` |
 | .NET | `perf/single/Zlink.BindingBench/` | `perf/multi/<project>/` 또는 `perf/single/Zlink.BindingBench/` 내 multi role entrypoint | `PerfCommon.cs` |
 | Java | `perf/single/<project>/` | `perf/multi/<project>/` 또는 `perf/single/<project>/` 내 multi role entrypoint | `PerfUtil.java` |
-| Node | 미구현 | 미구현 | - |
+| Node | `perf/single/` | `perf/multi/` | `perf/common/` |
 | Python | 미구현 | 미구현 | - |
 
 - 컴파일 언어 바인딩(C++/.NET/Java)은 소스 트리 분리 대신 단일 runner에서 `--multi-server`/`--multi-client` role 분기를 제공해도 된다. 이 경우에도 결과 형식, 운영 모드, server/client 프로세스 모델은 동일하게 준수해야 한다.

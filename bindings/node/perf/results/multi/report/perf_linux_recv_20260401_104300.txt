@@ -1,0 +1,21 @@
+## Effective Options (start)
+- pattern: MULTI_DEALER_DEALER
+- recv_mode: recv
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 64
+- runs: 1
+- transports: tcp
+
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,throughput,0.00
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,bandwidth,0.00
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency,0.00
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p95,0.00
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p99,0.00
+
+## Effective Options (result)
+- recv_mode: recv
+- result_lines: 5
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5

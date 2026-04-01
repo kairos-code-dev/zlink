@@ -895,12 +895,20 @@ export class SpotNode {
     requireNative().spotNodeBind(this._native, endpoint);
   }
 
-  connectPeerPub(endpoint: string): void {
+  connectPeer(endpoint: string): void {
     requireNative().spotNodeConnectPeerPub(this._native, endpoint);
   }
 
-  disconnectPeerPub(endpoint: string): void {
+  connectPeerPub(endpoint: string): void {
+    this.connectPeer(endpoint);
+  }
+
+  disconnectPeer(endpoint: string): void {
     requireNative().spotNodeDisconnectPeerPub(this._native, endpoint);
+  }
+
+  disconnectPeerPub(endpoint: string): void {
+    this.disconnectPeer(endpoint);
   }
 
   attachDiscovery(discovery: Discovery): void {

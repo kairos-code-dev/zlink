@@ -7,8 +7,10 @@
 >
 > 본 정책은 `perf/single`의 C++ 벤치마크와 현재 single perf suite가 구현된
 > 바인딩(`bindings/cpp`, `bindings/dotnet`, `bindings/java`)에 동일하게
-> 적용된다. `bindings/node`, `bindings/python`은 아직 single perf suite가
-> 구현되지 않았으므로 본 문서를 향후 기준으로 삼는다.
+> 적용된다. `bindings/node`는 in-repo single perf 자산이 존재하지만 shared
+> policy parity를 맞추는 정렬 대상이므로, 본 문서를 현재 기준 계약으로
+> 따른다. `bindings/python`은 아직 single perf suite가 구현되지 않았으므로
+> 본 문서를 향후 기준으로 삼는다.
 >
 > **상위 문서**: [PERF_POLICY.md](PERF_POLICY.md)
 > **관련 문서**: [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md)

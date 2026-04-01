@@ -1,11 +1,9 @@
-import selectors
 import sys
 import threading
-import time
 
 import zlink
 
-from perf_multi_common import TOPIC, new_payload, stamp_payload, tcp_endpoint
+from perf_multi_common import TOPIC, new_payload, parse_server_args, stamp_payload, tcp_endpoint
 
 
 def _stdin_stop(stop_event):
@@ -15,9 +13,10 @@ def _stdin_stop(stop_event):
             return
 
 
-def main():
+def main(argv=None):
+    args = parse_server_args(argv or sys.argv[1:])
     stop_event = threading.Event()
-    payload = new_payload(256)
+    payload = new_payload(args.msg_size)
     endpoint = tcp_endpoint()
     threading.Thread(target=_stdin_stop, args=(stop_event,), daemon=True).start()
 

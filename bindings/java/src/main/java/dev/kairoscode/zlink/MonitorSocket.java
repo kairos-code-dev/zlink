@@ -24,14 +24,15 @@ public final class MonitorSocket implements AutoCloseable {
 
     public Optional<MonitorEvent> tryRecv() {
         ensureOpen();
-        MonitorEvent event = Native.monitorRecv(handle,
-            ReceiveFlag.DONTWAIT.getValue());
-        if (event != null)
-            return Optional.of(event);
-        int errno = Native.errno();
-        if (errno == Socket.ERRNO_EAGAIN || errno == Socket.ERRNO_EWOULDBLOCK_WIN)
-            return Optional.empty();
-        throw ZlinkException.fromLastError("zlink_monitor_recv");
+        try {
+            return Optional.of(Native.monitorRecv(handle,
+                ReceiveFlag.DONTWAIT.getValue()));
+        } catch (ZlinkException ex) {
+            int errno = ex.errno();
+            if (errno == Socket.ERRNO_EAGAIN || errno == Socket.ERRNO_EWOULDBLOCK_WIN)
+                return Optional.empty();
+            throw ex;
+        }
     }
 
     void setOption(SocketOptionKey<Integer> option, int value) {

@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-import errno
 
 from ._enums import (
     SendResult,
@@ -31,6 +30,7 @@ from ._core import (
     _report_unhandled_callback_exception,
     _raise_last_error,
     _routing_id_bytes,
+    _validated_routing_id_bytes,
 )
 
 
@@ -43,16 +43,6 @@ _SPOT_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_size_t,
     ctypes.c_void_p,
 )
-
-
-def _try_send_result_from_errno():
-    err = lib().zlink_errno()
-    if err in (errno.EAGAIN, 10035):
-        return SendResult.BACKPRESSURED
-    if err in (errno.ENOTCONN, 10057, errno.EHOSTUNREACH, 10065,
-               errno.ETIMEDOUT, 10060):
-        return SendResult.NOT_READY
-    return None
 
 
 def _decode_fixed(buf):
@@ -206,7 +196,7 @@ class SpotNode:
             _raise_last_error()
 
     def set_routing_id(self, routing_id):
-        raw = bytes(_as_bytes_view(routing_id))
+        raw = _validated_routing_id_bytes(routing_id)
         rc = lib().zlink_set_routing_id(
             self._handle, ctypes.c_char_p(raw), len(raw)
         )
@@ -423,15 +413,23 @@ class Spot:
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        result = lib().zlink_publish(
-            self._handle, topic_bytes, parts_array, part_count, 1
+        native_result = ctypes.c_int(int(SendResult.SENT))
+        rc = lib().zlink_try_publish(
+            self._handle,
+            topic_bytes,
+            parts_array,
+            part_count,
+            ctypes.byref(native_result),
         )
-        if int(result) == 0:
-            return SendResult.SENT
-        mapped = _try_send_result_from_errno()
-        if mapped is None:
+        if rc != 0:
+            for index in range(part_count):
+                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
             _raise_last_error()
-        return mapped
+        result = SendResult(native_result.value)
+        if result is not SendResult.SENT:
+            for index in range(part_count):
+                lib().zlink_msg_close(ctypes.byref(parts_array[index]))
+        return result
 
     def _recv_subscribed(self, flags):
         routing_id = ZlinkRoutingId()

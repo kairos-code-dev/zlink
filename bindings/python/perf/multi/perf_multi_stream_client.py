@@ -5,10 +5,12 @@ import time
 from urllib.parse import urlparse
 
 from perf_multi_common import (
+    encode_len32be,
     latency_us_from_message,
     new_payload,
     parse_client_args,
     print_result_lines,
+    recv_len32be,
     result_metrics,
     stamp_payload,
 )
@@ -19,19 +21,9 @@ def _parse_tcp(endpoint):
     return parsed.hostname, parsed.port
 
 
-def _recv_exact(sock, size):
-    chunks = bytearray()
-    while len(chunks) < size:
-        chunk = sock.recv(size - len(chunks))
-        if not chunk:
-            raise RuntimeError("connection closed")
-        chunks.extend(chunk)
-    return bytes(chunks)
-
-
 def main(argv=None):
     args = parse_client_args(
-        argv or sys.argv[1:], pattern="stream", allowed_recv={"recv"}
+        argv or sys.argv[1:], pattern="stream", allowed_recv={"recv", "callback"}
     )
     payload = new_payload(args.msg_size)
     count = 0
@@ -44,13 +36,13 @@ def main(argv=None):
         with socket.create_connection((host, port), timeout=5.0) as client:
             warmup_deadline = time.perf_counter() + args.warmup
             while time.perf_counter() < warmup_deadline:
-                client.sendall(stamp_payload(payload))
-                _recv_exact(client, len(payload))
+                client.sendall(encode_len32be(stamp_payload(payload)))
+                recv_len32be(client)
 
             deadline = time.perf_counter() + args.duration
             while time.perf_counter() < deadline:
-                client.sendall(stamp_payload(payload))
-                reply = _recv_exact(client, len(payload))
+                client.sendall(encode_len32be(stamp_payload(payload)))
+                reply = recv_len32be(client)
                 sample = latency_us_from_message(reply)
                 with lock:
                     count += 1

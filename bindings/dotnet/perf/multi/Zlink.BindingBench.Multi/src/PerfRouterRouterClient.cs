@@ -463,12 +463,16 @@ internal static class PerfRouterRouterClient
         {
             try
             {
-                int sentRid = SendBlocking(activeClients[i], serverRoutingId,
-                    SendFlags.SendMore);
-                if (sentRid <= 0)
+                if (!activeClients[i].TrySend(serverRoutingId,
+                        SendFlags.SendMore | SendFlags.DontWait,
+                        out int sentRid)
+                    || sentRid <= 0)
+                {
                     continue;
-                _ = SendBlocking(activeClients[i], MultiStopToken.AsSpan(),
-                    SendFlags.None);
+                }
+
+                _ = activeClients[i].TrySend(MultiStopToken.AsSpan(),
+                    SendFlags.DontWait, out _);
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
                                             || IsInterrupted(ex.Errno)

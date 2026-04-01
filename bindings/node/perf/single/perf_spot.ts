@@ -3,49 +3,49 @@
 'use strict';
 
 const zlink = require('../../dist');
-const { createPayload, latencyUsFromPayload, stampPayload } = require('../common/perf_metrics');
+const {
+  attachCallbackCollector,
+  driveSender,
+  finishCollector
+} = require('./perf_single_common');
+
+async function waitSpotFilterApplied(spot, topic) {
+  const monitor = spot.openMonitor(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
+  try {
+    spot.setSubscription(topic);
+    while (true) {
+      const event = monitor.recv();
+      if (event.eventType === zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED) {
+        return;
+      }
+    }
+  } finally {
+    monitor.close();
+  }
+}
 
 async function runSpotBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
   const spot = new zlink.Spot(node);
   const topic = 'perf:spot';
-  const payload = createPayload(msgSize);
-  const latenciesUs = [];
-  let done = false;
-  const startedAt = process.hrtime.bigint();
-  const warmupNs = BigInt(Math.floor(options.warmup * 1_000_000_000));
-  const activeNs = BigInt(Math.floor(options.duration * 1_000_000_000));
-  const monitor = spot.openMonitor(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
 
   try {
-    spot.subscribeHandler((_, __, parts) => {
-      const elapsed = process.hrtime.bigint() - startedAt;
-      if (elapsed >= warmupNs && elapsed < warmupNs + activeNs) {
-        latenciesUs.push(latencyUsFromPayload(parts[0].toBuffer()));
-      }
-      if (elapsed >= warmupNs + activeNs) {
-        done = true;
-      }
-    });
+    const state = attachCallbackCollector(
+      (handler) => spot.subscribeHandler(handler),
+      msgSize,
+      options,
+      (_, __, parts) => parts[0].toBuffer()
+    );
 
-    spot.setSubscription(topic);
-    monitor.recv();
-
-    while (!done) {
-      stampPayload(payload);
-      const result = spot.tryPublish(topic, payload);
-      if (result !== zlink.SendResult.Sent) {
-        await new Promise((resolve) => setImmediate(resolve));
-        continue;
-      }
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-
-    return latenciesUs;
+    await waitSpotFilterApplied(spot, topic);
+    await driveSender((payload) => (
+      spot.tryPublish(topic, payload) === zlink.SendResult.Sent
+    ), state);
+    return await finishCollector(state);
   } finally {
-    monitor.close();
     spot.close();
+    node.close();
     ctx.close();
   }
 }

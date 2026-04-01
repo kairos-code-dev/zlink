@@ -11,6 +11,7 @@ from perf_multi_common import (
     print_result_lines,
     result_metrics,
     stamp_payload,
+    wait_socket_event,
 )
 
 
@@ -31,6 +32,7 @@ def main(argv=None):
         try:
             for sock, endpoint in zip(sockets, endpoints):
                 sock.connect(endpoint)
+                wait_socket_event(sock, zlink.MonitorEvent.CONNECTION_READY_CHANGED)
 
             def worker(sock):
                 nonlocal count

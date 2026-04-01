@@ -56,7 +56,7 @@ final class PerfPair {
             PerfUtil.await(finished, "pair callback", Duration.ofSeconds(
                 config.warmupSeconds() + config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "pair sender", Duration.ofSeconds(10));
-            return metrics.finishSingle(config.size(), config.durationSeconds());
+            return metrics.finishSingle(config);
         }
     }
 }

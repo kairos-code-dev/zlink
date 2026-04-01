@@ -86,7 +86,15 @@ internal static partial class PerfRunner
     internal static int ReceiveRetry(Zlink.Socket socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
-        return socket.TryReceive(buffer, flags, out int read) ? read : 0;
+        try
+        {
+            return socket.TryReceive(buffer, flags, out int read) ? read : 0;
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.Errno)
+                                        || IsWouldBlock(ex.Errno))
+        {
+            return 0;
+        }
     }
 
     internal static int DrainReadableSocket(Zlink.Socket socket, Span<byte> buffer,
@@ -111,7 +119,15 @@ internal static partial class PerfRunner
         int timeoutMs)
     {
         events.Clear();
-        return poller.Wait(events, timeoutMs) > 0;
+        try
+        {
+            return poller.Wait(events, timeoutMs) > 0;
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.Errno)
+                                        || IsWouldBlock(ex.Errno))
+        {
+            return false;
+        }
     }
 
     internal static int SendBlocking(Zlink.Socket socket, ReadOnlySpan<byte> buffer,

@@ -76,7 +76,6 @@ class SocketOption(IntEnum):
     ZMP_METADATA = 0x3030
     DISCOVERY_METADATA_MAX_SIZE = 0x3032
 
-    # Legacy compatibility aliases. Canonical surface uses dedicated helpers.
     ROUTING_ID = 5
     SUBSCRIBE = 6
     UNSUBSCRIBE = 7
@@ -120,8 +119,11 @@ class MonitorEvent(IntFlag):
     MONITOR_STOPPED = 0x0400
     HANDSHAKE_FAILED_NO_DETAIL = 0x0800
     CONNECTION_READY = 0x1000
+    CONNECTION_READY_CHANGED = 0x1000
     HANDSHAKE_FAILED_PROTOCOL = 0x2000
     HANDSHAKE_FAILED_AUTH = 0x4000
+    SUB_DELIVERY_READY_CHANGED = 0x8000
+    PUB_DELIVERY_READY_CHANGED = 0x10000
     ALL = 0xFFFF
 
 

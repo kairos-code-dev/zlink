@@ -5,19 +5,20 @@
 const readline = require('node:readline');
 const zlink = require('../../dist');
 const {
-  createPayload,
-  latencyUsFromPayload,
-  payloadPhase,
+  createMetricCollector,
+  decodeMetricHeader,
   summarizeMetrics
 } = require('../common/perf_metrics');
 
 function parseArgs(argv) {
-  const options = { endpoint: '', msgSize: 256, duration: 2, clients: 1 };
+  const options = { endpoint: '', msgSize: 256, warmup: 1, duration: 2, clients: 1 };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--endpoint') {
       options.endpoint = argv[++i];
     } else if (argv[i] === '--msg-size') {
       options.msgSize = Number(argv[++i]);
+    } else if (argv[i] === '--warmup') {
+      options.warmup = Number(argv[++i]);
     } else if (argv[i] === '--duration') {
       options.duration = Number(argv[++i]);
     } else if (argv[i] === '--clients') {
@@ -31,40 +32,48 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
   const server = new zlink.DealerSocket(ctx);
-  const latenciesUs = [];
-  let stopCount = 0;
+  const collector = createMetricCollector({
+    runId: 0,
+    msgSize: options.msgSize
+  });
+  let stop = false;
 
   try {
     server.bind(options.endpoint);
-    server.recvHandler((_, parts) => {
-      const payload = parts[0].toBuffer();
-      const phase = payloadPhase(payload);
-      if (phase === 0) {
-        latenciesUs.push(latencyUsFromPayload(payload));
-      } else if (phase === 1) {
-        stopCount += 1;
+    (async () => {
+      while (!stop) {
+        const received = server.tryReceive();
+        if (!received) {
+          await new Promise((resolve) => setImmediate(resolve));
+          continue;
+        }
+        const header = decodeMetricHeader(received.parts[0].toBuffer());
+        if (!header || header.phase === 1) {
+          continue;
+        }
+        collector.record(header, process.hrtime.bigint());
       }
-    });
+    })();
 
     console.log(`READY,${options.endpoint}`);
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     for await (const line of rl) {
       if (line === 'STOP') {
+        stop = true;
         break;
       }
     }
 
-    if (stopCount > 0) {
-      const resultLines = summarizeMetrics(
-        'MULTI_DEALER_DEALER',
-        'tcp',
-        options.msgSize,
-        latenciesUs,
-        options.duration
-      );
-      for (const line of resultLines) {
-        console.log(line);
-      }
+    const result = await collector.finish();
+    const resultLines = summarizeMetrics(
+      'MULTI_DEALER_DEALER',
+      'tcp',
+      options.msgSize,
+      result.latenciesUs,
+      options.duration
+    );
+    for (const lineOut of resultLines) {
+      console.log(lineOut);
     }
   } finally {
     server.close();

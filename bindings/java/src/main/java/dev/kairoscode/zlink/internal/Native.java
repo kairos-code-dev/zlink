@@ -302,6 +302,14 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SLEEP = downcall("zlink_sleep",
             FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SET_TLS_SRV = downcall(
+      "zlink_set_tls_server",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SET_TLS_CLI = downcall(
+      "zlink_set_tls_client",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
 
     private static final MethodHandle MH_REG_NEW = downcall("zlink_registry_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -1858,7 +1866,7 @@ public final class Native {
                                            MemorySegment cert,
                                            MemorySegment key) {
         try {
-            return (int) MH_SPOT_NODE_TLS_SRV.invokeExact(node, cert, key);
+            return (int) MH_SET_TLS_SRV.invokeExact(node, cert, key, 0);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_set_tls_server failed",
               t);
@@ -1870,7 +1878,7 @@ public final class Native {
                                            MemorySegment host,
                                            int trust) {
         try {
-            return (int) MH_SPOT_NODE_TLS_CLI.invokeExact(node, ca, host,
+            return (int) MH_SET_TLS_CLI.invokeExact(node, ca, host,
               trust);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_set_tls_client failed",

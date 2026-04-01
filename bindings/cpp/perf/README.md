@@ -1,15 +1,37 @@
 # C++ Binding Perf
 
-C++ binding perf runner for `zlink` using only `bindings/cpp/include/zlink` API.
+C++ binding perf runners verify the hot path exposed by `bindings/cpp/include/zlink`.
+They are benchmark and regression surfaces, not alternate public API contracts.
 
-## Entry points
+## Entry Points
 
 - Single: `bindings/cpp/perf/run_benchmarks.sh`
 - Multi: `bindings/cpp/perf/run_benchmarks_multi.sh`
 
-Both wrappers call `bindings/perf/run_policy_bench.py --binding cpp`.
+Both wrappers call `bindings/cpp/perf/run_policy_bench.py --binding cpp`.
+The C++ perf runner is self-contained under `bindings/cpp/perf/` while
+preserving the core-compatible CLI exposed from the C++ perf directory.
 
-## Quick start
+Policy references:
+
+- `doc/perf/PERF_POLICY.md`
+- `doc/perf/PERF_SINGLE_TEST_POLICY.md`
+- `doc/perf/PERF_MULTI_TEST_POLICY.md`
+
+## Policy
+
+- benchmark code must use the canonical C++ binding surface, not raw C helpers
+  or transport-specific escape hatches
+- non-blocking send paths must rely on the core-provided explicit send result
+  contract rather than binding-layer `errno` heuristics
+- benchmark helpers must not hide blocking send failures, silently retry, or add
+  sleep-based synchronization
+- any suspected `core` defect first needs a repository regression under
+  `core/tests/`; perf code is a verification surface, not the place to mask the bug
+- convenience paths are allowed only when they preserve the same payload shape
+  and do not introduce hidden copies or allocations on the canonical hot path
+
+## Quick Start
 
 ```bash
 # single smoke
@@ -22,16 +44,16 @@ bindings/cpp/perf/run_benchmarks_multi.sh \
   --runs 1 --clients 10 --warmup 1 --duration 1
 ```
 
-## Result paths
+## Result Paths
 
-- `bindings/cpp/perf/results/single/tmp/`
 - `bindings/cpp/perf/results/single/report/`
-- `bindings/cpp/perf/results/multi/tmp/`
 - `bindings/cpp/perf/results/multi/report/`
 
-`--result` 옵션을 주면 `status=complete`일 때 report 파일이 생성됩니다.
+Report files are generated automatically under `results/{single|multi}/report/`.
+`--results-dir` changes the root directory and `--results-tag` appends a suffix
+to the report filename.
 
-## TLS certs
+## TLS Certs
 
 TLS transport uses:
 

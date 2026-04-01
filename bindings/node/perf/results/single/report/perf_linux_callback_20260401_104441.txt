@@ -1,0 +1,46 @@
+## Effective Options (start)
+- pattern: ALL
+- recv_mode: callback
+- duration: 2
+- warmup: 1
+- msg_sizes: 256
+- runs: 1
+- transports: 
+
+RESULT,current,PAIR,inproc,256,throughput,103660.00
+RESULT,current,PAIR,inproc,256,bandwidth,26.54
+RESULT,current,PAIR,inproc,256,latency,14078.68
+RESULT,current,PAIR,inproc,256,latency_p95,18770.63
+RESULT,current,PAIR,inproc,256,latency_p99,20915.15
+RESULT,current,PUBSUB,inproc,256,throughput,2572.50
+RESULT,current,PUBSUB,inproc,256,bandwidth,0.66
+RESULT,current,PUBSUB,inproc,256,latency,582426.05
+RESULT,current,PUBSUB,inproc,256,latency_p95,751867.34
+RESULT,current,PUBSUB,inproc,256,latency_p99,774659.49
+RESULT,current,DEALER_DEALER,inproc,256,throughput,111836.00
+RESULT,current,DEALER_DEALER,inproc,256,bandwidth,28.63
+RESULT,current,DEALER_DEALER,inproc,256,latency,12979.98
+RESULT,current,DEALER_DEALER,inproc,256,latency_p95,17232.96
+RESULT,current,DEALER_DEALER,inproc,256,latency_p99,18692.53
+RESULT,current,DEALER_ROUTER,inproc,256,throughput,94922.50
+RESULT,current,DEALER_ROUTER,inproc,256,bandwidth,24.30
+RESULT,current,DEALER_ROUTER,inproc,256,latency,15402.92
+RESULT,current,DEALER_ROUTER,inproc,256,latency_p95,22101.70
+RESULT,current,DEALER_ROUTER,inproc,256,latency_p99,24159.42
+RESULT,current,ROUTER_ROUTER,inproc,256,throughput,3713.50
+RESULT,current,ROUTER_ROUTER,inproc,256,bandwidth,0.95
+RESULT,current,ROUTER_ROUTER,inproc,256,latency,402884.68
+RESULT,current,ROUTER_ROUTER,inproc,256,latency_p95,524625.19
+RESULT,current,ROUTER_ROUTER,inproc,256,latency_p99,535481.54
+RESULT,current,SPOT,inproc,256,throughput,2568.00
+RESULT,current,SPOT,inproc,256,bandwidth,0.66
+RESULT,current,SPOT,inproc,256,latency,1993479.25
+RESULT,current,SPOT,inproc,256,latency_p95,2893052.71
+RESULT,current,SPOT,inproc,256,latency_p99,2973619.54
+
+## Effective Options (result)
+- recv_mode: callback
+- result_lines: 30
+- status: complete
+- expected_result_lines: 30
+- actual_result_lines: 30

@@ -1,6 +1,4 @@
-import os
 import sys
-import threading
 import time
 
 import zlink
@@ -11,60 +9,70 @@ from perf_common import (
     parse_single_args,
     print_result_lines,
     result_metrics,
+    safe_poll,
     stamp_payload,
     unique_endpoint,
+    wait_pubsub_ready,
 )
+
+
+TOPIC = b"bench"
 
 
 def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="pubsub")
     payload = new_payload(args.msg_size)
     latencies = []
-    active = False
-    active_count = 0
-    done = threading.Event()
+    count = 0
 
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
                 endpoint = unique_endpoint("pubsub")
-
-                def on_message(received):
-                    nonlocal active_count
-                    part = received.to_bytes_list()[0]
-                    if active:
-                        latencies.append(latency_us_from_message(part))
-                        active_count += 1
-                        done.set()
-
                 publisher.bind(endpoint)
                 subscriber.connect(endpoint)
-                subscriber.set_subscription(b"bench")
-                subscriber.on_topic_message(on_message)
+                subscriber.set_subscription(TOPIC)
+                wait_pubsub_ready(publisher, subscriber)
 
-                warmup_deadline = time.perf_counter() + args.warmup
-                while time.perf_counter() < warmup_deadline:
-                    publisher.publish(b"bench", stamp_payload(payload))
+                with zlink.Poller() as poller:
+                    poller.add_socket(subscriber, zlink.PollEvent.POLLIN)
 
-                active = True
-                done.clear()
-                started = time.perf_counter()
-                deadline = started + args.duration
-                while time.perf_counter() < deadline:
-                    publisher.publish(b"bench", stamp_payload(payload))
+                    warmup_deadline = time.perf_counter() + args.warmup
+                    while time.perf_counter() < warmup_deadline:
+                        publisher.publish(TOPIC, stamp_payload(payload))
+                        for event in safe_poll(poller, 0):
+                            while True:
+                                received = event["socket"].try_recv()
+                                if received is None:
+                                    break
+                                with received:
+                                    pass
 
-                active = False
-                done.wait(1.0)
+                    started = time.perf_counter()
+                    deadline = started + args.duration
+                    while time.perf_counter() < deadline:
+                        publisher.publish(TOPIC, stamp_payload(payload))
+                        for event in safe_poll(poller, 0):
+                            while True:
+                                received = event["socket"].try_recv()
+                                if received is None:
+                                    break
+                                with received:
+                                    latencies.append(
+                                        latency_us_from_message(received.to_bytes_list()[0])
+                                    )
+                                    count += 1
+
+                if count == 0:
+                    raise RuntimeError("pubsub benchmark did not receive any message")
                 elapsed = time.perf_counter() - started
                 metrics = result_metrics(
-                    count=active_count,
+                    count=count,
                     msg_size=args.msg_size,
                     elapsed_s=elapsed,
                     latencies_us=latencies,
                 )
                 print_result_lines("PUBSUB", "inproc", args.msg_size, metrics)
-                sys.stdout.flush()
-                os._exit(0)
 
 
 if __name__ == "__main__":

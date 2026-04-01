@@ -19,8 +19,7 @@ final class PerfMultiDealerDealer {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         if (!"recv".equalsIgnoreCase(config.recvMode())) {
-            return new PerfUtil.Result("unsupported", "callback_not_allowed", 0, 0,
-                0, 0, 0, Double.NaN, Double.NaN, "ms");
+            return PerfUtil.Result.unsupported("callback_not_allowed", config);
         }
         try (Context ctx = new Context();
              DealerSocket server = new DealerSocket(ctx);
@@ -43,7 +42,7 @@ final class PerfMultiDealerDealer {
                     }
                 }
             }
-            return metrics.finishMulti(config.size(), config.durationSeconds());
+            return metrics.finishMulti(config);
         }
     }
 
@@ -67,7 +66,8 @@ final class PerfMultiDealerDealer {
                 loop(client, config.size(), warmup, duration);
             }
         }, "multi-dd-client-" + index), config.warmupSeconds(), config.durationSeconds());
-        return new PerfUtil.Result("ok", "-", 0, 0, 0, 0, 0, Double.NaN, Double.NaN, "ms");
+        return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
+            config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
     }
 
     private static void loop(DealerSocket socket, int size, int warmupSeconds,

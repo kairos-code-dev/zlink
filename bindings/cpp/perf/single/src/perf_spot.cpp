@@ -1,15 +1,54 @@
-// SPOT benchmark: unified self-delivery spot callback path.
+// SPOT benchmark: one-way publisher->subscriber callback path.
+// Topology: publisher spot(bind) -> subscriber spot(connect)
 
 #include "../common/perf_single_common.hpp"
 #include "../common/perf_single_runner.hpp"
 
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <vector>
+
+#if defined(ZLINK_HAVE_WINDOWS)
+#include <process.h>
+#endif
+
+#if !defined(ZLINK_HAVE_WINDOWS)
+#include <unistd.h>
+#endif
 
 namespace {
 
 const char *const k_topic = "bench";
+
+unsigned current_process_id ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    return static_cast<unsigned> (_getpid ());
+#else
+    return static_cast<unsigned> (getpid ());
+#endif
+}
+
+std::string make_spot_endpoint (const std::string &transport_)
+{
+    static unsigned counter = 0;
+    const unsigned port = 34000u + ((current_process_id () % 1000u) * 20u)
+                          + (++counter);
+    return perf::single::make_fixed_endpoint (transport_, static_cast<int> (port));
+}
+
+bool wait_for_monitor_readable (void *monitor_handle_, int timeout_ms_)
+{
+    zlink_pollitem_t item;
+    item.socket = monitor_handle_;
+    item.fd = 0;
+    item.events = ZLINK_POLLIN;
+    item.revents = 0;
+
+    const int rc = zlink_poll (&item, 1, timeout_ms_);
+    return rc > 0 && (item.revents & ZLINK_POLLIN) != 0;
+}
 
 bool perf_debug_enabled ()
 {
@@ -22,8 +61,58 @@ bool send_spot_payload (void *userdata_, const void *data_, size_t size_)
     if (!spot)
         return false;
 
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
-    return msg.valid () && spot->publish (k_topic, msg, zlink::send_flag::none) == 0;
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, size_) != 0)
+        return false;
+    if (size_ > 0 && data_)
+        std::memcpy (zlink_msg_data (&part), data_, size_);
+
+    const int rc = zlink_publish (
+      spot->handle (), k_topic, &part, 1, static_cast<zlink_send_flags_t> (0));
+    if (rc != 0) {
+        const int err = errno;
+        (void) zlink_msg_close (&part);
+        errno = err;
+        return false;
+    }
+    return true;
+}
+
+bool wait_for_service_monitor_event_endpoint (
+  zlink::service_monitor_handle_t &monitor_,
+  uint32_t event_type_,
+  const std::string &endpoint_,
+  int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ());
+        if (remaining_ms <= 0)
+            break;
+
+        if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
+            continue;
+
+        const zlink::maybe_t<zlink_service_monitor_event_t> event =
+          monitor_.try_receive ();
+        if (!event)
+            continue;
+        if (event->event_type != event_type_)
+            continue;
+        if ((event->detail_flags & ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT) == 0)
+            continue;
+        if (endpoint_ != event->endpoint)
+            continue;
+        return true;
+    }
+
+    return false;
 }
 
 } // namespace
@@ -32,7 +121,8 @@ void run_pattern_spot (const std::string &transport,
                        size_t msg_size,
                        const std::string &lib_name)
 {
-    if (transport != "tcp") {
+    if (transport != "tcp" && transport != "tls" && transport != "ws"
+        && transport != "wss") {
         std::cout << "UNSUPPORTED,SPOT," << transport << std::endl;
         return;
     }
@@ -45,41 +135,78 @@ void run_pattern_spot (const std::string &transport,
         return;
     }
 
-    zlink::service::spot_node_t node (ctx.ctx ());
-    zlink::service::spot_t spot (node);
-    if (!spot.valid ()) {
+    zlink::service::spot_node_t pub_node (ctx.ctx ());
+    zlink::service::spot_node_t sub_node (ctx.ctx ());
+    zlink::service::spot_t pub_spot (pub_node);
+    zlink::service::spot_t sub_spot (sub_node);
+    if (!pub_node.valid () || !sub_node.valid () || !pub_spot.valid ()
+        || !sub_spot.valid ()) {
         if (perf_debug_enabled ())
-            std::cerr << "spot: invalid service handle" << std::endl;
+            std::cerr << "spot: invalid service topology" << std::endl;
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return;
+    }
+
+    if (transport == "tls" || transport == "wss") {
+        std::string cert;
+        std::string key;
+        std::string ca;
+        if (!perf::single::try_resolve_perf_tls_paths (cert, key, ca)
+            || pub_node.set_tls_server (cert, key, false) != 0
+            || sub_node.set_tls_client (ca, std::string ("localhost"), false)
+                 != 0) {
+            if (perf_debug_enabled ())
+                std::cerr << "spot: tls setup failed" << std::endl;
+            perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
+            return;
+        }
     }
 
     zlink::service_monitor_handle_t sub_monitor (
-      spot,
+      sub_spot,
       zlink::service_monitor_event::spot_filter_applied
+        | zlink::service_monitor_event::spot_subscription_ready_changed
         | zlink::service_monitor_event::error);
-    if (!sub_monitor.valid ()) {
+    zlink::service_monitor_handle_t pub_monitor (
+      pub_spot.handle (),
+      zlink::service_monitor_event::spot_first_delivery_ready_changed
+        | zlink::service_monitor_event::error);
+    if (!sub_monitor.valid () || !pub_monitor.valid ()) {
         if (perf_debug_enabled ())
-            std::cerr << "spot: invalid sub monitor" << std::endl;
+            std::cerr << "spot: invalid monitor" << std::endl;
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return;
     }
 
-    (void) spot.set (zlink::socket_options::sndhwm,
-                     perf::single::resolve_single_socket_hwm (true));
-    (void) spot.set (zlink::socket_options::rcvhwm,
-                     perf::single::resolve_single_socket_hwm (false));
-    (void) spot.set (zlink::socket_options::sndtimeo,
-                     perf::single::resolve_single_send_timeout_ms ());
-    (void) spot.set (zlink::socket_options::rcvtimeo,
-                     perf::single::resolve_single_recv_timeout_ms ());
+    (void) pub_spot.set (zlink::socket_options::sndhwm,
+                         perf::single::resolve_single_socket_hwm (true));
+    (void) sub_spot.set (zlink::socket_options::rcvhwm,
+                         perf::single::resolve_single_socket_hwm (false));
+    (void) pub_spot.set (zlink::socket_options::sndtimeo,
+                         perf::single::resolve_single_send_timeout_ms ());
+    (void) sub_spot.set (zlink::socket_options::rcvtimeo,
+                         perf::single::resolve_single_recv_timeout_ms ());
 
-    if (spot.subscribe (k_topic) != 0
+    const std::string endpoint = make_spot_endpoint (transport);
+    if (pub_node.bind (endpoint) != 0 || sub_node.connect_peer (endpoint) != 0
+        || sub_spot.subscribe (k_topic) != 0
         || !perf::single::wait_service_monitor_event (
           sub_monitor,
           static_cast<uint32_t> (
             zlink::service_monitor_event::spot_filter_applied),
           -1,
+          10000)
+        || !wait_for_service_monitor_event_endpoint (
+          sub_monitor,
+          static_cast<uint32_t> (
+            zlink::service_monitor_event::spot_subscription_ready_changed),
+          endpoint,
+          10000)
+        || !perf::single::wait_service_monitor_event (
+          pub_monitor,
+          static_cast<uint32_t> (
+            zlink::service_monitor_event::spot_first_delivery_ready_changed),
+          1,
           10000)) {
         if (perf_debug_enabled ())
             std::cerr << "spot: ready gate failed" << std::endl;
@@ -87,10 +214,11 @@ void run_pattern_spot (const std::string &transport,
         return;
     }
 
-    zlink::socket_t spot_socket = zlink::socket_t::wrap (spot.handle ());
-    perf::single::queue_probe_t queue_probe (&spot_socket, &spot_socket);
+    zlink::socket_t pub_socket = zlink::socket_t::wrap (pub_spot.handle ());
+    zlink::socket_t sub_socket = zlink::socket_t::wrap (sub_spot.handle ());
+    perf::single::queue_probe_t queue_probe (&pub_socket, &sub_socket);
     perf::single::subscribe_callback_receiver_t receiver_cb;
-    if (!receiver_cb.attach_spot (spot, &queue_probe)) {
+    if (!receiver_cb.attach_spot (sub_spot, &queue_probe)) {
         if (perf_debug_enabled ())
             std::cerr << "spot: attach callback failed" << std::endl;
         perf::single::print_fail_result (
@@ -114,7 +242,7 @@ void run_pattern_spot (const std::string &transport,
     unsigned long long warmup_received = 0;
     if (!perf::single::run_subscribe_callback_phase (receiver_cb,
                                                      &send_spot_payload,
-                                                     &spot,
+                                                     &pub_spot,
                                                      payload,
                                                      msg_size,
                                                      run_id,
@@ -139,7 +267,7 @@ void run_pattern_spot (const std::string &transport,
     perf::single::latency_stats_t latency;
     if (!perf::single::run_subscribe_callback_phase (receiver_cb,
                                                      &send_spot_payload,
-                                                     &spot,
+                                                     &pub_spot,
                                                      payload,
                                                      msg_size,
                                                      run_id,

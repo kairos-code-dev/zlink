@@ -9,12 +9,13 @@ from perf_multi_common import (
     parse_client_args,
     print_result_lines,
     result_metrics,
+    safe_poll,
 )
 
 
 def _drain_ready(poller, active, latencies, deadline=None):
     count = 0
-    events = poller.poll(50)
+    events = safe_poll(poller, 50)
     for event in events:
         sock = event["socket"]
         while True:
@@ -25,9 +26,7 @@ def _drain_ready(poller, active, latencies, deadline=None):
                 break
             with received:
                 if active:
-                    latencies.append(
-                        latency_us_from_message(received.to_bytes_list()[0])
-                    )
+                    latencies.append(latency_us_from_message(received.to_bytes_list()[0]))
                     count += 1
     return count
 

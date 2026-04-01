@@ -3,7 +3,7 @@
 'use strict';
 
 const zlink = require('../../dist');
-const { createPayload, setPayloadPhase, stampPayload } = require('../common/perf_metrics');
+const { createPayload, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 
 function parseArgs(argv) {
   const options = { endpoint: '', msgSize: 256, warmup: 1, duration: 2, clients: 1 };
@@ -23,63 +23,46 @@ function parseArgs(argv) {
   return options;
 }
 
-async function waitConnectionReady(socket) {
-  const monitor = socket.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
-  try {
-    const deadline = Date.now() + 2000;
-    while (Date.now() < deadline) {
-      const event = monitor.tryRecv();
-      if (
-        event
-        && event.event === zlink.MonitorEvent.CONNECTION_READY_CHANGED
-        && event.value >= 1
-      ) {
-        return;
-      }
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-    throw new Error('dealer connection ready timeout');
-  } finally {
-    monitor.close();
-  }
-}
-
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const ctx = new zlink.Context();
-  const payload = createPayload(options.msgSize);
   const clients = [];
+  const warmupPayloads = [];
+  const activePayloads = [];
+  const stopPayloads = [];
 
   try {
     for (let i = 0; i < options.clients; i += 1) {
       const dealer = new zlink.DealerSocket(ctx);
       dealer.connect(options.endpoint);
       clients.push(dealer);
+      warmupPayloads.push(createPayload(options.msgSize));
+      activePayloads.push(createPayload(options.msgSize));
+      stopPayloads.push(createPayload(options.msgSize));
     }
-    for (const dealer of clients) {
-      await waitConnectionReady(dealer);
-    }
+    console.log('CLIENT_READY');
 
-    const sendLoop = async (seconds, phase) => {
-      const until = process.hrtime.bigint() + BigInt(Math.floor(seconds * 1_000_000_000));
-      while (process.hrtime.bigint() < until) {
-        for (const dealer of clients) {
-          stampPayload(payload);
-          setPayloadPhase(payload, phase);
-          const result = dealer.trySend(payload);
-          if (result !== zlink.SendResult.Sent) {
-            await new Promise((resolve) => setImmediate(resolve));
-          }
-        }
+    const warmupUntil = process.hrtime.bigint() + BigInt(Math.floor(options.warmup * 1_000_000_000));
+    while (process.hrtime.bigint() < warmupUntil) {
+      for (let i = 0; i < clients.length; i += 1) {
+        stampPayload(warmupPayloads[i], { phase: 2, runId: 0, msgSize: options.msgSize });
+        clients[i].send(warmupPayloads[i]);
       }
-    };
+      await sleepImmediate();
+    }
 
-    await sendLoop(options.warmup, 2);
-    await sendLoop(options.duration, 0);
-    for (const dealer of clients) {
-      stampPayload(payload);
-      setPayloadPhase(payload, 1);
-      dealer.send(payload);
+    const activeUntil = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
+    while (process.hrtime.bigint() < activeUntil) {
+      for (let i = 0; i < clients.length; i += 1) {
+        stampPayload(activePayloads[i], { phase: 0, runId: 0, msgSize: options.msgSize });
+        clients[i].send(activePayloads[i]);
+      }
+      await sleepImmediate();
+    }
+
+    for (let i = 0; i < clients.length; i += 1) {
+      stampPayload(stopPayloads[i], { phase: 1, runId: 0, msgSize: options.msgSize });
+      clients[i].send(stopPayloads[i]);
     }
   } finally {
     for (const dealer of clients) {

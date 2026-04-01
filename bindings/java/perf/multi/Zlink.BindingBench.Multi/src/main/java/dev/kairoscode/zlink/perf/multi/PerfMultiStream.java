@@ -24,7 +24,7 @@ final class PerfMultiStream {
         AtomicBoolean stopRequested = new AtomicBoolean(false);
         ArrayDeque<PendingReply> pending = new ArrayDeque<>();
         Object pendingLock = new Object();
-        startControlWatcher(stopRequested);
+        Thread controlWatcher = startControlWatcher(stopRequested, pendingLock);
 
         try (Context ctx = new Context();
              StreamSocket server = new StreamSocket(ctx)) {
@@ -32,6 +32,11 @@ final class PerfMultiStream {
             server.options().sendTimeoutMillis(0);
             server.options().receiveTimeoutMillis(0);
             server.bind(config.endpoint());
+            server.onSendReady(() -> {
+                synchronized (pendingLock) {
+                    flushPending(server, pending);
+                }
+            });
 
             if ("callback".equalsIgnoreCase(config.recvMode())) {
                 server.onReceive(received -> {
@@ -42,18 +47,8 @@ final class PerfMultiStream {
                         }
                     }
                 });
-                while (!stopRequested.get()) {
-                    synchronized (pendingLock) {
-                        flushPending(server, pending);
-                    }
-                    try {
-                        Thread.sleep(10L);
-                    } catch (InterruptedException ex) {
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException("stream callback server interrupted",
-                            ex);
-                    }
-                }
+                PerfUtil.join(controlWatcher, "stream control watcher",
+                    Duration.ofSeconds(30));
             } else {
                 while (!stopRequested.get()) {
                     Optional<dev.kairoscode.zlink.Received> maybe = server.tryRecv();
@@ -77,17 +72,17 @@ final class PerfMultiStream {
             synchronized (pendingLock) {
                 flushPending(server, pending);
             }
-            return new PerfUtil.Result("ok", "-", 0, 0, 0, 0, 0,
-                Double.NaN, Double.NaN, "ms");
+            return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
+                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
         }
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        return new PerfUtil.Result("unsupported", "external_stream_client", 0, 0,
-            0, 0, 0, Double.NaN, Double.NaN, "ms");
+        return PerfUtil.Result.unsupported("external_stream_client", config);
     }
 
-    private static void startControlWatcher(AtomicBoolean stopRequested) {
+    private static Thread startControlWatcher(AtomicBoolean stopRequested,
+                                              Object pendingLock) {
         Thread watcher = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
@@ -95,6 +90,9 @@ final class PerfMultiStream {
                 while ((line = reader.readLine()) != null) {
                     if ("STOP".equals(line) || "QUIT".equals(line)) {
                         stopRequested.set(true);
+                        synchronized (pendingLock) {
+                            pendingLock.notifyAll();
+                        }
                         return;
                     }
                 }
@@ -102,10 +100,14 @@ final class PerfMultiStream {
                 throw new IllegalStateException("stream control watcher failed", ex);
             } finally {
                 stopRequested.set(true);
+                synchronized (pendingLock) {
+                    pendingLock.notifyAll();
+                }
             }
         }, "stream-control");
         watcher.setDaemon(true);
         watcher.start();
+        return watcher;
     }
 
     private static void enqueueReply(dev.kairoscode.zlink.Received received,

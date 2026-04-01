@@ -58,7 +58,7 @@ final class PerfDealerRouter {
             PerfUtil.await(finished, "dealer/router callback", Duration.ofSeconds(
                 config.warmupSeconds() + config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "dealer/router sender", Duration.ofSeconds(10));
-            return metrics.finishSingle(config.size(), config.durationSeconds());
+            return metrics.finishSingle(config);
         }
     }
 

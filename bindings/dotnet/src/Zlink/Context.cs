@@ -21,6 +21,7 @@ public sealed class Context : IDisposable
     public void SetOption(ContextOption option, int value)
     {
         EnsureNotDisposed();
+        EnumValidation.EnsureContextOption(option, nameof(option));
         int rc = NativeMethods.zlink_ctx_set(_handle, (int)option, value);
         ZlinkException.ThrowIfError(rc);
     }
@@ -28,6 +29,7 @@ public sealed class Context : IDisposable
     public int GetOption(ContextOption option)
     {
         EnsureNotDisposed();
+        EnumValidation.EnsureContextOption(option, nameof(option));
         int value = NativeMethods.zlink_ctx_get(_handle, (int)option);
         if (value < 0)
             throw ZlinkException.FromLastError();

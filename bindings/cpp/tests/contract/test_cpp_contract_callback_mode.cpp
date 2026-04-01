@@ -2,6 +2,7 @@
 
 #include "../../samples/common/sample_common.hpp"
 
+
 namespace {
 
 struct callback_state_t
@@ -42,33 +43,53 @@ void subscribe_callback (const zlink_routing_id_t *,
 int main ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_node_t node (ctx);
-    zlink::service::spot_t spot (node);
-    assert (spot.valid ());
+    zlink::service::spot_node_t pub_node (ctx);
+    zlink::service::spot_node_t sub_node (ctx);
+    assert (pub_node.valid ());
+    assert (sub_node.valid ());
+
+    zlink::service::spot_t pub_spot (pub_node);
+    zlink::service::spot_t sub_spot (sub_node);
+    assert (pub_spot.valid ());
+    assert (sub_spot.valid ());
+
     zlink::service_monitor_handle_t sub_monitor (
-      spot, zlink::service_monitor_event::spot_filter_applied
-              | zlink::service_monitor_event::error);
+      sub_spot,
+      zlink::service_monitor_event::spot_filter_applied
+        | zlink::service_monitor_event::spot_subscription_ready_changed
+        | zlink::service_monitor_event::error);
     assert (sub_monitor.valid ());
     zlink::service_monitor_handle_t pub_monitor (
-      spot.handle (), zlink::service_monitor_event::spot_first_delivery_ready_changed
-                        | zlink::service_monitor_event::error);
+      pub_spot.handle (),
+      zlink::service_monitor_event::spot_first_delivery_ready_changed
+        | zlink::service_monitor_event::error);
     assert (pub_monitor.valid ());
+
+    const std::string endpoint = detail::unique_tcp ("spot-callback");
+    assert (pub_node.bind (endpoint) == 0);
+    assert (sub_node.connect_peer (endpoint) == 0);
 
     callback_state_t state;
     state.ready = false;
-    assert (spot.subscribe_handler (&subscribe_callback, &state) == 0);
-    assert (spot.subscribe ("topic:alpha") == 0);
+    assert (sub_spot.subscribe_handler (&subscribe_callback, &state) == 0);
+    assert (sub_spot.subscribe ("topic:alpha") == 0);
     assert (detail::wait_for_service_monitor_event (
       sub_monitor,
       static_cast<uint32_t> (
         zlink::service_monitor_event::spot_filter_applied),
+      10000));
+    assert (detail::wait_for_service_monitor_event_endpoint (
+      sub_monitor,
+      static_cast<uint32_t> (
+        zlink::service_monitor_event::spot_subscription_ready_changed),
+      endpoint,
       10000));
     assert (detail::wait_for_service_monitor_state (
       pub_monitor, ZLINK_MONITOR_STATE_SEND_READY, 10000));
 
     zlink::message_t outbound =
       detail::make_message ("spot-callback");
-    spot.publish ("topic:alpha", outbound);
+    pub_spot.publish ("topic:alpha", outbound);
 
     std::unique_lock<std::mutex> lock (state.mutex);
     assert (detail::wait_until (state.cv, lock, state.ready, 10000));
@@ -77,8 +98,9 @@ int main ()
     lock.unlock ();
     assert (pub_monitor.close () == 0);
     assert (sub_monitor.close () == 0);
-    assert (spot.destroy () == 0);
-    assert (ctx.shutdown () == 0);
-    assert (ctx.term () == 0);
+    assert (sub_spot.destroy () == 0);
+    assert (pub_spot.destroy () == 0);
+    assert (sub_node.destroy () == 0);
+    assert (pub_node.destroy () == 0);
     return 0;
 }

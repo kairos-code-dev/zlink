@@ -11,20 +11,22 @@ import dev.kairoscode.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 final class PerfMultiPubSub {
     private static final int READY_EVENTS =
         MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
             | MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue();
+    private static final int SUB_READY_EVENT =
+        MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue();
+    private static final String TOPIC = "perf.topic";
 
     private PerfMultiPubSub() {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         if (!"recv".equalsIgnoreCase(config.recvMode())) {
-            return new PerfUtil.Result("unsupported", "callback_not_allowed", 0, 0,
-                0, 0, 0, Double.NaN, Double.NaN, "ms");
+            return PerfUtil.Result.unsupported("callback_not_allowed", config);
         }
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
@@ -41,26 +43,30 @@ final class PerfMultiPubSub {
             while (System.nanoTime() < activeEnd) {
                 send(pub, config.size(), (byte) 0);
             }
-            send(pub, config.size(), (byte) 1);
-            return new PerfUtil.Result("ok", "-", 0, 0, 0, 0, 0, Double.NaN, Double.NaN, "ms");
+            sendStopBurst(pub, config.size(), config.clients());
+            return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
+                config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
         }
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        CountDownLatch done = new CountDownLatch(config.clients());
+        CountDownLatch finishedClients = new CountDownLatch(config.clients());
         CountDownLatch connected = new CountDownLatch(config.clients());
         CountDownLatch go = new CountDownLatch(1);
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
-        AtomicInteger stops = new AtomicInteger();
         MultiSendLoops.runClients(config.clients(), (index, warmup, duration) -> new Thread(() -> {
+            CountDownLatch localDone = new CountDownLatch(1);
+            AtomicBoolean localStopped = new AtomicBoolean(false);
             try (Context ctx = new Context();
-                 SubSocket sub = new SubSocket(ctx)) {
+                 SubSocket sub = new SubSocket(ctx);
+                 var subMonitor = sub.monitorOpen(READY_EVENTS)) {
                 sub.onSubscribe((routingId, topic, received) -> {
                     try (received) {
                         byte phase = PerfUtil.phase(received.firstPart());
                         if (phase == 1) {
-                            if (stops.incrementAndGet() <= config.clients()) {
-                                done.countDown();
+                            if (localStopped.compareAndSet(false, true)) {
+                                finishedClients.countDown();
+                                localDone.countDown();
                             }
                             return;
                         }
@@ -70,8 +76,10 @@ final class PerfMultiPubSub {
                     }
                 });
                 PerfUtil.configureClientTls(sub, config.transport());
-                sub.setSubscription("perf.topic");
+                sub.setSubscription(TOPIC);
                 sub.connect(config.endpoint());
+                PerfUtil.waitForMonitorEvent(subMonitor, SUB_READY_EVENT, 1,
+                    Duration.ofSeconds(20), "pubsub subscriber ready");
                 connected.countDown();
                 if (connected.getCount() == 0L) {
                     metrics.startResourceWindow();
@@ -79,16 +87,23 @@ final class PerfMultiPubSub {
                     go.countDown();
                 }
                 PerfUtil.await(go, "pubsub start", Duration.ofSeconds(10));
-                PerfUtil.await(done, "pubsub multi", Duration.ofSeconds(
+                PerfUtil.await(localDone, "pubsub multi", Duration.ofSeconds(
                     warmup + duration + 20L));
             }
         }, "multi-pubsub-client-" + index), config.warmupSeconds(), config.durationSeconds());
-        return metrics.finishMulti(config.size(), config.durationSeconds());
+        return metrics.finishMulti(config);
     }
 
     private static void send(PubSocket pub, int size, byte phase) {
         try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
-            pub.publish("perf.topic", List.of(payload));
+            pub.publish(TOPIC, List.of(payload));
+        }
+    }
+
+    private static void sendStopBurst(PubSocket pub, int size, int clients) {
+        int burst = Math.max(3, clients * 3);
+        for (int i = 0; i < burst; i++) {
+            send(pub, size, (byte) 1);
         }
     }
 }

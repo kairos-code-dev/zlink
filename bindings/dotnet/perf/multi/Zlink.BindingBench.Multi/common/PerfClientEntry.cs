@@ -53,8 +53,7 @@ internal static partial class PerfRunner
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine(
-                $"multi_client_error:{ex.GetType().Name}:{ex.Message}");
+            Console.Error.WriteLine($"multi_client_error:{ex.GetType().Name}:{ex.Message}\n{ex}");
             return 2;
         }
     }

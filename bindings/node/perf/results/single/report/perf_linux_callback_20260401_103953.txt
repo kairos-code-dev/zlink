@@ -1,0 +1,21 @@
+## Effective Options (start)
+- pattern: PAIR
+- recv_mode: callback
+- duration: 0.5
+- warmup: 0.2
+- msg_sizes: 64
+- runs: 1
+- transports: 
+
+RESULT,current,PAIR,inproc,64,throughput,153962.00
+RESULT,current,PAIR,inproc,64,bandwidth,9.85
+RESULT,current,PAIR,inproc,64,latency,9345.56
+RESULT,current,PAIR,inproc,64,latency_p95,12081.97
+RESULT,current,PAIR,inproc,64,latency_p99,12921.74
+
+## Effective Options (result)
+- recv_mode: callback
+- result_lines: 5
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5

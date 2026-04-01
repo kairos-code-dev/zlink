@@ -3,9 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist');
-const { createPayload, setPayloadPhase, stampPayload } = require('../common/perf_metrics');
+const { createPayload, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 function parseArgs(argv) {
-    const options = { endpoint: '', msgSize: 256, warmup: 1, duration: 2 };
+    const options = { endpoint: '', msgSize: 256, warmup: 1, duration: 2, clients: 1 };
     for (let i = 0; i < argv.length; i += 1) {
         if (argv[i] === '--endpoint') {
             options.endpoint = argv[++i];
@@ -19,15 +19,33 @@ function parseArgs(argv) {
         else if (argv[i] === '--duration') {
             options.duration = Number(argv[++i]);
         }
+        else if (argv[i] === '--clients') {
+            options.clients = Number(argv[++i]);
+        }
     }
     return options;
+}
+async function waitPubReady(pub) {
+    const monitor = pub.monitorOpen(zlink.MonitorEvent.PUB_DELIVERY_READY_CHANGED);
+    try {
+        while (true) {
+            const event = monitor.recv();
+            if (event.event === zlink.MonitorEvent.PUB_DELIVERY_READY_CHANGED && event.value >= 1) {
+                return;
+            }
+        }
+    }
+    finally {
+        monitor.close();
+    }
 }
 async function main() {
     const options = parseArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
-    const payload = createPayload(options.msgSize);
-    const monitor = pub.monitorOpen(zlink.MonitorEvent.PUB_DELIVERY_READY_CHANGED);
+    const warmupPayload = createPayload(options.msgSize);
+    const activePayload = createPayload(options.msgSize);
+    const stopPayload = createPayload(options.msgSize);
     try {
         pub.bind(options.endpoint);
         console.log(`READY,${options.endpoint}`);
@@ -36,31 +54,27 @@ async function main() {
             if (line !== 'GO') {
                 continue;
             }
-            while (true) {
-                const event = monitor.recv();
-                if (event.event === zlink.MonitorEvent.PUB_DELIVERY_READY_CHANGED && event.value >= 1) {
-                    break;
-                }
+            await waitPubReady(pub);
+            const warmupUntil = process.hrtime.bigint() + BigInt(Math.floor(options.warmup * 1_000_000_000));
+            while (process.hrtime.bigint() < warmupUntil) {
+                stampPayload(warmupPayload, { phase: 2, runId: 0, msgSize: options.msgSize });
+                pub.publish('perf.topic', warmupPayload);
+                await sleepImmediate();
             }
-            const sendLoop = async (seconds, phase) => {
-                const until = process.hrtime.bigint() + BigInt(Math.floor(seconds * 1_000_000_000));
-                while (process.hrtime.bigint() < until) {
-                    stampPayload(payload);
-                    setPayloadPhase(payload, phase);
-                    pub.publish('perf.topic', payload);
-                    await new Promise((resolve) => setImmediate(resolve));
-                }
-            };
-            await sendLoop(options.warmup, 2);
-            await sendLoop(options.duration, 0);
-            stampPayload(payload);
-            setPayloadPhase(payload, 1);
-            pub.publish('perf.topic', payload);
+            const activeUntil = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
+            while (process.hrtime.bigint() < activeUntil) {
+                stampPayload(activePayload, { phase: 0, runId: 0, msgSize: options.msgSize });
+                pub.publish('perf.topic', activePayload);
+                await sleepImmediate();
+            }
+            for (let i = 0; i < options.clients; i += 1) {
+                stampPayload(stopPayload, { phase: 1, runId: 0, msgSize: options.msgSize });
+                pub.publish('perf.topic', stopPayload);
+            }
             break;
         }
     }
     finally {
-        monitor.close();
         pub.close();
         ctx.close();
     }

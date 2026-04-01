@@ -1,27 +1,123 @@
-# Python Perf
+# Python PERF
 
-Python binding perf follows the `core/perf` and `doc/perf` policy shape with
-separate single and multi suites.
+Policy-aligned perf suite for `bindings/python`.
 
-Available entrypoints:
+This tree is the official Python binding performance surface. It must stay
+aligned with:
+
+- `bindings/README.md` perf policy
+- `doc/perf/PERF_POLICY.md`
+- `doc/perf/PERF_SINGLE_TEST_POLICY.md`
+- `doc/perf/PERF_MULTI_TEST_POLICY.md`
+
+The goal is to measure Python binding boundary cost on the canonical public
+surface, not to hide extra work behind helper wrappers.
+
+## Entrypoints
 
 - `./perf/run_benchmarks.sh`
 - `./perf/run_benchmarks_multi.sh`
 - `./perf/single/run_benchmarks.sh`
 - `./perf/multi/run_benchmarks.sh`
 
-Current scope:
+Top-level wrappers must stay thin and forward directly to the suite-specific
+runner so the documented execution path matches the real measurement path.
 
-- single:
-  - recv mode: `callback`
-  - patterns: `PAIR`, `PUBSUB`, `DEALER_ROUTER`, `SPOT`
-  - transport: `inproc`
-- multi:
-  - recv mode: `recv`
-  - patterns: `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`,
-    `SPOT`, `STREAM`
-  - callback mode: `SPOT`, `STREAM`
-  - transport: `tcp`
+## Layout
 
-Each pattern has its own file under `perf/single/` or `perf/multi/` and prints
-official-style `RESULT,current,...` lines.
+- `perf/single/`
+- `perf/multi/`
+- `perf/run_benchmarks.sh`
+- `perf/run_benchmarks_multi.sh`
+
+Each pattern keeps its own executable source file. This preserves visible
+ownership of the hot path and avoids a shallow mega-runner that obscures
+pattern-specific costs.
+
+## Single Suite
+
+Single-suite measurements use the callback receive path only and expose the
+official shared CLI:
+
+- `--pattern`
+- `--recv`
+- `--duration`
+- `--warmup`
+- `--msg-sizes`
+- `--transports`
+- `--runs`
+- `--results-dir`
+- `--results-tag`
+
+Patterns:
+
+- `PAIR`
+- `PUBSUB`
+- `DEALER_ROUTER`
+- `SPOT`
+
+Current transport matrix:
+
+- `PAIR`: `tcp`
+- `PUBSUB`: `inproc`
+- `DEALER_ROUTER`: `inproc`
+- `SPOT`: `inproc`
+
+## Multi Suite
+
+The multi suite is process-isolated and uses TCP transport.
+
+The multi runner exposes the same common CLI surface plus `--clients`.
+
+Patterns:
+
+- `MULTI_DEALER_DEALER`
+- `MULTI_DEALER_ROUTER`
+- `MULTI_ROUTER_ROUTER`
+- `MULTI_PUBSUB`
+- `MULTI_SPOT`
+- `MULTI_STREAM`
+
+Receive modes:
+
+- `recv`: all multi patterns
+- `callback`: `MULTI_SPOT`, `MULTI_STREAM`
+
+## Cost Model Rules
+
+Python perf must measure the canonical binding path, so hot paths should avoid:
+
+- hidden payload copies
+- hidden list rebuilding beyond multipart shape requirements
+- unnecessary UTF-8 encoding or decoding
+- helper-specific fallback behavior that the real API does not use
+- benchmark-only wrappers that materially change ownership or receive shape
+
+Fastpath helpers may exist for verification, but they must stay clearly
+separated from the default canonical perf path.
+
+## Output
+
+Each runnable pattern prints official-style:
+
+```text
+RESULT,current,...
+```
+
+lines so the output can be consumed by the same reporting flow as other binding
+perf suites.
+
+Runner output and saved reports include:
+
+- `## Effective Options (start)`
+- `RESULT,current,...` lines
+- a markdown summary table
+- result files under `results/{single|multi}/report/`
+- filenames shaped as `perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt`
+
+## Smoke
+
+```bash
+./perf/run_benchmarks.sh --pattern PAIR --msg-sizes 64 --warmup 0.1 --duration 0.2
+./perf/run_benchmarks_multi.sh --pattern PUBSUB --msg-sizes 64 --clients 2 --warmup 0.1 --duration 0.2
+```

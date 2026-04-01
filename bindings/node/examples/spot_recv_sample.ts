@@ -32,6 +32,7 @@ async function main() {
   } finally {
     monitor.close();
     spot.close();
+    node.close();
     ctx.close();
   }
 }

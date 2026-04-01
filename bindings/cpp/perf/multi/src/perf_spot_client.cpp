@@ -22,12 +22,18 @@ namespace {
 
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_topic = "bench";
-static const char *k_service_name = "perf-spot";
 static const size_t k_callback_queue_capacity = 8192;
 
 bool perf_debug_enabled ()
 {
     return std::getenv ("PERF_DEBUG") != NULL;
+}
+
+void debug_log (const std::string &message_)
+{
+    if (!perf_debug_enabled ())
+        return;
+    std::cerr << "spot client: " << message_ << std::endl;
 }
 
 bool configure_spot_client_tls (zlink::service::spot_node_t &node_,
@@ -54,8 +60,12 @@ bool parse_ready_payload (const std::string &raw_,
         return false;
 
     const size_t first = raw_.find ('|');
-    if (first == std::string::npos)
-        return false;
+    if (first == std::string::npos) {
+        *server_endpoint_out_ = raw_;
+        registry_pub_out_->clear ();
+        registry_router_out_->clear ();
+        return !server_endpoint_out_->empty ();
+    }
     const size_t second = raw_.find ('|', first + 1);
     if (second == std::string::npos)
         return false;
@@ -65,58 +75,6 @@ bool parse_ready_payload (const std::string &raw_,
     *registry_router_out_ = raw_.substr (second + 1);
     return !server_endpoint_out_->empty () && !registry_pub_out_->empty ()
            && !registry_router_out_->empty ();
-}
-
-bool wait_for_service_event (zlink::service_monitor_handle_t &monitor_,
-                             uint32_t event_type_,
-                             uint64_t min_value_,
-                             int timeout_ms_)
-{
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (timeout_ms_, 1000));
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink_pollitem_t item;
-        item.socket = monitor_.handle ();
-        item.fd = 0;
-        item.events = ZLINK_POLLIN;
-        item.revents = 0;
-
-        const auto remaining =
-          deadline - std::chrono::steady_clock::now ();
-        int wait_ms = static_cast<int> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
-            .count ());
-        if (wait_ms < 1)
-            wait_ms = 1;
-
-        const int poll_rc = zlink_poll (&item, 1, wait_ms);
-        if (poll_rc < 0) {
-            if (errno == EINTR)
-                continue;
-            return false;
-        }
-        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        const zlink::maybe_t<zlink_service_monitor_event_t> event =
-          monitor_.try_receive ();
-        if (!event)
-            continue;
-        if (event->event_type
-            == static_cast<uint32_t> (zlink::service_monitor_event::error)) {
-            errno = event->error_code != 0 ? event->error_code : EIO;
-            return false;
-        }
-        if (event->event_type != event_type_)
-            continue;
-        if (event->value >= min_value_)
-            return true;
-    }
-
-    errno = ETIMEDOUT;
-    return false;
 }
 
 struct callback_event_t
@@ -311,14 +269,13 @@ class callback_slot_t
 struct client_slot_t
 {
     std::unique_ptr<zlink::service::spot_node_t> node;
-    std::unique_ptr<zlink::service::discovery_t> discovery;
     std::unique_ptr<zlink::service::spot_t> spot;
     std::unique_ptr<zlink::service_monitor_handle_t> monitor;
     callback_slot_t callback;
     bool synced;
 
     client_slot_t ()
-        : node (), discovery (), spot (), monitor (), callback (), synced (false)
+        : node (), spot (), monitor (), callback (), synced (false)
     {
     }
 };
@@ -357,14 +314,19 @@ class spot_client_bench_t
                                      &_server_endpoint,
                                      &_registry_pub_endpoint,
                                      &_registry_router_endpoint)) {
+            debug_log ("invalid ready payload");
             return false;
         }
+        debug_log ("parsed ready payload");
         if (!setup_slots ())
             return false;
+        debug_log ("setup slots complete");
         if (!wait_sync ())
             return false;
+        debug_log ("sync complete");
         if (!run_active ())
             return false;
+        debug_log ("active window complete");
         print_result ();
         return true;
     }
@@ -380,26 +342,25 @@ class spot_client_bench_t
             std::unique_ptr<client_slot_t> slot (new client_slot_t ());
             slot->node.reset (new zlink::service::spot_node_t (_ctx.ctx ()));
             if (!slot->node->valid ())
+            {
+                debug_log ("slot node invalid");
                 return false;
+            }
 
             slot->spot.reset (new zlink::service::spot_t (*slot->node));
             if (!slot->spot->valid ())
+            {
+                debug_log ("slot spot invalid");
                 return false;
+            }
 
             if (!configure_spot_client_tls (*slot->node, _transport))
+            {
+                debug_log ("configure tls failed");
                 return false;
-            const std::string bind_endpoint =
-              perf::multi::make_endpoint (
-                _transport, std::string ("cpp_multi_spot_client_")
-                              + std::to_string (i),
-                0);
-            if (bind_endpoint.empty () || slot->node->bind (bind_endpoint) != 0)
-                return false;
-            slot->discovery.reset (new zlink::service::discovery_t (
-              _ctx.ctx (), zlink::service_type::spot, k_service_name));
-            if (!slot->discovery->valid ()
-                || slot->discovery->connect_registry (_registry_router_endpoint) != 0
-                || slot->node->attach_discovery (*slot->discovery) != 0) {
+            }
+            if (slot->node->connect_peer (_server_endpoint) != 0) {
+                debug_log ("connect peer failed");
                 return false;
             }
 
@@ -408,31 +369,26 @@ class spot_client_bench_t
                                     _settings.rcvtimeo_ms);
 
             slot->monitor.reset (new zlink::service_monitor_handle_t (
-              *slot->node,
+              *slot->spot,
               zlink::service_monitor_event::spot_filter_applied
+                | zlink::service_monitor_event::spot_subscription_ready_changed
                 | zlink::service_monitor_event::error));
             if (!slot->monitor->valid ())
+            {
+                debug_log ("monitor invalid");
                 return false;
+            }
 
             if (_callback_mode
                 && !slot->callback.attach (
                   *slot->spot, &_active_start_us, _msg_size, active_duration_us)) {
+                debug_log ("callback attach failed");
                 return false;
             }
 
             if (slot->spot->subscribe (k_topic) != 0)
-                return false;
-            if (!wait_for_service_event (
-                  *slot->monitor,
-                  static_cast<uint32_t> (
-                    zlink::service_monitor_event::spot_filter_applied),
-                  1,
-                  _settings.connect_ready_timeout_ms)) {
-                return false;
-            }
-
-            if (!_callback_mode
-                && _poller.add (*slot->spot, zlink::poll_event::pollin, slot.get ()) != 0) {
+            {
+                debug_log ("subscribe failed");
                 return false;
             }
 
@@ -469,6 +425,7 @@ class spot_client_bench_t
         }
 
         errno = ETIMEDOUT;
+        debug_log ("callback sync timed out");
         return false;
     }
 
@@ -477,30 +434,10 @@ class spot_client_bench_t
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::milliseconds (timeout_ms_);
         while (std::chrono::steady_clock::now () < deadline) {
-            long wait_ms = 100;
-            const auto remaining = deadline - std::chrono::steady_clock::now ();
-            const long remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                                        remaining)
-                                        .count ();
-            if (remaining_ms < wait_ms)
-                wait_ms = remaining_ms;
-            if (wait_ms < 1)
-                wait_ms = 1;
-
-            const int poll_rc = _poller.wait_all (_poll_events, wait_ms);
-            if (poll_rc < 0) {
-                if (errno == EINTR)
-                    continue;
-                return false;
-            }
-
-            for (size_t i = 0; i < _poll_events.size (); ++i) {
-                client_slot_t *slot =
-                  static_cast<client_slot_t *> (_poll_events[i].user);
-                if (!slot)
-                    continue;
-
-                drain_recv (*slot, true);
+            bool progressed = false;
+            for (size_t i = 0; i < _slots.size (); ++i) {
+                if (!drain_recv (*_slots[i], true, &progressed))
+                    return false;
             }
 
             bool all_synced = true;
@@ -510,9 +447,12 @@ class spot_client_bench_t
             }
             if (all_synced)
                 return true;
+            if (!progressed)
+                std::this_thread::yield ();
         }
 
         errno = ETIMEDOUT;
+        debug_log ("recv sync timed out");
         return false;
     }
 
@@ -542,6 +482,7 @@ class spot_client_bench_t
           _active_start_us.load (std::memory_order_acquire);
         if (active_start_us == 0) {
             errno = ETIMEDOUT;
+            debug_log ("callback active start timed out");
             return false;
         }
 
@@ -579,29 +520,19 @@ class spot_client_bench_t
             if (start != 0 && perf_metric::now_us () > start + active_duration_us)
                 break;
 
-            const int poll_rc = _poller.wait_all (_poll_events, 100);
-            if (poll_rc < 0) {
-                if (errno == EINTR)
-                    continue;
-                return false;
-            }
-            if (poll_rc == 0)
-                continue;
-
-            for (size_t i = 0; i < _poll_events.size (); ++i) {
-                client_slot_t *slot =
-                  static_cast<client_slot_t *> (_poll_events[i].user);
-                if (!slot)
-                    continue;
-                if (!drain_recv (*slot, false))
+            bool progressed = false;
+            for (size_t i = 0; i < _slots.size (); ++i) {
+                if (!drain_recv (*_slots[i], false, &progressed))
                     return false;
             }
+            if (!progressed)
+                std::this_thread::yield ();
         }
 
         return _active_count > 0;
     }
 
-    bool drain_recv (client_slot_t &slot_, bool sync_only_)
+    bool drain_recv (client_slot_t &slot_, bool sync_only_, bool *progressed_out_)
     {
         for (;;) {
             std::vector<zlink::message_t> parts;
@@ -611,8 +542,12 @@ class spot_client_bench_t
             if (rc != 0) {
                 if (errno == EAGAIN || errno == EINTR)
                     return true;
+                debug_log ("recv drain failed");
                 return false;
             }
+
+            if (progressed_out_)
+                *progressed_out_ = true;
 
             if (topic != k_topic || parts.size () != 1)
                 continue;

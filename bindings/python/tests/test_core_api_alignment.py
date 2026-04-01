@@ -193,6 +193,48 @@ class CoreApiAlignmentTests(unittest.TestCase):
         with self.assertRaises(zlink.ZlinkError):
             publisher.try_publish(b"topic", b"payload")
 
+    def test_blocking_send_failure_surfaces_exception(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        sender = zlink.PairSocket(ctx)
+        sender.close()
+        with self.assertRaises(zlink.ZlinkError):
+            sender.send(b"payload")
+
+    def test_blocking_publish_failure_surfaces_exception(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        publisher = zlink.PubSocket(ctx)
+        publisher.close()
+        with self.assertRaises(zlink.ZlinkError):
+            publisher.publish(b"topic", b"payload")
+
+    def test_try_publish_returns_explicit_sent_outcome(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        with ctx:
+            with zlink.PubSocket(ctx) as publisher:
+                with zlink.SubSocket(ctx) as subscriber:
+                    endpoint = "inproc://py-try-publish"
+                    publisher.bind(endpoint)
+                    subscriber.connect(endpoint)
+                    subscriber.set_subscription(b"topic")
+                    self.assertEqual(
+                        publisher.try_publish(b"topic", [b"payload"]),
+                        zlink.SendResult.SENT,
+                    )
+                    with subscriber.recv() as received:
+                        self.assertEqual(received.to_bytes_list(), [b"payload"])
+
     def test_option_family_helper_and_poller_use_canonical_paths(self):
         try:
             ctx = zlink.Context()
@@ -239,6 +281,21 @@ class CoreApiAlignmentTests(unittest.TestCase):
             with zlink.PairSocket(ctx) as sock:
                 with sock.open_monitor(zlink.MonitorEvent.ALL) as monitor:
                     self.assertIsNone(monitor.try_recv())
+
+    def test_monitor_recv_surfaces_socket_state_event(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        endpoint = _tcp_endpoint()
+        with ctx:
+            with zlink.PairSocket(ctx) as server:
+                with server.open_monitor(zlink.MonitorEvent.ALL) as monitor:
+                    server.bind(endpoint)
+                    event = monitor.recv()
+                    self.assertIsInstance(event, zlink.SocketMonitorEvent)
+                    self.assertNotEqual(event.event, 0)
 
     def test_registry_and_discovery_use_canonical_service_contract(self):
         try:
@@ -527,6 +584,43 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     event = xpub.recv_subscription_event()
                     self.assertTrue(event.subscribed)
                     self.assertEqual(event.topic, b"topic")
+
+    def test_xpub_try_subscription_event_returns_none_when_no_event(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        with ctx:
+            with zlink.XPubSocket(ctx) as xpub:
+                self.assertIsNone(xpub.try_recv_subscription_event())
+
+    def test_routing_id_accepts_max_length_and_rejects_overflow(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        max_routing_id = b"r" * 255
+        too_long_routing_id = b"r" * 256
+
+        with ctx:
+            with zlink.DealerSocket(ctx) as dealer:
+                dealer.set_routing_id(max_routing_id)
+                self.assertEqual(dealer.get_routing_id(), max_routing_id)
+                with self.assertRaises(ValueError):
+                    dealer.set_routing_id(too_long_routing_id)
+
+            with zlink.RouterSocket(ctx) as router:
+                router.router_options.connect_routing_id = max_routing_id
+                with self.assertRaises(ValueError):
+                    router.router_options.connect_routing_id = too_long_routing_id
+
+            with zlink.SpotNode(ctx) as node:
+                node.set_routing_id(max_routing_id)
+                self.assertEqual(node.get_routing_id(), max_routing_id)
+                with self.assertRaises(ValueError):
+                    node.set_routing_id(too_long_routing_id)
 
     def test_router_socket_connect_routing_id_uses_typed_option_surface(self):
         try:

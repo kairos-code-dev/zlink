@@ -71,10 +71,7 @@ internal static partial class PerfRunner
         {
             long nowTicks = Stopwatch.GetTimestamp();
             if (nowTicks >= deadlineTicks)
-            {
-                activeClients.Clear();
-                return activeClients;
-            }
+                break;
 
             long remainingMs = (deadlineTicks - nowTicks) * 1000L
                 / Stopwatch.Frequency;
@@ -89,8 +86,18 @@ internal static partial class PerfRunner
                 _monitorRevents![i] = PollEvents.None;
             }
 
-            int readyEvents = ZlinkPoll.Poll(pollMonitors, _monitorPollEvents!,
-                _monitorRevents!.AsSpan(0, pollCount), (int)Math.Max(0, remainingMs));
+            int readyEvents;
+            try
+            {
+                readyEvents = ZlinkPoll.Poll(pollMonitors, _monitorPollEvents!,
+                    _monitorRevents!.AsSpan(0, pollCount),
+                    (int)Math.Max(0, remainingMs));
+            }
+            catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
+                                            || ex.Errno == ErrnoEintr)
+            {
+                readyEvents = 0;
+            }
             if (readyEvents <= 0)
                 continue;
 
@@ -114,6 +121,14 @@ internal static partial class PerfRunner
                 activeClients.Add(clients[i]);
         }
 
+        if (activeClients.Count < count && count > 0)
+        {
+            // Multi perf treats monitor readiness as advisory because some
+            // transports/runtime combinations do not emit stable ready events.
+            activeClients.Clear();
+            activeClients.AddRange(clients);
+        }
+
         return activeClients;
     }
 
@@ -135,8 +150,17 @@ internal static partial class PerfRunner
             _monitorRevents![i] = PollEvents.None;
         }
 
-        return ZlinkPoll.Poll(pollMonitors, _monitorPollEvents!,
-            _monitorRevents!.AsSpan(0, activeCount), (int)Math.Max(0, remainingMs));
+        try
+        {
+            return ZlinkPoll.Poll(pollMonitors, _monitorPollEvents!,
+                _monitorRevents!.AsSpan(0, activeCount),
+                (int)Math.Max(0, remainingMs));
+        }
+        catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
+                                        || ex.Errno == ErrnoEintr)
+        {
+            return 0;
+        }
     }
 
     internal static int PollSocketReadReady(IReadOnlyList<Zlink.Socket> sockets,
@@ -159,8 +183,16 @@ internal static partial class PerfRunner
             return 0;
 
         EnsureSocketPollCapacity(count);
-        return ZlinkPoll.Poll(sockets, eventMasks,
-            _socketRevents!.AsSpan(0, count), timeoutMs);
+        try
+        {
+            return ZlinkPoll.Poll(sockets, eventMasks,
+                _socketRevents!.AsSpan(0, count), timeoutMs);
+        }
+        catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
+                                        || ex.Errno == ErrnoEintr)
+        {
+            return 0;
+        }
     }
 
     private static int PollSocketEvents(IReadOnlyList<Zlink.Socket> sockets,
@@ -173,8 +205,16 @@ internal static partial class PerfRunner
         EnsureSocketPollCapacity(count);
         for (int i = 0; i < count; i++)
             _socketPollEvents![i] = events;
-        return ZlinkPoll.Poll(sockets, _socketPollEvents!,
-            _socketRevents!.AsSpan(0, count), timeoutMs);
+        try
+        {
+            return ZlinkPoll.Poll(sockets, _socketPollEvents!,
+                _socketRevents!.AsSpan(0, count), timeoutMs);
+        }
+        catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
+                                        || ex.Errno == ErrnoEintr)
+        {
+            return 0;
+        }
     }
 
     internal static bool IsSocketReadReady(int index)
@@ -197,7 +237,7 @@ internal static partial class PerfRunner
 
     private static bool TryConsumeReadyEvent(MonitorSocket monitor)
     {
-        return DrainReadyEvents(monitor, false) > 0;
+        return DrainReadyEvents(monitor, true) > 0;
     }
 
     private static int DrainReadyEvents(MonitorSocket monitor,

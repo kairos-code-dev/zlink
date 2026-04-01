@@ -1,31 +1,56 @@
-import argparse
-import os
 import sys
+import threading
 
 import zlink
 
-from perf_multi_common import tcp_endpoint
+from perf_multi_common import drain_len32be_frames, parse_server_args, safe_poll, tcp_endpoint
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--clients", type=int, default=4)
-    parser.add_argument("--recv", default="recv")
-    parser.add_argument("--msg-size", type=int, default=256)
-    parser.parse_args(argv or sys.argv[1:])
-
+    args = parse_server_args(argv or sys.argv[1:])
     endpoint = tcp_endpoint()
+    stop = threading.Event()
+    lock = threading.Lock()
+    buffers = {}
+
+    def wait_stop():
+        sys.stdin.readline()
+        stop.set()
+
+    def handle_chunk(received, server):
+        routing_id = received.routing_id
+        chunk = received.to_bytes_list()[0]
+        if routing_id is None:
+            return
+        with lock:
+            buffer = buffers.setdefault(routing_id, bytearray())
+            buffer.extend(chunk)
+            frames = drain_len32be_frames(buffer)
+        for frame in frames:
+            server.send_to(routing_id, frame)
+
+    threading.Thread(target=wait_stop, daemon=True).start()
+
     with zlink.Context() as ctx:
         with zlink.StreamSocket(ctx) as server:
-            def on_message(received):
-                server.send_to(received.routing_id, received.to_bytes_list()[0])
-
-            server.on_receive(on_message)
             server.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            sys.stdin.readline()
-            sys.stdout.flush()
-            os._exit(0)
+            if args.recv == 'callback':
+                server.on_receive(lambda received: handle_chunk(received, server))
+                stop.wait()
+                return
+            with zlink.Poller() as poller:
+                poller.add_socket(server, zlink.PollEvent.POLLIN)
+                while not stop.is_set():
+                    events = safe_poll(poller, 100)
+                    if not events:
+                        continue
+                    while True:
+                        received = server.try_recv()
+                        if received is None:
+                            break
+                        with received:
+                            handle_chunk(received, server)
 
 
 if __name__ == "__main__":

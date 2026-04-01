@@ -14,6 +14,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 final class TopicPlane {
+    private static final int MAX_TOPIC_OR_FILTER_BYTES = Socket.TOPIC_CAPACITY - 1;
+
     private final Socket socket;
 
     TopicPlane(Socket socket) {
@@ -37,6 +39,7 @@ final class TopicPlane {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(parts, "parts");
         Objects.requireNonNull(flags, "flags");
+        validateTopicUtf8(topicId, "topicId");
         socket.publishParts(topicId, parts, flags, false);
     }
 
@@ -48,6 +51,7 @@ final class TopicPlane {
     SendResult tryPublish(String topicId, List<Message> parts) {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(parts, "parts");
+        validateTopicUtf8(topicId, "topicId");
         return socket.tryPublishParts(topicId, parts);
     }
 
@@ -208,22 +212,26 @@ final class TopicPlane {
     void setSubscription(String filter) {
         Objects.requireNonNull(filter, "filter");
         byte[] bytes = filter.getBytes(StandardCharsets.UTF_8);
+        validateFilterBytes(bytes.length, "filter");
         socket.setSubscriptionBytes(bytes, 0, bytes.length, true);
     }
 
     void setSubscription(byte[] filter) {
         Objects.requireNonNull(filter, "filter");
+        validateFilterBytes(filter.length, "filter");
         socket.setSubscriptionBytes(filter, 0, filter.length, true);
     }
 
     void unsetSubscription(String filter) {
         Objects.requireNonNull(filter, "filter");
         byte[] bytes = filter.getBytes(StandardCharsets.UTF_8);
+        validateFilterBytes(bytes.length, "filter");
         socket.setSubscriptionBytes(bytes, 0, bytes.length, false);
     }
 
     void unsetSubscription(byte[] filter) {
         Objects.requireNonNull(filter, "filter");
+        validateFilterBytes(filter.length, "filter");
         socket.setSubscriptionBytes(filter, 0, filter.length, false);
     }
 
@@ -245,5 +253,20 @@ final class TopicPlane {
             }
         }
         return List.copyOf(out);
+    }
+
+    private static void validateTopicUtf8(String topicId, String name) {
+        int bytes = topicId.getBytes(StandardCharsets.UTF_8).length;
+        validateFilterBytes(bytes, name);
+    }
+
+    private static void validateFilterBytes(int bytes, String name) {
+        if (bytes >= Socket.TOPIC_CAPACITY) {
+            throw new IllegalArgumentException(name + " too long: " + bytes
+                + " >= " + Socket.TOPIC_CAPACITY);
+        }
+        if (bytes < 0) {
+            throw new IllegalArgumentException(name + " length must be non-negative");
+        }
     }
 }

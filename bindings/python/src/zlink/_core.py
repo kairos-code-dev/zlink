@@ -105,6 +105,11 @@ def _copy_routing_id(routing_id):
     return native
 
 
+def _validated_routing_id_bytes(routing_id):
+    native = _copy_routing_id(routing_id)
+    return bytes(native.data[: native.size])
+
+
 def _msg_data_ptr(msg):
     return lib().zlink_msg_data(ctypes.byref(msg))
 

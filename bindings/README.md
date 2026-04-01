@@ -132,11 +132,13 @@ NotReady
 - 예:
   - Java: `Optional<T>`
   - .NET: `bool TryReceive(out ...)`
+  - Go: `(T, bool)` 또는 `(T, error)`
+  - Rust: `Option<T>`
   - Node/Python: empty/null/None 계열
 - `EAGAIN` 외 오류는 예외 또는 언어별 오류 경로를 유지한다.
 
 ## Domain Object Policy
-- Java, C#, Node, Python은 가능하면 `out` 파라미터나 raw tuple보다
+- Java, C#, Go, Rust, Node, Python은 가능하면 `out` 파라미터나 raw tuple보다
   도메인 객체를 우선한다.
 - 최소 핵심 도메인 모델:
   - `Message`
@@ -166,6 +168,8 @@ NotReady
 - 특화 옵션도 언어에 맞는 capability surface로 노출한다.
 - 예:
   - Java/.NET: `CommonSocketOptions`, `RouterSocketOptions`
+  - Go: typed method set, capability interface
+  - Rust: typed builder, method set, newtype
   - Python/Node: property, namespace object, capability object, typed method set
 
 ### Option Value Types
@@ -257,6 +261,8 @@ NotReady
   `NullPointerException`
 - .NET: `ArgumentException`, `ArgumentOutOfRangeException`,
   `ArgumentNullException`
+- Go: 즉시 `error` 반환 또는 `panic` (프로그래머 오류)
+- Rust: compile-time 보장 (`NonZero`, newtype) 또는 `panic!` / `Result<T, E>`
 
 ### Native Must Decide
 - peer 없음
@@ -269,6 +275,8 @@ NotReady
 이 경우 바인딩은 native 오류를 예외로 surface 한다.
 - Java: `ZlinkException`
 - .NET: `ZlinkException`
+- Go: `error` (`ZlinkError` 또는 동등한 typed error)
+- Rust: `Result<T, ZlinkError>`
 
 ## Length and Range Boundary Policy
 - 검증 책임은 두 층으로 나눈다.
@@ -292,8 +300,16 @@ NotReady
 
 ## Ownership Policy
 - `Message` ownership은 코어 계약과 일치해야 한다.
-- send 시도 시작 후 ownership이 이동하는 경로는 문서와 구현이 일치해야 한다.
-- 실패 시 restore 가능한 경로와 consume되는 경로를 혼동하지 않는다.
+- 모든 바인딩은 내부적으로 C API를 호출하므로, GC 언어를 포함한 전 언어에서
+  native message의 ownership을 올바르게 관리해야 한다.
+- ownership 경로:
+  - send 성공: ownership이 native로 이동한다. 바인딩은 이후 접근하면 안 된다.
+  - send 실패: restore 가능한 경로와 consume되는 경로를 혼동하지 않는다.
+  - recv: native가 생성한 메시지의 ownership을 바인딩이 넘겨받는다. 바인딩이
+    해제 책임을 진다.
+  - 생성 후 미전송: 바인딩이 직접 생성한 메시지를 send하지 않았다면 반드시
+    명시적으로 close/해제해야 한다. GC가 managed wrapper만 수거할 뿐, native
+    메모리는 해제하지 않으므로 누수가 발생한다.
 - callback delivery와 direct receive는 동일한 payload shape를 가져야 한다.
 - callback 후 frame validity는 계약으로 명확해야 한다.
 
@@ -344,6 +360,10 @@ NotReady
 - Java / C# / C++: overloading
   - 이름은 하나, 시그니처가 구분
   - 예: `send(Message msg)`, `send(RoutingId id, Message msg)`
+- Go: 가변 인자 / functional option / 별도 메서드
+  - overloading이 없으므로 동작 의미가 다른 경우에만 최소 접미사를 허용한다
+  - 예: `Send(msg Message)`, `SendTo(id RoutingId, msg Message)`
+  - 파라미터를 그대로 이름에 넣지 않는다
 - Python: keyword argument / optional parameter
   - 이름은 하나, keyword가 구분
   - 예: `send(self, message, *, routing_id=None)`
@@ -364,6 +384,7 @@ NotReady
 | Java | overloading | 금지 |
 | C# | overloading | 금지 |
 | C++ | overloading + strong type | 금지 |
+| Go | 별도 메서드 / functional option | 금지, 동작 구분 접미사만 허용 |
 | Python | keyword / optional | 금지 |
 | Node/TS | optional / union | 금지 |
 | Rust | trait bound / Option / newtype | 금지, 동작 구분 접미사만 허용 |
@@ -404,6 +425,16 @@ NotReady
 - Java
   - domain object + `Optional<T>` + enum result
   - multipart-only 기준 surface
+- Go
+  - `(T, error)` + strong type + explicit error check
+  - multipart-only 기준 surface
+  - `Try*`와 explicit send outcome (`SendResult, error`)
+  - non-blocking receive는 `(T, bool, error)` 또는 동등한 결과 타입
+- Rust
+  - `Result<T, ZlinkError>` + strong newtype + ownership
+  - multipart-only 기준 surface
+  - `try_*`와 explicit send outcome (`Result<SendResult, ZlinkError>`)
+  - non-blocking receive는 `Option<T>` 또는 `Result<Option<T>, ZlinkError>`
 - Node/Python
   - 언어 관례를 따르되 의미 계약은 동일
   - multipart-only 기준 surface
@@ -413,69 +444,107 @@ NotReady
 언어별 표면은 달라도 의미 계약은 같아야 한다.
 
 ### Cross-Language Capability Table
-| Area | C API | C++ | .NET | Java | Node | Python |
-|---|---|---|---|---|---|---|
-| Multipart-only public surface | Required | Required | Required | Required | Required | Required |
-| Blocking API named directly | Yes | Yes | Yes | Yes | Yes | Yes |
-| Non-blocking receive uses `try*` | N/A raw entry | Required | Required | Required | Required | Required |
-| Non-blocking send explicit outcome | Core enum/result | Required | Required | Required | Required | Required |
-| Public flags overloads | Raw C only | High-level public surface: No | No | No | No | No |
-| Typed option surface | N/A raw C options | Required | Required | Required | Required | Required |
+| Area | C API | C++ | .NET | Java | Go | Rust | Node | Python |
+|---|---|---|---|---|---|---|---|---|
+| Multipart-only public surface | Required | Required | Required | Required | Required | Required | Required | Required |
+| Blocking API named directly | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Non-blocking receive uses `try*` | N/A raw entry | Required | Required | Required | Required | Required | Required | Required |
+| Non-blocking send explicit outcome | Core enum/result | Required | Required | Required | Required | Required | Required | Required |
+| Public flags overloads | Raw C only | High-level public surface: No | No | No | No | No | No | No |
+| Typed option surface | N/A raw C options | Required | Required | Required | Required | Required | Required | Required |
 
 ## Testing Policy
 - reflection/surface test로 canonical public API를 고정한다.
 - 공통 검증 항목:
-  - public flag overload 제거
-  - single-message receive convenience 제거
-  - `try*` 추가 여부
   - 타입별 capability 분리 여부
   - raw option bag 비노출
-- behavior test로 blocking/non-blocking 계약을 검증한다.
+  - `try*` naming convention 준수 여부
+- contract test로 바인딩 ↔ native 계약을 검증한다.
+  - FFI/native 호출 매핑이 올바른지
+  - managed ↔ native 경계의 타입 변환이 올바른지
+  - native handle lifecycle과 리소스 정리가 누수 없이 동작하는지
+- behavior test로 바인딩 레이어가 core 계약을 올바르게 중계하는지 검증한다.
 - ownership 회귀 테스트를 유지한다.
 - callback mode와 direct mode의 충돌 규칙도 테스트한다.
 - 정책 변경 시 필수 테스트 규칙:
   - public surface 변경: reflection/surface test 동반
+  - contract 계약 변경: contract test 동반
   - blocking/non-blocking 계약 변경: behavior test 동반
   - ownership/receive shape 변경: callback regression 또는 ownership test 동반
   - option surface 변경: typed option reflection test와 negative capability test 동반
-- `Recommended`: 성능/비용 모델 관련 최소 검증:
-  - hot path에 불필요한 복사나 할당이 새로 들어가지 않았는지 점검
-  - callback/direct path의 비용 모델이 과도하게 벌어지지 않는지 점검
-  - helper/sample이 blocking send 실패를 숨기거나 느린 경로를 canonical로
-    유도하지 않는지 점검
+- 성능 회귀 검증은 별도 Perf Policy가 담당한다.
+- Test Matrix에 정의되지 않은 테스트 항목이 기존 코드에 남아 있다면 삭제한다.
+  - migration 검증, core 기능 재검증, 자동화 불가능한 리뷰 항목 등이 테스트로
+    작성되어 있으면 정리 대상이다.
+  - 테스트는 이 문서의 Test Matrix 카테고리에 해당하는 항목만 유지한다.
+
+### Test Execution Script Policy
+- 각 바인딩은 전체 테스트를 한번에 실행할 수 있는 스크립트를 제공해야 한다.
+- 실행 스크립트는 `bindings/<언어>/tests/` 디렉토리에 위치해야 한다.
+- 스크립트는 반복 실행 가능하고 성공/실패를 요약해서 보여줘야 한다.
+- 권장 형태:
+  - `tests/run_tests.sh`
+  - `tests/run_tests.ps1`
+  - language-specific test runner entry
+
+### Bug Discovery Policy
+- 테스트 또는 perf 작성/실행 중 버그를 발견한 경우 다음 절차를 따른다.
+- 바인딩 라이브러리 버그:
+  - 해당 바인딩에서 직접 수정한다.
+  - 수정과 함께 회귀 테스트를 추가한다.
+- core 라이브러리 버그:
+  - 바인딩에서 core 버그를 직접 수정하지 않는다.
+  - `bindings/<언어>/bug/` 디렉토리에 버그 리포트를 작성한다.
+  - 리포트에는 최소한 다음을 포함한다.
+    - 재현 조건 (소켓 타입, 패턴, 메시지 크기, transport 등)
+    - 기대 동작
+    - 실제 동작
+    - 재현 코드 또는 테스트 참조
+  - 바인딩 측에서 workaround가 필요하면 workaround임을 명시하고 bug 리포트를
+    참조한다.
 
 ## Test Matrix
 - 이 섹션은 각 바인딩이 최소한 가져야 할 테스트 항목을 정리한다.
 - 바인딩별 표면은 달라도 아래 의미 계약은 모두 검증해야 한다.
-- `Surface Tests`, `Send/Receive Behavior Tests`, `Send Failure Contract Tests`,
+- `Surface Tests`, `Contract Tests`, `Behavior Tests`, `Send Failure Contract Tests`,
   `Receive Failure Contract Tests`, `Boundary Validation Tests`, `Option Tests`,
   `Ownership Tests`, `Monitor Tests`는 기본적으로 `Required`다.
-- `Performance and Cost Tests`, `Sample and Helper Tests`는 기본적으로
-  `Recommended`다.
 
 ### Surface Tests
 - canonical public API reflection/surface test
-- removed legacy surface 부재 확인
-  - public flags overload 제거
-  - single-message receive convenience 제거
-  - raw option bag 비노출
 - socket type capability 분리 확인
 - typed option surface 존재 확인
+- raw option bag 비노출 확인
 - monitor canonical surface 존재 확인
   - `recv()`
   - `tryRecv()`
 
-### Send/Receive Behavior Tests
-- blocking `send` 성공 경로
-- blocking `recv` 성공 경로
-- blocking `publish` 성공 경로
-- blocking `subscribe` 성공 경로
-- routed blocking `send` 성공 경로
-- non-blocking `tryRecv` empty path
-- non-blocking `trySubscribe` empty path
-- non-blocking `tryReceiveSubscriptionEvent` empty path
-- non-blocking `trySend` success path
-- non-blocking `tryPublish` success path
+### Contract Tests
+- FFI/native 호출 매핑 검증
+  - 바인딩 public API 호출이 올바른 C API 함수에 매핑되는지 확인
+  - 파라미터 전달과 반환값 변환이 올바른지 확인
+- managed ↔ native 경계 타입 변환 검증
+  - 언어 타입에서 C 타입으로의 변환이 올바른지 확인
+  - C 타입에서 언어 타입으로의 변환이 올바른지 확인
+- 리소스 lifecycle 검증
+  - context/socket native handle 생성과 해제가 누수 없이 동작하는지 확인
+  - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
+
+### Behavior Tests
+- 바인딩 레이어가 core 계약을 올바르게 중계하는지 검증한다.
+- 목적은 core 메시징 기능 재검증이 아니라 바인딩 경로의 정확성 확인이다.
+- blocking 경로:
+  - `send` → core send 중계 성공
+  - `recv` → core recv 중계 성공
+  - `publish` → core publish 중계 성공
+  - `subscribe` → core subscribe 중계 성공
+  - routed `send` → routing id 포함 중계 성공
+- non-blocking 경로:
+  - `tryRecv` → 데이터 없음 시 empty 반환
+  - `trySubscribe` → 데이터 없음 시 empty 반환
+  - `tryReceiveSubscriptionEvent` → 데이터 없음 시 empty 반환
+  - `trySend` → explicit outcome 반환
+  - `tryPublish` → explicit outcome 반환
 
 ### Send Failure Contract Tests
 - blocking `send` failure가 예외 또는 언어별 오류 경로로 surface 되는지 확인
@@ -506,9 +575,10 @@ NotReady
 - raw integer 대신 enum/boolean surface가 제공되는지 확인
 
 ### Ownership Tests
-- send 성공 시 ownership 이동 계약
+- send 성공 시 ownership 이동 계약 (native에 넘어감, 바인딩이 이후 접근 금지)
 - send 실패 시 restore 또는 caller ownership 유지 계약
-- recv 결과 ownership 계약
+- 생성 후 send하지 않은 메시지의 명시적 close/해제 (close 없으면 native 메모리 누수)
+- recv 결과 ownership 계약 (바인딩이 받아서 해제 책임)
 - callback 후 frame validity 계약
 - multipart receive shape와 callback delivery shape 일치 여부
 
@@ -517,16 +587,11 @@ NotReady
 - non-blocking monitor `tryRecv` empty path
 - monitor callback/state 변화와 data plane readiness 일치 여부
 
-### Performance and Cost Tests
-- hot path send에서 불필요한 복사/할당 회귀 여부
-- hot path recv에서 불필요한 복사/할당 회귀 여부
-- callback path와 direct path 비용 모델 과도한 벌어짐 여부
-- 느린 fallback path가 canonical helper로 노출되지 않는지 점검
-
-### Sample and Helper Tests
-- sample code가 canonical API만 사용하는지 확인
-- helper가 blocking send 실패를 swallow 하지 않는지 확인
-- helper가 deprecated/legacy surface를 우회 호출하지 않는지 확인
+### Note: Performance and Sample Verification
+- 성능 회귀 검증은 Perf Policy (`doc/perf/`)가 담당한다. Test Matrix에 중복하지
+  않는다.
+- sample/helper의 canonical API 준수, send 실패 swallow 방지, legacy surface
+  우회 방지는 Review Checklist에서 검증한다. 자동화 테스트 항목이 아니다.
 
 ## Sample Policy
 - 샘플은 문서이자 실행 가능한 검증 수단이어야 한다.
@@ -607,6 +672,7 @@ NotReady
 
 ### Sample Execution Script Policy
 - 각 바인딩은 전체 샘플을 실행해서 동작 확인할 수 있는 스크립트를 제공해야 한다.
+- 실행 스크립트는 `bindings/<언어>/samples/` 디렉토리에 위치해야 한다.
 - 스크립트는 repository 안에 두고 반복 실행 가능해야 한다.
 - 스크립트는 샘플 목록을 명시적으로 실행해야 한다.
 - 스크립트는 성공/실패를 요약해서 보여줘야 한다.
@@ -614,8 +680,8 @@ NotReady
 - 이 항목은 샘플을 공식 제공하는 바인딩에서는 `Required`, 초기 단계 바인딩에서는
   `Recommended`다.
 - 권장 형태:
-  - `run_samples.sh`
-  - `run_samples.ps1`
+  - `samples/run_samples.sh`
+  - `samples/run_samples.ps1`
   - language-specific task runner entry
 
 ### Sample Verification Requirements
@@ -681,6 +747,8 @@ NotReady
   - C++: RAII, typed wrapper
   - .NET: idiomatic object model
   - Java: domain object / typed API
+  - Go: idiomatic Go (explicit error, struct, interface)
+  - Rust: idiomatic Rust (ownership, Result, newtype)
   - Node/Python: 해당 언어 관례
 - 단, 언어 스타일을 반영한다는 이유로 측정 대상이 바뀌면 안 된다.
 - perf 간 비교 가능성을 유지하려면 다음을 맞춰야 한다.
@@ -688,6 +756,94 @@ NotReady
   - 측정 단위
   - warmup / run 구조
   - 성공 조건과 종료 조건
+
+### Perf Script Interface Rules
+- 각 바인딩은 `core/perf`와 동일한 실행 스크립트 인터페이스를 제공해야 한다.
+- 스크립트 형태, CLI 옵션, 기본값, 출력 포맷, 결과 파일 naming이 core와
+  일치해야 한다.
+- 바인딩이 독자적인 옵션 이름, 기본값, 출력 형식을 만들면 안 된다.
+
+#### 실행 스크립트 형태
+- 실행 스크립트는 `bindings/<언어>/perf/` 디렉토리에 위치해야 한다.
+- 각 바인딩 perf 디렉토리에 다음 entry point를 제공한다.
+  - `perf/run_benchmarks.sh` — single suite
+  - `perf/run_benchmarks_multi.sh` — multi suite
+- Windows 지원이 필요한 경우 `.ps1` 도 함께 제공한다.
+- 스크립트는 해당 언어 빌드/런타임을 내부에서 처리하고, 사용자에게는
+  core와 동일한 CLI 인터페이스를 노출해야 한다.
+
+#### CLI 옵션
+- core/perf 스크립트가 제공하는 공통 옵션을 동일한 이름과 의미로 지원한다.
+- 공통 옵션:
+
+| 옵션 | 의미 |
+|------|------|
+| `--pattern` | 패턴 목록 (comma-separated 또는 `ALL`) |
+| `--recv` | 수신 모델 (`recv` 또는 `callback`) |
+| `--duration` | active measurement 구간 (초) |
+| `--warmup` | warmup 구간 (초) |
+| `--msg-sizes` | 메시지 크기 목록 (comma-separated) |
+| `--transports` | transport 목록 (comma-separated) |
+| `--runs` | 반복 횟수 |
+| `--results-dir` | 결과 디렉토리 경로 |
+| `--results-tag` | 결과 파일 이름 태그 |
+
+- multi suite 추가 옵션:
+
+| 옵션 | 의미 |
+|------|------|
+| `--clients` | client 소켓 수 |
+
+- 옵션 이름을 바인딩별로 다르게 만들면 안 된다.
+  - 예: `--message-size`, `--size`, `--msg_size` 등으로 변형 금지
+
+#### 기본값
+- 기본값은 `core/perf` 기본값을 단일 기준으로 따른다.
+- 바인딩이 다른 기본값을 사용하면 안 된다.
+- single suite 기본값:
+
+| 항목 | 기본값 |
+|------|--------|
+| duration | `5`초 |
+| warmup | `2`초 |
+| recv | `callback` |
+| msg_sizes | `64, 256, 1024, 65536, 131072, 262144` |
+
+- multi suite 기본값:
+
+| 항목 | 기본값 |
+|------|--------|
+| duration | `5`초 |
+| warmup | `2`초 |
+| recv | `recv` |
+| clients | `100` (STREAM: `10000`) |
+| msg_sizes | `64, 256, 1024, 65536, 131072, 262144` (STREAM: `64, 256, 1024, 65536`) |
+
+#### 출력 포맷
+- 출력 구조는 core/perf와 동일해야 한다.
+- `## Effective Options (start)` 헤더를 반드시 포함한다.
+- RESULT line 형식:
+  ```
+  RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
+  ```
+- 필수 metric:
+  - `throughput` — Kmsg/s 또는 Kops/s
+  - `bandwidth` — MB/s
+  - `latency` — mean
+  - `latency_p95` — 95th percentile
+  - `latency_p99` — 99th percentile
+- 마크다운 테이블도 core와 동일한 형태로 출력한다.
+
+#### 결과 파일
+- 결과 파일은 다음 디렉토리에 저장한다.
+  - `results/{single|multi}/report/`
+- 파일 이름 형식:
+  ```
+  perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt
+  ```
+- `<platform>`: `linux`, `windows`, `macos`
+- `<recv_mode>`: 실제 사용된 모드 (`recv` 또는 `callback`)
+- `<tag>`: `--results-tag` 값 (선택)
 
 ### Perf Verification Requirements
 - perf 코드는 실제 측정 가능한 실행 entry를 제공해야 한다.
@@ -707,6 +863,20 @@ NotReady
 - `core/perf` 패턴과 정렬되어 있는가
 - `doc/perf` 정책을 준수하는가
 
+## Script Location Policy
+- 실행 스크립트는 실행 대상과 같은 디렉토리에 위치한다.
+- 바인딩 루트가 아니라 각 하위 디렉토리에 둔다.
+
+| 용도 | 위치 | 스크립트 예시 |
+|------|------|---------------|
+| 테스트 | `bindings/<언어>/tests/` | `run_tests.sh` |
+| 샘플 | `bindings/<언어>/samples/` | `run_samples.sh` |
+| perf | `bindings/<언어>/perf/` | `run_benchmarks.sh`, `run_benchmarks_multi.sh` |
+
+- Windows 지원이 필요한 경우 `.ps1` 도 함께 제공한다.
+- 바인딩 루트에서 전체를 orchestrate하는 스크립트가 필요하면 별도로 둘 수 있지만,
+  개별 스크립트의 위치 원칙은 바뀌지 않는다.
+
 ## Review Checklist
 - public API가 multipart-only인가
 - blocking/non-blocking이 이름으로 분리되었는가
@@ -721,6 +891,9 @@ NotReady
 - reflection test와 behavior test가 같이 있는가
 - 값 객체 검증과 호출 직전 검증의 책임 위치가 설명 가능한가
 - legacy flag 타입이 public contract에서 제거되었는가
+- sample code가 canonical API만 사용하는가
+- helper가 blocking send 실패를 swallow 하지 않는가
+- helper가 deprecated/legacy surface를 우회 호출하지 않는가
 
 ## Non-Normative Backlog: Implementation Follow-Ups
 - 이 섹션은 규범 본문이 아니라 backlog다.
@@ -793,9 +966,30 @@ NotReady
 - option negative capability 테스트 보강
 - ownership/callback regression 유지 여부 확인
 
+## Binding Requirements
+
+| Binding | 언어 버전 | 런타임/프레임워크 | 빌드 툴 |
+|---------|-----------|-------------------|---------|
+| C++ | C++17 | — | CMake 3.10+ |
+| .NET | C# 12 | .NET 8.0 | MSBuild |
+| Java | Java 22 | JDK 22 | Gradle 8.10.2 |
+| Go | Go 1.22+ | — | Go modules |
+| Rust | Rust 2024 edition | MSRV 1.85+ | Cargo |
+| Node | TypeScript 5.8 | Node 22+ | npm |
+| Python | Python 3.9 | CPython 3.9+ | setuptools 68+ |
+- 각 바인딩의 정확한 버전은 해당 프로젝트 설정 파일이 기준이다.
+  - C++: `CMakeLists.txt`
+  - .NET: `Zlink.csproj`
+  - Java: `build.gradle`, `gradle-wrapper.properties`
+  - Go: `go.mod`
+  - Node: `package.json`, `tsconfig.json`
+  - Python: `pyproject.toml`
+
 ## Related Docs
 - `bindings/cpp/`
 - `bindings/dotnet/`
 - `bindings/java/`
+- `bindings/go/`
+- `bindings/rust/`
 - `bindings/node/`
 - `bindings/python/`

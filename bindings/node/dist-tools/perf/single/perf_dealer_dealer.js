@@ -2,40 +2,18 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
-const { createPayload, latencyUsFromPayload, stampPayload } = require('../common/perf_metrics');
+const { attachCallbackCollector, driveSender, finishCollector } = require('./perf_single_common');
 async function runDealerDealerBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     const server = new zlink.DealerSocket(ctx);
     const client = new zlink.DealerSocket(ctx);
     const endpoint = `inproc://perf-dealer-dealer-${process.pid}-${msgSize}`;
-    const payload = createPayload(msgSize);
-    const latenciesUs = [];
-    let done = false;
-    const startedAt = process.hrtime.bigint();
-    const warmupNs = BigInt(Math.floor(options.warmup * 1_000_000_000));
-    const activeNs = BigInt(Math.floor(options.duration * 1_000_000_000));
     try {
         server.bind(endpoint);
         client.connect(endpoint);
-        server.recvHandler((_, parts) => {
-            const elapsed = process.hrtime.bigint() - startedAt;
-            if (elapsed >= warmupNs && elapsed < warmupNs + activeNs) {
-                latenciesUs.push(latencyUsFromPayload(parts[0].toBuffer()));
-            }
-            if (elapsed >= warmupNs + activeNs) {
-                done = true;
-            }
-        });
-        while (!done) {
-            stampPayload(payload);
-            const result = client.trySend(payload);
-            if (result !== zlink.SendResult.Sent) {
-                await new Promise((resolve) => setImmediate(resolve));
-                continue;
-            }
-            await new Promise((resolve) => setImmediate(resolve));
-        }
-        return latenciesUs;
+        const state = attachCallbackCollector((handler) => server.recvHandler(handler), msgSize, options, (_, parts) => parts[0].toBuffer());
+        await driveSender((payload) => (client.trySend(payload) === zlink.SendResult.Sent), state);
+        return await finishCollector(state);
     }
     finally {
         client.close();

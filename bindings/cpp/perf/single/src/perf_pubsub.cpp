@@ -16,8 +16,20 @@ bool send_pubsub_payload (void *userdata_, const void *data_, size_t size_)
     if (!publisher)
         return false;
 
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
-    return msg.valid () && publisher->publish (k_topic, msg) == 0;
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, size_) != 0)
+        return false;
+    if (size_ > 0 && data_)
+        std::memcpy (zlink_msg_data (&part), data_, size_);
+
+    const int rc = zlink_publish (publisher->handle (), k_topic, &part, 1, 0);
+    if (rc != 0) {
+        const int err = errno;
+        (void) zlink_msg_close (&part);
+        errno = err;
+        return false;
+    }
+    return true;
 }
 
 } // namespace

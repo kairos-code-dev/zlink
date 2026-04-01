@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
-const { createPayload, latencyUsFromPayload, stampPayload } = require('../common/perf_metrics');
+const { attachCallbackCollector, driveSender, finishCollector } = require('./perf_single_common');
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
 function partStrings(received) {
@@ -25,37 +25,15 @@ async function runRouterRouterBenchmark(msgSize, options) {
     const receiver = new zlink.RouterSocket(ctx);
     const sender = new zlink.RouterSocket(ctx);
     const endpoint = `inproc://perf-router-router-${process.pid}-${msgSize}`;
-    const payload = createPayload(msgSize);
-    const latenciesUs = [];
-    let done = false;
-    const startedAt = process.hrtime.bigint();
-    const warmupNs = BigInt(Math.floor(options.warmup * 1_000_000_000));
-    const activeNs = BigInt(Math.floor(options.duration * 1_000_000_000));
     try {
         receiver.setRoutingId(RECEIVER_ID);
         sender.setRoutingId(SENDER_ID);
         receiver.bind(endpoint);
         sender.connect(endpoint);
         await handshake(receiver, sender);
-        receiver.recvHandler((_, parts) => {
-            const elapsed = process.hrtime.bigint() - startedAt;
-            if (elapsed >= warmupNs && elapsed < warmupNs + activeNs) {
-                latenciesUs.push(latencyUsFromPayload(parts[0].toBuffer()));
-            }
-            if (elapsed >= warmupNs + activeNs) {
-                done = true;
-            }
-        });
-        while (!done) {
-            stampPayload(payload);
-            const result = sender.trySend(RECEIVER_ID, payload);
-            if (result !== zlink.SendResult.Sent) {
-                await new Promise((resolve) => setImmediate(resolve));
-                continue;
-            }
-            await new Promise((resolve) => setImmediate(resolve));
-        }
-        return latenciesUs;
+        const state = attachCallbackCollector((handler) => receiver.recvHandler(handler), msgSize, options, (_, parts) => parts[0].toBuffer());
+        await driveSender((payload) => (sender.trySend(RECEIVER_ID, payload) === zlink.SendResult.Sent), state);
+        return await finishCollector(state);
     }
     finally {
         sender.close();

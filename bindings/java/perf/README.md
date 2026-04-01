@@ -13,6 +13,22 @@ with:
 The goal is to measure binding-layer cost with comparable messaging scenarios,
 not to provide demo code or hide the hot path behind a complex harness.
 
+## Policy Summary
+
+- `single` is callback-only. `--recv recv` is a policy error.
+- `multi` defaults to `--recv recv`.
+- `multi --recv callback` is allowed only for `MULTI_SPOT` and `MULTI_STREAM`.
+- Unsupported `--recv callback` pattern requests fail immediately. Silent skip or
+  fallback is not allowed.
+- `--runs` is supported on both suites and reports averaged metrics per
+  pattern/transport/size configuration.
+- Perf hot paths must keep the messaging loop visible in each pattern file.
+- Perf runners must not turn slow fallback paths into the canonical measurement
+  path.
+- Reports are written under `perf/results/{single,multi}/report/` with
+  `Effective Options`, markdown tables, `RESULT,...` lines, and `Completion`
+  sections so the executed options are traceable from the saved artifact.
+
 ## Entrypoints
 
 - `perf/run_benchmarks.sh` or `perf/single/run_benchmarks.sh`
@@ -21,9 +37,23 @@ not to provide demo code or hide the hot path behind a complex harness.
 Each suite builds and runs the Java binding perf entrypoints directly. There is
 no shared cross-binding runner.
 
+## Layout
+
+- `perf/common/` shared Java perf utility
+- `perf/single/Zlink.BindingBench/` single-suite sources
+- `perf/multi/Zlink.BindingBench.Multi/` multi-suite sources
+- `perf/results/single/report/`
+- `perf/results/multi/tmp/`
+- `perf/results/multi/report/`
+
+The runnable Gradle subprojects are:
+
+- `:perf-single`
+- `:perf-multi`
+
 ## Patterns
 
-Single suite patterns are split into separate files:
+Single suite pattern files:
 
 - `PAIR`
 - `PUBSUB`
@@ -32,7 +62,7 @@ Single suite patterns are split into separate files:
 - `ROUTER_ROUTER`
 - `SPOT`
 
-Multi suite patterns are split into separate files:
+Multi suite pattern files:
 
 - `MULTI_DEALER_DEALER`
 - `MULTI_DEALER_ROUTER`
@@ -41,33 +71,17 @@ Multi suite patterns are split into separate files:
 - `MULTI_SPOT`
 - `MULTI_STREAM`
 
-This keeps each messaging pattern visible in its own source file, as required
-by the bindings perf policy.
-
-## Layout
-
-- `perf/common/` shared Java perf utility
-- `perf/single/Zlink.BindingBench/` single-suite sources
-- `perf/multi/Zlink.BindingBench.Multi/` multi-suite sources
-- `perf/results/single/{tmp,report,baseline}`
-- `perf/results/multi/{tmp,report,baseline}`
-
-The runnable Gradle subprojects are:
-
-- `:perf-single`
-- `:perf-multi`
+Each messaging pattern stays in its own source file so the hot path remains
+readable and reviewable.
 
 ## Verification
 
-Each suite provides a directly executable entry and writes a report under
-`perf/results/`.
+Normal verification should use the wrapper scripts because they enforce the
+policy-supported modes and save the measured output in the documented format.
 
 - Single: callback receive path only
-- Multi: `recv` and `callback` modes, with callback limited to policy-supported
-  patterns
-
-Use the wrapper scripts for normal verification so the documented execution path
-matches the real measurement flow.
+- Multi: `recv` by default, `callback` only for `MULTI_SPOT` and `MULTI_STREAM`
+- Both suites print the same report body to stdout and to the saved report file.
 
 ## Smoke
 

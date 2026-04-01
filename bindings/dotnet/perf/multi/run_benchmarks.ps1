@@ -1,9 +1,10 @@
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RootDir = Resolve-Path (Join-Path $ScriptDir "..\..\..\..")
-$Runner = Join-Path $RootDir "bindings\perf\run_policy_bench.py"
-if (Get-Command py -ErrorAction SilentlyContinue) {
-    & py $Runner --binding dotnet --suite multi @Args
-} else {
-    & python $Runner --binding dotnet --suite multi @Args
+$ShellRunner = Join-Path $ScriptDir "run_benchmarks.sh"
+
+if (Get-Command bash -ErrorAction SilentlyContinue) {
+    & bash $ShellRunner @Args
+    exit $LASTEXITCODE
 }
-exit $LASTEXITCODE
+
+Write-Error "bash is required to run bindings/dotnet/perf multi benchmarks."
+exit 1

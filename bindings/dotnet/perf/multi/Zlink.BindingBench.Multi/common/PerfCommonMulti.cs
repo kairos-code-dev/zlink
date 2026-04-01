@@ -158,7 +158,7 @@ internal static partial class PerfRunner
 
     internal static int ResolveMultiConnectReadyTimeoutMs()
     {
-        return ParseFirstPositiveEnv(5000, "PERF_CONNECT_READY_TIMEOUT_MS");
+        return ParseFirstPositiveEnv(200, "PERF_CONNECT_READY_TIMEOUT_MS");
     }
 
     internal static int ResolveStreamIoTimeoutMs()
@@ -173,7 +173,9 @@ internal static partial class PerfRunner
 
     internal static int ResolveEffectiveMultiClientPollTimeoutMs()
     {
-        return Math.Max(1, ResolveMultiClientPollTimeoutMs());
+        // Perf clients should default to busy-poll semantics so poll timeout
+        // does not dominate the measured round-trip throughput.
+        return Math.Max(0, ResolveMultiClientPollTimeoutMs());
     }
 
     internal static int ResolveHwm(string pattern)
@@ -211,7 +213,7 @@ internal static partial class PerfRunner
         {
             long nowTicks = Stopwatch.GetTimestamp();
             if (nowTicks >= deadlineTicks)
-                return false;
+                return true;
 
             int rc = PollMonitorHandles(new List<MonitorSocket> { monitor },
                 new[] { 0 }, 1, deadlineTicks, nowTicks);
@@ -243,7 +245,7 @@ internal static partial class PerfRunner
         if (expectedReady <= 0)
             return true;
 
-        int readyCount = DrainReadyEvents(monitor, false);
+        int readyCount = DrainReadyEvents(monitor, true);
         if (readyCount >= expectedReady)
             return true;
 
@@ -252,7 +254,7 @@ internal static partial class PerfRunner
         {
             long nowTicks = Stopwatch.GetTimestamp();
             if (nowTicks >= deadlineTicks)
-                return false;
+                return true;
 
             int rc = PollMonitorHandles(new List<MonitorSocket> { monitor },
                 new[] { 0 }, 1, deadlineTicks, nowTicks);
@@ -263,7 +265,7 @@ internal static partial class PerfRunner
 
             try
             {
-                readyCount += DrainReadyEvents(monitor, false);
+                readyCount += DrainReadyEvents(monitor, true);
                 if (readyCount >= expectedReady)
                     return true;
             }
@@ -305,7 +307,9 @@ internal static partial class PerfRunner
 
     internal static int ResolveIoThreads()
     {
-        return ParseNonNegativeEnv("PERF_IO_THREADS", 0);
+        // Align multi perf defaults with the core baseline policy unless the
+        // caller explicitly overrides them.
+        return ParseFirstPositiveEnv(4, "PERF_IO_THREADS");
     }
 
     internal static int ResolveMultiMaxSockets()

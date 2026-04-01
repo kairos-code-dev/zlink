@@ -72,7 +72,7 @@ final class PerfRouterRouter {
             PerfUtil.await(finished, "router/router callback", Duration.ofSeconds(
                 config.warmupSeconds() + config.durationSeconds() + 30L));
             PerfUtil.join(traffic, "router/router sender", Duration.ofSeconds(10));
-            return metrics.finishSingle(config.size(), config.durationSeconds());
+            return metrics.finishSingle(config);
         } finally {
             if (!sharedContext) {
                 senderCtx.close();

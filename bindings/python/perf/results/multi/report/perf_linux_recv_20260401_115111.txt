@@ -1,0 +1,25 @@
+## Effective Options (start)
+- runs: 1
+- recv_mode: recv
+- duration_seconds: 0.2
+- warmup_seconds: 0.1
+- patterns: MULTI_PUBSUB
+- transports: tcp
+- msg_sizes: 64
+- clients: 2
+
+READY,tcp://127.0.0.1:34027
+RESULT,current,MULTI_PUBSUB,tcp,64,throughput,216328.83
+RESULT,current,MULTI_PUBSUB,tcp,64,bandwidth,13.85
+RESULT,current,MULTI_PUBSUB,tcp,64,latency,98038.10
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p95,115119.12
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p99,115763.31
+
+| Pattern | Transport | Size | Throughput | Bandwidth | Latency | Latency P95 | Latency P99 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| MULTI_PUBSUB | tcp | 64 | 216328.83 | 13.85 | 98038.10 | 115119.12 | 115763.31 |
+
+## Effective Options (result)
+- recv_mode: recv
+- result_lines: 5
+- status: complete

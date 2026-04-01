@@ -98,6 +98,20 @@ bool is_singlepart_fast_socket_type (int type_)
     return type_ == ZLINK_CORE_SOCKET_PAIR || type_ == ZLINK_CORE_SOCKET_DEALER;
 }
 
+int classify_nonblocking_send_errno () noexcept
+{
+    switch (errno) {
+    case EAGAIN:
+        return ZLINK_SEND_RESULT_BACKPRESSURED;
+    case ENOTCONN:
+    case EHOSTUNREACH:
+    case ETIMEDOUT:
+        return ZLINK_SEND_RESULT_NOT_READY;
+    default:
+        return -1;
+    }
+}
+
 int send_socket_singlepart_fast (socket_handle_t handle_,
                                  zlink_msg_t *msg_,
                                  zlink_send_flags_t flags_)
@@ -476,6 +490,30 @@ int zlink_send (void *s_,
     return send_service_or_fault (s_, parts_, part_count_, flags_);
 }
 
+int zlink_try_send (void *s_,
+                    zlink_msg_t *parts_,
+                    size_t part_count_,
+                    zlink_send_result_t *result_out_)
+{
+    if (!result_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int rc = zlink_send (s_, parts_, part_count_, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        *result_out_ = ZLINK_SEND_RESULT_SENT;
+        return 0;
+    }
+
+    const int result = classify_nonblocking_send_errno ();
+    if (result < 0)
+        return -1;
+
+    *result_out_ = static_cast<zlink_send_result_t> (result);
+    return 0;
+}
+
 int zlink_publish (void *subject_,
                    const char *topic_id_,
                    zlink_msg_t *parts_,
@@ -497,6 +535,32 @@ int zlink_publish (void *subject_,
                                      flags_);
 }
 
+int zlink_try_publish (void *subject_,
+                       const char *topic_id_,
+                       zlink_msg_t *parts_,
+                       size_t part_count_,
+                       zlink_send_result_t *result_out_)
+{
+    if (!result_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int rc =
+      zlink_publish (subject_, topic_id_, parts_, part_count_, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        *result_out_ = ZLINK_SEND_RESULT_SENT;
+        return 0;
+    }
+
+    const int result = classify_nonblocking_send_errno ();
+    if (result < 0)
+        return -1;
+
+    *result_out_ = static_cast<zlink_send_result_t> (result);
+    return 0;
+}
+
 int zlink_send_rid (void *s_,
                     const zlink_routing_id_t *target_rid_,
                     zlink_msg_t *parts_,
@@ -515,4 +579,30 @@ int zlink_send_rid (void *s_,
 
     return send_rid_service_or_fault (s_, target_rid_, parts_, part_count_,
                                       flags_);
+}
+
+int zlink_try_send_rid (void *s_,
+                        const zlink_routing_id_t *target_rid_,
+                        zlink_msg_t *parts_,
+                        size_t part_count_,
+                        zlink_send_result_t *result_out_)
+{
+    if (!result_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int rc =
+      zlink_send_rid (s_, target_rid_, parts_, part_count_, ZLINK_DONTWAIT);
+    if (rc == 0) {
+        *result_out_ = ZLINK_SEND_RESULT_SENT;
+        return 0;
+    }
+
+    const int result = classify_nonblocking_send_errno ();
+    if (result < 0)
+        return -1;
+
+    *result_out_ = static_cast<zlink_send_result_t> (result);
+    return 0;
 }

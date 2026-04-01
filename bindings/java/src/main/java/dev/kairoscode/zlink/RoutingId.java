@@ -8,6 +8,8 @@ import java.util.Objects;
 
 /** Immutable binary-safe routing id value object. */
 public final class RoutingId {
+    public static final int MAX_LENGTH = 255;
+
     private final byte[] value;
 
     private RoutingId(byte[] value) {
@@ -17,6 +19,7 @@ public final class RoutingId {
     /** Copies the full routing id byte array. */
     public static RoutingId copyOf(byte[] value) {
         Objects.requireNonNull(value, "value");
+        validateLength(value.length);
         return new RoutingId(Arrays.copyOf(value, value.length));
     }
 
@@ -25,7 +28,15 @@ public final class RoutingId {
         Objects.requireNonNull(value, "value");
         if (offset < 0 || length < 0 || offset > value.length - length)
             throw new IndexOutOfBoundsException("value range out of bounds");
+        validateLength(length);
         return new RoutingId(Arrays.copyOfRange(value, offset, offset + length));
+    }
+
+    private static void validateLength(int length) {
+        if (length > MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                "routing id too long: " + length + " > " + MAX_LENGTH);
+        }
     }
 
     /** Returns a defensive copy of the routing id bytes. */

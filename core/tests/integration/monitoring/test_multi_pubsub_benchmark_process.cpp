@@ -27,6 +27,12 @@ namespace
 {
 const char *g_self_path = NULL;
 
+bool should_run_pubsub_process_test (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    return !selected || !*selected || strcmp (selected, name_) == 0;
+}
+
 struct process_capture_t
 {
     process_capture_t () :
@@ -277,7 +283,9 @@ void write_stdin_line (process_capture_t *proc_, const char *line_)
 
 void run_multi_pubsub_process_case (const char *self_path_,
                                     const char *recv_mode_,
-                                    const char *msg_size_ = "64")
+                                    const char *msg_size_ = "64",
+                                    int clients_ = 1,
+                                    int connect_ready_timeout_ms_ = 15000)
 {
     process_capture_t server;
     process_capture_t client;
@@ -292,8 +300,17 @@ void run_multi_pubsub_process_case (const char *self_path_,
     server_env.push_back ("PERF_DURATION_SECONDS=1");
     server_env.push_back ("PERF_WARMUP_SECONDS=0");
     server_env.push_back ("PERF_SETTLE_MS=500");
-    server_env.push_back ("PERF_CLIENTS=1");
-    server_env.push_back ("PERF_CONNECT_READY_TIMEOUT_MS=15000");
+    {
+        char buf[32];
+        snprintf (buf, sizeof (buf), "PERF_CLIENTS=%d", clients_);
+        server_env.push_back (buf);
+    }
+    {
+        char buf[64];
+        snprintf (buf, sizeof (buf), "PERF_CONNECT_READY_TIMEOUT_MS=%d",
+                  connect_ready_timeout_ms_);
+        server_env.push_back (buf);
+    }
     std::vector<std::string> server_args;
     server_args.push_back ("zlink");
     server_args.push_back ("tcp");
@@ -385,6 +402,11 @@ void test_multi_pubsub_process_recv_large_size_completes ()
     run_multi_pubsub_process_case (g_self_path, "recv", "262144");
 }
 
+void test_multi_pubsub_process_recv_1000_clients_tcp_ready_count ()
+{
+    run_multi_pubsub_process_case (g_self_path, "recv", "64", 1000, 20000);
+}
+
 void test_multi_pubsub_process_callback_is_rejected ()
 {
     run_multi_pubsub_callback_reject_case (g_self_path);
@@ -395,9 +417,16 @@ int main (int argc, char **argv)
     signal (SIGPIPE, SIG_IGN);
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
-    RUN_TEST (test_multi_pubsub_process_recv_preserves_settle_and_active_window);
-    RUN_TEST (test_multi_pubsub_process_recv_large_size_completes);
-    RUN_TEST (test_multi_pubsub_process_callback_is_rejected);
+#define RUN_PUBSUB_PROCESS_TEST(name)                                          \
+    do {                                                                       \
+        if (should_run_pubsub_process_test (#name))                            \
+            RUN_TEST (name);                                                   \
+    } while (0)
+    RUN_PUBSUB_PROCESS_TEST (test_multi_pubsub_process_recv_preserves_settle_and_active_window);
+    RUN_PUBSUB_PROCESS_TEST (test_multi_pubsub_process_recv_large_size_completes);
+    RUN_PUBSUB_PROCESS_TEST (test_multi_pubsub_process_recv_1000_clients_tcp_ready_count);
+    RUN_PUBSUB_PROCESS_TEST (test_multi_pubsub_process_callback_is_rejected);
+#undef RUN_PUBSUB_PROCESS_TEST
     return UNITY_END ();
 }
 

@@ -21,7 +21,7 @@ internal static class PerfDealerDealerServer
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx);
-        using var server = new Zlink.Socket(ctx, Zlink.SocketType.Dealer);
+        using var server = new DealerSocket(ctx);
         ApplyMultiSocketOptions(server, pattern);
         ConfigureTlsServerIfNeeded(server, transport);
 
@@ -71,7 +71,7 @@ internal static class PerfDealerDealerServer
         return 0;
     }
 
-    private static bool RunReceivePhase(Zlink.Socket server, byte[] payload,
+    private static bool RunReceivePhase(SocketBase server, byte[] payload,
         int msgSize, uint expectedRunId, PerfPhase expectedPhase,
         double durationSeconds, bool countMessage, bool collectLatency,
         List<double> latSamples, ref long sampleSeen, ref uint rng)
@@ -82,7 +82,7 @@ internal static class PerfDealerDealerServer
             latSamples, ref sampleSeen, ref rng, ref recvCount);
     }
 
-    private static bool RunReceivePhase(Zlink.Socket server, byte[] payload,
+    private static bool RunReceivePhase(SocketBase server, byte[] payload,
         int msgSize, uint expectedRunId, PerfPhase expectedPhase,
         double durationSeconds, bool countMessage, bool collectLatency,
         List<double> latSamples, ref long sampleSeen, ref uint rng,
@@ -111,7 +111,7 @@ internal static class PerfDealerDealerServer
         return true;
     }
 
-    private static bool DrainRemainingFramesNonBlocking(Zlink.Socket server,
+    private static bool DrainRemainingFramesNonBlocking(SocketBase server,
         byte[] payload, int msgSize, uint expectedRunId, PerfPhase expectedPhase,
         bool countMessage, bool collectLatency, List<double> latSamples,
         ref long sampleSeen, ref uint rng, ref long recvCount)

@@ -199,7 +199,12 @@ func closeMessageSlice(parts []*Message) {
 	}
 }
 
-func prepareMultipart(parts []*Message) ([]C.zlink_msg_t, error) {
+type preparedMultipart struct {
+	native []C.zlink_msg_t
+	parts  []*Message
+}
+
+func prepareMultipart(parts []*Message) (*preparedMultipart, error) {
 	if len(parts) == 0 {
 		return nil, validationError("multipart payload must contain at least one part")
 	}
@@ -216,12 +221,52 @@ func prepareMultipart(parts []*Message) ([]C.zlink_msg_t, error) {
 			return nil, err
 		}
 		if err := checkRC(C.zlink_msg_move(&native[i], &part.msg)); err != nil {
-			closeNativeMultipart(native, i+1)
+			prepared := &preparedMultipart{native: native[:i+1], parts: parts[:i+1]}
+			restoreErr := prepared.restore()
+			if restoreErr != nil {
+				return nil, restoreErr
+			}
 			return nil, err
 		}
+	}
+	return &preparedMultipart{native: native, parts: parts}, nil
+}
+
+func (p *preparedMultipart) ptr() *C.zlink_msg_t {
+	if p == nil || len(p.native) == 0 {
+		return nil
+	}
+	return &p.native[0]
+}
+
+func (p *preparedMultipart) count() C.size_t {
+	if p == nil {
+		return 0
+	}
+	return C.size_t(len(p.native))
+}
+
+func (p *preparedMultipart) commit() {
+	if p == nil {
+		return
+	}
+	for _, part := range p.parts {
 		part.moved()
 	}
-	return native, nil
+}
+
+func (p *preparedMultipart) restore() error {
+	if p == nil {
+		return nil
+	}
+	for i, part := range p.parts {
+		if err := checkRC(C.zlink_msg_move(&part.msg, &p.native[i])); err != nil {
+			closeNativeMultipart(p.native, len(p.native))
+			return err
+		}
+	}
+	closeNativeMultipart(p.native, len(p.native))
+	return nil
 }
 
 func takeParts(ptr *C.zlink_msg_t, partCount C.size_t) ([]*Message, error) {
@@ -414,7 +459,8 @@ func tryRecvSubscriptionEvent(
 }
 
 func emptyErrno() bool {
-	return int(C.zlink_errno()) == int(C.EAGAIN)
+	code := int(C.zlink_errno())
+	return code == 0 || code == int(C.EAGAIN)
 }
 
 type connectionSocket struct {
@@ -521,23 +567,47 @@ type directSocket struct {
 }
 
 func (s *directSocket) Send(parts ...*Message) error {
-	native, err := prepareMultipart(parts)
+	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return err
 	}
-	return checkRC(C.zlink_send(s.raw(), &native[0], C.size_t(len(native)), 0))
+	if err := checkRC(C.zlink_send(s.raw(), prepared.ptr(), prepared.count(), 0)); err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return restoreErr
+		}
+		return err
+	}
+	prepared.commit()
+	return nil
 }
 
 func (s *directSocket) TrySend(parts ...*Message) (SendResult, error) {
-	native, err := prepareMultipart(parts)
+	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return 0, err
 	}
 	var result C.zlink_send_result_t
-	if err := checkRC(C.zlink_try_send(s.raw(), &native[0], C.size_t(len(native)), &result)); err != nil {
+	if err := checkRC(C.zlink_try_send(s.raw(), prepared.ptr(), prepared.count(), &result)); err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
 		return 0, err
 	}
-	return sendResultFromC(result)
+	sendResult, err := sendResultFromC(result)
+	if err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
+		return 0, err
+	}
+	if sendResult != SendResultSent {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
+		return sendResult, nil
+	}
+	prepared.commit()
+	return sendResult, nil
 }
 
 func (s *directSocket) Recv() (*Received, error) {
@@ -599,28 +669,53 @@ type publishSocket struct {
 }
 
 func (s *publishSocket) Publish(topic string, parts ...*Message) error {
-	native, err := prepareMultipart(parts)
+	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return err
 	}
-	return s.withCString(topic, func(cstr *C.char) error {
-		return checkRC(C.zlink_publish(s.raw(), cstr, &native[0], C.size_t(len(native)), 0))
+	err = s.withCString(topic, func(cstr *C.char) error {
+		return checkRC(C.zlink_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), 0))
 	})
+	if err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return restoreErr
+		}
+		return err
+	}
+	prepared.commit()
+	return nil
 }
 
 func (s *publishSocket) TryPublish(topic string, parts ...*Message) (SendResult, error) {
-	native, err := prepareMultipart(parts)
+	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return 0, err
 	}
 	var result C.zlink_send_result_t
 	err = s.withCString(topic, func(cstr *C.char) error {
-		return checkRC(C.zlink_try_publish(s.raw(), cstr, &native[0], C.size_t(len(native)), &result))
+		return checkRC(C.zlink_try_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), &result))
 	})
 	if err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
 		return 0, err
 	}
-	return sendResultFromC(result)
+	sendResult, err := sendResultFromC(result)
+	if err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
+		return 0, err
+	}
+	if sendResult != SendResultSent {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
+		return sendResult, nil
+	}
+	prepared.commit()
+	return sendResult, nil
 }
 
 type routedSocket struct {
@@ -628,25 +723,49 @@ type routedSocket struct {
 }
 
 func (s *routedSocket) SendTo(target RoutingID, parts ...*Message) error {
-	native, err := prepareMultipart(parts)
+	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return err
 	}
 	rid := target.toC()
-	return checkRC(C.zlink_send_rid(s.raw(), &rid, &native[0], C.size_t(len(native)), 0))
+	if err := checkRC(C.zlink_send_rid(s.raw(), &rid, prepared.ptr(), prepared.count(), 0)); err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return restoreErr
+		}
+		return err
+	}
+	prepared.commit()
+	return nil
 }
 
 func (s *routedSocket) TrySendTo(target RoutingID, parts ...*Message) (SendResult, error) {
-	native, err := prepareMultipart(parts)
+	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return 0, err
 	}
 	rid := target.toC()
 	var result C.zlink_send_result_t
-	if err := checkRC(C.zlink_try_send_rid(s.raw(), &rid, &native[0], C.size_t(len(native)), &result)); err != nil {
+	if err := checkRC(C.zlink_try_send_rid(s.raw(), &rid, prepared.ptr(), prepared.count(), &result)); err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
 		return 0, err
 	}
-	return sendResultFromC(result)
+	sendResult, err := sendResultFromC(result)
+	if err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
+		return 0, err
+	}
+	if sendResult != SendResultSent {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
+		return sendResult, nil
+	}
+	prepared.commit()
+	return sendResult, nil
 }
 
 func (s *routedSocket) Recv() (*Received, error) {

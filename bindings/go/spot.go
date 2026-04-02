@@ -227,28 +227,53 @@ func (s *Spot) SetNoDrop(value bool) error {
 }
 
 func (s *Spot) Publish(topic string, parts ...*Message) error {
-	native, err := prepareMultipart(parts)
+	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return err
 	}
-	return s.core.withCString(topic, func(cstr *C.char) error {
-		return checkRC(C.zlink_publish(s.raw(), cstr, &native[0], C.size_t(len(native)), 0))
+	err = s.core.withCString(topic, func(cstr *C.char) error {
+		return checkRC(C.zlink_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), 0))
 	})
+	if err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return restoreErr
+		}
+		return err
+	}
+	prepared.commit()
+	return nil
 }
 
 func (s *Spot) TryPublish(topic string, parts ...*Message) (SendResult, error) {
-	native, err := prepareMultipart(parts)
+	prepared, err := prepareMultipart(parts)
 	if err != nil {
 		return 0, err
 	}
 	var result C.zlink_send_result_t
 	err = s.core.withCString(topic, func(cstr *C.char) error {
-		return checkRC(C.zlink_try_publish(s.raw(), cstr, &native[0], C.size_t(len(native)), &result))
+		return checkRC(C.zlink_try_publish(s.raw(), cstr, prepared.ptr(), prepared.count(), &result))
 	})
 	if err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
 		return 0, err
 	}
-	return sendResultFromC(result)
+	sendResult, err := sendResultFromC(result)
+	if err != nil {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
+		return 0, err
+	}
+	if sendResult != SendResultSent {
+		if restoreErr := prepared.restore(); restoreErr != nil {
+			return 0, restoreErr
+		}
+		return sendResult, nil
+	}
+	prepared.commit()
+	return sendResult, nil
 }
 
 func (s *Spot) SetTLSServer(certPath string, keyPath string, requireClientCert bool) error {

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <memory>
 #include <vector>
 
@@ -18,6 +19,7 @@ namespace {
 
 static const char *k_pattern_env = "PUBSUB";
 static const char *k_pattern_result = "MULTI_PUBSUB";
+static const char *k_topic = "bench";
 static const uint32_t k_run_id = 1;
 struct phase_config_t
 {
@@ -76,6 +78,7 @@ class pubsub_client_bench_t
         if (!setup_sockets ())
             return false;
 
+        std::cout << "CLIENT_READY," << _msg_size << std::endl;
         perf::multi::settle ();
 
         if (!run_warmup ())
@@ -91,6 +94,7 @@ class pubsub_client_bench_t
         }
 
         print_result ();
+        std::cout << "CLIENT_DONE," << _msg_size << std::endl;
         return true;
     }
 
@@ -129,11 +133,14 @@ class pubsub_client_bench_t
             zlink::socket_t &sock = _holders.back ()->sock ();
             _monitors.push_back (perf::multi::connect_monitor_t ());
 
-            (void) sock.set_subscription (std::string ());
+            (void) sock.set_subscription (std::string (k_topic));
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
-            if (!perf::multi::open_connect_monitor (sock, _monitors.back ())) {
+            if (!perf::multi::open_socket_monitor (
+                  sock,
+                  zlink::monitor_event::sub_delivery_ready_changed,
+                  _monitors.back ())) {
                 _failure_stage = "monitor_open";
                 return false;
             }
@@ -145,9 +152,13 @@ class pubsub_client_bench_t
         }
 
         for (size_t i = 0; i < _monitors.size (); ++i) {
-            if (!perf::multi::wait_connect_ready (_monitors[i],
-                                                  _settings.connect_ready_timeout_ms)) {
-                _failure_stage = "connect_ready";
+            if (!perf::multi::wait_socket_monitor_event (
+                  *_monitors[i].monitor,
+                  static_cast<uint64_t> (
+                    zlink::monitor_event::sub_delivery_ready_changed),
+                  1,
+                  _settings.connect_ready_timeout_ms)) {
+                _failure_stage = "sub_delivery_ready";
                 close_monitors ();
                 return false;
             }
@@ -201,7 +212,7 @@ class pubsub_client_bench_t
 
             const int poll_rc = _poller.wait_all (_poll_events, wait_ms);
             if (poll_rc < 0) {
-                if (errno == EINTR)
+                if (errno == EINTR || errno == EAGAIN)
                     continue;
                 return false;
             }
@@ -215,11 +226,19 @@ class pubsub_client_bench_t
                     continue;
 
                 for (;;) {
-                    const int recv_size =
-                      sock->recv (_recv_buffer.data (),
-                                  _recv_buffer.size (),
-                                  zlink::recv_flag::dontwait);
-                    if (recv_size < 0) {
+                    size_t topic_len = 0;
+                    zlink_msg_t *parts = NULL;
+                    size_t part_count = 0;
+                    zlink_routing_id_t source_rid;
+                    std::memset (&source_rid, 0, sizeof (source_rid));
+                    const int recv_rc = zlink_subscribe (sock->handle (),
+                                                         &source_rid,
+                                                         &parts,
+                                                         &part_count,
+                                                         NULL,
+                                                         &topic_len,
+                                                         ZLINK_DONTWAIT);
+                    if (recv_rc != 0) {
                         const int err = errno;
                         if (err == EAGAIN)
                             break;
@@ -227,6 +246,25 @@ class pubsub_client_bench_t
                             continue;
                         return false;
                     }
+
+                    if (topic_len != std::strlen (k_topic) || !parts
+                        || part_count == 0) {
+                        if (parts)
+                            zlink_multipart_close (parts, part_count);
+                        continue;
+                    }
+
+                    const size_t recv_size = zlink_msg_size (&parts[0]);
+                    if (recv_size > _recv_buffer.size ()) {
+                        zlink_multipart_close (parts, part_count);
+                        continue;
+                    }
+                    if (recv_size > 0) {
+                        std::memcpy (_recv_buffer.data (),
+                                     zlink_msg_data (&parts[0]),
+                                     recv_size);
+                    }
+                    zlink_multipart_close (parts, part_count);
 
                     if (!active_phase) {
                         ++count;
@@ -236,7 +274,7 @@ class pubsub_client_bench_t
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (
                           _recv_buffer.data (),
-                          static_cast<size_t> (recv_size),
+                          recv_size,
                           &header)) {
                         continue;
                     }

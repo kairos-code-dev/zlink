@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"zlink"
@@ -15,6 +16,8 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	publisher, err := ctx.XPubSocket()
 	perfcommon.Must(err)
 	defer publisher.Close()
+	perfcommon.Must(publisher.SetNoDrop(true))
+	perfcommon.Must(publisher.SetSendHWM(100))
 	pubMon := perfcommon.OpenMonitor(publisher)
 	defer pubMon.Close()
 
@@ -24,17 +27,27 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	stats := perfcommon.NewStats()
 	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
 	activeAt := time.Now().Add(cfg.warmup)
+	recvStopAt := stopAt.Add(500 * time.Millisecond)
 
 	subs := make([]*zlink.SubSocket, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {
 		sub, err := ctx.SubSocket()
-		perfcommon.Must(err)
+		if err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub create sub socket[%d]: %w", i, err))
+		}
 		subs = append(subs, sub)
+		if err := sub.SetRecvHWM(100); err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub set recv hwm[%d]: %w", i, err))
+		}
 		subMon := perfcommon.OpenMonitor(sub)
-		perfcommon.Must(sub.Connect(endpoint))
+		if err := sub.Connect(endpoint); err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub connect sub[%d]: %w", i, err))
+		}
 		perfcommon.WaitConnected(pubMon, subMon)
 		_ = subMon.Close()
-		perfcommon.Must(sub.SetSubscription("bench."))
+		if err := sub.SetSubscription("bench."); err != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub subscribe[%d]: %w", i, err))
+		}
 
 		if cfg.recvMode == "callback" {
 			perfcommon.Must(sub.OnSubscribe(func(message *zlink.TopicMessage) {
@@ -57,56 +70,83 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	}()
 
 	payload := perfcommon.PreparePayload(cfg.msgSize)
+	recvDone := make(chan struct{})
+	if cfg.recvMode == "recv" {
+		go func() {
+			defer close(recvDone)
+			for time.Now().Before(recvStopAt) {
+				if !drainMultiPubSubAvailable(subs, stats, activeAt, recvStopAt) {
+					time.Sleep(50 * time.Microsecond)
+				}
+			}
+		}()
+	}
 	for time.Now().Before(stopAt) {
 		perfcommon.StampPayload(payload)
-		result, err := publisher.TryPublish("bench.topic", perfcommon.NewMessage(payload))
+		msg, err := zlink.NewMessage(payload)
+		if err != nil {
+			perfcommon.Must(fmt.Errorf(
+				"multi pubsub create payload message size=%d clients=%d recv=%s: %w",
+				cfg.msgSize,
+				cfg.clients,
+				cfg.recvMode,
+				err,
+			))
+		}
+		result, err := publisher.TryPublish("bench.topic", msg)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
-			perfcommon.Must(err)
+			perfcommon.Must(fmt.Errorf(
+				"multi pubsub publish size=%d clients=%d recv=%s: %w",
+				cfg.msgSize,
+				cfg.clients,
+				cfg.recvMode,
+				err,
+			))
 		}
 		if result != zlink.SendResultSent {
 			time.Sleep(250 * time.Microsecond)
 		}
-		if cfg.recvMode == "recv" {
-			drainMultiPubSubOnce(subs, stats, activeAt)
-		}
 	}
 	if cfg.recvMode == "recv" {
-		drainUntil := time.Now().Add(500 * time.Millisecond)
-		for time.Now().Before(drainUntil) {
-			if !drainMultiPubSubOnce(subs, stats, activeAt) {
-				time.Sleep(250 * time.Microsecond)
-			}
-		}
+		<-recvDone
 	} else {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
-func drainMultiPubSubOnce(subs []*zlink.SubSocket, stats *perfcommon.Stats, activeAt time.Time) bool {
+func drainMultiPubSubAvailable(
+	subs []*zlink.SubSocket,
+	stats *perfcommon.Stats,
+	activeAt time.Time,
+	recvStopAt time.Time,
+) bool {
 	processed := false
-	for _, socket := range subs {
-		message, ok, err := socket.TrySubscribe()
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
+	for index, socket := range subs {
+		for {
+			message, ok, err := socket.TrySubscribe()
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					break
+				}
+				perfcommon.Must(fmt.Errorf("multi pubsub try-subscribe[%d]: %w", index, err))
 			}
-			perfcommon.Must(err)
-		}
-		if !ok || message == nil {
-			continue
-		}
-		processed = true
-		part, err := message.SinglePartOrError()
-		if err == nil {
-			if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-				stats.Add(sentAt)
+			if !ok || message == nil {
+				break
 			}
+			processed = true
+			part, err := message.SinglePartOrError()
+			if err == nil {
+				now := time.Now()
+				if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && now.After(activeAt) && now.Before(recvStopAt) {
+					stats.Add(sentAt)
+				}
+			}
+			_ = message.Close()
 		}
-		_ = message.Close()
 	}
 	return processed
 }

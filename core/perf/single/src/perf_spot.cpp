@@ -430,14 +430,13 @@ int run_case (const std::string &lib_name_,
     single_metric_worker_t<spot_client_state_t> metric_worker;
     if (!open_service_event_probe (
           sub,
-          ZLINK_SPOT_SUB_FILTER_APPLIED | ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+          ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
             | ZLINK_MONITOR_EVENT_ERROR,
           ZLINK_MONITOR_EVENT_ERROR,
           sub_monitor)
         || !open_service_event_probe (
           pub,
-          ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
-            | ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
+          ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
             | ZLINK_MONITOR_EVENT_ERROR,
           ZLINK_MONITOR_EVENT_ERROR,
           pub_monitor)) {
@@ -490,12 +489,9 @@ int run_case (const std::string &lib_name_,
     metric_worker.state = &client_state;
     metric_worker.queue = &metric_queue;
 
-    if (!wait_for_service_event (
-          sub_monitor, ZLINK_SPOT_SUB_FILTER_APPLIED, NULL, k_topic, -1,
-          3000)
-        || !wait_for_service_event (sub_monitor,
+    if (!wait_for_service_event (sub_monitor,
                                     ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED,
-                                    endpoint.c_str (),
+                                    NULL,
                                     k_topic,
                                     1,
                                     resolve_spot_subscription_ready_timeout_ms (

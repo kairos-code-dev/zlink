@@ -28,13 +28,13 @@ internal static class PerfPubSubClient
 
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx);
-        var clients = new List<Zlink.Socket>(clientCount);
+        var clients = new List<SocketBase>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
         {
             for (int i = 0; i < clientCount; i++)
             {
-                var client = new Zlink.Socket(ctx, Zlink.SocketType.Sub);
+                var client = new SubSocket(ctx);
                 ApplyMultiSocketOptions(client, pattern);
                 ConfigureTlsClientIfNeeded(client, transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
@@ -46,7 +46,7 @@ internal static class PerfPubSubClient
                 monitors.Add(monitor);
             }
 
-            List<Zlink.Socket> activeClients = WaitAllClientConnectReady(clients,
+            List<SocketBase> activeClients = WaitAllClientConnectReady(clients,
                 monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
@@ -75,7 +75,7 @@ internal static class PerfPubSubClient
 
     private static (double throughput, double latencyUs, double latencyP95Us,
         double latencyP99Us)
-        RunMultiPubSubClientLoop(List<Zlink.Socket> activeClients,
+        RunMultiPubSubClientLoop(List<SocketBase> activeClients,
             byte[] recv, int msgSize, int latencySampleCap, int pollTimeoutMs,
             int warmupSeconds,
             int durationSeconds, int settleMs, int drainMs,

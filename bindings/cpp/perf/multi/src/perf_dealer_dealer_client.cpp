@@ -12,6 +12,8 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <vector>
 
@@ -20,6 +22,18 @@ namespace {
 static const char *k_pattern_env = "DEALER_DEALER";
 static const char *k_pattern_result = "MULTI_DEALER_DEALER";
 static const char k_payload_fill = 'd';
+
+bool perf_debug_enabled ()
+{
+    return std::getenv ("PERF_DEBUG") != NULL;
+}
+
+void debug_log (const std::string &message_)
+{
+    if (!perf_debug_enabled ())
+        return;
+    std::cerr << "dealer_dealer client: " << message_ << std::endl;
+}
 
 struct phase_config_t
 {
@@ -98,8 +112,10 @@ class dealer_dealer_client_bench_t
 
         send_stop_token_once ();
 
-        if (_result.active_count == 0)
+        if (_result.active_count == 0) {
+            debug_log ("active_count remained zero");
             return false;
+        }
 
         print_result ();
         return true;
@@ -112,15 +128,25 @@ class dealer_dealer_client_bench_t
             _holders.emplace_back (
               new perf::multi::socket_guard_t (_ctx, zlink::socket_type::dealer));
             zlink::socket_t &sock = _holders.back ()->sock ();
+            if (!sock.handle ()) {
+                debug_log ("socket create failed");
+                return false;
+            }
 
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
-            if (!perf::multi::setup_tls_client (sock, _transport))
+            if (!perf::multi::setup_tls_client (sock, _transport)) {
+                debug_log ("setup tls failed");
                 return false;
+            }
             _monitors.push_back (perf::multi::connect_monitor_t ());
-            if (!perf::multi::open_connect_monitor (sock, _monitors.back ()))
+            if (!perf::multi::open_connect_monitor (sock, _monitors.back ())) {
+                debug_log ("open connect monitor failed");
                 return false;
-            if (sock.connect (_endpoint) != 0)
+            }
+            if (sock.connect (_endpoint) != 0) {
+                debug_log ("connect failed errno=" + std::to_string (errno));
                 return false;
+            }
 
             socket_state_t state;
             state.sock = &sock;
@@ -135,8 +161,10 @@ class dealer_dealer_client_bench_t
           _monitors, _settings.connect_ready_timeout_ms);
         for (size_t i = 0; i < _monitors.size (); ++i)
             perf::multi::close_connect_monitor (_monitors[i]);
-        if (!ready)
+        if (!ready) {
+            debug_log ("wait_all_connect_ready failed");
             return false;
+        }
 
         return !_socket_states.empty ();
     }
@@ -151,6 +179,7 @@ class dealer_dealer_client_bench_t
                             enabled ? zlink::poll_event::pollout
                                     : static_cast<zlink::poll_event> (0))
             != 0) {
+            debug_log ("poller modify failed errno=" + std::to_string (errno));
             return false;
         }
         state.pollout_enabled = enabled;
@@ -173,6 +202,7 @@ class dealer_dealer_client_bench_t
                                          _msg_size,
                                          _seq++,
                                          sent_ts)) {
+            debug_log ("stamp payload failed");
             return false;
         }
 
@@ -200,6 +230,7 @@ class dealer_dealer_client_bench_t
             return set_pollout (state, true);
         }
 
+        debug_log ("send failed errno=" + std::to_string (errno));
         return false;
     }
 
@@ -261,8 +292,9 @@ class dealer_dealer_client_bench_t
 
             const int poll_rc = _poller.wait_all (_poll_events, wait_ms);
             if (poll_rc < 0) {
-                if (errno == EINTR)
+                if (errno == EINTR || errno == EAGAIN)
                     continue;
+                debug_log ("poller wait failed errno=" + std::to_string (errno));
                 return false;
             }
             if (poll_rc == 0)
@@ -386,7 +418,7 @@ bool perf_dealer_dealer_client (const std::string &transport,
     dealer_dealer_client_bench_t bench (transport, msg_size, endpoint, settings);
     if (!bench.run ()) {
         std::cerr << "DEALER_DEALER_CLIENT_FAIL,transport=" << transport
-                  << ",size=" << msg_size << std::endl;
+                  << ",size=" << msg_size << ",errno=" << errno << std::endl;
         return false;
     }
 

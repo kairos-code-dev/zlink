@@ -17,8 +17,8 @@ internal static class PerfPair
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
-        using var left = new Zlink.Socket(ctx, SocketType.Pair);
-        using var right = new Zlink.Socket(ctx, SocketType.Pair);
+        using var left = new PairSocket(ctx);
+        using var right = new PairSocket(ctx);
         ApplySingleSocketOptions(left);
         ApplySingleSocketOptions(right);
         ConfigureTlsServerIfNeeded(left, transport);
@@ -63,7 +63,7 @@ internal static class PerfPair
         }
     }
 
-    private static bool RunPhase(Zlink.Socket sender, Zlink.Socket receiver,
+    private static bool RunPhase(SocketBase sender, SocketBase receiver,
         byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
         int recvTimeoutMs, int latencyCap, out long receivedOut,
         out List<double> latencySamples)

@@ -15,6 +15,14 @@ zlink::fq_t::~fq_t ()
     zlink_assert (_pipes.empty ());
 }
 
+bool zlink::fq_t::has_pipe (pipe_t *pipe_)
+{
+    const pipes_t::size_type index = _pipes.index (pipe_);
+    if (index >= _pipes.size ())
+        return false;
+    return _pipes[index] == pipe_;
+}
+
 void zlink::fq_t::attach (pipe_t *pipe_)
 {
     _pipes.push_back (pipe_);
@@ -24,6 +32,9 @@ void zlink::fq_t::attach (pipe_t *pipe_)
 
 void zlink::fq_t::deactivate (pipe_t *pipe_)
 {
+    if (!has_pipe (pipe_))
+        return;
+
     const pipes_t::size_type index = _pipes.index (pipe_);
     if (index >= _active)
         return;
@@ -36,6 +47,9 @@ void zlink::fq_t::deactivate (pipe_t *pipe_)
 
 void zlink::fq_t::pipe_terminated (pipe_t *pipe_)
 {
+    if (!has_pipe (pipe_))
+        return;
+
     const pipes_t::size_type index = _pipes.index (pipe_);
 
     //  Remove the pipe from the list; adjust number of active pipes
@@ -51,8 +65,15 @@ void zlink::fq_t::pipe_terminated (pipe_t *pipe_)
 
 void zlink::fq_t::activated (pipe_t *pipe_)
 {
+    if (!has_pipe (pipe_))
+        return;
+
+    const pipes_t::size_type index = _pipes.index (pipe_);
+    if (index < _active)
+        return;
+
     //  Move the pipe to the list of active pipes.
-    _pipes.swap (_pipes.index (pipe_), _active);
+    _pipes.swap (index, _active);
     _active++;
 }
 

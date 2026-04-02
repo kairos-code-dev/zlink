@@ -135,14 +135,14 @@ class BackwardCompatTests(unittest.TestCase):
 
 
 class SocketCreationTests(unittest.TestCase):
-    """Verify enum can be used to create sockets."""
+    """Verify concrete socket classes remain available."""
 
-    def test_create_pair_socket_with_enum(self):
+    def test_create_pair_socket(self):
         try:
             ctx = zlink.Context()
         except OSError:
             self.skipTest("zlink native library not found")
-        s = zlink.Socket(ctx, zlink.SocketType.PAIR)
+        s = zlink.PairSocket(ctx)
         s.close()
         ctx.close()
 

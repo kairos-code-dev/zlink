@@ -24,8 +24,8 @@ internal static class PerfRouterRouter
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
-        using var router1 = new Zlink.Socket(ctx, SocketType.Router);
-        using var router2 = new Zlink.Socket(ctx, SocketType.Router);
+        using var router1 = new RouterSocket(ctx);
+        using var router2 = new RouterSocket(ctx);
         ApplySingleSocketOptions(router1);
         ApplySingleSocketOptions(router2);
         ConfigureTlsServerIfNeeded(router1, transport);
@@ -79,7 +79,7 @@ internal static class PerfRouterRouter
         }
     }
 
-    private static bool PerformHandshake(Zlink.Socket receiver, Zlink.Socket sender)
+    private static bool PerformHandshake(SocketBase receiver, SocketBase sender)
     {
         Span<byte> routing = stackalloc byte[256];
         Span<byte> buffer = stackalloc byte[256];
@@ -101,7 +101,7 @@ internal static class PerfRouterRouter
         return true;
     }
 
-    private static bool RunPhase(Zlink.Socket receiver, Zlink.Socket sender,
+    private static bool RunPhase(SocketBase receiver, SocketBase sender,
         byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
         int recvTimeoutMs, int latCount, bool usePoll, out long receivedOut,
         out List<double> latencySamples)
@@ -261,7 +261,7 @@ internal static class PerfRouterRouter
         return receivedCount > 0 && latencySamples.Count > 0;
     }
 
-    private static void SendPayload(Zlink.Socket sender, byte[] payload)
+    private static void SendPayload(SocketBase sender, byte[] payload)
     {
         if (payload.Length >= BorrowedRoutedSendThreshold
             && payload.Length <= BorrowedRoutedSendMaxSize)
@@ -274,7 +274,7 @@ internal static class PerfRouterRouter
         SendBlocking(sender, payload, SendFlags.None);
     }
 
-    private static int ReceiveRouterPayload(Zlink.Socket socket, byte[] routingId,
+    private static int ReceiveRouterPayload(SocketBase socket, byte[] routingId,
         byte[] payloadBuffer, ReceiveFlags flags)
     {
         int ridLen;

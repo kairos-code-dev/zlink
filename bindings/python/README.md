@@ -25,6 +25,8 @@ API directly. The public contract is:
 - typed option families are exposed through properties and capability objects
 - monitor sockets use canonical `recv()` and `try_recv()` entrypoints
 - service monitors use `recv()`, `try_recv()`, and `on_event()`
+- `*_READY_CHANGED` monitor events do not expose aggregate ready counts
+- monitor snapshots are state/queue inspection surfaces, not ready-count gates
 - callback registration uses canonical names `on_receive`, `on_subscribe`,
   and `on_send_ready`
 - callback removal by passing `None` is not part of the public contract;
@@ -139,3 +141,6 @@ Perf code is a verification surface, not a workaround layer for binding or core
 bugs. Hot-path measurements should stay close to the canonical Python receive
 and publish/send paths and must not hide extra copies, conversions, or helper
 layers behind the benchmark wrapper.
+
+Readiness gates in Python perf and samples must use event counting rather than
+monitor payload counts or monitor snapshot ready counts.

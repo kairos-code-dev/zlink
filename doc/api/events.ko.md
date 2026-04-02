@@ -31,8 +31,8 @@ typedef struct zlink_service_event_t
 ```
 
 필드 의미:
-- `value`는 이벤트별 숫자 값입니다. 모든 `*_READY_CHANGED` 이벤트에서는
-  `current_ready_count` (절대 readiness 카운트)를 뜻합니다.
+- `value`는 이벤트별 숫자 값입니다. `*_READY_CHANGED` 이벤트에서는 예약된
+  필드이며 aggregate readiness 카운트로 해석하지 않습니다.
 - `subject`는 `detail_flags`에 `ZLINK_EVENT_DETAIL_SUBJECT`가 있을 때만
   유효합니다.
 - `subject_kind`는 `detail_flags`에
@@ -60,10 +60,10 @@ detail flag:
 - `*_DELIVERY_READY_CHANGED`: 특정 subject에 대해 첫 delivery 보장 가능 상태
 
 권장 gate:
-- publisher는 `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`에서 `value >= 1`을
-  기다린 뒤 publish 시작
-- subscriber는 `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`에서 `value == 1`을
-  기다린 뒤 측정/통신 시작
+- publisher는 `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`를 기다린 뒤
+  publish 시작
+- subscriber는 `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`를 기다린 뒤
+  측정/통신 시작
 - `PEER_UP`를 first-delivery gate로 쓰지 않음
 
 ## Raw Socket Monitor 이벤트
@@ -123,7 +123,6 @@ disconnect reason:
 | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | pub monitor | subject별 remote delivery-ready 변화 |
 | `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | pub monitor | first-delivery-safe ready 변화 |
 
-모든 `*_READY_CHANGED` 이벤트에서 `value`는 `current_ready_count`입니다.
 `FIRST_DELIVERY_READY_CHANGED`는 publisher 제어 gate로 사용합니다.
 
 SPOT subject 규칙:
@@ -141,7 +140,7 @@ subscriber gate:
 if (event->event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
     && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
     && strcmp(event->subject, "bench") == 0
-    && event->value == 1) {
+    ) {
     /* 이제 첫 publish를 받을 수 있다 */
 }
 ```
@@ -152,7 +151,7 @@ publisher gate:
 if (event->event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
     && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
     && strcmp(event->subject, "bench") == 0
-    && event->value >= 1) {
+    ) {
     /* 이제 첫 publish를 보낼 수 있다 */
 }
 ```

@@ -128,6 +128,32 @@
   [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   "메시징 시작 전 준비 확인" 절을 단일 기준으로 따른다.
 
+#### pattern별 ready gate 기준
+
+multi는 runner의 `READY,<endpoint>`/`START,<size>` orchestration과 별개로,
+각 바이너리 내부에서 아래 공식 monitor event만으로 실제 메시징 시작 가능
+여부를 판정한다. perf는 추가 quorum 완화나 우회 gate를 두지 않는다. 아래
+이벤트 이후 send/recv가 불가능하면 perf 문제가 아니라 core 버그로 보고
+수정한다.
+
+| 패턴 | 역할 | ready gate |
+|------|------|------------|
+| MULTI_DEALER_DEALER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
+| MULTI_DEALER_ROUTER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
+| MULTI_ROUTER_ROUTER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
+| MULTI_PUBSUB | server(pub) | `PUB_DELIVERY_READY_CHANGED` event counting |
+| MULTI_PUBSUB | client(sub) 각 소켓 | `SUB_DELIVERY_READY_CHANGED` |
+| MULTI_SPOT | server(pub) | `SPOT_PUB_DELIVERY_READY_CHANGED` event counting |
+| MULTI_SPOT | client(sub) 각 소켓 | `SPOT_SUB_DELIVERY_READY_CHANGED` |
+| MULTI_STREAM | client 각 연결 | transport connect 완료 + stream protocol ready (`connect_ok == target clients`) |
+
+- `expected_clients`는 해당 케이스에서 runner가 요구한 client 수와 동일하다.
+- multi PUBSUB/SPOT는 ready event를 직접 counting 해서 판정한다.
+- multi SPOT server는 `SPOT_PUB_DELIVERY_READY_CHANGED`를 expected client 수만큼
+  counting 해서 exact-count start gate로 사용한다. 퍼센트 quorum이나 완화
+  임계값을 두지 않는다.
+- multi policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
+
 ### 1.2 프로세스 모델
 
 Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.

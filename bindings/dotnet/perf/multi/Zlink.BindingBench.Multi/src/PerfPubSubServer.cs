@@ -20,7 +20,7 @@ internal static class PerfPubSubServer
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx);
-        using var server = new Zlink.Socket(ctx, Zlink.SocketType.Pub);
+        using var server = new PubSocket(ctx);
         ApplyMultiSocketOptions(server, pattern);
         ConfigureTlsServerIfNeeded(server, transport);
         server.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
@@ -70,14 +70,14 @@ internal static class PerfPubSubServer
         return 0;
     }
 
-    private static bool TryPublish(Zlink.Socket server, ReadOnlySpan<byte> payload)
+    private static bool TryPublish(SocketBase server, ReadOnlySpan<byte> payload)
     {
         return server.TrySend(payload, SendFlags.DontWait, out int written)
             && written > 0;
     }
 
-    private static long RunPublishPhase(Zlink.Socket server,
-        IReadOnlyList<Zlink.Socket> pollSockets, byte[] payload, uint runId,
+    private static long RunPublishPhase(SocketBase server,
+        IReadOnlyList<SocketBase> pollSockets, byte[] payload, uint runId,
         int size, PerfPhase phase, ref ulong seq, long deadlineTicks)
     {
         bool sendPending = false;

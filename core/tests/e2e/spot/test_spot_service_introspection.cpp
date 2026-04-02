@@ -205,6 +205,46 @@ static bool wait_for_probe_service_event_value (
       });
 }
 
+static bool probe_has_service_event_value_at_least_locked (
+  service_monitor_probe_t *probe_,
+  uint32_t expected_event_type_,
+  uint32_t expected_min_value_,
+  const char *endpoint_prefix_)
+{
+    for (std::vector<zlink_service_event_t>::const_iterator it =
+           probe_->events.begin ();
+         it != probe_->events.end (); ++it) {
+        if (it->value < expected_min_value_)
+            continue;
+        if (!service_event_matches (*it, expected_event_type_, endpoint_prefix_))
+            continue;
+        return true;
+    }
+
+    return false;
+}
+
+static bool wait_for_probe_service_event_value_at_least (
+  service_monitor_probe_t *probe_,
+  uint32_t expected_event_type_,
+  uint32_t expected_min_value_,
+  const char *endpoint_prefix_,
+  int timeout_ms_)
+{
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    if (probe_has_service_event_value_at_least_locked (
+          probe_, expected_event_type_, expected_min_value_, endpoint_prefix_)) {
+        return true;
+    }
+
+    return probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_, expected_event_type_, expected_min_value_, endpoint_prefix_]() {
+          return probe_has_service_event_value_at_least_locked (
+            probe_, expected_event_type_, expected_min_value_, endpoint_prefix_);
+      });
+}
+
 static bool wait_for_subscription_ready (void *sub_node_,
                                          const char *endpoint_,
                                          const char *topic_)
@@ -1140,6 +1180,158 @@ static void test_spot_node_snapshot_status_peers_subjects ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_pub_delivery_ready_reaches_1000_subscribers ()
+{
+    const size_t expected_subscribers = 1000;
+    const int timeout_ms = 60000;
+    char assert_msg[128];
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS,
+                     static_cast<int> (expected_subscribers * 16 + 64)));
+
+    void *pub_node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL_MESSAGE (pub_node, "pub node creation failed");
+    set_linger_zero (pub_node);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int port_seed = next_port_seed ();
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
+
+    void *pub_handle = default_pub_handle (pub_node);
+    TEST_ASSERT_NOT_NULL (pub_handle);
+
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events =
+      ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
+      | ZLINK_MONITOR_EVENT_ERROR;
+    void *pub_monitor = zlink_service_monitor_open (pub_handle, &opts);
+    TEST_ASSERT_NOT_NULL (pub_monitor);
+
+    service_monitor_probe_t probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_handler (
+      pub_monitor, &service_monitor_probe_handler, &probe));
+
+    std::vector<void *> sub_nodes;
+    sub_nodes.reserve (expected_subscribers);
+    for (size_t i = 0; i < expected_subscribers; ++i) {
+        void *sub_node = zlink_spot_node_new (ctx);
+        snprintf (assert_msg, sizeof (assert_msg),
+                  "sub node creation failed at index=%u errno=%d",
+                  static_cast<unsigned> (i), zlink_errno ());
+        TEST_ASSERT_NOT_NULL_MESSAGE (sub_node, assert_msg);
+        set_linger_zero (sub_node);
+        void *sub_handle = default_sub_handle (sub_node);
+        TEST_ASSERT_NOT_NULL (sub_handle);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_subscription (sub_handle, "topic.ready.count"));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_connect_peer (sub_node, endpoint));
+        sub_nodes.push_back (sub_node);
+    }
+
+    TEST_ASSERT_TRUE (wait_for_probe_service_event_value_at_least (
+      &probe, ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED,
+      static_cast<uint32_t> (expected_subscribers), NULL, timeout_ms));
+
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_monitor_snapshot (pub_monitor, &snapshot));
+    TEST_ASSERT_EQUAL_UINT64 (expected_subscribers, snapshot.ready_count);
+
+    TEST_ASSERT_TRUE (wait_for_probe_service_event_value (
+      &probe, ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED,
+      static_cast<uint32_t> (expected_subscribers), NULL, timeout_ms));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_monitor));
+    for (size_t i = 0; i < sub_nodes.size (); ++i)
+        destroy_node_and_default_handle (&sub_nodes[i]);
+    destroy_node_and_default_handle (&pub_node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_pub_delivery_ready_stays_1000_after_publish_burst ()
+{
+    const size_t expected_subscribers = 1000;
+    const int timeout_ms = 60000;
+    char assert_msg[128];
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS,
+                     static_cast<int> (expected_subscribers * 16 + 64)));
+
+    void *pub_node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL_MESSAGE (pub_node, "pub node creation failed");
+    set_linger_zero (pub_node);
+
+    char endpoint[MAX_SOCKET_STRING];
+    int port_seed = next_port_seed ();
+    TEST_ASSERT_SUCCESS_ERRNO (bind_node (pub_node, &port_seed, endpoint));
+
+    void *pub_handle = default_pub_handle (pub_node);
+    TEST_ASSERT_NOT_NULL (pub_handle);
+
+    zlink_service_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events =
+      ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
+      | ZLINK_MONITOR_EVENT_ERROR;
+    void *pub_monitor = zlink_service_monitor_open (pub_handle, &opts);
+    TEST_ASSERT_NOT_NULL (pub_monitor);
+
+    service_monitor_probe_t probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_service_monitor_handler (
+      pub_monitor, &service_monitor_probe_handler, &probe));
+
+    std::vector<void *> sub_nodes;
+    sub_nodes.reserve (expected_subscribers);
+    for (size_t i = 0; i < expected_subscribers; ++i) {
+        void *sub_node = zlink_spot_node_new (ctx);
+        snprintf (assert_msg, sizeof (assert_msg),
+                  "sub node creation failed at index=%u errno=%d",
+                  static_cast<unsigned> (i), zlink_errno ());
+        TEST_ASSERT_NOT_NULL_MESSAGE (sub_node, assert_msg);
+        set_linger_zero (sub_node);
+        void *sub_handle = default_sub_handle (sub_node);
+        TEST_ASSERT_NOT_NULL (sub_handle);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_subscription (sub_handle, "topic.ready.count"));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_connect_peer (sub_node, endpoint));
+        sub_nodes.push_back (sub_node);
+    }
+
+    TEST_ASSERT_TRUE (wait_for_probe_service_event_value_at_least (
+      &probe, ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED,
+      static_cast<uint32_t> (expected_subscribers), NULL, timeout_ms));
+
+    for (size_t i = 0; i < 64; ++i) {
+        zlink_msg_t part;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 64));
+        memset (zlink_msg_data (&part), static_cast<int> (i & 0xff),
+                zlink_msg_size (&part));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_publish (pub_handle, "topic.ready.count", &part, 1, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&part));
+    }
+
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_monitor_snapshot (pub_monitor, &snapshot));
+    TEST_ASSERT_EQUAL_UINT64 (expected_subscribers, snapshot.ready_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_monitor));
+    for (size_t i = 0; i < sub_nodes.size (); ++i)
+        destroy_node_and_default_handle (&sub_nodes[i]);
+    destroy_node_and_default_handle (&pub_node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 static void test_spot_publish_rollback_preserves_next_topic_boundary ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1425,6 +1617,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_callback_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_publish_rollback_preserves_next_topic_boundary);
+    RUN_SPOT_INTROSPECTION_TEST (test_spot_pub_delivery_ready_stays_1000_after_publish_burst);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_default_handle_owner_keeps_defaults_private);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_callback_self_delivery);

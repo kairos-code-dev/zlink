@@ -89,8 +89,8 @@ raw 소켓의 transport/session 상태를 알려준다.
 | `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 핸드셰이크 실패 (일반) | errno | 양쪽 |
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | 양쪽 |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | 양쪽 |
-| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB 전파 완료 | `0`/`1` | SUB 측 |
-| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 | ready 수 | PUB 측 |
+| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB 전파 완료 | reserved | SUB 측 |
+| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 변화 | reserved | PUB 측 |
 | `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | 양쪽 |
 
 - `CONNECTION_READY_CHANGED`: 모든 소켓에서 `routing_id`에 peer id 포함
@@ -108,7 +108,8 @@ raw 소켓의 transport/session 상태를 알려준다.
 ### CONNECTION_READY_CHANGED 상세
 
 핸드셰이크 완료 후 발생한다. 이 이벤트를 받으면 즉시 메시지를 보내고 받을 수 있다.
-`value` 필드에는 `current_ready_count` -- 현재 ready 피어의 절대 수가 포함된다.
+`*_READY_CHANGED` 이벤트의 `value` 필드는 aggregate ready count 계약이 아니다.
+readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 한다.
 
 - ROUTER/STREAM에서는 `ev->routing_id`에 peer identity가 포함된다.
 - PAIR/DEALER에서는 `routing_id`가 비어 있다.
@@ -285,7 +286,6 @@ monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 
 | 필드 | 설명 |
 |------|------|
-| `ready_count` | 현재 ready 상태인 피어 수 |
 | `snd_pending_msgs` | 송신 큐에 대기 중인 메시지 수 (SNDHWM에 의해 상한 제한) |
 | `rcv_pending_msgs` | 수신 큐에 대기 중인 메시지 수 (RCVHWM에 의해 상한 제한, approximate) |
 
@@ -314,8 +314,7 @@ zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(monitor, &snapshot);
-printf("ready peers: %u, sndq=%llu, rcvq=%llu\n",
-       snapshot.ready_count,
+printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
 ```
@@ -328,7 +327,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
     if (ev->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
         zlink_monitor_snapshot_t snapshot;
         zlink_monitor_snapshot(g_monitor, &snapshot);
-        printf("현재 ready peers: %u\n", snapshot.ready_count);
+        printf("monitor snapshot updated\n");
     }
 }
 ```
@@ -597,8 +596,8 @@ raw PUB/SUB 소켓은 `CONNECTION_READY_CHANGED`가 아니라 **delivery-ready**
 PUB과 SUB 각각에 별도 모니터를 열어서 양쪽 모두 ready를
 확인한 뒤 메시징한다.
 
-- `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription이 전파되어 수신 가능 (0/1 boolean)
-- `PUB_DELIVERY_READY_CHANGED(value>0)` — ready subscriber 수 (absolute count). 기대하는 subscriber 수 이상인지 확인
+- `SUB_DELIVERY_READY_CHANGED` — subscription이 전파되어 수신 가능
+- `PUB_DELIVERY_READY_CHANGED` — publisher 측 delivery-ready membership 변화
 
 ```c
 zlink_set_subscription(sub, "topic");
@@ -615,8 +614,8 @@ zlink_socket_monitor_open_options_t pub_opts = {
 };
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-/* 양쪽 delivery-ready 확인 후 메시징 */
-/* SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value>=expected_subs) */
+/* 양쪽 delivery-ready edge 확인 후 메시징 */
+/* expected_subs 충족 여부는 monitor event counting 으로 판단 */
 zlink_publish(pub, "topic", &part, 1, 0);
 zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
 
@@ -626,8 +625,8 @@ zlink_monitor_close(&sub_mon);
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| PUB | `PUB_DELIVERY_READY_CHANGED(value>=expected_subs)` | `zlink_publish()` delivery |
-| SUB | `SUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_subscribe()` 수신 |
+| PUB | `PUB_DELIVERY_READY_CHANGED` + expected_subs event counting | `zlink_publish()` delivery |
+| SUB | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 |
 
 ### 11.4 서비스 — SPOT
 
@@ -658,8 +657,8 @@ void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 | SPOT sub | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 시작 |
 | SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | `zlink_publish()` delivery 시작 |
 
-snapshot/status 조회는 운영 관찰/디버깅용이며, 메시징 시작 판정에는
-위 이벤트를 사용한다.
+snapshot/status 조회는 운영 관찰/디버깅용이며, aggregate ready count는
+제공하지 않는다. 메시징 시작 판정에는 위 이벤트와 event counting 을 사용한다.
 
 ### 11.5 Snapshot
 

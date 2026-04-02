@@ -671,7 +671,6 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
             != 0) {
             return -1;
         }
-        spot_node_access_t::schedule_subscription_replay (node_);
         ++processed;
         if (processed >= mesh_xsub_forward_batch_limit
             || processed_bytes >= mesh_xsub_forward_batch_bytes_limit)

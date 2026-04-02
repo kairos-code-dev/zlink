@@ -17,8 +17,8 @@ internal static class PerfPubSub
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
-        using var pub = new Zlink.Socket(ctx, SocketType.Pub);
-        using var sub = new Zlink.Socket(ctx, SocketType.Sub);
+        using var pub = new PubSocket(ctx);
+        using var sub = new SubSocket(ctx);
         ApplySingleSocketOptions(pub);
         ApplySingleSocketOptions(sub);
         ConfigureTlsServerIfNeeded(pub, transport);
@@ -69,8 +69,8 @@ internal static class PerfPubSub
         }
     }
 
-    private static bool WaitForSubscriber(Zlink.Socket publisher,
-        Zlink.Socket subscriber, byte[] payload)
+    private static bool WaitForSubscriber(SocketBase publisher,
+        SocketBase subscriber, byte[] payload)
     {
         using var poller = new Poller();
         var events = new PollEvent[1];
@@ -100,7 +100,7 @@ internal static class PerfPubSub
         return false;
     }
 
-    private static bool RunPhase(Zlink.Socket sender, Zlink.Socket receiver,
+    private static bool RunPhase(SocketBase sender, SocketBase receiver,
         byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
         int recvTimeoutMs, int latencyCap, out long receivedOut,
         out List<double> latencySamples)

@@ -27,13 +27,13 @@ internal static class PerfDealerRouterClient
 
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx);
-        var clients = new List<Zlink.Socket>(clientCount);
+        var clients = new List<SocketBase>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
         {
             for (int i = 0; i < clientCount; i++)
             {
-                var client = new Zlink.Socket(ctx, Zlink.SocketType.Dealer);
+                var client = new DealerSocket(ctx);
                 ApplyMultiSocketOptions(client, pattern);
                 ConfigureTlsClientIfNeeded(client, transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
@@ -44,7 +44,7 @@ internal static class PerfDealerRouterClient
                 monitors.Add(monitor);
             }
 
-            List<Zlink.Socket> activeClients = WaitAllClientConnectReady(clients,
+            List<SocketBase> activeClients = WaitAllClientConnectReady(clients,
                 monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
@@ -74,7 +74,7 @@ internal static class PerfDealerRouterClient
     }
 
     private static DealerRouterClientSlot[] CreateSlots(
-        List<Zlink.Socket> activeClients, int msgSize)
+        List<SocketBase> activeClients, int msgSize)
     {
         var slots = new DealerRouterClientSlot[activeClients.Count];
         for (int i = 0; i < activeClients.Count; i++)
@@ -157,7 +157,7 @@ internal static class PerfDealerRouterClient
     }
 
     private static void RunWarmupPhase(DealerRouterClientSlot[] slots,
-        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
         int warmupSeconds,
         bool activeWarmup, int warmupDrainMs, uint runId, ref ulong seq,
         ref int rrIndex, int pollTimeoutMs)
@@ -190,7 +190,7 @@ internal static class PerfDealerRouterClient
     }
 
     private static void RunDrainPhase(DealerRouterClientSlot[] slots,
-        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
         int settleMs,
         uint runId, ref ulong seq, int pollTimeoutMs)
     {
@@ -214,7 +214,7 @@ internal static class PerfDealerRouterClient
     }
 
     private static bool DrainPendingReplies(DealerRouterClientSlot[] slots,
-        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
         uint runId,
         int readyTimeoutMs, int settleMs, int pollTimeoutMs, ref ulong seq)
     {
@@ -362,10 +362,10 @@ internal static class PerfDealerRouterClient
         }
     }
 
-    private static List<Zlink.Socket> CollectSockets(
+    private static List<SocketBase> CollectSockets(
         DealerRouterClientSlot[] slots)
     {
-        var sockets = new List<Zlink.Socket>(slots.Length);
+        var sockets = new List<SocketBase>(slots.Length);
         for (int i = 0; i < slots.Length; i++)
             sockets.Add(slots[i].Socket);
         return sockets;
@@ -415,7 +415,7 @@ internal static class PerfDealerRouterClient
 
     private sealed class DealerRouterClientSlot
     {
-        internal DealerRouterClientSlot(Zlink.Socket socket, byte[] payload,
+        internal DealerRouterClientSlot(SocketBase socket, byte[] payload,
             byte[] recv)
         {
             Socket = socket;
@@ -423,7 +423,7 @@ internal static class PerfDealerRouterClient
             Recv = recv;
         }
 
-        internal Zlink.Socket Socket { get; }
+        internal SocketBase Socket { get; }
         internal byte[] Payload { get; }
         internal byte[] Recv { get; }
         internal bool WaitingForReply { get; set; }

@@ -25,13 +25,13 @@ internal static class PerfDealerDealerClient
 
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx);
-        var clients = new List<Zlink.Socket>(clientCount);
+        var clients = new List<SocketBase>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
         {
             for (int i = 0; i < clientCount; i++)
             {
-                var client = new Zlink.Socket(ctx, Zlink.SocketType.Dealer);
+                var client = new DealerSocket(ctx);
                 ApplyMultiSocketOptions(client, pattern);
                 ConfigureTlsClientIfNeeded(client, transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
@@ -42,7 +42,7 @@ internal static class PerfDealerDealerClient
                 monitors.Add(monitor);
             }
 
-            List<Zlink.Socket> activeClients = WaitAllClientConnectReady(clients,
+            List<SocketBase> activeClients = WaitAllClientConnectReady(clients,
                 monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
@@ -71,7 +71,7 @@ internal static class PerfDealerDealerClient
     }
 
     private static DealerDealerClientSlot[] CreateSlots(
-        List<Zlink.Socket> activeClients, int msgSize)
+        List<SocketBase> activeClients, int msgSize)
     {
         var slots = new DealerDealerClientSlot[activeClients.Count];
         for (int i = 0; i < activeClients.Count; i++)
@@ -157,7 +157,7 @@ internal static class PerfDealerDealerClient
     }
 
     private static void RunSendPhase(DealerDealerClientSlot[] slots,
-        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
         double durationSeconds,
         PerfPhase phase, uint runId, ref ulong seq, bool sendActive)
     {
@@ -238,10 +238,10 @@ internal static class PerfDealerDealerClient
         }
     }
 
-    private static List<Zlink.Socket> CollectSockets(
+    private static List<SocketBase> CollectSockets(
         DealerDealerClientSlot[] slots)
     {
-        var sockets = new List<Zlink.Socket>(slots.Length);
+        var sockets = new List<SocketBase>(slots.Length);
         for (int i = 0; i < slots.Length; i++)
             sockets.Add(slots[i].Socket);
         return sockets;
@@ -292,13 +292,13 @@ internal static class PerfDealerDealerClient
 
     private sealed class DealerDealerClientSlot
     {
-        internal DealerDealerClientSlot(Zlink.Socket socket, byte[] payload)
+        internal DealerDealerClientSlot(SocketBase socket, byte[] payload)
         {
             Socket = socket;
             Payload = payload;
         }
 
-        internal Zlink.Socket Socket { get; }
+        internal SocketBase Socket { get; }
         internal byte[] Payload { get; }
         internal bool WaitingForWritable { get; set; }
     }

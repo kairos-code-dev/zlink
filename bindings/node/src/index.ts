@@ -8,7 +8,6 @@ import {
   SocketOption
 } from './socket/constants';
 import { BaseSocket } from './socket/base_socket';
-import { Socket } from './socket/compat_socket';
 import { MonitorSocket } from './socket/monitor_socket';
 import { validateCString } from './validation';
 import {
@@ -27,8 +26,6 @@ export {
   Received,
   Subscribed,
   SubscriptionEvent,
-  BaseSocket,
-  Socket,
   MonitorSocket,
   SocketType,
   SocketOption
@@ -1536,7 +1533,9 @@ export class Discovery {
 
 class Receiver {
   constructor() {
-    throw new Error('Receiver is removed from the aligned public API. Use Socket + Discovery or SpotNode instead.');
+    throw new Error(
+      'Receiver is removed from the aligned public API. Use Discovery-attached sockets or SpotNode instead.'
+    );
   }
 }
 

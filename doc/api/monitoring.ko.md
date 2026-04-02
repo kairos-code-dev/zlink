@@ -59,7 +59,7 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 - 연결 이벤트: 파일 디스크립터
 - 에러 이벤트: errno 또는 프로토콜 에러 코드
 - 연결 해제 이벤트: `ZLINK_DISCONNECT_*` 사유
-- `*_READY_CHANGED` 이벤트: 현재 ready count
+- `*_READY_CHANGED` 이벤트: 예약된 필드이며 aggregate ready count로 해석하지 않음
 
 ### zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn
 
@@ -93,7 +93,6 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_source_kind_t source_kind;
     zlink_monitor_state_mask_t state_flags;
     zlink_monitor_snapshot_detail_mask_t detail_flags;
-    uint32_t ready_count;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
 } zlink_monitor_snapshot_t;
@@ -104,7 +103,6 @@ typedef struct zlink_monitor_snapshot_t
 | `source_kind` | snapshot source(`SOCKET`, `SPOT_PUB`, `SPOT_SUB`) |
 | `state_flags` | `READY`, `BOUND_READY`, `SEND_READY` 같은 aggregate 상태 |
 | `detail_flags` | 어떤 numeric field가 채워졌는지 표시 |
-| `ready_count` | 지원되는 경우 aggregate ready/connected peer 수 |
 | `snd_pending_msgs` | 지원되는 경우 aggregate 로컬 송신 backlog |
 | `rcv_pending_msgs` | 지원되는 경우 aggregate 로컬 수신 backlog snapshot |
 
@@ -134,7 +132,6 @@ typedef enum zlink_monitor_source_kind_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT` | `1 << 0` | `ready_count` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
 

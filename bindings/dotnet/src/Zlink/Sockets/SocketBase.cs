@@ -92,8 +92,7 @@ public abstract class SocketBase : IDisposable
     [EditorBrowsable(EditorBrowsableState.Never)]
     internal int GetOption(SocketOptionKey<int> option)
     {
-        if (this is Socket socket
-            && PerfRawSocketCompat.TryGetInt32Option(socket, option,
+        if (PerfRawSocketCompat.TryGetInt32Option(this, option,
                 out int compatValue))
         {
             return compatValue;

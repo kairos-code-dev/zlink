@@ -40,6 +40,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
+  ${INTEGRATION_TEST_ROOT}/test_router_concurrent_routed_recv
   ${INTEGRATION_TEST_ROOT}/test_router_mandatory_hwm
   ${INTEGRATION_TEST_ROOT}/test_stream_socket
   ${INTEGRATION_TEST_ROOT}/test_stream_threadsafe

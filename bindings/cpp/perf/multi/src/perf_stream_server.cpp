@@ -17,7 +17,8 @@
 
 namespace {
 
-static const char *k_pattern = "STREAM";
+static const char *k_pattern = "MULTI_STREAM";
+static const char k_stop_token[] = "__zlink_perf_stop__";
 
 static std::atomic<bool> g_stop_requested (false);
 static void *g_server_socket = NULL;
@@ -85,9 +86,14 @@ inline void emit_requested_queue_probe (const std::string &transport)
 
 inline bool is_stream_event_payload (const unsigned char *data, size_t size)
 {
-    if (size == 0)
-        return true;
-    return data && size == 1 && (data[0] == 0x00 || data[0] == 0x01);
+    (void) data;
+    return size == 0;
+}
+
+inline bool is_stop_token_payload (const unsigned char *data, size_t size)
+{
+    return data && size == (sizeof (k_stop_token) - 1)
+           && std::memcmp (data, k_stop_token, sizeof (k_stop_token) - 1) == 0;
 }
 
 // ---------- pending message queue (uses raw zlink_msg_t for zero-copy) ------
@@ -236,33 +242,69 @@ inline bool flush_pending_stream_messages (pending_stream_message_t *pending,
 
 // ---------- relay helpers ---------------------------------------------------
 
-inline bool extract_stream_routing_id (const zlink_msg_t *id_frame,
-                                        zlink_routing_id_t *rid_out)
-{
-    if (!id_frame || !rid_out)
-        return false;
-
-    const size_t id_size =
-      zlink_msg_size (const_cast<zlink_msg_t *> (id_frame));
-    if (id_size == 0 || id_size > sizeof (rid_out->data))
-        return false;
-
-    const unsigned char *id_data = static_cast<const unsigned char *> (
-      zlink_msg_data (const_cast<zlink_msg_t *> (id_frame)));
-    if (!id_data)
-        return false;
-
-    rid_out->size = static_cast<uint8_t> (id_size);
-    std::memcpy (rid_out->data, id_data, id_size);
-    return true;
-}
-
 enum relay_status_t
 {
     relay_idle = 0,
     relay_progress = 1,
     relay_error = 2
 };
+
+inline bool process_stream_chunk (const zlink_routing_id_t *rid,
+                                  zlink_msg_t *msg,
+                                  pending_stream_message_t *pending,
+                                  size_t pending_capacity,
+                                  size_t *pending_count)
+{
+    if (!rid || !msg || !pending || !pending_count || !g_server_socket)
+        return false;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (msg));
+    const size_t payload_size = zlink_msg_size (msg);
+    if (is_stream_event_payload (payload, payload_size))
+        return true;
+
+    if (is_stop_token_payload (payload, payload_size)) {
+        g_stop_requested.store (true, std::memory_order_release);
+        return true;
+    }
+
+    pending_stream_message_t request;
+    request.rid = *rid;
+    if (zlink_msg_move (&request.payload, msg) != 0)
+        return false;
+
+    request.has_payload = true;
+    const send_status_t send_rc = try_send_stream_message (&request);
+    if (send_rc == send_done)
+        return true;
+    if (send_rc == send_blocked) {
+        return enqueue_pending_stream_message (
+          pending, pending_capacity, pending_count, &request);
+    }
+
+    return false;
+}
+
+inline bool process_stream_recv_parts (const zlink_routing_id_t *rid,
+                                       zlink_msg_t *parts,
+                                       size_t part_count,
+                                       pending_stream_message_t *pending,
+                                       size_t pending_capacity,
+                                       size_t *pending_count)
+{
+    if (!parts && part_count != 0)
+        return false;
+
+    bool ok = true;
+    for (size_t i = 0; i < part_count; ++i) {
+        ok = process_stream_chunk (
+          rid, &parts[i], pending, pending_capacity, pending_count);
+        if (!ok)
+            break;
+    }
+    return ok;
+}
 
 inline relay_status_t relay_stream_message_non_blocking (
   void *server,
@@ -274,7 +316,7 @@ inline relay_status_t relay_stream_message_non_blocking (
         return relay_error;
 
     zlink_routing_id_t rid;
-    rid.size = 0;
+    std::memset (&rid, 0, sizeof (rid));
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
 
@@ -287,34 +329,11 @@ inline relay_status_t relay_stream_message_non_blocking (
             return relay_idle;
         return relay_error;
     }
-    if (rid.size == 0 || !parts || part_count != 1) {
-        if (parts)
-            zlink_multipart_close (parts, part_count);
-        return relay_error;
-    }
 
-    bool ok = true;
-    const unsigned char *payload = static_cast<const unsigned char *> (
-      zlink_msg_data (&parts[0]));
-    const size_t payload_size = zlink_msg_size (&parts[0]);
-    if (!is_stream_event_payload (payload, payload_size)) {
-        pending_stream_message_t request;
-        request.rid = rid;
-        if (zlink_msg_move (&request.payload, &parts[0]) != 0) {
-            ok = false;
-        } else {
-            request.has_payload = true;
-            const send_status_t send_rc = try_send_stream_message (&request);
-            if (send_rc == send_blocked) {
-                ok = enqueue_pending_stream_message (
-                  pending, pending_capacity, pending_count, &request);
-            } else if (send_rc == send_fatal) {
-                ok = false;
-            }
-        }
-    }
-
-    zlink_multipart_close (parts, part_count);
+    const bool ok = process_stream_recv_parts (
+      &rid, parts, part_count, pending, pending_capacity, pending_count);
+    if (parts)
+        zlink_multipart_close (parts, part_count);
     return ok ? relay_progress : relay_error;
 }
 
@@ -336,7 +355,7 @@ inline bool relay_stream_once (void *server,
                                 0}};
     int prc = zlink_poll (item, 1, poll_timeout_ms);
     if (prc < 0)
-        return zlink_errno () == EINTR;
+        return zlink_errno () == EINTR || zlink_errno () == EAGAIN;
     if ((item[0].revents & ZLINK_POLLOUT) != 0 && pending_count
         && *pending_count > 0
         && !flush_pending_stream_messages (pending, pending_count)) {

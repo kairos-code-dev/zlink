@@ -8,10 +8,35 @@
 #include <algorithm>
 #include <chrono>
 #include <cerrno>
+#include <cstring>
 #include <thread>
 #include <vector>
 
 namespace {
+
+static const char *k_topic = "bench";
+
+bool wait_for_start_signal (size_t msg_size)
+{
+    std::string line;
+    while (std::getline (std::cin, line)) {
+        if (line == "STOP" || line == "QUIT")
+            return false;
+
+        static const char prefix[] = "START,";
+        if (line.compare (0, sizeof (prefix) - 1, prefix) != 0)
+            continue;
+
+        const char *value = line.c_str () + (sizeof (prefix) - 1);
+        char *end = NULL;
+        const unsigned long long parsed = std::strtoull (value, &end, 10);
+        if (!end || *end != '\0')
+            continue;
+        return static_cast<size_t> (parsed) == msg_size;
+    }
+
+    return false;
+}
 
 long compute_wait_ms (const perf::multi::multi_bench_settings_t &settings,
                       const std::chrono::steady_clock::time_point &deadline)
@@ -63,16 +88,25 @@ bool run_phase (zlink::socket_t &publisher,
             }
         }
 
-        const int sent = publisher.send (
-          payload.data (), payload.size (), zlink::send_flag::dontwait);
-        if (sent == static_cast<int> (payload.size ())) {
+        zlink_msg_t payload_part;
+        if (zlink_msg_init_size (&payload_part, payload.size ()) != 0)
+            return false;
+        if (!payload.empty ()) {
+            std::memcpy (
+              zlink_msg_data (&payload_part), payload.data (), payload.size ());
+        }
+
+        const int sent =
+          zlink_publish (publisher.handle (), k_topic, &payload_part, 1, ZLINK_DONTWAIT);
+        if (sent == 0) {
             pending = false;
             if (poller.modify (publisher, static_cast<zlink::poll_event> (0)) != 0)
                 return false;
             continue;
         }
 
-        if (sent < 0 && errno == EAGAIN) {
+        (void) zlink_msg_close (&payload_part);
+        if (errno == EAGAIN) {
             pending = true;
             if (poller.modify (publisher, zlink::poll_event::pollout) != 0)
                 return false;
@@ -83,7 +117,7 @@ bool run_phase (zlink::socket_t &publisher,
         const int poll_rc =
           poller.wait_all (events, compute_wait_ms (settings, deadline));
         if (poll_rc < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             return false;
         }
@@ -123,20 +157,13 @@ bool perf_pubsub_server (const std::string &transport, size_t msg_size)
     if (endpoint.empty ())
         return false;
 
-    perf::multi::connect_monitor_t connect_monitor;
-    if (!perf::multi::open_connect_monitor (publisher.sock (), connect_monitor))
-        return false;
-
     perf::multi::print_ready (endpoint);
 
-    if (!perf::multi::wait_connect_ready (connect_monitor,
-                                          settings.connect_ready_timeout_ms)) {
-        perf::multi::close_connect_monitor (connect_monitor);
-        std::cerr << "PUBSUB_SERVER_FAIL,stage=connect_ready,transport="
+    if (!wait_for_start_signal (msg_size)) {
+        std::cerr << "PUBSUB_SERVER_FAIL,stage=start_signal,transport="
                   << transport << ",size=" << msg_size << std::endl;
         return false;
     }
-    perf::multi::close_connect_monitor (connect_monitor);
 
     std::vector<char> payload (
       std::max<size_t> (msg_size, perf_metric::header_size ()), 'p');

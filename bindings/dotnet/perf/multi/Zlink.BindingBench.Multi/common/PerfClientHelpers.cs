@@ -30,12 +30,12 @@ internal static partial class PerfRunner
         return !string.IsNullOrWhiteSpace(normalizedEndpoint);
     }
 
-    internal static List<Zlink.Socket> WaitAllClientConnectReady(
-        List<Zlink.Socket> clients, List<MonitorSocket> monitors,
+    internal static List<SocketBase> WaitAllClientConnectReady(
+        List<SocketBase> clients, List<MonitorSocket> monitors,
         int readyTimeoutMs)
     {
         int count = Math.Min(clients.Count, monitors.Count);
-        var activeClients = new List<Zlink.Socket>(count);
+        var activeClients = new List<SocketBase>(count);
         if (count == 0)
             return activeClients;
 
@@ -163,19 +163,19 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static int PollSocketReadReady(IReadOnlyList<Zlink.Socket> sockets,
+    internal static int PollSocketReadReady(IReadOnlyList<SocketBase> sockets,
         int timeoutMs)
     {
         return PollSocketEvents(sockets, PollEvents.PollIn, timeoutMs);
     }
 
-    internal static int PollSocketWriteReady(IReadOnlyList<Zlink.Socket> sockets,
+    internal static int PollSocketWriteReady(IReadOnlyList<SocketBase> sockets,
         int timeoutMs)
     {
         return PollSocketEvents(sockets, PollEvents.PollOut, timeoutMs);
     }
 
-    internal static int PollSocketEvents(IReadOnlyList<Zlink.Socket> sockets,
+    internal static int PollSocketEvents(IReadOnlyList<SocketBase> sockets,
         IReadOnlyList<PollEvents> eventMasks, int timeoutMs)
     {
         int count = sockets.Count;
@@ -195,7 +195,7 @@ internal static partial class PerfRunner
         }
     }
 
-    private static int PollSocketEvents(IReadOnlyList<Zlink.Socket> sockets,
+    private static int PollSocketEvents(IReadOnlyList<SocketBase> sockets,
         PollEvents events, int timeoutMs)
     {
         int count = sockets.Count;
@@ -264,7 +264,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void TrySendStopToken(IReadOnlyList<Zlink.Socket> activeClients)
+    internal static void TrySendStopToken(IReadOnlyList<SocketBase> activeClients)
     {
         if (activeClients == null || activeClients.Count == 0)
             return;

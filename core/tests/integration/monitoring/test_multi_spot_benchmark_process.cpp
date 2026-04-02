@@ -26,6 +26,12 @@ namespace
 {
 const char *g_self_path = NULL;
 
+bool should_run_spot_process_test (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    return !selected || !*selected || strcmp (selected, name_) == 0;
+}
+
 struct process_capture_t
 {
     process_capture_t () :
@@ -487,6 +493,11 @@ void run_multi_spot_process_case (const char *recv_mode_,
                   connect_ready_timeout_ms_);
         common_env.push_back (buf);
     }
+    if (clients_ >= 1000) {
+        char buf[32];
+        snprintf (buf, sizeof (buf), "PERF_MAX_SOCKETS=%d", 20000);
+        common_env.push_back (buf);
+    }
     common_env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
 
     std::vector<std::string> server_args;
@@ -745,6 +756,31 @@ void test_multi_spot_process_recv_many_clients_tcp_large_sequence ()
       "recv", "tcp", "64,256,1024,65536,131072,262144", 100, 5000, 2, 2);
 }
 
+void test_multi_spot_process_recv_1000_clients_tcp_ready_count ()
+{
+    run_multi_spot_process_case ("recv", "tcp", "64", 1000, 20000, 1, 1);
+}
+
+void test_multi_spot_process_recv_100_clients_tcp_ready_count ()
+{
+    run_multi_spot_process_case ("recv", "tcp", "64", 100, 20000, 1, 1);
+}
+
+void test_multi_spot_process_recv_200_clients_tcp_ready_count ()
+{
+    run_multi_spot_process_case ("recv", "tcp", "64", 200, 20000, 1, 1);
+}
+
+void test_multi_spot_process_recv_400_clients_tcp_ready_count ()
+{
+    run_multi_spot_process_case ("recv", "tcp", "64", 400, 20000, 1, 1);
+}
+
+void test_multi_spot_process_recv_800_clients_tcp_ready_count ()
+{
+    run_multi_spot_process_case ("recv", "tcp", "64", 800, 20000, 1, 1);
+}
+
 void test_multi_spot_process_recv_many_clients_tls_very_large_smoke ()
 {
     run_multi_spot_process_case ("recv", "tls", "262144", 100, 10000, 2, 2);
@@ -789,19 +825,30 @@ int main (int argc, char **argv)
     signal (SIGPIPE, SIG_IGN);
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
-    RUN_TEST (test_multi_spot_process_recv_smoke);
-    RUN_TEST (test_multi_spot_process_callback_smoke);
-    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_large_smoke);
-    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_very_large_smoke);
-    RUN_TEST (test_multi_spot_process_recv_many_clients_tcp_large_sequence);
-    RUN_TEST (test_multi_spot_process_recv_many_clients_tls_very_large_smoke);
-    RUN_TEST (test_multi_spot_process_recv_many_clients_tls_large_sequence);
-    RUN_TEST (test_multi_spot_process_recv_many_clients_ws_very_large_smoke);
-    RUN_TEST (test_multi_spot_process_recv_many_clients_wss_large_sequence);
-    RUN_TEST (test_multi_spot_process_recv_many_clients_wss_perf_window_sequence);
-    RUN_TEST (
+#define RUN_SPOT_PROCESS_TEST(name)                                            \
+    do {                                                                       \
+        if (should_run_spot_process_test (#name))                              \
+            RUN_TEST (name);                                                   \
+    } while (0)
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_smoke);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_callback_smoke);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tcp_large_smoke);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tcp_very_large_smoke);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tcp_large_sequence);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_100_clients_tcp_ready_count);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_200_clients_tcp_ready_count);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_400_clients_tcp_ready_count);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_800_clients_tcp_ready_count);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_1000_clients_tcp_ready_count);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tls_very_large_smoke);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tls_large_sequence);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_ws_very_large_smoke);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_wss_large_sequence);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_wss_perf_window_sequence);
+    RUN_SPOT_PROCESS_TEST (
       test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeout);
-    RUN_TEST (test_multi_spot_process_invalid_mode_is_rejected);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_invalid_mode_is_rejected);
+#undef RUN_SPOT_PROCESS_TEST
     return UNITY_END ();
 }
 

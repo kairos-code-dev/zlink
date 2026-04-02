@@ -50,13 +50,9 @@ Canonical receive results are domain objects:
   `{ routingId: Buffer | null, topic: string, subscribed: boolean }`
 - `SendResult`: `Sent`, `Backpressured`, `NotReady`
 
-## Compatibility Socket
-
-- `new Socket(ctx, SocketType.X)` remains as a deprecated compatibility path
-- legacy `recv(size, flags)` and raw `streamAttach` / `streamDetach` /
-  `streamPeerRoutingId` / `streamSend` stay on compat `Socket` only
-- legacy flags-based send/recv and raw socket option APIs stay on compat
-  `Socket` only
+- generic `Socket` / `BaseSocket` are not exported from the aligned public API
+- legacy flags-based send/recv, raw stream attach/detach helpers, and raw
+  socket option bags are not part of the public package surface
 
 Not part of the canonical or sample contract:
 length-prefixed stream framing such as `len32be`.
@@ -96,6 +92,10 @@ raw socket TLS convenience helpers, raw publish(topic, payload).
 `close()`. Service monitor events are returned as typed `ServiceEvent`
 objects.
 
+`*_READY_CHANGED` monitor events are readiness edge/state notifications.
+Node bindings must not interpret `event.value` as an aggregate ready count, and
+`snapshot()` must not be used as a ready-count gate.
+
 `Receiver` is removed from the aligned public API.
 `Discovery` requires a non-empty `serviceName`.
 `Registry.bind()` maps directly to the native bind lifecycle and replaces legacy
@@ -134,3 +134,5 @@ cd bindings/node && npm run perf:multi -- --recv recv --pattern STREAM --warmup 
   [`bindings/README.md`](/home/hep7/project/kairos/zlink/bindings/README.md)
   and the shared policy docs under
   [`doc/perf/`](/home/hep7/project/kairos/zlink/doc/perf)
+- readiness gates in binding perf must use event counting, not aggregate ready
+  counts from monitor payloads or snapshots

@@ -4,7 +4,7 @@ using Zlink;
 
 internal static partial class PerfRunner
 {
-    internal static void ConfigureTlsServerIfNeeded(Zlink.Socket socket,
+    internal static void ConfigureTlsServerIfNeeded(SocketBase socket,
         string transport)
     {
         if (!IsSecureTransport(transport))
@@ -21,7 +21,7 @@ internal static partial class PerfRunner
         socket.SetOption(SocketOptions.TlsKey, keyPath);
     }
 
-    internal static void ConfigureTlsClientIfNeeded(Zlink.Socket socket,
+    internal static void ConfigureTlsClientIfNeeded(SocketBase socket,
         string transport)
     {
         if (!IsSecureTransport(transport))
@@ -38,7 +38,7 @@ internal static partial class PerfRunner
         socket.SetOption(SocketOptions.TlsHostname, "localhost");
     }
 
-    internal static void ConfigureReceiverTlsServerIfNeeded(Zlink.Socket receiver,
+    internal static void ConfigureReceiverTlsServerIfNeeded(SocketBase receiver,
         string transport)
     {
         if (!IsSecureTransport(transport))

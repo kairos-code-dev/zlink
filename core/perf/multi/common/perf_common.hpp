@@ -333,9 +333,21 @@ inline int bench_max_sockets()
     if (clients <= 0)
         return 0;
 
-    // Multi mode keeps the benchmark socket and monitor plumbing per client.
-    // Reserve enough context socket slots for large STREAM runs.
-    const long required = static_cast<long>(clients) * 3L + 4096L;
+    const char *pattern =
+      resolve_multi_env_value("PERF_MULTI_PATTERN", "PERF_PATTERN");
+    const std::string normalized = normalize_multi_pattern_name(pattern);
+
+    long required = 0;
+    if (normalized == "SPOT") {
+        // A SPOT client slot allocates a deeper internal socket graph than
+        // generic multi sockets. Keep the perf default aligned with the
+        // direct SPOT readiness regressions that need clients * 16 budget.
+        required = static_cast<long>(clients) * 16L + 64L;
+    } else {
+        // Multi mode keeps the benchmark socket and monitor plumbing per
+        // client. Reserve enough context socket slots for large STREAM runs.
+        required = static_cast<long>(clients) * 3L + 4096L;
+    }
     if (required > INT_MAX)
         return INT_MAX;
     return static_cast<int>(required);

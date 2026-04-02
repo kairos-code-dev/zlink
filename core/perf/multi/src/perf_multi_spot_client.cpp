@@ -65,9 +65,7 @@ struct spot_client_state_t
         seen_msg_size(0),
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
         recv_workers_stop(false),
-        metrics_epoch(1),
-        use_slot_barrier(false),
-        required_slot_count(0)
+        metrics_epoch(1)
     {
     }
 
@@ -77,8 +75,6 @@ struct spot_client_state_t
     std::condition_variable cv;
     std::mutex metrics_mutex;
     std::vector<spot_thread_metrics_t *> thread_metrics;
-    std::vector<size_t> slot_seen_msg_sizes;
-    std::vector<int> slot_seen_phases;
     std::atomic<size_t> expected_msg_size;
     std::atomic<bool> collect_active;
     std::atomic<bool> fatal;
@@ -86,8 +82,6 @@ struct spot_client_state_t
     std::atomic<int> seen_phase;
     std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
-    bool use_slot_barrier;
-    size_t required_slot_count;
 };
 
 spot_client_state_t *g_client_state = NULL;
@@ -249,35 +243,9 @@ size_t resolve_spot_recv_worker_count(size_t slot_count)
     if (configured > 0)
         return std::min(slot_count, configured);
 
-    return std::min(slot_count, size_t(4));
-}
-
-int resolve_spot_phase_quorum_percent(const std::string &transport)
-{
-    (void) transport;
-    return resolve_multi_int_env("PERF_MULTI_SPOT_PHASE_QUORUM_PERCENT",
-                                 90,
-                                 1);
-}
-
-size_t resolve_required_slot_count(size_t slot_count,
-                                   const std::string &transport)
-{
-    if (slot_count == 0)
-        return 0;
-
-    const int quorum_percent =
-      std::min(100, resolve_spot_phase_quorum_percent(transport));
-    const size_t required =
-      static_cast<size_t>(
-        (static_cast<unsigned long long>(slot_count) * quorum_percent + 99ULL)
-        / 100ULL);
-    return std::max<size_t>(1, required);
-}
-
-bool should_use_spot_slot_barrier(size_t slot_count)
-{
-    return slot_count > 0 && slot_count <= 16;
+    const size_t scaled =
+      std::max<size_t>(4, std::min<size_t>(128, (slot_count + 15) / 16));
+    return std::min(slot_count, scaled);
 }
 
 spot_recv_mode_t resolve_spot_run_recv_mode()
@@ -455,9 +423,6 @@ void handle_spot_client_parts(const char *topic,
     size_t previous_msg_size = 0;
     int previous_phase = static_cast<int>(perf_multi_metric::phase_unknown);
     bool phase_changed = false;
-    bool slot_changed = false;
-    size_t previous_slot_msg_size = 0;
-    int previous_slot_phase = static_cast<int>(perf_multi_metric::phase_unknown);
     {
         std::lock_guard<std::mutex> lock(state->mutex);
         previous_msg_size =
@@ -473,21 +438,6 @@ void handle_spot_client_parts(const char *topic,
             state->seen_msg_size.store(header.msg_size,
                                        std::memory_order_relaxed);
             state->seen_phase.store(header_phase, std::memory_order_relaxed);
-        }
-        if (slot && slot->index < state->slot_seen_msg_sizes.size()) {
-            previous_slot_msg_size = state->slot_seen_msg_sizes[slot->index];
-            previous_slot_phase = state->slot_seen_phases[slot->index];
-            const bool slot_phase_regressed =
-              previous_slot_msg_size == header.msg_size
-              && previous_slot_phase > header_phase;
-            slot_changed =
-              !slot_phase_regressed
-              && (previous_slot_msg_size != header.msg_size
-                  || previous_slot_phase != header_phase);
-            if (!slot_phase_regressed) {
-                state->slot_seen_msg_sizes[slot->index] = header.msg_size;
-                state->slot_seen_phases[slot->index] = header_phase;
-            }
         }
     }
     if (phase_changed && bench_transition_debug_enabled()
@@ -528,7 +478,7 @@ void handle_spot_client_parts(const char *topic,
         }
     }
 
-    if (phase_changed || slot_changed)
+    if (phase_changed)
         state->cv.notify_all();
 }
 
@@ -581,41 +531,6 @@ bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
         topic[topic_len] = '\0';
     handle_spot_client_parts(topic, topic_len, parts, part_count, slot);
     return true;
-}
-
-size_t count_slots_observed_size(const spot_client_state_t *state,
-                                 size_t msg_size)
-{
-    if (!state || state->slot_seen_msg_sizes.empty())
-        return 0;
-
-    size_t count = 0;
-    for (size_t i = 0; i < state->slot_seen_msg_sizes.size(); ++i) {
-        if (state->slot_seen_msg_sizes[i] == msg_size
-            && state->slot_seen_phases[i]
-                 != static_cast<int>(perf_multi_metric::phase_unknown)) {
-            ++count;
-        }
-    }
-    return count;
-}
-
-size_t count_slots_observed_phase(const spot_client_state_t *state,
-                                  size_t msg_size,
-                                  perf_multi_metric::phase_t phase)
-{
-    if (!state || state->slot_seen_msg_sizes.empty())
-        return 0;
-
-    const int expected_phase = static_cast<int>(phase);
-    size_t count = 0;
-    for (size_t i = 0; i < state->slot_seen_msg_sizes.size(); ++i) {
-        if (state->slot_seen_msg_sizes[i] == msg_size
-            && state->slot_seen_phases[i] == expected_phase) {
-            ++count;
-        }
-    }
-    return count;
 }
 
 bool drain_spot_client_slot(spot_client_slot_t *slot, bool *progressed)
@@ -800,17 +715,6 @@ bool create_spot_slots(ctx_guard_t &ctx,
 
     if (slots_out->empty())
         return false;
-    state->slot_seen_msg_sizes.assign(slots_out->size(), 0);
-    state->slot_seen_phases.assign(
-      slots_out->size(),
-      static_cast<int>(perf_multi_metric::phase_unknown));
-    state->use_slot_barrier =
-      recv_mode == spot_recv_recv && should_use_spot_slot_barrier(slots_out->size());
-    state->required_slot_count =
-      state->use_slot_barrier
-        ? resolve_required_slot_count(slots_out->size(), transport)
-        : 0;
-
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(resolve_spot_connect_ready_timeout_ms(
@@ -863,12 +767,6 @@ void reset_metrics(spot_client_state_t *state, size_t msg_size)
         state->seen_phase.store(
           static_cast<int>(perf_multi_metric::phase_unknown),
           std::memory_order_relaxed);
-        std::fill(state->slot_seen_msg_sizes.begin(),
-                  state->slot_seen_msg_sizes.end(),
-                  0);
-        std::fill(state->slot_seen_phases.begin(),
-                  state->slot_seen_phases.end(),
-                  static_cast<int>(perf_multi_metric::phase_unknown));
     }
     state->metrics_epoch.fetch_add(1, std::memory_order_acq_rel);
 }
@@ -882,22 +780,12 @@ bool wait_msg_size_start(spot_client_state_t *state,
       lock,
       std::chrono::milliseconds(std::max(1, timeout_ms)),
       [state, msg_size]() {
-          if (!state->use_slot_barrier) {
-              return state->fatal.load(std::memory_order_acquire)
-                     || (state->seen_msg_size.load(std::memory_order_acquire)
-                           == msg_size
-                         && state->seen_phase.load(std::memory_order_acquire)
-                              != static_cast<int>(
-                                perf_multi_metric::phase_unknown));
-          }
-          const bool active_seen =
-            state->seen_msg_size.load(std::memory_order_acquire) == msg_size
-            && state->seen_phase.load(std::memory_order_acquire)
-                 == static_cast<int>(perf_multi_metric::phase_active);
           return state->fatal.load(std::memory_order_acquire)
-                 || active_seen
-                 || count_slots_observed_size(state, msg_size)
-                      >= state->required_slot_count;
+                 || (state->seen_msg_size.load(std::memory_order_acquire)
+                       == msg_size
+                     && state->seen_phase.load(std::memory_order_acquire)
+                          != static_cast<int>(
+                            perf_multi_metric::phase_unknown));
       });
 }
 
@@ -925,6 +813,17 @@ int resolve_spot_phase_timeout_ms(const multi_bench_settings_t &settings,
     int timeout_ms =
       std::max(settings.connect_ready_timeout_ms,
                std::max(1, settings.duration_seconds) * 5000);
+
+    if (settings.clients >= 400) {
+        timeout_ms =
+          std::max(timeout_ms,
+                   std::max(30000, settings.connect_ready_timeout_ms * 3));
+    }
+    if (settings.clients >= 1000) {
+        timeout_ms =
+          std::max(timeout_ms,
+                   std::max(60000, settings.connect_ready_timeout_ms * 6));
+    }
 
     // Large recv-mode fan-in cases can accumulate a substantial warmup backlog
     // before the active phase becomes visible on the client. Give the phase

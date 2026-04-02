@@ -24,10 +24,7 @@ def _tcp_endpoint():
 
 class CoreApiAlignmentTests(unittest.TestCase):
     def test_legacy_option_surface_is_removed(self):
-        self.assertFalse(hasattr(zlink.Socket, "setsockopt"))
-        self.assertFalse(hasattr(zlink.Socket, "getsockopt"))
-        self.assertFalse(hasattr(zlink.Socket, "set_option"))
-        self.assertFalse(hasattr(zlink.Socket, "get_option"))
+        self.assertFalse(hasattr(zlink, "Socket"))
         self.assertFalse(hasattr(zlink, "lib"))
         self.assertFalse(hasattr(zlink, "ctypes"))
         self.assertFalse(hasattr(zlink, "ReceivedMessage"))
@@ -484,7 +481,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         with self.assertRaises(zlink.ZlinkError):
                             poller.add_socket(sender, zlink.PollEvent.POLLOUT)
 
-    def test_concrete_socket_classes_are_exported_and_dispatched(self):
+    def test_concrete_socket_classes_are_exported_without_generic_socket_factory(self):
         try:
             ctx = zlink.Context()
         except OSError:
@@ -492,15 +489,9 @@ class CoreApiAlignmentTests(unittest.TestCase):
 
         with ctx:
             with zlink.PairSocket(ctx) as direct:
-                self.assertIsInstance(direct, zlink.Socket)
                 self.assertIs(type(direct), zlink.PairSocket)
-
-            with zlink.Socket(ctx, zlink.SocketType.PAIR) as compat:
-                self.assertIsInstance(compat, zlink.Socket)
-                self.assertIs(type(compat), zlink.PairSocket)
-
-            with zlink.Socket(ctx, zlink.SocketType.XPUB) as compat_xpub:
-                self.assertIs(type(compat_xpub), zlink.XPubSocket)
+            with zlink.XPubSocket(ctx) as xpub:
+                self.assertIs(type(xpub), zlink.XPubSocket)
 
     def test_surface_restrictions_match_socket_role(self):
         self.assertFalse(hasattr(zlink.PairSocket, "set_routing_id"))

@@ -17,8 +17,8 @@ internal static class PerfDealerRouter
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
-        using var router = new Zlink.Socket(ctx, SocketType.Router);
-        using var dealer = new Zlink.Socket(ctx, SocketType.Dealer);
+        using var router = new RouterSocket(ctx);
+        using var dealer = new DealerSocket(ctx);
         ApplySingleSocketOptions(router);
         ApplySingleSocketOptions(dealer);
         ConfigureTlsServerIfNeeded(router, transport);
@@ -64,7 +64,7 @@ internal static class PerfDealerRouter
         }
     }
 
-    private static bool RunPhase(Zlink.Socket sender, Zlink.Socket receiver,
+    private static bool RunPhase(SocketBase sender, SocketBase receiver,
         byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
         int recvTimeoutMs, int latencyCap, out long receivedOut,
         out List<double> latencySamples)
@@ -201,7 +201,7 @@ internal static class PerfDealerRouter
         return received > 0 && latencySamples.Count > 0;
     }
 
-    private static int ReceiveRouterPayload(Zlink.Socket socket, byte[] routingId,
+    private static int ReceiveRouterPayload(SocketBase socket, byte[] routingId,
         byte[] payloadBuffer, int flags)
     {
         try

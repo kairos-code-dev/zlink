@@ -105,6 +105,11 @@
   내부 구현은 공식 ready event를 직접 기다리는 얇은 helper여야 하며,
   callback-state wrapper나 snapshot polling을 helper 뒤에 숨기는 형태는
   금지한다.
+- suite별 정책 문서는 pattern별 ready gate event를 명시해야 한다. perf는
+  그 표에 없는 추가 precondition(`FILTER_APPLIED`, quorum 완화, 보정용
+  handshake 단계)을 두지 않는다.
+- 공식 ready event 이후에 메시징이 불가능하면 perf에서 우회하지 않고 core
+  버그로 보고한다.
 - perf start gate 구현에서 아래를 금지한다.
   - `sleep`/`msleep`/고정 지연
   - monitor snapshot polling

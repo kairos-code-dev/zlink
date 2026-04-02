@@ -42,7 +42,7 @@ def main(argv=None):
                         publisher.publish(TOPIC, stamp_payload(payload))
                         for event in safe_poll(poller, 0):
                             while True:
-                                    received = event["socket"].try_subscribe()
+                                received = event["socket"].try_subscribe()
                                 if received is None:
                                     break
                                 with received:
@@ -54,7 +54,7 @@ def main(argv=None):
                         publisher.publish(TOPIC, stamp_payload(payload))
                         for event in safe_poll(poller, 0):
                             while True:
-                                    received = event["socket"].try_subscribe()
+                                received = event["socket"].try_subscribe()
                                 if received is None:
                                     break
                                 with received:

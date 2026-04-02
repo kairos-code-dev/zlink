@@ -252,16 +252,104 @@ inline void apply_benchmark_socket_options (perf_socket_t &socket,
     apply_debug_timeouts (socket, transport);
 }
 
-inline bool open_connect_monitor (perf_socket_t &socket, connect_monitor_t &out)
+inline void configure_perf_monitor_socket (void *monitor_handle)
 {
-    zlink::monitor_socket_t monitor (
-      zlink::monitor_handle_t::open (socket,
-                                     zlink::monitor_event::connection_ready));
+    if (!monitor_handle)
+        return;
+
+    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
+    const int linger = 0;
+    (void) zlink_set_option (
+      monitor_handle, ZLINK_OPT_LINGER, &linger, sizeof (linger));
+
+    if (settings.monitor_hwm > 0) {
+        (void) zlink_set_option (monitor_handle,
+                                 ZLINK_OPT_SNDHWM,
+                                 &settings.monitor_hwm,
+                                 sizeof (settings.monitor_hwm));
+        (void) zlink_set_option (monitor_handle,
+                                 ZLINK_OPT_RCVHWM,
+                                 &settings.monitor_hwm,
+                                 sizeof (settings.monitor_hwm));
+    }
+}
+
+inline bool open_socket_monitor (perf_socket_t &socket,
+                                 zlink::monitor_event events,
+                                 connect_monitor_t &out)
+{
+    zlink::monitor_socket_t monitor (zlink::monitor_handle_t::open (socket, events));
     if (!monitor.valid ())
         return false;
 
+    configure_perf_monitor_socket (monitor.handle ());
+
     out.monitor.reset (new zlink::monitor_socket_t (std::move (monitor)));
     return true;
+}
+
+inline bool open_connect_monitor (perf_socket_t &socket, connect_monitor_t &out)
+{
+    return open_socket_monitor (
+      socket, zlink::monitor_event::connection_ready, out);
+}
+
+inline bool wait_socket_monitor_event (zlink::monitor_socket_t &monitor,
+                                       uint64_t event_type,
+                                       int64_t min_value,
+                                       int timeout_ms)
+{
+    for (;;) {
+        const zlink::maybe_t<zlink_socket_monitor_event_t> event =
+          monitor.try_recv ();
+        if (!event)
+            break;
+        if (event->event != event_type)
+            continue;
+        if (min_value >= 0 && static_cast<int64_t> (event->value) < min_value)
+            continue;
+        return true;
+    }
+
+    zlink::poller_t poller;
+    std::vector<zlink::poll_event_t> events;
+    events.reserve (1);
+    if (poller.add (monitor, zlink::poll_event::pollin, NULL) != 0)
+        return false;
+
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1);
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto remaining = deadline - std::chrono::steady_clock::now ();
+        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                         remaining)
+                         .count ();
+        if (wait_ms < 1)
+            wait_ms = 1;
+
+        const int rc = poller.wait_all (events, wait_ms);
+        if (rc < 0) {
+            if (errno == EINTR || errno == EAGAIN)
+                continue;
+            return false;
+        }
+        if (rc == 0)
+            continue;
+
+        for (;;) {
+            const zlink::maybe_t<zlink_socket_monitor_event_t> event =
+              monitor.try_recv ();
+            if (!event)
+                break;
+            if (event->event != event_type)
+                continue;
+            if (min_value >= 0 && static_cast<int64_t> (event->value) < min_value)
+                continue;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 inline int poll_connect_ready_count (connect_monitor_t &mon)
@@ -320,7 +408,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
 
         const int rc = poller.wait_all (events, wait_ms);
         if (rc < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             return false;
         }
@@ -388,7 +476,7 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
 
         const int rc = poller.wait_all (events, wait_ms);
         if (rc < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             return false;
         }

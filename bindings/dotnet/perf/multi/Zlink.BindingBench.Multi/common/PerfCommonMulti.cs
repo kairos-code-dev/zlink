@@ -351,7 +351,7 @@ internal static partial class PerfRunner
             ctx.SetOption(ContextOption.MaxSockets, maxSockets);
     }
 
-    internal static void ApplyMultiSocketOptions(Zlink.Socket socket,
+    internal static void ApplyMultiSocketOptions(SocketBase socket,
         string pattern = "")
     {
         int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
@@ -394,7 +394,7 @@ internal static partial class PerfRunner
         internal double RcvPendingEnd { get; }
     }
 
-    internal static ServerQueueStats SampleServerQueueStats(Zlink.Socket socket)
+    internal static ServerQueueStats SampleServerQueueStats(SocketBase socket)
     {
         PeerRecord[] peers = socket.GetPeers();
         if (peers.Length == 0)

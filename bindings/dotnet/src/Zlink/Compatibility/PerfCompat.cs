@@ -29,10 +29,10 @@ internal static class PerfRawSocketCompat
         public readonly Queue<byte[]> PendingReceiveFrames = new();
     }
 
-    private static readonly ConditionalWeakTable<Socket, SocketState> States =
+    private static readonly ConditionalWeakTable<SocketBase, SocketState> States =
         new();
 
-    internal static bool TryGetInt32Option(Socket socket,
+    internal static bool TryGetInt32Option(SocketBase socket,
         SocketOptionKey<int> option, out int value)
     {
         if (option.Option == SocketOption.RcvMore)
@@ -45,12 +45,12 @@ internal static class PerfRawSocketCompat
         return false;
     }
 
-    internal static bool HasPendingSendFrames(Socket socket)
+    internal static bool HasPendingSendFrames(SocketBase socket)
     {
         return GetState(socket).PendingSendFrames.Count > 0;
     }
 
-    internal static bool TrySend(Socket socket, ReadOnlySpan<byte> buffer,
+    internal static bool TrySend(SocketBase socket, ReadOnlySpan<byte> buffer,
         SendFlags flags, out int written)
     {
         SocketState state = GetState(socket);
@@ -67,7 +67,7 @@ internal static class PerfRawSocketCompat
             (flags & SendFlags.DontWait) != 0);
     }
 
-    internal static bool TryDequeueFrame(Socket socket, ReceiveFlags flags,
+    internal static bool TryDequeueFrame(SocketBase socket, ReceiveFlags flags,
         out byte[]? frame)
     {
         SocketState state = GetState(socket);
@@ -89,12 +89,13 @@ internal static class PerfRawSocketCompat
         return true;
     }
 
-    private static bool FillReceiveQueue(Socket socket, SocketState state,
+    private static bool FillReceiveQueue(SocketBase socket, SocketState state,
         bool nonBlocking)
     {
-        if (socket.Type == SocketType.Sub || socket.Type == SocketType.XSub)
+        SocketType type = socket.Kernel.Type;
+        if (type == SocketType.Sub || type == SocketType.XSub)
         {
-            byte[][]? subscribedFrames = socket.TryReceiveRawSubscribedFrames(
+            byte[][]? subscribedFrames = socket.Kernel.TryReceiveRawSubscribedFrames(
                 nonBlocking ? 1 : 0);
             if (subscribedFrames == null || subscribedFrames.Length == 0)
                 return false;
@@ -104,7 +105,7 @@ internal static class PerfRawSocketCompat
             return state.PendingReceiveFrames.Count > 0;
         }
 
-        byte[][]? frames = socket.TryReceiveRawFrames(nonBlocking ? 1 : 0);
+        byte[][]? frames = socket.Kernel.TryReceiveRawFrames(nonBlocking ? 1 : 0);
         if (frames == null || frames.Length == 0)
             return false;
 
@@ -113,7 +114,7 @@ internal static class PerfRawSocketCompat
         return state.PendingReceiveFrames.Count > 0;
     }
 
-    private static bool FlushPendingFrames(Socket socket, SocketState state,
+    private static bool FlushPendingFrames(SocketBase socket, SocketState state,
         byte[] finalFrame, bool nonBlocking)
     {
         if (finalFrame.Length > 0 || state.PendingSendFrames.Count == 0)
@@ -121,10 +122,12 @@ internal static class PerfRawSocketCompat
 
         try
         {
-            if (socket.Type == SocketType.Pub || socket.Type == SocketType.XPub)
+            SocketType type = socket.Kernel.Type;
+            if (type == SocketType.Pub || type == SocketType.XPub)
             {
                 using Message message = Message.FromBytes(finalFrame);
-                SendResult result = socket.TryPublish(string.Empty, message);
+                PublisherSocketBase publisher = (PublisherSocketBase)socket;
+                SendResult result = publisher.TryPublish(string.Empty, message);
                 if (!nonBlocking && result != SendResult.Sent)
                 {
                     throw new ZlinkException((int)ErrorCode.EAgain,
@@ -145,16 +148,20 @@ internal static class PerfRawSocketCompat
 
                     if (!nonBlocking)
                     {
+                        RoutedMessageSocketBase blockingRoutedSocket =
+                            (RoutedMessageSocketBase)socket;
                         if (payload.Length == 1)
-                            socket.Send(routingId, payload[0]);
+                            blockingRoutedSocket.Send(routingId, payload[0]);
                         else
-                            socket.Send(routingId, payload);
+                            blockingRoutedSocket.Send(routingId, payload);
                         return true;
                     }
 
+                    RoutedMessageSocketBase nonBlockingRoutedSocket =
+                        (RoutedMessageSocketBase)socket;
                     SendResult result = payload.Length == 1
-                        ? socket.TrySend(routingId, payload[0])
-                        : socket.TrySend(routingId, payload);
+                        ? nonBlockingRoutedSocket.TrySend(routingId, payload[0])
+                        : nonBlockingRoutedSocket.TrySend(routingId, payload);
                     return result == SendResult.Sent;
                 }
                 finally
@@ -171,16 +178,20 @@ internal static class PerfRawSocketCompat
 
                 if (!nonBlocking)
                 {
+                    MessageSocketBase blockingMessageSocket =
+                        (MessageSocketBase)socket;
                     if (parts.Length == 1)
-                        socket.Send(parts[0]);
+                        blockingMessageSocket.Send(parts[0]);
                     else
-                        socket.Send(parts);
+                        blockingMessageSocket.Send(parts);
                     return true;
                 }
 
+                MessageSocketBase nonBlockingMessageSocket =
+                    (MessageSocketBase)socket;
                 SendResult result = parts.Length == 1
-                    ? socket.TrySend(parts[0])
-                    : socket.TrySend(parts);
+                    ? nonBlockingMessageSocket.TrySend(parts[0])
+                    : nonBlockingMessageSocket.TrySend(parts);
                 return result == SendResult.Sent;
             }
             finally
@@ -194,19 +205,21 @@ internal static class PerfRawSocketCompat
         }
     }
 
-    internal static SocketState GetState(Socket socket)
+    internal static SocketState GetState(SocketBase socket)
     {
         return States.GetValue(socket, _ => new SocketState());
     }
 
-    private static bool RequiresRoutedSend(Socket socket)
+    private static bool RequiresRoutedSend(SocketBase socket)
     {
-        return socket.Type == SocketType.Router || socket.Type == SocketType.Stream;
+        SocketType type = socket.Kernel.Type;
+        return type == SocketType.Router || type == SocketType.Stream;
     }
 
-    private static bool RequiresRoutedReceive(Socket socket)
+    private static bool RequiresRoutedReceive(SocketBase socket)
     {
-        return socket.Type == SocketType.Router || socket.Type == SocketType.Stream;
+        SocketType type = socket.Kernel.Type;
+        return type == SocketType.Router || type == SocketType.Stream;
     }
 
     private static Message[] BuildPayload(List<byte[]> frames, int startIndex)
@@ -229,19 +242,14 @@ internal static class PerfCompatExtensions
 {
     private const int BorrowedSendThreshold = 65536;
 
-    internal static SocketMonitor MonitorOpen(this Socket socket,
-        SocketEvent events)
-    {
-        return socket.MonitorOpen(events);
-    }
-
-    internal static int Send(this Socket socket, byte[] buffer, SendFlags flags)
+    internal static int Send(this SocketBase socket, byte[] buffer, SendFlags flags)
     {
         if (buffer == null)
             throw new ArgumentNullException(nameof(buffer));
 
         bool nonBlocking = (flags & SendFlags.DontWait) != 0;
         bool multipart = (flags & SendFlags.SendMore) != 0;
+        SocketType type = socket.Kernel.Type;
         bool canBorrow = !multipart
             && !PerfRawSocketCompat.HasPendingSendFrames(socket)
             && buffer.Length >= BorrowedSendThreshold;
@@ -250,23 +258,23 @@ internal static class PerfCompatExtensions
         {
             if (!nonBlocking)
             {
-                if (socket.Type == SocketType.Pub || socket.Type == SocketType.XPub)
-                    socket.PublishBorrowedSingle(string.Empty, buffer, 0);
+                if (type == SocketType.Pub || type == SocketType.XPub)
+                    socket.Kernel.PublishBorrowedSingle(string.Empty, buffer, 0);
                 else
-                    socket.SendBorrowedSingle(buffer, 0);
+                    socket.Kernel.SendBorrowedSingle(buffer, 0);
                 return buffer.Length;
             }
 
-            if (socket.Type == SocketType.Pub || socket.Type == SocketType.XPub)
+            if (type == SocketType.Pub || type == SocketType.XPub)
             {
-                SendResult pubResult = socket.TryPublishBorrowedSingle(
+                SendResult pubResult = socket.Kernel.TryPublishBorrowedSingle(
                     string.Empty, buffer);
                 if (pubResult == SendResult.Sent)
                     return buffer.Length;
                 throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
             }
 
-            SendResult result = socket.TrySendBorrowedSingle(buffer);
+            SendResult result = socket.Kernel.TrySendBorrowedSingle(buffer);
             if (result == SendResult.Sent)
                 return buffer.Length;
             throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
@@ -275,30 +283,31 @@ internal static class PerfCompatExtensions
         return Send(socket, buffer.AsSpan(), flags);
     }
 
-    internal static int Send(this Socket socket, ReadOnlySpan<byte> buffer,
+    internal static int Send(this SocketBase socket, ReadOnlySpan<byte> buffer,
         SendFlags flags)
     {
         bool nonBlocking = (flags & SendFlags.DontWait) != 0;
         bool multipart = (flags & SendFlags.SendMore) != 0;
+        SocketType type = socket.Kernel.Type;
 
         if (!nonBlocking && !multipart
             && !PerfRawSocketCompat.HasPendingSendFrames(socket))
         {
-            if (socket.Type == SocketType.Pub || socket.Type == SocketType.XPub)
+            if (type == SocketType.Pub || type == SocketType.XPub)
             {
-                socket.PublishRawSingle(string.Empty, buffer, 0);
+                socket.Kernel.PublishRawSingle(string.Empty, buffer, 0);
                 return buffer.Length;
             }
 
-            socket.SendRawSingle(buffer, 0);
+            socket.Kernel.SendRawSingle(buffer, 0);
             return buffer.Length;
         }
 
         if (!multipart
             && !PerfRawSocketCompat.HasPendingSendFrames(socket)
-            && (socket.Type == SocketType.Pub || socket.Type == SocketType.XPub))
+            && (type == SocketType.Pub || type == SocketType.XPub))
         {
-            SendResult result = socket.TryPublishRawSingle(string.Empty, buffer);
+            SendResult result = socket.Kernel.TryPublishRawSingle(string.Empty, buffer);
             if (result != SendResult.Sent)
                 throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
             return buffer.Length;
@@ -311,13 +320,13 @@ internal static class PerfCompatExtensions
         return written;
     }
 
-    internal static bool TrySend(this Socket socket, ReadOnlySpan<byte> buffer,
+    internal static bool TrySend(this SocketBase socket, ReadOnlySpan<byte> buffer,
         SendFlags flags, out int written)
     {
         return PerfRawSocketCompat.TrySend(socket, buffer, flags, out written);
     }
 
-    internal static int Receive(this Socket socket, Span<byte> buffer,
+    internal static int Receive(this SocketBase socket, Span<byte> buffer,
         ReceiveFlags flags)
     {
         if (!TryReceive(socket, buffer, flags, out int bytesWritten))
@@ -327,17 +336,18 @@ internal static class PerfCompatExtensions
         return bytesWritten;
     }
 
-    internal static bool TryReceive(this Socket socket, Span<byte> buffer,
+    internal static bool TryReceive(this SocketBase socket, Span<byte> buffer,
         ReceiveFlags flags, out int read)
     {
         PerfRawSocketCompat.SocketState state =
             PerfRawSocketCompat.GetState(socket);
         if (state.PendingReceiveFrames.Count == 0)
         {
-            if (socket.Type == SocketType.Sub || socket.Type == SocketType.XSub)
+            SocketType type = socket.Kernel.Type;
+            if (type == SocketType.Sub || type == SocketType.XSub)
             {
-                int? directRead = socket.TryReceiveRawSubscribedFrame(buffer,
-                    (int)flags, out byte[][] pendingFrames);
+                int? directRead = socket.Kernel.TryReceiveRawSubscribedFrame(
+                    buffer, (int)flags, out byte[][] pendingFrames);
                 if (directRead.HasValue)
                 {
                     for (int i = 0; i < pendingFrames.Length; i++)
@@ -346,11 +356,11 @@ internal static class PerfCompatExtensions
                     return true;
                 }
             }
-            else if (socket.Type != SocketType.Router
-                && socket.Type != SocketType.Stream)
+            else if (type != SocketType.Router
+                && type != SocketType.Stream)
             {
-                int? directRead = socket.TryReceiveRawFrame(buffer, (int)flags,
-                    out byte[][] pendingFrames);
+                int? directRead = socket.Kernel.TryReceiveRawFrame(buffer,
+                    (int)flags, out byte[][] pendingFrames);
                 if (directRead.HasValue)
                 {
                     for (int i = 0; i < pendingFrames.Length; i++)
@@ -378,7 +388,8 @@ internal static class PerfCompatExtensions
         return true;
     }
 
-    internal static Message ReceiveMessage(this Socket socket, ReceiveFlags flags)
+    internal static Message ReceiveMessage(this SocketBase socket,
+        ReceiveFlags flags)
     {
         if (PerfRawSocketCompat.TryDequeueFrame(socket, flags, out byte[]? frame))
             return Message.FromBytes(frame!);
@@ -400,19 +411,46 @@ internal static class PerfCompatExtensions
         return monitor.Recv();
     }
 
-    internal static int StreamSend(this Socket socket, string routingId,
+    internal static int StreamSend(this SocketBase socket, string routingId,
         ReadOnlySpan<byte> payload, SendFlags flags)
     {
         using Message message = Message.FromBytes(payload);
-        SendResult result = socket.TrySend(routingId, message);
+        SendResult result = ((RoutedMessageSocketBase)socket).TrySend(routingId,
+            message);
         if (result == SendResult.Sent)
             return payload.Length;
 
         throw new ZlinkException((int)ErrorCode.EAgain, "send would block");
     }
 
-    internal static PeerRecord[] GetPeers(this Socket socket)
+    internal static void SendBorrowedSingle(this SocketBase socket,
+        string routingId, byte[] payload, int flags)
+    {
+        socket.Kernel.SendBorrowedSingle(routingId, payload, flags);
+    }
+
+    internal static PeerRecord[] GetPeers(this SocketBase socket)
     {
         return Array.Empty<PeerRecord>();
+    }
+
+    internal static Received? TryReceiveRouted(this SocketBase socket)
+    {
+        return socket.Kernel.TryReceiveRouted();
+    }
+
+    internal static int? TryReceiveRawRoutedFrame(this SocketBase socket,
+        Span<byte> routingDestination, Span<byte> payloadDestination, int flags,
+        out byte[][] pendingFrames)
+    {
+        return socket.Kernel.TryReceiveRawRoutedFrame(routingDestination,
+            payloadDestination, flags, out pendingFrames);
+    }
+
+    internal static int? TryReceiveRawSubscribedFrame(this SocketBase socket,
+        Span<byte> destination, int flags, out byte[][] pendingFrames)
+    {
+        return socket.Kernel.TryReceiveRawSubscribedFrame(destination, flags,
+            out pendingFrames);
     }
 }

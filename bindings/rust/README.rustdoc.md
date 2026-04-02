@@ -23,3 +23,11 @@ bindings/rust/target/doc/zlink/index.html
 - Service types in `zlink::service`
 - Domain objects (`Message`, error types, enums)
 - FFI internals (`zlink::ffi`) are private and excluded
+
+## Monitor Contract Note
+
+- `*_READY_CHANGED` monitor events are readiness edge/state notifications.
+- Rust bindings must not interpret monitor `value` as an aggregate ready count.
+- Monitor snapshots are for state/queue inspection, not ready-count gates.
+- Perf or readiness verification in Rust bindings must use event counting when
+  an expected peer count is required.

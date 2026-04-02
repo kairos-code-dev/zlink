@@ -248,7 +248,7 @@ class dealer_router_client_bench_t
             const int poll_rc =
               _poller.wait_all (_poll_events, compute_wait_ms (deadline));
             if (poll_rc < 0) {
-                if (errno == EINTR)
+                if (errno == EINTR || errno == EAGAIN)
                     continue;
                 return false;
             }
@@ -328,7 +328,7 @@ class dealer_router_client_bench_t
             const int poll_rc =
               _poller.wait_all (_poll_events, compute_wait_ms (deadline));
             if (poll_rc < 0) {
-                if (errno == EINTR)
+                if (errno == EINTR || errno == EAGAIN)
                     continue;
                 return false;
             }

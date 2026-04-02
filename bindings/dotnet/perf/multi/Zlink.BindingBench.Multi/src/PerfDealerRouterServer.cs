@@ -18,7 +18,7 @@ internal static class PerfDealerRouterServer
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx);
-        using var server = new Zlink.Socket(ctx, Zlink.SocketType.Router);
+        using var server = new RouterSocket(ctx);
         ApplyMultiSocketOptions(server, pattern);
         ConfigureTlsServerIfNeeded(server, transport);
 

@@ -31,6 +31,8 @@ class fq_t
     bool has_in ();
 
   private:
+    bool has_pipe (pipe_t *pipe_);
+
     //  Inbound pipes.
     typedef array_t<pipe_t, 1> pipes_t;
     pipes_t _pipes;

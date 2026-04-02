@@ -33,7 +33,7 @@ constant exported by `<zlink.h>`.
 | [`zlink_routing_id_t`](message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
 | `zlink_socket_msg_handler_fn` | socket.md | Socket message receive callback (see [Callback Types](#callback-types)) |
 | [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
-| [`zlink_monitor_snapshot_t`](monitoring.md) | monitoring.md | Aggregate monitor snapshot (state, ready-peer count, queue depth) |
+| [`zlink_monitor_snapshot_t`](monitoring.md) | monitoring.md | Monitor snapshot (state and queue depth) |
 | [`zlink_service_event_t`](events.md) | events.md | Service monitor event structure and subject-aware payload |
 | [`zlink_fd_t`](polling.md) | polling.md | Platform-dependent file descriptor type |
 

@@ -44,16 +44,7 @@ static std::atomic<size_t> g_queue_probe_size(0);
 
 void ensure_multi_spot_mesh_pub_budget_default()
 {
-    const char *existing =
-      std::getenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM");
-    if (existing && *existing)
-        return;
-
-#if defined(_WIN32)
-    _putenv_s("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", "100");
-#else
-    setenv("ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM", "100", 1);
-#endif
+    // Keep perf aligned with the core default unless the caller overrides it.
 }
 
 struct spot_server_state_t
@@ -64,7 +55,7 @@ struct spot_server_state_t
         msg_size(0),
         phase(perf_multi_metric::phase_unknown),
         next_seq(1),
-        ready_quorum(1),
+        expected_ready_count(1),
         send_enabled(false),
         send_pending(false),
         fatal_errno(0)
@@ -76,7 +67,7 @@ struct spot_server_state_t
     size_t msg_size;
     perf_multi_metric::phase_t phase;
     uint64_t next_seq;
-    size_t ready_quorum;
+    size_t expected_ready_count;
     std::atomic<bool> send_enabled;
     std::atomic<bool> send_pending;
     std::atomic<int> fatal_errno;
@@ -89,20 +80,10 @@ spot_server_state_t *g_server_state = NULL;
 
 struct spot_pub_ready_probe_t
 {
-    spot_pub_ready_probe_t() :
-        owner(NULL),
-        monitor(NULL),
-        ready_count(0),
-        error_code(0)
-    {
-    }
+    spot_pub_ready_probe_t() : owner(NULL), monitor(NULL) {}
 
     void *owner;
     void *monitor;
-    std::mutex sync;
-    std::condition_variable cv;
-    uint32_t ready_count;
-    int error_code;
 };
 
 void discard_spot_parts(const zlink_routing_id_t *,
@@ -151,32 +132,6 @@ bool parse_start_command(const std::string &line, size_t *msg_size_out)
     return true;
 }
 
-void spot_pub_ready_monitor_handler(const zlink_service_event_t *event_,
-                                    void *userdata_)
-{
-    spot_pub_ready_probe_t *probe =
-      static_cast<spot_pub_ready_probe_t *>(userdata_);
-    if (!probe || !event_)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock(probe->sync);
-        if (event_->event_type == ZLINK_MONITOR_EVENT_ERROR
-            && probe->error_code == 0) {
-            probe->error_code =
-              event_->error_code != 0 ? event_->error_code : EIO;
-        } else if ((event_->event_type
-                     == ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
-                    || event_->event_type
-                         == ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED)
-                   && ((event_->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) == 0
-                       || std::strcmp(event_->subject, k_topic) == 0)) {
-            probe->ready_count = event_->value;
-        }
-    }
-    probe->cv.notify_all();
-}
-
 bool open_spot_pub_ready_probe(void *pub, spot_pub_ready_probe_t *probe_out)
 {
     if (!pub || !probe_out)
@@ -184,27 +139,17 @@ bool open_spot_pub_ready_probe(void *pub, spot_pub_ready_probe_t *probe_out)
 
     probe_out->owner = pub;
     probe_out->monitor = NULL;
-    probe_out->ready_count = 0;
-    probe_out->error_code = 0;
 
     zlink_service_monitor_open_options_t monitor_opts;
     std::memset(&monitor_opts, 0, sizeof(monitor_opts));
     monitor_opts.events =
       ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
-      | ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
       | ZLINK_MONITOR_EVENT_ERROR;
 
     void *monitor = zlink_service_monitor_open(pub, &monitor_opts);
     if (!monitor)
         return false;
     configure_perf_monitor_socket(monitor);
-    if (zlink_service_monitor_handler(
-          monitor, &spot_pub_ready_monitor_handler, probe_out)
-        != 0) {
-        (void) zlink_monitor_close(&monitor);
-        return false;
-    }
-
     probe_out->monitor = monitor;
     return true;
 }
@@ -222,11 +167,15 @@ void close_spot_pub_ready_probe(spot_pub_ready_probe_t *probe)
 
 uint32_t current_spot_pub_ready_count(spot_pub_ready_probe_t *probe)
 {
-    if (!probe)
+    if (!probe || !probe->monitor)
         return 0;
 
-    std::lock_guard<std::mutex> lock(probe->sync);
-    return probe->ready_count;
+    zlink_monitor_snapshot_t snapshot;
+    std::memset(&snapshot, 0, sizeof(snapshot));
+    if (zlink_monitor_snapshot(probe->monitor, &snapshot) != 0)
+        return 0;
+
+    return snapshot.ready_count;
 }
 
 bool wait_for_spot_pub_ready(spot_pub_ready_probe_t *probe,
@@ -234,52 +183,56 @@ bool wait_for_spot_pub_ready(spot_pub_ready_probe_t *probe,
                              int timeout_ms)
 {
     if (!probe || !probe->monitor)
-        return required_count == 0;
+        return false;
     if (required_count == 0)
         return true;
 
-    std::unique_lock<std::mutex> lock(probe->sync);
-    if (probe->error_code != 0) {
-        errno = probe->error_code;
-        return false;
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (std::max (1, timeout_ms));
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_pollitem_t item = {probe->monitor, 0, ZLINK_POLLIN, 0};
+        const long timeout_left_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - std::chrono::steady_clock::now ())
+            .count ();
+        const int poll_rc = perf_socket_poll (
+          &item, 1, timeout_left_ms > 0 ? timeout_left_ms : 1);
+        if (poll_rc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            return false;
+        }
+        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        for (;;) {
+            zlink_service_monitor_event_t event;
+            if (zlink_service_monitor_recv (
+                  probe->monitor, &event, ZLINK_DONTWAIT)
+                != 0) {
+                const int err = zlink_errno ();
+                if (err == EAGAIN || err == EINTR)
+                    break;
+                return false;
+            }
+            if (event.event_type == ZLINK_MONITOR_EVENT_ERROR) {
+                errno = event.error_code != 0 ? event.error_code : EIO;
+                return false;
+            }
+            if (event.event_type != ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED)
+                continue;
+            if ((event.detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
+                && std::strcmp (event.subject, k_topic) != 0) {
+                continue;
+            }
+            if (event.value >= required_count)
+                return true;
+        }
     }
-    if (probe->ready_count >= required_count)
-        return true;
 
-    const bool signaled = probe->cv.wait_for(
-      lock,
-      std::chrono::milliseconds(std::max(1, timeout_ms)),
-      [probe, required_count]() {
-          return probe->error_code != 0 || probe->ready_count >= required_count;
-      });
-    if (probe->error_code != 0) {
-        errno = probe->error_code;
-        return false;
-    }
-    return signaled && probe->ready_count >= required_count;
-}
-
-int resolve_spot_pub_ready_quorum_percent(const std::string &transport)
-{
-    (void) transport;
-    return resolve_multi_int_env("PERF_MULTI_SPOT_PUB_READY_QUORUM_PERCENT",
-                                 90,
-                                 1);
-}
-
-size_t resolve_spot_pub_ready_quorum(size_t client_count,
-                                     const std::string &transport)
-{
-    if (client_count == 0)
-        return 1;
-
-    const size_t percent = static_cast<size_t>(
-      std::min(100, resolve_spot_pub_ready_quorum_percent(transport)));
-    const size_t quorum =
-      static_cast<size_t>(
-        (static_cast<unsigned long long>(client_count) * percent + 99ULL)
-        / 100ULL);
-    return std::max<size_t>(1, quorum);
+    return false;
 }
 
 void emit_requested_queue_probe(const std::string &lib_name,
@@ -510,7 +463,8 @@ bool run_phase(spot_server_state_t *state,
         if (state->fatal_errno.load(std::memory_order_acquire) != 0)
             return false;
         if (state->send_enabled.load(std::memory_order_acquire)) {
-            if (current_spot_pub_ready_count(ready_probe) < state->ready_quorum) {
+            if (current_spot_pub_ready_count(ready_probe)
+                < state->expected_ready_count) {
                 wait_for_spot_send_progress(false);
                 continue;
             }
@@ -618,14 +572,16 @@ bool run_server_loop(spot_server_state_t *state,
                       << perf_multi_metric::now_us()
                       << " size=" << msg_sizes[i] << std::endl;
         }
-        if (!wait_for_spot_pub_ready(ready_probe, state->ready_quorum,
+        if (!wait_for_spot_pub_ready(ready_probe,
+                                     state->expected_ready_count,
                                      start_timeout_ms)) {
             if (bench_debug_enabled()) {
                 std::cerr << "[multi-spot-server] pub ready timeout size="
                           << msg_sizes[i]
                           << " ready="
                           << current_spot_pub_ready_count(ready_probe)
-                          << " required=" << state->ready_quorum << std::endl;
+                          << " required=" << state->expected_ready_count
+                          << std::endl;
             }
             return false;
         }
@@ -731,8 +687,7 @@ int run_server_benchmark(const std::string &lib_name,
     spot_pub_ready_probe_t pub_ready_probe;
     state.node = node;
     state.pub = pub;
-    state.ready_quorum =
-      resolve_spot_pub_ready_quorum(settings.clients, transport);
+    state.expected_ready_count = std::max<size_t>(1, settings.clients);
     g_server_state = &state;
 
     perf_stop_requested ().store(false, std::memory_order_release);

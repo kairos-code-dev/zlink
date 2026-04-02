@@ -38,7 +38,7 @@ internal static class PerfStreamServer
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx);
-        using var server = new Zlink.Socket(ctx, Zlink.SocketType.Stream);
+        using var server = new StreamSocket(ctx);
         ApplyMultiSocketOptions(server, Pattern);
         ConfigureTlsServerIfNeeded(server, transport);
         server.SetOption(SocketOptions.SndTimeo, ioTimeoutMs);
@@ -143,7 +143,7 @@ internal static class PerfStreamServer
         return int.TryParse(line.AsSpan("QUEUE,".Length), out size) && size > 0;
     }
 
-    private static void EmitRequestedQueueProbe(Zlink.Socket server,
+    private static void EmitRequestedQueueProbe(SocketBase server,
         string transport, int fallbackSize, ControlState control)
     {
         if (Interlocked.Exchange(ref control.QueueProbePending, 0) == 0)
@@ -171,7 +171,7 @@ internal static class PerfStreamServer
         return pending;
     }
 
-    private static RelayStatus RelayStreamMessageNonBlocking(Zlink.Socket server,
+    private static RelayStatus RelayStreamMessageNonBlocking(SocketBase server,
         PendingStreamMessage[] pending, ref int pendingCount)
     {
         Message? idFrame = TryReceiveStreamFrame(server);
@@ -231,7 +231,7 @@ internal static class PerfStreamServer
         }
     }
 
-    private static Message? TryReceiveStreamFrame(Zlink.Socket socket)
+    private static Message? TryReceiveStreamFrame(SocketBase socket)
     {
         try
         {
@@ -244,7 +244,7 @@ internal static class PerfStreamServer
         }
     }
 
-    private static bool FlushPendingMessages(Zlink.Socket server,
+    private static bool FlushPendingMessages(SocketBase server,
         PendingStreamMessage[] pending, ref int pendingCount)
     {
         int index = 0;
@@ -285,7 +285,7 @@ internal static class PerfStreamServer
         pendingCount--;
     }
 
-    private static SendStatus TrySendPendingMessage(Zlink.Socket server,
+    private static SendStatus TrySendPendingMessage(SocketBase server,
         PendingStreamMessage message)
     {
         while (message.Stage != StreamSendStage.None)

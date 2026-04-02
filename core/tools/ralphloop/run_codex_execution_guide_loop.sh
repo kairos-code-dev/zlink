@@ -391,21 +391,93 @@ fi
 
 SESSION_SCOPE_ID="$(sanitize_scope_token "${DISPLAY_NAME}_${GATE_LABEL}")"
 
+find_previous_session_dir() {
+  local logs_dir="$1"
+  local scope_id="$2"
+  local current_dir="$3"
+  find "${logs_dir}" -maxdepth 1 -mindepth 1 -type d \
+    -name "codex_execution_guide_loop_${scope_id}_*" ! -path "${current_dir}" \
+    | sort | tail -n 1
+}
+
+initialize_session_artifacts() {
+  local session_dir="$1"
+  local previous_session_dir="$2"
+  local run_state_file="${session_dir}/00_run_state.md"
+  local checklist_file="${session_dir}/00_checklist.md"
+  local notes_file="${session_dir}/00_notes.md"
+  local handoff_file="${session_dir}/00_handoff.md"
+
+  cat > "${run_state_file}" <<EOF
+# Run State
+
+- session_dir: ${session_dir}
+- previous_session_dir: ${previous_session_dir:-none}
+- status: in_progress
+- active_language: <cpp|dotnet|java|rust|go|node|python>
+- active_mode: <single|multi recv|multi callback|normal-operation repair>
+- current_focus: <current highest-priority work>
+- current_issue: <current failure, divergence, or bottleneck>
+- worst_ratio: <ratio and key, or pending if full comparable not ready>
+- comparable_report: <latest comparable report path or pending>
+- current_action: <what is being changed or verified now>
+- next_action: <immediate next step>
+- blocker: <blocked reason or none>
+- latest_verification: <latest command and outcome>
+- changed_files: <high-signal files only or none>
+EOF
+
+  cat > "${checklist_file}" <<'EOF'
+# Checklist
+
+- [ ] previous session unresolved items reviewed
+- [ ] doc/perf forbidden handshake/start-gate wording removed from session files and current interpretation
+- [ ] policy-compliant measurement method confirmed against core/perf
+- [ ] full-surface normal operation verified across all patterns and sizes
+- [ ] required metrics populated (throughput, latency, CPU, memory, queue where required)
+- [ ] current focus selected
+- [ ] code or document change applied
+- [ ] verification run completed
+- [ ] results logged
+- [ ] perf results saved under bindings/<lang>/perf/results
+- [ ] remaining work / blocker updated
+EOF
+
+  cat > "${notes_file}" <<EOF
+# Notes
+
+- Keep high-signal findings, commands, report paths, and decisions here.
+- Use this file for run-local notes instead of writing transient progress into the execution guide.
+EOF
+
+  cat > "${handoff_file}" <<EOF
+# Handoff
+
+- previous_session_dir: ${previous_session_dir:-none}
+- instruction:
+  - Review the previous session's run state, checklist, notes, prompt, and run log first.
+  - If unresolved work remains, carry it forward here before starting new work.
+EOF
+}
+
 mkdir -p "${LOGS_DIR}"
 
 if [[ "${INIT_ONLY}" == "1" ]]; then
   timestamp="$(date '+%Y%m%d_%H%M%S')"
   session_dir="${LOGS_DIR}/codex_execution_guide_loop_${SESSION_SCOPE_ID}_${timestamp}"
+  previous_session_dir="$(find_previous_session_dir "${LOGS_DIR}" "${SESSION_SCOPE_ID}" "${session_dir}")"
   gate_dir="${session_dir}/gate"
   gate_status_file="${gate_dir}/${GATE_LABEL}.status"
   mkdir -p "${session_dir}"
   mkdir -p "${gate_dir}"
+  initialize_session_artifacts "${session_dir}" "${previous_session_dir}"
 
   cat <<EOF
 === Codex execution guide loop start ===
 Guide: ${GUIDE_PATH}
 Legacy secondary plan: ${MASTER_PLAN_PATH}
 Session dir: ${session_dir}
+Previous session dir: ${previous_session_dir:-none}
 Gate dir: ${gate_dir}
 Supervisor lock: init-only skipped
 Max iterations: 0
@@ -424,10 +496,16 @@ fi
 
 timestamp="$(date '+%Y%m%d_%H%M%S')"
 session_dir="${LOGS_DIR}/codex_execution_guide_loop_${SESSION_SCOPE_ID}_${timestamp}"
+previous_session_dir="$(find_previous_session_dir "${LOGS_DIR}" "${SESSION_SCOPE_ID}" "${session_dir}")"
 gate_dir="${session_dir}/gate"
 gate_status_file="${gate_dir}/${GATE_LABEL}.status"
 mkdir -p "${session_dir}"
 mkdir -p "${gate_dir}"
+initialize_session_artifacts "${session_dir}" "${previous_session_dir}"
+run_state_file="${session_dir}/00_run_state.md"
+checklist_file="${session_dir}/00_checklist.md"
+notes_file="${session_dir}/00_notes.md"
+handoff_file="${session_dir}/00_handoff.md"
 
 max_iterations_display="${MAX_ITERATIONS}"
 if [[ "${MAX_ITERATIONS}" == "0" ]]; then
@@ -439,11 +517,16 @@ cat <<EOF
 Guide: ${GUIDE_PATH}
 Legacy secondary plan: ${MASTER_PLAN_PATH}
 Session dir: ${session_dir}
+Previous session dir: ${previous_session_dir:-none}
 Gate dir: ${gate_dir}
 Supervisor lock: ${SUPERVISOR_LOCK_DIR:-disabled}
 Max iterations: ${max_iterations_display}
 Gate status file: ${gate_status_file}
 Stress count: ${STRESS_COUNT}
+Run state file: ${run_state_file}
+Checklist file: ${checklist_file}
+Notes file: ${notes_file}
+Handoff file: ${handoff_file}
 EOF
 
 load_gate_field() {
@@ -541,22 +624,51 @@ EOF
 작업 규칙:
 - 현재 실행의 유일한 기준 문서는 실행 가이드다.
 - 이 실행은 단일 문서 체계로 운영한다. 명시 요청이 없으면 main/master/gap/spec/residual/보조 계획 문서를 새로 만들지 않는다.
-- 필요한 계획, 작업 레지스터, 체크리스트, 종료 조건은 모두 실행 가이드 한 파일에 유지한다.
+- 실행 가이드는 정책과 완료 기준의 source of truth다.
+- 현재 session dir은 ${session_dir} 이다.
+- session dir 아래 실행 상태 파일을 기본 산출물로 사용한다.
+  - run state: ${run_state_file}
+  - checklist: ${checklist_file}
+  - notes: ${notes_file}
+  - handoff: ${handoff_file}
+- 이 session dir 산출물은 실행 로그/상태 기록용이며, 별도 계획 문서 체계로 취급하지 않는다.
+- 이전 session dir은 ${previous_session_dir:-none} 이다.
+- substantive work를 시작하기 전에 이전 session dir의 미완료 사항과 handoff를 먼저 확인하고, unresolved work가 있으면 현재 session dir 파일에 이어받는다.
 - 실행 가이드와 별도 계획 문서로 분산돼 있던 내용이 보이면 실행 가이드로 먼저 합친다.
 - 별도 보조 계획서를 유지하거나 참조 체인을 늘리는 방식으로 작업을 진행하지 않는다.
 ${legacy_plan_rules}
 - 각 작업 묶음을 끝낼 때마다 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
-- 실행 가이드 체크리스트가 green이어도 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
+- 각 작업 묶음을 시작할 때와 끝낼 때마다 관련 상위 정책 문서(예: doc/perf, spec policy)를 다시 확인하고 현재 변경이 그 규칙을 계속 준수하는지 검토한다.
+- 매 턴 시작 시와 종료 직전에도 현재 변경이 상위 정책 문서를 계속 준수하는지 다시 확인한다.
+- perf 수정 중 정책 위반을 발견하면 성능 최적화보다 먼저 규칙 준수 상태로 수정한다.
+- perf 작업에서는 먼저 대상 surface가 정책 준수 상태로 전체 패턴/전체 사이즈에서 정상 동작하는지 확보하고, 그 다음에만 성능 개선을 진행한다.
+- perf 작업의 iteration 목표는 먼저 "정책을 만족하며 정상 동작하는 perf" 를 만드는 것이고, 성능 개선은 그 목표를 만족한 뒤에만 진행한다.
+- 정상 동작은 throughput만 찍히는 상태가 아니라, 해당 surface에서 기대되는 latency, CPU, memory, queue 지표가 전체 패턴/전체 사이즈에서 빠짐없이 채워지는 상태를 뜻한다.
+- `core/perf` 와 동일한 측정 방식을 유지해야 하며, 방식이 다르면 그 숫자와 판단은 무효로 취급하고, 먼저 perf를 `core/perf` 와 동일한 방식으로 수정한다.
+- 정책 위반 수정, `core/perf` 방식 정합성 수정, benchmark 자체 버그 수정이 아니면 perf 를 수정하지 않는다.
+- `doc/perf` 가 금지하는 handshake/start gate/ready 판정 방식이 session 상태 파일, handoff, notes, 구현, 로그 해석에 보이면 그 표현과 구현을 먼저 바로잡는다.
+- 예를 들어 `READY,...`, `CLIENT_READY,...`, `START,...` 같은 orchestration 문자열을 delivery-ready 근거나 benchmark start gate로 서술하거나 사용하면 정책 위반으로 보고 즉시 수정한다.
+- 이전 session 파일이나 현재 session 파일에 그런 정책 위반 표현이 남아 있으면, 그 표현을 먼저 정리한 뒤에만 다음 실험이나 구현을 진행한다.
+- 이런 정책 위반이 남아 있는 동안에는 다음 실험, 다음 패턴, 다음 언어로 진행하지 않는다.
+- perf 측정은 항상 해당 바인딩의 `perf/results` 아래 report가 남도록 실행하고, 결과 파일 경로를 session 상태 파일에 기록한다.
+- 매 턴마다 `00_run_state.md` 의 핵심 필드(active language, mode, current issue, worst ratio, current action, next action, latest verification)를 최신 상태로 갱신한다.
+- 정책 문서가 금지하는 의미 변경, I/O model 변경, workaround가 보이면 진행하지 말고 blocker나 bug 후보로 승격한다.
+- 특정 binding/perf surface에서 보이는 실패만으로 core bug라고 단정하지 않는다.
+- 먼저 binding 코드, FFI/integration layer, perf runner semantics를 충분히 확인하고, 같은 실패를 `core/tests/` 저장소 재현으로 옮긴 뒤에만 core bug로 분류한다.
+- core bug 후보로 막히면 멈추기 전에 한글 bug report를 먼저 작성하고, 그 절대 경로와 파일명을 session 상태 파일과 최종 blocker 메시지에 남긴다.
+- session checklist가 green이어도 실제 구현 내용이 아직 덜 반영됐으면 완료로 처리하지 않는다.
 - 실행 가이드와 현재 코드가 어긋나면 실행 가이드를 먼저 고치고 그 다음 코드를 진행한다.
 - 실행 가이드의 현재 파일 내용이 source of truth다. 명시적으로 요청받지 않은 한 실행 가이드 자체의 git diff나 삭제된 legacy 문서 diff를 근거로 판단하지 않는다.
 - git status 에서 보이는 삭제된 legacy 문서나 과거 계획 문서는 현재 실행 범위의 근거가 아니다. unrelated 변경처럼 취급하고 현재 가이드와 현재 코드만 본다.
-- 문서의 첫 미완료 항목부터 순서대로 진행한다.
+- 현재 작업 우선순위는 session handoff, run state, checklist의 미완료 항목을 먼저 따른다.
+- session 상태 파일에 명시 우선순위가 없으면 그때 실행 가이드의 첫 미완료 정책 항목부터 진행한다.
 - core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
 - core/build/ 만 사용한다.
 - 장시간 gate가 필요하면 ./core/tools/ralphloop/run_execution_gate_loop.sh --logs-dir ${gate_dir} --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
 - flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 ${STRESS_COUNT}보다 더 크게 올릴 수 있다.
 - 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
-- 문서 상태표와 체크리스트도 실제 진행 상태에 맞게 갱신한다.
+- 실행 상태표, 체크리스트, 실행 메모는 session dir 파일에 갱신한다.
+- 실행 가이드는 정책, 범위, 완료 기준이 바뀔 때만 수정한다.
 - 가이드에 단계별 commit / push 규칙이 있으면 그대로 따른다.
 - unrelated 변경은 commit/push에 섞지 않는다. 현재 단계 범위만 안전하게 commit할 수 없으면 완료로 닫지 않는다.
 - push한 commit hash를 문서의 검증 증거 또는 진행 메모에 남길 수 있으면 남긴다.

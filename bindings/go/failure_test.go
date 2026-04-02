@@ -64,6 +64,36 @@ func TestBlockingSendFailureSurfacesError(t *testing.T) {
 	}
 }
 
+func TestBlockingSendFailurePreservesMessagePayload(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	router, _ := ctx.RouterSocket()
+	defer router.Close()
+
+	if err := router.SetMandatory(true); err != nil {
+		t.Fatalf("SetMandatory() error = %v", err)
+	}
+	if err := router.Bind(inprocEndpoint("router-send-preserve")); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+
+	rid, err := zlink.NewRoutingID([]byte("missing-peer"))
+	if err != nil {
+		t.Fatalf("NewRoutingID() error = %v", err)
+	}
+
+	msg := newMessage(t, "preserve-me")
+	defer msg.Close()
+
+	if err := router.SendTo(rid, msg); err == nil {
+		t.Fatalf("SendTo() should surface an error when no peer exists")
+	}
+	if got := string(msg.Data()); got != "preserve-me" {
+		t.Fatalf("message payload after SendTo() failure = %q, want %q", got, "preserve-me")
+	}
+}
+
 func TestTrySendDoesNotSwallowNonEagainErrors(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
@@ -89,6 +119,25 @@ func TestTryPublishDoesNotSwallowNonEagainErrors(t *testing.T) {
 
 	if _, err := socket.TryPublish("topic", newMessage(t, "data")); err == nil {
 		t.Fatalf("TryPublish() on closed socket should surface an error")
+	}
+}
+
+func TestTryPublishFailurePreservesMessagePayload(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	socket, _ := ctx.PubSocket()
+	msg := newMessage(t, "preserve-me")
+	defer msg.Close()
+
+	if err := socket.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := socket.TryPublish("topic", msg); err == nil {
+		t.Fatalf("TryPublish() on closed socket should surface an error")
+	}
+	if got := string(msg.Data()); got != "preserve-me" {
+		t.Fatalf("message payload after TryPublish() failure = %q, want %q", got, "preserve-me")
 	}
 }
 

@@ -30,7 +30,7 @@ internal static class PerfStreamCallbackServer
 
         using var ctx = new Context();
         ApplyMultiServerContextOptions(ctx);
-        using var server = new Zlink.Socket(ctx, Zlink.SocketType.Stream);
+        using var server = new StreamSocket(ctx);
         ApplyMultiSocketOptions(server, Pattern);
         ConfigureTlsServerIfNeeded(server, transport);
         server.SetOption(SocketOptions.SndTimeo, ioTimeoutMs);
@@ -189,7 +189,7 @@ internal static class PerfStreamCallbackServer
         return int.TryParse(line.AsSpan("QUEUE,".Length), out size) && size > 0;
     }
 
-    private static void EmitRequestedQueueProbe(Zlink.Socket server,
+    private static void EmitRequestedQueueProbe(SocketBase server,
         string transport, int fallbackSize, ControlState control)
     {
         if (Interlocked.Exchange(ref control.QueueProbePending, 0) == 0)
@@ -227,7 +227,7 @@ internal static class PerfStreamCallbackServer
         return true;
     }
 
-    private static bool FlushPendingMessages(Zlink.Socket server,
+    private static bool FlushPendingMessages(SocketBase server,
         PendingStreamPacket[] pending, ref int pendingCount)
     {
         int index = 0;
@@ -258,7 +258,7 @@ internal static class PerfStreamCallbackServer
         pendingCount--;
     }
 
-    private static SendStatus TrySendPendingMessage(Zlink.Socket server,
+    private static SendStatus TrySendPendingMessage(SocketBase server,
         PendingStreamPacket message)
     {
         if (!message.HasPayload || message.Payload == null)

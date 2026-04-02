@@ -74,7 +74,7 @@ These report transport/session state for raw sockets.
 
 | Constant | Value | Description | `value` | `routing_id` | Side | After this event |
 |---|---|---|---|---|---|---|
-| `CONNECTION_READY_CHANGED` | `0x1000` | Handshake complete, messaging ready | `current_ready_count` | peer id (all sockets) | Both | **start send/recv** |
+| `CONNECTION_READY_CHANGED` | `0x1000` | Handshake complete, messaging ready | reserved | peer id (all sockets) | Both | **start send/recv** |
 | `CONNECTED` | `0x0001` | TCP connection established (pre-handshake) | fd | — | Client | wait for `CONNECTION_READY_CHANGED` |
 | `ACCEPTED` | `0x0020` | Incoming connection accepted (pre-handshake) | fd | — | Server | wait for `CONNECTION_READY_CHANGED` |
 | `DISCONNECTED` | `0x0200` | Session terminated | reason code | Possible | Both | trigger reconnection |
@@ -88,8 +88,8 @@ These report transport/session state for raw sockets.
 | `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | Handshake failed (generic) | errno | — | Both | check network |
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed (protocol error) | error code | — | Both | check version/config |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed (auth) | — | — | Both | check TLS/auth config |
-| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription propagated | `0`/`1` (boolean) | — | SUB side | **start `zlink_subscribe()` recv** |
-| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber ready | `current_ready_count` | — | PUB side | **start `zlink_publish()` delivery** |
+| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription propagated | reserved | — | SUB side | **start `zlink_subscribe()` recv** |
+| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber ready membership changed | reserved | — | PUB side | **start `zlink_publish()` delivery** |
 | `MONITOR_STOPPED` | `0x0400` | Monitor stopped | — | — | Both | `zlink_monitor_close()` |
 
 ### Connection flow
@@ -103,7 +103,8 @@ Close:  CONNECTION_READY_CHANGED → DISCONNECTED → CONNECT_DELAYED → reconn
 ### CONNECTION_READY_CHANGED details
 
 Fired after a successful handshake. Once received, messaging can start immediately.
-The `value` field contains `current_ready_count` -- the absolute number of ready peers.
+The `value` field of `*_READY_CHANGED` events is reserved and must not be used
+as an aggregate ready-count contract.
 
 - `ev->routing_id` contains the peer identity on all socket types.
 
@@ -249,7 +250,6 @@ Query the current aggregate state from a monitor handle at any time.
 
 | Field | Description |
 |-------|-------------|
-| `ready_count` | Number of currently ready peers |
 | `snd_pending_msgs` | Messages pending in send queue (capped by SNDHWM) |
 | `rcv_pending_msgs` | Messages pending in receive queue (capped by RCVHWM, approximate) |
 
@@ -281,8 +281,7 @@ zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(monitor, &snapshot);
-printf("Ready peers: %u, sndq=%llu, rcvq=%llu\n",
-       snapshot.ready_count,
+printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
 ```
@@ -295,7 +294,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
     if (ev->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
         zlink_monitor_snapshot_t snapshot;
         zlink_monitor_snapshot(g_monitor, &snapshot);
-        printf("Ready peers now: %u\n", snapshot.ready_count);
+        printf("Monitor snapshot updated\n");
     }
 }
 ```
@@ -515,8 +514,8 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 Raw PUB/SUB sockets provide delivery-ready events via the socket monitor.
 Open separate monitors on PUB and SUB and wait for both before messaging.
 
-- `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription propagated, receiving possible (0/1 boolean)
-- `PUB_DELIVERY_READY_CHANGED(value>0)` — ready subscriber count (absolute count); check against expected subscriber count
+- `SUB_DELIVERY_READY_CHANGED` — subscription propagated, receiving possible
+- `PUB_DELIVERY_READY_CHANGED` — publisher-side delivery-ready membership changed
 
 ```c
 zlink_set_subscription(sub, "topic");
@@ -533,8 +532,8 @@ zlink_socket_monitor_open_options_t pub_opts = {
 };
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-/* Start messaging after both delivery-ready events */
-/* SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value>=expected_subs) */
+/* Start messaging after both delivery-ready edges */
+/* expected_subs is validated via monitor event counting */
 zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
 zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
 
@@ -544,8 +543,8 @@ zlink_monitor_close(&sub_mon);
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| PUB | `PUB_DELIVERY_READY_CHANGED(value>=expected_subs)` | `zlink_publish()` delivery |
-| SUB | `SUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_subscribe()` recv |
+| PUB | `PUB_DELIVERY_READY_CHANGED` + expected_subs event counting | `zlink_publish()` delivery |
+| SUB | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` recv |
 
 ### 11.4 Services — SPOT
 

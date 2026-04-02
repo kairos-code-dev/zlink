@@ -29,13 +29,13 @@ internal static class PerfRouterRouterClient
 
         using var ctx = new Context();
         ApplyMultiClientContextOptions(ctx);
-        var clients = new List<Zlink.Socket>(clientCount);
+        var clients = new List<SocketBase>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
         {
             for (int i = 0; i < clientCount; i++)
             {
-                var client = new Zlink.Socket(ctx, Zlink.SocketType.Router);
+                var client = new RouterSocket(ctx);
                 ApplyMultiSocketOptions(client, pattern);
                 ConfigureTlsClientIfNeeded(client, transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
@@ -47,7 +47,7 @@ internal static class PerfRouterRouterClient
                 monitors.Add(monitor);
             }
 
-            List<Zlink.Socket> activeClients = WaitAllClientConnectReady(clients,
+            List<SocketBase> activeClients = WaitAllClientConnectReady(clients,
                 monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
@@ -78,7 +78,7 @@ internal static class PerfRouterRouterClient
     }
 
     private static RouterRouterClientSlot[] CreateSlots(
-        List<Zlink.Socket> activeClients, ReadOnlySpan<byte> serverRoutingId,
+        List<SocketBase> activeClients, ReadOnlySpan<byte> serverRoutingId,
         int msgSize)
     {
         var slots = new RouterRouterClientSlot[activeClients.Count];
@@ -166,7 +166,7 @@ internal static class PerfRouterRouterClient
     }
 
     private static void RunWarmupPhase(RouterRouterClientSlot[] slots,
-        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
         int warmupSeconds,
         bool activeWarmup, int warmupDrainMs, uint runId, ref ulong seq,
         ref int rrIndex, int pollTimeoutMs)
@@ -199,7 +199,7 @@ internal static class PerfRouterRouterClient
     }
 
     private static void RunDrainPhase(RouterRouterClientSlot[] slots,
-        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
         int settleMs,
         uint runId, ref ulong seq, int pollTimeoutMs)
     {
@@ -223,7 +223,7 @@ internal static class PerfRouterRouterClient
     }
 
     private static bool DrainPendingReplies(RouterRouterClientSlot[] slots,
-        IReadOnlyList<Zlink.Socket> sockets, PollEvents[] eventMasks, int msgSize,
+        IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
         uint runId,
         int readyTimeoutMs, int settleMs, int pollTimeoutMs, ref ulong seq)
     {
@@ -361,10 +361,10 @@ internal static class PerfRouterRouterClient
         }
     }
 
-    private static List<Zlink.Socket> CollectSockets(
+    private static List<SocketBase> CollectSockets(
         RouterRouterClientSlot[] slots)
     {
-        var sockets = new List<Zlink.Socket>(slots.Length);
+        var sockets = new List<SocketBase>(slots.Length);
         for (int i = 0; i < slots.Length; i++)
             sockets.Add(slots[i].Socket);
         return sockets;
@@ -453,7 +453,7 @@ internal static class PerfRouterRouterClient
     }
 
     private static void TrySendRouterStopToken(
-        IReadOnlyList<Zlink.Socket> activeClients,
+        IReadOnlyList<SocketBase> activeClients,
         ReadOnlySpan<byte> serverRoutingId)
     {
         if (activeClients == null || activeClients.Count == 0)
@@ -494,7 +494,7 @@ internal static class PerfRouterRouterClient
 
     private sealed class RouterRouterClientSlot
     {
-        internal RouterRouterClientSlot(Zlink.Socket socket, byte[] serverRoutingId,
+        internal RouterRouterClientSlot(SocketBase socket, byte[] serverRoutingId,
             byte[] payload, byte[] routingId, byte[] recv)
         {
             Socket = socket;
@@ -504,7 +504,7 @@ internal static class PerfRouterRouterClient
             Recv = recv;
         }
 
-        internal Zlink.Socket Socket { get; }
+        internal SocketBase Socket { get; }
         internal byte[] ServerRoutingId { get; }
         internal byte[] Payload { get; }
         internal byte[] RoutingId { get; }

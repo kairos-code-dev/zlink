@@ -14,7 +14,6 @@ from ._ffi import lib as _lib
 from ._socket_base import (
     CommonSocketOptions,
     DealerSocketOptions,
-    Socket,
     StreamSocketOptions,
     SubSocketOptions,
 )
@@ -105,7 +104,6 @@ def version():
 __all__ = [
     "version",
     "Context",
-    "Socket",
     "CommonSocketOptions",
     "DealerSocketOptions",
     "StreamSocketOptions",

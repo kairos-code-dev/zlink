@@ -18,7 +18,7 @@ internal static partial class PerfRunner
     private static readonly HashSet<string> IpcPaths = new();
     private static bool IpcCleanupHooked;
 
-    internal static int ReceiveBlocking(Zlink.Socket socket, Span<byte> buffer,
+    internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
         while (true)
@@ -39,7 +39,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static int ReceiveBlocking(Zlink.Socket socket, byte[] buffer,
+    internal static int ReceiveBlocking(SocketBase socket, byte[] buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
         if (buffer == null)
@@ -47,7 +47,7 @@ internal static partial class PerfRunner
         return ReceiveBlocking(socket, buffer.AsSpan(), flags);
     }
 
-    internal static int TryReceiveNonBlocking(Zlink.Socket socket, Span<byte> buffer)
+    internal static int TryReceiveNonBlocking(SocketBase socket, Span<byte> buffer)
     {
         while (true)
         {
@@ -66,7 +66,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static int DrainRemainingFramesNonBlocking(Zlink.Socket socket)
+    internal static int DrainRemainingFramesNonBlocking(SocketBase socket)
     {
         int drained = 0;
         Span<byte> discard = stackalloc byte[256];
@@ -81,13 +81,13 @@ internal static partial class PerfRunner
         return drained;
     }
 
-    internal static int SendBlocking(Zlink.Socket socket, ReadOnlySpan<byte> buffer,
+    internal static int SendBlocking(SocketBase socket, ReadOnlySpan<byte> buffer,
         SendFlags flags = SendFlags.None)
     {
         return socket.Send(buffer, flags);
     }
 
-    internal static int SendBlocking(Zlink.Socket socket, byte[] buffer,
+    internal static int SendBlocking(SocketBase socket, byte[] buffer,
         SendFlags flags = SendFlags.None)
     {
         if (buffer == null)
@@ -211,7 +211,7 @@ internal static partial class PerfRunner
             ctx.SetOption(ContextOption.MaxSockets, maxSockets);
     }
 
-    internal static void ApplySingleSocketOptions(Zlink.Socket socket)
+    internal static void ApplySingleSocketOptions(SocketBase socket)
     {
         int sndHwm = ResolveSingleHwmValue("PERF_SINGLE_SNDHWM");
         int rcvHwm = ResolveSingleHwmValue("PERF_SINGLE_RCVHWM");

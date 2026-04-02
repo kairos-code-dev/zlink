@@ -8,7 +8,6 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
     const dealer = new zlink.DealerSocket(ctx);
     const router = new zlink.RouterSocket(ctx);
     const stream = new zlink.StreamSocket(ctx);
-    const compat = new zlink.Socket(ctx, zlink.SocketType.STREAM);
     const maxRoutingId = Buffer.alloc(255, 0x61);
     const overflowRoutingId = Buffer.alloc(256, 0x62);
     assert.doesNotThrow(() => dealer.setRoutingId(maxRoutingId));
@@ -16,8 +15,6 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
     assert.throws(() => router.send(overflowRoutingId, zlink.Message.empty()), /at most 255 bytes/);
     assert.throws(() => router.trySend(overflowRoutingId, zlink.Message.empty()), /at most 255 bytes/);
     assert.throws(() => stream.send(overflowRoutingId, zlink.Message.empty()), /at most 255 bytes/);
-    assert.throws(() => compat.streamSend(overflowRoutingId, Buffer.alloc(0)), /255 bytes/);
-    compat.close();
     stream.close();
     router.close();
     dealer.close();

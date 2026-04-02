@@ -134,7 +134,7 @@ bool perf_router_router_server (const std::string &transport, size_t)
         const int poll_rc =
           poller.wait_all (events, compute_wait_ms (deadline));
         if (poll_rc < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             failed = true;
             break;

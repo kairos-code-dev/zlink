@@ -324,6 +324,29 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 - callback 모드를 이유로 별도 callback 파일명이나 별도 public pattern 이름을
   정책에 추가하지 않는다.
 
+#### ready gate 기준
+
+single의 send/recv 시작 가능 여부는 아래 공식 monitor event만으로 판정한다.
+perf는 추가 precondition(`FILTER_APPLIED`, custom handshake, quorum 완화)을
+두지 않는다. 아래 이벤트 이후 메시징이 불가능하면 perf 우회가 아니라 core
+버그로 보고 수정한다.
+
+| 패턴 | 송신 시작 기준 | 수신 시작 기준 |
+|------|----------------|----------------|
+| PAIR | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
+| PUBSUB | `PUB_DELIVERY_READY_CHANGED` event counting | `SUB_DELIVERY_READY_CHANGED` |
+| DEALER_DEALER | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
+| DEALER_ROUTER | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
+| ROUTER_ROUTER | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
+| SPOT | `PUB_FIRST_DELIVERY_READY_CHANGED` | `SUB_DELIVERY_READY_CHANGED` |
+
+- SPOT single은 `SPOT_SUB_FILTER_APPLIED`를 ready gate로 사용하지 않는다.
+- SPOT single은 `PUB_FIRST_DELIVERY_READY_CHANGED` 이후
+  `zlink_publish()` delivery가 가능해야 한다.
+- SPOT single은 `SUB_DELIVERY_READY_CHANGED` 이후 `zlink_subscribe()`
+  수신이 가능해야 한다.
+- single policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
+
 #### 패턴 방향 분류
 
 | 방향 | 패턴 | throughput 단위 |

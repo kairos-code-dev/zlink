@@ -51,7 +51,7 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 | Field | Description |
 |---|---|
 | `event` | Bitmask indicating the event type (one of the `ZLINK_EVENT_*` constants). |
-| `value` | Event-specific value. For connection events this is the file descriptor; for error events it is the errno or protocol error code; for disconnect events it is a `ZLINK_DISCONNECT_*` reason; for `*_READY_CHANGED` events it is the current ready count. |
+| `value` | Event-specific value. For connection events this is the file descriptor; for error events it is the errno or protocol error code; for disconnect events it is a `ZLINK_DISCONNECT_*` reason. For `*_READY_CHANGED` events it is reserved and must not be interpreted as an aggregate ready count. |
 | `routing_id` | The routing identity of the peer involved in the event, if applicable. |
 | `local_addr` | Null-terminated local endpoint address string. |
 | `remote_addr` | Null-terminated remote endpoint address string. |
@@ -88,7 +88,6 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_source_kind_t source_kind;
     zlink_monitor_state_mask_t state_flags;
     zlink_monitor_snapshot_detail_mask_t detail_flags;
-    uint32_t ready_count;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
 } zlink_monitor_snapshot_t;
@@ -99,7 +98,6 @@ typedef struct zlink_monitor_snapshot_t
 | `source_kind` | Snapshot source (`SOCKET`, `SPOT_PUB`, `SPOT_SUB`). |
 | `state_flags` | Aggregate state bits such as `READY`, `BOUND_READY`, `SEND_READY`. |
 | `detail_flags` | Indicates which numeric fields are populated. |
-| `ready_count` | Aggregate ready/connected peer count when supported. |
 | `snd_pending_msgs` | Aggregate local outbound backlog in messages when supported. |
 | `rcv_pending_msgs` | Aggregate local inbound backlog snapshot when supported. |
 
@@ -129,7 +127,6 @@ typedef enum zlink_monitor_source_kind_t
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT` | `1 << 0` | `ready_count` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` field is populated. |
 
@@ -153,11 +150,11 @@ bitwise OR.
 | `ZLINK_EVENT_DISCONNECTED` | `0x0200` | Session disconnected. The event value carries a `ZLINK_DISCONNECT_*` reason. |
 | `ZLINK_EVENT_MONITOR_STOPPED` | `0x0400` | Monitor has been stopped and will produce no more events. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | Handshake failed with no further detail available. |
-| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | Connection readiness changed. `value` is the current ready count. |
+| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | Connection readiness changed. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed due to a protocol error. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed due to authentication failure. |
-| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness changed. `value` is the current ready count. |
-| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness changed. `value` is the current ready count. |
+| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness changed. |
+| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness changed. |
 | `ZLINK_EVENT_ALL` | `0xFFFF` | Subscribe to all events. |
 
 ### Disconnect Reasons
@@ -404,9 +401,9 @@ typedef struct zlink_service_monitor_open_options_t
 | `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` | `1 << 14` | Subscription readiness changed; `value` is the current ready count |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB queue is full |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB queue has been drained |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | Subject-specific remote delivery-ready count changed |
+| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | Subject-specific remote delivery-ready membership/state changed |
 | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | Subject-specific delivery-ready state changed |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | Publisher-side first-delivery-safe ready count changed |
+| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | Publisher-side first-delivery-safe readiness changed |
 
 #### Service Monitor Event Mask Constants
 

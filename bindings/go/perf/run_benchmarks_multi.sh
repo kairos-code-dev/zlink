@@ -12,7 +12,7 @@ WARMUP="2"
 MSG_SIZES="64,256,1024,65536,131072,262144"
 TRANSPORTS="tcp"
 RUNS="1"
-CLIENTS="100"
+CLIENTS=""
 RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
 RESULTS_TAG=""
 OUTPUT_FILE=""
@@ -126,13 +126,25 @@ fi
   echo "  warmup:    ${WARMUP}s"
   echo "  msg_sizes: ${MSG_SIZES}"
   echo "  transports: ${TRANSPORTS}"
-  echo "  clients:   ${CLIENTS}"
+  if [[ -n "${CLIENTS}" ]]; then
+    echo "  clients:   ${CLIENTS}"
+  else
+    echo "  clients:   auto (default=100, stream=10000)"
+  fi
   echo "  runs:      ${RUNS}"
   echo "## Effective Options (end)"
   echo
 
   for run in $(seq 1 "${RUNS}"); do
     for pattern in "${PATTERNS[@]}"; do
+      resolved_clients="${CLIENTS}"
+      if [[ -z "${resolved_clients}" ]]; then
+        if [[ "${pattern}" == "MULTI_STREAM" ]]; then
+          resolved_clients="10000"
+        else
+          resolved_clients="100"
+        fi
+      fi
       for transport in "${XPORTS[@]}"; do
         for size in "${SIZES[@]}"; do
           go run ./perf/multi \
@@ -142,7 +154,7 @@ fi
             --warmup "${WARMUP}" \
             --duration "${DURATION}" \
             --recv "${RECV_MODE}" \
-            --clients "${CLIENTS}"
+            --clients "${resolved_clients}"
         done
       done
     done

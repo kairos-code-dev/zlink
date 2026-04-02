@@ -8,15 +8,17 @@ TASKS=(
   "integrationTest"
 )
 
+cd "${ROOT_DIR}"
+
 failures=0
 timeout_seconds=180
 
 run_task() {
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_seconds}s" "$ROOT_DIR/gradlew" "$1" --no-daemon
+    timeout "${timeout_seconds}s" ./gradlew "$1" --no-daemon
     return $?
   fi
-  "$ROOT_DIR/gradlew" "$1" --no-daemon
+  ./gradlew "$1" --no-daemon
 }
 
 for task in "${TASKS[@]}"; do

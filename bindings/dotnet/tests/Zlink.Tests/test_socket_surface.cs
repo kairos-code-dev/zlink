@@ -146,6 +146,7 @@ public sealed class test_socket_surface
     {
         Type[] exported = typeof(SocketBase).Assembly.GetExportedTypes();
 
+        Assert.DoesNotContain(exported, type => type.Name == "Socket");
         Assert.DoesNotContain(exported, type => type.Name == nameof(SocketOptions));
         Assert.DoesNotContain(exported,
             type => type.Name == typeof(SocketOptionKey<int>).Name);

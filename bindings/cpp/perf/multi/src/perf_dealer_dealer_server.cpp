@@ -68,7 +68,7 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
 
         const int poll_rc = poller.wait_all (events, wait_ms);
         if (poll_rc < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             failed = true;
             break;

@@ -9,6 +9,7 @@
 #include <mutex>
 #include <string>
 #include <string.h>
+#include <vector>
 
 #if defined(ZLINK_HAVE_WINDOWS)
 #include <winsock2.h>
@@ -274,6 +275,27 @@ bool wait_for_pub_delivery_ready_value (delivery_ready_value_probe_t *probe_,
     return signaled && !probe_->error_seen
            && probe_->event_count > 0
            && probe_->last_value == expected_value_;
+}
+
+bool wait_for_pub_delivery_ready_value_at_least (
+  delivery_ready_value_probe_t *probe_,
+  uint64_t expected_min_value_,
+  int timeout_ms_)
+{
+    if (!probe_)
+        return false;
+
+    std::unique_lock<std::mutex> lock (probe_->mutex);
+    const bool signaled = probe_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_),
+      [probe_, expected_min_value_]() {
+          return probe_->error_seen
+                 || (probe_->event_count > 0
+                     && probe_->last_value >= expected_min_value_);
+      });
+    return signaled && !probe_->error_seen
+           && probe_->event_count > 0
+           && probe_->last_value >= expected_min_value_;
 }
 
 bool wait_for_monitor_ready_recv (void *monitor_, int timeout_ms_)
@@ -1520,6 +1542,67 @@ void test_pubsub_delivery_ready_snapshot_and_reopen_after_ready ()
     test_context_socket_close_zero_linger (pub);
 }
 
+void test_pubsub_delivery_ready_reaches_1000_subscribers ()
+{
+    const size_t expected_subscribers = 1000;
+    const int timeout_ms = 60000;
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS,
+                     static_cast<int> (expected_subscribers + 32)));
+
+    std::vector<void *> subs;
+    subs.reserve (expected_subscribers);
+    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
+    TEST_ASSERT_NOT_NULL (pub);
+    configure_pair_socket (pub);
+
+    zlink_socket_monitor_open_options_t pub_ready_opts;
+    memset (&pub_ready_opts, 0, sizeof (pub_ready_opts));
+    pub_ready_opts.events =
+      ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED | ZLINK_MONITOR_EVENT_ERROR;
+    void *pub_ready_monitor = zlink_socket_monitor_open (pub, &pub_ready_opts);
+    TEST_ASSERT_NOT_NULL (pub_ready_monitor);
+    configure_pair_socket (pub_ready_monitor);
+
+    delivery_ready_value_probe_t pub_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_monitor_handler (
+      pub_ready_monitor, &delivery_ready_value_handler, &pub_probe));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (pub, "tcp://127.0.0.1:*"));
+    char endpoint[MAX_SOCKET_STRING];
+    size_t endpoint_size = sizeof (endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (
+      pub, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_size));
+
+    for (size_t i = 0; i < expected_subscribers; ++i) {
+        void *sub = zlink_socket (ctx, ZLINK_SOCKET_SUB);
+        TEST_ASSERT_NOT_NULL (sub);
+        configure_pair_socket (sub);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "topic.bulk"));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+        subs.push_back (sub);
+    }
+
+    TEST_ASSERT_TRUE (wait_for_pub_delivery_ready_value_at_least (
+      &pub_probe, expected_subscribers, timeout_ms));
+    TEST_ASSERT_EQUAL_UINT64 (expected_subscribers, pub_probe.last_value);
+
+    zlink_monitor_snapshot_t snapshot;
+    memset (&snapshot, 0, sizeof (snapshot));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_monitor_snapshot (pub_ready_monitor, &snapshot));
+    TEST_ASSERT_EQUAL_UINT64 (expected_subscribers, snapshot.ready_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_ready_monitor));
+    for (size_t i = 0; i < subs.size (); ++i)
+        close_zero_linger (subs[i]);
+    close_zero_linger (pub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_stream_ready_with_monitor_recv_and_socket_recv ()
 {
     run_stream_ready_matrix (monitor_recv_mode, socket_recv_mode);
@@ -1562,6 +1645,7 @@ int main ()
     RUN_TEST (test_pubsub_ready_with_monitor_callback_and_socket_recv);
     RUN_TEST (test_pubsub_ready_with_monitor_callback_and_socket_callback);
     RUN_TEST (test_pubsub_delivery_ready_snapshot_and_reopen_after_ready);
+    RUN_TEST (test_pubsub_delivery_ready_reaches_1000_subscribers);
     RUN_TEST (test_stream_ready_with_monitor_recv_and_socket_recv);
     RUN_TEST (test_stream_ready_with_monitor_recv_and_socket_callback);
     RUN_TEST (test_stream_ready_with_monitor_callback_and_socket_recv);

@@ -355,9 +355,19 @@ int spot_pub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
     if (socket->monitor_snapshot (out_) != 0)
         return -1;
     out_->source_kind = ZLINK_MONITOR_SOURCE_SPOT_PUB;
+    if (_node) {
+        scoped_lock_t node_lock (_node->_sync);
+        const uint32_t ready_count = _node->max_pub_delivery_ready_count_locked ();
+        if (out_->ready_count < ready_count)
+            out_->ready_count = ready_count;
+    }
+    out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
     if (out_->ready_count > 0)
         out_->state_flags |=
           ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY;
+    else
+        out_->state_flags &=
+          ~(ZLINK_MONITOR_STATE_READY | ZLINK_MONITOR_STATE_SEND_READY);
     return 0;
 }
 

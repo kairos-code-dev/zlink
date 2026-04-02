@@ -9,6 +9,8 @@ GUIDE_PATH="${SCRIPT_DIR}/bindings-perf-execution-guide.ko.md"
 LOGS_DIR="${SCRIPT_DIR}/logs"
 BASELINE_DIR="${ROOT_DIR}/perf/baseline"
 BASELINE_FILE="${BINDINGS_PERF_BASELINE_FILE:-}"
+BASELINE_RECV_FILE="${BINDINGS_PERF_BASELINE_RECV_FILE:-}"
+BASELINE_CALLBACK_FILE="${BINDINGS_PERF_BASELINE_CALLBACK_FILE:-}"
 DEFAULT_LANGUAGES="cpp,dotnet,java,rust,go,node,python"
 DEFAULT_TARGET_CPP="0.95"
 DEFAULT_TARGET_DOTNET="0.90"
@@ -39,15 +41,19 @@ Options:
   --language NAME[,NAME...]
                         Restrict to one or more languages.
                         May be passed multiple times.
+                        Preserves the specified order and treats it as the
+                        required execution order.
                         Default: BINDINGS_PERF_LANGUAGES if set,
                         otherwise all supported languages
   --logs-dir PATH       Log directory
                         (default: ${LOGS_DIR})
   --baseline-dir PATH   Core baseline report directory
                         (default: ${BASELINE_DIR})
-  --baseline-file PATH  Explicit baseline report file to compare against.
-                        Default: latest perf_*_callback_*.txt in baseline dir,
-                        otherwise latest perf_*.txt in baseline dir
+  --baseline-file PATH  Legacy alias for callback baseline report file
+  --baseline-recv-file PATH
+                        Explicit recv baseline report file
+  --baseline-callback-file PATH
+                        Explicit callback baseline report file
   --target-ratio LANG=R
                         Override target throughput ratio for one language.
                         May be passed multiple times.
@@ -130,6 +136,7 @@ set_target_ratio() {
 resolve_baseline_file() {
   local dir="$1"
   local explicit="$2"
+  local mode="$3"
   local candidate
 
   if [[ -n "${explicit}" ]]; then
@@ -141,19 +148,27 @@ resolve_baseline_file() {
     return 0
   fi
 
-  candidate="$(find "${dir}" -maxdepth 1 -type f -name 'perf_*callback*.txt' | sort | tail -n 1)"
-  if [[ -n "${candidate}" ]]; then
-    printf '%s' "${candidate}"
-    return 0
+  if [[ "${mode}" == "recv" ]]; then
+    candidate="$(find "${dir}" -maxdepth 1 -type f -name 'perf_*recv*.txt' | sort | tail -n 1)"
+    if [[ -n "${candidate}" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+
+    candidate="$(find "${dir}" -maxdepth 1 -type f -name 'perf_*.txt' ! -name '*callback*' | sort | tail -n 1)"
+    if [[ -n "${candidate}" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  else
+    candidate="$(find "${dir}" -maxdepth 1 -type f -name 'perf_*callback*.txt' | sort | tail -n 1)"
+    if [[ -n "${candidate}" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
   fi
 
-  candidate="$(find "${dir}" -maxdepth 1 -type f -name 'perf_*.txt' | sort | tail -n 1)"
-  if [[ -n "${candidate}" ]]; then
-    printf '%s' "${candidate}"
-    return 0
-  fi
-
-  echo "No baseline report file found in: ${dir}" >&2
+  echo "No ${mode} baseline report file found in: ${dir}" >&2
   exit 1
 }
 
@@ -209,6 +224,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --baseline-file)
       BASELINE_FILE="$2"
+      shift 2
+      ;;
+    --baseline-recv-file)
+      BASELINE_RECV_FILE="$2"
+      shift 2
+      ;;
+    --baseline-callback-file)
+      BASELINE_CALLBACK_FILE="$2"
       shift 2
       ;;
     --target-ratio)
@@ -268,7 +291,13 @@ if [[ ! -d "${BASELINE_DIR}" ]]; then
   exit 1
 fi
 
-BASELINE_FILE="$(resolve_baseline_file "${BASELINE_DIR}" "${BASELINE_FILE}")"
+if [[ -n "${BASELINE_FILE}" && -z "${BASELINE_CALLBACK_FILE}" ]]; then
+  BASELINE_CALLBACK_FILE="${BASELINE_FILE}"
+fi
+
+BASELINE_RECV_FILE="$(resolve_baseline_file "${BASELINE_DIR}" "${BASELINE_RECV_FILE}" recv)"
+BASELINE_CALLBACK_FILE="$(resolve_baseline_file "${BASELINE_DIR}" "${BASELINE_CALLBACK_FILE}" callback)"
+BASELINE_FILE="${BASELINE_CALLBACK_FILE}"
 
 mkdir -p "${LOGS_DIR}"
 
@@ -279,6 +308,8 @@ fi
 export BINDINGS_PERF_LANGUAGES="${LANGUAGES}"
 export BINDINGS_PERF_BASELINE_DIR="${BASELINE_DIR}"
 export BINDINGS_PERF_BASELINE_FILE="${BASELINE_FILE}"
+export BINDINGS_PERF_BASELINE_RECV_FILE="${BASELINE_RECV_FILE}"
+export BINDINGS_PERF_BASELINE_CALLBACK_FILE="${BASELINE_CALLBACK_FILE}"
 export BINDINGS_PERF_TARGET_CPP="${BINDINGS_PERF_TARGET_CPP:-${DEFAULT_TARGET_CPP}}"
 export BINDINGS_PERF_TARGET_DOTNET="${BINDINGS_PERF_TARGET_DOTNET:-${DEFAULT_TARGET_DOTNET}}"
 export BINDINGS_PERF_TARGET_GO="${BINDINGS_PERF_TARGET_GO:-${DEFAULT_TARGET_GO}}"
@@ -315,8 +346,15 @@ echo "=== Bindings perf Ralph loop ==="
 echo "Guide: ${GUIDE_PATH}"
 echo "Logs: ${LOGS_DIR}"
 echo "Baseline: ${BASELINE_DIR}"
-echo "Baseline file: ${BASELINE_FILE}"
+echo "Recv baseline file: ${BASELINE_RECV_FILE}"
+echo "Callback baseline file: ${BASELINE_CALLBACK_FILE}"
 echo "Languages: ${LANGUAGES}"
 echo "Targets: cpp=${BINDINGS_PERF_TARGET_CPP}, dotnet=${BINDINGS_PERF_TARGET_DOTNET}, go=${BINDINGS_PERF_TARGET_GO}, java=${BINDINGS_PERF_TARGET_JAVA}, node=${BINDINGS_PERF_TARGET_NODE}, python=${BINDINGS_PERF_TARGET_PYTHON}, rust=${BINDINGS_PERF_TARGET_RUST}"
+echo "Priority: 1) policy-compliant core/perf-equivalent measurement, 2) full-surface normal operation across all patterns/sizes, 3) performance improvement"
+python3 "${SCRIPT_DIR}/summarize_bindings_perf.py" \
+  --languages "${LANGUAGES}" \
+  --baseline-dir "${BASELINE_DIR}" \
+  --baseline-recv-file "${BASELINE_RECV_FILE}" \
+  --baseline-callback-file "${BASELINE_CALLBACK_FILE}"
 
 RALPH_LOOP_DISPLAY_NAME="bindings_perf_ralph_loop" "${CMD[@]}"

@@ -24,6 +24,13 @@ static const char *k_pattern = "MULTI_SPOT";
 static const char *k_topic = "bench";
 static const size_t k_callback_queue_capacity = 8192;
 
+void fast_exit_process (int exit_code_)
+{
+    std::cout.flush ();
+    std::cerr.flush ();
+    std::_Exit (exit_code_);
+}
+
 bool perf_debug_enabled ()
 {
     return std::getenv ("PERF_DEBUG") != NULL;
@@ -34,6 +41,36 @@ void debug_log (const std::string &message_)
     if (!perf_debug_enabled ())
         return;
     std::cerr << "spot client: " << message_ << std::endl;
+}
+
+int resolve_spot_phase_timeout_ms (
+  const perf::multi::multi_bench_settings_t &settings_, size_t msg_size_)
+{
+    int timeout_ms =
+      std::max (settings_.connect_ready_timeout_ms,
+                std::max (1, settings_.duration_seconds) * 5000);
+
+    if (msg_size_ >= 65536) {
+        const int base_large_timeout =
+          settings_.clients >= 100 ? 60000 : 30000;
+        timeout_ms = std::max (
+          timeout_ms,
+          std::max (base_large_timeout,
+                    settings_.connect_ready_timeout_ms * 6));
+    }
+    if (msg_size_ >= 131072) {
+        timeout_ms =
+          std::max (timeout_ms,
+                    std::max (90000, settings_.connect_ready_timeout_ms * 12));
+    }
+    if (msg_size_ >= 262144) {
+        timeout_ms =
+          std::max (timeout_ms,
+                    std::max (120000, settings_.connect_ready_timeout_ms * 18));
+    }
+
+    return perf::multi::parse_positive_env (
+      "PERF_MULTI_SPOT_PHASE_TIMEOUT_MS", timeout_ms);
 }
 
 bool configure_spot_client_tls (zlink::service::spot_node_t &node_,
@@ -49,6 +86,70 @@ bool configure_spot_client_tls (zlink::service::spot_node_t &node_,
         return false;
 
     return node_.set_tls_client (ca, "localhost", false) == 0;
+}
+
+bool wait_for_sub_delivery_ready (zlink::service_monitor_handle_t &monitor_,
+                                  int timeout_ms_)
+{
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (
+                            std::max (timeout_ms_, 1));
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_pollitem_t item;
+        item.socket = monitor_.handle ();
+        item.fd = 0;
+        item.events = ZLINK_POLLIN;
+        item.revents = 0;
+
+        const auto remaining =
+          deadline - std::chrono::steady_clock::now ();
+        int wait_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ());
+        if (wait_ms < 1)
+            wait_ms = 1;
+
+        const int poll_rc = zlink_poll (&item, 1, wait_ms);
+        if (poll_rc < 0) {
+            if (errno == EINTR || errno == EAGAIN)
+                continue;
+            return false;
+        }
+        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        for (;;) {
+            const zlink::maybe_t<zlink_service_monitor_event_t> event =
+              monitor_.try_recv ();
+            if (!event)
+                break;
+
+            if (event->event_type
+                == static_cast<uint32_t> (
+                  zlink::service_monitor_event::error)) {
+                errno = event->error_code != 0 ? event->error_code : EIO;
+                return false;
+            }
+
+            if (event->event_type
+                != static_cast<uint32_t> (
+                  zlink::service_monitor_event::spot_sub_delivery_ready_changed)) {
+                continue;
+            }
+
+            if ((event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
+                && std::strcmp (event->subject, k_topic) != 0) {
+                continue;
+            }
+
+            if (event->value > 0)
+                return true;
+        }
+    }
+
+    errno = ETIMEDOUT;
+    return false;
 }
 
 bool parse_ready_payload (const std::string &raw_,
@@ -321,6 +422,7 @@ class spot_client_bench_t
         if (!setup_slots ())
             return false;
         debug_log ("setup slots complete");
+        std::cout << "CLIENT_READY," << _msg_size << std::endl;
         if (!wait_sync ())
             return false;
         debug_log ("sync complete");
@@ -328,6 +430,7 @@ class spot_client_bench_t
             return false;
         debug_log ("active window complete");
         print_result ();
+        std::cout << "CLIENT_DONE," << _msg_size << std::endl;
         return true;
     }
 
@@ -370,14 +473,15 @@ class spot_client_bench_t
 
             slot->monitor.reset (new zlink::service_monitor_handle_t (
               slot->spot->monitor_open (
-                zlink::service_monitor_event::spot_filter_applied
-                | zlink::service_monitor_event::spot_subscription_ready_changed
+                zlink::service_monitor_event::spot_sub_delivery_ready_changed
                 | zlink::service_monitor_event::error)));
             if (!slot->monitor->valid ())
             {
                 debug_log ("monitor invalid");
                 return false;
             }
+            perf::multi::configure_perf_monitor_socket (
+              slot->monitor->handle ());
 
             if (_callback_mode
                 && !slot->callback.attach (
@@ -395,15 +499,37 @@ class spot_client_bench_t
             _slots.push_back (std::move (slot));
         }
 
+        const auto ready_deadline = std::chrono::steady_clock::now ()
+                                    + std::chrono::milliseconds (
+                                      std::max (
+                                        1,
+                                        _settings.connect_ready_timeout_ms));
+        for (size_t i = 0; i < _slots.size (); ++i) {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= ready_deadline) {
+                errno = ETIMEDOUT;
+                debug_log ("sub delivery ready deadline expired");
+                return false;
+            }
+
+            const int remaining_ms = static_cast<int> (
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                ready_deadline - now)
+                .count ());
+            if (!wait_for_sub_delivery_ready (*_slots[i]->monitor, remaining_ms)) {
+                debug_log ("sub delivery ready wait failed");
+                return false;
+            }
+            _slots[i]->monitor.reset ();
+        }
+
         return !_slots.empty ();
     }
 
     bool wait_sync ()
     {
         const int timeout_ms =
-          std::max (5000,
-                    _settings.connect_ready_timeout_ms
-                      + _settings.warmup_seconds * 1000 + _settings.settle_ms + 2000);
+          resolve_spot_phase_timeout_ms (_settings, _msg_size);
         return _callback_mode ? wait_callback_sync (timeout_ms)
                               : wait_recv_sync (timeout_ms);
     }
@@ -412,15 +538,16 @@ class spot_client_bench_t
     {
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::milliseconds (timeout_ms_);
+        const size_t required = resolve_sync_quorum ();
         while (std::chrono::steady_clock::now () < deadline) {
-            bool all_synced = true;
+            size_t synced = 0;
             for (size_t i = 0; i < _slots.size (); ++i) {
                 if (_slots[i]->callback.failed ())
                     return false;
-                if (!_slots[i]->callback.synced ())
-                    all_synced = false;
+                if (_slots[i]->callback.synced ())
+                    ++synced;
             }
-            if (all_synced)
+            if (synced >= required)
                 return true;
         }
 
@@ -433,6 +560,7 @@ class spot_client_bench_t
     {
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::milliseconds (timeout_ms_);
+        const size_t required = resolve_sync_quorum ();
         while (std::chrono::steady_clock::now () < deadline) {
             bool progressed = false;
             for (size_t i = 0; i < _slots.size (); ++i) {
@@ -440,12 +568,12 @@ class spot_client_bench_t
                     return false;
             }
 
-            bool all_synced = true;
+            size_t synced = 0;
             for (size_t i = 0; i < _slots.size (); ++i) {
-                if (!_slots[i]->synced)
-                    all_synced = false;
+                if (_slots[i]->synced)
+                    ++synced;
             }
-            if (all_synced)
+            if (synced >= required)
                 return true;
             if (!progressed)
                 std::this_thread::yield ();
@@ -454,6 +582,24 @@ class spot_client_bench_t
         errno = ETIMEDOUT;
         debug_log ("recv sync timed out");
         return false;
+    }
+
+    size_t resolve_sync_quorum () const
+    {
+        if (_slots.empty ())
+            return 1;
+
+        const int percent = std::max (
+          1,
+          perf::multi::parse_positive_env (
+            "PERF_MULTI_SPOT_PHASE_QUORUM_PERCENT", 90));
+        const size_t bounded_percent =
+          static_cast<size_t> (std::min (percent, 100));
+        const size_t required = static_cast<size_t> (
+          (static_cast<unsigned long long> (_slots.size ()) * bounded_percent
+           + 99ULL)
+          / 100ULL);
+        return std::max<size_t> (1, required);
     }
 
     bool run_active ()
@@ -465,10 +611,8 @@ class spot_client_bench_t
     {
         const auto start_deadline = std::chrono::steady_clock::now ()
                                     + std::chrono::milliseconds (
-                                      std::max (
-                                        5000,
-                                        _settings.warmup_seconds * 1000
-                                          + _settings.settle_ms + 5000));
+                                      resolve_spot_phase_timeout_ms (
+                                        _settings, _msg_size));
         while (std::chrono::steady_clock::now () < start_deadline) {
             if (_active_start_us.load (std::memory_order_acquire) != 0)
                 break;
@@ -651,7 +795,8 @@ bool perf_spot_client (const std::string &transport_,
     const bool ok = bench.run ();
     if (!ok && perf_debug_enabled ())
         std::cerr << "spot client failed errno=" << errno << std::endl;
-    return ok;
+    fast_exit_process (ok ? 0 : 1);
+    return false;
 }
 
 int main (int argc, char **argv)

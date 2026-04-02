@@ -17,8 +17,8 @@ internal static class PerfDealerDealer
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
-        using var left = new Zlink.Socket(ctx, SocketType.Dealer);
-        using var right = new Zlink.Socket(ctx, SocketType.Dealer);
+        using var left = new DealerSocket(ctx);
+        using var right = new DealerSocket(ctx);
         ApplySingleSocketOptions(left);
         ApplySingleSocketOptions(right);
         ConfigureTlsServerIfNeeded(left, transport);
@@ -63,7 +63,7 @@ internal static class PerfDealerDealer
         }
     }
 
-    private static bool RunPhase(Zlink.Socket sender, Zlink.Socket receiver,
+    private static bool RunPhase(SocketBase sender, SocketBase receiver,
         byte[] payload, int payloadSize, int warmupCount, int durationSeconds,
         int recvTimeoutMs, int latencyCap, out long receivedOut,
         out List<double> latencySamples)

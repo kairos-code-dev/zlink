@@ -124,12 +124,6 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
         has_active_peers = !_peer_state.active_endpoints.empty ();
     }
     if (has_active_peers) {
-        if (has_local_filtered_subs ()) {
-            queue_all_subscription_ready_filters ();
-            schedule_subscription_replay ();
-            if (replay_subscriptions_if_active_peers () != 0)
-                return -1;
-        }
         if (!had_active_peers)
             refresh_sub_peer_summaries (true, false);
     }

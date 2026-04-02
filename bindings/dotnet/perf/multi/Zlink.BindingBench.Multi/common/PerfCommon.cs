@@ -50,7 +50,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static int ReceiveBlocking(Zlink.Socket socket, Span<byte> buffer,
+    internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
         while (true)
@@ -77,13 +77,13 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static int TryReceiveNonBlocking(Zlink.Socket socket,
+    internal static int TryReceiveNonBlocking(SocketBase socket,
         Span<byte> buffer)
     {
         return ReceiveBlocking(socket, buffer, ReceiveFlags.DontWait);
     }
 
-    internal static int ReceiveRetry(Zlink.Socket socket, Span<byte> buffer,
+    internal static int ReceiveRetry(SocketBase socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
         try
@@ -97,7 +97,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static int DrainReadableSocket(Zlink.Socket socket, Span<byte> buffer,
+    internal static int DrainReadableSocket(SocketBase socket, Span<byte> buffer,
         PayloadHandler onMessage)
     {
         int count = 0;
@@ -130,7 +130,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static int SendBlocking(Zlink.Socket socket, ReadOnlySpan<byte> buffer,
+    internal static int SendBlocking(SocketBase socket, ReadOnlySpan<byte> buffer,
         SendFlags flags = SendFlags.None)
     {
         return socket.Send(buffer, flags);

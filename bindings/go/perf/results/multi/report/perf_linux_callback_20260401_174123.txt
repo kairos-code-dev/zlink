@@ -1,0 +1,19 @@
+## Effective Options (start)
+  pattern:   MULTI_PUBSUB
+  recv:      callback
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64
+  transports: tcp
+  clients:   2
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,MULTI_PUBSUB,tcp,64,throughput,965.71
+RESULT,current,MULTI_PUBSUB,tcp,64,bandwidth,58.94
+RESULT,current,MULTI_PUBSUB,tcp,64,latency,1368.06
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p95,2173.64
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p99,2984.01
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_PUBSUB | tcp | 64 | 965.71 | 58.94 | 1368.06 | 2173.64 | 2984.01 |

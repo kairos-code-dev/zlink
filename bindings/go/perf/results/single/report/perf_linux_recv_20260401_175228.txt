@@ -1,0 +1,18 @@
+## Effective Options (start)
+  pattern:   ROUTER_ROUTER
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64
+  transports: tcp
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,DEALER_ROUTER,tcp,64,throughput,9.07
+RESULT,current,DEALER_ROUTER,tcp,64,bandwidth,0.55
+RESULT,current,DEALER_ROUTER,tcp,64,latency,102.35
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p95,173.25
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p99,276.24
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_ROUTER | tcp | 64 | 9.07 | 0.55 | 102.35 | 173.25 | 276.24 |

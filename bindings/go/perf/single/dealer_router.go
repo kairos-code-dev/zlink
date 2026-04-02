@@ -1,0 +1,130 @@
+package main
+
+import (
+	"time"
+
+	"zlink"
+	"zlink/perf/internal/perfcommon"
+)
+
+func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
+	ctx, err := zlink.NewContext()
+	perfcommon.Must(err)
+	defer ctx.Close()
+
+	router, err := ctx.RouterSocket()
+	perfcommon.Must(err)
+	defer router.Close()
+	dealer, err := ctx.DealerSocket()
+	perfcommon.Must(err)
+	defer dealer.Close()
+	routerMon := perfcommon.OpenMonitor(router)
+	defer routerMon.Close()
+	dealerMon := perfcommon.OpenMonitor(dealer)
+	defer dealerMon.Close()
+
+	rid, err := zlink.NewRoutingID([]byte("perf-dealer"))
+	perfcommon.Must(err)
+
+	endpoint := perfcommon.UniqueTCPEndpoint("perf-dealer-router")
+	perfcommon.Must(router.Bind(endpoint))
+	perfcommon.Must(dealer.SetRoutingID(rid))
+	perfcommon.Must(dealer.Connect(endpoint))
+	perfcommon.WaitConnected(routerMon, dealerMon)
+	perfcommon.Must(dealer.SetRecvTimeout(500 * time.Millisecond))
+	perfcommon.Must(dealer.SetSendTimeout(500 * time.Millisecond))
+	startRouterEchoServer(router, cfg.recvMode)
+	waitForDealerRouterReady(dealer)
+
+	stats := perfcommon.NewStats()
+	payload := perfcommon.PreparePayload(cfg.msgSize)
+	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
+	activeAt := time.Now().Add(cfg.warmup)
+
+	for time.Now().Before(stopAt) {
+		perfcommon.StampPayload(payload)
+		err := dealer.Send(perfcommon.NewMessage(payload))
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(err)
+		}
+		reply, err := dealer.Recv()
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(err)
+		}
+		part, err := reply.SinglePartOrError()
+		perfcommon.Must(err)
+		if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
+			stats.Add(sentAt)
+		}
+		perfcommon.Must(reply.Close())
+	}
+
+	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+func waitForDealerRouterReady(dealer *zlink.DealerSocket) {
+	payload := perfcommon.PreparePayload(64)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		perfcommon.StampPayload(payload)
+		err := dealer.Send(perfcommon.NewMessage(payload))
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(err)
+		}
+		reply, err := dealer.Recv()
+		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
+			perfcommon.Must(err)
+		}
+		perfcommon.Must(reply.Close())
+		return
+	}
+	perfcommon.Must(&dealerRouterReadyError{})
+}
+
+type dealerRouterReadyError struct{}
+
+func (e *dealerRouterReadyError) Error() string {
+	return "dealer/router perf endpoint did not become ready"
+}
+
+func startRouterEchoServer(router *zlink.RouterSocket, recvMode string) {
+	if recvMode == "callback" {
+		perfcommon.Must(router.OnReceive(func(received *zlink.Received) {
+			defer received.Close()
+			perfcommon.Must(router.SendTo(received.RoutingID(),
+				perfcommon.CloneMessages(received.Parts())...))
+		}))
+		return
+	}
+
+	perfcommon.Must(router.SetRecvTimeout(500 * time.Millisecond))
+	go func() {
+		for {
+			received, err := router.Recv()
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					continue
+				}
+				return
+			}
+			err = router.SendTo(received.RoutingID(),
+				perfcommon.CloneMessages(received.Parts())...)
+			if err != nil && !perfcommon.IsTransient(err) {
+				perfcommon.Must(err)
+			}
+			perfcommon.Must(received.Close())
+		}
+	}()
+}

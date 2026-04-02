@@ -1,0 +1,41 @@
+## Effective Options (start)
+  pattern:   ALL
+  recv:      callback
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64
+  transports: tcp
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,PARESULT,current,PUBSUB,tcp,64,throughput,880.00
+RESULT,current,PUBSUB,tcp,64,bandwidth,53.71
+RESULT,current,PUBSUB,tcp,64,latency,317.57
+RESULT,current,PUBSUB,tcp,64,latency_p95,769.94
+RESULT,current,PUBSUB,tcp,64,latency_p99,1275.21
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PUBSUB | tcp | 64 | 880.00 |RESULT,current,PUBSUB,tcp,64,throughput,882.00
+RESULT,current,PUBSUB,tcp,64,bandwidth,53.83
+RESULT,current,PUBSUB,tcp,64,latency,324.55
+RESULT,current,PUBSUB,tcp,64,latency_p95,769.05
+RESULT,current,PUBSUB,tcp,64,latency_p99,1338.35
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PUBSUB | tcp | 64 | 882.00 | 53.83 | 324.55 | 769.05 | 1338.35 |
+RESULT,current,DEALER_DEALER,tcp,64,throughput,56.24
+RESULT,current,DEALER_DEALER,tcp,64,bandwidth,3.43
+RESULT,current,DEALER_DEALER,tcp,64,latency,47.47
+RESULT,current,DEALER_DEALER,tcp,64,latency_p95,88.79
+RESULT,current,DEALER_DEALER,tcp,64,latency_p99,199.15
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_DEALER | tcp | 64 | 56.24 | 3.43 | 47.47 | 88.79 | 199.15 |
+RESULT,current,STREAM,tcp,64,throughput,23.10
+RESULT,current,STREAM,tcp,64,bandwidth,1.41
+RESULT,current,STREAM,tcp,64,latency,35.62
+RESULT,current,STREAM,tcp,64,latency_p95,70.16
+RESULT,current,STREAM,tcp,64,latency_p99,174.79
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | STREAM | tcp | 64 | 23.10 | 1.41 | 35.62 | 70.16 | 174.79 |

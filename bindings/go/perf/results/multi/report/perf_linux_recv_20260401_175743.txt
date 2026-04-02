@@ -1,0 +1,11 @@
+## Effective Options (start)
+  pattern:   MULTI_DEALER_DEALER
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64,256,1024,65536,131072,262144
+  transports: tcp
+  clients:   4
+  runs:      1
+## Effective Options (end)
+

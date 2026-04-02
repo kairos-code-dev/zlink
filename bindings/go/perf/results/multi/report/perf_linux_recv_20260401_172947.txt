@@ -1,0 +1,25 @@
+## Effective Options (start)
+  pattern:   MULTI_PUBSUB
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64
+  transports: tcp
+  clients:   4
+  runs:      1
+## Effective OptionRESULT,current,MULTI_DEALER_ROUTER,tcp,64,throughput,11.00
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,bandwidth,0.67
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency,97.22
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p95,180.64
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p99,327.80
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_DEALER_ROUTER | tcp | 64 | 11.00 | 0.67 | 97.22 | 180.64 | 327.80 |
+RESULT,current,MULTI_STREAM,tcp,64,throughput,26.20
+RESULT,current,MULTI_STREAM,tcp,64,bandwidth,1.60
+RESULT,current,MULTI_STREAM,tcp,64,latency,89.44
+RESULT,current,MULTI_STREAM,tcp,64,latency_p95,164.75
+RESULT,current,MULTI_STREAM,tcp,64,latency_p99,299.87
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_STREAM | tcp | 64 | 26.20 | 1.60 | 89.44 | 164.75 | 299.87 |

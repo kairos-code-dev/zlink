@@ -1,0 +1,59 @@
+## Effective Options (start)
+  pattern:   ALL
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64,256,1024,65536,131072,262144
+  transports: tcp
+  clients:   4
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,MULTI_PUBSUB,tcp,64,throughput,859.00
+RESULT,current,MULTI_PUBSUB,tcp,64,bandwidth,52.43
+RESULT,current,MULTI_PUBSUB,tcp,64,latency,368.03
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p95,599.84
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p99,782.28
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_PUBSUB | tcp | 64 | 859.00 | 52.43 | 368.03 | 599.84 | 782.28 |
+RESULT,current,MULTI_PUBSUB,tcp,256,throughput,829.82
+RESULT,current,MULTI_PUBSUB,tcp,256,bandwidth,202.59
+RESULT,current,MULTI_PUBSUB,tcp,256,latency,1561.46
+RESULT,current,MULTI_PUBSUB,tcp,256,latency_p95,2266.86
+RESULT,current,MULTI_PUBSUB,tcp,256,latency_p99,2943.72
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_PUBSUB | tcp | 256 | 829.82 | 202.59 | 1561.46 | 2266.86 | 2943.72 |
+RESULT,current,MULTI_PUBSUB,tcp,1024,throughput,802.30
+RESULT,current,MULTI_PUBSUB,tcp,1024,bandwidth,783.50
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency,622.96
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency_p95,919.05
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency_p99,1128.97
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_PUBSUB | tcp | 1024 | 802.30 | 783.50 | 622.96 | 919.05 | 1128.97 |
+RESULT,current,MULTI_PUBSUB,tcp,65536,throughput,92.00
+RESULT,current,MULTI_PUBSUB,tcp,65536,bandwidth,5750.00
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency,26012.99
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency_p95,32034.07
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency_p99,53088.64
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_PUBSUB | tcp | 65536 | 92.00 | 5750.00 | 26012.99 | 32034.07 | 53088.64 |
+RESULT,current,MULTI_PUBSUB,tcp,131072,throughput,43.61
+RESULT,current,MULTI_PUBSUB,tcp,131072,bandwidth,5451.50
+RESULT,current,MULTI_PUBSUB,tcp,131072,latency,58024.51
+RESULT,current,MULTI_PUBSUB,tcp,131072,latency_p95,76053.84
+RESULT,current,MULTI_PUBSUB,tcp,131072,latency_p99,95430.10
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_PUBSUB | tcp | 131072 | 43.61 | 5451.50 | 58024.51 | 76053.84 | 95430.10 |
+RESULT,current,MULTI_PUBSUB,tcp,262144,throughput,20.30
+RESULT,current,MULTI_PUBSUB,tcp,262144,bandwidth,5075.00
+RESULT,current,MULTI_PUBSUB,tcp,262144,latency,130548.78
+RESULT,current,MULTI_PUBSUB,tcp,262144,latency_p95,169752.56
+RESULT,current,MULTI_PUBSUB,tcp,262144,latency_p99,181823.30
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_PUBSUB | tcp | 262144 | 20.30 | 5075.00 | 130548.78 | 169752.56 | 181823.30 |

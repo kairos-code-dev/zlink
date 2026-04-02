@@ -1,0 +1,17 @@
+## Effective Options (start)
+  pattern:   MULTI_ROUTER_ROUTER
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64
+  transports: tcp
+  clients:   4
+  runs:      1
+## Effective OptionRESULT,current,MULTI_SPOT,tcp,64,throughput,604.72
+RESULT,current,MULTI_SPOT,tcp,64,bandwidth,36.91
+RESULT,current,MULTI_SPOT,tcp,64,latency,5896.10
+RESULT,current,MULTI_SPOT,tcp,64,latency_p95,8001.80
+RESULT,current,MULTI_SPOT,tcp,64,latency_p99,9535.78
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_SPOT | tcp | 64 | 604.72 | 36.91 | 5896.10 | 8001.80 | 9535.78 |

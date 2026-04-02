@@ -1,0 +1,18 @@
+## Effective Options (start)
+  pattern:   ROUTER_ROUTER
+  recv:      callback
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64
+  transports: tcp
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,ROUTER_ROUTER,tcp,64,throughput,16.33
+RESULT,current,ROUTER_ROUTER,tcp,64,bandwidth,1.00
+RESULT,current,ROUTER_ROUTER,tcp,64,latency,113.87
+RESULT,current,ROUTER_ROUTER,tcp,64,latency_p95,165.62
+RESULT,current,ROUTER_ROUTER,tcp,64,latency_p99,197.87
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | ROUTER_ROUTER | tcp | 64 | 16.33 | 1.00 | 113.87 | 165.62 | 197.87 |

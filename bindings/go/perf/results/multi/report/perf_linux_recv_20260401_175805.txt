@@ -1,0 +1,59 @@
+## Effective Options (start)
+  pattern:   MULTI_DEALER_DEALER
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64,256,1024,65536,131072,262144
+  transports: tcp
+  clients:   4
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,throughput,81.81
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,bandwidth,4.99
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency,62.83
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p95,121.95
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p99,217.16
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_DEALER_DEALER | tcp | 64 | 81.81 | 4.99 | 62.83 | 121.95 | 217.16 |
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,throughput,89.87
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,bandwidth,21.94
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,latency,64.58
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,latency_p95,124.75
+RESULT,current,MULTI_DEALER_DEALER,tcp,256,latency_p99,229.53
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_DEALER_DEALER | tcp | 256 | 89.87 | 21.94 | 64.58 | 124.75 | 229.53 |
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,throughput,82.32
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,bandwidth,80.39
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency,71.41
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency_p95,132.24
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency_p99,226.58
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_DEALER_DEALER | tcp | 1024 | 82.32 | 80.39 | 71.41 | 132.24 | 226.58 |
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,throughput,12.01
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,bandwidth,750.81
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency,109.42
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency_p95,232.97
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency_p99,378.77
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_DEALER_DEALER | tcp | 65536 | 12.01 | 750.81 | 109.42 | 232.97 | 378.77 |
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,throughput,6.55
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,bandwidth,819.38
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,latency,144.26
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,latency_p95,230.82
+RESULT,current,MULTI_DEALER_DEALER,tcp,131072,latency_p99,379.08
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_DEALER_DEALER | tcp | 131072 | 6.55 | 819.38 | 144.26 | 230.82 | 379.08 |
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,throughput,4.82
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,bandwidth,1205.50
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,latency,187.44
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,latency_p95,354.15
+RESULT,current,MULTI_DEALER_DEALER,tcp,262144,latency_p99,497.90
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_DEALER_DEALER | tcp | 262144 | 4.82 | 1205.50 | 187.44 | 354.15 | 497.90 |

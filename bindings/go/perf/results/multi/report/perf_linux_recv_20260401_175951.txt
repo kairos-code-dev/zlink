@@ -1,0 +1,35 @@
+## Effective Options (start)
+  pattern:   MULTI_ROUTER_ROUTER,MULTI_SPOT,MULTI_STREAM
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64,256,1024,65536,131072,262144
+  transports: tcp
+  clients:   4
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,throughput,36.20
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,bandwidth,2.21
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency,102.53
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p95,147.89
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p99,299.94
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_ROUTER_ROUTER | tcp | 64 | 36.20 | 2.21 | 102.53 | 147.89 | 299.94 |
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,throughput,39.00
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,bandwidth,9.52
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,latency,103.65
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,latency_p95,136.50
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,256,latency_p99,173.64
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_ROUTER_ROUTER | tcp | 256 | 39.00 | 9.52 | 103.65 | 136.50 | 173.64 |
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,throughput,34.40
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,bandwidth,33.59
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency,102.11
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency_p95,133.10
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency_p99,171.77
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | MULTI_ROUTER_ROUTER | tcp | 1024 | 34.40 | 33.59 | 102.11 | 133.10 | 171.77 |

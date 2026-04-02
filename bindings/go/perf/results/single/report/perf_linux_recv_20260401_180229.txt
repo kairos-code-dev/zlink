@@ -1,0 +1,170 @@
+## Effective Options (start)
+  pattern:   ALL
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64,256,1024,65536,131072,262144
+  transports: tcp
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,PAIR,tcp,64,throughput,13.51
+RESULT,current,PAIR,tcp,64,bandwidth,0.82
+RESULT,current,PAIR,tcp,64,latency,130.19
+RESULT,current,PAIR,tcp,64,latency_p95,192.90
+RESULT,current,PAIR,tcp,64,latency_p99,409.00
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PAIR | tcp | 64 | 13.51 | 0.82 | 130.19 | 192.90 | 409.00 |
+RESULT,current,PAIR,tcp,256,throughput,7.29
+RESULT,current,PAIR,tcp,256,bandwidth,1.78
+RESULT,current,PAIR,tcp,256,latency,136.71
+RESULT,current,PAIR,tcp,256,latency_p95,173.14
+RESULT,current,PAIR,tcp,256,latency_p99,192.31
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PAIR | tcp | 256 | 7.29 | 1.78 | 136.71 | 173.14 | 192.31 |
+RESULT,current,PAIR,tcp,1024,throughput,12.66
+RESULT,current,PAIR,tcp,1024,bandwidth,12.36
+RESULT,current,PAIR,tcp,1024,latency,137.83
+RESULT,current,PAIR,tcp,1024,latency_p95,190.56
+RESULT,current,PAIR,tcp,1024,latency_p99,319.77
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PAIR | tcp | 1024 | 12.66 | 12.36 | 137.83 | 190.56 | 319.77 |
+RESULT,current,PAIR,tcp,65536,throughput,5.13
+RESULT,current,PAIR,tcp,65536,bandwidth,320.81
+RESULT,current,PAIR,tcp,65536,latency,190.69
+RESULT,current,PAIR,tcp,65536,latency_p95,243.74
+RESULT,current,PAIR,tcp,65536,latency_p99,327.35
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PAIR | tcp | 65536 | 5.13 | 320.81 | 190.69 | 243.74 | 327.35 |
+RESULT,current,PAIR,tcp,131072,throughput,4.32
+RESULT,current,PAIR,tcp,131072,bandwidth,539.50
+RESULT,current,PAIR,tcp,131072,latency,227.45
+RESULT,current,PAIR,tcp,131072,latency_p95,298.36
+RESULT,current,PAIR,tcp,131072,latency_p99,384.28
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PAIR | tcp | 131072 | 4.32 | 539.50 | 227.45 | 298.36 | 384.28 |
+RESULT,current,PAIR,tcp,262144,throughput,3.16
+RESULT,current,PAIR,tcp,262144,bandwidth,790.75
+RESULT,current,PAIR,tcp,262144,latency,303.91
+RESULT,current,PAIR,tcp,262144,latency_p95,435.41
+RESULT,current,PAIR,tcp,262144,latency_p99,567.97
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PAIR | tcp | 262144 | 3.16 | 790.75 | 303.91 | 435.41 | 567.97 |
+RESULT,current,PUBSUB,tcp,64,throughput,1004.42
+RESULT,current,PUBSUB,tcp,64,bandwidth,61.31
+RESULT,current,PUBSUB,tcp,64,latency,379.30
+RESULT,current,PUBSUB,tcp,64,latency_p95,2867.05
+RESULT,current,PUBSUB,tcp,64,latency_p99,4259.31
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PUBSUB | tcp | 64 | 1004.42 | 61.31 | 379.30 | 2867.05 | 4259.31 |
+RESULT,current,PUBSUB,tcp,256,throughput,890.64
+RESULT,current,PUBSUB,tcp,256,bandwidth,217.44
+RESULT,current,PUBSUB,tcp,256,latency,173.53
+RESULT,current,PUBSUB,tcp,256,latency_p95,2290.02
+RESULT,current,PUBSUB,tcp,256,latency_p99,4137.63
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PUBSUB | tcp | 256 | 890.64 | 217.44 | 173.53 | 2290.02 | 4137.63 |
+RESULT,current,PUBSUB,tcp,1024,throughput,666.76
+RESULT,current,PUBSUB,tcp,1024,bandwidth,651.13
+RESULT,current,PUBSUB,tcp,1024,latency,414.06
+RESULT,current,PUBSUB,tcp,1024,latency_p95,1327.64
+RESULT,current,PUBSUB,tcp,1024,latency_p99,2375.05
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PUBSUB | tcp | 1024 | 666.76 | 651.13 | 414.06 | 1327.64 | 2375.05 |
+RESULT,current,PUBSUB,tcp,65536,throughput,63.47
+RESULT,current,PUBSUB,tcp,65536,bandwidth,3966.88
+RESULT,current,PUBSUB,tcp,65536,latency,689.19
+RESULT,current,PUBSUB,tcp,65536,latency_p95,3137.93
+RESULT,current,PUBSUB,tcp,65536,latency_p99,4293.61
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PUBSUB | tcp | 65536 | 63.47 | 3966.88 | 689.19 | 3137.93 | 4293.61 |
+RESULT,current,PUBSUB,tcp,131072,throughput,26.57
+RESULT,current,PUBSUB,tcp,131072,bandwidth,3320.75
+RESULT,current,PUBSUB,tcp,131072,latency,18339.30
+RESULT,current,PUBSUB,tcp,131072,latency_p95,23831.26
+RESULT,current,PUBSUB,tcp,131072,latency_p99,26937.14
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PUBSUB | tcp | 131072 | 26.57 | 3320.75 | 18339.30 | 23831.26 | 26937.14 |
+RESULT,current,PUBSUB,tcp,262144,throughput,17.14
+RESULT,current,PUBSUB,tcp,262144,bandwidth,4286.25
+RESULT,current,PUBSUB,tcp,262144,latency,235.32
+RESULT,current,PUBSUB,tcp,262144,latency_p95,926.59
+RESULT,current,PUBSUB,tcp,262144,latency_p99,1277.42
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PUBSUB | tcp | 262144 | 17.14 | 4286.25 | 235.32 | 926.59 | 1277.42 |
+RESULT,current,DEALER_DEALER,tcp,64,throughput,31.35
+RESULT,current,DEALER_DEALER,tcp,64,bandwidth,1.91
+RESULT,current,DEALER_DEALER,tcp,64,latency,127.93
+RESULT,current,DEALER_DEALER,tcp,64,latency_p95,172.99
+RESULT,current,DEALER_DEALER,tcp,64,latency_p99,196.33
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_DEALER | tcp | 64 | 31.35 | 1.91 | 127.93 | 172.99 | 196.33 |
+RESULT,current,DEALER_DEALER,tcp,256,throughput,14.17
+RESULT,current,DEALER_DEALER,tcp,256,bandwidth,3.46
+RESULT,current,DEALER_DEALER,tcp,256,latency,129.86
+RESULT,current,DEALER_DEALER,tcp,256,latency_p95,172.88
+RESULT,current,DEALER_DEALER,tcp,256,latency_p99,195.96
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_DEALER | tcp | 256 | 14.17 | 3.46 | 129.86 | 172.88 | 195.96 |
+RESULT,current,DEALER_DEALER,tcp,1024,throughput,5.23
+RESULT,current,DEALER_DEALER,tcp,1024,bandwidth,5.11
+RESULT,current,DEALER_DEALER,tcp,1024,latency,134.39
+RESULT,current,DEALER_DEALER,tcp,1024,latency_p95,180.25
+RESULT,current,DEALER_DEALER,tcp,1024,latency_p99,207.63
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_DEALER | tcp | 1024 | 5.23 | 5.11 | 134.39 | 180.25 | 207.63 |
+RESULT,current,DEALER_DEALER,tcp,65536,throughput,5.31
+RESULT,current,DEALER_DEALER,tcp,65536,bandwidth,331.75
+RESULT,current,DEALER_DEALER,tcp,65536,latency,186.87
+RESULT,current,DEALER_DEALER,tcp,65536,latency_p95,248.21
+RESULT,current,DEALER_DEALER,tcp,65536,latency_p99,337.57
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_DEALER | tcp | 65536 | 5.31 | 331.75 | 186.87 | 248.21 | 337.57 |
+RESULT,current,DEALER_DEALER,tcp,131072,throughput,4.37
+RESULT,current,DEALER_DEALER,tcp,131072,bandwidth,546.38
+RESULT,current,DEALER_DEALER,tcp,131072,latency,225.10
+RESULT,current,DEALER_DEALER,tcp,131072,latency_p95,305.00
+RESULT,current,DEALER_DEALER,tcp,131072,latency_p99,405.99
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_DEALER | tcp | 131072 | 4.37 | 546.38 | 225.10 | 305.00 | 405.99 |
+RESULT,current,DEALER_DEALER,tcp,262144,throughput,3.28
+RESULT,current,DEALER_DEALER,tcp,262144,bandwidth,820.50
+RESULT,current,DEALER_DEALER,tcp,262144,latency,297.38
+RESULT,current,DEALER_DEALER,tcp,262144,latency_p95,419.54
+RESULT,current,DEALER_DEALER,tcp,262144,latency_p99,538.04
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_DEALER | tcp | 262144 | 3.28 | 820.50 | 297.38 | 419.54 | 538.04 |
+RESULT,current,DEALER_ROUTER,tcp,64,throughput,7.93
+RESULT,current,DEALER_ROUTER,tcp,64,bandwidth,0.48
+RESULT,current,DEALER_ROUTER,tcp,64,latency,127.34
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p95,171.00
+RESULT,current,DEALER_ROUTER,tcp,64,latency_p99,189.42
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_ROUTER | tcp | 64 | 7.93 | 0.48 | 127.34 | 171.00 | 189.42 |
+RESULT,current,DEALER_ROUTER,tcp,256,throughput,24.30
+RESULT,current,DEALER_ROUTER,tcp,256,bandwidth,5.93
+RESULT,current,DEALER_ROUTER,tcp,256,latency,134.90
+RESULT,current,DEALER_ROUTER,tcp,256,latency_p95,178.60
+RESULT,current,DEALER_ROUTER,tcp,256,latency_p99,201.38
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | DEALER_ROUTER | tcp | 256 | 24.30 | 5.93 | 134.90 | 178.60 | 201.38 |

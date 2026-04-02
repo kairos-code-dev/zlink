@@ -1,0 +1,80 @@
+package zlink_test
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"zlink"
+)
+
+func TestRoutingIDBoundary(t *testing.T) {
+	valid := strings.Repeat("a", 255)
+	if _, err := zlink.NewRoutingID([]byte(valid)); err != nil {
+		t.Fatalf("NewRoutingID(255 bytes) error = %v", err)
+	}
+
+	invalid := strings.Repeat("b", 256)
+	if _, err := zlink.NewRoutingID([]byte(invalid)); err == nil {
+		t.Fatalf("NewRoutingID(256 bytes) should fail")
+	}
+}
+
+func TestDurationOverflowFailsFast(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	socket, _ := ctx.PairSocket()
+	defer socket.Close()
+
+	if err := socket.SetRecvTimeout((1<<31)*time.Millisecond + time.Second); err == nil {
+		t.Fatalf("SetRecvTimeout() overflow should fail")
+	}
+}
+
+func TestNullByteValidation(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	pair, _ := ctx.PairSocket()
+	defer pair.Close()
+
+	if err := pair.Bind("inproc://bad\x00endpoint"); err == nil {
+		t.Fatalf("Bind() with null byte should fail")
+	}
+	if err := pair.Bind("tcp://127.0.0.1/" + strings.Repeat("a", 256)); err == nil {
+		t.Fatalf("Bind() with oversized endpoint should fail")
+	}
+
+	sub, _ := ctx.SubSocket()
+	defer sub.Close()
+
+	if err := sub.SetSubscription("bad\x00topic"); err == nil {
+		t.Fatalf("SetSubscription() with null byte should fail")
+	}
+	if err := sub.UnsetSubscription("bad\x00topic"); err == nil {
+		t.Fatalf("UnsetSubscription() with null byte should fail")
+	}
+	if _, err := ctx.Discovery(zlink.ServiceTypeSocket, strings.Repeat("s", 256)); err == nil {
+		t.Fatalf("Discovery() with oversized service name should fail")
+	}
+}
+
+func TestNilInputValidation(t *testing.T) {
+	if _, err := zlink.NewRoutingID(nil); err == nil {
+		t.Fatalf("NewRoutingID(nil) should fail")
+	}
+
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	socket, _ := ctx.PairSocket()
+	defer socket.Close()
+
+	if err := socket.Send(nil); err == nil {
+		t.Fatalf("Send(nil) should fail")
+	}
+	if err := socket.OnReceive(nil); err == nil {
+		t.Fatalf("OnReceive(nil) should fail")
+	}
+}

@@ -1,0 +1,11 @@
+## Effective Options (start)
+  pattern:   MULTI_PUBSUB
+  recv:      recv
+  duration:  1s
+  warmup:    0s
+  msg_sizes: 64
+  transports: tcp
+  clients:   4
+  runs:      1
+## Effective Options (end)
+

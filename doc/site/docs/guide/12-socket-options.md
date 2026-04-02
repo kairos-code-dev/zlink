@@ -186,6 +186,16 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
     s.set_option(zlink::Option::TcpKeepaliveCnt, 3)?;
     ```
 
+=== "Go"
+
+    ```go
+    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
+    s.SetOption(zlink.OptionTcpKeepalive, 1)
+    s.SetOption(zlink.OptionTcpKeepaliveIdle, 60)
+    s.SetOption(zlink.OptionTcpKeepaliveIntvl, 10)
+    s.SetOption(zlink.OptionTcpKeepaliveCnt, 3)
+    ```
+
 ---
 
 ## 7. TCP Retransmission — TCP_MAXRT

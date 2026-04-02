@@ -190,6 +190,16 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
     s.set_option(zlink::Option::TcpKeepaliveCnt, 3)?;
     ```
 
+=== "Go"
+
+    ```go
+    // 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    s.SetOption(zlink.OptionTcpKeepalive, 1)
+    s.SetOption(zlink.OptionTcpKeepaliveIdle, 60)
+    s.SetOption(zlink.OptionTcpKeepaliveIntvl, 10)
+    s.SetOption(zlink.OptionTcpKeepaliveCnt, 3)
+    ```
+
 ---
 
 ## 7. TCP 재전송 — TCP_MAXRT

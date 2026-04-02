@@ -81,6 +81,16 @@ The ROUTER socket is a **routing_id-based routing** socket. It automatically pre
     router.bind("tcp://*:5558")?;
     ```
 
+=== "Go"
+
+    ```go
+    ctx, err := zlink.NewContext()
+    if err != nil { panic(err) }
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    router.Bind("tcp://*:5558")
+    ```
+
 ### Receiving Messages
 
 ROUTER receives messages via a handler callback attached after socket creation.
@@ -162,6 +172,17 @@ ROUTER receives messages via a handler callback attached after socket creation.
     println!("From [{}]: {}", source_rid, parts[0].as_str()?);
     ```
 
+=== "Go"
+
+    ```go
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    // Receive with recv()
+    source_rid, parts, err := router.Recv()
+    if err != nil { panic(err) }
+    fmt.Printf("From [%v]: %v\n", source_rid, string(parts[0].Data()))
+    ```
+
 ### Sending Messages
 
 When replying, use `zlink_send_rid` with the `source_rid` to specify the target.
@@ -218,6 +239,13 @@ When replying, use `zlink_send_rid` with the `source_rid` to specify the target.
     ```rust
     // Reply using source_rid from recv()
     router.send_rid(&source_rid, &zlink::Message::from("World"))?;
+    ```
+
+=== "Go"
+
+    ```go
+    // Reply using source_rid from recv()
+    router.SendTo(source_rid, zlink.NewMessage([]byte("World")))
     ```
 
 ### Receive Modes
@@ -289,10 +317,32 @@ receive synchronously.
     // process parts
     ```
 
+=== "Go"
+
+    ```go
+    source_rid, parts, err := router.Recv()
+    if err != nil { panic(err) }
+    // source_rid identifies the sender
+    // process parts
+    ```
+
 > When the per-peer send queue is full (HWM), ROUTER returns
 > `EHOSTUNREACH` with `ROUTER_MANDATORY` enabled, or silently drops
 > the message otherwise. For advanced backpressure patterns, see
 > [Performance Guide](10-performance.md).
+
+??? example "Full Sample Code"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [dealer_router_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/dealer_router_recv_sample.c) |
+    | C++ | [dealer_router_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/dealer_router_recv_sample.cpp) |
+    | Java | [DealerRouterRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/DealerRouterRecvSample.java) |
+    | Python | [dealer_router_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/dealer_router_recv.py) |
+    | Node | [dealer_router_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/dealer_router_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/DealerRouterRecv/Program.cs) |
+    | Rust | [dealer_router_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_recv_sample/main.go) |
 
 ## 3. Usage Examples
 
@@ -368,6 +418,15 @@ identifies the sender via `source_rid` in `zlink_recv()`.
     // Receive and reply using recv() + send_rid()
     let (source_rid, parts) = router.recv()?;
     router.send_rid(&source_rid, &zlink::Message::from("reply"))?;
+    ```
+
+=== "Go"
+
+    ```go
+    // Receive and reply using recv() + send_rid()
+    source_rid, parts, err := router.Recv()
+    if err != nil { panic(err) }
+    router.SendTo(source_rid, zlink.NewMessage([]byte("reply")))
     ```
 
 ## 4. Socket Options
@@ -483,6 +542,21 @@ By default, ROUTER **silently drops** messages when the target cannot be found. 
             // target "UNKNOWN" not found
         }
         other => other?,
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    router.SetRouterMandatory(true)
+
+    // Attempt to send to a non-existent target
+    target_rid := zlink.NewRoutingID("UNKNOWN")
+    msg := zlink.NewMessage([]byte("data"))
+    err := router.SendTo(target_rid, msg)
+        if err != nil { // HostUnreachable
+            // target "UNKNOWN" not found
+        }
     }
     ```
 
@@ -719,6 +793,41 @@ The most basic ROUTER pattern. Distinguishes multiple DEALER clients by routing_
     router.send_rid(&rid2, &zlink::Message::from("reply"))?;
     ```
 
+=== "Go"
+
+    ```go
+    ctx, err := zlink.NewContext()
+    if err != nil { panic(err) }
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    router.Bind("tcp://127.0.0.1:*")
+    endpoint, _ := router.GetOption(zlink.OptionLastEndpoint)
+
+    // Client 1
+    d1, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    d1.SetRoutingId("D1")
+    d1.Connect(endpoint)
+
+    // Client 2
+    d2, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    d2.SetRoutingId("D2")
+    d2.Connect(endpoint)
+
+    // Each client sends — router.recv() returns source_rid
+    d1.Send(zlink.NewMessage([]byte("from_d1")))
+    d2.Send(zlink.NewMessage([]byte("from_d2")))
+
+    // Server receives and replies
+    rid1, parts1, err := router.Recv()
+    if err != nil { panic(err) }
+    router.SendTo(rid1, zlink.NewMessage([]byte("reply")))
+    rid2, parts2, err := router.Recv()
+    if err != nil { panic(err) }
+    router.SendTo(rid2, zlink.NewMessage([]byte("reply")))
+    ```
+
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc across 3 transports
 
 ### Pattern 2: Detecting Send Failures with ROUTER_MANDATORY
@@ -882,6 +991,29 @@ The most basic ROUTER pattern. Distinguishes multiple DEALER clients by routing_
     }
     ```
 
+=== "Go"
+
+    ```go
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    router.Bind("tcp://*:5558")
+
+    // Default behavior: silently drops undeliverable messages
+    bad_rid := zlink.NewRoutingID("UNKNOWN")
+    router.SendTo(bad_rid, zlink.NewMessage([]byte("DATA")))
+    // No error, message lost
+
+    // Enable MANDATORY mode
+    router.SetRouterMandatory(true)
+
+    // Now returns error on undeliverable message
+    err := router.SendTo(bad_rid, zlink.NewMessage([]byte("DATA")))
+        if err != nil { // HostUnreachable
+            // target "UNKNOWN" not found
+        }
+    }
+    ```
+
 > Reference: `core/tests/test_router_mandatory.cpp` -- default drop vs MANDATORY error
 
 ### Pattern 3: Send After Confirming Connection
@@ -1008,6 +1140,23 @@ DEALER sends a message first to notify ROUTER of its connection, then ROUTER rep
     dealer.send(&zlink::Message::from("Hello"))?;
     ```
 
+=== "Go"
+
+    ```go
+    // ROUTER receives initial message confirming connection
+    source_rid, parts, err := router.Recv()
+    if err != nil { panic(err) }
+    // source_rid = "X" — now safe to send to "X"
+    router.SendTo(source_rid, zlink.NewMessage([]byte("Welcome")))
+
+    // DEALER connects and sends initial message
+    dealer, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    dealer.SetRoutingId("X")
+    dealer.Connect(endpoint)
+    dealer.Send(zlink.NewMessage([]byte("Hello")))
+    ```
+
 > Reference: `core/tests/test_router_mandatory.cpp` -- DEALER connect → message → ROUTER reply
 
 ### Pattern 4: Multiple Transports
@@ -1091,6 +1240,17 @@ Multiple transports can be used to connect DEALERs to the same ROUTER.
     // DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
     ```
 
+=== "Go"
+
+    ```go
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    router.Bind("tcp://127.0.0.1:5558")
+    router.Bind("ipc:///tmp/router.ipc")  // IPC (Linux/macOS)
+    router.Bind("inproc://router")  // inproc (same process)
+    // DEALERs connect via each transport — ROUTER manages them uniformly by routing_id
+    ```
+
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc tests
 
 ## 6. Caveats
@@ -1150,6 +1310,13 @@ When a DEALER reconnects, its auto-generated routing_id may change. Setting an e
     ```rust
     // Explicit routing_id — remains the same across reconnections
     dealer.set_routing_id("stable-id")?;
+    ```
+
+=== "Go"
+
+    ```go
+    // Explicit routing_id — remains the same across reconnections
+    dealer.SetRoutingId("stable-id")
     ```
 
 ### routing_id Conflicts

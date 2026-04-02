@@ -127,6 +127,16 @@ DEALER → ROUTER: round-robin 부하분산 + routing_id 응답 라우팅
     router.bind("tcp://*:5558")?;
     ```
 
+=== "Go"
+
+    ```go
+    ctx, err := zlink.NewContext()
+    if err != nil { panic(err) }
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    router.Bind("tcp://*:5558")
+    ```
+
 ### 메시지 수신
 
 ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신한다.
@@ -208,6 +218,17 @@ ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신
     println!("[{}]로부터: {}", source_rid, parts[0].as_str()?);
     ```
 
+=== "Go"
+
+    ```go
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    // recv()로 수신
+    source_rid, parts, err := router.Recv()
+    if err != nil { panic(err) }
+    fmt.Printf("[%v]로부터: %v\n", source_rid, string(parts[0].Data()))
+    ```
+
 ### 메시지 송신
 
 응답 시 `zlink_send_rid`에 콜백의 `source_rid`를 전달하여 대상을 지정한다.
@@ -264,6 +285,13 @@ ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신
     ```rust
     // recv()의 source_rid를 사용하여 응답
     router.send_rid(&source_rid, &zlink::Message::from("World"))?;
+    ```
+
+=== "Go"
+
+    ```go
+    // recv()의 source_rid를 사용하여 응답
+    router.SendTo(source_rid, zlink.NewMessage([]byte("World")))
     ```
 
 ### 수신 모드
@@ -334,9 +362,31 @@ ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신
     // parts 처리
     ```
 
+=== "Go"
+
+    ```go
+    source_rid, parts, err := router.Recv()
+    if err != nil { panic(err) }
+    // source_rid로 송신자 식별
+    // parts 처리
+    ```
+
 > 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY` 활성 시
 > `EHOSTUNREACH`를 반환하고, 그렇지 않으면 메시지를 조용히 드롭한다.
 > 고급 backpressure 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
+
+??? example "Full Sample Code"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [dealer_router_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/dealer_router_recv_sample.c) |
+    | C++ | [dealer_router_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/dealer_router_recv_sample.cpp) |
+    | Java | [DealerRouterRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/DealerRouterRecvSample.java) |
+    | Python | [dealer_router_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/dealer_router_recv.py) |
+    | Node | [dealer_router_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/dealer_router_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/DealerRouterRecv/Program.cs) |
+    | Rust | [dealer_router_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_recv_sample/main.go) |
 
 ## 3. 사용 예제
 
@@ -412,6 +462,15 @@ ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
     // recv() + send_rid()로 수신/응답
     let (source_rid, parts) = router.recv()?;
     router.send_rid(&source_rid, &zlink::Message::from("reply"))?;
+    ```
+
+=== "Go"
+
+    ```go
+    // recv() + send_rid()로 수신/응답
+    source_rid, parts, err := router.Recv()
+    if err != nil { panic(err) }
+    router.SendTo(source_rid, zlink.NewMessage([]byte("reply")))
     ```
 
 ## 4. 소켓 옵션
@@ -527,6 +586,21 @@ ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
             // 대상 "UNKNOWN" 찾을 수 없음
         }
         other => other?,
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    router.SetRouterMandatory(true)
+
+    // 존재하지 않는 대상에게 전송 시도
+    target_rid := zlink.NewRoutingID("UNKNOWN")
+    msg := zlink.NewMessage([]byte("data"))
+    err := router.SendTo(target_rid, msg)
+        if err != nil { // HostUnreachable
+            // 대상 "UNKNOWN" 찾을 수 없음
+        }
     }
     ```
 
@@ -776,6 +850,41 @@ ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하
     hub.send_rid(&src_rid, &zlink::Message::from("ack"))?;
     ```
 
+=== "Go"
+
+    ```go
+    // 허브 ROUTER: bind
+    hub, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    hub.SetRoutingId("HUB")
+    hub.Bind("tcp://127.0.0.1:*")
+    endpoint, _ := hub.GetOption(zlink.OptionLastEndpoint)
+
+    // 노드 A, B: connect
+    ra, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    ra.SetRoutingId("RA")
+    ra.Connect(endpoint)
+
+    rb, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    rb.SetRoutingId("RB")
+    rb.Connect(endpoint)
+
+    // ① A → HUB
+    ra.SendTo(zlink.NewRoutingID("HUB"),
+                    zlink.NewMessage([]byte("from_RA")))
+
+    // ② HUB 수신 → "RB"에게 전달
+    src_rid, parts, err := hub.Recv()
+    if err != nil { panic(err) }
+    hub.SendTo(zlink.NewRoutingID("RB"),
+                     zlink.NewMessage([]byte("forwarded")))
+
+    // ③ HUB → RA 응답
+    hub.SendTo(src_rid, zlink.NewMessage([]byte("ack")))
+    ```
+
 > ROUTER ↔ ROUTER는 브로커, 클러스터 노드 간 메시 통신에 적합하다.
 > 모든 노드가 능동적으로 대상을 routing_id로 지정할 수 있다.
 
@@ -974,6 +1083,34 @@ DEALER ↔ ROUTER 조합의 핵심 장점:
     // 3개 요청 전송 → round-robin
     for _ in 0..3 {
         dealer.send(&zlink::Message::from("Hello"))?;
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    // ROUTER 서버 3대
+    ra, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    ra.Bind("tcp://127.0.0.1:5560")
+    rb, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    rb.Bind("tcp://127.0.0.1:5561")
+    rc, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    rc.Bind("tcp://127.0.0.1:5562")
+
+    // DEALER 클라이언트: 3개 ROUTER에 연결 → round-robin 분배
+    dealer, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    dealer.SetRoutingId("D1")
+    dealer.Connect("tcp://127.0.0.1:5560")
+    dealer.Connect("tcp://127.0.0.1:5561")
+    dealer.Connect("tcp://127.0.0.1:5562")
+
+    // 3개 요청 전송 → round-robin
+    for i := 0; i < 3; i++ {
+        dealer.Send(zlink.NewMessage([]byte("Hello")))
     }
     ```
 
@@ -1191,6 +1328,38 @@ DEALER → ROUTER는 round-robin이 고정되어 분배 비율을 제어할 수 
                     &zlink::Message::from("request"))?;
     ```
 
+=== "Go"
+
+    ```go
+    // 서버 3대
+    sa, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    sa.set_routing_id("SA")?
+    sa.Bind("tcp://127.0.0.1:5560")
+    sb, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    sb.set_routing_id("SB")?
+    sb.Bind("tcp://127.0.0.1:5561")
+    sc, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    sc.set_routing_id("SC")?
+    sc.Bind("tcp://127.0.0.1:5562")
+
+    // 클라이언트 ROUTER
+    client, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    client.SetRoutingId("C1")
+    client.Connect("tcp://127.0.0.1:5560")
+    client.Connect("tcp://127.0.0.1:5561")
+    client.Connect("tcp://127.0.0.1:5562")
+
+    // 가중치 기반 대상 선택: SA=50%, SB=30%, SC=20%
+    roll := rand.Intn(100)
+    target := "weighted"  /* select among "SA", "SB", "SC" */
+    client.send_rid(&zlink::RoutingId::from(target),
+                        zlink.NewMessage([]byte("request")))
+    ```
+
 > DEALER → ROUTER의 round-robin이 충분하면 DEALER를 사용하고,
 > 분배 로직을 제어해야 하면 ROUTER ↔ ROUTER로 전환한다.
 
@@ -1356,6 +1525,28 @@ DEALER → ROUTER는 round-robin이 고정되어 분배 비율을 제어할 수 
     d2.send(&zlink::Message::from("from_d2"))?;
     ```
 
+=== "Go"
+
+    ```go
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    router.Bind("tcp://127.0.0.1:*")
+    endpoint, _ := router.GetOption(zlink.OptionLastEndpoint)
+
+    d1, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    d1.SetRoutingId("D1")
+    d1.Connect(endpoint)
+
+    d2, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    d2.SetRoutingId("D2")
+    d2.Connect(endpoint)
+
+    d1.Send(zlink.NewMessage([]byte("from_d1")))
+    d2.Send(zlink.NewMessage([]byte("from_d2")))
+    ```
+
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 3가지 transport
 
 ### 패턴 5: 프록시 패턴 (ROUTER-DEALER)
@@ -1466,6 +1657,21 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
     zlink::proxy(&frontend, &backend, None)?;
     ```
 
+=== "Go"
+
+    ```go
+    frontend, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    frontend.Bind("tcp://*:5558")
+
+    backend, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    backend.Bind("inproc://backend")
+
+    // 워커 스레드 시작 후 프록시 실행
+    zlink.Proxy(frontend, backend, nil)
+    ```
+
 === "C"
 
     ```c
@@ -1563,6 +1769,20 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
     loop {
         let (rid, parts) = worker.recv()?;
         worker.send_rid(&rid, &parts)?;
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    // 워커 스레드
+    worker, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    worker.Connect("inproc://backend")
+    for {
+        rid, parts, err := worker.Recv()
+        if err != nil { panic(err) }
+        worker.SendTo(rid, parts)
     }
     ```
 
@@ -1733,6 +1953,27 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
     }
     ```
 
+=== "Go"
+
+    ```go
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    router.Bind("tcp://*:5558")
+
+    // 기본 동작: 미도달 메시지 조용히 드롭
+    bad_rid := zlink.NewRoutingID("UNKNOWN")
+    router.SendTo(bad_rid, zlink.NewMessage([]byte("DATA")))
+
+    // MANDATORY 모드 활성화
+    router.SetRouterMandatory(true)
+
+    err := router.SendTo(bad_rid, zlink.NewMessage([]byte("DATA")))
+        if err != nil { // HostUnreachable
+            // 대상 "UNKNOWN" 찾을 수 없음
+        }
+    }
+    ```
+
 > 참고: `core/tests/test_router_mandatory.cpp` — 기본 드롭 vs MANDATORY 에러
 
 ### 패턴 7: 연결 확인 후 전송
@@ -1867,6 +2108,23 @@ DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTE
     dealer.send(&zlink::Message::from("Hello"))?;
     ```
 
+=== "Go"
+
+    ```go
+    // ROUTER: DEALER의 초기 메시지로 연결 확인
+    source_rid, parts, err := router.Recv()
+    if err != nil { panic(err) }
+    // source_rid = "X" — 이제 "X"로 안전하게 전송 가능
+    router.SendTo(source_rid, zlink.NewMessage([]byte("Welcome")))
+
+    // DEALER 연결 및 초기 메시지 전송
+    dealer, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    dealer.SetRoutingId("X")
+    dealer.Connect(endpoint)
+    dealer.Send(zlink.NewMessage([]byte("Hello")))
+    ```
+
 > 참고: `core/tests/test_router_mandatory.cpp` — DEALER 연결 → 메시지 → ROUTER 응답
 
 ### 패턴 8: 다중 Transport
@@ -1964,6 +2222,17 @@ DEALER가 먼저 메시지를 전송하여 ROUTER에 연결을 알린 후, ROUTE
     // 각 transport의 DEALER가 연결 — routing_id로 통합 관리
     ```
 
+=== "Go"
+
+    ```go
+    router, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    router.Bind("tcp://127.0.0.1:5558")
+    router.Bind("ipc:///tmp/router.ipc")  // IPC (Linux/macOS)
+    router.Bind("inproc://router")  // inproc (동일 프로세스)
+    // 각 transport의 DEALER가 연결 — routing_id로 통합 관리
+    ```
+
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — TCP/IPC/inproc 테스트
 
 ## 6. 주의사항
@@ -2023,6 +2292,13 @@ DEALER가 재연결하면 자동 생성된 routing_id가 변경될 수 있다. �
     ```rust
     // 명시적 routing_id — 재연결 시에도 동일
     dealer.set_routing_id("stable-id")?;
+    ```
+
+=== "Go"
+
+    ```go
+    // 명시적 routing_id — 재연결 시에도 동일
+    dealer.SetRoutingId("stable-id")
     ```
 
 ### routing_id 충돌

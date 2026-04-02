@@ -50,6 +50,12 @@ combination. Users can also build custom proxies using public APIs.
     zlink::proxy(&frontend, &backend, Some(&capture))?;
     ```
 
+=== "Go"
+
+    ```go
+    zlink.Proxy(frontend, backend, capture)
+    ```
+
 - Forwards messages from `frontend` to `backend` and vice versa
 - If `capture` is non-NULL, copies all passing messages to the capture socket
 - **Blocking function** -- run in a dedicated thread
@@ -179,6 +185,24 @@ Subscription (reverse): PUB ◄── XSUB ◄── proxy ◄── XPUB ◄─
     capture.bind("tcp://*:5558")?;  // optional: message recording
 
     zlink::proxy(&xsub, &xpub, Some(&capture))?;  // blocking
+    ```
+
+=== "Go"
+
+    ```go
+    xsub, err := ctx.XSubSocket()
+    if err != nil { panic(err) }
+    xsub.Bind("tcp://*:5556")  // PUBs connect here
+
+    xpub, err := ctx.XPubSocket()
+    if err != nil { panic(err) }
+    xpub.Bind("tcp://*:5557")  // SUBs connect here
+
+    capture, err := ctx.PubSocket()
+    if err != nil { panic(err) }
+    capture.Bind("tcp://*:5558")  // optional: message recording
+
+    zlink.Proxy(xsub, xpub, capture)  // blocking
     ```
 
 `zlink_proxy()` handles two things internally:
@@ -404,6 +428,34 @@ build a manual proxy using public APIs only.
     }
     ```
 
+=== "Go"
+
+    ```go
+    xsub, err := ctx.XSubSocket()
+    if err != nil { panic(err) }
+    xpub, err := ctx.XPubSocket()
+    if err != nil { panic(err) }
+    xsub.Bind("tcp://*:5556")
+    xpub.Bind("tcp://*:5557")
+
+    for running {
+        // Data relay: XSUB -> app -> XPUB
+        if msg, err := xsub.Subscribe(); err == nil {
+            // Insert custom logic here
+            xpub.Publish(msg.Topic, msg.Parts)
+        }
+
+        // Subscription propagation: XPUB -> app -> XSUB
+        if event, err := xpub.SubscriptionEvent(); err == nil {
+            if event.Subscribed {
+                xsub.SetSubscription(event.Topic)
+            } else {
+                xsub.UnsetSubscription(event.Topic)
+            }
+        }
+    }
+    ```
+
 ### 3.3 Why XSUB/XPUB?
 
 | Question | With SUB/PUB | With XSUB/XPUB |
@@ -506,6 +558,20 @@ Client (DEALER) ──► ROUTER ══ proxy ══► DEALER ──► Server 
     backend.bind("tcp://*:5560")?;
 
     zlink::proxy(&frontend, &backend, None)?;  // blocking
+    ```
+
+=== "Go"
+
+    ```go
+    frontend, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    frontend.Bind("tcp://*:5559")
+
+    backend, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    backend.Bind("tcp://*:5560")
+
+    zlink.Proxy(frontend, backend, nil)  // blocking
     ```
 
 ROUTER/DEALER proxy has no subscription propagation, so `zlink_proxy()`

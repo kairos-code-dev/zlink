@@ -119,6 +119,20 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     client.connect("tcp://127.0.0.1:5555");
     ```
 
+=== "Go"
+
+    ```go
+    ctx := zlink.NewContext()
+
+    // 서버 측
+    server := ctx.PairSocket()
+    server.Bind("tcp://*:5555")
+
+    // 클라이언트 측
+    client := ctx.PairSocket()
+    client.Connect("tcp://127.0.0.1:5555")
+    ```
+
 ### 메시지 교환
 
 !!! note "C API 콜백 시그니처"
@@ -272,6 +286,37 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     server.send(b"World");
     ```
 
+=== "Go"
+
+    ```go
+    // 서버는 recv 모드를 유지
+    server := ctx.PairSocket()
+
+    // 클라이언트 (송신 전용)
+    client := ctx.PairSocket()
+
+    // ... bind/connect ...
+
+    // 클라이언트 → 서버
+    client.Send([]byte("Hello"))
+
+    // 서버 → 클라이언트
+    server.Send([]byte("World"))
+    ```
+
+??? example "Full Sample Code"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pair_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_callback_sample.c) |
+    | C++ | [pair_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_callback_sample.cpp) |
+    | Java | [PairCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairCallbackSample.java) |
+    | Python | [pair_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_callback.py) |
+    | Node | [pair_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_callback_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairCallback/Program.cs) |
+    | Rust | [pair_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_callback_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_callback_sample/main.go) |
+
 ### 멀티파트 데이터 전송
 
 멀티파트 데이터는 단일 `zlink_send` 호출로 parts 배열을 전송한다.
@@ -339,6 +384,15 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
 
     ```rust
     server.send(&[b"foo", b"foobar"]);
+
+    // 수신 측은 한 번의 recv() 호출로 두 프레임을 수신:
+    // parts[0] = "foo", parts[1] = "foobar"
+    ```
+
+=== "Go"
+
+    ```go
+    server.Send([]byte("foo"), []byte("foobar"))
 
     // 수신 측은 한 번의 recv() 호출로 두 프레임을 수신:
     // parts[0] = "foo", parts[1] = "foobar"
@@ -428,9 +482,32 @@ PAIR의 public API는 recv/poller-only다.
     // parts[0..N-1] 처리
     ```
 
+=== "Go"
+
+    ```go
+    pair := ctx.PairSocket()
+    pair.Bind("tcp://*:5556")
+
+    source_rid, parts := pair.Recv()
+    // parts[0..N-1] 처리
+    ```
+
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
 > `EAGAIN`을 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
+
+??? example "Full Sample Code"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pair_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_recv_sample.c) |
+    | C++ | [pair_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_recv_sample.cpp) |
+    | Java | [PairRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairRecvSample.java) |
+    | Python | [pair_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_recv.py) |
+    | Node | [pair_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairRecv/Program.cs) |
+    | Rust | [pair_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_recv_sample/main.go) |
 
 ## 3. 메시지 형식
 
@@ -491,6 +568,12 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
     ```rust
     server.send(&[b"header", b"body"]);
+    ```
+
+=== "Go"
+
+    ```go
+    server.Send([]byte("header"), []byte("body"))
     ```
 
 ## 4. 소켓 옵션
@@ -559,6 +642,14 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
     socket.set_option(ZLINK_OPT_SNDHWM, 5000);
 
     socket.set_option(ZLINK_OPT_LINGER, 0);  // close 즉시 반환
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetOption(zlink.OptionSndHWM, 5000)
+
+    socket.SetOption(zlink.OptionLinger, 0)  // close 즉시 반환
     ```
 
 ## 5. 사용 패턴
@@ -677,6 +768,21 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
     worker_signal.send(b"DONE");
     ```
 
+=== "Go"
+
+    ```go
+    // 메인 스레드
+    signal := ctx.PairSocket()
+    signal.Bind("inproc://signal")
+
+    // 워커 스레드
+    worker_signal := ctx.PairSocket()
+    worker_signal.Connect("inproc://signal")
+
+    // 워커 → 메인: 작업 완료 시그널
+    worker_signal.Send([]byte("DONE"))
+    ```
+
 > 참고: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce 패턴
 
 ### 패턴 2: TCP 통신
@@ -790,6 +896,21 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
     client.connect(&endpoint);
     ```
 
+=== "Go"
+
+    ```go
+    // 서버: 와일드카드 포트
+    server := ctx.PairSocket()
+    server.Bind("tcp://127.0.0.1:*")
+
+    // 할당된 엔드포인트 조회
+    endpoint, _ := server.GetOption(zlink.OptionLastEndpoint)
+
+    // 클라이언트: 조회된 엔드포인트로 연결
+    client := ctx.PairSocket()
+    client.Connect(endpoint)
+    ```
+
 > 참고: `core/tests/test_pair_tcp.cpp` — `bind_loopback_ipv4()` + 와일드카드 바인드
 
 ### 패턴 3: DNS 이름 연결
@@ -843,6 +964,13 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
     ```rust
     let client = ctx.pair_socket();
     client.connect("tcp://localhost:5555");
+    ```
+
+=== "Go"
+
+    ```go
+    client := ctx.PairSocket()
+    client.Connect("tcp://localhost:5555")
     ```
 
 > 참고: `core/tests/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
@@ -919,6 +1047,16 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
     let client = ctx.pair_socket();
     client.connect("ipc:///tmp/myapp.ipc");
+    ```
+
+=== "Go"
+
+    ```go
+    server := ctx.PairSocket()
+    server.Bind("ipc:///tmp/myapp.ipc")
+
+    client := ctx.PairSocket()
+    client.Connect("ipc:///tmp/myapp.ipc")
     ```
 
 > 참고: `core/tests/test_pair_ipc.cpp` — IPC 경로 길이 검증 포함
@@ -1025,6 +1163,18 @@ inproc transport는 **반드시 bind가 connect보다 먼저** 호출되어야 �
     a.bind("inproc://signal");
     ```
 
+=== "Go"
+
+    ```go
+    // 올바른 순서
+    a.Bind("inproc://signal")  // 1. bind 먼저
+    b.Connect("inproc://signal")  // 2. connect
+
+    // 잘못된 순서 — 실패
+    b.Connect("inproc://signal")  // bind가 아직 없으므로 실패
+    a.Bind("inproc://signal")
+    ```
+
 ### IPC 경로 길이
 
 IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 초과할 수 없다.
@@ -1078,6 +1228,13 @@ IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 초�
     socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     ```
 
+=== "Go"
+
+    ```go
+    // 너무 긴 경로 → ENAMETOOLONG 에러
+    socket.Bind("ipc:///very/long/path/.../endpoint.ipc")
+    ```
+
 > 참고: `core/tests/test_pair_ipc.cpp` — `test_endpoint_too_long()`
 
 ### HWM 동작
@@ -1129,6 +1286,12 @@ IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 초�
 
     ```rust
     socket.set_option(ZLINK_OPT_LINGER, 0);
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetOption(zlink.OptionLinger, 0)
     ```
 
 ---

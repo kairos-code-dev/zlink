@@ -122,6 +122,18 @@ send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하�
     dealer.connect("tcp://127.0.0.1:5558");
     ```
 
+=== "Go"
+
+    ```go
+    dealer := ctx.DealerSocket()
+
+    // routing_id 설정 (선택, ROUTER에서 식별용)
+    dealer.SetRoutingId("client-1")
+
+    // 서버에 연결
+    dealer.Connect("tcp://127.0.0.1:5558")
+    ```
+
 ### 메시지 송수신
 
 === "C"
@@ -210,6 +222,17 @@ send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하�
     // 응답은 생성 시 등록한 핸들러 콜백으로 디스패치됨
     ```
 
+=== "Go"
+
+    ```go
+    // 요청 전송 — 순서 제약 없이 연속 전송 가능
+    dealer.Send([]byte("request-1"))
+    dealer.Send([]byte("request-2"))
+    dealer.Send([]byte("request-3"))
+
+    // 응답은 생성 시 등록한 핸들러 콜백으로 디스패치됨
+    ```
+
 ### 수신 모드
 
 DEALER는 `zlink_recv()`로 동기 수신한다.
@@ -270,9 +293,42 @@ DEALER는 `zlink_recv()`로 동기 수신한다.
     // parts[0..N-1] 처리
     ```
 
+=== "Go"
+
+    ```go
+    source_rid, parts := dealer.Recv()
+    // parts[0..N-1] 처리
+    ```
+
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
 > `EAGAIN`을 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
+
+??? example "Full Sample Code -- Recv"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [dealer_router_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/dealer_router_recv_sample.c) |
+    | C++ | [dealer_router_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/dealer_router_recv_sample.cpp) |
+    | Java | [DealerRouterRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/DealerRouterRecvSample.java) |
+    | Python | [dealer_router_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/dealer_router_recv.py) |
+    | Node | [dealer_router_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/dealer_router_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/DealerRouterRecv/Program.cs) |
+    | Rust | [dealer_router_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_recv_sample/main.go) |
+
+??? example "Full Sample Code -- Callback"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [dealer_router_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/dealer_router_callback_sample.c) |
+    | C++ | [dealer_router_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/dealer_router_callback_sample.cpp) |
+    | Java | [DealerRouterCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/DealerRouterCallbackSample.java) |
+    | Python | [dealer_router_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/dealer_router_callback.py) |
+    | Node | [dealer_router_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/dealer_router_callback_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/DealerRouterCallback/Program.cs) |
+    | Rust | [dealer_router_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_callback_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_callback_sample/main.go) |
 
 ## 3. 사용 예제
 
@@ -328,6 +384,13 @@ DEALER는 `zlink_recv()`로 동기 수신한다.
     ```rust
     // DEALER ↔ DEALER 멀티파트 전송
     dealer.send(&[b"header", b"body"]);
+    ```
+
+=== "Go"
+
+    ```go
+    // DEALER ↔ DEALER 멀티파트 전송
+    dealer.Send([]byte("header"), []byte("body"))
     ```
 
 ## 4. 소켓 옵션
@@ -401,6 +464,14 @@ ROUTER가 DEALER를 식별하려면 명시적으로 routing_id를 설정한다.
     // bind/connect 전에 설정
     dealer.set_routing_id("D1");
     dealer.connect("tcp://127.0.0.1:5558");
+    ```
+
+=== "Go"
+
+    ```go
+    // bind/connect 전에 설정
+    dealer.SetRoutingId("D1")
+    dealer.Connect("tcp://127.0.0.1:5558")
     ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
@@ -517,6 +588,20 @@ PAIR와 유사하지만 HWM과 자동 재연결을 지원한다. 응답이 필�
     // 양방향 자유 전송
     a.send(b"ping");
     b.send(b"pong");
+    ```
+
+=== "Go"
+
+    ```go
+    a := ctx.DealerSocket()
+    a.Bind("tcp://*:5558")
+
+    b := ctx.DealerSocket()
+    b.Connect("tcp://127.0.0.1:5558")
+
+    // 양방향 자유 전송
+    a.Send([]byte("ping"))
+    b.Send([]byte("pong"))
     ```
 
 ### 패턴 2: 1:N Round-robin 작업 분배
@@ -673,6 +758,27 @@ PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
     }
     ```
 
+=== "Go"
+
+    ```go
+    // 분배자
+    sender := ctx.DealerSocket()
+    sender.Bind("tcp://*:5558")
+
+    // 워커 3대
+    w1 := ctx.DealerSocket()
+    w1.Connect("tcp://127.0.0.1:5558")
+    w2 := ctx.DealerSocket()
+    w2.Connect("tcp://127.0.0.1:5558")
+    w3 := ctx.DealerSocket()
+    w3.Connect("tcp://127.0.0.1:5558")
+
+    // 6개 작업 전송 → w1, w2, w3, w1, w2, w3 (round-robin)
+    for i := 0; i < 6; i++ {
+        sender.Send([]byte(fmt.Sprintf("task-{}", i)))
+    }
+    ```
+
 > DEALER ↔ ROUTER 조합(로드밸런싱 + 응답 라우팅, 프록시 등)은
 > [ROUTER 소켓](03-4-router.ko.md)을 참고.
 
@@ -762,6 +868,18 @@ PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
     }
     ```
 
+=== "Go"
+
+    ```go
+    // 피어가 없는 상태에서 전송
+    err := dealer.Send([]byte("data"))
+        if err != nil { // Eagain
+            // HWM 초과 또는 피어 없음
+        }
+        // default: no-op
+    }
+    ```
+
 ### Round-robin 분배
 
 여러 피어가 연결된 경우 메시지는 순환적으로 분배된다. 특정 피어에게만 전송하려면 ROUTER를 사용한다.
@@ -824,6 +942,14 @@ PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
     // 올바른 순서
     dealer.set_routing_id("D1");
     dealer.connect(endpoint);  // D1으로 식별
+    ```
+
+=== "Go"
+
+    ```go
+    // 올바른 순서
+    dealer.SetRoutingId("D1")
+    dealer.Connect(endpoint)  // D1으로 식별
     ```
 
 ---

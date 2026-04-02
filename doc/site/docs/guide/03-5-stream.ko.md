@@ -87,6 +87,17 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
     stream.bind("tcp://0.0.0.0:8080")?;
     ```
 
+=== "Go"
+
+    ```go
+    ctx, err := zlink.NewContext()
+    if err != nil { panic(err) }
+    stream, err := ctx.StreamSocket()
+    if err != nil { panic(err) }
+    stream.SetOption(zlink.OptionLinger, 0)
+    stream.Bind("tcp://0.0.0.0:8080")
+    ```
+
 지원 transport(서버 bind):
 - `tcp://`
 - `tls://`
@@ -109,6 +120,19 @@ STREAM만의 고유 동작은 다음과 같다.
 | `0x01` (1 byte) | connect 이벤트 |
 | `0x00` (1 byte) | disconnect 이벤트 |
 | 그 외 | 일반 데이터 |
+
+??? example "Full Sample Code -- Recv"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [stream_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/stream_recv_sample.c) |
+    | C++ | [stream_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/stream_recv_sample.cpp) |
+    | Java | [StreamRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/StreamRecvSample.java) |
+    | Python | [stream_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/stream_recv.py) |
+    | Node | [stream_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/stream_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/StreamRecv/Program.cs) |
+    | Rust | [stream_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/stream_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/stream_recv_sample/main.go) |
 
 ---
 
@@ -254,6 +278,24 @@ STREAM의 콜백에서는 connect/disconnect 이벤트와 데이터를 구분해
     })?;
     ```
 
+=== "Go"
+
+    ```go
+    stream.RecvHandler(func(source_rid zlink.RoutingID, parts []zlink.Message) {
+        for _, part := range parts {
+            data := part.Data()
+            if data[0] == 0x01 {
+                // 새 클라이언트 연결
+            } else if data[0] == 0x00 {
+                // 클라이언트 연결 해제
+            } else {
+                // 에코 응답
+                stream.SendTo(source_rid, part)
+            }
+        }
+    })
+    ```
+
 ### 주요 사항
 
 | 항목 | 설명 |
@@ -273,6 +315,19 @@ STREAM의 콜백에서는 connect/disconnect 이벤트와 데이터를 구분해
 - receive callback이 활성인 동안 direct recv 계열과 data-plane `POLLIN`은
   `EBUSY`다.
 - 콜백 내부에서 close를 호출하는 것은 지원되지 않는다 (`EBUSY` 실패).
+
+??? example "Full Sample Code -- Callback"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [stream_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/stream_callback_sample.c) |
+    | C++ | [stream_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/stream_callback_sample.cpp) |
+    | Java | [StreamCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/StreamCallbackSample.java) |
+    | Python | [stream_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/stream_callback.py) |
+    | Node | [stream_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/stream_callback_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/StreamCallback/Program.cs) |
+    | Rust | [stream_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/stream_callback_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/stream_callback_sample/main.go) |
 
 ---
 

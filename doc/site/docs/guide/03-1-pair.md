@@ -119,6 +119,20 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
     client.connect("tcp://127.0.0.1:5555");
     ```
 
+=== "Go"
+
+    ```go
+    ctx := zlink.NewContext()
+
+    // Server side
+    server := ctx.PairSocket()
+    server.Bind("tcp://*:5555")
+
+    // Client side
+    client := ctx.PairSocket()
+    client.Connect("tcp://127.0.0.1:5555")
+    ```
+
 ### Message Exchange
 
 !!! note "C API Callback Signature"
@@ -273,6 +287,37 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
     server.send(b"World");
     ```
 
+=== "Go"
+
+    ```go
+    // Server stays in recv model
+    server := ctx.PairSocket()
+
+    // Client (send only)
+    client := ctx.PairSocket()
+
+    // ... bind/connect ...
+
+    // Client → Server
+    client.Send([]byte("Hello"))
+
+    // Server → Client
+    server.Send([]byte("World"))
+    ```
+
+??? example "Full Sample Code"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pair_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_callback_sample.c) |
+    | C++ | [pair_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_callback_sample.cpp) |
+    | Java | [PairCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairCallbackSample.java) |
+    | Python | [pair_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_callback.py) |
+    | Node | [pair_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_callback_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairCallback/Program.cs) |
+    | Rust | [pair_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_callback_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_callback_sample/main.go) |
+
 ### Sending Multipart Data
 
 Multipart data is sent as a parts array in a single `zlink_send` call.
@@ -340,6 +385,15 @@ Multipart data is sent as a parts array in a single `zlink_send` call.
 
     ```rust
     server.send(&[b"foo", b"foobar"]);
+
+    // Receiver pulls both frames from one recv() call:
+    // parts[0] = "foo", parts[1] = "foobar"
+    ```
+
+=== "Go"
+
+    ```go
+    server.Send([]byte("foo"), []byte("foobar"))
 
     // Receiver pulls both frames from one recv() call:
     // parts[0] = "foo", parts[1] = "foobar"
@@ -429,9 +483,32 @@ Use `zlink_recv()` to receive synchronously.
     // process parts[0..N-1]
     ```
 
+=== "Go"
+
+    ```go
+    pair := ctx.PairSocket()
+    pair.Bind("tcp://*:5556")
+
+    source_rid, parts := pair.Recv()
+    // process parts[0..N-1]
+    ```
+
 > When HWM is reached, `zlink_send()` blocks (default) or returns
 > `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
 > see [Performance Guide](10-performance.md).
+
+??? example "Full Sample Code"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pair_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_recv_sample.c) |
+    | C++ | [pair_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_recv_sample.cpp) |
+    | Java | [PairRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairRecvSample.java) |
+    | Python | [pair_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_recv.py) |
+    | Node | [pair_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairRecv/Program.cs) |
+    | Rust | [pair_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_recv_sample/main.go) |
 
 ## 3. Message Format
 
@@ -492,6 +569,12 @@ Multipart send:
 
     ```rust
     server.send(&[b"header", b"body"]);
+    ```
+
+=== "Go"
+
+    ```go
+    server.Send([]byte("header"), []byte("body"))
     ```
 
 ## 4. Socket Options
@@ -560,6 +643,14 @@ Multipart send:
     socket.set_option(ZLINK_OPT_SNDHWM, 5000);
 
     socket.set_option(ZLINK_OPT_LINGER, 0);  // return immediately on close
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetOption(zlink.OptionSndHWM, 5000)
+
+    socket.SetOption(zlink.OptionLinger, 0)  // return immediately on close
     ```
 
 ## 5. Usage Patterns
@@ -678,6 +769,21 @@ The most common PAIR use case. Zero-copy communication between threads via the i
     worker_signal.send(b"DONE");
     ```
 
+=== "Go"
+
+    ```go
+    // Main thread
+    signal := ctx.PairSocket()
+    signal.Bind("inproc://signal")
+
+    // Worker thread
+    worker_signal := ctx.PairSocket()
+    worker_signal.Connect("inproc://signal")
+
+    // Worker → Main: task completion signal
+    worker_signal.Send([]byte("DONE"))
+    ```
+
 > Reference: `core/tests/test_pair_inproc.cpp` -- bind → connect → bounce pattern
 
 ### Pattern 2: TCP Communication
@@ -791,6 +897,21 @@ The most common PAIR use case. Zero-copy communication between threads via the i
     client.connect(&endpoint);
     ```
 
+=== "Go"
+
+    ```go
+    // Server: wildcard port
+    server := ctx.PairSocket()
+    server.Bind("tcp://127.0.0.1:*")
+
+    // Query the assigned endpoint
+    endpoint, _ := server.GetOption(zlink.OptionLastEndpoint)
+
+    // Client: connect using the queried endpoint
+    client := ctx.PairSocket()
+    client.Connect(endpoint)
+    ```
+
 > Reference: `core/tests/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` + wildcard bind
 
 ### Pattern 3: Connection by DNS Name
@@ -844,6 +965,13 @@ You can also connect using a hostname.
     ```rust
     let client = ctx.pair_socket();
     client.connect("tcp://localhost:5555");
+    ```
+
+=== "Go"
+
+    ```go
+    client := ctx.PairSocket()
+    client.Connect("tcp://localhost:5555")
     ```
 
 > Reference: `core/tests/test_pair_tcp.cpp` -- `test_pair_tcp_connect_by_name()`
@@ -920,6 +1048,16 @@ Inter-process communication on the same machine (Linux/macOS).
 
     let client = ctx.pair_socket();
     client.connect("ipc:///tmp/myapp.ipc");
+    ```
+
+=== "Go"
+
+    ```go
+    server := ctx.PairSocket()
+    server.Bind("ipc:///tmp/myapp.ipc")
+
+    client := ctx.PairSocket()
+    client.Connect("ipc:///tmp/myapp.ipc")
     ```
 
 > Reference: `core/tests/test_pair_ipc.cpp` -- includes IPC path length validation
@@ -1026,6 +1164,18 @@ With the inproc transport, **bind must be called before connect**.
     a.bind("inproc://signal");
     ```
 
+=== "Go"
+
+    ```go
+    // Correct order
+    a.Bind("inproc://signal")  // 1. bind first
+    b.Connect("inproc://signal")  // 2. connect
+
+    // Wrong order -- fails
+    b.Connect("inproc://signal")  // fails because bind has not been called yet
+    a.Bind("inproc://signal")
+    ```
+
 ### IPC Path Length
 
 The file path of an IPC endpoint cannot exceed the system limit (typically 108 characters).
@@ -1079,6 +1229,13 @@ The file path of an IPC endpoint cannot exceed the system limit (typically 108 c
     socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     ```
 
+=== "Go"
+
+    ```go
+    // Path too long → ENAMETOOLONG error
+    socket.Bind("ipc:///very/long/path/.../endpoint.ipc")
+    ```
+
 > Reference: `core/tests/test_pair_ipc.cpp` -- `test_endpoint_too_long()`
 
 ### HWM Behavior
@@ -1130,6 +1287,12 @@ When `zlink_close()` is called and there are unsent messages remaining, it waits
 
     ```rust
     socket.set_option(ZLINK_OPT_LINGER, 0);
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetOption(zlink.OptionLinger, 0)
     ```
 
 ---

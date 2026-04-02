@@ -144,6 +144,16 @@ PUB ──── XSUB ═══ XPUB ──── SUB
     pub_sock.publish("weather", b"sunny");
     ```
 
+=== "Go"
+
+    ```go
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://*:5556")
+
+    // Publish message -- dropped if there are no subscribers
+    pub_sock.Publish("weather", []byte("sunny"))
+    ```
+
 ### Subscriber (SUB)
 
 !!! note "C API Callback Signature"
@@ -250,6 +260,18 @@ PUB ──── XSUB ═══ XPUB ──── SUB
     // Use subscribe() or subscribe_handler() to receive
     ```
 
+=== "Go"
+
+    ```go
+    sub := ctx.SubSocket()
+    sub.Connect("tcp://127.0.0.1:5556")
+
+    // Subscribe to topic -- set after connect
+    sub.SetSubscription("weather")
+
+    // Use subscribe() or subscribe_handler() to receive
+    ```
+
 > Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
 
 ### Sending and Receiving Summary
@@ -272,6 +294,32 @@ PUB/SUB sockets support two receive modes:
 
 After callback attach, `zlink_subscribe()` and data-plane `ZLINK_POLLIN`
 return `EBUSY`.
+
+??? example "Full Sample Code -- Recv"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pubsub_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pubsub_recv_sample.c) |
+    | C++ | [pubsub_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_recv_sample.cpp) |
+    | Java | [PubSubRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubRecvSample.java) |
+    | Python | [pubsub_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_recv.py) |
+    | Node | [pubsub_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubRecv/Program.cs) |
+    | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
+
+??? example "Full Sample Code -- Callback"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pubsub_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pubsub_callback_sample.c) |
+    | C++ | [pubsub_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_callback_sample.cpp) |
+    | Java | [PubSubCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubCallbackSample.java) |
+    | Python | [pubsub_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_callback.py) |
+    | Node | [pubsub_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_callback_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubCallback/Program.cs) |
+    | Rust | [pubsub_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_callback_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_callback_sample/main.go) |
 
 > When PUB's send queue is full (HWM), messages are **dropped** rather
 > than blocking. For details, see
@@ -367,6 +415,17 @@ Topic filtering in SUB sockets uses **prefix matching**.
     sub.unset_subscription("sports");
     ```
 
+=== "Go"
+
+    ```go
+    // Subscribe to multiple topics
+    sub.SetSubscription("weather")
+    sub.SetSubscription("sports")
+
+    // Unsubscribe
+    sub.UnsetSubscription("sports")
+    ```
+
 ### Empty Subscription (All Messages)
 
 === "C"
@@ -416,6 +475,13 @@ Topic filtering in SUB sockets uses **prefix matching**.
     ```rust
     // Subscribe with empty string -- receives all messages
     sub.set_subscription("");
+    ```
+
+=== "Go"
+
+    ```go
+    // Subscribe with empty string -- receives all messages
+    sub.SetSubscription("")
     ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- `zlink_set_subscription(subscriber, "")`
@@ -520,6 +586,18 @@ is the default.
     ```rust
     // Publish: topic = "sensor:cpu", payload = 2 frames
     pub_sock.publish("sensor:cpu", &[b"host", b"73"]);
+
+    // SUB receives:
+    //   topic     = "sensor:cpu"
+    //   parts[0]  = "host"
+    //   parts[1]  = "73"
+    ```
+
+=== "Go"
+
+    ```go
+    // Publish: topic = "sensor:cpu", payload = 2 frames
+    pub_sock.Publish("sensor:cpu", []byte("host"), []byte("73"))
 
     // SUB receives:
     //   topic     = "sensor:cpu"
@@ -680,6 +758,23 @@ side. Callers never need to assemble topic frames manually.
     pub_sock.publish("", b"test");
     ```
 
+=== "Go"
+
+    ```go
+    // PUB
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://*:5556")
+
+    // SUB -- receive all messages
+    sub := ctx.SubSocket()
+    sub.Connect("tcp://127.0.0.1:5556")
+    sub.SetSubscription("")
+
+    time.Sleep(100 * time.Millisecond)  // time for subscription to reach PUB
+
+    pub_sock.Publish("", []byte("test"))
+    ```
+
 > Reference: `core/tests/test_pubsub.cpp` -- `test_tcp()`
 
 ### Pattern 2: Multiple SUBs
@@ -805,6 +900,23 @@ Multiple SUBs connect to a single PUB. Each SUB receives only its own topics.
     // Only sub_weather receives weather, only sub_sports receives sports
     ```
 
+=== "Go"
+
+    ```go
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://*:5556")
+
+    sub_weather := ctx.SubSocket()
+    sub_weather.Connect("tcp://127.0.0.1:5556")
+    sub_weather.SetSubscription("weather")
+
+    sub_sports := ctx.SubSocket()
+    sub_sports.Connect("tcp://127.0.0.1:5556")
+    sub_sports.SetSubscription("sports")
+
+    // Only sub_weather receives weather, only sub_sports receives sports
+    ```
+
 ### Pattern 3: Multiple PUBs → SUB
 
 A SUB can connect to multiple PUBs. It receives messages from all PUBs via fair-queue.
@@ -872,6 +984,15 @@ A SUB can connect to multiple PUBs. It receives messages from all PUBs via fair-
     sub.connect("tcp://pub2:5557");
     ```
 
+=== "Go"
+
+    ```go
+    sub := ctx.SubSocket()
+    sub.SetSubscription("")
+    sub.Connect("tcp://pub1:5556")
+    sub.Connect("tcp://pub2:5557")
+    ```
+
 ## 7. PUB/SUB Caveats
 
 ### Slow Subscriber (Drop on HWM Exceeded)
@@ -928,6 +1049,13 @@ dropped** (no error returned).
     ```rust
     // Option 1: Increase buffer by adjusting HWM
     pub_sock.set_option(ZLINK_OPT_SNDHWM, 100000);
+    ```
+
+=== "Go"
+
+    ```go
+    // Option 1: Increase buffer by adjusting HWM
+    pub_sock.SetOption(zlink.OptionSndHWM, 100000)
     ```
 
 #### XPUB_NODROP — Backpressure Instead of Drop
@@ -1046,6 +1174,22 @@ caller can handle backpressure directly.
     }
     ```
 
+=== "Go"
+
+    ```go
+    // Enable NODROP on XPUB
+    xpub := ctx.XPubSocket()
+    xpub.SetOption(zlink.OptionPubNoDrop, 1)
+
+    // On HWM, send returns Err(Eagain) instead of dropping
+    err := xpub.Publish("", []byte("hello"))
+        if err != nil { // Eagain
+            // HWM reached — retry or apply backpressure logic
+        }
+        // default: no-op
+    }
+    ```
+
 | Mode | Behavior on HWM | When to Use |
 |------|-----------------|-------------|
 | Default (lossy) | Silent drop — no error, message lost | Only latest data matters (sensor, tick) |
@@ -1125,6 +1269,16 @@ Messages published before the subscription message from SUB reaches PUB are lost
     sub.connect("tcp://127.0.0.1:5556");
     sub.set_subscription("topic");
     thread::sleep(Duration::from_millis(100));  // wait for subscription propagation
+    // Only messages published after this point can be received
+    ```
+
+=== "Go"
+
+    ```go
+    // Time needed for subscription to propagate to PUB
+    sub.Connect("tcp://127.0.0.1:5556")
+    sub.SetSubscription("topic")
+    time.Sleep(100 * time.Millisecond)  // wait for subscription propagation
     // Only messages published after this point can be received
     ```
 
@@ -1224,6 +1378,20 @@ PUB/SUB each have their own dedicated API:
     ```rust
     // PUB: send via publish(). Cannot attach recv handler
     pub_sock.publish("weather", b"sunny");  // OK
+
+    // Using send() on PUB → returns Err(ENOTSUP)
+    // pub_sock.send(b"sunny");  // error: ENOTSUP
+
+    // SUB: receive via subscribe(). Cannot send/publish
+    // sub.publish("weather", b"sunny");  // error: ENOTSUP
+    // sub.send(b"sunny");               // error: ENOTSUP
+    ```
+
+=== "Go"
+
+    ```go
+    // PUB: send via publish(). Cannot attach recv handler
+    pub_sock.Publish("weather", []byte("sunny"))  // OK
 
     // Using send() on PUB → returns Err(ENOTSUP)
     // pub_sock.send(b"sunny");  // error: ENOTSUP
@@ -1409,6 +1577,16 @@ Subscription/unsubscription frames between XPUB/XSUB follow this format:
     xsub.unset_subscription("A");
     ```
 
+=== "Go"
+
+    ```go
+    // Subscribe from XSUB
+    xsub.SetSubscription("A")
+
+    // Unsubscribe from XSUB
+    xsub.UnsetSubscription("A")
+    ```
+
 XPUB receives subscription frames with `zlink_subscription_event()`:
 
 === "C"
@@ -1479,6 +1657,15 @@ XPUB receives subscription frames with `zlink_subscription_event()`:
     xpub.bind("tcp://*:5557");
 
     let (source_rid, subscribed, topic) = xpub.subscription_event();
+    ```
+
+=== "Go"
+
+    ```go
+    xpub := ctx.XPubSocket()
+    xpub.Bind("tcp://*:5557")
+
+    source_rid, subscribed, topic := xpub.SubscriptionEvent()
     ```
 
 > Reference: `core/tests/test_xpub_manual.cpp` -- `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -1609,6 +1796,21 @@ By default, XPUB processes SUB subscriptions automatically. In MANUAL mode, afte
     xpub.publish("", b"XA");  // subscriber receives this
     ```
 
+=== "Go"
+
+    ```go
+    // Enable MANUAL mode
+    xpub.SetOption(zlink.OptionPubManual, 1)
+
+    // subscription_event() returns subscribed=true, topic="A"
+    // Then apply transformed subscription:
+    xpub.SetSubscription("XA")
+
+    // Publish
+    xpub.Publish("", []byte("A"))  // does not reach the subscriber
+    xpub.Publish("", []byte("XA"))  // subscriber receives this
+    ```
+
 > Reference: `core/tests/test_xpub_manual.cpp` -- `test_basic()`: subscription request for A → transformed to B
 
 ## 11. XPUB/XSUB Usage Patterns
@@ -1720,6 +1922,21 @@ Build a PUB/SUB proxy using XSUB (frontend) + XPUB (backend).
 
     // Run proxy (forwards messages and subscriptions bidirectionally)
     zlink::proxy(&xsub, &xpub);
+    ```
+
+=== "Go"
+
+    ```go
+    // Proxy frontend: PUBs connect here
+    xsub := ctx.XSubSocket()
+    xsub.Bind("tcp://*:5556")
+
+    // Proxy backend: SUBs connect here
+    xpub := ctx.XPubSocket()
+    xpub.Bind("tcp://*:5557")
+
+    // Run proxy (forwards messages and subscriptions bidirectionally)
+    zlink.Proxy(xsub, xpub, nil)
     ```
 
 ### Pattern 2: MANUAL Mode Proxy (Subscription Transformation)
@@ -1892,6 +2109,29 @@ An advanced proxy that transforms or filters subscription requests.
     }
     ```
 
+=== "Go"
+
+    ```go
+    xpub.SetOption(zlink.OptionPubManual, 1)
+
+    for {
+        source_rid, subscribed, topic := xpub.SubscriptionEvent()
+
+        if subscribed {
+            // Register subscription
+            xpub.SetSubscription(topic)
+
+            // Propagate subscription upstream (XSUB)
+            xsub.SetSubscription(topic)
+        } else {
+            // Unsubscription
+            xpub.UnsetSubscription(topic)
+
+            xsub.UnsetSubscription(topic)
+        }
+    }
+    ```
+
 > Reference: `core/tests/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ### Pattern 3: Subscription Monitoring
@@ -1994,6 +2234,20 @@ Use XPUB to observe which clients subscribe to which topics.
     }
     ```
 
+=== "Go"
+
+    ```go
+    xpub := ctx.XPubSocket()
+    xpub.Bind("tcp://*:5557")
+
+    for {
+        source_rid, subscribed, topic := xpub.SubscriptionEvent()
+        fmt.Printf("%v: %v\n",
+            if subscribed {
+            topic)
+    }
+    ```
+
 ### Pattern 4: Automatic Unsubscribe on Subscriber Disconnect
 
 When a SUB disconnects, an unsubscribe frame is automatically delivered to XPUB.
@@ -2063,6 +2317,16 @@ When a SUB disconnects, an unsubscribe frame is automatically delivered to XPUB.
     ```rust
     // After SUB disconnects
     sub.close();
+
+    // The next subscription_event() returns
+    // subscribed=false and the previously subscribed topic
+    ```
+
+=== "Go"
+
+    ```go
+    // After SUB disconnects
+    sub.Close()
 
     // The next subscription_event() returns
     // subscribed=false and the previously subscribed topic
@@ -2143,6 +2407,16 @@ Subscription messages are propagated asynchronously. Messages published immediat
     sub.set_subscription("topic");
     // Publishing a "topic" message at this point may result in loss
     thread::sleep(Duration::from_millis(100));  // wait for subscription propagation
+    // Messages published after this point can be received
+    ```
+
+=== "Go"
+
+    ```go
+    sub.Connect(endpoint)
+    sub.SetSubscription("topic")
+    // Publishing a "topic" message at this point may result in loss
+    time.Sleep(100 * time.Millisecond)  // wait for subscription propagation
     // Messages published after this point can be received
     ```
 

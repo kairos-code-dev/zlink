@@ -326,6 +326,39 @@ cmake --build build
     }
     ```
 
+=== "Go"
+
+    ```go
+    import "github.com/kairoscode/zlink-go"
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { panic(err) }
+
+        // Server
+        server, err := ctx.PairSocket()
+        if err != nil { panic(err) }
+        server.Bind("tcp://*:5555")
+
+        // Client
+        client, err := ctx.PairSocket()
+        if err != nil { panic(err) }
+        client.Connect("tcp://127.0.0.1:5555")
+
+        // Send
+        client.Send([]byte("Hello zlink!"))
+
+        // Receive
+        source_rid, parts, err := server.Recv()
+        if err != nil { panic(err) }
+        fmt.Printf("Received: %v\n", string(parts[0].Data()))
+
+        client.Close()
+        server.Close()
+        ctx.Close()
+    }
+    ```
+
 ## 7. Next Steps
 
 - [Core API Details](02-core-api.md)

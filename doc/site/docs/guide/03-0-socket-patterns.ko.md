@@ -344,6 +344,36 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
     ctx.term()?;
     ```
 
+=== "Go"
+
+    ```go
+    // 1. Context 생성
+    ctx, err := zlink.NewContext()
+    if err != nil { panic(err) }
+
+    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    socket, err := ctx.StreamSocket()
+    if err != nil { panic(err) }
+    socket.RecvHandler(func(source_rid zlink.RoutingID, parts []zlink.Message) {
+        // 수신 메시지 처리
+    })
+
+    // 4. 소켓 옵션 설정 (bind/connect 전)
+    socket.SetOption(zlink.OptionOPTION, value)
+
+    // 5. 연결 (bind 또는 connect)
+    socket.Bind("tcp://*:5555")
+    // 또는
+    socket.Connect("tcp://127.0.0.1:5555")
+
+    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    socket.Send(data)
+
+    // 7. 정리
+    socket.Close()
+    ctx.Close()
+    ```
+
 > 다음 옵션은 핸드셰이크/연결 과정에서 사용되므로
 > `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다:
 >

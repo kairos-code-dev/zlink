@@ -327,6 +327,39 @@ cmake --build build
     }
     ```
 
+=== "Go"
+
+    ```go
+    import "github.com/kairoscode/zlink-go"
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { panic(err) }
+
+        // 서버
+        server, err := ctx.PairSocket()
+        if err != nil { panic(err) }
+        server.Bind("tcp://*:5555")
+
+        // 클라이언트
+        client, err := ctx.PairSocket()
+        if err != nil { panic(err) }
+        client.Connect("tcp://127.0.0.1:5555")
+
+        // 송신
+        client.Send([]byte("Hello zlink!"))
+
+        // 수신
+        source_rid, parts, err := server.Recv()
+        if err != nil { panic(err) }
+        fmt.Printf("수신: %v\n", string(parts[0].Data()))
+
+        client.Close()
+        server.Close()
+        ctx.Close()
+    }
+    ```
+
 ## 7. 다음 단계
 
 - [Core API 상세](02-core-api.ko.md)

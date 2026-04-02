@@ -51,6 +51,12 @@ Proxy는 두 소켓 사이에서 메시지를 중계하는 패턴이다.
     zlink::proxy(&frontend, &backend, Some(&capture))?;
     ```
 
+=== "Go"
+
+    ```go
+    zlink.Proxy(frontend, backend, capture)
+    ```
+
 - `frontend` → `backend` 방향으로 메시지를 전달하고, 동시에 반대 방향도 처리
 - `capture`가 NULL이 아니면 통과하는 모든 메시지를 capture 소켓에 복사
 - **blocking 함수** -- 별도 스레드에서 실행
@@ -180,6 +186,24 @@ Proxy는 두 소켓 사이에서 메시지를 중계하는 패턴이다.
     capture.bind("tcp://*:5558")?;  // optional: 메시지 기록
 
     zlink::proxy(&xsub, &xpub, Some(&capture))?;  // blocking
+    ```
+
+=== "Go"
+
+    ```go
+    xsub, err := ctx.XSubSocket()
+    if err != nil { panic(err) }
+    xsub.Bind("tcp://*:5556")  // PUB들이 connect
+
+    xpub, err := ctx.XPubSocket()
+    if err != nil { panic(err) }
+    xpub.Bind("tcp://*:5557")  // SUB들이 connect
+
+    capture, err := ctx.PubSocket()
+    if err != nil { panic(err) }
+    capture.Bind("tcp://*:5558")  // optional: 메시지 기록
+
+    zlink.Proxy(xsub, xpub, capture)  // blocking
     ```
 
 `zlink_proxy()`는 다음 두 가지를 내부에서 자동 처리한다:
@@ -405,6 +429,34 @@ Proxy는 두 소켓 사이에서 메시지를 중계하는 패턴이다.
     }
     ```
 
+=== "Go"
+
+    ```go
+    xsub, err := ctx.XSubSocket()
+    if err != nil { panic(err) }
+    xpub, err := ctx.XPubSocket()
+    if err != nil { panic(err) }
+    xsub.Bind("tcp://*:5556")
+    xpub.Bind("tcp://*:5557")
+
+    for running {
+        // 데이터 전달: XSUB -> 앱 -> XPUB
+        if msg, err := xsub.Subscribe(); err == nil {
+            // 커스텀 로직 삽입 가능
+            xpub.Publish(msg.Topic, msg.Parts)
+        }
+
+        // 구독 전파: XPUB -> 앱 -> XSUB
+        if event, err := xpub.SubscriptionEvent(); err == nil {
+            if event.Subscribed {
+                xsub.SetSubscription(event.Topic)
+            } else {
+                xsub.UnsetSubscription(event.Topic)
+            }
+        }
+    }
+    ```
+
 ### 3.3 왜 XSUB/XPUB인가?
 
 | 질문 | SUB/PUB 사용 시 | XSUB/XPUB 사용 시 |
@@ -507,6 +559,20 @@ Client (DEALER) ──► ROUTER ══ proxy ══► DEALER ──► Server 
     backend.bind("tcp://*:5560")?;
 
     zlink::proxy(&frontend, &backend, None)?;  // blocking
+    ```
+
+=== "Go"
+
+    ```go
+    frontend, err := ctx.RouterSocket()
+    if err != nil { panic(err) }
+    frontend.Bind("tcp://*:5559")
+
+    backend, err := ctx.DealerSocket()
+    if err != nil { panic(err) }
+    backend.Bind("tcp://*:5560")
+
+    zlink.Proxy(frontend, backend, nil)  // blocking
     ```
 
 ROUTER/DEALER proxy는 구독 전파가 없으므로 `zlink_proxy()`만으로 충분하다.

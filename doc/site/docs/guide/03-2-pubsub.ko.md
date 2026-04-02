@@ -145,6 +145,16 @@ PUB ──── XSUB ═══ XPUB ──── SUB
     pub_sock.publish("weather", b"sunny");
     ```
 
+=== "Go"
+
+    ```go
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://*:5556")
+
+    // 메시지 발행 — 구독자가 없으면 드롭
+    pub_sock.Publish("weather", []byte("sunny"))
+    ```
+
 ### 구독자 (SUB)
 
 !!! note "C API 콜백 시그니처"
@@ -250,6 +260,18 @@ PUB ──── XSUB ═══ XPUB ──── SUB
     // subscribe() 또는 subscribe_handler()로 수신
     ```
 
+=== "Go"
+
+    ```go
+    sub := ctx.SubSocket()
+    sub.Connect("tcp://127.0.0.1:5556")
+
+    // 토픽 구독 — connect 후 설정
+    sub.SetSubscription("weather")
+
+    // subscribe() 또는 subscribe_handler()로 수신
+    ```
+
 > 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
 
 ### 송수신 요약
@@ -272,6 +294,32 @@ PUB/SUB 계열 소켓의 수신은 두 가지 모드를 지원한다:
 
 callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
 `EBUSY`로 실패한다.
+
+??? example "Full Sample Code -- Recv"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pubsub_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pubsub_recv_sample.c) |
+    | C++ | [pubsub_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_recv_sample.cpp) |
+    | Java | [PubSubRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubRecvSample.java) |
+    | Python | [pubsub_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_recv.py) |
+    | Node | [pubsub_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubRecv/Program.cs) |
+    | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
+
+??? example "Full Sample Code -- Callback"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pubsub_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pubsub_callback_sample.c) |
+    | C++ | [pubsub_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_callback_sample.cpp) |
+    | Java | [PubSubCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubCallbackSample.java) |
+    | Python | [pubsub_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_callback.py) |
+    | Node | [pubsub_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_callback_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubCallback/Program.cs) |
+    | Rust | [pubsub_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_callback_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_callback_sample/main.go) |
 
 > PUB의 송신 큐가 가득 차면(HWM) 블로킹 대신 메시지를 **드롭**한다.
 > 상세는 [성능 가이드](10-performance.ko.md)를 참고.
@@ -366,6 +414,17 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     sub.unset_subscription("sports");
     ```
 
+=== "Go"
+
+    ```go
+    // 여러 토픽 구독
+    sub.SetSubscription("weather")
+    sub.SetSubscription("sports")
+
+    // 구독 해제
+    sub.UnsetSubscription("sports")
+    ```
+
 ### 빈 구독 (모든 메시지)
 
 === "C"
@@ -415,6 +474,13 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     ```rust
     // 빈 문자열 구독 — 모든 메시지 수신
     sub.set_subscription("");
+    ```
+
+=== "Go"
+
+    ```go
+    // 빈 문자열 구독 — 모든 메시지 수신
+    sub.SetSubscription("")
     ```
 
 > 참고: `core/tests/test_pubsub.cpp` — `zlink_set_subscription(subscriber, "")`
@@ -518,6 +584,18 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     ```rust
     // 발행: topic = "sensor:cpu", payload = 2개 프레임
     pub_sock.publish("sensor:cpu", &[b"host", b"73"]);
+
+    // SUB 수신:
+    //   topic     = "sensor:cpu"
+    //   parts[0]  = "host"
+    //   parts[1]  = "73"
+    ```
+
+=== "Go"
+
+    ```go
+    // 발행: topic = "sensor:cpu", payload = 2개 프레임
+    pub_sock.Publish("sensor:cpu", []byte("host"), []byte("73"))
 
     // SUB 수신:
     //   topic     = "sensor:cpu"
@@ -678,6 +756,23 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     pub_sock.publish("", b"test");
     ```
 
+=== "Go"
+
+    ```go
+    // PUB
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://*:5556")
+
+    // SUB — 모든 메시지 수신
+    sub := ctx.SubSocket()
+    sub.Connect("tcp://127.0.0.1:5556")
+    sub.SetSubscription("")
+
+    time.Sleep(100 * time.Millisecond)  // 구독이 PUB에 도달할 시간
+
+    pub_sock.Publish("", []byte("test"))
+    ```
+
 > 참고: `core/tests/test_pubsub.cpp` — `test_tcp()`
 
 ### 패턴 2: 다중 SUB
@@ -803,6 +898,23 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     // weather만 sub_weather가 수신, sports만 sub_sports가 수신
     ```
 
+=== "Go"
+
+    ```go
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://*:5556")
+
+    sub_weather := ctx.SubSocket()
+    sub_weather.Connect("tcp://127.0.0.1:5556")
+    sub_weather.SetSubscription("weather")
+
+    sub_sports := ctx.SubSocket()
+    sub_sports.Connect("tcp://127.0.0.1:5556")
+    sub_sports.SetSubscription("sports")
+
+    // weather만 sub_weather가 수신, sports만 sub_sports가 수신
+    ```
+
 ### 패턴 3: 다중 PUB → SUB
 
 SUB는 여러 PUB에 connect 가능. Fair-queue로 모든 PUB의 메시지를 수신.
@@ -870,6 +982,15 @@ SUB는 여러 PUB에 connect 가능. Fair-queue로 모든 PUB의 메시지를 �
     sub.connect("tcp://pub2:5557");
     ```
 
+=== "Go"
+
+    ```go
+    sub := ctx.SubSocket()
+    sub.SetSubscription("")
+    sub.Connect("tcp://pub1:5556")
+    sub.Connect("tcp://pub2:5557")
+    ```
+
 ## 7. PUB/SUB 주의사항
 
 ### Slow Subscriber (HWM 초과 시 drop)
@@ -926,6 +1047,13 @@ send queue가 HWM에 도달하면 해당 subscriber에게 보내는 message를
     ```rust
     // 대응 1: HWM 조정으로 buffer 확대
     pub_sock.set_option(ZLINK_OPT_SNDHWM, 100000);
+    ```
+
+=== "Go"
+
+    ```go
+    // 대응 1: HWM 조정으로 buffer 확대
+    pub_sock.SetOption(zlink.OptionSndHWM, 100000)
     ```
 
 #### XPUB_NODROP — drop 대신 backpressure
@@ -1044,6 +1172,22 @@ backpressure를 제어할 수 있다.
     }
     ```
 
+=== "Go"
+
+    ```go
+    // XPUB에서 NODROP 활성화
+    xpub := ctx.XPubSocket()
+    xpub.SetOption(zlink.OptionPubNoDrop, 1)
+
+    // send 시 HWM 도달하면 Err(Eagain) 반환 (drop 아님)
+    err := xpub.Publish("", []byte("hello"))
+        if err != nil { // Eagain
+            // HWM 도달 — retry 또는 backpressure 로직
+        }
+        // default: no-op
+    }
+    ```
+
 | Mode | HWM 도달 시 동작 | 사용 시점 |
 |------|------------------|-----------|
 | 기본 (lossy) | Silent drop — error 없이 message 유실 | 최신 data만 중요한 경우 (sensor, tick) |
@@ -1123,6 +1267,16 @@ SUB가 connect한 뒤 구독 메시지가 PUB에 도달하기 전에 발행된 �
     sub.connect("tcp://127.0.0.1:5556");
     sub.set_subscription("topic");
     thread::sleep(Duration::from_millis(100));  // 구독 전파 대기
+    // 이후 발행된 메시지부터 수신 가능
+    ```
+
+=== "Go"
+
+    ```go
+    // 구독이 PUB에 전파될 시간 필요
+    sub.Connect("tcp://127.0.0.1:5556")
+    sub.SetSubscription("topic")
+    time.Sleep(100 * time.Millisecond)  // 구독 전파 대기
     // 이후 발행된 메시지부터 수신 가능
     ```
 
@@ -1222,6 +1376,20 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
     ```rust
     // PUB: publish()로 송신. recv handler 부착 불가
     pub_sock.publish("weather", b"sunny");  // OK
+
+    // PUB에 send() 사용 → Err(ENOTSUP)
+    // pub_sock.send(b"sunny");  // error: ENOTSUP
+
+    // SUB: subscribe()로 수신. publish 불가
+    // sub.publish("weather", b"sunny");  // error: ENOTSUP
+    // sub.send(b"sunny");               // error: ENOTSUP
+    ```
+
+=== "Go"
+
+    ```go
+    // PUB: publish()로 송신. recv handler 부착 불가
+    pub_sock.Publish("weather", []byte("sunny"))  // OK
 
     // PUB에 send() 사용 → Err(ENOTSUP)
     // pub_sock.send(b"sunny");  // error: ENOTSUP
@@ -1360,6 +1528,16 @@ XPUB/XSUB 간의 구독/해제 프레임은 다음 형식을 따른다:
     xsub.unset_subscription("A");
     ```
 
+=== "Go"
+
+    ```go
+    // XSUB에서 구독
+    xsub.SetSubscription("A")
+
+    // XSUB에서 구독 해제
+    xsub.UnsetSubscription("A")
+    ```
+
 XPUB는 `zlink_subscription_event()`로 구독 프레임을 수신한다:
 
 === "C"
@@ -1430,6 +1608,15 @@ XPUB는 `zlink_subscription_event()`로 구독 프레임을 수신한다:
     xpub.bind("tcp://*:5557");
 
     let (source_rid, subscribed, topic) = xpub.subscription_event();
+    ```
+
+=== "Go"
+
+    ```go
+    xpub := ctx.XPubSocket()
+    xpub.Bind("tcp://*:5557")
+
+    source_rid, subscribed, topic := xpub.SubscriptionEvent()
     ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -1562,6 +1749,21 @@ MANUAL 모드에서는 구독 프레임을 수신한 후, 애플리케이션이 
     xpub.publish("", b"XA");  // 구독자가 수신
     ```
 
+=== "Go"
+
+    ```go
+    // MANUAL 모드 활성화
+    xpub.SetOption(zlink.OptionPubManual, 1)
+
+    // subscription_event()로 subscribed=true, topic="A"를 받은 뒤
+    // 변환된 구독 적용:
+    xpub.SetSubscription("XA")
+
+    // 발행
+    xpub.Publish("", []byte("A"))  // 구독자에게 도달하지 않음
+    xpub.Publish("", []byte("XA"))  // 구독자가 수신
+    ```
+
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_basic()`: A 구독 요청 → B로 변환
 
 ## 11. XPUB/XSUB 사용 패턴
@@ -1673,6 +1875,21 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
 
     // 프록시 실행 (메시지와 구독을 양방향으로 전달)
     zlink::proxy(&xsub, &xpub);
+    ```
+
+=== "Go"
+
+    ```go
+    // 프록시 프론트엔드: PUB들이 연결
+    xsub := ctx.XSubSocket()
+    xsub.Bind("tcp://*:5556")
+
+    // 프록시 백엔드: SUB들이 연결
+    xpub := ctx.XPubSocket()
+    xpub.Bind("tcp://*:5557")
+
+    // 프록시 실행 (메시지와 구독을 양방향으로 전달)
+    zlink.Proxy(xsub, xpub, nil)
     ```
 
 ### 패턴 2: MANUAL 모드 프록시 (구독 변환)
@@ -1845,6 +2062,29 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
     }
     ```
 
+=== "Go"
+
+    ```go
+    xpub.SetOption(zlink.OptionPubManual, 1)
+
+    for {
+        source_rid, subscribed, topic := xpub.SubscriptionEvent()
+
+        if subscribed {
+            // 구독 등록
+            xpub.SetSubscription(topic)
+
+            // 업스트림에 구독 전파 (XSUB)
+            xsub.SetSubscription(topic)
+        } else {
+            // 구독 해제
+            xpub.UnsetSubscription(topic)
+
+            xsub.UnsetSubscription(topic)
+        }
+    }
+    ```
+
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ### 패턴 3: 구독 모니터링
@@ -1947,6 +2187,20 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
     }
     ```
 
+=== "Go"
+
+    ```go
+    xpub := ctx.XPubSocket()
+    xpub.Bind("tcp://*:5557")
+
+    for {
+        source_rid, subscribed, topic := xpub.SubscriptionEvent()
+        fmt.Printf("%v: %v\n",
+            if subscribed {
+            topic)
+    }
+    ```
+
 ### 패턴 4: 구독자 해제 시 자동 unsubscribe
 
 SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달된다.
@@ -2016,6 +2270,16 @@ SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달�
     ```rust
     // SUB 연결 해제 후
     sub.close();
+
+    // 이어지는 subscription_event() 호출이
+    // subscribed=false와 기존 구독 토픽을 반환
+    ```
+
+=== "Go"
+
+    ```go
+    // SUB 연결 해제 후
+    sub.Close()
 
     // 이어지는 subscription_event() 호출이
     // subscribed=false와 기존 구독 토픽을 반환
@@ -2096,6 +2360,16 @@ SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달�
     sub.set_subscription("topic");
     // 이 시점에 "topic" 메시지를 발행하면 유실 가능
     thread::sleep(Duration::from_millis(100));  // 구독 전파 대기
+    // 이후 발행 시 수신 가능
+    ```
+
+=== "Go"
+
+    ```go
+    sub.Connect(endpoint)
+    sub.SetSubscription("topic")
+    // 이 시점에 "topic" 메시지를 발행하면 유실 가능
+    time.Sleep(100 * time.Millisecond)  // 구독 전파 대기
     // 이후 발행 시 수신 가능
     ```
 

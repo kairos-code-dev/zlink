@@ -108,6 +108,18 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
     dealer.connect("tcp://127.0.0.1:5558");
     ```
 
+=== "Go"
+
+    ```go
+    dealer := ctx.DealerSocket()
+
+    // Set routing_id (optional, used for identification by ROUTER)
+    dealer.SetRoutingId("client-1")
+
+    // Connect to server
+    dealer.Connect("tcp://127.0.0.1:5558")
+    ```
+
 ### Sending and Receiving Messages
 
 === "C"
@@ -196,6 +208,17 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
     // Responses are dispatched to the handler callback registered at creation
     ```
 
+=== "Go"
+
+    ```go
+    // Send requests -- can send consecutively without ordering constraints
+    dealer.Send([]byte("request-1"))
+    dealer.Send([]byte("request-2"))
+    dealer.Send([]byte("request-3"))
+
+    // Responses are dispatched to the handler callback registered at creation
+    ```
+
 ### Receive Modes
 
 Use `zlink_recv()` to receive synchronously.
@@ -256,9 +279,42 @@ Use `zlink_recv()` to receive synchronously.
     // process parts[0..N-1]
     ```
 
+=== "Go"
+
+    ```go
+    source_rid, parts := dealer.Recv()
+    // process parts[0..N-1]
+    ```
+
 > When HWM is reached, `zlink_send()` blocks (default) or returns
 > `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
 > see [Performance Guide](10-performance.md).
+
+??? example "Full Sample Code -- Recv"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [dealer_router_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/dealer_router_recv_sample.c) |
+    | C++ | [dealer_router_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/dealer_router_recv_sample.cpp) |
+    | Java | [DealerRouterRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/DealerRouterRecvSample.java) |
+    | Python | [dealer_router_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/dealer_router_recv.py) |
+    | Node | [dealer_router_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/dealer_router_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/DealerRouterRecv/Program.cs) |
+    | Rust | [dealer_router_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_recv_sample/main.go) |
+
+??? example "Full Sample Code -- Callback"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [dealer_router_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/dealer_router_callback_sample.c) |
+    | C++ | [dealer_router_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/dealer_router_callback_sample.cpp) |
+    | Java | [DealerRouterCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/DealerRouterCallbackSample.java) |
+    | Python | [dealer_router_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/dealer_router_callback.py) |
+    | Node | [dealer_router_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/dealer_router_callback_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/DealerRouterCallback/Program.cs) |
+    | Rust | [dealer_router_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_callback_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_callback_sample/main.go) |
 
 ## 3. Usage Example
 
@@ -314,6 +370,13 @@ Use `zlink_recv()` to receive synchronously.
     ```rust
     // DEALER → ROUTER send
     dealer.send(&[b"header", b"body"]);
+    ```
+
+=== "Go"
+
+    ```go
+    // DEALER → ROUTER send
+    dealer.Send([]byte("header"), []byte("body"))
     ```
 
 ## 4. Socket Options
@@ -387,6 +450,14 @@ To allow ROUTER to identify a DEALER, explicitly set the routing_id.
     // Set before bind/connect
     dealer.set_routing_id("D1");
     dealer.connect("tcp://127.0.0.1:5558");
+    ```
+
+=== "Go"
+
+    ```go
+    // Set before bind/connect
+    dealer.SetRoutingId("D1")
+    dealer.Connect("tcp://127.0.0.1:5558")
     ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- `zlink_set_routing_id(dealer1, "D1", 2)`
@@ -560,6 +631,25 @@ The most basic pattern. DEALER sends requests, ROUTER replies.
     // Router receives and replies
     let (source_rid, parts) = router.recv();
     router.send_rid(&source_rid, b"World");
+    ```
+
+=== "Go"
+
+    ```go
+    router := ctx.RouterSocket()
+    router.Bind("tcp://*:5558")
+
+    // Client: DEALER
+    dealer := ctx.DealerSocket()
+    dealer.SetRoutingId("D1")
+    dealer.Connect("tcp://127.0.0.1:5558")
+
+    // Client request
+    dealer.Send([]byte("Hello"))
+
+    // Router receives and replies
+    source_rid, parts := router.Recv()
+    router.SendTo(source_rid,
     ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc examples
@@ -739,6 +829,29 @@ Multiple DEALERs connect to a single ROUTER. ROUTER distinguishes each DEALER by
     // Router receives each DEALER's message with its routing_id
     ```
 
+=== "Go"
+
+    ```go
+    router := ctx.RouterSocket()
+    router.Bind("tcp://127.0.0.1:*")
+
+    endpoint, _ := router.GetOption(zlink.OptionLastEndpoint)
+
+    dealer1 := ctx.DealerSocket()
+    dealer1.SetRoutingId("D1")
+    dealer1.Connect(endpoint)
+
+    dealer2 := ctx.DealerSocket()
+    dealer2.SetRoutingId("D2")
+    dealer2.Connect(endpoint)
+
+    // Each DEALER sends a message
+    dealer1.Send([]byte("from_dealer1"))
+    dealer2.Send([]byte("from_dealer2"))
+
+    // Router receives each DEALER's message with its routing_id
+    ```
+
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- `test_router_multiple_dealers_tcp()`
 
 ### Pattern 3: Proxy Pattern (ROUTER-DEALER)
@@ -848,6 +961,21 @@ Build a multi-threaded server using ROUTER (frontend) + DEALER (backend).
 
     // Start worker threads then run proxy
     zlink::proxy(&frontend, &backend);
+    ```
+
+=== "Go"
+
+    ```go
+    // Frontend: clients connect here
+    frontend := ctx.RouterSocket()
+    frontend.Bind("tcp://*:5558")
+
+    // Backend: worker threads connect here
+    backend := ctx.DealerSocket()
+    backend.Bind("inproc://backend")
+
+    // Start worker threads then run proxy
+    zlink.Proxy(frontend, backend, nil)
     ```
 
 !!! note "C API Worker Thread Callback"
@@ -988,6 +1116,20 @@ Both sides use DEALER for fully asynchronous P2P communication.
     b.send(b"pong");
     ```
 
+=== "Go"
+
+    ```go
+    a := ctx.DealerSocket()
+    a.Bind("tcp://*:5558")
+
+    b := ctx.DealerSocket()
+    b.Connect("tcp://127.0.0.1:5558")
+
+    // Bidirectional free send
+    a.Send([]byte("ping"))
+    b.Send([]byte("pong"))
+    ```
+
 ## 6. Caveats
 
 ### Queuing When No Peer Is Connected
@@ -1074,6 +1216,18 @@ If no peer is connected, messages accumulate in the send queue. When the HWM is 
     }
     ```
 
+=== "Go"
+
+    ```go
+    // Send with no peer connected
+    err := dealer.Send([]byte("data"))
+        if err != nil { // Eagain
+            // HWM exceeded or no peer connected
+        }
+        // default: no-op
+    }
+    ```
+
 ### Round-Robin Distribution
 
 When multiple peers are connected, messages are distributed in a round-robin fashion. To send to a specific peer, use ROUTER instead.
@@ -1136,6 +1290,14 @@ When multiple peers are connected, messages are distributed in a round-robin fas
     // Correct order
     dealer.set_routing_id("D1");
     dealer.connect(endpoint);  // identified as D1
+    ```
+
+=== "Go"
+
+    ```go
+    // Correct order
+    dealer.SetRoutingId("D1")
+    dealer.Connect(endpoint)  // identified as D1
     ```
 
 ---

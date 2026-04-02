@@ -343,6 +343,36 @@ The basic pattern common to all socket types:
     ctx.term()?;
     ```
 
+=== "Go"
+
+    ```go
+    // 1. Create Context
+    ctx, err := zlink.NewContext()
+    if err != nil { panic(err) }
+
+    // 2–3. Create Socket with callback (raw STREAM example)
+    socket, err := ctx.StreamSocket()
+    if err != nil { panic(err) }
+    socket.RecvHandler(func(source_rid zlink.RoutingID, parts []zlink.Message) {
+        // process received message
+    })
+
+    // 4. Set socket options (before bind/connect)
+    socket.SetOption(zlink.OptionOPTION, value)
+
+    // 5. Establish connection (bind or connect)
+    socket.Bind("tcp://*:5555")
+    // or
+    socket.Connect("tcp://127.0.0.1:5555")
+
+    // 6. Send messages (receive is handled by callback)
+    socket.Send(data)
+
+    // 7. Cleanup
+    socket.Close()
+    ctx.Close()
+    ```
+
 > The following options must be set **before** `zlink_bind()`/`zlink_connect()`
 > as they are used during handshake or connection:
 > `zlink_set_routing_id()`, `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (via `zlink_set_router_option()`), `ZLINK_ROUTER_OPT_PROBE` (via `zlink_set_router_option()`), `zlink_set_tls_server()` / `zlink_set_tls_client()`.

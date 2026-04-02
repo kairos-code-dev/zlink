@@ -3,10 +3,8 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.ReceiveFlag;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
-import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendReadyHandler;
 import dev.kairoscode.zlink.ServiceMonitor;
@@ -14,6 +12,7 @@ import dev.kairoscode.zlink.SubscribeHandler;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
@@ -49,6 +48,8 @@ public final class Spot implements AutoCloseable {
     private static final int ERRNO_EHOSTUNREACH_WIN = 10065;
     private static final int ERRNO_ETIMEDOUT = 110;
     private static final int ERRNO_ETIMEDOUT_WIN = 10060;
+    private static final int RECV_BLOCKING = 0;
+    private static final int RECV_DONTWAIT = 1;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_SUBSCRIBE_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -91,7 +92,7 @@ public final class Spot implements AutoCloseable {
     }
 
     /** Returns the native spot handle. */
-    public MemorySegment handle() {
+    MemorySegment handle() {
         return handle;
     }
 
@@ -123,6 +124,7 @@ public final class Spot implements AutoCloseable {
                 MemorySegment topic = topicCString(topicId);
                 MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT,
                   partCount);
+                MemorySegment resultOut = arena.allocate(ValueLayout.JAVA_INT);
                 int initialized = 0;
                 boolean success = false;
                 try {
@@ -135,21 +137,17 @@ public final class Spot implements AutoCloseable {
                         if (initRc != 0)
                             throw ZlinkException.fromLastError("zlink_msg_init");
                         initialized++;
-                        part.copyTo(dest);
+                        InternalAccess.messageCopyTo(part, dest);
                     }
                     int rc = nonBlocking
-                        ? Native.publish(handle, topic, vec, partCount,
-                            SendFlag.DONTWAIT.getValue())
+                        ? Native.tryPublish(handle, topic, vec, partCount,
+                            resultOut)
                         : Native.publish(handle, topic, vec, partCount, 0);
                     if (nonBlocking) {
                         if (rc == 0) {
                             success = true;
-                            return SendResult.SENT;
-                        }
-                        if (rc < 0) {
-                            SendResult mapped = tryMapSendErrno(Native.errno());
-                            if (mapped != null)
-                                return mapped;
+                            return SendResult.fromNativeValue(
+                              resultOut.get(ValueLayout.JAVA_INT, 0));
                         }
                     } else {
                         if (rc != 0)
@@ -168,16 +166,6 @@ public final class Spot implements AutoCloseable {
             throw ZlinkException.fromLastError(
                 "zlink_publish");
         }
-    }
-
-    private static SendResult tryMapSendErrno(int errno) {
-        return switch (errno) {
-            case ERRNO_EAGAIN, ERRNO_EWOULDBLOCK_WIN -> SendResult.BACKPRESSURED;
-            case ERRNO_ENOTCONN, ERRNO_ENOTCONN_WIN, ERRNO_EHOSTUNREACH,
-                ERRNO_EHOSTUNREACH_WIN, ERRNO_ETIMEDOUT,
-                ERRNO_ETIMEDOUT_WIN -> SendResult.NOT_READY;
-            default -> null;
-        };
     }
 
     /** Subscribes to one topic or pattern string. */
@@ -256,17 +244,17 @@ public final class Spot implements AutoCloseable {
         if (monitor == null || monitor.address() == 0) {
             throw ZlinkException.fromLastError("zlink_service_monitor_open");
         }
-        return new ServiceMonitor(monitor);
+        return InternalAccess.serviceMonitor(monitor);
     }
 
     public TopicMessage subscribe() {
-        return receiveTopicMessage(ReceiveFlag.NONE).orElseThrow(
+        return receiveTopicMessage(false).orElseThrow(
             () -> new IllegalStateException(
                 "blocking subscribe returned no delivery"));
     }
 
     public Optional<TopicMessage> trySubscribe() {
-        return receiveTopicMessage(ReceiveFlag.DONTWAIT);
+        return receiveTopicMessage(true);
     }
 
     @Override
@@ -366,7 +354,8 @@ public final class Spot implements AutoCloseable {
     private static Received receivedFromCallback(MemorySegment sourceRid,
                                                  MemorySegment parts,
                                                  long partCount) {
-        Message[] frames = Message.fromOwnedMsgVector(parts, partCount);
+        Message[] frames = InternalAccess.messageFromOwnedMsgVector(parts,
+            partCount);
         boolean closed = false;
         try {
             NativeMsg.multipartClose(parts, partCount);
@@ -415,8 +404,7 @@ public final class Spot implements AutoCloseable {
             uncaught.uncaughtException(current, failure);
     }
 
-    private Optional<TopicMessage> receiveTopicMessage(ReceiveFlag flags) {
-        Objects.requireNonNull(flags, "flags");
+    private Optional<TopicMessage> receiveTopicMessage(boolean nonBlocking) {
         ensureOpen();
         while (true) {
             try (Arena arena = Arena.ofConfined()) {
@@ -430,11 +418,13 @@ public final class Spot implements AutoCloseable {
                 topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
 
                 int rc = Native.subscribe(handle, rid, partsOut, partCountOut,
-                  topicOut, topicLenOut, flags.getValue());
+                  topicOut, topicLenOut,
+                  nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
                 if (rc == 0) {
                     long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
                     MemorySegment partsAddr = partsOut.get(ValueLayout.ADDRESS, 0);
-                    Message[] parts = Message.fromOwnedMsgVector(partsAddr, partCount);
+                    Message[] parts = InternalAccess.messageFromOwnedMsgVector(
+                        partsAddr, partCount);
                     int topicLength = normalizeTopicLength(topicOut, TOPIC_CAPACITY,
                       topicLenOut.get(ValueLayout.JAVA_LONG, 0));
                     String topicId = topicLength == 0
@@ -448,7 +438,7 @@ public final class Spot implements AutoCloseable {
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            if (flags == ReceiveFlag.DONTWAIT
+            if (nonBlocking
                 && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
                 return Optional.empty();
             }

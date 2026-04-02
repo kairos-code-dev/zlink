@@ -5,6 +5,7 @@ package dev.kairoscode.zlink.service.spot;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -23,7 +24,7 @@ public final class SpotNode implements AutoCloseable {
     /** Creates a spot node owned by the supplied context. */
     public SpotNode(Context ctx) {
         Objects.requireNonNull(ctx, "ctx");
-        this.handle = Native.spotNodeNew(ctx.handle());
+        this.handle = Native.spotNodeNew(InternalAccess.contextHandle(ctx));
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError("zlink_spot_node_new");
     }
@@ -40,6 +41,11 @@ public final class SpotNode implements AutoCloseable {
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_spot_node_bind");
         }
+    }
+
+    /** Returns the resolved endpoint after bind (supports ephemeral port 0). */
+    public String lastEndpoint() {
+        return statusSnapshot().localEndpoint();
     }
 
     /** Connects one peer spot node endpoint. */
@@ -69,7 +75,8 @@ public final class SpotNode implements AutoCloseable {
     /** Attaches a fixed-service discovery view to the node. */
     public void attachDiscovery(Discovery discovery) {
         Objects.requireNonNull(discovery, "discovery");
-        int rc = Native.spotNodeAttachDiscovery(handle, discovery.handle());
+        int rc = Native.spotNodeAttachDiscovery(handle,
+            InternalAccess.discoveryHandle(discovery));
         if (rc != 0) {
             throw ZlinkException.fromLastError(
               "zlink_spot_node_attach_discovery");
@@ -109,22 +116,13 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    /** Returns a unified spot wrapper bound to this node. */
-    public Spot wrapHandle() {
-        MemorySegment spot = Native.spotNew(handle);
-        if (spot == null || spot.address() == 0) {
-            throw ZlinkException.fromLastError("zlink_spot_new");
-        }
-        return new Spot(spot);
-    }
-
     /** Opens a service monitor for the spot node handle. */
     public ServiceMonitor monitorOpen(int events) {
         MemorySegment monitor = Native.serviceMonitorOpen(handle, events);
         if (monitor == null || monitor.address() == 0) {
             throw ZlinkException.fromLastError("zlink_service_monitor_open");
         }
-        return new ServiceMonitor(monitor);
+        return InternalAccess.serviceMonitor(monitor);
     }
 
     /** Returns the current node status snapshot. */

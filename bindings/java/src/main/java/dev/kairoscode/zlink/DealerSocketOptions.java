@@ -9,11 +9,11 @@ public final class DealerSocketOptions extends CommonSocketOptions {
         super(socket);
     }
 
-    public boolean probeRouter() {
+    public boolean probe() {
         return socket.getOption(SocketOptions.PROBE_ROUTER) != 0;
     }
 
-    public void probeRouter(boolean enabled) {
+    public void probe(boolean enabled) {
         socket.setOption(SocketOptions.PROBE_ROUTER, enabled ? 1 : 0);
     }
 

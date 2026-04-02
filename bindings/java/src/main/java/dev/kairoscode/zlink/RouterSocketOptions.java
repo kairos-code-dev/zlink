@@ -25,11 +25,11 @@ public final class RouterSocketOptions extends CommonSocketOptions {
         socket.setOption(SocketOptions.ROUTER_HANDOVER, enabled ? 1 : 0);
     }
 
-    public boolean probeRouter() {
+    public boolean probe() {
         return socket.getOption(SocketOptions.PROBE_ROUTER) != 0;
     }
 
-    public void probeRouter(boolean enabled) {
+    public void probe(boolean enabled) {
         socket.setOption(SocketOptions.PROBE_ROUTER, enabled ? 1 : 0);
     }
 

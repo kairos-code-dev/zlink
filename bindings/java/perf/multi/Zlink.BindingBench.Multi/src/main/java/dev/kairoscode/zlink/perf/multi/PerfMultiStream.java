@@ -28,7 +28,7 @@ final class PerfMultiStream {
 
         try (Context ctx = new Context();
              StreamSocket server = new StreamSocket(ctx)) {
-            server.options().notifyConnections(true);
+            server.options().notify(true);
             server.options().sendTimeoutMillis(0);
             server.options().receiveTimeoutMillis(0);
             server.bind(config.endpoint());

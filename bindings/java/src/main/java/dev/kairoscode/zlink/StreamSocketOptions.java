@@ -9,11 +9,11 @@ public final class StreamSocketOptions extends CommonSocketOptions {
         super(socket);
     }
 
-    public boolean notifyConnections() {
+    public boolean notifyEnabled() {
         return socket.getOption(SocketOptions.STREAM_NOTIFY) != 0;
     }
 
-    public void notifyConnections(boolean enabled) {
+    public void notify(boolean enabled) {
         socket.setOption(SocketOptions.STREAM_NOTIFY, enabled ? 1 : 0);
     }
 }

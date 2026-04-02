@@ -44,8 +44,8 @@ class ServiceContractsIntegrationTest {
             discovery.setValue(7L);
             discovery.setMetadata("meta".getBytes());
 
-            assertEquals(7L, discovery.value());
-            assertArrayEquals("meta".getBytes(), discovery.metadata());
+            assertEquals(7L, discovery.getValue());
+            assertArrayEquals("meta".getBytes(), discovery.getMetadata());
             assertTrue(discovery.memberPeers().isEmpty());
 
             assertEquals(0, registry.statusSnapshot().topologyEntryCount());
@@ -102,8 +102,8 @@ class ServiceContractsIntegrationTest {
         try (Context ctx = new Context();
              SpotNode serverNode = new SpotNode(ctx);
              SpotNode clientNode = new SpotNode(ctx);
-             Spot publisher = serverNode.wrapHandle();
-             Spot subscriber = clientNode.wrapHandle();
+             Spot publisher = new Spot(serverNode);
+             Spot subscriber = new Spot(clientNode);
              ServiceMonitor monitor = subscriber.monitorOpen((int) SPOT_FILTER_APPLIED)) {
             serverNode.bind(endpoint);
             clientNode.connectPeer(endpoint);

@@ -1,0 +1,232 @@
+use std::mem::MaybeUninit;
+use std::slice;
+
+use crate::error::{ZlinkError, check_rc};
+use crate::ffi;
+
+/// Owned message frame wrapping a native `zlink_msg_t`.
+///
+/// Implements RAII: dropping a `Message` releases its native storage via
+/// `zlink_msg_close`. After a successful `send`, ownership transfers to the
+/// native layer and drop is suppressed via `std::mem::forget`.
+#[repr(transparent)]
+pub struct Message {
+    pub(crate) inner: ffi::zlink_msg_t,
+}
+
+// Message is logically a uniquely-owned buffer. Safe to send across threads.
+unsafe impl Send for Message {}
+
+impl Message {
+    /// Create an empty (zero-length) message.
+    pub fn new() -> Result<Self, ZlinkError> {
+        unsafe {
+            let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+            check_rc(ffi::zlink_msg_init(msg.as_mut_ptr()))?;
+            Ok(Self {
+                inner: msg.assume_init(),
+            })
+        }
+    }
+
+    /// Create a message of the given size filled with uninitialized bytes.
+    pub fn with_size(size: usize) -> Result<Self, ZlinkError> {
+        unsafe {
+            let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+            check_rc(ffi::zlink_msg_init_size(msg.as_mut_ptr(), size))?;
+            Ok(Self {
+                inner: msg.assume_init(),
+            })
+        }
+    }
+
+    /// Create a message by copying the given byte slice.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, ZlinkError> {
+        let mut msg = Self::with_size(data.len())?;
+        unsafe {
+            let dst = ffi::zlink_msg_data(&mut msg.inner) as *mut u8;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), dst, data.len());
+        }
+        Ok(msg)
+    }
+
+    /// View the message payload as a byte slice.
+    pub fn data(&self) -> &[u8] {
+        unsafe {
+            let ptr = ffi::zlink_msg_data(
+                &self.inner as *const ffi::zlink_msg_t as *mut ffi::zlink_msg_t,
+            ) as *const u8;
+            let len = ffi::zlink_msg_size(&self.inner);
+            if ptr.is_null() || len == 0 {
+                &[]
+            } else {
+                slice::from_raw_parts(ptr, len)
+            }
+        }
+    }
+
+    /// View the message payload as a mutable byte slice.
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        unsafe {
+            let ptr = ffi::zlink_msg_data(&mut self.inner) as *mut u8;
+            let len = ffi::zlink_msg_size(&self.inner);
+            if ptr.is_null() || len == 0 {
+                &mut []
+            } else {
+                slice::from_raw_parts_mut(ptr, len)
+            }
+        }
+    }
+
+    /// Message size in bytes.
+    pub fn len(&self) -> usize {
+        unsafe { ffi::zlink_msg_size(&self.inner) }
+    }
+
+    /// Returns `true` if the message has zero-length payload.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Interpret the payload as a UTF-8 string.
+    pub fn as_str(&self) -> Result<&str, std::str::Utf8Error> {
+        std::str::from_utf8(self.data())
+    }
+
+    /// Construct from a raw `zlink_msg_t` whose ownership is being transferred
+    /// to Rust. The caller must not close the original.
+    pub(crate) unsafe fn from_raw(raw: ffi::zlink_msg_t) -> Self {
+        Self { inner: raw }
+    }
+}
+
+impl Drop for Message {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::zlink_msg_close(&mut self.inner);
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for Message {
+    type Error = ZlinkError;
+    fn try_from(data: &[u8]) -> Result<Self, ZlinkError> {
+        Self::from_bytes(data)
+    }
+}
+
+impl TryFrom<&str> for Message {
+    type Error = ZlinkError;
+    fn try_from(s: &str) -> Result<Self, ZlinkError> {
+        Self::from_bytes(s.as_bytes())
+    }
+}
+
+impl TryFrom<Vec<u8>> for Message {
+    type Error = ZlinkError;
+    fn try_from(v: Vec<u8>) -> Result<Self, ZlinkError> {
+        Self::from_bytes(&v)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RoutingId
+// ---------------------------------------------------------------------------
+
+/// A validated routing identifier (max 255 bytes).
+///
+/// The `data[255]` bound matches `zlink_routing_id_t`. Construction validates
+/// the length; overflow is rejected immediately (fail-fast).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RoutingId {
+    raw: ffi::zlink_routing_id_t,
+}
+
+impl RoutingId {
+    /// Maximum data length (matches `zlink_routing_id_t.data[255]`).
+    pub const MAX_LEN: usize = 255;
+
+    /// Create a `RoutingId` from a byte slice.
+    ///
+    /// # Errors
+    /// Returns `ZlinkError` if `data` is empty or exceeds 255 bytes.
+    pub fn new(data: &[u8]) -> Result<Self, ZlinkError> {
+        if data.is_empty() {
+            return Err(ZlinkError::validation("routing id must not be empty"));
+        }
+        if data.len() > Self::MAX_LEN {
+            return Err(ZlinkError::validation(format!(
+                "routing id length {} exceeds maximum {}",
+                data.len(),
+                Self::MAX_LEN,
+            )));
+        }
+        let mut raw = ffi::zlink_routing_id_t {
+            size: data.len() as u8,
+            data: [0u8; 255],
+        };
+        raw.data[..data.len()].copy_from_slice(data);
+        Ok(Self { raw })
+    }
+
+    /// The routing-id bytes.
+    pub fn data(&self) -> &[u8] {
+        &self.raw.data[..self.raw.size as usize]
+    }
+
+    /// Byte length of the routing id.
+    pub fn len(&self) -> usize {
+        self.raw.size as usize
+    }
+
+    /// Returns `true` if the routing id is empty (should not happen after construction).
+    pub fn is_empty(&self) -> bool {
+        self.raw.size == 0
+    }
+
+    /// Borrow the underlying FFI struct.
+    pub(crate) fn as_raw(&self) -> &ffi::zlink_routing_id_t {
+        &self.raw
+    }
+
+    /// Build from a raw FFI struct (coming from native recv).
+    pub(crate) fn from_raw(raw: ffi::zlink_routing_id_t) -> Self {
+        Self { raw }
+    }
+}
+
+impl TryFrom<&[u8]> for RoutingId {
+    type Error = ZlinkError;
+    fn try_from(data: &[u8]) -> Result<Self, ZlinkError> {
+        Self::new(data)
+    }
+}
+
+impl TryFrom<&str> for RoutingId {
+    type Error = ZlinkError;
+    fn try_from(s: &str) -> Result<Self, ZlinkError> {
+        Self::new(s.as_bytes())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IntoMultipart trait – lets callers pass a single Message or a Vec<Message>.
+// ---------------------------------------------------------------------------
+
+/// Conversion trait that allows `send`/`publish` methods to accept either a
+/// single `Message` or a `Vec<Message>`.
+pub trait IntoMultipart {
+    fn into_parts(self) -> Vec<Message>;
+}
+
+impl IntoMultipart for Message {
+    fn into_parts(self) -> Vec<Message> {
+        vec![self]
+    }
+}
+
+impl IntoMultipart for Vec<Message> {
+    fn into_parts(self) -> Vec<Message> {
+        self
+    }
+}

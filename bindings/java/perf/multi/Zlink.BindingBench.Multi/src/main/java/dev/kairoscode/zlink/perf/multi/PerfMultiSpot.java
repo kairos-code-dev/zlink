@@ -23,7 +23,7 @@ final class PerfMultiSpot {
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
-             Spot publisher = node.wrapHandle()) {
+             Spot publisher = new Spot(node)) {
             configureNodeTlsServer(node, config.transport());
             node.bind(config.endpoint());
             PerfUtil.waitForReadySignal(config.controlPort());
@@ -65,7 +65,7 @@ final class PerfMultiSpot {
         AtomicBoolean localStopped = new AtomicBoolean(false);
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
-             Spot subscriber = node.wrapHandle();
+             Spot subscriber = new Spot(node);
              ServiceMonitor monitor = subscriber.monitorOpen((int) SPOT_FILTER_APPLIED)) {
             configureNodeTlsClient(node, config.transport());
             node.connectPeer(config.endpoint());

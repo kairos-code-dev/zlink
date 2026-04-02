@@ -10,7 +10,6 @@ import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.XPubSocket;
-import dev.kairoscode.zlink.XPubSubscriptionMode;
 import dev.kairoscode.zlink.XSubSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -120,7 +119,7 @@ public class SocketSubscriptionContractTest {
         try (Context ctx = new Context();
              XPubSocket pub = new XPubSocket(ctx);
              XSubSocket sub = new XSubSocket(ctx)) {
-            pub.options().subscriptionMode(XPubSubscriptionMode.MANUAL);
+            pub.options().manual(true);
             String endpoint = TestSupport.inprocEndpoint("xpub-manual-contract");
             pub.bind(endpoint);
             sub.setSubscription("manual-topic");

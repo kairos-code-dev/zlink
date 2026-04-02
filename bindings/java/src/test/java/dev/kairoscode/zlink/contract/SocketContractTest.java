@@ -1,19 +1,30 @@
 package dev.kairoscode.zlink.contract;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.DealerSocket;
+import dev.kairoscode.zlink.ErrorCode;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.PubSocket;
+import dev.kairoscode.zlink.PubSocketOptions;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendResult;
+import dev.kairoscode.zlink.ServiceMonitor;
+import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
+import dev.kairoscode.zlink.SubSocketOptions;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.XPubSocket;
-import dev.kairoscode.zlink.XPubSubscriptionMode;
+import dev.kairoscode.zlink.XSubSocket;
+import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.spot.Spot;
+import java.lang.foreign.MemorySegment;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
@@ -29,6 +40,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketContractTest {
+    private static final Class<?> RECEIVE_FLAG_CLASS =
+        loadClass("dev.kairoscode.zlink.ReceiveFlag");
+    private static final Class<?> SEND_FLAG_CLASS =
+        loadClass("dev.kairoscode.zlink.SendFlag");
+
     @Test
     public void sendAndRecvUseCanonicalMultipartSurface() {
         TestSupport.assumeNative();
@@ -122,6 +138,22 @@ public class SocketContractTest {
     }
 
     @Test
+    public void attachDiscoveryIsOnlyExposedOnSupportedSocketTypes() {
+        assertFalse(hasPublicMethod(PairSocket.class, "attachDiscovery"));
+        assertTrue(hasPublicMethod(DealerSocket.class, "attachDiscovery",
+            Discovery.class));
+        assertTrue(hasPublicMethod(RouterSocket.class, "attachDiscovery",
+            Discovery.class));
+        assertTrue(hasPublicMethod(PubSocket.class, "attachDiscovery",
+            Discovery.class));
+        assertTrue(hasPublicMethod(SubSocket.class, "attachDiscovery",
+            Discovery.class));
+        assertFalse(hasPublicMethod(XPubSocket.class, "attachDiscovery"));
+        assertFalse(hasPublicMethod(XSubSocket.class, "attachDiscovery"));
+        assertFalse(hasPublicMethod(StreamSocket.class, "attachDiscovery"));
+    }
+
+    @Test
     public void rawOptionSurfaceIsHiddenAndTypedOptionsRemain() {
         TestSupport.assumeNative();
 
@@ -130,23 +162,39 @@ public class SocketContractTest {
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
              StreamSocket stream = new StreamSocket(ctx);
-             XPubSocket xpub = new XPubSocket(ctx)) {
+             XPubSocket xpub = new XPubSocket(ctx);
+             XSubSocket xsub = new XSubSocket(ctx)) {
             assertFalse(hasPublicMethod(PairSocket.class, "setOption"));
             assertFalse(hasPublicMethod(PairSocket.class, "getOption"));
             assertFalse(hasPublicMethod(PairSocket.class, "setSockOpt"));
             assertFalse(hasPublicMethod(PairSocket.class, "getSockOptInt"));
             assertFalse(hasPublicMethod(MonitorSocket.class, "setOption"));
+            assertFalse(hasPublicMethod(Context.class, "handle"));
+            assertFalse(hasPublicMethod(Discovery.class, "handle"));
+            assertFalse(hasPublicMethod(Spot.class, "handle"));
             assertFalse(hasPublicMethod(MonitorSocket.class, "recv",
-                dev.kairoscode.zlink.ReceiveFlag.class));
+                RECEIVE_FLAG_CLASS));
             assertFalse(hasPublicMethod(PairSocket.class, "send", Message.class,
-                dev.kairoscode.zlink.SendFlag.class));
+                SEND_FLAG_CLASS));
             assertFalse(hasPublicMethod(PairSocket.class, "recv",
-                dev.kairoscode.zlink.ReceiveFlag.class));
+                RECEIVE_FLAG_CLASS));
             assertFalse(hasPublicMethod(PubSocket.class, "publish", String.class,
-                Message.class, dev.kairoscode.zlink.SendFlag.class));
+                Message.class, SEND_FLAG_CLASS));
             assertFalse(hasPublicMethod(SubSocket.class, "subscribe",
-                dev.kairoscode.zlink.ReceiveFlag.class));
+                RECEIVE_FLAG_CLASS));
+            assertFalse(hasPublicMethod(Message.class, "dataSegment"));
+            assertFalse(hasPublicMethod(Message.class, "dataSegment", int.class));
+            assertFalse(hasPublicMethod(Message.class, "copyTo",
+                MemorySegment.class));
+            assertFalse(hasPublicMethod(Message.class, "moveTo",
+                MemorySegment.class));
+            assertFalse(hasPublicMethod(Message.class, "fromMsgVector",
+                MemorySegment.class, long.class));
+            assertFalse(hasPublicMethod(Message.class, "fromOwnedMsgVector",
+                MemorySegment.class, long.class));
             assertFalse(hasPublicMethod(XPubSocket.class, "subscriptionEvent"));
+            assertFalse(hasPublicConstructor(ServiceMonitor.class,
+                MemorySegment.class));
             assertTrue(hasPublicMethod(PairSocket.class, "trySend", Message.class));
             assertTrue(hasPublicMethod(PairSocket.class, "tryRecv"));
             assertTrue(hasPublicMethod(MonitorSocket.class, "tryRecv"));
@@ -155,10 +203,23 @@ public class SocketContractTest {
             assertTrue(hasPublicMethod(SubSocket.class, "trySubscribe"));
             assertTrue(hasPublicMethod(XPubSocket.class,
                 "tryReceiveSubscriptionEvent"));
-            assertDoesNotThrow(() ->
-                xpub.options().subscriptionMode(XPubSubscriptionMode.MANUAL));
-            assertDoesNotThrow(() -> stream.options().notifyConnections(true));
-            assertTrue(stream.options().notifyConnections());
+            assertEquals(PubSocketOptions.class, pub.options().getClass());
+            assertTrue(hasPublicMethod(PubSocketOptions.class, "verbose"));
+            assertTrue(hasPublicMethod(PubSocketOptions.class, "verboser"));
+            assertTrue(hasPublicMethod(PubSocketOptions.class, "noDrop"));
+            assertTrue(hasPublicMethod(PubSocketOptions.class, "manual"));
+            assertDoesNotThrow(() -> xpub.options().manual(true));
+            assertDoesNotThrow(() -> xpub.options().verbose(true));
+            assertDoesNotThrow(() -> xpub.options().verboser(true));
+            assertDoesNotThrow(() -> xpub.options().noDrop(true));
+            assertDoesNotThrow(() -> xpub.options().welcomeMessage("hello"));
+            assertEquals(SubSocketOptions.class, sub.options().getClass());
+            assertTrue(hasPublicMethod(SubSocketOptions.class, "topicsCount"));
+            assertEquals(0, sub.options().topicsCount());
+            assertEquals(SubSocketOptions.class, xsub.options().getClass());
+            assertEquals(0, xsub.options().topicsCount());
+            assertDoesNotThrow(() -> stream.options().notify(true));
+            assertTrue(stream.options().notifyEnabled());
             assertDoesNotThrow(() -> pair.options().receiveTimeoutMillis(10));
             assertEquals(10, pair.options().receiveTimeoutMillis());
             assertDoesNotThrow(() -> pair.options().sendTimeout(Duration.ofMillis(20)));
@@ -188,6 +249,34 @@ public class SocketContractTest {
         }
     }
 
+    @Test
+    public void attachDiscoveryGatesManualPeerApisAndSocketClose() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             Discovery discovery = new Discovery(ctx, ServiceType.SOCKET,
+               "socket-svc")) {
+            DealerSocket dealer = new DealerSocket(ctx);
+            dealer.attachDiscovery(discovery);
+
+            ZlinkException connectError = assertThrows(ZlinkException.class,
+                () -> dealer.connect("tcp://127.0.0.1:39001"));
+            assertEquals(ErrorCode.EFSM, connectError.errorCode());
+
+            ZlinkException disconnectError = assertThrows(ZlinkException.class,
+                () -> dealer.disconnect("tcp://127.0.0.1:39001"));
+            assertEquals(ErrorCode.EFSM, disconnectError.errorCode());
+
+            ZlinkException unbindError = assertThrows(ZlinkException.class,
+                () -> dealer.unbind("tcp://127.0.0.1:39001"));
+            assertEquals(ErrorCode.EFSM, unbindError.errorCode());
+
+            ZlinkException closeError = assertThrows(ZlinkException.class,
+                dealer::close);
+            assertEquals(ErrorCode.EFSM, closeError.errorCode());
+        }
+    }
+
     private static boolean hasPublicMethod(Class<?> type, String name) {
         for (Method method : type.getMethods()) {
             if (method.getName().equals(name)) {
@@ -204,6 +293,25 @@ public class SocketContractTest {
             return method != null;
         } catch (NoSuchMethodException ex) {
             return false;
+        }
+    }
+
+    private static boolean hasPublicConstructor(Class<?> type,
+                                                Class<?>... parameterTypes) {
+        try {
+            Constructor<?> ctor = type.getConstructor(parameterTypes);
+            return ctor != null;
+        } catch (NoSuchMethodException ex) {
+            return false;
+        }
+    }
+
+    private static Class<?> loadClass(String name) {
+        try {
+            return Class.forName(name);
+        } catch (ClassNotFoundException ex) {
+            throw new IllegalStateException("missing contract class " + name,
+                ex);
         }
     }
 }

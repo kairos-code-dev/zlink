@@ -571,12 +571,17 @@ public abstract class Socket implements AutoCloseable {
     }
 
     void closeInternal() {
-        socketCore.closeCommonState();
         if (handle != null && handle.address() != 0) {
-            if (own)
-                Native.close(handle);
+            if (own) {
+                int rc = Native.close(handle);
+                if (rc != 0)
+                    throw ZlinkException.fromLastError("zlink_close");
+            }
+            socketCore.closeCommonState();
             handle = MemorySegment.NULL;
+            return;
         }
+        socketCore.closeCommonState();
     }
 
     @SuppressWarnings("unchecked")
@@ -902,8 +907,9 @@ public abstract class Socket implements AutoCloseable {
     void sendMessageFrame(Message message, SendFlag flag) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
+        int effectiveFlags = callbackSendFlags(flag);
         withNativeSendFrame(message, nativeMsg -> {
-            int rc = Native.sendMultipart(handle, nativeMsg, 1, flag.getValue());
+            int rc = Native.sendMultipart(handle, nativeMsg, 1, effectiveFlags);
             if (rc < 0)
                 throw ZlinkException.fromLastError("zlink_send");
             return null;
@@ -935,19 +941,39 @@ public abstract class Socket implements AutoCloseable {
     SendResult trySendMessageFrame(Message message) {
         Objects.requireNonNull(message, "message");
         while (true) {
-            Integer rc = withNativeSendFrame(message,
-              nativeMsg -> Native.sendMultipart(handle, nativeMsg, 1,
-                SendFlag.DONTWAIT.getValue()));
+            int rc = withNativeTrySendFrame(message, MemorySegment.NULL);
             if (rc >= 0)
-                return SendResult.SENT;
+                return SendResult.fromNativeValue(rc);
 
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            SendResult mapped = tryMapSendErrno(errno);
-            if (mapped != null)
-                return mapped;
             throw ZlinkException.fromLastError("zlink_send");
+        }
+    }
+
+    private int withNativeTrySendFrame(Message message,
+                                       MemorySegment routingId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            MemorySegment resultOut = arena.allocate(ValueLayout.JAVA_INT);
+            Object anchor = message.transferTo(nativeMsg);
+            boolean success = false;
+            try {
+                int rc = routingId.address() == 0
+                    ? Native.trySendMultipart(handle, nativeMsg, 1, resultOut)
+                    : Native.trySendMultipart(handle, routingId, nativeMsg, 1,
+                        resultOut);
+                if (rc == 0) {
+                    success = true;
+                    return resultOut.get(ValueLayout.JAVA_INT, 0);
+                }
+                return -1;
+            } finally {
+                if (!success) {
+                    message.restoreFromNative(nativeMsg, false, anchor);
+                }
+            }
         }
     }
 
@@ -1046,13 +1072,14 @@ public abstract class Socket implements AutoCloseable {
                    SendFlag flags, boolean nonBlocking) {
         ensureOpen();
         validateParts(parts);
+        boolean inCallback = SocketCore.inCallback();
         while (true) {
             if (trySendPartsOnce(routingId, parts, flags))
                 return;
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            if (nonBlocking
+            if ((nonBlocking || inCallback)
                 && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
                 return;
             }
@@ -1091,11 +1118,12 @@ public abstract class Socket implements AutoCloseable {
                         msgSize);
                     anchors[i] = parts.get(i).transferTo(nativeMsg);
                 }
+                int effectiveFlags = callbackSendFlags(flags);
                 int rc = routingId == null
                     ? Native.sendMultipart(handle, nativeParts, count,
-                        flags.getValue())
+                        effectiveFlags)
                     : Native.sendMultipart(handle, nativeRoutingId(arena, routingId),
-                        nativeParts, count, flags.getValue());
+                        nativeParts, count, effectiveFlags);
                 if (rc >= 0) {
                     success = true;
                     return true;
@@ -1115,6 +1143,7 @@ public abstract class Socket implements AutoCloseable {
             long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
             MemorySegment nativeParts = arena.allocate(msgSize * count,
                 NativeLayouts.MSG_LAYOUT.byteAlignment());
+            MemorySegment resultOut = arena.allocate(ValueLayout.JAVA_INT);
             Object[] anchors = new Object[count];
             boolean success = false;
             try {
@@ -1124,16 +1153,14 @@ public abstract class Socket implements AutoCloseable {
                     anchors[i] = parts.get(i).transferTo(nativeMsg);
                 }
                 int rc = routingId == null
-                    ? Native.sendMultipart(handle, nativeParts, count,
-                        SendFlag.DONTWAIT.getValue())
-                    : Native.sendMultipart(handle, nativeRoutingId(arena, routingId),
-                        nativeParts, count, SendFlag.DONTWAIT.getValue());
+                    ? Native.trySendMultipart(handle, nativeParts, count, resultOut)
+                    : Native.trySendMultipart(handle, nativeRoutingId(arena, routingId),
+                        nativeParts, count, resultOut);
                 if (rc == 0)
                     success = true;
-                if (rc >= 0)
-                    return SendResult.SENT.nativeValue();
-                SendResult mapped = tryMapSendErrno(Native.errno());
-                return mapped == null ? -1 : mapped.nativeValue();
+                if (rc == 0)
+                    return resultOut.get(ValueLayout.JAVA_INT, 0);
+                return -1;
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);
@@ -1146,13 +1173,14 @@ public abstract class Socket implements AutoCloseable {
                       SendFlag flags, boolean nonBlocking) {
         ensureOpen();
         validateParts(parts);
+        boolean inCallback = SocketCore.inCallback();
         while (true) {
             if (tryPublishPartsOnce(topicId, parts, flags))
                 return;
             int errno = Native.errno();
             if (errno == ERRNO_EINTR)
                 continue;
-            if (nonBlocking
+            if ((nonBlocking || inCallback)
                 && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
                 return;
             }
@@ -1191,8 +1219,9 @@ public abstract class Socket implements AutoCloseable {
                         msgSize);
                     anchors[i] = parts.get(i).transferTo(nativeMsg);
                 }
+                int effectiveFlags = callbackSendFlags(flags);
                 int rc = Native.publish(handle, nativeTopic, nativeParts, count,
-                    flags.getValue());
+                    effectiveFlags);
                 if (rc >= 0) {
                     success = true;
                     return true;
@@ -1206,16 +1235,6 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    static SendResult tryMapSendErrno(int errno) {
-        return switch (errno) {
-            case ERRNO_EAGAIN, ERRNO_EWOULDBLOCK_WIN -> SendResult.BACKPRESSURED;
-            case ERRNO_ENOTCONN, ERRNO_ENOTCONN_WIN, ERRNO_EHOSTUNREACH,
-                ERRNO_EHOSTUNREACH_WIN, ERRNO_ETIMEDOUT,
-                ERRNO_ETIMEDOUT_WIN -> SendResult.NOT_READY;
-            default -> null;
-        };
-    }
-
     private int tryPublishPartsOnceResult(String topicId, List<Message> parts) {
         try (Arena arena = Arena.ofConfined()) {
             int count = parts.size();
@@ -1224,6 +1243,7 @@ public abstract class Socket implements AutoCloseable {
                 StandardCharsets.UTF_8);
             MemorySegment nativeParts = arena.allocate(msgSize * count,
                 NativeLayouts.MSG_LAYOUT.byteAlignment());
+            MemorySegment resultOut = arena.allocate(ValueLayout.JAVA_INT);
             Object[] anchors = new Object[count];
             boolean success = false;
             try {
@@ -1232,14 +1252,13 @@ public abstract class Socket implements AutoCloseable {
                         msgSize);
                     anchors[i] = parts.get(i).transferTo(nativeMsg);
                 }
-                int rc = Native.publish(handle, nativeTopic, nativeParts, count,
-                    SendFlag.DONTWAIT.getValue());
+                int rc = Native.tryPublish(handle, nativeTopic, nativeParts, count,
+                    resultOut);
                 if (rc == 0)
                     success = true;
-                if (rc >= 0)
-                    return SendResult.SENT.nativeValue();
-                SendResult mapped = tryMapSendErrno(Native.errno());
-                return mapped == null ? -1 : mapped.nativeValue();
+                if (rc == 0)
+                    return resultOut.get(ValueLayout.JAVA_INT, 0);
+                return -1;
             } finally {
                 if (!success) {
                     restoreParts(parts, nativeParts, anchors);
@@ -1274,6 +1293,22 @@ public abstract class Socket implements AutoCloseable {
             if (parts.get(i) == null)
                 throw new IllegalArgumentException("parts[" + i + "] is null");
         }
+    }
+
+    /**
+     * Returns the effective native send flags for the given logical flag.
+     *
+     * <p>When the current thread is inside a native callback (recv handler,
+     * subscribe handler, or send-ready handler), {@code DONTWAIT} is forced
+     * so the I/O thread is never blocked in the core retry loop.  A blocking
+     * send from the I/O thread would deadlock because the retry loop waits
+     * for I/O events that can only be delivered by the same thread.
+     */
+    private static int callbackSendFlags(SendFlag flags) {
+        int raw = flags.getValue();
+        if (SocketCore.inCallback())
+            raw |= SendFlag.DONTWAIT.getValue();
+        return raw;
     }
 
     static RoutingId toRoutingId(byte[] value) {

@@ -1,0 +1,74 @@
+use std::ffi::c_void;
+
+use crate::error::{ZlinkError, check_rc};
+use crate::ffi;
+use crate::message::{IntoMultipart, RoutingId};
+
+use super::prepare_send_parts;
+
+/// A lightweight, cloneable handle for sending messages on a socket.
+///
+/// `SendHandle` captures only the raw native socket pointer and can be safely
+/// moved into callback closures, other threads, or `Arc` containers. It does
+/// **not** own the socket -- the original socket object must remain alive for
+/// the duration of any sends through this handle.
+///
+/// # Safety contract
+/// The underlying `zlink_send` / `zlink_send_rid` calls are thread-safe in the
+/// core C library, so calling `send` or `send_to` from a callback thread is
+/// valid as long as the socket has not been closed.
+///
+/// # Example
+/// ```no_run
+/// use zlink::{Context, Message, RoutingId};
+///
+/// let ctx = Context::new().unwrap();
+/// let mut router = ctx.router_socket().unwrap();
+/// let handle = router.send_handle();
+///
+/// router.on_receive(move |received| {
+///     let reply = Message::from_bytes(b"pong").unwrap();
+///     handle.send_to(received.routing_id(), reply).unwrap();
+/// }).unwrap();
+/// ```
+#[derive(Clone)]
+pub struct SendHandle {
+    handle: *mut c_void,
+}
+
+// The core C API is thread-safe for send operations.
+unsafe impl Send for SendHandle {}
+unsafe impl Sync for SendHandle {}
+
+impl SendHandle {
+    /// Create a send handle from a raw native socket pointer.
+    pub(crate) fn new(handle: *mut c_void) -> Self {
+        Self { handle }
+    }
+
+    /// Send a non-routed message (PAIR, DEALER, etc.).
+    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+        let mut parts = parts.into_parts();
+        let mut native = prepare_send_parts(&mut parts)?;
+        let rc = unsafe { ffi::zlink_send(self.handle, native.as_mut_ptr(), native.len(), 0) };
+        drop(parts);
+        check_rc(rc)
+    }
+
+    /// Send a routed message to a specific peer (ROUTER).
+    pub fn send_to(&self, target: &RoutingId, parts: impl IntoMultipart) -> Result<(), ZlinkError> {
+        let mut parts = parts.into_parts();
+        let mut native = prepare_send_parts(&mut parts)?;
+        let rc = unsafe {
+            ffi::zlink_send_rid(
+                self.handle,
+                target.as_raw(),
+                native.as_mut_ptr(),
+                native.len(),
+                0,
+            )
+        };
+        drop(parts);
+        check_rc(rc)
+    }
+}

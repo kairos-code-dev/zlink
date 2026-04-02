@@ -1,0 +1,35 @@
+//! Monitor sample – demonstrates socket monitor event observation.
+
+mod sample_support;
+
+use sample_support::{tcp_endpoint, wait_connected};
+use zlink::{Context, MONITOR_EVENT_CONNECTION_READY_CHANGED, SocketMonitor};
+
+fn main() {
+    let ctx = Context::new().expect("context creation failed");
+    let endpoint = tcp_endpoint();
+
+    let server = ctx.pair_socket().expect("server socket failed");
+    let server_mon = SocketMonitor::open(&server, MONITOR_EVENT_CONNECTION_READY_CHANGED)
+        .expect("server monitor open failed");
+    let client = ctx.pair_socket().expect("client socket failed");
+    let client_mon = SocketMonitor::open(&client, MONITOR_EVENT_CONNECTION_READY_CHANGED)
+        .expect("client monitor open failed");
+    assert!(
+        server_mon
+            .try_recv()
+            .expect("server monitor try_recv failed")
+            .is_none()
+    );
+    assert!(
+        client_mon
+            .try_recv()
+            .expect("client monitor try_recv failed")
+            .is_none()
+    );
+
+    server.bind(&endpoint).expect("bind failed");
+    client.connect(&endpoint).expect("connect failed");
+    wait_connected(&[&server_mon, &client_mon]);
+    println!("[monitor/recv] recv: \"connection-ready\" → tryRecv: empty");
+}

@@ -1,0 +1,58 @@
+[package]
+name = "zlink"
+version = "5.0.25"
+edition = "2024"
+rust-version = "1.85"
+description = "Rust bindings for the zlink messaging library"
+license = "MPL-2.0"
+
+[lib]
+name = "zlink"
+path = "src/lib.rs"
+
+[dependencies]
+libc = "0.2"
+
+[[example]]
+name = "pair_recv_sample"
+path = "samples/pair_recv_sample.rs"
+
+[[example]]
+name = "pair_callback_sample"
+path = "samples/pair_callback_sample.rs"
+
+[[example]]
+name = "pubsub_recv_sample"
+path = "samples/pubsub_recv_sample.rs"
+
+[[example]]
+name = "pubsub_callback_sample"
+path = "samples/pubsub_callback_sample.rs"
+
+[[example]]
+name = "dealer_router_recv_sample"
+path = "samples/dealer_router_recv_sample.rs"
+
+[[example]]
+name = "dealer_router_callback_sample"
+path = "samples/dealer_router_callback_sample.rs"
+
+[[example]]
+name = "stream_recv_sample"
+path = "samples/stream_recv_sample.rs"
+
+[[example]]
+name = "stream_callback_sample"
+path = "samples/stream_callback_sample.rs"
+
+[[example]]
+name = "spot_recv_sample"
+path = "samples/spot_recv_sample.rs"
+
+[[example]]
+name = "spot_callback_sample"
+path = "samples/spot_callback_sample.rs"
+
+[[example]]
+name = "monitor_recv_sample"
+path = "samples/monitor_recv_sample.rs"

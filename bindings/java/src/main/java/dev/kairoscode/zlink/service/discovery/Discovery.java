@@ -7,6 +7,7 @@ import dev.kairoscode.zlink.MemberPeerEntry;
 import dev.kairoscode.zlink.ServiceRole;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -26,17 +27,16 @@ import java.util.Objects;
  * service-monitor access for that view.
  */
 public final class Discovery implements AutoCloseable {
-    private final String serviceName;
-    private final ServiceType serviceType;
     private MemorySegment handle;
 
     /** Opens a discovery handle for one service type and name. */
     public Discovery(Context ctx, ServiceType serviceType, String serviceName) {
         Objects.requireNonNull(ctx, "ctx");
-        this.serviceType = Objects.requireNonNull(serviceType, "serviceType");
-        this.serviceName = Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(serviceType, "serviceType");
+        Objects.requireNonNull(serviceName, "serviceName");
         try (Arena arena = Arena.ofConfined()) {
-            this.handle = Native.discoveryNewFixed(ctx.handle(),
+            this.handle = Native.discoveryNewFixed(
+              InternalAccess.contextHandle(ctx),
               (short) serviceType.getValue(),
               NativeHelpers.toCString(arena, serviceName));
         }
@@ -45,18 +45,8 @@ public final class Discovery implements AutoCloseable {
     }
 
     /** Returns the native discovery handle. */
-    public MemorySegment handle() {
+    MemorySegment handle() {
         return handle;
-    }
-
-    /** Returns the fixed service type of this discovery view. */
-    public ServiceType serviceType() {
-        return serviceType;
-    }
-
-    /** Returns the fixed service name of this discovery view. */
-    public String serviceName() {
-        return serviceName;
     }
 
     /** Connects the discovery view to a registry router endpoint. */
@@ -80,10 +70,6 @@ public final class Discovery implements AutoCloseable {
 
     /** Returns the current service-local discovery value. */
     public long getValue() {
-        return value();
-    }
-
-    public long value() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment out = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = Native.discoveryGetValue(handle, out);
@@ -114,10 +100,6 @@ public final class Discovery implements AutoCloseable {
 
     /** Returns the current service-local metadata blob. */
     public byte[] getMetadata() {
-        return metadata();
-    }
-
-    public byte[] metadata() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment metadata = arena.allocate(NativeLayouts.MSG_LAYOUT);
             initMessage(metadata);
@@ -140,7 +122,7 @@ public final class Discovery implements AutoCloseable {
         if (monitor == null || monitor.address() == 0) {
             throw ZlinkException.fromLastError("zlink_service_monitor_open");
         }
-        return new dev.kairoscode.zlink.ServiceMonitor(monitor);
+        return InternalAccess.serviceMonitor(monitor);
     }
 
     /** Returns the current discovery member peers snapshot. */

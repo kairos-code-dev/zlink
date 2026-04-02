@@ -125,10 +125,11 @@ send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하�
 === "Go"
 
     ```go
-    dealer := ctx.DealerSocket()
+    dealer, _ := ctx.DealerSocket()
 
     // routing_id 설정 (선택, ROUTER에서 식별용)
-    dealer.SetRoutingId("client-1")
+    rid, _ := zlink.NewRoutingID([]byte("client-1"))
+    dealer.SetRoutingID(rid)
 
     // 서버에 연결
     dealer.Connect("tcp://127.0.0.1:5558")
@@ -226,9 +227,9 @@ send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하�
 
     ```go
     // 요청 전송 — 순서 제약 없이 연속 전송 가능
-    dealer.Send([]byte("request-1"))
-    dealer.Send([]byte("request-2"))
-    dealer.Send([]byte("request-3"))
+    dealer.Send(zlink.NewMessage([]byte("request-1")))
+    dealer.Send(zlink.NewMessage([]byte("request-2")))
+    dealer.Send(zlink.NewMessage([]byte("request-3")))
 
     // 응답은 생성 시 등록한 핸들러 콜백으로 디스패치됨
     ```
@@ -296,8 +297,10 @@ DEALER는 `zlink_recv()`로 동기 수신한다.
 === "Go"
 
     ```go
-    source_rid, parts := dealer.Recv()
-    // parts[0..N-1] 처리
+    received, err := dealer.Recv()
+    if err != nil { log.Fatal(err) }
+    defer received.Close()
+    // received parts 처리
     ```
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
@@ -390,7 +393,10 @@ DEALER는 `zlink_recv()`로 동기 수신한다.
 
     ```go
     // DEALER ↔ DEALER 멀티파트 전송
-    dealer.Send([]byte("header"), []byte("body"))
+    dealer.SendMultipart([]zlink.Message{
+        zlink.NewMessage([]byte("header")),
+        zlink.NewMessage([]byte("body")),
+    })
     ```
 
 ## 4. 소켓 옵션
@@ -470,7 +476,8 @@ ROUTER가 DEALER를 식별하려면 명시적으로 routing_id를 설정한다.
 
     ```go
     // bind/connect 전에 설정
-    dealer.SetRoutingId("D1")
+    rid, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer.SetRoutingID(rid)
     dealer.Connect("tcp://127.0.0.1:5558")
     ```
 
@@ -593,15 +600,15 @@ PAIR와 유사하지만 HWM과 자동 재연결을 지원한다. 응답이 필�
 === "Go"
 
     ```go
-    a := ctx.DealerSocket()
+    a, _ := ctx.DealerSocket()
     a.Bind("tcp://*:5558")
 
-    b := ctx.DealerSocket()
+    b, _ := ctx.DealerSocket()
     b.Connect("tcp://127.0.0.1:5558")
 
     // 양방향 자유 전송
-    a.Send([]byte("ping"))
-    b.Send([]byte("pong"))
+    a.Send(zlink.NewMessage([]byte("ping")))
+    b.Send(zlink.NewMessage([]byte("pong")))
     ```
 
 ### 패턴 2: 1:N Round-robin 작업 분배
@@ -762,20 +769,20 @@ PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
 
     ```go
     // 분배자
-    sender := ctx.DealerSocket()
+    sender, _ := ctx.DealerSocket()
     sender.Bind("tcp://*:5558")
 
     // 워커 3대
-    w1 := ctx.DealerSocket()
+    w1, _ := ctx.DealerSocket()
     w1.Connect("tcp://127.0.0.1:5558")
-    w2 := ctx.DealerSocket()
+    w2, _ := ctx.DealerSocket()
     w2.Connect("tcp://127.0.0.1:5558")
-    w3 := ctx.DealerSocket()
+    w3, _ := ctx.DealerSocket()
     w3.Connect("tcp://127.0.0.1:5558")
 
     // 6개 작업 전송 → w1, w2, w3, w1, w2, w3 (round-robin)
     for i := 0; i < 6; i++ {
-        sender.Send([]byte(fmt.Sprintf("task-{}", i)))
+        sender.Send(zlink.NewMessage([]byte(fmt.Sprintf("task-%d", i))))
     }
     ```
 
@@ -872,11 +879,9 @@ PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
 
     ```go
     // 피어가 없는 상태에서 전송
-    err := dealer.Send([]byte("data"))
-        if err != nil { // Eagain
-            // HWM 초과 또는 피어 없음
-        }
-        // default: no-op
+    err := dealer.SendDontWait(zlink.NewMessage([]byte("data")))
+    if err != nil {
+        // HWM 초과 또는 피어 없음 (EAGAIN)
     }
     ```
 
@@ -948,7 +953,8 @@ PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
 
     ```go
     // 올바른 순서
-    dealer.SetRoutingId("D1")
+    rid, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer.SetRoutingID(rid)
     dealer.Connect(endpoint)  // D1으로 식별
     ```
 

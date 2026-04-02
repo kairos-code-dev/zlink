@@ -149,19 +149,21 @@ Callback mode is suitable for real-time processing without event loss.
 === "Go"
 
     ```go
-    server := ctx.RouterSocket()
+    server, err := ctx.RouterSocket()
+    if err != nil { log.Fatal(err) }
     server.Bind("tcp://*:5555")
 
-    opts := zlink.MonitorOptions{Events: zlink::EVENT_ALL}
-    mon := server.MonitorOpen(opts)
+    opts := zlink.MonitorOptions{Events: zlink.EventAll}
+    mon, err := server.MonitorOpen(opts)
+    if err != nil { log.Fatal(err) }
     mon.SetHandler(func(ev zlink.MonitorEvent) {
-        fmt.Printf("Event: 0x%v\n", ev.event())
-        fmt.Printf("Local: %v\n", ev.local_addr())
-        fmt.Printf("Remote: %v\n", ev.remote_addr())
-        if !ev.routing_id().is_empty() {
-            fmt.Printf("routing_id: %v\n", ev.routing_id())
+        fmt.Printf("Event: 0x%x\n", ev.Event())
+        fmt.Printf("Local: %s\n", ev.LocalAddr())
+        fmt.Printf("Remote: %s\n", ev.RemoteAddr())
+        if ev.RoutingID().Size() > 0 {
+            fmt.Printf("routing_id: %x\n", ev.RoutingID().Data())
         }
-    });
+    })
     ```
 
 Events are dispatched automatically through the `on_monitor_event` callback.
@@ -440,16 +442,21 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
     ```go
     mon.SetHandler(func(ev zlink.MonitorEvent) {
-        if ev.event() == zlink::EVENT_DISCONNECTED {
-            match ev.disconnect_reason() {
-                zlink::DisconnectReason::Unknown => println!("Unknown disconnection"),
-                zlink::DisconnectReason::HandshakeFailed => println!("Handshake failed -- check TLS configuration"),
-                zlink::DisconnectReason::TransportError => println!("Transport error -- check network"),
-                zlink::DisconnectReason::CtxTerm => println!("Context terminated"),
-                _ => println!("Unknown reason={}", ev.value()),
+        if ev.Event() == zlink.EventDisconnected {
+            switch ev.Value() {
+            case zlink.DisconnectReasonUnknown:
+                fmt.Println("Unknown disconnection")
+            case zlink.DisconnectReasonHandshakeFailed:
+                fmt.Println("Handshake failed -- check TLS configuration")
+            case zlink.DisconnectReasonTransportError:
+                fmt.Println("Transport error -- check network")
+            case zlink.DisconnectReasonCtxTerm:
+                fmt.Println("Context terminated")
+            default:
+                fmt.Printf("Unknown reason=%d\n", ev.Value())
             }
         }
-    });
+    })
     ```
 
 ## 7. Event Filtering and Subscription Presets
@@ -526,10 +533,11 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 === "Go"
 
     ```go
-    opts := zlink.MonitorOptions{Events: 
-        zlink::EVENT_CONNECTION_READY_CHANGED | zlink::EVENT_DISCONNECTED}
-    mon := server.MonitorOpen(opts)
-    mon.set_handler(on_monitor_event);
+    opts := zlink.MonitorOptions{Events:
+        zlink.EventConnectionReadyChanged | zlink.EventDisconnected}
+    mon, err := server.MonitorOpen(opts)
+    if err != nil { log.Fatal(err) }
+    mon.SetHandler(onMonitorEvent)
     ```
 
 ### Recommended Subscription Presets
@@ -672,11 +680,14 @@ When these values approach the HWM, backpressure is occurring.
 === "Go"
 
     ```go
-    mon := socket.monitor_open(&zlink::MonitorOptions::new(zlink::EVENT_ALL))
-    snapshot := mon.snapshot()
-    println!("Ready peers: {}, sndq={}, rcvq={}",
-             snapshot.ready_count, snapshot.snd_pending_msgs,
-             snapshot.rcv_pending_msgs);
+    opts := zlink.MonitorOptions{Events: zlink.EventAll}
+    mon, err := socket.MonitorOpen(opts)
+    if err != nil { log.Fatal(err) }
+    snapshot, err := mon.Snapshot()
+    if err != nil { log.Fatal(err) }
+    fmt.Printf("Ready peers: %d, sndq=%d, rcvq=%d\n",
+        snapshot.ReadyCount, snapshot.SndPendingMsgs,
+        snapshot.RcvPendingMsgs)
     ```
 
 You can also combine snapshot queries inside event callbacks.
@@ -762,11 +773,11 @@ You can also combine snapshot queries inside event callbacks.
 
     ```go
     mon.SetHandler(func(ev zlink.MonitorEvent) {
-        if ev.event() == zlink::EVENT_CONNECTION_READY_CHANGED {
-            snapshot := mon.snapshot().unwrap();
-            fmt.Printf("Ready peers now: %v\n", snapshot.ready_count)
+        if ev.Event() == zlink.EventConnectionReadyChanged {
+            snapshot, _ := mon.Snapshot()
+            fmt.Printf("Ready peers now: %d\n", snapshot.ReadyCount)
         }
-    });
+    })
     ```
 
 ## 8.1 Service Monitor
@@ -837,8 +848,9 @@ SPOT and Discovery. It is a separate API from the socket monitor.
 === "Go"
 
     ```go
-    opts := zlink::ServiceMonitorOptions::new(zlink::SERVICE_MONITOR_EVENT_ALL);
-    mon := spot_node.service_monitor_open(&opts)
+    opts := zlink.ServiceMonitorOptions{Events: zlink.ServiceMonitorEventAll}
+    mon, err := spotNode.ServiceMonitorOpen(opts)
+    if err != nil { log.Fatal(err) }
     ```
 
 Pass any service handle (discovery, spot, spot_node).
@@ -934,14 +946,14 @@ The handle kind is determined automatically at runtime.
 === "Go"
 
     ```go
-    mon.SetHandler(func(ev zlink.MonitorEvent) {
-        if ev.event_type().contains(zlink::SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED) {
+    mon.SetHandler(func(ev zlink.ServiceEvent) {
+        if ev.EventType()&zlink.SpotMonitorEventSubDeliveryReadyChanged != 0 {
             fmt.Println("sub delivery ready")
         }
-        if ev.event_type().contains(zlink::SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED) {
+        if ev.EventType()&zlink.SpotMonitorEventPubFirstDeliveryReadyChanged != 0 {
             fmt.Println("pub first delivery ready")
         }
-    });
+    })
     ```
 
 ### Recv mode
@@ -1011,8 +1023,9 @@ The handle kind is determined automatically at runtime.
 === "Go"
 
     ```go
-    if let Some(ev) = mon.recv()? {
-        fmt.Printf("event: 0x{:x}, value: %v\n", ev.event_type(), ev.value())
+    ev, err := mon.Recv()
+    if err == nil {
+        fmt.Printf("event: 0x%x, value: %d\n", ev.EventType(), ev.Value())
     }
     ```
 
@@ -1172,16 +1185,20 @@ Handle events from multiple sockets with individual callback handlers.
 === "Go"
 
     ```go
-    opts := zlink.MonitorOptions{Events: zlink::EVENT_ALL}
-    mon_a := sock_a.MonitorOpen(opts)
-    mon_a.set_handler(|ev| fmt.Printf("Socket A event: 0x%v\n", ev.event()))
-    mon_b := sock_b.MonitorOpen(opts)
-    mon_b.set_handler(|ev| fmt.Printf("Socket B event: 0x%v\n", ev.event()))
+    opts := zlink.MonitorOptions{Events: zlink.EventAll}
+    monA, _ := sockA.MonitorOpen(opts)
+    monA.SetHandler(func(ev zlink.MonitorEvent) {
+        fmt.Printf("Socket A event: 0x%x\n", ev.Event())
+    })
+    monB, _ := sockB.MonitorOpen(opts)
+    monB.SetHandler(func(ev zlink.MonitorEvent) {
+        fmt.Printf("Socket B event: 0x%x\n", ev.Event())
+    })
 
     // ... application logic ...
 
-    mon_a.Close()
-    mon_b.Close()
+    monA.Close()
+    monB.Close()
     ```
 
 ## 10. Important Notes
@@ -1277,12 +1294,14 @@ I/O path, so slow callback work should be offloaded to a user queue.
 === "Go"
 
     ```go
-    socket := ctx.RouterSocket()
-    mon := socket.monitor_open(&zlink::MonitorOptions::new(zlink::EVENT_ALL))
-    mon.set_handler(on_monitor_event);
+    socket, _ := ctx.RouterSocket()
+    opts := zlink.MonitorOptions{Events: zlink.EventAll}
+    mon, _ := socket.MonitorOpen(opts)
+    mon.SetHandler(onMonitorEvent)
 
     // Snapshot reads may happen later from another worker thread
-    snapshot := mon.snapshot()
+    snapshot, _ := mon.Snapshot()
+    _ = snapshot
     ```
 
 ### Concurrent Monitor Limitation
@@ -1448,13 +1467,13 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 === "Go"
 
     ```go
-    mon := router.monitor_open(
-        &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY_CHANGED))
+    opts := zlink.MonitorOptions{Events: zlink.EventConnectionReadyChanged}
+    mon, _ := router.MonitorOpen(opts)
     mon.SetHandler(func(ev zlink.MonitorEvent) {
-        if ev.event() & zlink::EVENT_CONNECTION_READY_CHANGED != 0 {
-            // ROUTER: ev.routing_id() contains the peer identity
+        if ev.Event()&zlink.EventConnectionReadyChanged != 0 {
+            // ROUTER: ev.RoutingID() contains the peer identity
         }
-    });
+    })
     ```
 
 | Family | Wait for | Then you can |
@@ -1568,13 +1587,13 @@ is delivered to the application. Sequence:
 === "Go"
 
     ```go
-    mon := stream_server.monitor_open(
-        &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY_CHANGED))
+    opts := zlink.MonitorOptions{Events: zlink.EventConnectionReadyChanged}
+    mon, _ := streamServer.MonitorOpen(opts)
     mon.SetHandler(func(ev zlink.MonitorEvent) {
-        if ev.event() & zlink::EVENT_CONNECTION_READY_CHANGED != 0 {
-            // ev.routing_id() contains the peer's routing_id
+        if ev.Event()&zlink.EventConnectionReadyChanged != 0 {
+            // ev.RoutingID() contains the peer's routing_id
         }
-    });
+    })
     ```
 
 | Family | Wait for | Then you can |
@@ -1721,19 +1740,20 @@ Open separate monitors on PUB and SUB and wait for both before messaging.
 === "Go"
 
     ```go
-    sub.set_subscription("topic")
+    sub.SetSubscription("topic")
 
-    sub_mon := sub.monitor_open(
-        &zlink::MonitorOptions::new(zlink::EVENT_SUB_DELIVERY_READY_CHANGED))
-    pub_mon := pub.monitor_open(
-        &zlink::MonitorOptions::new(zlink::EVENT_PUB_DELIVERY_READY_CHANGED))
+    subOpts := zlink.MonitorOptions{Events: zlink.EventSubDeliveryReadyChanged}
+    subMon, _ := sub.MonitorOpen(subOpts)
+    pubOpts := zlink.MonitorOptions{Events: zlink.EventPubDeliveryReadyChanged}
+    pubMon, _ := pub.MonitorOpen(pubOpts)
 
     // Start messaging after both delivery-ready events
-    pub.publish(None, &part, 1, 0)
-    sub.subscribe(&mut parts, &mut count, 0, &mut topic_buf, &mut topic_len)
+    pub.Publish("", zlink.NewMessage(partData))
+    topic, parts, _ := sub.Subscribe()
+    _, _ = topic, parts
 
-    pub_mon.Close()
-    sub_mon.Close()
+    pubMon.Close()
+    subMon.Close()
     ```
 
 | Family | Wait for | Then you can |
@@ -1845,12 +1865,14 @@ different events.
 === "Go"
 
     ```go
-    sub_mon := sub_node.service_monitor_open(&zlink::ServiceMonitorOptions::new(
-        zlink::SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
-        | zlink::MONITOR_EVENT_ERROR))
-    pub_mon := pub_node.service_monitor_open(&zlink::ServiceMonitorOptions::new(
-        zlink::SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
-        | zlink::MONITOR_EVENT_ERROR))
+    subOpts := zlink.ServiceMonitorOptions{Events:
+        zlink.SpotMonitorEventSubDeliveryReadyChanged |
+        zlink.MonitorEventError}
+    subMon, _ := subNode.ServiceMonitorOpen(subOpts)
+    pubOpts := zlink.ServiceMonitorOptions{Events:
+        zlink.SpotMonitorEventPubFirstDeliveryReadyChanged |
+        zlink.MonitorEventError}
+    pubMon, _ := pubNode.ServiceMonitorOpen(pubOpts)
 
     // Start messaging after both are ready
     ```
@@ -1920,8 +1942,8 @@ health checks, and debugging.
 === "Go"
 
     ```go
-    status := discovery.status_snapshot()
-    fmt.Printf("state=%v\n", status.state)
+    status, _ := discovery.StatusSnapshot()
+    fmt.Printf("state=%d\n", status.State)
     ```
 
 ---

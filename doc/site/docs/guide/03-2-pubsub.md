@@ -147,11 +147,11 @@ PUB ──── XSUB ═══ XPUB ──── SUB
 === "Go"
 
     ```go
-    pub_sock := ctx.PubSocket()
-    pub_sock.Bind("tcp://*:5556")
+    pubSock, _ := ctx.PubSocket()
+    pubSock.Bind("tcp://*:5556")
 
     // Publish message -- dropped if there are no subscribers
-    pub_sock.Publish("weather", []byte("sunny"))
+    pubSock.Publish("weather", zlink.NewMessage([]byte("sunny")))
     ```
 
 ### Subscriber (SUB)
@@ -263,13 +263,13 @@ PUB ──── XSUB ═══ XPUB ──── SUB
 === "Go"
 
     ```go
-    sub := ctx.SubSocket()
+    sub, _ := ctx.SubSocket()
     sub.Connect("tcp://127.0.0.1:5556")
 
     // Subscribe to topic -- set after connect
     sub.SetSubscription("weather")
 
-    // Use subscribe() or subscribe_handler() to receive
+    // Use Subscribe() or SubscribeHandler() to receive
     ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
@@ -597,7 +597,9 @@ is the default.
 
     ```go
     // Publish: topic = "sensor:cpu", payload = 2 frames
-    pub_sock.Publish("sensor:cpu", []byte("host"), []byte("73"))
+    pubSock.Publish("sensor:cpu",
+        zlink.NewMessage([]byte("host")),
+        zlink.NewMessage([]byte("73")))
 
     // SUB receives:
     //   topic     = "sensor:cpu"
@@ -762,17 +764,17 @@ side. Callers never need to assemble topic frames manually.
 
     ```go
     // PUB
-    pub_sock := ctx.PubSocket()
-    pub_sock.Bind("tcp://*:5556")
+    pubSock, _ := ctx.PubSocket()
+    pubSock.Bind("tcp://*:5556")
 
     // SUB -- receive all messages
-    sub := ctx.SubSocket()
+    sub, _ := ctx.SubSocket()
     sub.Connect("tcp://127.0.0.1:5556")
     sub.SetSubscription("")
 
     time.Sleep(100 * time.Millisecond)  // time for subscription to reach PUB
 
-    pub_sock.Publish("", []byte("test"))
+    pubSock.Publish("", zlink.NewMessage([]byte("test")))
     ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- `test_tcp()`
@@ -903,18 +905,18 @@ Multiple SUBs connect to a single PUB. Each SUB receives only its own topics.
 === "Go"
 
     ```go
-    pub_sock := ctx.PubSocket()
-    pub_sock.Bind("tcp://*:5556")
+    pubSock, _ := ctx.PubSocket()
+    pubSock.Bind("tcp://*:5556")
 
-    sub_weather := ctx.SubSocket()
-    sub_weather.Connect("tcp://127.0.0.1:5556")
-    sub_weather.SetSubscription("weather")
+    subWeather, _ := ctx.SubSocket()
+    subWeather.Connect("tcp://127.0.0.1:5556")
+    subWeather.SetSubscription("weather")
 
-    sub_sports := ctx.SubSocket()
-    sub_sports.Connect("tcp://127.0.0.1:5556")
-    sub_sports.SetSubscription("sports")
+    subSports, _ := ctx.SubSocket()
+    subSports.Connect("tcp://127.0.0.1:5556")
+    subSports.SetSubscription("sports")
 
-    // Only sub_weather receives weather, only sub_sports receives sports
+    // Only subWeather receives weather, only subSports receives sports
     ```
 
 ### Pattern 3: Multiple PUBs → SUB
@@ -987,7 +989,7 @@ A SUB can connect to multiple PUBs. It receives messages from all PUBs via fair-
 === "Go"
 
     ```go
-    sub := ctx.SubSocket()
+    sub, _ := ctx.SubSocket()
     sub.SetSubscription("")
     sub.Connect("tcp://pub1:5556")
     sub.Connect("tcp://pub2:5557")
@@ -1055,7 +1057,7 @@ dropped** (no error returned).
 
     ```go
     // Option 1: Increase buffer by adjusting HWM
-    pub_sock.SetOption(zlink.OptionSndHWM, 100000)
+    pubSock.SetOption(zlink.OptionSndHWM, 100000)
     ```
 
 #### XPUB_NODROP — Backpressure Instead of Drop
@@ -1178,15 +1180,13 @@ caller can handle backpressure directly.
 
     ```go
     // Enable NODROP on XPUB
-    xpub := ctx.XPubSocket()
+    xpub, _ := ctx.XPubSocket()
     xpub.SetOption(zlink.OptionPubNoDrop, 1)
 
-    // On HWM, send returns Err(Eagain) instead of dropping
-    err := xpub.Publish("", []byte("hello"))
-        if err != nil { // Eagain
-            // HWM reached — retry or apply backpressure logic
-        }
-        // default: no-op
+    // On HWM, send returns error instead of dropping
+    err := xpub.Publish("", zlink.NewMessage([]byte("hello")))
+    if err != nil {
+        // HWM reached — retry or apply backpressure logic
     }
     ```
 
@@ -1390,15 +1390,15 @@ PUB/SUB each have their own dedicated API:
 === "Go"
 
     ```go
-    // PUB: send via publish(). Cannot attach recv handler
-    pub_sock.Publish("weather", []byte("sunny"))  // OK
+    // PUB: send via Publish(). Cannot attach recv handler
+    pubSock.Publish("weather", zlink.NewMessage([]byte("sunny")))  // OK
 
-    // Using send() on PUB → returns Err(ENOTSUP)
-    // pub_sock.send(b"sunny");  // error: ENOTSUP
+    // Using Send() on PUB returns ENOTSUP
+    // pubSock.Send(zlink.NewMessage([]byte("sunny")))  // error: ENOTSUP
 
-    // SUB: receive via subscribe(). Cannot send/publish
-    // sub.publish("weather", b"sunny");  // error: ENOTSUP
-    // sub.send(b"sunny");               // error: ENOTSUP
+    // SUB: receive via Subscribe(). Cannot send/publish
+    // sub.Publish("weather", zlink.NewMessage([]byte("sunny")))  // error: ENOTSUP
+    // sub.Send(zlink.NewMessage([]byte("sunny")))                // error: ENOTSUP
     ```
 
 ---
@@ -1662,10 +1662,10 @@ XPUB receives subscription frames with `zlink_subscription_event()`:
 === "Go"
 
     ```go
-    xpub := ctx.XPubSocket()
+    xpub, _ := ctx.XPubSocket()
     xpub.Bind("tcp://*:5557")
 
-    source_rid, subscribed, topic := xpub.SubscriptionEvent()
+    sourceRid, subscribed, topic, _ := xpub.SubscriptionEvent()
     ```
 
 > Reference: `core/tests/test_xpub_manual.cpp` -- `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -1802,13 +1802,13 @@ By default, XPUB processes SUB subscriptions automatically. In MANUAL mode, afte
     // Enable MANUAL mode
     xpub.SetOption(zlink.OptionPubManual, 1)
 
-    // subscription_event() returns subscribed=true, topic="A"
+    // SubscriptionEvent() returns subscribed=true, topic="A"
     // Then apply transformed subscription:
     xpub.SetSubscription("XA")
 
     // Publish
-    xpub.Publish("", []byte("A"))  // does not reach the subscriber
-    xpub.Publish("", []byte("XA"))  // subscriber receives this
+    xpub.Publish("", zlink.NewMessage([]byte("A")))   // does not reach the subscriber
+    xpub.Publish("", zlink.NewMessage([]byte("XA")))  // subscriber receives this
     ```
 
 > Reference: `core/tests/test_xpub_manual.cpp` -- `test_basic()`: subscription request for A → transformed to B
@@ -2115,7 +2115,7 @@ An advanced proxy that transforms or filters subscription requests.
     xpub.SetOption(zlink.OptionPubManual, 1)
 
     for {
-        source_rid, subscribed, topic := xpub.SubscriptionEvent()
+        _, subscribed, topic, _ := xpub.SubscriptionEvent()
 
         if subscribed {
             // Register subscription
@@ -2237,14 +2237,16 @@ Use XPUB to observe which clients subscribe to which topics.
 === "Go"
 
     ```go
-    xpub := ctx.XPubSocket()
+    xpub, _ := ctx.XPubSocket()
     xpub.Bind("tcp://*:5557")
 
     for {
-        source_rid, subscribed, topic := xpub.SubscriptionEvent()
-        fmt.Printf("%v: %v\n",
-            if subscribed {
-            topic)
+        _, subscribed, topic, _ := xpub.SubscriptionEvent()
+        label := "Unsubscription"
+        if subscribed {
+            label = "New subscription"
+        }
+        fmt.Printf("%s: %s\n", label, topic)
     }
     ```
 

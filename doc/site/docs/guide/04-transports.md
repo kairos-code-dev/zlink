@@ -170,7 +170,7 @@ The OS automatically assigns an available port. Useful for tests or dynamic port
     ```go
     socket.Bind("tcp://127.0.0.1:*")
     endpoint := socket.LastEndpoint()
-    other_socket.Connect(endpoint)
+    otherSocket.Connect(endpoint)
     ```
 
 > Reference: `core/tests/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` wildcard bind pattern
@@ -348,7 +348,7 @@ When a hostname is used with connect, DNS resolution is performed internally.
     }
 
     if err := socket.Connect("tcp://invalid:99999"); err != nil {
-        efmt.Printf("Connection failed: %v\n", e)
+        fmt.Printf("Connection failed: %v\n", err)
     }
     ```
 
@@ -633,8 +633,8 @@ In-process communication. The fastest transport.
 === "Go"
 
     ```go
-    socket_a.Bind("inproc://workers")
-    socket_b.Connect("inproc://workers")
+    socketA.Bind("inproc://workers")
+    socketB.Connect("inproc://workers")
     ```
 
 ### Error Handling
@@ -899,10 +899,10 @@ Encrypted WebSocket communication.
 === "Go"
 
     ```go
-    socket.SetTLSServer(cert_path, key_path, false)
+    socket.SetTLSServer(certPath, keyPath, false)
     socket.Bind("wss://*:8443")
 
-    socket.set_tls_client(ca_path, "localhost", false)
+    socket.SetTLSClient(caPath, "localhost", false)
     socket.Connect("wss://server:8443")
     ```
 
@@ -1189,7 +1189,7 @@ Query the actual assigned endpoint after a wildcard bind.
 
     ```go
     socket.Bind("tcp://127.0.0.1:*")
-    fmt.Printf("Bound endpoint: %v\n", socket.last_endpoint()?)
+    fmt.Printf("Bound endpoint: %s\n", socket.LastEndpoint())
     ```
 
 For performance comparisons, see the [Performance Guide](10-performance.md).

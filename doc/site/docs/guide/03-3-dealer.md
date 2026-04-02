@@ -111,10 +111,11 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
 === "Go"
 
     ```go
-    dealer := ctx.DealerSocket()
+    dealer, _ := ctx.DealerSocket()
 
     // Set routing_id (optional, used for identification by ROUTER)
-    dealer.SetRoutingId("client-1")
+    rid, _ := zlink.NewRoutingID([]byte("client-1"))
+    dealer.SetRoutingID(rid)
 
     // Connect to server
     dealer.Connect("tcp://127.0.0.1:5558")
@@ -212,9 +213,9 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
 
     ```go
     // Send requests -- can send consecutively without ordering constraints
-    dealer.Send([]byte("request-1"))
-    dealer.Send([]byte("request-2"))
-    dealer.Send([]byte("request-3"))
+    dealer.Send(zlink.NewMessage([]byte("request-1")))
+    dealer.Send(zlink.NewMessage([]byte("request-2")))
+    dealer.Send(zlink.NewMessage([]byte("request-3")))
 
     // Responses are dispatched to the handler callback registered at creation
     ```
@@ -282,8 +283,10 @@ Use `zlink_recv()` to receive synchronously.
 === "Go"
 
     ```go
-    source_rid, parts := dealer.Recv()
-    // process parts[0..N-1]
+    received, err := dealer.Recv()
+    if err != nil { log.Fatal(err) }
+    defer received.Close()
+    // process received parts
     ```
 
 > When HWM is reached, `zlink_send()` blocks (default) or returns
@@ -376,7 +379,10 @@ Use `zlink_recv()` to receive synchronously.
 
     ```go
     // DEALER → ROUTER send
-    dealer.Send([]byte("header"), []byte("body"))
+    dealer.SendMultipart([]zlink.Message{
+        zlink.NewMessage([]byte("header")),
+        zlink.NewMessage([]byte("body")),
+    })
     ```
 
 ## 4. Socket Options
@@ -456,7 +462,8 @@ To allow ROUTER to identify a DEALER, explicitly set the routing_id.
 
     ```go
     // Set before bind/connect
-    dealer.SetRoutingId("D1")
+    rid, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer.SetRoutingID(rid)
     dealer.Connect("tcp://127.0.0.1:5558")
     ```
 
@@ -636,20 +643,22 @@ The most basic pattern. DEALER sends requests, ROUTER replies.
 === "Go"
 
     ```go
-    router := ctx.RouterSocket()
+    router, _ := ctx.RouterSocket()
     router.Bind("tcp://*:5558")
 
     // Client: DEALER
-    dealer := ctx.DealerSocket()
-    dealer.SetRoutingId("D1")
+    dealer, _ := ctx.DealerSocket()
+    rid, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer.SetRoutingID(rid)
     dealer.Connect("tcp://127.0.0.1:5558")
 
     // Client request
-    dealer.Send([]byte("Hello"))
+    dealer.Send(zlink.NewMessage([]byte("Hello")))
 
     // Router receives and replies
-    source_rid, parts := router.Recv()
-    router.SendTo(source_rid,
+    received, _ := router.Recv()
+    defer received.Close()
+    router.SendTo(received.RoutingID(), zlink.NewMessage([]byte("World")))
     ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- TCP/IPC/inproc examples
@@ -832,22 +841,25 @@ Multiple DEALERs connect to a single ROUTER. ROUTER distinguishes each DEALER by
 === "Go"
 
     ```go
-    router := ctx.RouterSocket()
+    router, _ := ctx.RouterSocket()
     router.Bind("tcp://127.0.0.1:*")
 
-    endpoint, _ := router.GetOption(zlink.OptionLastEndpoint)
+    status, _ := router.StatusSnapshot()
+    endpoint := status.LocalEndpoint
 
-    dealer1 := ctx.DealerSocket()
-    dealer1.SetRoutingId("D1")
+    dealer1, _ := ctx.DealerSocket()
+    rid1, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer1.SetRoutingID(rid1)
     dealer1.Connect(endpoint)
 
-    dealer2 := ctx.DealerSocket()
-    dealer2.SetRoutingId("D2")
+    dealer2, _ := ctx.DealerSocket()
+    rid2, _ := zlink.NewRoutingID([]byte("D2"))
+    dealer2.SetRoutingID(rid2)
     dealer2.Connect(endpoint)
 
     // Each DEALER sends a message
-    dealer1.Send([]byte("from_dealer1"))
-    dealer2.Send([]byte("from_dealer2"))
+    dealer1.Send(zlink.NewMessage([]byte("from_dealer1")))
+    dealer2.Send(zlink.NewMessage([]byte("from_dealer2")))
 
     // Router receives each DEALER's message with its routing_id
     ```
@@ -967,11 +979,11 @@ Build a multi-threaded server using ROUTER (frontend) + DEALER (backend).
 
     ```go
     // Frontend: clients connect here
-    frontend := ctx.RouterSocket()
+    frontend, _ := ctx.RouterSocket()
     frontend.Bind("tcp://*:5558")
 
     // Backend: worker threads connect here
-    backend := ctx.DealerSocket()
+    backend, _ := ctx.DealerSocket()
     backend.Bind("inproc://backend")
 
     // Start worker threads then run proxy
@@ -1119,15 +1131,15 @@ Both sides use DEALER for fully asynchronous P2P communication.
 === "Go"
 
     ```go
-    a := ctx.DealerSocket()
+    a, _ := ctx.DealerSocket()
     a.Bind("tcp://*:5558")
 
-    b := ctx.DealerSocket()
+    b, _ := ctx.DealerSocket()
     b.Connect("tcp://127.0.0.1:5558")
 
     // Bidirectional free send
-    a.Send([]byte("ping"))
-    b.Send([]byte("pong"))
+    a.Send(zlink.NewMessage([]byte("ping")))
+    b.Send(zlink.NewMessage([]byte("pong")))
     ```
 
 ## 6. Caveats
@@ -1220,11 +1232,9 @@ If no peer is connected, messages accumulate in the send queue. When the HWM is 
 
     ```go
     // Send with no peer connected
-    err := dealer.Send([]byte("data"))
-        if err != nil { // Eagain
-            // HWM exceeded or no peer connected
-        }
-        // default: no-op
+    err := dealer.SendDontWait(zlink.NewMessage([]byte("data")))
+    if err != nil {
+        // HWM exceeded or no peer connected (EAGAIN)
     }
     ```
 
@@ -1296,7 +1306,8 @@ When multiple peers are connected, messages are distributed in a round-robin fas
 
     ```go
     // Correct order
-    dealer.SetRoutingId("D1")
+    rid, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer.SetRoutingID(rid)
     dealer.Connect(endpoint)  // identified as D1
     ```
 

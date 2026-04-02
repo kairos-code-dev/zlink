@@ -173,19 +173,21 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템이다.
 === "Go"
 
     ```go
-    ctx := zlink.NewContext()
-    registry := zlink::Registry::new(&ctx)
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
+    registry, err := zlink.NewRegistry(ctx)
+    if err != nil { log.Fatal(err) }
 
-    registry.add_peer("tcp://registry2:5550")
-    registry.add_peer("tcp://registry3:5550")
-    registry.set_heartbeat(5000, 15000)
-    registry.set_broadcast_interval(30000)
-    registry.bind("tcp://*:5550", "tcp://*:5551")
+    registry.AddPeer("tcp://registry2:5550")
+    registry.AddPeer("tcp://registry3:5550")
+    registry.SetHeartbeat(5000, 15000)
+    registry.SetBroadcastInterval(30000)
+    registry.Bind("tcp://*:5550", "tcp://*:5551")
 
     // ... application logic ...
 
-    registry.destroy()
-    ctx.term()
+    registry.Destroy()
+    ctx.Term()
     ```
 
 ## 3. Discovery 사용
@@ -334,21 +336,24 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템이다.
 === "Go"
 
     ```go
-    discovery := zlink::Discovery::new(&ctx,
-        zlink::ServiceType::Spot, "order-service")
+    discovery, err := zlink.NewDiscovery(ctx,
+        zlink.ServiceTypeSpot, "order-service")
+    if err != nil { log.Fatal(err) }
 
-    discovery.connect_registry("tcp://registry1:5551")
-    discovery.connect_registry("tcp://registry2:5551")
+    discovery.ConnectRegistry("tcp://registry1:5551")
+    discovery.ConnectRegistry("tcp://registry2:5551")
 
-    mon := discovery.service_monitor_open(&zlink::ServiceMonitorOptions::new(
-        zlink::DISCOVERY_MONITOR_EVENT_SERVICE_UP
-        | zlink::DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED))
-    mon.set_handler(on_discovery_event);
+    opts := zlink.ServiceMonitorOptions{Events:
+        zlink.DiscoveryMonitorEventServiceUp |
+        zlink.DiscoveryMonitorEventProvidersChanged}
+    mon, err := discovery.ServiceMonitorOpen(opts)
+    if err != nil { log.Fatal(err) }
+    mon.SetHandler(onDiscoveryEvent)
 
     // ... Discovery delivers events through the callback ...
 
     mon.Close()
-    discovery.destroy()
+    discovery.Destroy()
     ```
 
 ## 3.1 소켓 패밀리 Discovery
@@ -470,17 +475,19 @@ lifecycle 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 �
 === "Go"
 
     ```go
-    discovery := zlink::Discovery::new(&ctx,
-        zlink::ServiceType::Socket, "price-feed")
-    discovery.connect_registry("tcp://registry1:5551")
+    discovery, err := zlink.NewDiscovery(ctx,
+        zlink.ServiceTypeSocket, "price-feed")
+    if err != nil { log.Fatal(err) }
+    discovery.ConnectRegistry("tcp://registry1:5551")
 
-    pub_sock := ctx.PubSocket()
-    pub_sock.Bind("tcp://*:9100")
-    pub_sock.attach_discovery(&discovery)
+    pubSock, err := ctx.PubSocket()
+    if err != nil { log.Fatal(err) }
+    pubSock.Bind("tcp://*:9100")
+    pubSock.AttachDiscovery(discovery)
 
     // ... publish messages ...
 
-    discovery.destroy()
+    discovery.Destroy()
     ```
 
 **역할 매칭:** Discovery는 서비스 역할로 관련 원격 프로바이더를 결정한다.

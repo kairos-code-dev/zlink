@@ -95,11 +95,13 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 
     ```go
     // 생성
-    ctx := zlink.NewContext()
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
     ctx.SetIoThreads(4) // 기본 1; 연결이 많으면 4가 최적
     ioThreads := ctx.IoThreads()
 
-    // 종료 — Drop trait
+    // 종료
+    defer ctx.Close()
     ```
 
 ### Context 옵션
@@ -177,9 +179,10 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 === "Go"
 
     ```go
-    socket := ctx.DealerSocket()
+    socket, err := ctx.DealerSocket()
+    if err != nil { log.Fatal(err) }
+    defer socket.Close()
     // ... 사용 ...
-    // Drop trait이 close 처리
     ```
 
 ### 2.2 Socket Type 상수
@@ -636,20 +639,22 @@ Socket은 기본적으로 pull mode로 시작한다.
 === "Go"
 
     ```go
-    socket := ctx.PairSocket()
+    socket, err := ctx.PairSocket()
+    if err != nil { log.Fatal(err) }
     socket.Bind("tcp://*:5556")
 
     // Blocking recv
-    source_rid, parts, _ := socket.Recv()
-    for (i, part) in parts.iter().enumerate() {
-        fmt.Printf("frame {}: %v\n", i, part.as_str()?)
+    received, err := socket.Recv()
+    if err != nil { log.Fatal(err) }
+    defer received.Close()
+    for i := 0; i < received.PartCount(); i++ {
+        fmt.Printf("frame %d: %s\n", i, string(received.Part(i).Data()))
     }
 
     // Non-blocking recv
-    received, err := socket.RecvDontWait()
-        Ok((rid, parts)) => { /* 처리 */ }
-        Err(e) if e.kind() == zlink::ErrorKind::Again => {}
-        Err(e) => return Err(e),
+    received2, err := socket.RecvDontWait()
+    if err != nil {
+        // EAGAIN — 현재 사용 가능한 message 없음
     }
     ```
 
@@ -748,12 +753,12 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
 === "Go"
 
     ```go
-    socket := ctx.StreamSocket()
-    socket.on_message(|rid, parts| {
-        for (i, part) in parts.iter().enumerate() {
-            fmt.Printf("frame {}: %v\n", i, part.as_str()?)
+    socket, err := ctx.StreamSocket()
+    if err != nil { log.Fatal(err) }
+    socket.OnMessage(func(rid zlink.RoutingID, parts []zlink.Message) {
+        for i, part := range parts {
+            fmt.Printf("frame %d: %s\n", i, string(part.Data()))
         }
-
     })
     ```
 
@@ -861,8 +866,8 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
 
     ```go
     err := socket.Send(zlink.NewMessage(data))
-         => {}
-        Err(e) => eprintln!("error: {}", e),
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "error: %v\n", err)
     }
     ```
 
@@ -1090,20 +1095,28 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
 
     ```go
     func main() {
-        ctx := zlink.NewContext()
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
 
-        router := ctx.RouterSocket()
+        router, err := ctx.RouterSocket()
+        if err != nil { log.Fatal(err) }
+        defer router.Close()
         router.Bind("tcp://*:5555")
 
-        dealer := ctx.DealerSocket()
+        dealer, err := ctx.DealerSocket()
+        if err != nil { log.Fatal(err) }
+        defer dealer.Close()
         dealer.Connect("tcp://127.0.0.1:5555")
 
         dealer.Send(zlink.NewMessage([]byte("request")))
 
-        rid, parts, _ := router.Recv()
-        fmt.Printf("[{}] recv: %v\n", rid, parts[0].as_str()?)
-
-
+        received, err := router.Recv()
+        if err != nil { log.Fatal(err) }
+        defer received.Close()
+        part, _ := received.SinglePartOrError()
+        fmt.Printf("[%v] recv: %s\n",
+            received.RoutingID(), string(part.Data()))
     }
     ```
 

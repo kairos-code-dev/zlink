@@ -184,7 +184,7 @@ OS가 사용 가능한 포트를 자동 할당한다. 테스트나 동적 포트
     ```go
     socket.Bind("tcp://127.0.0.1:*")
     endpoint := socket.LastEndpoint()
-    other_socket.Connect(endpoint)
+    otherSocket.Connect(endpoint)
     ```
 
 > 참고: `core/tests/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` 와일드카드 바인드 패턴
@@ -358,11 +358,11 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
 
     ```go
     if err := socket.Bind("tcp://*:5555"); err != nil {
-        // 포트 5555 이미 사용 중
+        // Port 5555 already in use
     }
 
     if err := socket.Connect("tcp://invalid:99999"); err != nil {
-        efmt.Printf("연결 실패: %v\n", e)
+        fmt.Printf("Connection failed: %v\n", err)
     }
     ```
 
@@ -576,7 +576,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 
     ```go
     if err := socket.Bind("ipc:///very/long/path/.../endpoint.ipc"); err != nil {
-        // IPC 경로가 시스템 제한(108자)을 초과
+        // IPC path exceeds system limit (108 characters)
     }
     ```
 
@@ -647,8 +647,8 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "Go"
 
     ```go
-    socket_a.Bind("inproc://workers")
-    socket_b.Connect("inproc://workers")
+    socketA.Bind("inproc://workers")
+    socketB.Connect("inproc://workers")
     ```
 
 ### 에러 처리
@@ -724,7 +724,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 
     ```go
     if err := socket.Connect("inproc://nonexistent"); err != nil {
-        // bind가 아직 없음
+        // No bind exists yet
     }
     ```
 
@@ -912,10 +912,10 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "Go"
 
     ```go
-    socket.SetTLSServer(cert_path, key_path, false)
+    socket.SetTLSServer(certPath, keyPath, false)
     socket.Bind("wss://*:8443")
 
-    socket.set_tls_client(ca_path, "localhost", false)
+    socket.SetTLSClient(caPath, "localhost", false)
     socket.Connect("wss://server:8443")
     ```
 
@@ -1202,7 +1202,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 
     ```go
     socket.Bind("tcp://127.0.0.1:*")
-    fmt.Printf("바인드된 엔드포인트: %v\n", socket.last_endpoint()?)
+    fmt.Printf("Bound endpoint: %s\n", socket.LastEndpoint())
     ```
 
 성능 비교는 [성능 가이드](10-performance.ko.md)를 참고.

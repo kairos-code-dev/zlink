@@ -329,33 +329,41 @@ cmake --build build
 === "Go"
 
     ```go
-    import "github.com/kairoscode/zlink-go"
+    package main
+
+    import (
+        "fmt"
+        "log"
+        zlink "github.com/kairoscode/zlink-go"
+    )
 
     func main() {
         ctx, err := zlink.NewContext()
-        if err != nil { panic(err) }
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
 
         // Server
         server, err := ctx.PairSocket()
-        if err != nil { panic(err) }
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
         server.Bind("tcp://*:5555")
 
         // Client
         client, err := ctx.PairSocket()
-        if err != nil { panic(err) }
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
         client.Connect("tcp://127.0.0.1:5555")
 
         // Send
-        client.Send([]byte("Hello zlink!"))
+        msg := zlink.NewMessage([]byte("Hello zlink!"))
+        client.Send(msg)
 
         // Receive
-        source_rid, parts, err := server.Recv()
-        if err != nil { panic(err) }
-        fmt.Printf("Received: %v\n", string(parts[0].Data()))
-
-        client.Close()
-        server.Close()
-        ctx.Close()
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        defer received.Close()
+        part, _ := received.SinglePartOrError()
+        fmt.Printf("Received: %s\n", string(part.Data()))
     }
     ```
 

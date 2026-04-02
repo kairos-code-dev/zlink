@@ -148,11 +148,11 @@ PUB ──── XSUB ═══ XPUB ──── SUB
 === "Go"
 
     ```go
-    pub_sock := ctx.PubSocket()
-    pub_sock.Bind("tcp://*:5556")
+    pubSock, _ := ctx.PubSocket()
+    pubSock.Bind("tcp://*:5556")
 
     // 메시지 발행 — 구독자가 없으면 드롭
-    pub_sock.Publish("weather", []byte("sunny"))
+    pubSock.Publish("weather", zlink.NewMessage([]byte("sunny")))
     ```
 
 ### 구독자 (SUB)
@@ -263,13 +263,13 @@ PUB ──── XSUB ═══ XPUB ──── SUB
 === "Go"
 
     ```go
-    sub := ctx.SubSocket()
+    sub, _ := ctx.SubSocket()
     sub.Connect("tcp://127.0.0.1:5556")
 
     // 토픽 구독 — connect 후 설정
     sub.SetSubscription("weather")
 
-    // subscribe() 또는 subscribe_handler()로 수신
+    // Subscribe() 또는 SubscribeHandler()로 수신
     ```
 
 > 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
@@ -595,7 +595,9 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 
     ```go
     // 발행: topic = "sensor:cpu", payload = 2개 프레임
-    pub_sock.Publish("sensor:cpu", []byte("host"), []byte("73"))
+    pubSock.Publish("sensor:cpu",
+        zlink.NewMessage([]byte("host")),
+        zlink.NewMessage([]byte("73")))
 
     // SUB 수신:
     //   topic     = "sensor:cpu"
@@ -760,17 +762,17 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 
     ```go
     // PUB
-    pub_sock := ctx.PubSocket()
-    pub_sock.Bind("tcp://*:5556")
+    pubSock, _ := ctx.PubSocket()
+    pubSock.Bind("tcp://*:5556")
 
     // SUB — 모든 메시지 수신
-    sub := ctx.SubSocket()
+    sub, _ := ctx.SubSocket()
     sub.Connect("tcp://127.0.0.1:5556")
     sub.SetSubscription("")
 
     time.Sleep(100 * time.Millisecond)  // 구독이 PUB에 도달할 시간
 
-    pub_sock.Publish("", []byte("test"))
+    pubSock.Publish("", zlink.NewMessage([]byte("test")))
     ```
 
 > 참고: `core/tests/test_pubsub.cpp` — `test_tcp()`
@@ -901,18 +903,18 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "Go"
 
     ```go
-    pub_sock := ctx.PubSocket()
-    pub_sock.Bind("tcp://*:5556")
+    pubSock, _ := ctx.PubSocket()
+    pubSock.Bind("tcp://*:5556")
 
-    sub_weather := ctx.SubSocket()
-    sub_weather.Connect("tcp://127.0.0.1:5556")
-    sub_weather.SetSubscription("weather")
+    subWeather, _ := ctx.SubSocket()
+    subWeather.Connect("tcp://127.0.0.1:5556")
+    subWeather.SetSubscription("weather")
 
-    sub_sports := ctx.SubSocket()
-    sub_sports.Connect("tcp://127.0.0.1:5556")
-    sub_sports.SetSubscription("sports")
+    subSports, _ := ctx.SubSocket()
+    subSports.Connect("tcp://127.0.0.1:5556")
+    subSports.SetSubscription("sports")
 
-    // weather만 sub_weather가 수신, sports만 sub_sports가 수신
+    // weather만 subWeather가 수신, sports만 subSports가 수신
     ```
 
 ### 패턴 3: 다중 PUB → SUB
@@ -985,7 +987,7 @@ SUB는 여러 PUB에 connect 가능. Fair-queue로 모든 PUB의 메시지를 �
 === "Go"
 
     ```go
-    sub := ctx.SubSocket()
+    sub, _ := ctx.SubSocket()
     sub.SetSubscription("")
     sub.Connect("tcp://pub1:5556")
     sub.Connect("tcp://pub2:5557")
@@ -1053,7 +1055,7 @@ send queue가 HWM에 도달하면 해당 subscriber에게 보내는 message를
 
     ```go
     // 대응 1: HWM 조정으로 buffer 확대
-    pub_sock.SetOption(zlink.OptionSndHWM, 100000)
+    pubSock.SetOption(zlink.OptionSndHWM, 100000)
     ```
 
 #### XPUB_NODROP — drop 대신 backpressure
@@ -1176,15 +1178,13 @@ backpressure를 제어할 수 있다.
 
     ```go
     // XPUB에서 NODROP 활성화
-    xpub := ctx.XPubSocket()
+    xpub, _ := ctx.XPubSocket()
     xpub.SetOption(zlink.OptionPubNoDrop, 1)
 
-    // send 시 HWM 도달하면 Err(Eagain) 반환 (drop 아님)
-    err := xpub.Publish("", []byte("hello"))
-        if err != nil { // Eagain
-            // HWM 도달 — retry 또는 backpressure 로직
-        }
-        // default: no-op
+    // send 시 HWM 도달하면 error 반환 (drop 아님)
+    err := xpub.Publish("", zlink.NewMessage([]byte("hello")))
+    if err != nil {
+        // HWM 도달 — retry 또는 backpressure 로직
     }
     ```
 
@@ -1388,15 +1388,15 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "Go"
 
     ```go
-    // PUB: publish()로 송신. recv handler 부착 불가
-    pub_sock.Publish("weather", []byte("sunny"))  // OK
+    // PUB: Publish()로 송신. recv handler 부착 불가
+    pubSock.Publish("weather", zlink.NewMessage([]byte("sunny")))  // OK
 
-    // PUB에 send() 사용 → Err(ENOTSUP)
-    // pub_sock.send(b"sunny");  // error: ENOTSUP
+    // PUB에 Send() 사용 시 ENOTSUP 반환
+    // pubSock.Send(zlink.NewMessage([]byte("sunny")))  // error: ENOTSUP
 
-    // SUB: subscribe()로 수신. publish 불가
-    // sub.publish("weather", b"sunny");  // error: ENOTSUP
-    // sub.send(b"sunny");               // error: ENOTSUP
+    // SUB: Subscribe()로 수신. publish 불가
+    // sub.Publish("weather", zlink.NewMessage([]byte("sunny")))  // error: ENOTSUP
+    // sub.Send(zlink.NewMessage([]byte("sunny")))                // error: ENOTSUP
     ```
 
 ---
@@ -1613,10 +1613,10 @@ XPUB는 `zlink_subscription_event()`로 구독 프레임을 수신한다:
 === "Go"
 
     ```go
-    xpub := ctx.XPubSocket()
+    xpub, _ := ctx.XPubSocket()
     xpub.Bind("tcp://*:5557")
 
-    source_rid, subscribed, topic := xpub.SubscriptionEvent()
+    sourceRid, subscribed, topic, _ := xpub.SubscriptionEvent()
     ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
@@ -1755,13 +1755,13 @@ MANUAL 모드에서는 구독 프레임을 수신한 후, 애플리케이션이 
     // MANUAL 모드 활성화
     xpub.SetOption(zlink.OptionPubManual, 1)
 
-    // subscription_event()로 subscribed=true, topic="A"를 받은 뒤
+    // SubscriptionEvent()로 subscribed=true, topic="A"를 받은 뒤
     // 변환된 구독 적용:
     xpub.SetSubscription("XA")
 
     // 발행
-    xpub.Publish("", []byte("A"))  // 구독자에게 도달하지 않음
-    xpub.Publish("", []byte("XA"))  // 구독자가 수신
+    xpub.Publish("", zlink.NewMessage([]byte("A")))   // 구독자에게 도달하지 않음
+    xpub.Publish("", zlink.NewMessage([]byte("XA")))  // 구독자가 수신
     ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_basic()`: A 구독 요청 → B로 변환
@@ -1881,11 +1881,11 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
 
     ```go
     // 프록시 프론트엔드: PUB들이 연결
-    xsub := ctx.XSubSocket()
+    xsub, _ := ctx.XSubSocket()
     xsub.Bind("tcp://*:5556")
 
     // 프록시 백엔드: SUB들이 연결
-    xpub := ctx.XPubSocket()
+    xpub, _ := ctx.XPubSocket()
     xpub.Bind("tcp://*:5557")
 
     // 프록시 실행 (메시지와 구독을 양방향으로 전달)
@@ -2068,7 +2068,7 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
     xpub.SetOption(zlink.OptionPubManual, 1)
 
     for {
-        source_rid, subscribed, topic := xpub.SubscriptionEvent()
+        _, subscribed, topic, _ := xpub.SubscriptionEvent()
 
         if subscribed {
             // 구독 등록
@@ -2190,14 +2190,16 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 === "Go"
 
     ```go
-    xpub := ctx.XPubSocket()
+    xpub, _ := ctx.XPubSocket()
     xpub.Bind("tcp://*:5557")
 
     for {
-        source_rid, subscribed, topic := xpub.SubscriptionEvent()
-        fmt.Printf("%v: %v\n",
-            if subscribed {
-            topic)
+        _, subscribed, topic, _ := xpub.SubscriptionEvent()
+        label := "구독 해제"
+        if subscribed {
+            label = "새 구독"
+        }
+        fmt.Printf("%s: %s\n", label, topic)
     }
     ```
 

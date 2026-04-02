@@ -122,14 +122,18 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
 === "Go"
 
     ```go
-    ctx := zlink.NewContext()
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
+    defer ctx.Close()
 
     // Server side
-    server := ctx.PairSocket()
+    server, err := ctx.PairSocket()
+    if err != nil { log.Fatal(err) }
     server.Bind("tcp://*:5555")
 
     // Client side
-    client := ctx.PairSocket()
+    client, err := ctx.PairSocket()
+    if err != nil { log.Fatal(err) }
     client.Connect("tcp://127.0.0.1:5555")
     ```
 
@@ -291,18 +295,18 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
 
     ```go
     // Server stays in recv model
-    server := ctx.PairSocket()
+    server, _ := ctx.PairSocket()
 
     // Client (send only)
-    client := ctx.PairSocket()
+    client, _ := ctx.PairSocket()
 
     // ... bind/connect ...
 
     // Client → Server
-    client.Send([]byte("Hello"))
+    client.Send(zlink.NewMessage([]byte("Hello")))
 
     // Server → Client
-    server.Send([]byte("World"))
+    server.Send(zlink.NewMessage([]byte("World")))
     ```
 
 ??? example "Full Sample Code"
@@ -393,7 +397,10 @@ Multipart data is sent as a parts array in a single `zlink_send` call.
 === "Go"
 
     ```go
-    server.Send([]byte("foo"), []byte("foobar"))
+    server.SendMultipart([]zlink.Message{
+        zlink.NewMessage([]byte("foo")),
+        zlink.NewMessage([]byte("foobar")),
+    })
 
     // Receiver pulls both frames from one recv() call:
     // parts[0] = "foo", parts[1] = "foobar"
@@ -486,11 +493,13 @@ Use `zlink_recv()` to receive synchronously.
 === "Go"
 
     ```go
-    pair := ctx.PairSocket()
+    pair, _ := ctx.PairSocket()
     pair.Bind("tcp://*:5556")
 
-    source_rid, parts := pair.Recv()
-    // process parts[0..N-1]
+    received, err := pair.Recv()
+    if err != nil { log.Fatal(err) }
+    defer received.Close()
+    // process received parts
     ```
 
 > When HWM is reached, `zlink_send()` blocks (default) or returns
@@ -574,7 +583,10 @@ Multipart send:
 === "Go"
 
     ```go
-    server.Send([]byte("header"), []byte("body"))
+    server.SendMultipart([]zlink.Message{
+        zlink.NewMessage([]byte("header")),
+        zlink.NewMessage([]byte("body")),
+    })
     ```
 
 ## 4. Socket Options
@@ -773,15 +785,15 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 
     ```go
     // Main thread
-    signal := ctx.PairSocket()
+    signal, _ := ctx.PairSocket()
     signal.Bind("inproc://signal")
 
     // Worker thread
-    worker_signal := ctx.PairSocket()
-    worker_signal.Connect("inproc://signal")
+    workerSignal, _ := ctx.PairSocket()
+    workerSignal.Connect("inproc://signal")
 
     // Worker → Main: task completion signal
-    worker_signal.Send([]byte("DONE"))
+    workerSignal.Send(zlink.NewMessage([]byte("DONE")))
     ```
 
 > Reference: `core/tests/test_pair_inproc.cpp` -- bind → connect → bounce pattern
@@ -901,14 +913,15 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 
     ```go
     // Server: wildcard port
-    server := ctx.PairSocket()
+    server, _ := ctx.PairSocket()
     server.Bind("tcp://127.0.0.1:*")
 
     // Query the assigned endpoint
-    endpoint, _ := server.GetOption(zlink.OptionLastEndpoint)
+    status, _ := server.StatusSnapshot()
+    endpoint := status.LocalEndpoint
 
     // Client: connect using the queried endpoint
-    client := ctx.PairSocket()
+    client, _ := ctx.PairSocket()
     client.Connect(endpoint)
     ```
 
@@ -970,7 +983,7 @@ You can also connect using a hostname.
 === "Go"
 
     ```go
-    client := ctx.PairSocket()
+    client, _ := ctx.PairSocket()
     client.Connect("tcp://localhost:5555")
     ```
 
@@ -1053,10 +1066,10 @@ Inter-process communication on the same machine (Linux/macOS).
 === "Go"
 
     ```go
-    server := ctx.PairSocket()
+    server, _ := ctx.PairSocket()
     server.Bind("ipc:///tmp/myapp.ipc")
 
-    client := ctx.PairSocket()
+    client, _ := ctx.PairSocket()
     client.Connect("ipc:///tmp/myapp.ipc")
     ```
 

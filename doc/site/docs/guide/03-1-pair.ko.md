@@ -122,14 +122,18 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
 === "Go"
 
     ```go
-    ctx := zlink.NewContext()
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
+    defer ctx.Close()
 
     // 서버 측
-    server := ctx.PairSocket()
+    server, err := ctx.PairSocket()
+    if err != nil { log.Fatal(err) }
     server.Bind("tcp://*:5555")
 
     // 클라이언트 측
-    client := ctx.PairSocket()
+    client, err := ctx.PairSocket()
+    if err != nil { log.Fatal(err) }
     client.Connect("tcp://127.0.0.1:5555")
     ```
 
@@ -290,18 +294,18 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
 
     ```go
     // 서버는 recv 모드를 유지
-    server := ctx.PairSocket()
+    server, _ := ctx.PairSocket()
 
     // 클라이언트 (송신 전용)
-    client := ctx.PairSocket()
+    client, _ := ctx.PairSocket()
 
     // ... bind/connect ...
 
     // 클라이언트 → 서버
-    client.Send([]byte("Hello"))
+    client.Send(zlink.NewMessage([]byte("Hello")))
 
     // 서버 → 클라이언트
-    server.Send([]byte("World"))
+    server.Send(zlink.NewMessage([]byte("World")))
     ```
 
 ??? example "Full Sample Code"
@@ -392,7 +396,10 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
 === "Go"
 
     ```go
-    server.Send([]byte("foo"), []byte("foobar"))
+    server.SendMultipart([]zlink.Message{
+        zlink.NewMessage([]byte("foo")),
+        zlink.NewMessage([]byte("foobar")),
+    })
 
     // 수신 측은 한 번의 recv() 호출로 두 프레임을 수신:
     // parts[0] = "foo", parts[1] = "foobar"
@@ -485,11 +492,13 @@ PAIR의 public API는 recv/poller-only다.
 === "Go"
 
     ```go
-    pair := ctx.PairSocket()
+    pair, _ := ctx.PairSocket()
     pair.Bind("tcp://*:5556")
 
-    source_rid, parts := pair.Recv()
-    // parts[0..N-1] 처리
+    received, err := pair.Recv()
+    if err != nil { log.Fatal(err) }
+    defer received.Close()
+    // received parts 처리
     ```
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
@@ -573,7 +582,10 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 === "Go"
 
     ```go
-    server.Send([]byte("header"), []byte("body"))
+    server.SendMultipart([]zlink.Message{
+        zlink.NewMessage([]byte("header")),
+        zlink.NewMessage([]byte("body")),
+    })
     ```
 
 ## 4. 소켓 옵션
@@ -772,15 +784,15 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
     ```go
     // 메인 스레드
-    signal := ctx.PairSocket()
+    signal, _ := ctx.PairSocket()
     signal.Bind("inproc://signal")
 
     // 워커 스레드
-    worker_signal := ctx.PairSocket()
-    worker_signal.Connect("inproc://signal")
+    workerSignal, _ := ctx.PairSocket()
+    workerSignal.Connect("inproc://signal")
 
     // 워커 → 메인: 작업 완료 시그널
-    worker_signal.Send([]byte("DONE"))
+    workerSignal.Send(zlink.NewMessage([]byte("DONE")))
     ```
 
 > 참고: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce 패턴
@@ -900,14 +912,15 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
     ```go
     // 서버: 와일드카드 포트
-    server := ctx.PairSocket()
+    server, _ := ctx.PairSocket()
     server.Bind("tcp://127.0.0.1:*")
 
     // 할당된 엔드포인트 조회
-    endpoint, _ := server.GetOption(zlink.OptionLastEndpoint)
+    status, _ := server.StatusSnapshot()
+    endpoint := status.LocalEndpoint
 
     // 클라이언트: 조회된 엔드포인트로 연결
-    client := ctx.PairSocket()
+    client, _ := ctx.PairSocket()
     client.Connect(endpoint)
     ```
 
@@ -969,7 +982,7 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 === "Go"
 
     ```go
-    client := ctx.PairSocket()
+    client, _ := ctx.PairSocket()
     client.Connect("tcp://localhost:5555")
     ```
 
@@ -1052,10 +1065,10 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 === "Go"
 
     ```go
-    server := ctx.PairSocket()
+    server, _ := ctx.PairSocket()
     server.Bind("ipc:///tmp/myapp.ipc")
 
-    client := ctx.PairSocket()
+    client, _ := ctx.PairSocket()
     client.Connect("ipc:///tmp/myapp.ipc")
     ```
 

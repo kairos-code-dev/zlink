@@ -95,11 +95,13 @@ A Context is the top-level object in zlink that manages the I/O thread pool and 
 
     ```go
     // Create
-    ctx := zlink.NewContext()
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
     ctx.SetIoThreads(4) // default 1; 4 is optimal under heavy load
     ioThreads := ctx.IoThreads()
 
     // Terminate
+    defer ctx.Close()
     ```
 
 ### Context Options
@@ -177,9 +179,10 @@ can share the same socket handle to call send/recv/bind/connect, etc.
 === "Go"
 
     ```go
-    socket := ctx.DealerSocket()
+    socket, err := ctx.DealerSocket()
+    if err != nil { log.Fatal(err) }
+    defer socket.Close()
     // ... use ...
-    // Close explicitly
     ```
 
 ### 2.2 Socket Type Constants
@@ -640,20 +643,22 @@ directly. Sockets start in pull mode by default.
 === "Go"
 
     ```go
-    socket := ctx.PairSocket()
+    socket, err := ctx.PairSocket()
+    if err != nil { log.Fatal(err) }
     socket.Bind("tcp://*:5556")
 
     // Blocking recv
-    source_rid, parts, _ := socket.Recv()
-    for (i, part) in parts.iter().enumerate() {
-        fmt.Printf("Frame {}: %v\n", i, part.as_str()?)
+    received, err := socket.Recv()
+    if err != nil { log.Fatal(err) }
+    defer received.Close()
+    for i := 0; i < received.PartCount(); i++ {
+        fmt.Printf("Frame %d: %s\n", i, string(received.Part(i).Data()))
     }
 
     // Non-blocking recv
-    received, err := socket.RecvDontWait()
-        Ok((rid, parts)) => { /* process */ }
-        Err(e) if e.kind() == zlink::ErrorKind::Again => {}
-        Err(e) => return Err(e),
+    received2, err := socket.RecvDontWait()
+    if err != nil {
+        // EAGAIN — no message available
     }
     ```
 
@@ -753,12 +758,12 @@ removed for the lifetime of the socket. If a handler has been attached,
 === "Go"
 
     ```go
-    socket := ctx.StreamSocket()
-    socket.on_message(|rid, parts| {
-        for (i, part) in parts.iter().enumerate() {
-            fmt.Printf("Frame {}: %v\n", i, part.as_str()?)
+    socket, err := ctx.StreamSocket()
+    if err != nil { log.Fatal(err) }
+    socket.OnMessage(func(rid zlink.RoutingID, parts []zlink.Message) {
+        for i, part := range parts {
+            fmt.Printf("Frame %d: %s\n", i, string(part.Data()))
         }
-
     })
     ```
 
@@ -862,8 +867,8 @@ separate thread.
 
     ```go
     err := socket.Send(zlink.NewMessage(data))
-         => {}
-        Err(e) => eprintln!("Error: {}", e),
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
     }
     ```
 
@@ -1110,24 +1115,32 @@ Key error codes:
 
     ```go
     func main() {
-        ctx := zlink.NewContext()
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
 
         // ROUTER (server)
-        router := ctx.RouterSocket()
+        router, err := ctx.RouterSocket()
+        if err != nil { log.Fatal(err) }
+        defer router.Close()
         router.Bind("tcp://*:5555")
 
         // DEALER (client)
-        dealer := ctx.DealerSocket()
+        dealer, err := ctx.DealerSocket()
+        if err != nil { log.Fatal(err) }
+        defer dealer.Close()
         dealer.Connect("tcp://127.0.0.1:5555")
 
         // DEALER → ROUTER
         dealer.Send(zlink.NewMessage([]byte("request")))
 
         // Receive and print
-        rid, parts, _ := router.Recv()
-        fmt.Printf("Received from [{}]: %v\n", rid, parts[0].as_str()?)
-
-
+        received, err := router.Recv()
+        if err != nil { log.Fatal(err) }
+        defer received.Close()
+        part, _ := received.SinglePartOrError()
+        fmt.Printf("Received from [%v]: %s\n",
+            received.RoutingID(), string(part.Data()))
     }
     ```
 

@@ -75,7 +75,8 @@ are not TLS configuration surfaces and fail with `ENOTSUP`.
 === "Go"
 
     ```go
-    socket := ctx.RouterSocket()
+    socket, err := ctx.RouterSocket()
+    if err != nil { log.Fatal(err) }
     socket.SetTLSServer("/path/to/server.crt", "/path/to/server.key", false)
     socket.Bind("tls://*:5555")
     ```
@@ -145,7 +146,8 @@ are not TLS configuration surfaces and fail with `ENOTSUP`.
 === "Go"
 
     ```go
-    socket := ctx.DealerSocket()
+    socket, err := ctx.DealerSocket()
+    if err != nil { log.Fatal(err) }
     socket.SetTLSClient("/path/to/ca.crt", "server.example.com", false)
     socket.Connect("tls://server.example.com:5555")
     ```
@@ -219,7 +221,8 @@ WSS is a transport that adds TLS encryption to ws. It requires additional config
 === "Go"
 
     ```go
-    socket := ctx.StreamSocket()
+    socket, err := ctx.StreamSocket()
+    if err != nil { log.Fatal(err) }
     socket.SetTLSServer("/path/to/cert.pem", "/path/to/key.pem", false)
     socket.Bind("wss://*:8443")
     ```
@@ -297,7 +300,7 @@ Configures the server-side TLS certificate and key.
 === "Go"
 
     ```go
-    socket.SetTLSServer(cert_path, key_path, require_client_cert)
+    socket.SetTLSServer(certPath, keyPath, requireClientCert)
     ```
 
 | Parameter | Type | Description |
@@ -408,7 +411,7 @@ Configures the client-side TLS CA certificate, hostname verification, and system
 === "Go"
 
     ```go
-    socket.SetTLSClient(ca_cert_path, hostname, trust_system)
+    socket.SetTLSClient(caCertPath, hostname, trustSystem)
     ```
 
 | Parameter | Type | Description |
@@ -494,7 +497,7 @@ Configures the client-side TLS CA certificate, hostname verification, and system
     socket.SetTLSClient("ca.crt", "server.example.com", false)
 
     // System CA only
-    socket.SetTLSClient(None, None, true)
+    socket.SetTLSClient("", "", true)
     ```
 
 - When `ca_cert_path` is NULL, only the system CA store is used (if `trust_system=1`)
@@ -827,22 +830,24 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
 
     ```go
     func main() {
-        ctx := zlink.NewContext()
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
 
-        server := ctx.PairSocket()
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
         server.SetTLSServer("server.crt", "server.key", false)
         server.Bind("tls://*:5555")
 
-        client := ctx.PairSocket()
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
         client.SetTLSClient("ca.crt", "localhost", false)
         client.Connect("tls://127.0.0.1:5555")
 
         client.Send(zlink.NewMessage([]byte("Secure Hello")))
 
         rid, parts, _ := server.Recv()
-        fmt.Printf("Received: %v\n", parts[0].as_str()?)
-
-
+        _ = rid
+        fmt.Printf("Received: %s\n", string(parts[0].Data()))
     }
     ```
 
@@ -949,9 +954,11 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
 === "Go"
 
     ```go
-    ctx := zlink.NewContext()
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
 
-    server := ctx.StreamSocket()
+    server, err := ctx.StreamSocket()
+    if err != nil { log.Fatal(err) }
     server.SetTLSServer("server.crt", "server.key", false)
     server.SetOption(zlink.OptionLinger, 0)
     server.Bind("wss://*:8443")

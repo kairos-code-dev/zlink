@@ -1334,30 +1334,31 @@ DEALER → ROUTER는 round-robin이 고정되어 분배 비율을 제어할 수 
     // 서버 3대
     sa, err := ctx.RouterSocket()
     if err != nil { panic(err) }
-    sa.set_routing_id("SA")?
+    sa.SetRoutingID(zlink.NewRoutingID([]byte("SA")))
     sa.Bind("tcp://127.0.0.1:5560")
     sb, err := ctx.RouterSocket()
     if err != nil { panic(err) }
-    sb.set_routing_id("SB")?
+    sb.SetRoutingID(zlink.NewRoutingID([]byte("SB")))
     sb.Bind("tcp://127.0.0.1:5561")
     sc, err := ctx.RouterSocket()
     if err != nil { panic(err) }
-    sc.set_routing_id("SC")?
+    sc.SetRoutingID(zlink.NewRoutingID([]byte("SC")))
     sc.Bind("tcp://127.0.0.1:5562")
 
     // 클라이언트 ROUTER
     client, err := ctx.RouterSocket()
     if err != nil { panic(err) }
-    client.SetRoutingId("C1")
+    client.SetRoutingID(zlink.NewRoutingID([]byte("C1")))
     client.Connect("tcp://127.0.0.1:5560")
     client.Connect("tcp://127.0.0.1:5561")
     client.Connect("tcp://127.0.0.1:5562")
 
     // 가중치 기반 대상 선택: SA=50%, SB=30%, SC=20%
     roll := rand.Intn(100)
-    target := "weighted"  /* select among "SA", "SB", "SC" */
-    client.send_rid(&zlink::RoutingId::from(target),
-                        zlink.NewMessage([]byte("request")))
+    var target string
+    if roll < 50 { target = "SA" } else if roll < 80 { target = "SB" } else { target = "SC" }
+    client.SendTo(zlink.NewRoutingID([]byte(target)),
+        zlink.NewMessage([]byte("request")))
     ```
 
 > DEALER → ROUTER의 round-robin이 충분하면 DEALER를 사용하고,

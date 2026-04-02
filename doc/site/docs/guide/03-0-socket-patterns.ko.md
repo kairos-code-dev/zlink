@@ -354,7 +354,7 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
     // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
     socket, err := ctx.StreamSocket()
     if err != nil { panic(err) }
-    socket.RecvHandler(func(source_rid zlink.RoutingID, parts []zlink.Message) {
+    socket.RecvHandler(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
         // 수신 메시지 처리
     })
 

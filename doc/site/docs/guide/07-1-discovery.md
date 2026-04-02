@@ -171,19 +171,21 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 === "Go"
 
     ```go
-    ctx := zlink.NewContext()
-    registry := zlink::Registry::new(&ctx)
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
+    registry, err := zlink.NewRegistry(ctx)
+    if err != nil { log.Fatal(err) }
 
-    registry.add_peer("tcp://registry2:5550")
-    registry.add_peer("tcp://registry3:5550")
-    registry.set_heartbeat(5000, 15000)
-    registry.set_broadcast_interval(30000)
-    registry.bind("tcp://*:5550", "tcp://*:5551")
+    registry.AddPeer("tcp://registry2:5550")
+    registry.AddPeer("tcp://registry3:5550")
+    registry.SetHeartbeat(5000, 15000)
+    registry.SetBroadcastInterval(30000)
+    registry.Bind("tcp://*:5550", "tcp://*:5551")
 
     // ... application logic ...
 
-    registry.destroy()
-    ctx.term()
+    registry.Destroy()
+    ctx.Term()
     ```
 
 ## 3. Using Discovery
@@ -332,21 +334,24 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 === "Go"
 
     ```go
-    discovery := zlink::Discovery::new(&ctx,
-        zlink::ServiceType::Spot, "order-service")
+    discovery, err := zlink.NewDiscovery(ctx,
+        zlink.ServiceTypeSpot, "order-service")
+    if err != nil { log.Fatal(err) }
 
-    discovery.connect_registry("tcp://registry1:5551")
-    discovery.connect_registry("tcp://registry2:5551")
+    discovery.ConnectRegistry("tcp://registry1:5551")
+    discovery.ConnectRegistry("tcp://registry2:5551")
 
-    mon := discovery.service_monitor_open(&zlink::ServiceMonitorOptions::new(
-        zlink::DISCOVERY_MONITOR_EVENT_SERVICE_UP
-        | zlink::DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED))
-    mon.set_handler(on_discovery_event);
+    opts := zlink.ServiceMonitorOptions{Events:
+        zlink.DiscoveryMonitorEventServiceUp |
+        zlink.DiscoveryMonitorEventProvidersChanged}
+    mon, err := discovery.ServiceMonitorOpen(opts)
+    if err != nil { log.Fatal(err) }
+    mon.SetHandler(onDiscoveryEvent)
 
     // ... Discovery delivers events through the callback ...
 
     mon.Close()
-    discovery.destroy()
+    discovery.Destroy()
     ```
 
 ## 3.1 Socket Family Discovery
@@ -468,17 +473,19 @@ communication at the socket level without the SPOT abstraction.
 === "Go"
 
     ```go
-    discovery := zlink::Discovery::new(&ctx,
-        zlink::ServiceType::Socket, "price-feed")
-    discovery.connect_registry("tcp://registry1:5551")
+    discovery, err := zlink.NewDiscovery(ctx,
+        zlink.ServiceTypeSocket, "price-feed")
+    if err != nil { log.Fatal(err) }
+    discovery.ConnectRegistry("tcp://registry1:5551")
 
-    pub_sock := ctx.PubSocket()
-    pub_sock.Bind("tcp://*:9100")
-    pub_sock.attach_discovery(&discovery)
+    pubSock, err := ctx.PubSocket()
+    if err != nil { log.Fatal(err) }
+    pubSock.Bind("tcp://*:9100")
+    pubSock.AttachDiscovery(discovery)
 
     // ... publish messages ...
 
-    discovery.destroy()
+    discovery.Destroy()
     ```
 
 **Role matching:** Discovery uses service roles to determine which remote

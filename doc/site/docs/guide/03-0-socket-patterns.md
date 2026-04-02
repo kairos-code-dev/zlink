@@ -353,7 +353,7 @@ The basic pattern common to all socket types:
     // 2–3. Create Socket with callback (raw STREAM example)
     socket, err := ctx.StreamSocket()
     if err != nil { panic(err) }
-    socket.RecvHandler(func(source_rid zlink.RoutingID, parts []zlink.Message) {
+    socket.RecvHandler(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
         // process received message
     })
 

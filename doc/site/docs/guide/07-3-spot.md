@@ -175,13 +175,16 @@ it **never re-publishes to the mesh** (loop prevention).
 === "Go"
 
     ```go
-    ctx := zlink.NewContext()
-    discovery := zlink::Discovery::new(&ctx, zlink::ServiceType::Spot, "spot-node")
-    discovery.connect_registry("tcp://registry1:5551")
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
+    discovery, err := zlink.NewDiscovery(ctx, zlink.ServiceTypeSpot, "spot-node")
+    if err != nil { log.Fatal(err) }
+    discovery.ConnectRegistry("tcp://registry1:5551")
 
-    node := zlink::SpotNode::new(&ctx)
+    node, err := ctx.SpotNode()
+    if err != nil { log.Fatal(err) }
     node.Bind("tcp://*:9000")
-    node.attach_discovery(&discovery)
+    node.AttachDiscovery(discovery)
     ```
 
 > `SpotNode` is the topology and lifecycle owner for mesh participation.
@@ -257,8 +260,8 @@ actual assigned endpoint from `local_endpoint`:
 
     ```go
     node.Bind("tcp://127.0.0.1:0")
-    status := node.status_snapshot()
-    // status.local_endpoint contains e.g. "tcp://127.0.0.1:43521"
+    status, _ := node.StatusSnapshot()
+    // status.LocalEndpoint contains e.g. "tcp://127.0.0.1:43521"
     ```
 
 ### 3.2 Manual Mesh
@@ -331,10 +334,11 @@ actual assigned endpoint from `local_endpoint`:
 === "Go"
 
     ```go
-    node := zlink::SpotNode::new(&ctx)
+    node, err := ctx.SpotNode()
+    if err != nil { log.Fatal(err) }
     node.Bind("tcp://*:9000")
-    node.connect_peer("tcp://node2:9000")
-    node.connect_peer("tcp://node3:9000")
+    node.ConnectPeer("tcp://node2:9000")
+    node.ConnectPeer("tcp://node3:9000")
     ```
 
 **Note:** In a manual mesh there is no Discovery, so there is no registry
@@ -389,7 +393,8 @@ topology visibility. This is an intended limitation.
 === "Go"
 
     ```go
-    spot := zlink::Spot::new(&node)
+    spot, err := node.Spot()
+    if err != nil { log.Fatal(err) }
     ```
 
 `zlink_spot_new(node)` creates a unified facade that borrows an existing
@@ -454,7 +459,7 @@ surface.
 === "Go"
 
     ```go
-    spot.publish("chat:room1:message", b"hello world")
+    spot.Publish("chat:room1:message", zlink.NewMessage([]byte("hello world")))
     ```
 
 ### 4.3 Subscribing and unsubscribing
@@ -532,11 +537,11 @@ surface.
 === "Go"
 
     ```go
-    spot.set_subscription("chat:room1:message")
-    spot.set_subscription("chat:room1:*")
+    spot.SetSubscription("chat:room1:message")
+    spot.SetSubscription("chat:room1:*")
 
-    spot.unset_subscription("chat:room1:message")
-    spot.unset_subscription("chat:room1:*")
+    spot.UnsetSubscription("chat:room1:message")
+    spot.UnsetSubscription("chat:room1:*")
     ```
 
 ### 4.4 Receiving Messages
@@ -634,11 +639,12 @@ In recv model, pull messages with `zlink_subscribe()`.
 === "Go"
 
     ```go
-    spot := zlink::Spot::new(&node)
-    spot.set_subscription("chat:room1:message")
+    spot, _ := node.Spot()
+    spot.SetSubscription("chat:room1:message")
 
-    let (topic, parts) = spot.subscribe()
-    fmt.Printf("Topic: {}, Parts: %v\n", topic, parts.len())
+    topic, parts, err := spot.Subscribe()
+    if err != nil { log.Fatal(err) }
+    fmt.Printf("Topic: %s, Parts: %d\n", topic, len(parts))
     ```
 
 ??? example "Full Sample Code"
@@ -738,10 +744,10 @@ dispatched automatically through that callback.
 === "Go"
 
     ```go
-    spot := zlink::Spot::new(&node)
-    spot.subscribe_handler(|source_rid, topic, parts| {
-        fmt.Printf("Topic: {}, Parts: %v\n", topic, parts.len())
-    });
+    spot, _ := node.Spot()
+    spot.SubscribeHandler(func(sourceRid zlink.RoutingID, topic string, parts []zlink.Message) {
+        fmt.Printf("Topic: %s, Parts: %d\n", topic, len(parts))
+    })
     ```
 
 ??? example "Full Sample Code"
@@ -893,9 +899,9 @@ ack/retry, exactly-once semantics, or past message replay for late joiners.
 === "Go"
 
     ```go
-    spot.destroy()
-    node.destroy()
-    discovery.destroy()
+    spot.Destroy()
+    node.Destroy()
+    discovery.Destroy()
     ```
 
 **Destroy order:** Destroy `spot` first, then `SpotNode`, and finally

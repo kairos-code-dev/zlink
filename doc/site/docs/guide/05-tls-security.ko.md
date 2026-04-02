@@ -76,7 +76,8 @@ handle은 TLS 설정 surface가 아니며 `ENOTSUP`로 실패한다.
 === "Go"
 
     ```go
-    socket := ctx.RouterSocket()
+    socket, err := ctx.RouterSocket()
+    if err != nil { log.Fatal(err) }
     socket.SetTLSServer("/path/to/server.crt", "/path/to/server.key", false)
     socket.Bind("tls://*:5555")
     ```
@@ -146,7 +147,8 @@ handle은 TLS 설정 surface가 아니며 `ENOTSUP`로 실패한다.
 === "Go"
 
     ```go
-    socket := ctx.DealerSocket()
+    socket, err := ctx.DealerSocket()
+    if err != nil { log.Fatal(err) }
     socket.SetTLSClient("/path/to/ca.crt", "server.example.com", false)
     socket.Connect("tls://server.example.com:5555")
     ```
@@ -220,7 +222,8 @@ WSS는 ws에 TLS 암호화를 추가한 transport이다. ws 대비 추가 설정
 === "Go"
 
     ```go
-    socket := ctx.StreamSocket()
+    socket, err := ctx.StreamSocket()
+    if err != nil { log.Fatal(err) }
     socket.SetTLSServer("/path/to/cert.pem", "/path/to/key.pem", false)
     socket.Bind("wss://*:8443")
     ```
@@ -298,7 +301,7 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 === "Go"
 
     ```go
-    socket.SetTLSServer(cert_path, key_path, require_client_cert)
+    socket.SetTLSServer(certPath, keyPath, requireClientCert)
     ```
 
 | 파라미터 | 타입 | 설명 |
@@ -409,7 +412,7 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 === "Go"
 
     ```go
-    socket.SetTLSClient(ca_cert_path, hostname, trust_system)
+    socket.SetTLSClient(caCertPath, hostname, trustSystem)
     ```
 
 | 파라미터 | 타입 | 설명 |
@@ -491,11 +494,11 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 === "Go"
 
     ```go
-    // 사설 CA + 호스트명 검증
+    // Private CA with hostname verification
     socket.SetTLSClient("ca.crt", "server.example.com", false)
 
-    // 시스템 CA만 사용
-    socket.SetTLSClient(None, None, true)
+    // System CA only
+    socket.SetTLSClient("", "", true)
     ```
 
 - `ca_cert_path`가 NULL이면 시스템 CA 스토어만 사용 (`trust_system=1`인 경우)
@@ -828,22 +831,24 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
 
     ```go
     func main() {
-        ctx := zlink.NewContext()
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
 
-        server := ctx.PairSocket()
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
         server.SetTLSServer("server.crt", "server.key", false)
         server.Bind("tls://*:5555")
 
-        client := ctx.PairSocket()
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
         client.SetTLSClient("ca.crt", "localhost", false)
         client.Connect("tls://127.0.0.1:5555")
 
         client.Send(zlink.NewMessage([]byte("Secure Hello")))
 
         rid, parts, _ := server.Recv()
-        fmt.Printf("수신: %v\n", parts[0].as_str()?)
-
-
+        _ = rid
+        fmt.Printf("Received: %s\n", string(parts[0].Data()))
     }
     ```
 
@@ -950,14 +955,16 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
 === "Go"
 
     ```go
-    ctx := zlink.NewContext()
+    ctx, err := zlink.NewContext()
+    if err != nil { log.Fatal(err) }
 
-    server := ctx.StreamSocket()
+    server, err := ctx.StreamSocket()
+    if err != nil { log.Fatal(err) }
     server.SetTLSServer("server.crt", "server.key", false)
     server.SetOption(zlink.OptionLinger, 0)
     server.Bind("wss://*:8443")
 
-    // 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+    // External raw WSS client connects to this endpoint.
     ```
 
 ---

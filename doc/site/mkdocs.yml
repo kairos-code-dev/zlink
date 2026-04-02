@@ -67,6 +67,15 @@ plugins:
             Performance: 성능
             Thread Safety: 스레드 안전성
             Socket Options: 소켓 옵션
+            API Reference: API 레퍼런스
+            C API: C API
+            Binding API: 바인딩 API
+            Internals: 내부 구조
+            Architecture: 아키텍처
+            Threading Model: 스레딩 모델
+            Stream Socket: 스트림 소켓
+            Protocol ZMP: ZMP 프로토콜
+            Protocol Raw: Raw 프로토콜
 
 nav:
   - Home: index.md
@@ -94,6 +103,20 @@ nav:
     - Performance: guide/10-performance.md
     - Thread Safety: guide/11-thread-safety.md
     - Socket Options: guide/12-socket-options.md
+  - API Reference:
+    - Socket: api/socket.md
+    - Events: api/events.md
+    - Monitoring: api/monitoring.md
+    - SPOT: api/spot.md
+    - Registry: api/registry.md
+  - Internals:
+    - Architecture: internals/architecture.md
+    - Threading Model: internals/threading-model.md
+    - Thread Safety: internals/thread-safety.md
+    - Stream Socket: internals/stream-socket.md
+    - Socket Options: internals/socket-option-defaults.md
+    - Protocol ZMP: internals/protocol-zmp.md
+    - Protocol Raw: internals/protocol-raw.md
 
 markdown_extensions:
   - pymdownx.highlight:

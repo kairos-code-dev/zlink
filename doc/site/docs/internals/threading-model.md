@@ -14,16 +14,16 @@
 ### 1.2 Thread Diagram
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Application Threads                                     │
-│  zlink_send() / zlink_recv()                             │
-│  Recommended: access each socket from a single thread    │
+│  Application Threads                                    │
+│  zlink_send() / zlink_recv()                            │
+│  Recommended: access each socket from a single thread   │
 └──────────────────────┬──────────────────────────────────┘
                        │ Lock-free Pipes (YPipe)
 ┌──────────────────────┼──────────────────────────────────┐
-│  I/O Threads                                             │
-│  Thread 0 (io_context) │ Thread 1 │ ... │ Thread N       │
-│  Async I/O, encoding/decoding, network send/receive      │
-└──────────────────────────────────────────────────────────┘
+│  I/O Threads                                            │
+│  Thread 0 (io_context) │ Thread 1 │ ... │ Thread N      │
+│  Async I/O, encoding/decoding, network send/receive     │
+└─────────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────────┐
 │  Reaper Thread                                           │
 │  Terminated socket/session resource cleanup, deferred    │

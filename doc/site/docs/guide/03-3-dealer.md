@@ -12,12 +12,12 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
 **Valid socket combinations:** DEALER ↔ ROUTER, DEALER ↔ DEALER
 
 ```
-┌──────────┐                ┌────────┐
+┌──────────┐                 ┌────────┐
 │ DEALER 1 │────────────────►│        │
-└──────────┘  Round-robin   │ ROUTER │
-┌──────────┐                │        │
+└──────────┘  Round-robin    │ ROUTER │
+┌──────────┐                 │        │
 │ DEALER 2 │────────────────►│        │
-└──────────┘                └────────┘
+└──────────┘                 └────────┘
 ```
 
 ## 2. Basic Usage

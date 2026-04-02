@@ -18,19 +18,19 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
 
 ```
 ┌──────────────────────────────────────────┐
-│            Registry Cluster               │
+│            Registry Cluster              │
 │  Registry1(PUB+ROUTER) ◄──► Registry2    │
 │       │              ◄──► Registry3      │
-│       │ (service list broadcast)          │
+│       │ (service list broadcast)         │
 └───────┼──────────────────────────────────┘
         │
    ┌────┴─────────────────────────────┐
-   │           Discovery (SUB)         │
+   │           Discovery (SUB)        │
    │  ┌──────────┬─────────────────┐  │
    │  │ SPOT     │ Socket Family   │  │
-   │  │(PUB+SUB) │ (R/D/P/S)      │  │
+   │  │(PUB+SUB) │ (R/D/P/S)       │  │
    │  └──────────┴─────────────────┘  │
-   └───────────────────────────────────┘
+   └──────────────────────────────────┘
 ```
 
 ## 2. Registry Setup and Execution

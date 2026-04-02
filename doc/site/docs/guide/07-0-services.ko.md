@@ -10,27 +10,27 @@ zlink의 서비스 계층은 7종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
 ## 2. 아키텍처
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Application                           │
-│              SPOT (발행/구독)  ·  소켓 패밀리              │
-├─────────────────────────────────────────────────────────┤
-│  Public API Facade  (service_api · service_*_api)        │
-│  validate + delegate → service-local access seam         │
-├─────────────────────────────────────────────────────────┤
-│  Service Access Layer                                    │
-│  discovery_access · registry_access                      │
-│  spot_node_access · spot_subject_access                  │
-│  service_public_api_guard (admission/close guard)        │
-├─────────────────────────────────────────────────────────┤
-│  Service Runtime                                         │
-│  Discovery: bootstrap·state·update·uplink·registry_client│
-│  SPOT: node·data_plane(forwarding·protocol)·pub·sub      │
-├─────────────────────────────────────────────────────────┤
-│  Discovery (서비스 발견) · Registry (서비스 등록소)        │
+┌───────────────────────────────────────────────────────────┐
+│                    Application                            │
+│              SPOT (발행/구독)  ·  소켓 패밀리             │
+├───────────────────────────────────────────────────────────┤
+│  Public API Facade  (service_api · service_*_api)         │
+│  validate + delegate → service-local access seam          │
+├───────────────────────────────────────────────────────────┤
+│  Service Access Layer                                     │
+│  discovery_access · registry_access                       │
+│  spot_node_access · spot_subject_access                   │
+│  service_public_api_guard (admission/close guard)         │
+├───────────────────────────────────────────────────────────┤
+│  Service Runtime                                          │
+│  Discovery: bootstrap·state·update·uplink·registry_client │
+│  SPOT: node·data_plane(forwarding·protocol)·pub·sub       │
+├───────────────────────────────────────────────────────────┤
+│  Discovery (서비스 발견) · Registry (서비스 등록소)       │
 │  subscribe · heartbeat · broadcast SERVICE_LIST           │
-├─────────────────────────────────────────────────────────┤
+├───────────────────────────────────────────────────────────┤
 │              zlink Core (8종 소켓 + 6종 Transport)        │
-└─────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────┘
 ```
 
 - **Public API Facade**는 C API 진입점으로, handle validation 후 service-local access seam으로 위임한다. concrete service 세부를 직접 알지 않는다.

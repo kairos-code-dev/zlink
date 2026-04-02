@@ -45,7 +45,7 @@ XSUB(`filter=false`)은 `!false = true`이므로 `match()`를 건너뛴다.
 ```
 PUB ──── XSUB ═══ XPUB ──── SUB
           │         │
-          │  프록시  │
+          │  프록시 │
           └─────────┘
 ```
 

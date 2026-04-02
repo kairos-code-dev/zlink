@@ -7,27 +7,27 @@ The zlink service layer is a set of **high-level distributed service features** 
 ## 2. Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Application                           │
+┌───────────────────────────────────────────────────────────┐
+│                    Application                            │
 │              SPOT (pub/sub)  ·  Socket Family             │
-├─────────────────────────────────────────────────────────┤
-│  Public API Facade  (service_api · service_*_api)        │
-│  validate + delegate → service-local access seam         │
-├─────────────────────────────────────────────────────────┤
-│  Service Access Layer                                    │
-│  discovery_access · registry_access                      │
-│  spot_node_access · spot_subject_access                  │
-│  service_public_api_guard (admission/close guard)        │
-├─────────────────────────────────────────────────────────┤
-│  Service Runtime                                         │
-│  Discovery: bootstrap·state·update·uplink·registry_client│
-│  SPOT: node·data_plane(forwarding·protocol)·pub·sub      │
-├─────────────────────────────────────────────────────────┤
-│  Discovery (service discovery) · Registry (service reg.) │
+├───────────────────────────────────────────────────────────┤
+│  Public API Facade  (service_api · service_*_api)         │
+│  validate + delegate → service-local access seam          │
+├───────────────────────────────────────────────────────────┤
+│  Service Access Layer                                     │
+│  discovery_access · registry_access                       │
+│  spot_node_access · spot_subject_access                   │
+│  service_public_api_guard (admission/close guard)         │
+├───────────────────────────────────────────────────────────┤
+│  Service Runtime                                          │
+│  Discovery: bootstrap·state·update·uplink·registry_client │
+│  SPOT: node·data_plane(forwarding·protocol)·pub·sub       │
+├───────────────────────────────────────────────────────────┤
+│  Discovery (service discovery) · Registry (service reg.)  │
 │  subscribe · heartbeat · broadcast SERVICE_LIST           │
-├─────────────────────────────────────────────────────────┤
+├───────────────────────────────────────────────────────────┤
 │              zlink Core (8 socket types + 6 transports)   │
-└─────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────┘
 ```
 
 - **Public API Facade** is the C API entry point that validates handles and delegates to service-local access seams. It does not know concrete service details.

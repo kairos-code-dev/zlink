@@ -20,41 +20,41 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 ## 2. 아키텍처 개요
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  Application / Bindings                               │
-│  C callers · cpp · dotnet · java · node · python      │
-├──────────────────────────────────────────────────────┤
-│  Public API Facade  (core/src/api/)                   │
-│  context_api · socket_api · message_api               │
-│  service_api · poller_api · monitor_api               │
-│  validate + delegate, per-handle admission guard      │
-├──────────────────────────────────────────────────────┤
-│  Service Layer                                        │
-│  Discovery · SPOT · Registry                          │
-│  service access seam (*_access) · lifecycle · runtime │
-├──────────────────────────────────────────────────────┤
-│  Socket Semantic / Runtime                            │
-│  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM│
-│  semantic entrypoint + runtime components             │
-│  (dispatch · monitor · endpoint · lifecycle)          │
-├──────────────────────────────────────────────────────┤
-│  Runtime Core  (core/src/core/)                       │
-│  ctx · own · reaper · multipart_send_txn              │
-│  options dispatch (core_socket · transport · protocol)│
-│  close/drain/finalization contract                    │
-├──────────────────────────────────────────────────────┤
-│  Engine Layer (Boost.Asio)                            │
-│  asio_zmp_engine — ZMP v1.0 Protocol (8B 고정 헤더)   │
-│  Proactor 패턴 · Speculative I/O · Backpressure       │
-├──────────────────────────────────────────────────────┤
-│  Transport / Protocol                                 │
-│  tcp · ipc · inproc · ws — 평문                       │
-│  tls · wss             — OpenSSL 암호화               │
-├──────────────────────────────────────────────────────┤
-│  Core Infrastructure                                  │
-│  msg_t(64B 고정) · pipe_t(Lock-free YPipe)            │
-│  ctx_t(I/O Thread Pool) · session_base_t(Bridge)      │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  Application / Bindings                                │
+│  C callers · cpp · dotnet · java · node · python       │
+├────────────────────────────────────────────────────────┤
+│  Public API Facade  (core/src/api/)                    │
+│  context_api · socket_api · message_api                │
+│  service_api · poller_api · monitor_api                │
+│  validate + delegate, per-handle admission guard       │
+├────────────────────────────────────────────────────────┤
+│  Service Layer                                         │
+│  Discovery · SPOT · Registry                           │
+│  service access seam (*_access) · lifecycle · runtime  │
+├────────────────────────────────────────────────────────┤
+│  Socket Semantic / Runtime                             │
+│  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM   │
+│  semantic entrypoint + runtime components              │
+│  (dispatch · monitor · endpoint · lifecycle)           │
+├────────────────────────────────────────────────────────┤
+│  Runtime Core  (core/src/core/)                        │
+│  ctx · own · reaper · multipart_send_txn               │
+│  options dispatch (core_socket · transport · protocol) │
+│  close/drain/finalization contract                     │
+├────────────────────────────────────────────────────────┤
+│  Engine Layer (Boost.Asio)                             │
+│  asio_zmp_engine — ZMP v1.0 Protocol (8B 고정 헤더)    │
+│  Proactor 패턴 · Speculative I/O · Backpressure        │
+├────────────────────────────────────────────────────────┤
+│  Transport / Protocol                                  │
+│  tcp · ipc · inproc · ws — 평문                        │
+│  tls · wss             — OpenSSL 암호화                │
+├────────────────────────────────────────────────────────┤
+│  Core Infrastructure                                   │
+│  msg_t(64B 고정) · pipe_t(Lock-free YPipe)             │
+│  ctx_t(I/O Thread Pool) · session_base_t(Bridge)       │
+└────────────────────────────────────────────────────────┘
 ```
 
 각 계층의 핵심 역할:

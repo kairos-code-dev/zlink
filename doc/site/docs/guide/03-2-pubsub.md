@@ -43,7 +43,7 @@ XSUB (`filter=false`) evaluates `!false = true` and skips `match()` entirely.
 ```
 PUB ──── XSUB ═══ XPUB ──── SUB
           │         │
-          │  proxy   │
+          │  proxy  │
           └─────────┘
 ```
 

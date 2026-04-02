@@ -19,41 +19,41 @@ Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
 ## 2. Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  Application / Bindings                               │
-│  C callers · cpp · dotnet · java · node · python      │
-├──────────────────────────────────────────────────────┤
-│  Public API Facade  (core/src/api/)                   │
-│  context_api · socket_api · message_api               │
-│  service_api · poller_api · monitor_api               │
-│  validate + delegate, per-handle admission guard      │
-├──────────────────────────────────────────────────────┤
-│  Service Layer                                        │
-│  Discovery · SPOT · Registry                          │
-│  service access seam (*_access) · lifecycle · runtime │
-├──────────────────────────────────────────────────────┤
-│  Socket Semantic / Runtime                            │
-│  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM│
-│  semantic entrypoint + runtime components             │
-│  (dispatch · monitor · endpoint · lifecycle)          │
-├──────────────────────────────────────────────────────┤
-│  Runtime Core  (core/src/core/)                       │
-│  ctx · own · reaper · multipart_send_txn              │
-│  options dispatch (core_socket · transport · protocol)│
-│  close/drain/finalization contract                    │
-├──────────────────────────────────────────────────────┤
-│  Engine Layer (Boost.Asio)                            │
-│  asio_zmp_engine — ZMP v1.0 Protocol (8B fixed hdr)  │
-│  Proactor pattern · Speculative I/O · Backpressure    │
-├──────────────────────────────────────────────────────┤
-│  Transport / Protocol                                 │
-│  tcp · ipc · inproc · ws — plaintext                  │
-│  tls · wss             — OpenSSL encrypted            │
-├──────────────────────────────────────────────────────┤
-│  Core Infrastructure                                  │
-│  msg_t(64B fixed) · pipe_t(Lock-free YPipe)           │
-│  ctx_t(I/O Thread Pool) · session_base_t(Bridge)      │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  Application / Bindings                                │
+│  C callers · cpp · dotnet · java · node · python       │
+├────────────────────────────────────────────────────────┤
+│  Public API Facade  (core/src/api/)                    │
+│  context_api · socket_api · message_api                │
+│  service_api · poller_api · monitor_api                │
+│  validate + delegate, per-handle admission guard       │
+├────────────────────────────────────────────────────────┤
+│  Service Layer                                         │
+│  Discovery · SPOT · Registry                           │
+│  service access seam (*_access) · lifecycle · runtime  │
+├────────────────────────────────────────────────────────┤
+│  Socket Semantic / Runtime                             │
+│  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM   │
+│  semantic entrypoint + runtime components              │
+│  (dispatch · monitor · endpoint · lifecycle)           │
+├────────────────────────────────────────────────────────┤
+│  Runtime Core  (core/src/core/)                        │
+│  ctx · own · reaper · multipart_send_txn               │
+│  options dispatch (core_socket · transport · protocol) │
+│  close/drain/finalization contract                     │
+├────────────────────────────────────────────────────────┤
+│  Engine Layer (Boost.Asio)                             │
+│  asio_zmp_engine — ZMP v1.0 Protocol (8B fixed hdr)    │
+│  Proactor pattern · Speculative I/O · Backpressure     │
+├────────────────────────────────────────────────────────┤
+│  Transport / Protocol                                  │
+│  tcp · ipc · inproc · ws — plaintext                   │
+│  tls · wss             — OpenSSL encrypted             │
+├────────────────────────────────────────────────────────┤
+│  Core Infrastructure                                   │
+│  msg_t(64B fixed) · pipe_t(Lock-free YPipe)            │
+│  ctx_t(I/O Thread Pool) · session_base_t(Bridge)       │
+└────────────────────────────────────────────────────────┘
 ```
 
 Key roles per layer:

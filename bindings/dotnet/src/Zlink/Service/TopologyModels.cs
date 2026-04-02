@@ -19,9 +19,143 @@ public enum ServiceKind
     Socket = 5
 }
 
+public enum ServiceRole : ushort
+{
+    Invalid = 0,
+    Spot = 2,
+    Router = 3,
+    Dealer = 4,
+    Pub = 5,
+    Sub = 6
+}
+
+public enum SpotNodeState
+{
+    Idle = 1,
+    Connecting = 2,
+    PartialReady = 3,
+    Ready = 4,
+    Error = 5
+}
+
+public enum SpotPeerSource
+{
+    Manual = 1,
+    Discovery = 2,
+    Mixed = 3
+}
+
+public enum SpotPeerState
+{
+    Configured = 1,
+    Connecting = 2,
+    Connected = 3
+}
+
+public enum RegistryState
+{
+    Idle = 1,
+    Active = 2,
+    Degraded = 3,
+    Error = 4
+}
+
+public enum TopologySource
+{
+    Manual = 1,
+    Discovery = 2,
+    Registry = 3
+}
+
+public enum TopologyState
+{
+    Discovered = 1,
+    Connecting = 2,
+    Ready = 3,
+    Lost = 4,
+    Error = 5,
+    Stopped = 6
+}
+
+public enum ServiceEventSubjectKind : uint
+{
+    None = 0,
+    Topic = 1,
+    Pattern = 2
+}
+
+public readonly struct SpotNodePeerFilter
+{
+    public SpotNodePeerFilter(string? peerEndpoint = null,
+        SpotPeerSource? source = null, SpotPeerState? state = null)
+    {
+        PeerEndpoint = peerEndpoint;
+        Source = source;
+        State = state;
+    }
+
+    public string? PeerEndpoint { get; }
+    public SpotPeerSource? Source { get; }
+    public SpotPeerState? State { get; }
+}
+
+public readonly struct SpotNodeSubjectFilter
+{
+    public SpotNodeSubjectFilter(SpotSocketRole? role = null,
+        string? subject = null,
+        ServiceEventSubjectKind? subjectKind = null)
+    {
+        Role = role;
+        Subject = subject;
+        SubjectKind = subjectKind;
+    }
+
+    public SpotSocketRole? Role { get; }
+    public string? Subject { get; }
+    public ServiceEventSubjectKind? SubjectKind { get; }
+}
+
+public readonly struct RegistryServiceSummaryFilter
+{
+    public RegistryServiceSummaryFilter(ServiceKind? serviceKind = null,
+        ServiceRole? serviceRole = null, string? serviceName = null)
+    {
+        ServiceKind = serviceKind;
+        ServiceRole = serviceRole;
+        ServiceName = serviceName;
+    }
+
+    public ServiceKind? ServiceKind { get; }
+    public ServiceRole? ServiceRole { get; }
+    public string? ServiceName { get; }
+}
+
+public readonly struct RegistryTopologyFilter
+{
+    public RegistryTopologyFilter(ServiceKind? serviceKind = null,
+        ServiceRole? serviceRole = null, string? serviceName = null,
+        RoutingId? routingId = null, TopologyState? state = null,
+        TopologySource? source = null)
+    {
+        ServiceKind = serviceKind;
+        ServiceRole = serviceRole;
+        ServiceName = serviceName;
+        RoutingId = routingId;
+        State = state;
+        Source = source;
+    }
+
+    public ServiceKind? ServiceKind { get; }
+    public ServiceRole? ServiceRole { get; }
+    public string? ServiceName { get; }
+    public RoutingId? RoutingId { get; }
+    public TopologyState? State { get; }
+    public TopologySource? Source { get; }
+}
+
 public readonly struct RegistryStatus
 {
-    public RegistryStatus(uint registryId, string bindEndpoint, int state,
+    public RegistryStatus(uint registryId, string bindEndpoint, RegistryState state,
         uint topologyEntryCount, uint peerRegistryCount,
         uint connectedPeerRegistryCount, ulong listSeq, int lastError,
         ulong lastChangedMs)
@@ -39,7 +173,7 @@ public readonly struct RegistryStatus
 
     public uint RegistryId { get; }
     public string BindEndpoint { get; }
-    public int State { get; }
+    public RegistryState State { get; }
     public uint TopologyEntryCount { get; }
     public uint PeerRegistryCount { get; }
     public uint ConnectedPeerRegistryCount { get; }
@@ -53,7 +187,8 @@ public readonly struct RegistryStatus
         fixed (byte* endpoint = native.BindEndpoint)
         {
             return new RegistryStatus(native.RegistryId,
-                NativeHelpers.ReadFixedString(endpoint, 256), native.State,
+                NativeHelpers.ReadFixedString(endpoint, 256),
+                (RegistryState)native.State,
                 native.TopologyEntryCount, native.PeerRegistryCount,
                 native.ConnectedPeerRegistryCount, native.ListSeq,
                 native.LastError, native.LastChangedMs);
@@ -64,7 +199,7 @@ public readonly struct RegistryStatus
 public readonly struct RegistryServiceSummaryEntry
 {
     public RegistryServiceSummaryEntry(ServiceKind serviceKind,
-        ushort serviceRole, string serviceName, uint totalCount,
+        ServiceRole serviceRole, string serviceName, uint totalCount,
         uint connectingCount, uint readyCount, uint errorCount,
         uint stoppedCount, ulong lastReportedMs)
     {
@@ -80,7 +215,7 @@ public readonly struct RegistryServiceSummaryEntry
     }
 
     public ServiceKind ServiceKind { get; }
-    public ushort ServiceRole { get; }
+    public ServiceRole ServiceRole { get; }
     public string ServiceName { get; }
     public uint TotalCount { get; }
     public uint ConnectingCount { get; }
@@ -95,7 +230,8 @@ public readonly struct RegistryServiceSummaryEntry
         fixed (byte* serviceName = native.ServiceName)
         {
             return new RegistryServiceSummaryEntry(
-                (ServiceKind)native.ServiceKind, (ushort)native.ServiceRole,
+                (ServiceKind)native.ServiceKind,
+                (ServiceRole)native.ServiceRole,
                 NativeHelpers.ReadFixedString(serviceName, 256),
                 native.TotalCount, native.ConnectingCount, native.ReadyCount,
                 native.ErrorCount, native.StoppedCount, native.LastReportedMs);
@@ -106,8 +242,9 @@ public readonly struct RegistryServiceSummaryEntry
 public readonly struct RegistryTopologyEntry
 {
     public RegistryTopologyEntry(string routingId, ServiceKind serviceKind,
-        ushort serviceRole, string serviceName, string endpoint, int source,
-        int state, uint desiredCount, uint readyCount, uint errorCode,
+        ServiceRole serviceRole, string serviceName, string endpoint,
+        TopologySource source, TopologyState state, uint desiredCount,
+        uint readyCount, uint errorCode,
         ulong lastReportedMs)
     {
         RoutingId = routingId;
@@ -125,11 +262,11 @@ public readonly struct RegistryTopologyEntry
 
     public string RoutingId { get; }
     public ServiceKind ServiceKind { get; }
-    public ushort ServiceRole { get; }
+    public ServiceRole ServiceRole { get; }
     public string ServiceName { get; }
     public string Endpoint { get; }
-    public int Source { get; }
-    public int State { get; }
+    public TopologySource Source { get; }
+    public TopologyState State { get; }
     public uint DesiredCount { get; }
     public uint ReadyCount { get; }
     public uint ErrorCode { get; }
@@ -144,18 +281,20 @@ public readonly struct RegistryTopologyEntry
             return new RegistryTopologyEntry(
                 RoutingIdCodec.ToPublicString(
                     NativeHelpers.ReadRoutingId(ref native.RoutingId)),
-                (ServiceKind)native.ServiceKind, (ushort)native.ServiceRole,
+                (ServiceKind)native.ServiceKind,
+                (ServiceRole)native.ServiceRole,
                 NativeHelpers.ReadFixedString(serviceName, 256),
-                NativeHelpers.ReadFixedString(endpoint, 256), native.Source,
-                native.State, native.DesiredCount, native.ReadyCount,
-                native.ErrorCode, native.LastReportedMs);
+                NativeHelpers.ReadFixedString(endpoint, 256),
+                (TopologySource)native.Source, (TopologyState)native.State,
+                native.DesiredCount, native.ReadyCount, native.ErrorCode,
+                native.LastReportedMs);
         }
     }
 }
 
 public readonly struct MemberPeerEntry
 {
-    public MemberPeerEntry(ServiceType serviceType, ushort serviceRole,
+    public MemberPeerEntry(ServiceType serviceType, ServiceRole serviceRole,
         string serviceName, string endpoint, string routingId, long value)
     {
         ServiceType = serviceType;
@@ -167,7 +306,7 @@ public readonly struct MemberPeerEntry
     }
 
     public ServiceType ServiceType { get; }
-    public ushort ServiceRole { get; }
+    public ServiceRole ServiceRole { get; }
     public string ServiceName { get; }
     public string Endpoint { get; }
     public string RoutingId { get; }
@@ -179,7 +318,7 @@ public readonly struct MemberPeerEntry
         fixed (byte* endpoint = native.Endpoint)
         {
             return new MemberPeerEntry((ServiceType)native.ServiceType,
-                native.ServiceRole,
+                (ServiceRole)native.ServiceRole,
                 NativeHelpers.ReadFixedString(serviceName, 256),
                 NativeHelpers.ReadFixedString(endpoint, 256),
                 RoutingIdCodec.ToPublicString(
@@ -192,7 +331,7 @@ public readonly struct MemberPeerEntry
 public readonly struct SpotNodeStatus
 {
     public SpotNodeStatus(string serviceName, string localEndpoint,
-        string nodeRoutingId, int state, uint configuredPeerCount,
+        string nodeRoutingId, SpotNodeState state, uint configuredPeerCount,
         uint activePeerCount, uint connectedPeerCount, uint subjectCount,
         uint readySubjectCount, int lastError, ulong lastChangedMs)
     {
@@ -212,7 +351,7 @@ public readonly struct SpotNodeStatus
     public string ServiceName { get; }
     public string LocalEndpoint { get; }
     public string NodeRoutingId { get; }
-    public int State { get; }
+    public SpotNodeState State { get; }
     public uint ConfiguredPeerCount { get; }
     public uint ActivePeerCount { get; }
     public uint ConnectedPeerCount { get; }
@@ -231,7 +370,7 @@ public readonly struct SpotNodeStatus
                 NativeHelpers.ReadFixedString(endpoint, 256),
                 RoutingIdCodec.ToPublicString(
                     NativeHelpers.ReadRoutingId(ref native.NodeRoutingId)),
-                native.State, native.ConfiguredPeerCount,
+                (SpotNodeState)native.State, native.ConfiguredPeerCount,
                 native.ActivePeerCount, native.ConnectedPeerCount,
                 native.SubjectCount, native.ReadySubjectCount,
                 native.LastError, native.LastChangedMs);
@@ -242,7 +381,8 @@ public readonly struct SpotNodeStatus
 public readonly struct SpotNodePeerEntry
 {
     public SpotNodePeerEntry(string serviceName, string localEndpoint,
-        string peerEndpoint, int source, int state, ulong connectedSinceMs,
+        string peerEndpoint, SpotPeerSource source, SpotPeerState state,
+        ulong connectedSinceMs,
         ulong lastChangedMs)
     {
         ServiceName = serviceName;
@@ -257,8 +397,8 @@ public readonly struct SpotNodePeerEntry
     public string ServiceName { get; }
     public string LocalEndpoint { get; }
     public string PeerEndpoint { get; }
-    public int Source { get; }
-    public int State { get; }
+    public SpotPeerSource Source { get; }
+    public SpotPeerState State { get; }
     public ulong ConnectedSinceMs { get; }
     public ulong LastChangedMs { get; }
 
@@ -272,15 +412,17 @@ public readonly struct SpotNodePeerEntry
             return new SpotNodePeerEntry(
                 NativeHelpers.ReadFixedString(serviceName, 256),
                 NativeHelpers.ReadFixedString(local, 256),
-                NativeHelpers.ReadFixedString(peer, 256), native.Source,
-                native.State, native.ConnectedSinceMs, native.LastChangedMs);
+                NativeHelpers.ReadFixedString(peer, 256),
+                (SpotPeerSource)native.Source, (SpotPeerState)native.State,
+                native.ConnectedSinceMs, native.LastChangedMs);
         }
     }
 }
 
 public readonly struct SpotNodeSubjectEntry
 {
-    public SpotNodeSubjectEntry(int role, string subject, uint subjectKind,
+    public SpotNodeSubjectEntry(SpotSocketRole role, string subject,
+        ServiceEventSubjectKind subjectKind,
         uint readyPeerCount, uint activePeerCount, ulong lastChangedMs)
     {
         Role = role;
@@ -291,9 +433,9 @@ public readonly struct SpotNodeSubjectEntry
         LastChangedMs = lastChangedMs;
     }
 
-    public int Role { get; }
+    public SpotSocketRole Role { get; }
     public string Subject { get; }
-    public uint SubjectKind { get; }
+    public ServiceEventSubjectKind SubjectKind { get; }
     public uint ReadyPeerCount { get; }
     public uint ActivePeerCount { get; }
     public ulong LastChangedMs { get; }
@@ -303,8 +445,9 @@ public readonly struct SpotNodeSubjectEntry
     {
         fixed (byte* subject = native.Subject)
         {
-            return new SpotNodeSubjectEntry(native.Role,
-                NativeHelpers.ReadFixedString(subject, 256), native.SubjectKind,
+            return new SpotNodeSubjectEntry((SpotSocketRole)native.Role,
+                NativeHelpers.ReadFixedString(subject, 256),
+                (ServiceEventSubjectKind)native.SubjectKind,
                 native.ReadyPeerCount, native.ActivePeerCount,
                 native.LastChangedMs);
         }
@@ -313,10 +456,12 @@ public readonly struct SpotNodeSubjectEntry
 
 public readonly struct ServiceMonitorEvent
 {
-    public ServiceMonitorEvent(ServiceKind serviceKind, uint eventType,
-        int status, int errorCode, uint value, uint detailFlags,
+    public ServiceMonitorEvent(ServiceKind serviceKind,
+        ServiceMonitorEvents eventType,
+        int status, int errorCode, uint value,
+        ServiceMonitorDetailFlags detailFlags,
         string serviceName, string endpoint, string routingId, string subject,
-        uint subjectKind)
+        ServiceEventSubjectKind subjectKind)
     {
         ServiceKind = serviceKind;
         EventType = eventType;
@@ -332,16 +477,16 @@ public readonly struct ServiceMonitorEvent
     }
 
     public ServiceKind ServiceKind { get; }
-    public uint EventType { get; }
+    public ServiceMonitorEvents EventType { get; }
     public int Status { get; }
     public int ErrorCode { get; }
     public uint Value { get; }
-    public uint DetailFlags { get; }
+    public ServiceMonitorDetailFlags DetailFlags { get; }
     public string ServiceName { get; }
     public string Endpoint { get; }
     public string RoutingId { get; }
     public string Subject { get; }
-    public uint SubjectKind { get; }
+    public ServiceEventSubjectKind SubjectKind { get; }
 
     internal static unsafe ServiceMonitorEvent FromNative(
         ref ZlinkServiceEvent native)
@@ -351,14 +496,15 @@ public readonly struct ServiceMonitorEvent
         fixed (byte* subject = native.Subject)
         {
             return new ServiceMonitorEvent((ServiceKind)native.ServiceKind,
-                native.EventType, native.Status, native.ErrorCode,
-                native.Value, native.DetailFlags,
+                (ServiceMonitorEvents)native.EventType, native.Status,
+                native.ErrorCode, native.Value,
+                (ServiceMonitorDetailFlags)native.DetailFlags,
                 NativeHelpers.ReadFixedString(serviceName, 256),
                 NativeHelpers.ReadFixedString(endpoint, 256),
                 RoutingIdCodec.ToPublicString(
                     NativeHelpers.ReadRoutingId(ref native.RoutingId)),
                 NativeHelpers.ReadFixedString(subject, 256),
-                native.SubjectKind);
+                (ServiceEventSubjectKind)native.SubjectKind);
         }
     }
 }

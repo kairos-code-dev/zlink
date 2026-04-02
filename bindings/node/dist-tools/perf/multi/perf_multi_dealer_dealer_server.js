@@ -38,7 +38,7 @@ async function main() {
         server.bind(options.endpoint);
         (async () => {
             while (!stop) {
-                const received = server.tryReceive();
+                const received = server.tryRecv();
                 if (!received) {
                     await new Promise((resolve) => setImmediate(resolve));
                     continue;

@@ -1,1 +1,1 @@
-`PubSubCallback` shows `SubscribeHandler` on `SubSocket` with `PubSocket`.
+`PubSubCallback` shows `OnSubscribe` on `SubSocket` with `XPubSocket`.

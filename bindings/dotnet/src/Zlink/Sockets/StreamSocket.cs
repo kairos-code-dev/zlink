@@ -4,19 +4,12 @@ namespace Zlink;
 
 public sealed class StreamSocket : RoutedMessageSocketBase
 {
+    public StreamSocketOptions StreamOptions { get; }
+
     public StreamSocket(Context context)
         : base(context, SocketType.Stream)
     {
-    }
-
-    public void SetNotify(bool enabled)
-    {
-        SetOption(SocketOptions.StreamNotify, enabled ? 1 : 0);
-    }
-
-    public bool GetNotify()
-    {
-        return GetOption(SocketOptions.StreamNotify) != 0;
+        StreamOptions = new StreamSocketOptions(this);
     }
 
     public void AttachStreamRaw(StreamPacketHandler handler)

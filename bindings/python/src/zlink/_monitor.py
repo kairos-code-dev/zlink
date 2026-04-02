@@ -10,8 +10,15 @@ from ._ffi import (
     ZlinkSocketMonitorOpenOptions,
     lib,
 )
-from ._core import ZlinkError, _is_eagain, _raise_last_error, _routing_id_bytes
+from ._core import (
+    ZlinkError,
+    _is_eagain,
+    _raise_last_error,
+    _report_unhandled_callback_exception,
+    _routing_id_bytes,
+)
 from ._poller import Poller
+from ._socket_base import _enter_callback, _leave_callback
 
 
 def _decode_fixed(buf):
@@ -75,9 +82,22 @@ class ServiceMonitorEvent:
         self.subject_kind = subject_kind
 
 
+ServiceEvent = ServiceMonitorEvent
+
+
+_SOCKET_MONITOR_HANDLER = ctypes.CFUNCTYPE(
+    None, ctypes.POINTER(ZlinkMonitorEvent), ctypes.c_void_p
+)
+_SERVICE_MONITOR_HANDLER = ctypes.CFUNCTYPE(
+    None, ctypes.POINTER(ZlinkServiceEvent), ctypes.c_void_p
+)
+
+
 class _BaseMonitor:
     def __init__(self, handle):
         self._handle = handle
+        self._handler = None
+        self._handler_cb = None
         if not self._handle:
             _raise_last_error()
 
@@ -113,6 +133,8 @@ class _BaseMonitor:
     def close(self):
         if not self._handle:
             return
+        self._handler = None
+        self._handler_cb = None
         handle = ctypes.c_void_p(self._handle)
         rc = lib().zlink_monitor_close(ctypes.byref(handle))
         self._handle = None
@@ -127,11 +149,8 @@ class _BaseMonitor:
 
 
 class MonitorSocket(_BaseMonitor):
-    def recv(self):
-        native = ZlinkMonitorEvent()
-        rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native), 0)
-        if rc != 0:
-            _raise_last_error()
+    @staticmethod
+    def _decode_event(native):
         return SocketMonitorEvent(
             event=int(native.event),
             value=int(native.value),
@@ -140,13 +159,38 @@ class MonitorSocket(_BaseMonitor):
             remote_addr=_decode_fixed(native.remote_addr),
         )
 
-
-class ServiceMonitor(_BaseMonitor):
     def recv(self):
-        native = ZlinkServiceEvent()
-        rc = lib().zlink_service_monitor_recv(self._handle, ctypes.byref(native), 0)
+        native = ZlinkMonitorEvent()
+        rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native), 0)
         if rc != 0:
             _raise_last_error()
+        return self._decode_event(native)
+
+    def on_event(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+
+        def _callback(event_ptr, _):
+            event = self._decode_event(event_ptr.contents)
+            _enter_callback()
+            try:
+                handler(event)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+            finally:
+                _leave_callback()
+
+        callback = _SOCKET_MONITOR_HANDLER(_callback)
+        rc = lib().zlink_socket_monitor_handler(self._handle, callback, None)
+        if rc != 0:
+            _raise_last_error()
+        self._handler = handler
+        self._handler_cb = callback
+
+
+class ServiceMonitor(_BaseMonitor):
+    @staticmethod
+    def _decode_event(native):
         return ServiceMonitorEvent(
             service_kind=int(native.service_kind),
             event_type=int(native.event_type),
@@ -160,6 +204,34 @@ class ServiceMonitor(_BaseMonitor):
             subject=_decode_fixed(native.subject),
             subject_kind=int(native.subject_kind),
         )
+
+    def recv(self):
+        native = ZlinkServiceEvent()
+        rc = lib().zlink_service_monitor_recv(self._handle, ctypes.byref(native), 0)
+        if rc != 0:
+            _raise_last_error()
+        return self._decode_event(native)
+
+    def on_event(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+
+        def _callback(event_ptr, _):
+            event = self._decode_event(event_ptr.contents)
+            _enter_callback()
+            try:
+                handler(event)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+            finally:
+                _leave_callback()
+
+        callback = _SERVICE_MONITOR_HANDLER(_callback)
+        rc = lib().zlink_service_monitor_handler(self._handle, callback, None)
+        if rc != 0:
+            _raise_last_error()
+        self._handler = handler
+        self._handler_cb = callback
 
 
 def open_socket_monitor(socket, events):

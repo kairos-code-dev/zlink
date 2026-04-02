@@ -31,7 +31,7 @@ def main(argv=None):
             node.set_routing_id(b"SPOT-SERVER")
             node.bind(endpoint)
             with node.wrap_handle() as spot:
-                spot.set_send_ready_handler(lambda _: None)
+                spot.on_send_ready(lambda _: None)
                 print(f"READY,{endpoint}", flush=True)
                 while not stop.is_set():
                     spot.publish(TOPIC, stamp_payload(payload))

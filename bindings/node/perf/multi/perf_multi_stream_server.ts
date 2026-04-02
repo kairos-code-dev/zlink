@@ -72,7 +72,7 @@ async function main() {
   try {
     stream.bind(options.endpoint);
     if (options.recv === 'callback') {
-      stream.recvHandler((routingId, parts) => {
+      stream.onReceive((routingId, parts) => {
         processReceived({ routingId, parts });
       });
     }
@@ -83,7 +83,7 @@ async function main() {
       receiveLoop = (async () => {
         while (!stop) {
           try {
-            const received = stream.receive();
+            const received = stream.recv();
             processReceived(received);
           } catch (error) {
             if (stop) {

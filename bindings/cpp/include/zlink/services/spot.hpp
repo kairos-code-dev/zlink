@@ -207,6 +207,7 @@ class spot_node_t
 
     ZLINK_CPP_NODISCARD int bind (const std::string &endpoint_)
     {
+        validate_bounded_c_string (endpoint_, 255u, "endpoint");
         return zlink_spot_node_bind (_node, endpoint_.c_str ());
     }
 
@@ -221,11 +222,13 @@ class spot_node_t
 
     ZLINK_CPP_NODISCARD int connect_peer (const std::string &endpoint_)
     {
+        validate_bounded_c_string (endpoint_, 255u, "endpoint");
         return zlink_spot_node_connect_peer (_node, endpoint_.c_str ());
     }
 
     ZLINK_CPP_NODISCARD int disconnect_peer (const std::string &endpoint_)
     {
+        validate_bounded_c_string (endpoint_, 255u, "endpoint");
         return zlink_spot_node_disconnect_peer (_node, endpoint_.c_str ());
     }
 
@@ -398,12 +401,14 @@ class spot_t
 
     void publish (const std::string &topic_, std::vector<message_t> &parts_)
     {
+        validate_no_embedded_null (topic_, "topic");
         const int rc = publish_impl (topic_, parts_, send_flag::none);
         throw_on_error (rc);
     }
 
     void publish (const std::string &topic_, message_t &part_)
     {
+        validate_no_embedded_null (topic_, "topic");
         const int rc = publish_impl (topic_, part_, send_flag::none);
         throw_on_error (rc);
     }
@@ -411,6 +416,7 @@ class spot_t
     ZLINK_CPP_NODISCARD send_result_t
     try_publish (const std::string &topic_, std::vector<message_t> &parts_)
     {
+        validate_no_embedded_null (topic_, "topic");
         send_result_t result = send_result_t::sent;
         const int rc = try_publish_impl (result, topic_, parts_);
         throw_on_error (rc);
@@ -420,6 +426,7 @@ class spot_t
     ZLINK_CPP_NODISCARD send_result_t
     try_publish (const std::string &topic_, message_t &part_)
     {
+        validate_no_embedded_null (topic_, "topic");
         send_result_t result = send_result_t::sent;
         const int rc = try_publish_impl (result, topic_, part_);
         throw_on_error (rc);
@@ -452,11 +459,13 @@ class spot_t
 
     ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)
     {
+        validate_no_embedded_null (filter_, "filter");
         return zlink_set_subscription (_spot, filter_.c_str ());
     }
 
     ZLINK_CPP_NODISCARD int unset_subscription (const std::string &filter_)
     {
+        validate_no_embedded_null (filter_, "filter");
         return zlink_unset_subscription (_spot, filter_.c_str ());
     }
 

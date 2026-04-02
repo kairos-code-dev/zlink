@@ -102,6 +102,15 @@
     socket.connect("tcp://server.example.com:5555")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("tcp://192.168.1.10:5555")
+    socket.Bind("tcp://*:5555")
+    socket.Connect("tcp://127.0.0.1:5555")
+    socket.Connect("tcp://server.example.com:5555")
+    ```
+
 ### 와일드카드 포트 (자동 할당)
 
 OS가 사용 가능한 포트를 자동 할당한다. 테스트나 동적 포트 환경에서 유용하다.
@@ -170,6 +179,14 @@ OS가 사용 가능한 포트를 자동 할당한다. 테스트나 동적 포트
     other_socket.connect(&endpoint)?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("tcp://127.0.0.1:*")
+    endpoint := socket.LastEndpoint()
+    other_socket.Connect(endpoint)
+    ```
+
 > 참고: `core/tests/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` 와일드카드 바인드 패턴
 
 ### DNS 이름 사용
@@ -217,6 +234,12 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
 
     ```rust
     socket.connect("tcp://localhost:5555")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.Connect("tcp://localhost:5555")
     ```
 
 > 주의: DNS 리졸빙은 블로킹으로 수행된다. 프로덕션에서는 IP 주소 사용을 권장한다.
@@ -331,6 +354,18 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
     }
     ```
 
+=== "Go"
+
+    ```go
+    if err := socket.Bind("tcp://*:5555"); err != nil {
+        // 포트 5555 이미 사용 중
+    }
+
+    if err := socket.Connect("tcp://invalid:99999"); err != nil {
+        efmt.Printf("연결 실패: %v\n", e)
+    }
+    ```
+
 ### 특성
 
 - **TCP_NODELAY** 활성화 (Nagle 알고리즘 비활성화)
@@ -397,6 +432,13 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     socket.connect("ipc:///tmp/myapp.ipc")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("ipc:///tmp/myapp.ipc")
+    socket.Connect("ipc:///tmp/myapp.ipc")
+    ```
+
 ### 와일드카드 바인드
 
 === "C"
@@ -450,6 +492,13 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     ```rust
     socket.bind("ipc://*")?;
     let endpoint = socket.last_endpoint()?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.Bind("ipc://*")
+    endpoint := socket.LastEndpoint()
     ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` -- `zlink_bind(router, "ipc://*")`
@@ -523,6 +572,14 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     }
     ```
 
+=== "Go"
+
+    ```go
+    if err := socket.Bind("ipc:///very/long/path/.../endpoint.ipc"); err != nil {
+        // IPC 경로가 시스템 제한(108자)을 초과
+    }
+    ```
+
 > 참고: `core/tests/test_pair_ipc.cpp` -- `test_endpoint_too_long()`
 
 ### 특성
@@ -585,6 +642,13 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     ```rust
     socket_a.bind("inproc://workers")?;
     socket_b.connect("inproc://workers")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket_a.Bind("inproc://workers")
+    socket_b.Connect("inproc://workers")
     ```
 
 ### 에러 처리
@@ -652,6 +716,14 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 
     ```rust
     if let Err(e) = socket.connect("inproc://nonexistent") {
+        // bind가 아직 없음
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    if err := socket.Connect("inproc://nonexistent"); err != nil {
         // bind가 아직 없음
     }
     ```
@@ -741,6 +813,15 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     let endpoint = socket.last_endpoint()?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("ws://*:8080")
+    socket.Connect("ws://server:8080")
+    socket.Bind("ws://127.0.0.1:*")
+    endpoint := socket.LastEndpoint()
+    ```
+
 > 참고: `core/tests/test_stream_socket.cpp` -- `test_stream_ws_basic()`
 
 ### 특성
@@ -828,6 +909,16 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     socket.connect("wss://server:8443")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.SetTLSServer(cert_path, key_path, false)
+    socket.Bind("wss://*:8443")
+
+    socket.set_tls_client(ca_path, "localhost", false)
+    socket.Connect("wss://server:8443")
+    ```
+
 > 참고: `core/tests/test_stream_socket.cpp` -- `test_stream_wss_basic()`
 
 ### ws 대비 추가 설정
@@ -913,6 +1004,16 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 
     socket.set_tls_client("/path/to/ca.pem", None, true)?;
     socket.connect("tls://server:5555")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetTLSServer("/path/to/cert.pem", "/path/to/key.pem", false)
+    socket.Bind("tls://*:5555")
+
+    socket.SetTLSClient("/path/to/ca.pem", "", true)
+    socket.Connect("tls://server:5555")
     ```
 
 상세 TLS 설정은 [TLS 보안 가이드](05-tls-security.ko.md)를 참고.
@@ -1029,6 +1130,17 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     dealer.connect("tcp://server2:5555")?;
     ```
 
+=== "Go"
+
+    ```go
+    router.Bind("tcp://192.168.1.10:5555")
+    router.Bind("tcp://10.0.0.1:5555")
+    router.Bind("ipc:///tmp/router.ipc")
+
+    dealer.Connect("tcp://server1:5555")
+    dealer.Connect("tcp://server2:5555")
+    ```
+
 ### ZLINK_OPT_LAST_ENDPOINT
 
 와일드카드 바인드 후 실제 할당된 엔드포인트를 조회한다.
@@ -1084,6 +1196,13 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     ```rust
     socket.bind("tcp://127.0.0.1:*")?;
     println!("바인드된 엔드포인트: {}", socket.last_endpoint()?);
+    ```
+
+=== "Go"
+
+    ```go
+    socket.Bind("tcp://127.0.0.1:*")
+    fmt.Printf("바인드된 엔드포인트: %v\n", socket.last_endpoint()?)
     ```
 
 성능 비교는 [성능 가이드](10-performance.ko.md)를 참고.

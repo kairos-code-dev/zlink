@@ -54,7 +54,7 @@ def main(argv=None):
                     | zlink.ServiceMonitorMask.SPOT_FIRST_DELIVERY_READY_CHANGED
                     | zlink.ServiceMonitorMask.SPOT_SUB_DELIVERY_READY_CHANGED
                 ) as monitor:
-                    spot.set_send_ready_handler(lambda _: None)
+                    spot.on_send_ready(lambda _: None)
                     spot.set_subscription(topic)
                     _wait_spot_ready(monitor, 5.0)
 
@@ -66,7 +66,7 @@ def main(argv=None):
                             spot.publish(topic, [stamp_payload(payload)])
                             for event in safe_poll(poller, 0):
                                 while True:
-                                    received = event["socket"].try_recv()
+                                    received = event["socket"].try_subscribe()
                                     if received is None:
                                         break
                                     with received:
@@ -78,7 +78,7 @@ def main(argv=None):
                             spot.publish(topic, [stamp_payload(payload)])
                             for event in safe_poll(poller, 0):
                                 while True:
-                                    received = event["socket"].try_recv()
+                                    received = event["socket"].try_subscribe()
                                     if received is None:
                                         break
                                     with received:

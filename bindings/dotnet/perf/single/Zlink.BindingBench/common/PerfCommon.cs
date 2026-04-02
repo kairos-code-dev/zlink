@@ -92,7 +92,7 @@ internal static partial class PerfRunner
     {
         if (buffer == null)
             throw new ArgumentNullException(nameof(buffer));
-        return SendBlocking(socket, buffer.AsSpan(), flags);
+        return socket.Send(buffer, flags);
     }
 
     internal static bool WaitForInput(Poller poller, Span<PollEvent> events,

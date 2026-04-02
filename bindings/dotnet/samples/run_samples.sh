@@ -11,6 +11,7 @@ fi
 SAMPLES=(
   "PairRecv/PairRecv.csproj"
   "PairCallback/PairCallback.csproj"
+  "MonitorRecv/MonitorRecv.csproj"
   "PubSubRecv/PubSubRecv.csproj"
   "PubSubCallback/PubSubCallback.csproj"
   "DealerRouterRecv/DealerRouterRecv.csproj"
@@ -19,7 +20,6 @@ SAMPLES=(
   "StreamCallback/StreamCallback.csproj"
   "SpotRecv/SpotRecv.csproj"
   "SpotCallback/SpotCallback.csproj"
-  "RegistryDiscoveryMonitor/RegistryDiscoveryMonitor.csproj"
 )
 
 passed=0

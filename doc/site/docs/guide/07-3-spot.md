@@ -172,6 +172,18 @@ it **never re-publishes to the mesh** (loop prevention).
     node.attach_discovery(&discovery)?;
     ```
 
+=== "Go"
+
+    ```go
+    ctx := zlink.NewContext()
+    discovery := zlink::Discovery::new(&ctx, zlink::ServiceType::Spot, "spot-node")
+    discovery.connect_registry("tcp://registry1:5551")
+
+    node := zlink::SpotNode::new(&ctx)
+    node.Bind("tcp://*:9000")
+    node.attach_discovery(&discovery)
+    ```
+
 > `SpotNode` is the topology and lifecycle owner for mesh participation.
 > It does not expose the generic data-plane facade (publish/subscribe).
 > For publish/subscribe, create a facade with `zlink_spot_new(node)`.
@@ -238,6 +250,14 @@ actual assigned endpoint from `local_endpoint`:
     ```rust
     node.bind("tcp://127.0.0.1:0")?;
     let status = node.status_snapshot()?;
+    // status.local_endpoint contains e.g. "tcp://127.0.0.1:43521"
+    ```
+
+=== "Go"
+
+    ```go
+    node.Bind("tcp://127.0.0.1:0")
+    status := node.status_snapshot()
     // status.local_endpoint contains e.g. "tcp://127.0.0.1:43521"
     ```
 
@@ -308,6 +328,15 @@ actual assigned endpoint from `local_endpoint`:
     node.connect_peer("tcp://node3:9000")?;
     ```
 
+=== "Go"
+
+    ```go
+    node := zlink::SpotNode::new(&ctx)
+    node.Bind("tcp://*:9000")
+    node.connect_peer("tcp://node2:9000")
+    node.connect_peer("tcp://node3:9000")
+    ```
+
 **Note:** In a manual mesh there is no Discovery, so there is no registry
 topology visibility. This is an intended limitation.
 
@@ -355,6 +384,12 @@ topology visibility. This is an intended limitation.
 
     ```rust
     let spot = zlink::Spot::new(&node)?;
+    ```
+
+=== "Go"
+
+    ```go
+    spot := zlink::Spot::new(&node)
     ```
 
 `zlink_spot_new(node)` creates a unified facade that borrows an existing
@@ -414,6 +449,12 @@ surface.
 
     ```rust
     spot.publish("chat:room1:message", b"hello world")?;
+    ```
+
+=== "Go"
+
+    ```go
+    spot.publish("chat:room1:message", b"hello world")
     ```
 
 ### 4.3 Subscribing and unsubscribing
@@ -486,6 +527,16 @@ surface.
 
     spot.unset_subscription("chat:room1:message")?;
     spot.unset_subscription("chat:room1:*")?;
+    ```
+
+=== "Go"
+
+    ```go
+    spot.set_subscription("chat:room1:message")
+    spot.set_subscription("chat:room1:*")
+
+    spot.unset_subscription("chat:room1:message")
+    spot.unset_subscription("chat:room1:*")
     ```
 
 ### 4.4 Receiving Messages
@@ -580,6 +631,16 @@ In recv model, pull messages with `zlink_subscribe()`.
     println!("Topic: {}, Parts: {}", topic, parts.len());
     ```
 
+=== "Go"
+
+    ```go
+    spot := zlink::Spot::new(&node)
+    spot.set_subscription("chat:room1:message")
+
+    let (topic, parts) = spot.subscribe()
+    fmt.Printf("Topic: {}, Parts: %v\n", topic, parts.len())
+    ```
+
 #### Callback model
 
 Install the callback with `zlink_subscribe_handler()` to make a one-way
@@ -658,6 +719,15 @@ dispatched automatically through that callback.
     let spot = zlink::Spot::new(&node)?;
     spot.subscribe_handler(|source_rid, topic, parts| {
         println!("Topic: {}, Parts: {}", topic, parts.len());
+    });
+    ```
+
+=== "Go"
+
+    ```go
+    spot := zlink::Spot::new(&node)
+    spot.subscribe_handler(|source_rid, topic, parts| {
+        fmt.Printf("Topic: {}, Parts: %v\n", topic, parts.len())
     });
     ```
 
@@ -792,6 +862,14 @@ ack/retry, exactly-once semantics, or past message replay for late joiners.
     spot.destroy()?;
     node.destroy()?;
     discovery.destroy()?;
+    ```
+
+=== "Go"
+
+    ```go
+    spot.destroy()
+    node.destroy()
+    discovery.destroy()
     ```
 
 **Destroy order:** Destroy `spot` first, then `SpotNode`, and finally

@@ -1,35 +1,34 @@
-import socket
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import threading
-
 import zlink
-
-
-def _tcp_endpoint():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return f"tcp://127.0.0.1:{port}"
+from sample_common import tcp_endpoint, wait_connected
 
 
 def main():
+    port, endpoint = tcp_endpoint()
     with zlink.Context() as ctx:
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
+                with server.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as srv_mon:
+                    with client.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as cli_mon:
+                        server.bind(endpoint)
+                        client.connect(endpoint)
+                        wait_connected(srv_mon, cli_mon)
+
                 done = threading.Event()
+                result = {}
 
                 def on_message(received):
-                    print(received.to_bytes_list()[0].decode("utf-8"))
+                    result["data"] = received.to_bytes_list()[0].decode("utf-8")
                     done.set()
 
-                endpoint = _tcp_endpoint()
-                server.bind(endpoint)
-                client.connect(endpoint)
                 server.on_receive(on_message)
-
-                client.send(b"hello from callback")
+                client.send(b"hello-pair")
                 if not done.wait(3.0):
                     raise TimeoutError("pair callback did not receive a message")
+                print(f'[pair/callback] send: "hello-pair" \u2192 recv: "{result["data"]}"')
 
 
 if __name__ == "__main__":

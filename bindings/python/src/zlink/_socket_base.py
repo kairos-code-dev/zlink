@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+import threading
 import warnings
 
 from ._enums import SendResult, SocketOption, SocketType
@@ -25,9 +26,45 @@ from ._core import (
     _try_recv_native_parts,
     _report_unhandled_callback_exception,
     _routing_id_bytes,
+    _validated_c_string_bytes,
+    _validated_c_string_text,
+    _validated_int32,
     _validated_routing_id_bytes,
     _send_buffer,
 )
+
+_DONTWAIT = 0x0001
+
+_callback_depth = threading.local()
+
+
+def _in_callback():
+    return getattr(_callback_depth, "depth", 0) > 0
+
+
+def _enter_callback():
+    _callback_depth.depth = getattr(_callback_depth, "depth", 0) + 1
+
+
+def _leave_callback():
+    _callback_depth.depth = getattr(_callback_depth, "depth", 0) - 1
+
+
+def _callback_send_flags(flags):
+    """When inside a callback, force DONTWAIT to prevent deadlock.
+
+    Blocking sends from a callback run on the socket I/O thread.  If the
+    send needs to retry (pipe full / EAGAIN), the retry loop blocks on
+    ``process_commands`` -- which waits for I/O events that can only be
+    delivered by the very same I/O thread, causing a deadlock.
+
+    Forcing ``DONTWAIT`` avoids the retry loop.  If the pipe is full the
+    send returns immediately with EAGAIN, which the binding surfaces as
+    an exception instead of hanging forever.
+    """
+    if _in_callback():
+        return int(flags) | _DONTWAIT
+    return int(flags)
 
 
 def _compat_warning(message):
@@ -56,7 +93,7 @@ def _payload_parts(payload):
 
 
 def _int32_bytes(value):
-    native = ctypes.c_int32(int(value))
+    native = ctypes.c_int32(_validated_int32(value))
     return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
 
 
@@ -181,6 +218,46 @@ class CommonSocketOptions:
         self._socket._set_common_bool_option(SocketOption.IMMEDIATE, value)
 
 
+class DealerSocketOptions:
+    def __init__(self, socket):
+        self._socket = socket
+
+    @property
+    def probe(self):
+        return bool(getattr(self._socket, "_dealer_probe_option", False))
+
+    @probe.setter
+    def probe(self, value):
+        self._socket._set_dealer_option(0x3201, _bool_bytes(value))
+        self._socket._dealer_probe_option = bool(value)
+
+
+class StreamSocketOptions:
+    _NOTIFY = 0x3501
+
+    def __init__(self, socket):
+        self._socket = socket
+
+    @property
+    def notify(self):
+        return bool(_read_int32(self._socket._get_stream_option(self._NOTIFY, 4)))
+
+    @notify.setter
+    def notify(self, value):
+        self._socket._set_stream_option(self._NOTIFY, _bool_bytes(value))
+
+
+class SubSocketOptions:
+    _TOPICS_COUNT = 0x3400
+
+    def __init__(self, socket):
+        self._socket = socket
+
+    @property
+    def topics_count(self):
+        return _read_int32(self._socket._get_sub_option(self._TOPICS_COUNT, 4))
+
+
 class _SocketHandle:
     def __init__(self, handle, own):
         self.handle = handle
@@ -266,26 +343,6 @@ class _BaseSocket:
         )
         return obj
 
-    def bind(self, endpoint: str):
-        rc = lib().zlink_bind(self._handle, endpoint.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def connect(self, endpoint: str):
-        rc = lib().zlink_connect(self._handle, endpoint.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def unbind(self, endpoint: str):
-        rc = lib().zlink_unbind(self._handle, endpoint.encode())
-        if rc != 0:
-            _raise_last_error()
-
-    def disconnect(self, endpoint: str):
-        rc = lib().zlink_disconnect(self._handle, endpoint.encode())
-        if rc != 0:
-            _raise_last_error()
-
     def attach_discovery(self, discovery):
         rc = lib().zlink_socket_attach_discovery(self._handle, discovery._handle)
         if rc != 0:
@@ -296,7 +353,8 @@ class _BaseSocket:
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        rc = lib().zlink_send(self._handle, parts_array, part_count, int(flags))
+        effective_flags = _callback_send_flags(flags)
+        rc = lib().zlink_send(self._handle, parts_array, part_count, effective_flags)
         if rc < 0:
             for index in range(part_count):
                 lib().zlink_msg_close(ctypes.byref(parts_array[index]))
@@ -309,8 +367,9 @@ class _BaseSocket:
         for index, native in enumerate(native_parts):
             parts_array[index] = native
         target = _copy_routing_id(routing_id)
+        effective_flags = _callback_send_flags(flags)
         rc = lib().zlink_send_rid(
-            self._handle, ctypes.byref(target), parts_array, part_count, int(flags)
+            self._handle, ctypes.byref(target), parts_array, part_count, effective_flags
         )
         if rc < 0:
             for index in range(part_count):
@@ -385,12 +444,12 @@ class _BaseSocket:
         if rc != 0:
             _raise_last_error()
 
-    def _get_routing_id_raw(self) -> bytes:
+    def _get_routing_id_raw(self):
         rid = ZlinkRoutingId()
         rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(rid))
         if rc != 0:
             _raise_last_error()
-        return bytes(rid.data[: rid.size])
+        return _routing_id_bytes(rid)
 
     def _send_result(self, native_result):
         if int(native_result) < 0:
@@ -431,10 +490,13 @@ class _BaseSocket:
             raise ValueError("handler must not be None")
 
         def _callback(_, __):
+            _enter_callback()
             try:
                 handler(self)
             except Exception:
                 _report_unhandled_callback_exception(handler)
+            finally:
+                _leave_callback()
 
         callback = _SOCKET_SEND_READY_HANDLER(_callback)
         rc = lib().zlink_send_ready_handler(self._handle, callback, None)
@@ -486,17 +548,61 @@ class Socket(_BaseSocket):
         cls._dispatch[_native_socket_type(sock_type)] = socket_cls
 
 
+class BindSocket(Socket):
+    def bind(self, endpoint: str):
+        rc = lib().zlink_bind(
+            self._handle,
+            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
+        )
+        if rc != 0:
+            _raise_last_error()
+
+    def unbind(self, endpoint: str):
+        rc = lib().zlink_unbind(
+            self._handle,
+            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
+        )
+        if rc != 0:
+            _raise_last_error()
+
+
+class ConnectSocket(Socket):
+    def connect(self, endpoint: str):
+        rc = lib().zlink_connect(
+            self._handle,
+            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
+        )
+        if rc != 0:
+            _raise_last_error()
+
+    def disconnect(self, endpoint: str):
+        rc = lib().zlink_disconnect(
+            self._handle,
+            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
+        )
+        if rc != 0:
+            _raise_last_error()
+
+
+class EndpointSocket(BindSocket, ConnectSocket):
+    pass
+
+
 class RoutingIdSocket(Socket):
     def set_routing_id(self, routing_id):
         self._set_routing_id_raw(routing_id)
 
-    def get_routing_id(self) -> bytes:
+    def get_routing_id(self):
         return self._get_routing_id_raw()
 
 
 class DealerOptionSocket(Socket):
     def _set_dealer_option(self, option, value):
         self._set_raw_option(lib().zlink_set_dealer_option, option, value)
+
+    @property
+    def dealer_options(self):
+        return DealerSocketOptions(self)
 
 
 class RouterOptionSocket(Socket):
@@ -526,6 +632,10 @@ class StreamOptionSocket(Socket):
     def _get_stream_option(self, option, size: int = 256):
         return self._get_raw_option(lib().zlink_get_stream_option, option, size)
 
+    @property
+    def stream_options(self):
+        return StreamSocketOptions(self)
+
 
 class PublisherOptionSocket(Socket):
     def _set_pub_option(self, option, value):
@@ -541,6 +651,10 @@ class SubscriberOptionSocket(Socket):
 
     def _get_sub_option(self, option, size: int = 256):
         return self._get_raw_option(lib().zlink_get_sub_option, option, size)
+
+    @property
+    def subscriber_options(self):
+        return SubSocketOptions(self)
 
 
 class MessageSocket(Socket):
@@ -578,6 +692,7 @@ class MessageSocket(Socket):
                 _ReceivedPartsOwner(parts_ptr, int(part_count)),
                 routing_id,
             )
+            _enter_callback()
             try:
                 handler(received)
             except Exception:
@@ -587,6 +702,8 @@ class MessageSocket(Socket):
                     _report_unhandled_callback_exception(handler)
             else:
                 received.close()
+            finally:
+                _leave_callback()
 
         callback = _SOCKET_RECV_HANDLER(_callback)
         rc = lib().zlink_recv_handler(self._handle, callback, None)
@@ -601,12 +718,16 @@ class MessageSocket(Socket):
 
 
 class RoutedMessageSocket(MessageSocket):
-    def send_to(self, routing_id, payload):
+    def send(self, payload, *, routing_id=None):
+        if routing_id is None:
+            return super().send(payload)
         self._send_native_parts_to_routing_id(
             routing_id, self._native_parts_from_payload(payload), 0
         )
 
-    def try_send_to(self, routing_id, payload):
+    def try_send(self, payload, *, routing_id=None):
+        if routing_id is None:
+            return super().try_send(payload)
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
@@ -620,20 +741,21 @@ class RoutedMessageSocket(MessageSocket):
 
 class PublisherSocket(Socket):
     def publish(self, topic, payload):
-        topic_bytes = bytes(_as_bytes_view(topic))
+        topic_bytes = _validated_c_string_bytes(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
-        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, 0)
+        effective_flags = _callback_send_flags(0)
+        rc = lib().zlink_publish(self._handle, topic_bytes, parts_array, part_count, effective_flags)
         if rc < 0:
             for index in range(part_count):
                 lib().zlink_msg_close(ctypes.byref(parts_array[index]))
             _raise_last_error()
 
     def try_publish(self, topic, payload):
-        topic_bytes = bytes(_as_bytes_view(topic))
+        topic_bytes = _validated_c_string_bytes(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
@@ -645,7 +767,7 @@ class PublisherSocket(Socket):
 
 
 class SubscriberSocket(Socket):
-    def _recv_subscribed(self, flags):
+    def _subscribe_once(self, flags):
         routing_id = ZlinkRoutingId()
         parts = ctypes.POINTER(ZlinkMsg)()
         part_count = ctypes.c_size_t()
@@ -668,30 +790,30 @@ class SubscriberSocket(Socket):
         routing = _routing_id_bytes(routing_id)
         return Subscribed(topic, owner, routing)
 
-    def recv(self):
-        return self._recv_subscribed(0)
+    def subscribe(self):
+        return self._subscribe_once(0)
 
-    def try_recv(self):
+    def try_subscribe(self):
         try:
-            return self._recv_subscribed(1)
+            return self._subscribe_once(1)
         except Exception as exc:
             if _is_eagain(exc):
                 return None
             raise
 
     def set_subscription(self, topic):
-        topic_bytes = bytes(_as_bytes_view(topic))
+        topic_bytes = _validated_c_string_bytes(topic, field="subscription")
         rc = lib().zlink_set_subscription(self._handle, topic_bytes)
         if rc != 0:
             _raise_last_error()
 
     def unset_subscription(self, topic):
-        topic_bytes = bytes(_as_bytes_view(topic))
+        topic_bytes = _validated_c_string_bytes(topic, field="subscription")
         rc = lib().zlink_unset_subscription(self._handle, topic_bytes)
         if rc != 0:
             _raise_last_error()
 
-    def on_topic_message(self, handler):
+    def on_subscribe(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
 
@@ -707,6 +829,7 @@ class SubscriberSocket(Socket):
                 _ReceivedPartsOwner(parts_ptr, int(part_count)),
                 routing_id,
             )
+            _enter_callback()
             try:
                 handler(received)
             except Exception:
@@ -716,6 +839,8 @@ class SubscriberSocket(Socket):
                     _report_unhandled_callback_exception(handler)
             else:
                 received.close()
+            finally:
+                _leave_callback()
 
         callback = _SOCKET_SUBSCRIBE_HANDLER(_callback)
         rc = lib().zlink_subscribe_handler(self._handle, callback, None)
@@ -723,9 +848,3 @@ class SubscriberSocket(Socket):
             _raise_last_error()
         self._subscribe_handler = handler
         self._subscribe_handler_cb = callback
-
-    def set_subscribe_handler(self, handler):
-        _compat_warning(
-            "set_subscribe_handler() is deprecated; use on_topic_message() instead"
-        )
-        self.on_topic_message(handler)

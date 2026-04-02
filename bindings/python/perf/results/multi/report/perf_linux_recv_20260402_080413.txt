@@ -1,0 +1,25 @@
+## Effective Options (start)
+- runs: 1
+- recv_mode: recv
+- duration_seconds: 0.2
+- warmup_seconds: 0.1
+- patterns: MULTI_DEALER_ROUTER
+- transports: tcp
+- msg_sizes: 64
+- clients: 2
+
+READY,tcp://127.0.0.1:49047
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,throughput,6409.85
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,bandwidth,0.41
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency,175.29
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p95,393.79
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p99,669.97
+
+| Pattern | Transport | Size | Throughput | Bandwidth | Latency | Latency P95 | Latency P99 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| MULTI_DEALER_ROUTER | tcp | 64 | 6409.85 | 0.41 | 175.29 | 393.79 | 669.97 |
+
+## Effective Options (result)
+- recv_mode: recv
+- result_lines: 5
+- status: complete

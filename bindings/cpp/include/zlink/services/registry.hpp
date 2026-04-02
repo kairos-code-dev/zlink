@@ -23,7 +23,7 @@ class registry_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    ~registry_t () { (void) destroy (); }
+    ~registry_t () { (void) close (); }
 
     registry_t (registry_t &&other) noexcept
         : _registry (other._registry), _last_error (other._last_error)
@@ -37,7 +37,7 @@ class registry_t
         if (this == &other)
             return *this;
 
-        (void) destroy ();
+        (void) close ();
         _registry = other._registry;
         _last_error = other._last_error;
         other._registry = NULL;
@@ -55,6 +55,8 @@ class registry_t
     ZLINK_CPP_NODISCARD int
     bind (const std::string &pub_endpoint_, const std::string &router_endpoint_)
     {
+        validate_bounded_c_string (pub_endpoint_, 255u, "endpoint");
+        validate_bounded_c_string (router_endpoint_, 255u, "endpoint");
         return zlink_registry_bind (
           _registry, pub_endpoint_.c_str (), router_endpoint_.c_str ());
     }
@@ -66,6 +68,7 @@ class registry_t
 
     ZLINK_CPP_NODISCARD int add_peer (const std::string &peer_pub_endpoint_)
     {
+        validate_bounded_c_string (peer_pub_endpoint_, 255u, "endpoint");
         return zlink_registry_add_peer (_registry, peer_pub_endpoint_.c_str ());
     }
 
@@ -119,6 +122,7 @@ class registry_t
                   zlink_member_peer_entry_t *entries_,
                   size_t *count_) const
     {
+        validate_bounded_c_string (service_name_, 255u, "service_name");
         return zlink_registry_member_peers (
           _registry, static_cast<zlink_service_type_t> (service_type_),
           service_name_.c_str (), entries_, count_);
@@ -131,6 +135,8 @@ class registry_t
                           const std::string &endpoint_,
                           message_t &metadata_out_) const
     {
+        validate_bounded_c_string (service_name_, 255u, "service_name");
+        validate_bounded_c_string (endpoint_, 255u, "endpoint");
         zlink_msg_t native;
         const int rc = zlink_registry_member_peer_metadata (
           _registry, static_cast<zlink_service_type_t> (service_type_),
@@ -146,7 +152,7 @@ class registry_t
         return -1;
     }
 
-    ZLINK_CPP_NODISCARD int destroy ()
+    ZLINK_CPP_NODISCARD int close ()
     {
         if (!_registry)
             return 0;

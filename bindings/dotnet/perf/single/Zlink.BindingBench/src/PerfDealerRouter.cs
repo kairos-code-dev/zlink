@@ -161,7 +161,7 @@ internal static class PerfDealerRouter
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
                 try
                 {
-                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                    SendBlocking(sender, payload, SendFlags.None);
                 }
                 catch
                 {
@@ -177,7 +177,7 @@ internal static class PerfDealerRouter
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
                 try
                 {
-                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                    SendBlocking(sender, payload, SendFlags.None);
                 }
                 catch
                 {
@@ -204,29 +204,11 @@ internal static class PerfDealerRouter
     private static int ReceiveRouterPayload(Zlink.Socket socket, byte[] routingId,
         byte[] payloadBuffer, int flags)
     {
-        ReceiveFlags recvFlags = (ReceiveFlags)flags;
-        int ridLen;
         try
         {
-            ridLen = socket.Receive(routingId.AsSpan(), recvFlags);
-        }
-        catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
-        {
-            return 0;
-        }
-        catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
-        {
-            return 0;
-        }
-
-        if (ridLen <= 0 || socket.GetOption(SocketOptions.RcvMore) == 0)
-            return -1;
-
-        try
-        {
-            int payloadLen = socket.Receive(payloadBuffer.AsSpan(), ReceiveFlags.None);
-            DrainRemainingFramesNonBlocking(socket);
-            return payloadLen;
+            int? payloadLen = socket.TryReceiveRawRoutedFrame(routingId,
+                payloadBuffer, flags, out _);
+            return payloadLen ?? 0;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
         {

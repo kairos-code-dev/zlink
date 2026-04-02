@@ -274,8 +274,10 @@ class dealer_router_client_bench_t
                 }
 
                 for (;;) {
-                    zlink::message_t reply;
-                    if (state->sock->recv (reply, zlink::recv_flag::dontwait) < 0) {
+                    zlink::received_t received;
+                    if (state->sock->receive (
+                          received, zlink::recv_flag::dontwait)
+                        < 0) {
                         const int err = errno;
                         if (err == EAGAIN)
                             break;
@@ -283,6 +285,9 @@ class dealer_router_client_bench_t
                             continue;
                         return false;
                     }
+                    if (received.parts.size () != 1)
+                        continue;
+                    zlink::message_t &reply = received.parts[0];
 
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (
@@ -349,8 +354,10 @@ class dealer_router_client_bench_t
                 }
 
                 for (;;) {
-                    zlink::message_t reply;
-                    if (state->sock->recv (reply, zlink::recv_flag::dontwait) < 0) {
+                    zlink::received_t received;
+                    if (state->sock->receive (
+                          received, zlink::recv_flag::dontwait)
+                        < 0) {
                         const int err = errno;
                         if (err == EAGAIN)
                             break;
@@ -358,6 +365,10 @@ class dealer_router_client_bench_t
                             continue;
                         return false;
                     }
+
+                    if (received.parts.size () != 1)
+                        continue;
+                    zlink::message_t &reply = received.parts[0];
 
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (

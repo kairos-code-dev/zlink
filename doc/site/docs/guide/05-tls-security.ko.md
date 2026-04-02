@@ -73,6 +73,14 @@ handle은 TLS 설정 surface가 아니며 `ENOTSUP`로 실패한다.
     socket.bind("tls://*:5555")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket := ctx.RouterSocket()
+    socket.SetTLSServer("/path/to/server.crt", "/path/to/server.key", false)
+    socket.Bind("tls://*:5555")
+    ```
+
 ## 3. TLS 클라이언트 설정
 
 === "C"
@@ -133,6 +141,14 @@ handle은 TLS 설정 surface가 아니며 `ENOTSUP`로 실패한다.
     let socket = ctx.dealer_socket()?;
     socket.set_tls_client("/path/to/ca.crt", "server.example.com", false)?;
     socket.connect("tls://server.example.com:5555")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.DealerSocket()
+    socket.SetTLSClient("/path/to/ca.crt", "server.example.com", false)
+    socket.Connect("tls://server.example.com:5555")
     ```
 
 ## 4. WSS (WebSocket + TLS) 설정
@@ -199,6 +215,14 @@ WSS는 ws에 TLS 암호화를 추가한 transport이다. ws 대비 추가 설정
     let socket = ctx.stream_socket()?;
     socket.set_tls_server("/path/to/cert.pem", "/path/to/key.pem", false)?;
     socket.bind("wss://*:8443")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.StreamSocket()
+    socket.SetTLSServer("/path/to/cert.pem", "/path/to/key.pem", false)
+    socket.Bind("wss://*:8443")
     ```
 
 ### WSS 클라이언트 (외부 Raw 클라이언트)
@@ -271,6 +295,12 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
     socket.set_tls_server(cert_path, key_path, require_client_cert)?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.SetTLSServer(cert_path, key_path, require_client_cert)
+    ```
+
 | 파라미터 | 타입 | 설명 |
 |----------|------|------|
 | `cert_path` | string | 인증서 파일 경로 (PEM 형식) |
@@ -318,6 +348,12 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 
     ```rust
     socket.set_tls_server("server.crt", "server.key", false)?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetTLSServer("server.crt", "server.key", false)
     ```
 
 - 반드시 `zlink_bind()` **이전에** 설정
@@ -368,6 +404,12 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 
     ```rust
     socket.set_tls_client(ca_cert_path, hostname, trust_system)?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetTLSClient(ca_cert_path, hostname, trust_system)
     ```
 
 | 파라미터 | 타입 | 설명 |
@@ -444,6 +486,16 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 
     // 시스템 CA만 사용
     socket.set_tls_client(None, None, true)?;
+    ```
+
+=== "Go"
+
+    ```go
+    // 사설 CA + 호스트명 검증
+    socket.SetTLSClient("ca.crt", "server.example.com", false)
+
+    // 시스템 CA만 사용
+    socket.SetTLSClient(None, None, true)
     ```
 
 - `ca_cert_path`가 NULL이면 시스템 CA 스토어만 사용 (`trust_system=1`인 경우)
@@ -772,6 +824,29 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     }
     ```
 
+=== "Go"
+
+    ```go
+    func main() {
+        ctx := zlink.NewContext()
+
+        server := ctx.PairSocket()
+        server.SetTLSServer("server.crt", "server.key", false)
+        server.Bind("tls://*:5555")
+
+        client := ctx.PairSocket()
+        client.SetTLSClient("ca.crt", "localhost", false)
+        client.Connect("tls://127.0.0.1:5555")
+
+        client.Send(zlink.NewMessage([]byte("Secure Hello")))
+
+        rid, parts, _ := server.Recv()
+        fmt.Printf("수신: %v\n", parts[0].as_str()?)
+
+
+    }
+    ```
+
 ### WSS STREAM 서버
 
 === "C"
@@ -868,6 +943,19 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     server.set_tls_server("server.crt", "server.key", false)?;
     server.set_linger(0)?;
     server.bind("wss://*:8443")?;
+
+    // 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+    ```
+
+=== "Go"
+
+    ```go
+    ctx := zlink.NewContext()
+
+    server := ctx.StreamSocket()
+    server.SetTLSServer("server.crt", "server.key", false)
+    server.SetOption(zlink.OptionLinger, 0)
+    server.Bind("wss://*:8443")
 
     // 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
     ```

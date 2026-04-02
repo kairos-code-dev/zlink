@@ -168,6 +168,24 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
     ctx.term()?;
     ```
 
+=== "Go"
+
+    ```go
+    ctx := zlink.NewContext()
+    registry := zlink::Registry::new(&ctx)
+
+    registry.add_peer("tcp://registry2:5550")
+    registry.add_peer("tcp://registry3:5550")
+    registry.set_heartbeat(5000, 15000)
+    registry.set_broadcast_interval(30000)
+    registry.bind("tcp://*:5550", "tcp://*:5551")
+
+    // ... application logic ...
+
+    registry.destroy()
+    ctx.term()
+    ```
+
 ## 3. Using Discovery
 
 === "C"
@@ -311,6 +329,26 @@ zlink Service Discovery provides the infrastructure to dynamically discover and 
     discovery.destroy()?;
     ```
 
+=== "Go"
+
+    ```go
+    discovery := zlink::Discovery::new(&ctx,
+        zlink::ServiceType::Spot, "order-service")
+
+    discovery.connect_registry("tcp://registry1:5551")
+    discovery.connect_registry("tcp://registry2:5551")
+
+    mon := discovery.service_monitor_open(&zlink::ServiceMonitorOptions::new(
+        zlink::DISCOVERY_MONITOR_EVENT_SERVICE_UP
+        | zlink::DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED))
+    mon.set_handler(on_discovery_event);
+
+    // ... Discovery delivers events through the callback ...
+
+    mon.Close()
+    discovery.destroy()
+    ```
+
 ## 3.1 Socket Family Discovery
 
 Raw ROUTER/DEALER/PUB/SUB sockets can use Discovery for automatic peer
@@ -425,6 +463,22 @@ communication at the socket level without the SPOT abstraction.
     // ... publish messages ...
 
     discovery.destroy()?;
+    ```
+
+=== "Go"
+
+    ```go
+    discovery := zlink::Discovery::new(&ctx,
+        zlink::ServiceType::Socket, "price-feed")
+    discovery.connect_registry("tcp://registry1:5551")
+
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://*:9100")
+    pub_sock.attach_discovery(&discovery)
+
+    // ... publish messages ...
+
+    discovery.destroy()
     ```
 
 **Role matching:** Discovery uses service roles to determine which remote

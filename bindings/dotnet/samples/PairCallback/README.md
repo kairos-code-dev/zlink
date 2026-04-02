@@ -1,1 +1,1 @@
-`PairCallback` shows `RecvHandler` on `PairSocket`.
+`PairCallback` shows canonical callback receive with `PairSocket.OnReceive`.

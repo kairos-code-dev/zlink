@@ -7,6 +7,9 @@ using static PerfRunner;
 
 internal static class PerfRouterRouter
 {
+    private const int BorrowedRoutedSendThreshold = 65536;
+    private const int BorrowedRoutedSendMaxSize = 131072;
+
     internal static int RunRouterRouter(string transport, int size)
       => RunRouterRouterInternal(transport, size);
 
@@ -69,8 +72,9 @@ internal static class PerfRouterRouter
                 latency.p95, latency.p99);
             return 0;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"single_router_router_error:{ex.Message}");
             return 2;
         }
     }
@@ -215,8 +219,7 @@ internal static class PerfRouterRouter
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
                 try
                 {
-                    SendBlocking(sender, "ROUTER1"u8, SendFlags.SendMore);
-                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                    SendPayload(sender, payload);
                 }
                 catch
                 {
@@ -232,8 +235,7 @@ internal static class PerfRouterRouter
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
                 try
                 {
-                    SendBlocking(sender, "ROUTER1"u8, SendFlags.SendMore);
-                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                    SendPayload(sender, payload);
                 }
                 catch
                 {
@@ -248,6 +250,8 @@ internal static class PerfRouterRouter
 
         latencySamples = samples;
         receivedOut = receivedCount;
+        if (recvError != null)
+            Console.Error.WriteLine($"single_router_router_recv:{recvError.Message}");
         if (sendFailed || recvError != null)
             return false;
 
@@ -255,6 +259,19 @@ internal static class PerfRouterRouter
             return receivedCount >= warmupCount;
 
         return receivedCount > 0 && latencySamples.Count > 0;
+    }
+
+    private static void SendPayload(Zlink.Socket sender, byte[] payload)
+    {
+        if (payload.Length >= BorrowedRoutedSendThreshold
+            && payload.Length <= BorrowedRoutedSendMaxSize)
+        {
+            sender.SendBorrowedSingle("ROUTER1", payload, 0);
+            return;
+        }
+
+        SendBlocking(sender, "ROUTER1"u8, SendFlags.SendMore);
+        SendBlocking(sender, payload, SendFlags.None);
     }
 
     private static int ReceiveRouterPayload(Zlink.Socket socket, byte[] routingId,

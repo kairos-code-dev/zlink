@@ -1,36 +1,47 @@
-import socket
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import threading
-
 import zlink
-
-
-def _tcp_endpoint():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return f"tcp://127.0.0.1:{port}"
+from sample_common import tcp_endpoint, wait_connected
 
 
 def main():
+    port, endpoint = tcp_endpoint()
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as router:
             with zlink.DealerSocket(ctx) as dealer:
-                done = threading.Event()
+                with router.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as rtr_mon:
+                    with dealer.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as dlr_mon:
+                        dealer.set_routing_id(b"CLIENT")
+                        router.bind(endpoint)
+                        dealer.connect(endpoint)
+                        wait_connected(rtr_mon, dlr_mon)
+
+                request_done = threading.Event()
+                reply_done = threading.Event()
+                req = {}
+                rep = {}
 
                 def on_request(received):
-                    print(received.routing_id, received.to_bytes_list())
-                    done.set()
+                    req["rid"] = received.routing_id
+                    request_done.set()
 
-                endpoint = _tcp_endpoint()
-                dealer.set_routing_id(b"CLIENT")
-                router.bind(endpoint)
-                dealer.connect(endpoint)
+                def on_reply(received):
+                    rep["data"] = received.to_bytes_list()[0].decode("utf-8")
+                    reply_done.set()
+
                 router.on_receive(on_request)
+                dealer.on_receive(on_reply)
 
                 dealer.send(b"ping")
-                if not done.wait(3.0):
-                    raise TimeoutError("dealer/router callback did not receive a message")
+                if not request_done.wait(3.0):
+                    raise TimeoutError("router callback did not receive request")
+
+                router.send(b"pong", routing_id=req["rid"])
+                if not reply_done.wait(3.0):
+                    raise TimeoutError("dealer callback did not receive reply")
+                print(f'[dealer-router/callback] send: "ping" \u2192 recv: "{rep["data"]}"')
 
 
 if __name__ == "__main__":

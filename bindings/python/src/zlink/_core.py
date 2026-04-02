@@ -28,6 +28,8 @@ def _raise_last_error():
 def _as_bytes_view(data):
     if isinstance(data, bytes):
         return memoryview(data)
+    if hasattr(data, "to_bytes") and callable(data.to_bytes):
+        return memoryview(data.to_bytes())
     try:
         view = memoryview(data)
     except TypeError as exc:
@@ -57,6 +59,38 @@ def _send_buffer(data):
         raw = view.tobytes()
         return ctypes.c_char_p(raw), size, raw
     return ctypes.addressof((ctypes.c_char * size).from_buffer(view)), size, view
+
+
+def _validated_int32(value, *, field="value"):
+    native = int(value)
+    if native < -(1 << 31) or native > ((1 << 31) - 1):
+        raise OverflowError(f"{field} must fit in signed 32-bit range")
+    return native
+
+
+def _validated_uint32(value, *, field="value"):
+    native = int(value)
+    if native < 0 or native > ((1 << 32) - 1):
+        raise OverflowError(f"{field} must fit in unsigned 32-bit range")
+    return native
+
+
+def _validated_c_string_bytes(data, *, field="value", max_length=None):
+    raw = bytes(_as_bytes_view(data))
+    if b"\0" in raw:
+        raise ValueError(f"{field} must not contain NUL bytes")
+    if max_length is not None and len(raw) > max_length:
+        raise ValueError(f"{field} must be at most {max_length} bytes")
+    return raw
+
+
+def _validated_c_string_text(text, *, field="value", max_length=None):
+    if "\0" in text:
+        raise ValueError(f"{field} must not contain NUL characters")
+    raw = text.encode()
+    if max_length is not None and len(raw) > max_length:
+        raise ValueError(f"{field} must be at most {max_length} bytes")
+    return raw
 
 
 _ZlinkRoutingId = ZlinkRoutingId
@@ -160,7 +194,10 @@ def _close_multipart(parts_ptr, part_count):
 
 
 def _routing_id_bytes(routing_id):
-    return bytes(routing_id.data[: routing_id.size]) or None
+    raw = bytes(routing_id.data[: routing_id.size])
+    if not raw:
+        return None
+    return RoutingId(raw)
 
 
 def _is_eagain(exc):
@@ -273,6 +310,34 @@ class Context:
         self.close()
 
 
+class RoutingId:
+    def __init__(self, data):
+        self._raw = _validated_routing_id_bytes(data)
+
+    def to_bytes(self):
+        return self._raw
+
+    def __bytes__(self):
+        return self._raw
+
+    def __len__(self):
+        return len(self._raw)
+
+    def __hash__(self):
+        return hash(self._raw)
+
+    def __eq__(self, other):
+        if isinstance(other, RoutingId):
+            return self._raw == other._raw
+        try:
+            return self._raw == _validated_routing_id_bytes(other)
+        except Exception:
+            return False
+
+    def __repr__(self):
+        return f"RoutingId({self._raw!r})"
+
+
 class ReceivedMessage:
     def __init__(self, msg=None, routing_id=None, *, owner=None, index=None):
         self._msg = msg
@@ -353,7 +418,7 @@ class ReceivedMultipart:
         self.close()
 
 
-class ReceivedTopicMessage:
+class TopicMessage:
     def __init__(self, topic, owner, routing_id=None):
         self.topic = topic
         self._owner = owner
@@ -387,7 +452,7 @@ class Received(ReceivedMultipart):
     pass
 
 
-class Subscribed(ReceivedTopicMessage):
+class Subscribed(TopicMessage):
     pass
 
 

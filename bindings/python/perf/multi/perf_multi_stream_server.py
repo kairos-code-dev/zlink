@@ -27,7 +27,7 @@ def main(argv=None):
             buffer.extend(chunk)
             frames = drain_len32be_frames(buffer)
         for frame in frames:
-            server.send_to(routing_id, frame)
+            server.send(frame, routing_id=routing_id)
 
     threading.Thread(target=wait_stop, daemon=True).start()
 

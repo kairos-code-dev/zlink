@@ -4,6 +4,7 @@ import { requireNative } from '../native';
 import { NativeSocketHandle } from './native_socket_handle';
 import { MonitorSocket } from './monitor_socket';
 import { normalizeBufferLike } from './socket_support';
+import { validateCString } from '../validation';
 import type { BufferLike } from '../buffer_like';
 import type { Context } from '../index';
 
@@ -24,11 +25,11 @@ export class BaseSocket {
   }
 
   bind(endpoint: string): void {
-    requireNative().socketBind(this.nativeHandle(), endpoint);
+    requireNative().socketBind(this.nativeHandle(), validateCString(endpoint, 'endpoint'));
   }
 
-  connect(endpoint: string): void {
-    requireNative().socketConnect(this.nativeHandle(), endpoint);
+  unbind(endpoint: string): void {
+    requireNative().socketUnbind(this.nativeHandle(), validateCString(endpoint, 'endpoint'));
   }
 
   protected setSockOptRaw(option: number, value: BufferLike | string): void {
@@ -41,6 +42,16 @@ export class BaseSocket {
 
   protected getSockOptRaw(option: number): Buffer {
     return requireNative().socketGetOpt(this.nativeHandle(), option | 0) as Buffer;
+  }
+
+  /** @internal */
+  setOptionRawInternal(option: number, value: BufferLike | string): void {
+    this.setSockOptRaw(option, value);
+  }
+
+  /** @internal */
+  getOptionRawInternal(option: number): Buffer {
+    return this.getSockOptRaw(option);
   }
 
   monitorOpen(events: number): MonitorSocket {

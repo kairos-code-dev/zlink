@@ -21,7 +21,7 @@ bool wait_for_any_socket_monitor_event (zlink::monitor_handle_t &monitor_,
             continue;
         }
 
-        if (monitor_.try_receive ())
+        if (monitor_.try_recv ())
             return true;
     }
 
@@ -44,7 +44,7 @@ void test_socket_monitor_open_recv_snapshot ()
     assert (!endpoint.empty ());
     assert (client.connect (endpoint) == 0);
 
-    (void) monitor.try_receive ();
+    (void) monitor.try_recv ();
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
     zlink_monitor_snapshot_t snapshot;
     assert (monitor.snapshot (snapshot) == 0);
@@ -57,9 +57,9 @@ void test_service_monitor_open_snapshot ()
     zlink::service::spot_t spot (node);
     assert (spot.valid ());
 
-    zlink::service_monitor_handle_t monitor (spot);
+    zlink::service_monitor_handle_t monitor = spot.monitor_open ();
     assert (monitor.valid ());
-    (void) monitor.try_receive ();
+    (void) monitor.try_recv ();
 
     zlink_monitor_snapshot_t snapshot;
     assert (monitor.snapshot (snapshot) == 0);

@@ -394,7 +394,7 @@ bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor_,
 {
     for (;;) {
         const zlink::maybe_t<zlink_socket_monitor_event_t> event =
-          monitor_.try_receive ();
+          monitor_.try_recv();
         if (!event)
             break;
         if (event->event != event_type_)
@@ -430,7 +430,7 @@ bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor_,
 
         for (;;) {
             const zlink::maybe_t<zlink_socket_monitor_event_t> event =
-              monitor_.try_receive ();
+              monitor_.try_recv();
             if (!event)
                 break;
             if (event->event != event_type_)
@@ -450,7 +450,7 @@ bool wait_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
 {
     for (;;) {
         const zlink::maybe_t<zlink_service_monitor_event_t> event =
-          monitor_.try_receive ();
+          monitor_.try_recv();
         if (!event)
             break;
         if (event->event_type != event_type_)
@@ -486,7 +486,7 @@ bool wait_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
 
         for (;;) {
             const zlink::maybe_t<zlink_service_monitor_event_t> event =
-              monitor_.try_receive ();
+              monitor_.try_recv();
             if (!event)
                 break;
             if (event->event_type != event_type_)
@@ -810,7 +810,7 @@ bool callback_receiver_t::attach (perf_socket_t &socket_,
 {
     _socket = &socket_;
     _queue_probe = queue_probe_;
-    if (_socket->recv_handler (&callback_receiver_t::recv_handler, this) != 0)
+    if (_socket->on_receive(&callback_receiver_t::recv_handler, this) != 0)
         return false;
     if (_worker.joinable ())
         return true;
@@ -1079,7 +1079,7 @@ bool subscribe_callback_receiver_t::attach_socket (perf_socket_t &socket_,
                                                    queue_probe_t *queue_probe_)
 {
     _queue_probe = queue_probe_;
-    if (socket_.subscribe_handler (
+    if (socket_.on_subscribe(
           &subscribe_callback_receiver_t::subscribe_handler, this)
         != 0) {
         return false;
@@ -1101,7 +1101,7 @@ bool subscribe_callback_receiver_t::attach_spot (zlink::service::spot_t &spot_,
                                                  queue_probe_t *queue_probe_)
 {
     _queue_probe = queue_probe_;
-    if (spot_.subscribe_handler (
+    if (spot_.on_subscribe(
           &subscribe_callback_receiver_t::subscribe_handler, this)
         != 0) {
         return false;

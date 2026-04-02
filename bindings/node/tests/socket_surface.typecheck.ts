@@ -5,8 +5,12 @@ const ctx = new zlink.Context();
 const pub = new zlink.PubSocket(ctx);
 pub.publish('topic', zlink.Message.copyOf('ok'));
 pub.tryPublish('topic', zlink.Message.copyOf('ok'));
-// @ts-expect-error pub cannot receive
-pub.receive();
+pub.onSendReady(() => {});
+pub.attachDiscovery(new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'pub-service'));
+pub.options.linger = 0;
+pub.options.verbose = true;
+// @ts-expect-error pub cannot recv
+pub.recv();
 // @ts-expect-error pub cannot subscribe
 pub.subscribe();
 // @ts-expect-error pub cannot use generic send
@@ -20,33 +24,46 @@ const sub = new zlink.SubSocket(ctx);
 sub.setSubscription('topic');
 sub.subscribe();
 sub.trySubscribe();
-sub.subscribeHandler(() => {});
+sub.onSubscribe(() => {});
+sub.attachDiscovery(new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'sub-service'));
+sub.options.recvTimeout = 10;
+sub.options.topicsCount;
 // @ts-expect-error sub cannot send
 sub.send(zlink.Message.copyOf('bad'));
 // @ts-expect-error sub cannot set routing id
 sub.setRoutingId(Buffer.from('id'));
+// @ts-expect-error topicsCount is read-only
+sub.options.topicsCount = 1;
 
 const dealer = new zlink.DealerSocket(ctx);
 dealer.send(zlink.Message.copyOf('ok'));
 dealer.trySend(zlink.Message.copyOf('ok'));
-dealer.receive();
-dealer.tryReceive();
-dealer.recvHandler(() => {});
+dealer.recv();
+dealer.tryRecv();
+dealer.onReceive(() => {});
+dealer.onSendReady(() => {});
 dealer.setRoutingId(Buffer.from('id'));
 dealer.getRoutingId();
+dealer.attachDiscovery(new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'dealer-service'));
+dealer.options.probe = true;
+dealer.options.maxMsgSize = 1024n;
 // @ts-expect-error dealer has no subscribe
 dealer.subscribe();
 // @ts-expect-error dealer has no generic option api
 dealer.setOption(zlink.SocketOption.LINGER, Buffer.alloc(4));
 
 const router = new zlink.RouterSocket(ctx);
-router.receive();
-router.tryReceive();
-router.recvHandler(() => {});
+router.recv();
+router.tryRecv();
+router.onReceive(() => {});
+router.onSendReady(() => {});
 router.setRoutingId(Buffer.from('id'));
 router.getRoutingId();
+router.attachDiscovery(new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'router-service'));
 router.send(Buffer.from('id'), zlink.Message.copyOf('ok'));
 router.trySend(Buffer.from('id'), [zlink.Message.copyOf('ok')]);
+router.options.mandatory = true;
+router.options.connectRoutingId = Buffer.from('peer');
 // @ts-expect-error router has no subscribe
 router.subscribe();
 // @ts-expect-error router has no generic sockopt api
@@ -55,11 +72,17 @@ router.setSockOpt(zlink.SocketOption.LINGER, Buffer.alloc(4));
 const stream = new zlink.StreamSocket(ctx);
 stream.send(Buffer.from('id'), zlink.Message.copyOf('ok'));
 stream.trySend(Buffer.from('id'), zlink.Message.copyOf('ok'));
-stream.receive();
-stream.tryReceive();
-stream.recvHandler(() => {});
+stream.recv();
+stream.tryRecv();
+stream.onReceive(() => {});
+stream.onSendReady(() => {});
+stream.setRoutingId(Buffer.from('id'));
+stream.getRoutingId();
+stream.options.notify = true;
 // @ts-expect-error canonical stream has no streamAttach helper
 stream.streamAttach(() => {});
+// @ts-expect-error canonical stream cannot connect
+stream.connect('tcp://127.0.0.1:5555');
 // @ts-expect-error canonical stream has no generic option api
 stream.setOption(zlink.SocketOption.LINGER, Buffer.alloc(4));
 
@@ -68,15 +91,21 @@ xpub.publish('topic', zlink.Message.copyOf('ok'));
 xpub.tryPublish('topic', zlink.Message.copyOf('ok'));
 xpub.receiveSubscriptionEvent();
 xpub.tryReceiveSubscriptionEvent();
-xpub.setVerbose(true);
-xpub.setVerboser(true);
-xpub.setNoDrop(true);
+xpub.onSendReady(() => {});
+xpub.options.verbose = true;
+xpub.options.verboser = true;
+xpub.options.noDrop = true;
+xpub.options.manual = true;
 // @ts-expect-error xpub cannot subscribe
 xpub.subscribe();
 // @ts-expect-error xpub cannot use generic send
 xpub.send(zlink.Message.copyOf('ok'));
+// @ts-expect-error aligned xpub no longer exposes setter aliases
+xpub.setVerbose(true);
 
 const spotNode = new zlink.SpotNode(ctx);
+// @ts-expect-error canonical spot node has no lastEndpoint alias
+spotNode.lastEndpoint();
 const spot = new zlink.Spot(spotNode);
 spot.publish('topic', zlink.Message.copyOf('ok'));
 spot.tryPublish('topic', [zlink.Message.copyOf('ok')]);
@@ -84,7 +113,8 @@ spot.setSubscription('topic');
 spot.unsetSubscription('topic');
 spot.subscribe();
 spot.trySubscribe();
-spot.subscribeHandler(() => {});
+spot.onSubscribe(() => {});
+spot.onSendReady(() => {});
 // @ts-expect-error spot does not expose recv
 spot.recv();
 
@@ -93,7 +123,7 @@ monitor.recv();
 monitor.tryRecv();
 monitor.close();
 
-const serviceMonitor = spot.openMonitor();
+const serviceMonitor = spot.monitorOpen();
 serviceMonitor.recv();
 serviceMonitor.tryRecv();
 serviceMonitor.close();

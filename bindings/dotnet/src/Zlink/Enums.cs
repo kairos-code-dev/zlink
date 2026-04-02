@@ -16,7 +16,7 @@ public enum SocketType
     Stream = 0x1008
 }
 
-public enum ContextOption
+internal enum ContextOption
 {
     IoThreads = 1,
     MaxSockets = 2,
@@ -31,7 +31,7 @@ public enum ContextOption
     Blocky = 10
 }
 
-public enum SocketOption
+internal enum SocketOption
 {
     RoutingId = 0x7F000001,
     Subscribe = 0x7F000002,
@@ -95,8 +95,8 @@ public enum SocketOption
     XPubNoDrop = 0x3305,
     XPubWelcomeMsg = 0x3306,
     TopicsCount = 0x3307,
-    StreamNotify = 0x3501
-    ,
+    StreamNotify = 0x3501,
+    SubTopicsCount = 0x3400,
     UseFd = 0x7F000005,
     OnlyFirstSubscribe = 0x7F000006
 }
@@ -208,6 +208,46 @@ public enum MonitorSnapshotDetail
 }
 
 [Flags]
+public enum ServiceMonitorEvents : uint
+{
+    None = 0,
+    DiscoveryReadyChanged = 1u << 0,
+    SpotReadyChanged = 1u << 0,
+    Error = 1u << 4,
+    DiscoveryServiceUp = 1u << 5,
+    DiscoveryServiceDown = 1u << 6,
+    DiscoveryProvidersChanged = 1u << 7,
+    SpotFilterApplied = 1u << 13,
+    SpotSubscriptionReadyChanged = 1u << 14,
+    SpotPubDeliveryReadyChanged = 1u << 18,
+    SpotSubDeliveryReadyChanged = 1u << 19,
+    SpotFirstDeliveryReadyChanged = 1u << 20,
+    Closed = 1u << 17,
+    All = Error
+        | Closed
+        | DiscoveryReadyChanged
+        | DiscoveryServiceUp
+        | DiscoveryServiceDown
+        | DiscoveryProvidersChanged
+        | SpotFilterApplied
+        | SpotSubscriptionReadyChanged
+        | SpotPubDeliveryReadyChanged
+        | SpotSubDeliveryReadyChanged
+        | SpotFirstDeliveryReadyChanged
+}
+
+[Flags]
+public enum ServiceMonitorDetailFlags : uint
+{
+    None = 0,
+    ServiceName = 0x0001,
+    Endpoint = 0x0002,
+    SubjectRoutingId = 0x0004,
+    PeerRoutingId = 0x0008,
+    Subject = 0x0010,
+    SubjectKind = 0x0020
+}
+
 public enum PollEvents
 {
     None = 0,
@@ -224,7 +264,7 @@ public enum RegistrySocketRole
     PeerSub = 3
 }
 
-public enum SpotNodeSocketRole
+internal enum SpotNodeSocketRole
 {
     Node = 0,
     Pub = 1,

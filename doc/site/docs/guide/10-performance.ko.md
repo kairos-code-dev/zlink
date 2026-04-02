@@ -65,6 +65,12 @@ wss/tls: ws/tcp + TLS 암호화. 핸드셰이크 + 레코드 오버헤드.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 | I/O 스레드 | 추천 사용 사례 | 기준 |
 |------------|---------------|------|
 | 1 | 소규모 연결 (<100), 단순 패턴 | CPU 코어 1개 사용 |
@@ -132,6 +138,12 @@ HWM은 각 큐가 보관할 수 있는 최대 메시지 수를 설정한다.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 | 설정 | 기본값 | 설명 |
@@ -274,6 +286,12 @@ Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 #### 논블로킹 송신 (DONTWAIT)
 
 `ZLINK_DONTWAIT`를 전달하면 HWM 도달 시 즉시 `EAGAIN`을 반환한다.
@@ -326,6 +344,12 @@ Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입�
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 #### Send-Ready 핸들러 (이벤트 기반 Backpressure)
@@ -449,6 +473,12 @@ sender에 pipe 레벨 backpressure가 적용된다.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 Callback 모드에서 느린 콜백은 I/O 스레드를 블로킹하여 수신 큐가
 누적되게 한다. 무거운 작업은 별도 스레드로 오프로드해야 한다:
 
@@ -501,6 +531,12 @@ Callback 모드에서 느린 콜백은 I/O 스레드를 블로킹하여 수신 �
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > 스레드 안전 작업 큐 패턴은
@@ -635,6 +671,12 @@ zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 5. 소켓 옵션 튜닝 체크리스트
 
 | 옵션 | 기본값 | 튜닝 포인트 |
@@ -696,6 +738,12 @@ zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 타임아웃 설정
 
 === "C"
@@ -744,6 +792,12 @@ zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스�
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 6. 성능 측정 방법
@@ -810,6 +864,12 @@ zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 지연시간 측정 (Ping-Pong)
 
 === "C"
@@ -869,6 +929,12 @@ zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스�
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 7. 성능 체크리스트

@@ -1,0 +1,32 @@
+## Effective Options (start)
+- runs: 1
+- recv_mode: recv
+- duration_seconds: 0.2
+- warmup_seconds: 0.1
+- patterns: MULTI_ROUTER_ROUTER,MULTI_SPOT
+- transports: tcp
+- msg_sizes: 64
+- clients: 2
+
+READY,tcp://127.0.0.1:31909
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,throughput,5029.60
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,bandwidth,0.32
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency,253.66
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p95,322.20
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p99,410.83
+READY,tcp://127.0.0.1:30509
+RESULT,current,MULTI_SPOT,tcp,64,throughput,51535.00
+RESULT,current,MULTI_SPOT,tcp,64,bandwidth,3.30
+RESULT,current,MULTI_SPOT,tcp,64,latency,170775.87
+RESULT,current,MULTI_SPOT,tcp,64,latency_p95,254147.86
+RESULT,current,MULTI_SPOT,tcp,64,latency_p99,261600.21
+
+| Pattern | Transport | Size | Throughput | Bandwidth | Latency | Latency P95 | Latency P99 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| MULTI_ROUTER_ROUTER | tcp | 64 | 5029.60 | 0.32 | 253.66 | 322.20 | 410.83 |
+| MULTI_SPOT | tcp | 64 | 51535.00 | 3.30 | 170775.87 | 254147.86 | 261600.21 |
+
+## Effective Options (result)
+- recv_mode: recv
+- result_lines: 10
+- status: complete

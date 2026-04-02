@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Optional;
 
 public final class XSubSocket extends Socket {
+    private final SubSocketOptions options = new SubSocketOptions(this);
+
     public XSubSocket(Context ctx) {
         super(ctx, SocketType.XSUB);
     }
@@ -20,4 +22,5 @@ public final class XSubSocket extends Socket {
     public TopicMessage subscribe() { return super.subscribe(); }
     public Optional<TopicMessage> trySubscribe() { return super.trySubscribe(); }
     public void onSubscribe(SubscribeHandler handler) { super.onSubscribe(handler); }
+    @Override public SubSocketOptions options() { return options; }
 }

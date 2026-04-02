@@ -9,7 +9,7 @@
     "noCheck": true
   },
   "include": [
-    "examples/**/*.ts",
+    "samples/**/*.ts",
     "perf/**/*.ts",
     "tests/**/*.ts"
   ],

@@ -11,6 +11,7 @@ public sealed class Context : IDisposable
 
     public Context()
     {
+        Options = new ContextOptions(this);
         _handle = NativeMethods.zlink_ctx_new();
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
@@ -18,7 +19,9 @@ public sealed class Context : IDisposable
 
     internal IntPtr Handle => _handle;
 
-    public void SetOption(ContextOption option, int value)
+    public ContextOptions Options { get; }
+
+    internal void SetOption(ContextOption option, int value)
     {
         EnsureNotDisposed();
         EnumValidation.EnsureContextOption(option, nameof(option));
@@ -26,7 +29,7 @@ public sealed class Context : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public int GetOption(ContextOption option)
+    internal int GetOption(ContextOption option)
     {
         EnsureNotDisposed();
         EnumValidation.EnsureContextOption(option, nameof(option));

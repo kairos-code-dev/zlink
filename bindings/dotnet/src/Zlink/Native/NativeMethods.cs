@@ -21,6 +21,9 @@ internal static partial class NativeMethods
         nuint partCount,
         IntPtr userData);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkFreeFnDelegate(IntPtr data, IntPtr hint);
+
     static NativeMethods()
     {
         NativeLibraryLoader.EnsureLoaded();

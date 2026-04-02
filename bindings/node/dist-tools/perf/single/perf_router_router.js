@@ -10,12 +10,12 @@ function partStrings(received) {
 }
 async function handshake(receiver, sender) {
     sender.send(RECEIVER_ID, zlink.Message.copyOf('PING'));
-    const ping = receiver.receive();
+    const ping = receiver.recv();
     if (ping.routingId === null || partStrings(ping).join(',') !== 'PING') {
         throw new Error('router-router handshake receive failed');
     }
     receiver.send(SENDER_ID, zlink.Message.copyOf('PONG'));
-    const pong = sender.receive();
+    const pong = sender.recv();
     if (pong.routingId === null || partStrings(pong).join(',') !== 'PONG') {
         throw new Error('router-router handshake reply failed');
     }
@@ -31,7 +31,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
         receiver.bind(endpoint);
         sender.connect(endpoint);
         await handshake(receiver, sender);
-        const state = attachCallbackCollector((handler) => receiver.recvHandler(handler), msgSize, options, (_, parts) => parts[0].toBuffer());
+        const state = attachCallbackCollector((handler) => receiver.onReceive(handler), msgSize, options, (_, parts) => parts[0].toBuffer());
         await driveSender((payload) => (sender.trySend(RECEIVER_ID, payload) === zlink.SendResult.Sent), state);
         return await finishCollector(state);
     }

@@ -23,7 +23,7 @@ class registry_query_client_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    ~registry_query_client_t () { (void) destroy (); }
+    ~registry_query_client_t () { (void) close (); }
 
     registry_query_client_t (registry_query_client_t &&other) noexcept
         : _client (other._client), _last_error (other._last_error)
@@ -37,7 +37,7 @@ class registry_query_client_t
         if (this == &other)
             return *this;
 
-        (void) destroy ();
+        (void) close ();
         _client = other._client;
         _last_error = other._last_error;
         other._client = NULL;
@@ -55,6 +55,7 @@ class registry_query_client_t
 
     ZLINK_CPP_NODISCARD int connect (const std::string &endpoint_)
     {
+        validate_bounded_c_string (endpoint_, 255u, "endpoint");
         return zlink_registry_query_client_connect (_client, endpoint_.c_str ());
     }
 
@@ -66,7 +67,7 @@ class registry_query_client_t
         return zlink_registry_query_snapshot (_client, filter_, entries_, count_);
     }
 
-    ZLINK_CPP_NODISCARD int destroy ()
+    ZLINK_CPP_NODISCARD int close ()
     {
         if (!_client)
             return 0;

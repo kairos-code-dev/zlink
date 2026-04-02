@@ -341,7 +341,7 @@ bool perf_stream_callback_server (const std::string &transport, size_t)
     g_pending_count = 0;
     install_signal_handlers ();
 
-    if (server.sock ().recv_handler (on_stream_packet, NULL) != 0) {
+    if (server.sock ().on_receive(on_stream_packet, NULL) != 0) {
         g_server_socket = NULL;
         delete[] g_pending_messages;
         g_pending_messages = NULL;

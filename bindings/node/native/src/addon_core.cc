@@ -466,6 +466,10 @@ int set_socket_option(void *sock, int32_t opt, const void *data, size_t len)
     case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
         return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
                                        data, len);
+    case ZLINK_DEALER_OPT_PROBE:
+        return zlink_set_dealer_option(sock, ZLINK_DEALER_OPT_PROBE, data, len);
+    case ZLINK_STREAM_OPT_NOTIFY:
+        return zlink_set_stream_option(sock, ZLINK_STREAM_OPT_NOTIFY, data, len);
     case ZLINK_PUB_OPT_VERBOSE:
         return zlink_set_pub_option(sock, ZLINK_PUB_OPT_VERBOSE, data, len);
     case ZLINK_PUB_OPT_VERBOSER:
@@ -516,6 +520,10 @@ int get_socket_option(void *sock, int32_t opt, void *data, size_t *len)
     case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
         return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
                                        data, len);
+    case ZLINK_DEALER_OPT_PROBE:
+        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_PROBE, data, len);
+    case ZLINK_STREAM_OPT_NOTIFY:
+        return zlink_get_stream_option(sock, ZLINK_STREAM_OPT_NOTIFY, data, len);
     case ZLINK_PUB_OPT_VERBOSE:
         return zlink_get_pub_option(sock, ZLINK_PUB_OPT_VERBOSE, data, len);
     case ZLINK_PUB_OPT_VERBOSER:
@@ -535,6 +543,28 @@ int get_socket_option(void *sock, int32_t opt, void *data, size_t *len)
     default:
         return zlink_get_option(sock, static_cast<zlink_option_t>(opt), data,
                                 len);
+    }
+}
+
+size_t initial_getopt_buffer_len(int32_t opt)
+{
+    switch (opt) {
+    case k_legacy_opt_routing_id:
+    case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
+        return 255;
+    case ZLINK_OPT_LAST_ENDPOINT:
+    case ZLINK_OPT_TLS_CERT:
+    case ZLINK_OPT_TLS_KEY:
+    case ZLINK_OPT_TLS_CA:
+    case ZLINK_OPT_TLS_HOSTNAME:
+    case ZLINK_OPT_TLS_PASSWORD:
+    case ZLINK_OPT_BINDTODEVICE:
+    case ZLINK_OPT_ZMP_METADATA:
+        return 256;
+    case ZLINK_OPT_MAXMSGSIZE:
+        return sizeof(int64_t);
+    default:
+        return sizeof(int);
     }
 }
 
@@ -1285,6 +1315,22 @@ napi_value socket_bind(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value socket_unbind(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    std::string addr = get_string(env, argv[1]);
+    int rc = zlink_unbind(sock, addr.c_str());
+    if (rc != 0)
+        return throw_last_error(env, "unbind failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value socket_connect(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -1296,6 +1342,39 @@ napi_value socket_connect(napi_env env, napi_callback_info info)
     int rc = zlink_connect(sock, addr.c_str());
     if (rc != 0)
         return throw_last_error(env, "connect failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value socket_disconnect(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    std::string addr = get_string(env, argv[1]);
+    int rc = zlink_disconnect(sock, addr.c_str());
+    if (rc != 0)
+        return throw_last_error(env, "disconnect failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value socket_attach_discovery(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    void *discovery = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external(env, argv[1], &discovery);
+    int rc = zlink_socket_attach_discovery(sock, discovery);
+    if (rc != 0)
+        return throw_last_error(env, "socket_attach_discovery failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
@@ -2162,14 +2241,14 @@ napi_value socket_getopt(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
     int32_t opt = 0;
     napi_get_value_int32(env, argv[1], &opt);
-    size_t len = 256;
+    size_t len = initial_getopt_buffer_len(opt);
     void *data = NULL;
     napi_value buf;
     napi_create_buffer(env, len, &data, &buf);
     int rc = get_socket_option(sock, opt, data, &len);
     if (rc != 0)
         return throw_last_error(env, "getsockopt failed");
-    if (len == 256 || len == sizeof(int))
+    if (len == initial_getopt_buffer_len(opt))
         return buf;
     napi_value out;
     napi_create_buffer_copy(env, len, data, NULL, &out);

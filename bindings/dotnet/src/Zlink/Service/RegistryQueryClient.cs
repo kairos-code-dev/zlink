@@ -21,20 +21,61 @@ public sealed class RegistryQueryClient : IDisposable
 
     public void Connect(string endpoint)
     {
-        if (string.IsNullOrEmpty(endpoint))
-            throw new ArgumentException("Value must not be empty.",
-                nameof(endpoint));
+        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_query_client_connect(_handle,
             endpoint);
         ZlinkException.ThrowIfError(rc);
     }
 
-    public RegistryTopologyEntry[] Snapshot()
+    public RegistryTopologyEntry[] Snapshot(RegistryTopologyFilter? filter = null)
     {
         EnsureNotDisposed();
-        return ReadTopologyEntries(_handle, IntPtr.Zero,
-            NativeMethods.zlink_registry_query_snapshot);
+        unsafe
+        {
+            ZlinkRegistryTopologyFilter nativeFilter = default;
+            IntPtr filterPtr = IntPtr.Zero;
+            if (filter.HasValue)
+            {
+                RegistryTopologyFilter value = filter.Value;
+                if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
+                    || !string.IsNullOrEmpty(value.ServiceName)
+                    || value.RoutingId.HasValue || value.State.HasValue
+                    || value.Source.HasValue)
+                {
+                    nativeFilter.ServiceKind =
+                        (int)value.ServiceKind.GetValueOrDefault();
+                    nativeFilter.ServiceRole =
+                        (ushort)value.ServiceRole.GetValueOrDefault();
+                    nativeFilter.State = (int)value.State.GetValueOrDefault();
+                    nativeFilter.Source = (int)value.Source.GetValueOrDefault();
+                    if (!string.IsNullOrEmpty(value.ServiceName))
+                    {
+                        BoundaryValidation.ValidateFixedUtf8(value.ServiceName,
+                            nameof(RegistryTopologyFilter.ServiceName));
+                        WriteFixedString(value.ServiceName,
+                            nativeFilter.ServiceName, 256);
+                    }
+                    if (value.RoutingId.HasValue)
+                    {
+                        nativeFilter.RoutingId = NativeHelpers.WriteRoutingId(
+                            RoutingIdCodec.FromPublicString(
+                                value.RoutingId.Value.Value,
+                                nameof(RegistryTopologyFilter.RoutingId)));
+                    }
+
+                    filterPtr = (IntPtr)(&nativeFilter);
+                }
+            }
+
+            return ReadTopologyEntries(_handle, filterPtr,
+                NativeMethods.zlink_registry_query_snapshot);
+        }
+    }
+
+    public void Close()
+    {
+        Dispose();
     }
 
     public void Dispose()
@@ -92,4 +133,20 @@ public sealed class RegistryQueryClient : IDisposable
 
     internal delegate int TopologyReadFn(IntPtr handle, IntPtr filter,
         IntPtr entries, ref nuint count);
+
+    private static unsafe void WriteFixedString(string value, byte* destination,
+        int capacity)
+    {
+        byte[] encoded = System.Text.Encoding.UTF8.GetBytes(value);
+        if (encoded.Length >= capacity)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value),
+                "UTF-8 value exceeds native fixed buffer capacity.");
+        }
+
+        for (int i = 0; i < capacity; i++)
+            destination[i] = 0;
+        for (int i = 0; i < encoded.Length; i++)
+            destination[i] = encoded[i];
+    }
 }

@@ -1,0 +1,345 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#ifndef ZLINK_CPP_SAMPLES_COMMON_SAMPLE_COMMON_HPP_INCLUDED
+#define ZLINK_CPP_SAMPLES_COMMON_SAMPLE_COMMON_HPP_INCLUDED
+
+#include <boost/asio.hpp>
+#include <zlink.hpp>
+
+#include <cassert>
+#include <chrono>
+#include <condition_variable>
+#include <cstdio>
+#include <cstdint>
+#include <cstring>
+#include <future>
+#include <mutex>
+#include <sstream>
+#include <string>
+
+#if defined(ZLINK_HAVE_WINDOWS)
+#include <process.h>
+#endif
+
+namespace detail
+{
+
+inline const char *const k_pair_payload = "hello-pair";
+inline const char *const k_dealer_router_request = "ping";
+inline const char *const k_dealer_router_reply = "pong";
+inline const char *const k_stream_payload = "hello-stream";
+inline const char *const k_pubsub_topic = "prices";
+inline const char *const k_pubsub_payload = "101.25";
+inline const char *const k_spot_topic = "room:lobby";
+inline const char *const k_spot_payload = "hello-spot";
+
+inline std::string unique_tcp (const char *base_)
+{
+    boost::asio::io_context io;
+    boost::asio::ip::tcp::acceptor acceptor (io);
+    boost::asio::ip::tcp::endpoint endpoint (
+      boost::asio::ip::make_address ("127.0.0.1"), 0);
+    acceptor.open (endpoint.protocol ());
+    acceptor.set_option (boost::asio::socket_base::reuse_address (true));
+    acceptor.bind (endpoint);
+    const unsigned short port = acceptor.local_endpoint ().port ();
+    acceptor.close ();
+
+    std::ostringstream stream;
+    (void) base_;
+    stream << "tcp://127.0.0.1:" << port;
+    return stream.str ();
+}
+
+inline zlink::message_t make_message (const std::string &text_)
+{
+    return zlink::message_t::from_string (text_);
+}
+
+inline bool wait_until (std::condition_variable &cv_,
+                        std::unique_lock<std::mutex> &lock_,
+                        bool &ready_,
+                        int timeout_ms_)
+{
+    return cv_.wait_for (
+      lock_, std::chrono::milliseconds (timeout_ms_), [&ready_] {
+          return ready_;
+      });
+}
+
+template<typename MonitorLike>
+inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
+{
+    zlink::poller_t poller;
+    if (!poller.valid ())
+        return false;
+    if (poller.add (monitor_, zlink::poll_event::pollin) != 0)
+        return false;
+
+    zlink::poll_event_t event;
+    const int rc = poller.wait (&event, timeout_ms_);
+    return rc > 0;
+}
+
+inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
+                                           uint64_t event_type_,
+                                           int timeout_ms_,
+                                           int64_t value_ = -1)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ());
+        if (!wait_for_monitor_readable (monitor_, remaining_ms))
+            continue;
+
+        const zlink::maybe_t<zlink_socket_monitor_event_t> event =
+          monitor_.try_recv ();
+        if (!event)
+            continue;
+        if (event->event != event_type_)
+            continue;
+        if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
+            continue;
+        return true;
+    }
+
+    return false;
+}
+
+inline bool wait_connected (zlink::monitor_handle_t &server_monitor_,
+                            zlink::monitor_handle_t &client_monitor_,
+                            int timeout_ms_ = 2000)
+{
+    return wait_for_socket_monitor_event (
+             server_monitor_,
+             static_cast<uint64_t> (
+               zlink::monitor_event::connection_ready_changed),
+             timeout_ms_, 1)
+           && wait_for_socket_monitor_event (
+             client_monitor_,
+             static_cast<uint64_t> (
+               zlink::monitor_event::connection_ready_changed),
+             timeout_ms_, 1);
+}
+
+inline bool wait_stream_connected (zlink::monitor_handle_t &server_monitor_,
+                                   int timeout_ms_ = 2000)
+{
+    return wait_for_socket_monitor_event (
+      server_monitor_,
+      static_cast<uint64_t> (zlink::monitor_event::accepted), timeout_ms_);
+}
+
+inline bool
+wait_for_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
+                                uint32_t event_type_,
+                                int timeout_ms_,
+                                int64_t value_ = -1)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ());
+        if (!wait_for_monitor_readable (monitor_, remaining_ms))
+            continue;
+
+        const zlink::maybe_t<zlink_service_monitor_event_t> event =
+          monitor_.try_recv ();
+        if (!event)
+            continue;
+        if (event->event_type != event_type_)
+            continue;
+        if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
+            continue;
+        return true;
+    }
+
+    return false;
+}
+
+inline bool
+wait_for_service_monitor_event_endpoint (
+  zlink::service_monitor_handle_t &monitor_,
+  uint32_t event_type_,
+  const std::string &endpoint_,
+  int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ());
+        if (!wait_for_monitor_readable (monitor_, remaining_ms))
+            continue;
+
+        const zlink::maybe_t<zlink_service_monitor_event_t> event =
+          monitor_.try_recv ();
+        if (!event)
+            continue;
+        if (event->event_type != event_type_)
+            continue;
+        if ((event->detail_flags & ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT) == 0)
+            continue;
+        if (endpoint_ != event->endpoint)
+            continue;
+        return true;
+    }
+
+    return false;
+}
+
+inline bool
+wait_for_service_monitor_state (zlink::service_monitor_handle_t &monitor_,
+                                uint32_t state_flags_,
+                                int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_monitor_snapshot_t snapshot;
+        if (monitor_.snapshot (snapshot) == 0
+            && (snapshot.state_flags & state_flags_) == state_flags_) {
+            return true;
+        }
+
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+            .count ());
+        if (remaining_ms <= 0)
+            break;
+        if (remaining_ms > 200)
+            remaining_ms = 200;
+
+        if (!wait_for_monitor_readable (monitor_, remaining_ms))
+            continue;
+
+        (void) monitor_.try_recv ();
+    }
+
+    return false;
+}
+
+inline bool wait_spot_ready (zlink::service_monitor_handle_t &sub_monitor_,
+                             zlink::service_monitor_handle_t &pub_monitor_,
+                             const std::string &endpoint_,
+                             int timeout_ms_ = 10000)
+{
+    return wait_for_service_monitor_event (
+             sub_monitor_,
+             static_cast<uint32_t> (
+               zlink::service_monitor_event::spot_filter_applied),
+             timeout_ms_)
+           && wait_for_service_monitor_event_endpoint (
+             sub_monitor_,
+             static_cast<uint32_t> (
+               zlink::service_monitor_event::spot_subscription_ready_changed),
+             endpoint_, timeout_ms_)
+           && wait_for_service_monitor_state (
+             pub_monitor_, ZLINK_MONITOR_STATE_SEND_READY, timeout_ms_);
+}
+
+template<typename T>
+inline T wait_future (std::future<T> &future_, int timeout_ms_)
+{
+    assert (future_.wait_for (std::chrono::milliseconds (timeout_ms_))
+            == std::future_status::ready);
+    return future_.get ();
+}
+
+inline bool parse_tcp_endpoint (const std::string &endpoint_,
+                                std::string &host_,
+                                std::string &port_)
+{
+    char proto[8] = {0};
+    char host[64] = {0};
+    int port = 0;
+    if (std::sscanf (
+          endpoint_.c_str (), "%7[^:]://%63[^:]:%d", proto, host, &port)
+        != 3)
+        return false;
+
+    if (std::strcmp (proto, "tcp") != 0 || port <= 0 || port > 65535)
+        return false;
+
+    host_ = host;
+    std::ostringstream stream;
+    stream << port;
+    port_ = stream.str ();
+    return true;
+}
+
+class raw_tcp_client_t
+{
+  public:
+    explicit raw_tcp_client_t (const std::string &endpoint_)
+        : _socket (_io)
+    {
+        std::string host;
+        std::string port;
+        assert (parse_tcp_endpoint (endpoint_, host, port));
+
+        boost::asio::ip::tcp::resolver resolver (_io);
+        boost::system::error_code ec;
+        const boost::asio::ip::tcp::resolver::results_type endpoints =
+          resolver.resolve (host, port, ec);
+        assert (!ec);
+        boost::asio::connect (_socket, endpoints, ec);
+        assert (!ec);
+    }
+
+    ~raw_tcp_client_t ()
+    {
+        boost::system::error_code ec;
+        _socket.close (ec);
+    }
+
+    void send_all (const char *data_, size_t size_)
+    {
+        boost::system::error_code ec;
+        const size_t written = boost::asio::write (
+          _socket, boost::asio::buffer (data_, size_), ec);
+        assert (!ec);
+        assert (written == size_);
+    }
+
+    int recv_exact (char *buffer_, size_t size_)
+    {
+        boost::system::error_code ec;
+        const size_t received = boost::asio::read (
+          _socket, boost::asio::buffer (buffer_, size_), ec);
+        assert (!ec);
+        assert (received == size_);
+        return static_cast<int> (received);
+    }
+
+    void close ()
+    {
+        boost::system::error_code ec;
+        _socket.close (ec);
+    }
+
+  private:
+    boost::asio::io_context _io;
+    boost::asio::ip::tcp::socket _socket;
+};
+
+} // namespace detail
+
+#endif

@@ -21,7 +21,7 @@ public sealed class test_callback_contract
 
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
-        receiver.RecvHandler((routingId, parts) =>
+        receiver.OnReceive((routingId, parts) =>
         {
             Assert.Single(parts);
             owned = parts[0];
@@ -61,7 +61,7 @@ public sealed class test_callback_contract
         Runtime.UnhandledCallbackException += OnUnhandled;
         try
         {
-            receiver.RecvHandler((routingId, parts) =>
+            receiver.OnReceive((routingId, parts) =>
             {
                 throw new InvalidOperationException("recv-handler-fail");
             });
@@ -96,7 +96,7 @@ public sealed class test_callback_contract
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
         string? receivedTopic = null;
-        subscriber.SubscribeHandler((routingId, topic, parts) =>
+        subscriber.OnSubscribe((routingId, topic, parts) =>
         {
             Assert.Single(parts);
             receivedTopic = topic;
@@ -141,7 +141,7 @@ public sealed class test_callback_contract
         Runtime.UnhandledCallbackException += OnUnhandled;
         try
         {
-            subscriber.SubscribeHandler((routingId, topic, parts) =>
+            subscriber.OnSubscribe((routingId, topic, parts) =>
             {
                 throw new InvalidOperationException("subscribe-handler-fail");
             });

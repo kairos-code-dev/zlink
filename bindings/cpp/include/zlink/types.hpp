@@ -6,6 +6,7 @@
 #include "message.hpp"
 
 #include <cerrno>
+#include <stdexcept>
 
 namespace zlink
 {
@@ -185,6 +186,26 @@ template<typename T> struct stream_option_key_t
     stream_option option;
 };
 
+inline void validate_no_embedded_null (const std::string &value_,
+                                       const char *field_name_)
+{
+    if (value_.find ('\0') != std::string::npos)
+        throw std::invalid_argument (
+          std::string (field_name_) + " must not contain embedded null");
+}
+
+inline void validate_bounded_c_string (const std::string &value_,
+                                       size_t max_bytes_,
+                                       const char *field_name_)
+{
+    validate_no_embedded_null (value_, field_name_);
+    if (value_.size () > max_bytes_) {
+        throw std::invalid_argument (
+          std::string (field_name_) + " exceeds " + std::to_string (max_bytes_)
+          + " bytes");
+    }
+}
+
 namespace socket_options
 {
 static const socket_option_key_t<uint64_t> affinity (socket_option::affinity);
@@ -303,6 +324,82 @@ namespace stream_options
 static const stream_option_key_t<int> notify (stream_option::notify);
 } // namespace stream_options
 
+struct common_socket_options_t
+{
+    inline static const socket_option_key_t<int> linger =
+      socket_options::linger;
+    inline static const socket_option_key_t<int> sndhwm =
+      socket_options::sndhwm;
+    inline static const socket_option_key_t<int> rcvhwm =
+      socket_options::rcvhwm;
+    inline static const socket_option_key_t<int> sndtimeo =
+      socket_options::sndtimeo;
+    inline static const socket_option_key_t<int> rcvtimeo =
+      socket_options::rcvtimeo;
+    inline static const socket_option_key_t<int> immediate =
+      socket_options::immediate;
+    inline static const socket_option_key_t<int> connect_timeout =
+      socket_options::connect_timeout;
+    inline static const socket_option_key_t<int> ipv6 =
+      socket_options::ipv6;
+    inline static const socket_option_key_t<int> tcp_nodelay =
+      socket_options::tcp_nodelay;
+    inline static const socket_option_key_t<int> tcp_keepalive =
+      socket_options::tcp_keepalive;
+    inline static const socket_option_key_t<int> heartbeat_ivl =
+      socket_options::heartbeat_ivl;
+    inline static const socket_option_key_t<int> heartbeat_ttl =
+      socket_options::heartbeat_ttl;
+    inline static const socket_option_key_t<int> heartbeat_timeout =
+      socket_options::heartbeat_timeout;
+    inline static const socket_option_key_t<int64_t> maxmsgsize =
+      socket_options::maxmsgsize;
+    inline static const socket_option_key_t<int> backlog =
+      socket_options::backlog;
+    inline static const socket_option_key_t<int> reconnect_ivl =
+      socket_options::reconnect_ivl;
+    inline static const socket_option_key_t<int> reconnect_ivl_max =
+      socket_options::reconnect_ivl_max;
+};
+
+struct router_socket_options_t
+{
+    inline static const router_option_key_t<int> mandatory =
+      router_options::mandatory;
+    inline static const router_option_key_t<int> handover =
+      router_options::handover;
+    inline static const router_option_key_t<int> probe =
+      router_options::probe;
+    inline static const router_option_key_t<std::string> connect_routing_id =
+      router_options::connect_routing_id;
+};
+
+struct dealer_socket_options_t
+{
+    inline static const dealer_option_key_t<int> probe =
+      dealer_options::probe;
+};
+
+struct stream_socket_options_t
+{
+    inline static const stream_option_key_t<int> notify =
+      stream_options::notify;
+};
+
+struct pub_socket_options_t
+{
+    inline static const pub_option_key_t<int> verbose = pub_options::verbose;
+    inline static const pub_option_key_t<int> verboser = pub_options::verboser;
+    inline static const pub_option_key_t<int> nodrop = pub_options::nodrop;
+    inline static const pub_option_key_t<int> manual = pub_options::manual;
+};
+
+struct sub_socket_options_t
+{
+    inline static const sub_option_key_t<int> topics_count =
+      sub_options::topics_count;
+};
+
 enum class send_flag : int
 {
     none = 0,
@@ -335,6 +432,67 @@ enum class send_result_t : int
     not_ready = ZLINK_SEND_RESULT_NOT_READY
 };
 
+class routing_id_t
+{
+  public:
+    routing_id_t () noexcept : _native ()
+    {
+        std::memset (&_native, 0, sizeof (_native));
+    }
+
+    explicit routing_id_t (const std::string &bytes_) : routing_id_t ()
+    {
+        assign (bytes_.data (), bytes_.size ());
+    }
+
+    routing_id_t (const void *bytes_, size_t size_) : routing_id_t ()
+    {
+        assign (bytes_, size_);
+    }
+
+    routing_id_t (const zlink_routing_id_t &native_) : _native (native_) {}
+
+    size_t size () const noexcept { return _native.size; }
+    bool empty () const noexcept { return _native.size == 0; }
+
+    std::vector<uint8_t> to_bytes () const
+    {
+        return std::vector<uint8_t> (
+          _native.data, _native.data + static_cast<size_t> (_native.size));
+    }
+
+    std::string to_string () const
+    {
+        return std::string (
+          reinterpret_cast<const char *> (_native.data),
+          static_cast<size_t> (_native.size));
+    }
+
+    const zlink_routing_id_t &native () const noexcept { return _native; }
+    operator zlink_routing_id_t () const noexcept { return _native; }
+
+  private:
+    void assign (const void *bytes_, size_t size_)
+    {
+        if (size_ > sizeof (_native.data))
+            throw std::invalid_argument ("routing id exceeds 255 bytes");
+        if (size_ > 0 && !bytes_)
+            throw std::invalid_argument (
+              "routing id bytes must not be null for non-empty input");
+
+        std::memset (&_native, 0, sizeof (_native));
+        _native.size = static_cast<uint8_t> (size_);
+        if (size_ > 0)
+            std::memcpy (_native.data, bytes_, size_);
+    }
+
+    zlink_routing_id_t _native;
+
+    friend inline zlink_routing_id_t *routing_id_native (routing_id_t &) noexcept;
+    friend inline const zlink_routing_id_t *
+    routing_id_native (const routing_id_t &) noexcept;
+};
+
 inline zlink_routing_id_t empty_routing_id () noexcept
 {
     zlink_routing_id_t routing_id;
@@ -342,31 +500,35 @@ inline zlink_routing_id_t empty_routing_id () noexcept
     return routing_id;
 }
 
+inline zlink_routing_id_t *routing_id_native (routing_id_t &routing_id_) noexcept
+{
+    return &routing_id_._native;
+}
+
+inline const zlink_routing_id_t *
+routing_id_native (const routing_id_t &routing_id_) noexcept
+{
+    return &routing_id_._native;
+}
+
 struct received_t
 {
-    received_t () : routing_id (empty_routing_id ()) {}
-
-    zlink_routing_id_t routing_id;
+    routing_id_t routing_id;
     std::vector<message_t> parts;
 };
 
 struct subscribed_t
 {
-    subscribed_t () : routing_id (empty_routing_id ()) {}
-
-    zlink_routing_id_t routing_id;
+    routing_id_t routing_id;
     std::string topic;
     std::vector<message_t> parts;
 };
 
 struct subscription_event_t
 {
-    subscription_event_t ()
-        : routing_id (empty_routing_id ()), subscribed (false)
-    {
-    }
+    subscription_event_t () : routing_id (), subscribed (false) {}
 
-    zlink_routing_id_t routing_id;
+    routing_id_t routing_id;
     std::string topic;
     bool subscribed;
 };
@@ -656,25 +818,44 @@ template<size_t N> inline std::string fixed_string_to_string (const char (&src_)
 
 inline int routing_id_from (const void *bytes_,
                             size_t size_,
+                            routing_id_t *out_)
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    try {
+        *out_ = routing_id_t (bytes_, size_);
+    } catch (const std::invalid_argument &) {
+        errno = size_ > 255u ? EMSGSIZE : EINVAL;
+        return -1;
+    }
+    return 0;
+}
+
+inline int routing_id_from (const std::string &bytes_,
+                            routing_id_t *out_)
+{
+    return routing_id_from (bytes_.data (), bytes_.size (), out_);
+}
+
+inline int routing_id_from (const void *bytes_,
+                            size_t size_,
                             zlink_routing_id_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
         return -1;
     }
-    if (size_ > sizeof (out_->data)) {
-        errno = EMSGSIZE;
-        return -1;
-    }
-    if (size_ > 0 && !bytes_) {
-        errno = EINVAL;
-        return -1;
-    }
 
-    std::memset (out_, 0, sizeof (*out_));
-    out_->size = static_cast<uint8_t> (size_);
-    if (size_ > 0)
-        std::memcpy (out_->data, bytes_, size_);
+    try {
+        const routing_id_t routing_id (bytes_, size_);
+        *out_ = *routing_id_native (routing_id);
+    } catch (const std::invalid_argument &) {
+        errno = size_ > 255u ? EMSGSIZE : EINVAL;
+        return -1;
+    }
     return 0;
 }
 
@@ -684,6 +865,11 @@ inline int routing_id_from (const std::string &bytes_,
     return routing_id_from (bytes_.data (), bytes_.size (), out_);
 }
 
+inline std::vector<uint8_t> routing_id_to_bytes (const routing_id_t &routing_id_)
+{
+    return routing_id_.to_bytes ();
+}
+
 inline std::vector<uint8_t>
 routing_id_to_bytes (const zlink_routing_id_t &routing_id_)
 {
@@ -691,13 +877,14 @@ routing_id_to_bytes (const zlink_routing_id_t &routing_id_)
       routing_id_.data, routing_id_.data + routing_id_.size);
 }
 
+inline std::string routing_id_to_string (const routing_id_t &routing_id_)
+{
+    return routing_id_.to_string ();
+}
+
 inline std::string routing_id_to_string (const zlink_routing_id_t &routing_id_)
 {
-    const size_t size = static_cast<size_t> (routing_id_.size);
-    if (size == 0)
-        return std::string ();
-    return std::string (
-      reinterpret_cast<const char *> (routing_id_.data), size);
+    return routing_id_t (routing_id_.data, routing_id_.size).to_string ();
 }
 
 inline std::string

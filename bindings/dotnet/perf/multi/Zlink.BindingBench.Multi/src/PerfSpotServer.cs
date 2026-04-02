@@ -9,10 +9,13 @@ internal static class PerfSpotServer
     private const string Pattern = "SPOT";
     private const uint RunId = 1;
     private const string Topic = "bench";
-    private const uint SpotMonitorEventError = 1u << 4;
-    private const uint SpotMonitorEventPubDeliveryReadyChanged = 1u << 18;
-    private const uint SpotMonitorEventPubFirstDeliveryReadyChanged = 1u << 20;
-    private const uint SpotReadyMonitorEvents = SpotMonitorEventError
+    private const ServiceMonitorEvents SpotMonitorEventError =
+        ServiceMonitorEvents.Error;
+    private const ServiceMonitorEvents SpotMonitorEventPubDeliveryReadyChanged =
+        ServiceMonitorEvents.SpotPubDeliveryReadyChanged;
+    private const ServiceMonitorEvents SpotMonitorEventPubFirstDeliveryReadyChanged =
+        ServiceMonitorEvents.SpotFirstDeliveryReadyChanged;
+    private const ServiceMonitorEvents SpotReadyMonitorEvents = SpotMonitorEventError
         | SpotMonitorEventPubDeliveryReadyChanged
         | SpotMonitorEventPubFirstDeliveryReadyChanged;
 
@@ -26,7 +29,7 @@ internal static class PerfSpotServer
         ApplyMultiServerContextOptions(ctx);
         using var nodePub = new SpotNode(ctx);
         using var spotPub = new Spot(nodePub);
-        using ServiceMonitor monitor = spotPub.OpenMonitor(SpotReadyMonitorEvents);
+        using ServiceMonitor monitor = spotPub.MonitorOpen(SpotReadyMonitorEvents);
 
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
         TryConfigureSpotPublisherSocket(nodePub, Pattern, config.SndTimeoutMs,
@@ -167,15 +170,14 @@ internal static class PerfSpotServer
         var spin = new SpinWait();
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            ServiceMonitorEvent? evt = monitor.TryReceive();
-            if (evt == null)
+            if (!monitor.TryRecv(out ServiceMonitorEvent? evt))
             {
                 spin.SpinOnce();
                 continue;
             }
             spin.Reset();
 
-            if (evt.Value.EventType == SpotMonitorEventError)
+            if (evt!.Value.EventType == SpotMonitorEventError)
                 return false;
 
             if (evt.Value.EventType != SpotMonitorEventPubDeliveryReadyChanged

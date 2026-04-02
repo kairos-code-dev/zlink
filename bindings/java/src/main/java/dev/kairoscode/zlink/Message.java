@@ -281,14 +281,14 @@ public final class Message implements AutoCloseable {
         return NativeMsg.msgRefCnt(msg);
     }
 
-    public MemorySegment dataSegment() {
+    MemorySegment dataSegment() {
         int size = size();
         if (size <= 0)
             return MemorySegment.NULL;
         return NativeMsg.msgData(msg).reinterpret(size);
     }
 
-    public MemorySegment dataSegment(int knownSize) {
+    MemorySegment dataSegment(int knownSize) {
         if (knownSize <= 0)
             return MemorySegment.NULL;
         return NativeMsg.msgData(msg).reinterpret(knownSize);
@@ -388,13 +388,13 @@ public final class Message implements AutoCloseable {
         return true;
     }
 
-    public void copyTo(MemorySegment destination) {
+    void copyTo(MemorySegment destination) {
         int rc = NativeMsg.msgCopy(destination, msg);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_copy");
     }
 
-    public void moveTo(MemorySegment destination) {
+    void moveTo(MemorySegment destination) {
         int rc = NativeMsg.msgMove(destination, msg);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_move");
@@ -454,21 +454,21 @@ public final class Message implements AutoCloseable {
         return !closed && arena.scope().isAlive();
     }
 
-    public static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
+    static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
         return fromMsgVector(partsAddr, count, null);
     }
 
-    public static Message[] fromMsgVector(MemorySegment partsAddr, long count,
-                                          Message[] reusable) {
+    static Message[] fromMsgVector(MemorySegment partsAddr, long count,
+                                   Message[] reusable) {
         return moveFromMsgVector(partsAddr, count, reusable, true);
     }
 
-    public static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count) {
+    static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count) {
         return fromOwnedMsgVector(partsAddr, count, null);
     }
 
-    public static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count,
-                                               Message[] reusable) {
+    static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count,
+                                        Message[] reusable) {
         return moveFromMsgVector(partsAddr, count, reusable, false);
     }
 

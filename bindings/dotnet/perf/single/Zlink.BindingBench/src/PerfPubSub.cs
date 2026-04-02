@@ -80,7 +80,7 @@ internal static class PerfPubSub
         for (int i = 0; i < 2000; i++)
         {
             StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
-            SendBlocking(publisher, payload.AsSpan(), SendFlags.None);
+            SendBlocking(publisher, payload, SendFlags.None);
             if (!WaitForInput(poller, events, 10))
                 continue;
 
@@ -191,7 +191,7 @@ internal static class PerfPubSub
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
                 try
                 {
-                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                    SendBlocking(sender, payload, SendFlags.None);
                 }
                 catch
                 {
@@ -207,7 +207,7 @@ internal static class PerfPubSub
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
                 try
                 {
-                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                    SendBlocking(sender, payload, SendFlags.None);
                 }
                 catch
                 {

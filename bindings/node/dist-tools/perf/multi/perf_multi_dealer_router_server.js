@@ -23,7 +23,7 @@ async function main() {
         console.log(`READY,${options.endpoint}`);
         receiveLoop = (async () => {
             while (!stop) {
-                const received = router.tryReceive();
+                const received = router.tryRecv();
                 if (!received) {
                     await new Promise((resolve) => setImmediate(resolve));
                     continue;

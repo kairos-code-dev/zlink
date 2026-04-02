@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
 const { attachCallbackCollector, driveSender, finishCollector } = require('./perf_single_common');
 async function waitSpotFilterApplied(spot, topic) {
-    const monitor = spot.openMonitor(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
+    const monitor = spot.monitorOpen(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
     try {
         spot.setSubscription(topic);
         while (true) {
@@ -24,7 +24,7 @@ async function runSpotBenchmark(msgSize, options) {
     const spot = new zlink.Spot(node);
     const topic = 'perf:spot';
     try {
-        const state = attachCallbackCollector((handler) => spot.subscribeHandler(handler), msgSize, options, (_, __, parts) => parts[0].toBuffer());
+        const state = attachCallbackCollector((handler) => spot.onSubscribe(handler), msgSize, options, (_, __, parts) => parts[0].toBuffer());
         await waitSpotFilterApplied(spot, topic);
         await driveSender((payload) => (spot.tryPublish(topic, payload) === zlink.SendResult.Sent), state);
         return await finishCollector(state);

@@ -4,6 +4,7 @@ package dev.kairoscode.zlink.service.registry;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -17,7 +18,8 @@ public final class RegistryQueryClient implements AutoCloseable {
     private MemorySegment handle;
 
     public RegistryQueryClient(Context ctx) {
-        this.handle = Native.registryQueryClientNew(ctx.handle());
+        this.handle = Native.registryQueryClientNew(
+            InternalAccess.contextHandle(ctx));
         if (handle == null || handle.address() == 0) {
             throw ZlinkException.fromLastError("zlink_registry_query_client_new");
         }

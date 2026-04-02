@@ -1,1 +1,1 @@
-`PairRecv` shows synchronous `PairSocket.Receive` on an in-process pair link.
+`PairRecv` shows canonical direct receive with `PairSocket.Receive` over TCP.

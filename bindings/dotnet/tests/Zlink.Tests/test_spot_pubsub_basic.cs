@@ -48,13 +48,13 @@ public sealed class test_spot_pubsub_basic
         using var node = new SpotNode(ctx);
         using var spot = new Spot(node);
         spot.SetSubscription("cb:topic");
-        spot.SubscribeHandler((topic, parts) =>
+        spot.OnSubscribe((topic, parts) =>
         {
             foreach (Message part in parts)
                 part.Dispose();
         });
 
-        Assert.Throws<ZlinkException>(() => spot.TrySubscribe());
+        Assert.Throws<ZlinkException>(() => spot.TrySubscribe(out _));
     }
 
     [Fact]
@@ -126,13 +126,13 @@ public sealed class test_spot_pubsub_basic
         using var node = new SpotNode(ctx);
         using var spot = new Spot(node);
         spot.SetSubscription("node:cb");
-        spot.SubscribeHandler((topic, parts) =>
+        spot.OnSubscribe((topic, parts) =>
         {
             foreach (Message part in parts)
                 part.Dispose();
         });
 
-        Assert.Throws<ZlinkException>(() => spot.TrySubscribe());
+        Assert.Throws<ZlinkException>(() => spot.TrySubscribe(out _));
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public sealed class test_spot_pubsub_basic
         using var receivedSignal = new ManualResetEventSlim(false);
 
         string? receivedPayload = null;
-        subscriber.SubscribeHandler((_, parts) =>
+        subscriber.OnSubscribe((_, parts) =>
         {
             try
             {
@@ -185,19 +185,18 @@ public sealed class test_spot_pubsub_basic
 
     private static string? TryReceiveSpotUtf8(Spot subscriber)
     {
-        Subscribed? subscribed = subscriber.TrySubscribe();
-        if (subscribed == null)
+        if (!subscriber.TrySubscribe(out Subscribed? subscribed))
             return null;
 
         try
         {
-            return subscribed.Parts.Count == 0
+            return subscribed!.Parts.Count == 0
                 ? string.Empty
                 : subscribed.SinglePartOrThrow().GetString();
         }
         finally
         {
-            foreach (Message part in subscribed.Parts)
+            foreach (Message part in subscribed!.Parts)
                 part.Dispose();
         }
     }

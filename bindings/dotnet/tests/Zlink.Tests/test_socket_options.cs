@@ -77,14 +77,14 @@ public sealed class test_socket_options
         using var stream = new StreamSocket(ctx);
         using var dealer = new DealerSocket(ctx);
 
-        stream.SetNotify(false);
-        Assert.False(stream.GetNotify());
+        stream.StreamOptions.Notify = false;
+        Assert.False(stream.StreamOptions.Notify);
 
-        stream.SetOption(SocketOptions.MaxMsgSize, 1024L);
-        Assert.Equal(1024L, stream.GetOption(SocketOptions.MaxMsgSize));
+        stream.Options.MaxMessageSize = 1024L;
+        Assert.Equal(1024L, stream.Options.MaxMessageSize);
 
-        dealer.SetRoutingId("RID-OPT");
-        Assert.Equal("RID-OPT", dealer.GetRoutingId());
+        dealer.DealerOptions.RoutingId = new RoutingId("RID-OPT");
+        Assert.Equal("RID-OPT", dealer.DealerOptions.RoutingId.Value);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class test_socket_options
             "socket-options-last-endpoint");
         router.Bind(endpoint);
 
-        string actual = router.GetOption(SocketOptions.LastEndpoint);
+        string actual = router.Options.LastEndpoint;
         Assert.StartsWith("tcp://", actual);
     }
 
@@ -116,20 +116,20 @@ public sealed class test_socket_options
         using var stream = new StreamSocket(ctx);
         using var xpub = new XPubSocket(ctx);
 
-        dealer.SetRoutingId("DEALER-RID");
-        Assert.Equal("DEALER-RID", dealer.GetRoutingId());
+        dealer.DealerOptions.RoutingId = new RoutingId("DEALER-RID");
+        Assert.Equal("DEALER-RID", dealer.DealerOptions.RoutingId.Value);
 
-        router.SetRoutingId("ROUTER-RID");
-        Assert.Equal("ROUTER-RID", router.GetRoutingId());
-        router.SetMandatory(true);
-        Assert.True(router.GetMandatory());
+        router.RouterOptions.RoutingId = new RoutingId("ROUTER-RID");
+        Assert.Equal("ROUTER-RID", router.RouterOptions.RoutingId.Value);
+        router.RouterOptions.Mandatory = true;
+        Assert.True(router.RouterOptions.Mandatory);
 
-        stream.SetNotify(true);
-        Assert.True(stream.GetNotify());
+        stream.StreamOptions.Notify = true;
+        Assert.True(stream.StreamOptions.Notify);
 
-        xpub.SetVerbose(true);
-        xpub.SetVerboser(true);
-        xpub.SetNoDrop(true);
+        xpub.XPubOptions.Verbose = true;
+        xpub.XPubOptions.Verboser = true;
+        xpub.XPubOptions.NoDrop = true;
     }
 
     [Fact]

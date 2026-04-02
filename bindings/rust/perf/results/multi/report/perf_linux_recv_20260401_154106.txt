@@ -1,0 +1,151 @@
+## Effective Options (start)
+  pattern:   ALL
+  recv:      recv
+  duration:  2s
+  warmup:    1s
+  msg_sizes: 64,1024,65536
+  transports: tcp
+  clients:   5
+  runs:      1
+## Effective Options (end)
+
+
+>> MULTI_DEALER_DEALER transport=tcp size=64 clients=5
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,throughput,2963280.000
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,bandwidth,189.650
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency,0.000
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p95,0.001
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency_p99,0.001
+
+>> MULTI_DEALER_DEALER transport=tcp size=1024 clients=5
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,throughput,1296180.000
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,bandwidth,1327.288
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency,0.000
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency_p95,0.001
+RESULT,current,MULTI_DEALER_DEALER,tcp,1024,latency_p99,0.003
+
+>> MULTI_DEALER_DEALER transport=tcp size=65536 clients=5
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,throughput,94750.000
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,bandwidth,6209.536
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency,0.004
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency_p95,0.005
+RESULT,current,MULTI_DEALER_DEALER,tcp,65536,latency_p99,0.033
+
+>> MULTI_DEALER_ROUTER transport=tcp size=64 clients=5
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,throughput,35136.500
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,bandwidth,2.249
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency,0.137
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p95,0.239
+RESULT,current,MULTI_DEALER_ROUTER,tcp,64,latency_p99,0.403
+
+>> MULTI_DEALER_ROUTER transport=tcp size=1024 clients=5
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,throughput,29668.500
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,bandwidth,30.381
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,latency,0.163
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,latency_p95,0.267
+RESULT,current,MULTI_DEALER_ROUTER,tcp,1024,latency_p99,0.432
+
+>> MULTI_DEALER_ROUTER transport=tcp size=65536 clients=5
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,throughput,21604.500
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,bandwidth,1415.873
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,latency,0.226
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,latency_p95,0.392
+RESULT,current,MULTI_DEALER_ROUTER,tcp,65536,latency_p99,0.566
+
+>> MULTI_ROUTER_ROUTER transport=tcp size=64 clients=5
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,throughput,33806.000
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,bandwidth,2.164
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency,0.142
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p95,0.250
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,64,latency_p99,0.408
+
+>> MULTI_ROUTER_ROUTER transport=tcp size=1024 clients=5
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,throughput,34143.500
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,bandwidth,34.963
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency,0.141
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency_p95,0.257
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,1024,latency_p99,0.439
+
+>> MULTI_ROUTER_ROUTER transport=tcp size=65536 clients=5
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,throughput,21816.000
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,bandwidth,1429.733
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,latency,0.224
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,latency_p95,0.389
+RESULT,current,MULTI_ROUTER_ROUTER,tcp,65536,latency_p99,0.567
+
+>> MULTI_PUBSUB transport=tcp size=64 clients=5
+RESULT,current,MULTI_PUBSUB,tcp,64,throughput,613000.000
+RESULT,current,MULTI_PUBSUB,tcp,64,bandwidth,39.232
+RESULT,current,MULTI_PUBSUB,tcp,64,latency,0.169
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p95,0.298
+RESULT,current,MULTI_PUBSUB,tcp,64,latency_p99,0.411
+RESULT,current,MULTI_PUBSUB,tcp,0,server_cpu_pct,0.0
+RESULT,current,MULTI_PUBSUB,tcp,0,server_mem_mb,0.0
+
+>> MULTI_PUBSUB transport=tcp size=1024 clients=5
+RESULT,current,MULTI_PUBSUB,tcp,1024,throughput,613250.000
+RESULT,current,MULTI_PUBSUB,tcp,1024,bandwidth,627.968
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency,0.218
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency_p95,0.356
+RESULT,current,MULTI_PUBSUB,tcp,1024,latency_p99,0.445
+RESULT,current,MULTI_PUBSUB,tcp,0,server_cpu_pct,0.0
+RESULT,current,MULTI_PUBSUB,tcp,0,server_mem_mb,0.0
+
+>> MULTI_PUBSUB transport=tcp size=65536 clients=5
+RESULT,current,MULTI_PUBSUB,tcp,65536,throughput,75625.000
+RESULT,current,MULTI_PUBSUB,tcp,65536,bandwidth,4956.160
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency,15.508
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency_p95,21.136
+RESULT,current,MULTI_PUBSUB,tcp,65536,latency_p99,23.714
+RESULT,current,MULTI_PUBSUB,tcp,0,server_cpu_pct,0.0
+RESULT,current,MULTI_PUBSUB,tcp,0,server_mem_mb,0.0
+
+>> MULTI_SPOT transport=tcp size=64 clients=5
+RESULT,current,MULTI_SPOT,tcp,64,throughput,612250.000
+RESULT,current,MULTI_SPOT,tcp,64,bandwidth,39.184
+RESULT,current,MULTI_SPOT,tcp,64,latency,0.169
+RESULT,current,MULTI_SPOT,tcp,64,latency_p95,0.279
+RESULT,current,MULTI_SPOT,tcp,64,latency_p99,0.370
+RESULT,current,MULTI_SPOT,tcp,0,server_cpu_pct,0.0
+RESULT,current,MULTI_SPOT,tcp,0,server_mem_mb,0.0
+
+>> MULTI_SPOT transport=tcp size=1024 clients=5
+RESULT,current,MULTI_SPOT,tcp,1024,throughput,612375.000
+RESULT,current,MULTI_SPOT,tcp,1024,bandwidth,627.072
+RESULT,current,MULTI_SPOT,tcp,1024,latency,0.229
+RESULT,current,MULTI_SPOT,tcp,1024,latency_p95,0.394
+RESULT,current,MULTI_SPOT,tcp,1024,latency_p99,0.511
+RESULT,current,MULTI_SPOT,tcp,0,server_cpu_pct,0.0
+RESULT,current,MULTI_SPOT,tcp,0,server_mem_mb,0.0
+
+>> MULTI_SPOT transport=tcp size=65536 clients=5
+RESULT,current,MULTI_SPOT,tcp,65536,throughput,85150.000
+RESULT,current,MULTI_SPOT,tcp,65536,bandwidth,5580.390
+RESULT,current,MULTI_SPOT,tcp,65536,latency,6.837
+RESULT,current,MULTI_SPOT,tcp,65536,latency_p95,16.693
+RESULT,current,MULTI_SPOT,tcp,65536,latency_p99,24.161
+RESULT,current,MULTI_SPOT,tcp,0,server_cpu_pct,0.0
+RESULT,current,MULTI_SPOT,tcp,0,server_mem_mb,0.0
+
+>> MULTI_STREAM transport=tcp size=64 clients=5
+RESULT,current,MULTI_STREAM,tcp,64,throughput,422047.000
+RESULT,current,MULTI_STREAM,tcp,64,bandwidth,27.011
+RESULT,current,MULTI_STREAM,tcp,64,latency,0.001
+RESULT,current,MULTI_STREAM,tcp,64,latency_p95,0.002
+RESULT,current,MULTI_STREAM,tcp,64,latency_p99,0.003
+
+>> MULTI_STREAM transport=tcp size=1024 clients=5
+RESULT,current,MULTI_STREAM,tcp,1024,throughput,1226288.000
+RESULT,current,MULTI_STREAM,tcp,1024,bandwidth,1255.719
+RESULT,current,MULTI_STREAM,tcp,1024,latency,0.001
+RESULT,current,MULTI_STREAM,tcp,1024,latency_p95,0.002
+RESULT,current,MULTI_STREAM,tcp,1024,latency_p99,0.004
+
+>> MULTI_STREAM transport=tcp size=65536 clients=5
+RESULT,current,MULTI_STREAM,tcp,65536,throughput,0.000
+RESULT,current,MULTI_STREAM,tcp,65536,bandwidth,0.000
+RESULT,current,MULTI_STREAM,tcp,65536,latency,0.000
+RESULT,current,MULTI_STREAM,tcp,65536,latency_p95,0.000
+RESULT,current,MULTI_STREAM,tcp,65536,latency_p99,0.000
+
+Results saved to: /home/hep7/project/kairos/zlink/bindings/rust/perf/results/multi/report/perf_linux_recv_20260401_154106.txt

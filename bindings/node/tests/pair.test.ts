@@ -13,7 +13,7 @@ test('pair messaging uses Message and Received by default', () => {
   receiver.connect('inproc://pair-contract');
   sender.send(zlink.Message.copyOf('ping'));
 
-  const received = receiver.receive();
+  const received = receiver.recv();
   assert.equal(received.parts.length, 1);
   assert.ok(received.parts[0] instanceof zlink.Message);
   assert.equal(received.parts[0].toBuffer().toString(), 'ping');
@@ -28,7 +28,7 @@ test('tryReceive returns null when no message is available', () => {
   const ctx = new zlink.Context();
   const pair = new zlink.PairSocket(ctx);
 
-  assert.equal(pair.tryReceive(), null);
+  assert.equal(pair.tryRecv(), null);
 
   pair.close();
   ctx.close();
@@ -44,7 +44,7 @@ test('recvHandler delivers multipart Message instances', async () => {
 
   const received = await new Promise((resolve, reject) => {
     try {
-      receiver.recvHandler((routingId, parts) => {
+      receiver.onReceive((routingId, parts) => {
         resolve({ routingId, parts });
       });
     } catch (err) {

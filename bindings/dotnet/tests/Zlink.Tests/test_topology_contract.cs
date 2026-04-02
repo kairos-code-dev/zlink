@@ -14,9 +14,9 @@ public sealed class test_topology_contract
         using var ctx = new Context();
         using var registry = new Registry(ctx);
 
-        RegistryStatus snapshot = registry.Snapshot();
+        RegistryStatus snapshot = registry.StatusSnapshot();
         Assert.True(snapshot.TopologyEntryCount >= 0);
-        Assert.Empty(registry.ServiceSummary());
+        Assert.Empty(registry.ServiceSummarySnapshot());
         Assert.Empty(registry.TopologySnapshot());
         Assert.Empty(registry.TopologyQuery());
         Assert.Empty(registry.MemberPeers(ServiceType.Spot, "missing"));
@@ -31,9 +31,9 @@ public sealed class test_topology_contract
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
 
-        SpotNodeStatus snapshot = node.Snapshot();
+        SpotNodeStatus snapshot = node.StatusSnapshot();
         Assert.True(snapshot.SubjectCount >= 0);
-        Assert.Empty(node.Peers());
-        Assert.Empty(node.Subjects());
+        Assert.Empty(node.PeersSnapshot());
+        Assert.Empty(node.SubjectsSnapshot());
     }
 }

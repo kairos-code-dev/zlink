@@ -65,6 +65,12 @@ wss/tls: ws/tcp + TLS encryption. Handshake + record overhead.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 | I/O Threads | Recommended Use Case | Guideline |
 |------------|---------------|------|
 | 1 | Small-scale connections (<100), simple patterns | Uses 1 CPU core |
@@ -130,6 +136,12 @@ HWM limits the **per-connection queue size**. In zlink, each connection (pipe) h
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 | Setting | Default | Description |
@@ -270,6 +282,12 @@ send queue. Use `ZLINK_OPT_SNDTIMEO` to limit how long the call blocks.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 #### Non-Blocking Send (DONTWAIT)
 
 Pass `ZLINK_DONTWAIT` to return immediately with `EAGAIN` when the HWM is
@@ -323,6 +341,12 @@ externally.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 #### Send-Ready Handler (Event-Driven Backpressure)
@@ -450,6 +474,12 @@ sender.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 In callback mode, a slow callback blocks the I/O thread, which causes the
 receive queue to fill up. To avoid this, offload heavy work to a separate
 thread:
@@ -503,6 +533,12 @@ thread:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > For thread-safe work queue patterns, see
@@ -637,6 +673,12 @@ application-level buffer:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 5. Socket Option Tuning Checklist
 
 | Option | Default | Tuning Point |
@@ -698,6 +740,12 @@ application-level buffer:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### Timeout Settings
 
 === "C"
@@ -746,6 +794,12 @@ application-level buffer:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 6. How to Measure Performance
@@ -812,6 +866,12 @@ application-level buffer:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### Latency Measurement (Ping-Pong)
 
 === "C"
@@ -871,6 +931,12 @@ application-level buffer:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 7. Performance Checklist

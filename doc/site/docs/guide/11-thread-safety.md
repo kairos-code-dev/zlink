@@ -127,6 +127,12 @@ These functions allow fully concurrent calls on the same handle:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 2.2 Configuration (Setup and Runtime Changes)
 
 These functions are thread-safe — the library processes them one at a
@@ -210,6 +216,12 @@ can send messages while another thread connects additional endpoints:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 Lightweight reads like `ZLINK_OPT_EVENTS` and `ZLINK_OPT_LAST_ENDPOINT` are also
@@ -313,6 +325,12 @@ can keep using it or try closing again later.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 **Self-close from callbacks:** If a send-ready or monitor callback calls
 `close` on its own handle, the actual close is deferred until the callback
 returns. This avoids use-after-free inside the callback.
@@ -371,6 +389,12 @@ in each thread:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 === "C"
 
     ```c
@@ -416,6 +440,12 @@ in each thread:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 **Callback ownership:** When your callback receives `zlink_msg_t *parts`,
@@ -492,6 +522,12 @@ thread. Here's what you need to know:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 7. Practical Patterns
@@ -595,6 +631,12 @@ One thread publishes, another manages subscriptions at runtime:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 8. Common Mistakes

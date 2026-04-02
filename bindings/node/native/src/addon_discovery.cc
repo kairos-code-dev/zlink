@@ -7,6 +7,7 @@ namespace {
 
 static const int32_t k_legacy_service_spot = 2;
 static const int32_t k_legacy_service_socket = 3;
+static const int k_snapshot_retry_limit = 4;
 
 zlink_service_type_t translate_service_type(uint32_t service_type)
 {
@@ -179,6 +180,45 @@ bool build_topology_filter(napi_env env,
     return true;
 }
 
+bool build_registry_service_summary_filter(napi_env env,
+                                          napi_value value,
+                                          zlink_registry_service_summary_filter_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (value == NULL)
+        return false;
+    napi_valuetype type = napi_undefined;
+    if (napi_typeof(env, value, &type) != napi_ok
+        || type == napi_undefined || type == napi_null) {
+        return false;
+    }
+
+    napi_value prop;
+    bool has_prop = false;
+    if (napi_has_named_property(env, value, "serviceKind", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "serviceKind", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->service_kind = static_cast<zlink_service_kind_t>(raw);
+    }
+    if (napi_has_named_property(env, value, "serviceRole", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "serviceRole", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->service_role = static_cast<zlink_service_role_t>(raw);
+    }
+    if (napi_has_named_property(env, value, "serviceName", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "serviceName", &prop) == napi_ok) {
+        std::string service_name = get_string(env, prop);
+        strncpy(out->service_name, service_name.c_str(),
+                sizeof(out->service_name) - 1);
+    }
+    return true;
+}
+
 } // namespace
 
 napi_value registry_new(napi_env env, napi_callback_info info)
@@ -337,45 +377,61 @@ napi_value registry_status_snapshot(napi_env env, napi_callback_info info)
 
 napi_value registry_service_summary_snapshot(napi_env env, napi_callback_info info)
 {
-    napi_value argv[1];
-    size_t argc = 1;
+    napi_value argv[2];
+    size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *registry = NULL;
     napi_get_value_external(env, argv[0], &registry);
+    zlink_registry_service_summary_filter_t filter;
+    zlink_registry_service_summary_filter_t *filter_ptr =
+      build_registry_service_summary_filter(env, argc >= 2 ? argv[1] : NULL, &filter)
+        ? &filter
+        : NULL;
 
-    size_t count = 0;
-    int rc = zlink_registry_service_summary_snapshot(registry, NULL, NULL, &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_service_summary_snapshot failed");
+    for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
+        size_t count = 0;
+        int rc = zlink_registry_service_summary_snapshot(registry, filter_ptr, NULL, &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_service_summary_snapshot failed");
+        }
 
-    napi_value arr;
-    napi_create_array_with_length(env, count, &arr);
-    if (count == 0)
+        napi_value arr;
+        napi_create_array_with_length(env, count, &arr);
+        if (count == 0)
+            return arr;
+
+        std::vector<zlink_registry_service_summary_entry_t> entries(count);
+        rc = zlink_registry_service_summary_snapshot(registry, filter_ptr, entries.data(),
+                                                    &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_service_summary_snapshot failed");
+        }
+
+        for (size_t i = 0; i < count; ++i) {
+            napi_value obj;
+            napi_create_object(env, &obj);
+            set_uint32_property(env, obj, "serviceKind",
+                                static_cast<uint32_t>(entries[i].service_kind));
+            set_uint32_property(env, obj, "serviceRole", entries[i].service_role);
+            set_string_property(env, obj, "serviceName", entries[i].service_name);
+            set_uint32_property(env, obj, "totalCount", entries[i].total_count);
+            set_uint32_property(env, obj, "connectingCount", entries[i].connecting_count);
+            set_uint32_property(env, obj, "readyCount", entries[i].ready_count);
+            set_uint32_property(env, obj, "errorCount", entries[i].error_count);
+            set_uint32_property(env, obj, "stoppedCount", entries[i].stopped_count);
+            set_int64_property(env, obj, "lastReportedMs",
+                               static_cast<int64_t>(entries[i].last_reported_ms));
+            napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
+        }
+
         return arr;
-
-    std::vector<zlink_registry_service_summary_entry_t> entries(count);
-    rc = zlink_registry_service_summary_snapshot(registry, NULL, entries.data(), &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_service_summary_snapshot failed");
-
-    for (size_t i = 0; i < count; ++i) {
-        napi_value obj;
-        napi_create_object(env, &obj);
-        set_uint32_property(env, obj, "serviceKind",
-                            static_cast<uint32_t>(entries[i].service_kind));
-        set_uint32_property(env, obj, "serviceRole", entries[i].service_role);
-        set_string_property(env, obj, "serviceName", entries[i].service_name);
-        set_uint32_property(env, obj, "totalCount", entries[i].total_count);
-        set_uint32_property(env, obj, "connectingCount", entries[i].connecting_count);
-        set_uint32_property(env, obj, "readyCount", entries[i].ready_count);
-        set_uint32_property(env, obj, "errorCount", entries[i].error_count);
-        set_uint32_property(env, obj, "stoppedCount", entries[i].stopped_count);
-        set_int64_property(env, obj, "lastReportedMs",
-                           static_cast<int64_t>(entries[i].last_reported_ms));
-        napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
     }
 
-    return arr;
+    return throw_last_error(env, "registry_service_summary_snapshot failed");
 }
 
 napi_value registry_topology_snapshot(napi_env env, napi_callback_info info)
@@ -386,21 +442,31 @@ napi_value registry_topology_snapshot(napi_env env, napi_callback_info info)
     void *registry = NULL;
     napi_get_value_external(env, argv[0], &registry);
 
-    size_t count = 0;
-    int rc = zlink_registry_topology_snapshot(registry, NULL, &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_topology_snapshot failed");
-    if (count == 0) {
-        napi_value arr;
-        napi_create_array_with_length(env, 0, &arr);
-        return arr;
+    for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
+        size_t count = 0;
+        int rc = zlink_registry_topology_snapshot(registry, NULL, &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_topology_snapshot failed");
+        }
+        if (count == 0) {
+            napi_value arr;
+            napi_create_array_with_length(env, 0, &arr);
+            return arr;
+        }
+
+        std::vector<zlink_registry_topology_entry_t> entries(count);
+        rc = zlink_registry_topology_snapshot(registry, entries.data(), &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_topology_snapshot failed");
+        }
+        return create_registry_topology_array(env, entries.data(), count);
     }
 
-    std::vector<zlink_registry_topology_entry_t> entries(count);
-    rc = zlink_registry_topology_snapshot(registry, entries.data(), &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_topology_snapshot failed");
-    return create_registry_topology_array(env, entries.data(), count);
+    return throw_last_error(env, "registry_topology_snapshot failed");
 }
 
 napi_value registry_topology_query(napi_env env, napi_callback_info info)
@@ -415,21 +481,31 @@ napi_value registry_topology_query(napi_env env, napi_callback_info info)
     zlink_registry_topology_filter_t *filter_ptr =
       build_topology_filter(env, argc >= 2 ? argv[1] : NULL, &filter) ? &filter
                                                                       : NULL;
-    size_t count = 0;
-    int rc = zlink_registry_topology_query(registry, filter_ptr, NULL, &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_topology_query failed");
-    if (count == 0) {
-        napi_value arr;
-        napi_create_array_with_length(env, 0, &arr);
-        return arr;
+    for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
+        size_t count = 0;
+        int rc = zlink_registry_topology_query(registry, filter_ptr, NULL, &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_topology_query failed");
+        }
+        if (count == 0) {
+            napi_value arr;
+            napi_create_array_with_length(env, 0, &arr);
+            return arr;
+        }
+
+        std::vector<zlink_registry_topology_entry_t> entries(count);
+        rc = zlink_registry_topology_query(registry, filter_ptr, entries.data(), &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_topology_query failed");
+        }
+        return create_registry_topology_array(env, entries.data(), count);
     }
 
-    std::vector<zlink_registry_topology_entry_t> entries(count);
-    rc = zlink_registry_topology_query(registry, filter_ptr, entries.data(), &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_topology_query failed");
-    return create_registry_topology_array(env, entries.data(), count);
+    return throw_last_error(env, "registry_topology_query failed");
 }
 
 napi_value registry_member_peers(napi_env env, napi_callback_info info)
@@ -445,24 +521,66 @@ napi_value registry_member_peers(napi_env env, napi_callback_info info)
     if (argc >= 3)
         service_name = get_string(env, argv[2]);
 
-    size_t count = 0;
-    int rc = zlink_registry_member_peers(registry,
-                                         translate_service_type(service_type),
-                                         service_name.c_str(), NULL, &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_member_peers failed");
-    if (count == 0) {
-        napi_value arr;
-        napi_create_array_with_length(env, 0, &arr);
-        return arr;
+    for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
+        size_t count = 0;
+        int rc = zlink_registry_member_peers(registry, translate_service_type(service_type),
+                                             service_name.c_str(), NULL, &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_member_peers failed");
+        }
+        if (count == 0) {
+            napi_value arr;
+            napi_create_array_with_length(env, 0, &arr);
+            return arr;
+        }
+
+        std::vector<zlink_member_peer_entry_t> entries(count);
+        rc = zlink_registry_member_peers(registry, translate_service_type(service_type),
+                                         service_name.c_str(), entries.data(), &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_member_peers failed");
+        }
+        return create_member_peer_array(env, entries.data(), count);
     }
 
-    std::vector<zlink_member_peer_entry_t> entries(count);
-    rc = zlink_registry_member_peers(registry, translate_service_type(service_type),
-                                     service_name.c_str(), entries.data(), &count);
+    return throw_last_error(env, "registry_member_peers failed");
+}
+
+napi_value registry_member_peer_metadata(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *registry = NULL;
+    napi_get_value_external(env, argv[0], &registry);
+    uint32_t service_type = 0;
+    uint32_t service_role = 0;
+    napi_get_value_uint32(env, argv[1], &service_type);
+    std::string service_name = get_string(env, argv[2]);
+    napi_get_value_uint32(env, argv[3], &service_role);
+    std::string endpoint = get_string(env, argv[4]);
+
+    zlink_msg_t metadata;
+    int rc = zlink_msg_init(&metadata);
     if (rc != 0)
-        return throw_last_error(env, "registry_member_peers failed");
-    return create_member_peer_array(env, entries.data(), count);
+        return throw_last_error(env, "zlink_msg_init failed");
+    rc = zlink_registry_member_peer_metadata(
+      registry, translate_service_type(service_type), service_name.c_str(),
+      static_cast<uint16_t>(service_role), endpoint.c_str(), &metadata);
+    if (rc != 0) {
+        (void) zlink_msg_close(&metadata);
+        return throw_last_error(env, "registry_member_peer_metadata failed");
+    }
+
+    napi_value out;
+    napi_create_buffer_copy(env, zlink_msg_size(&metadata), zlink_msg_data(&metadata),
+                            NULL, &out);
+    (void) zlink_msg_close(&metadata);
+    return out;
 }
 
 napi_value registry_query_client_new(napi_env env, napi_callback_info info)
@@ -509,21 +627,31 @@ napi_value registry_query_snapshot(napi_env env, napi_callback_info info)
       build_topology_filter(env, argc >= 2 ? argv[1] : NULL, &filter) ? &filter
                                                                       : NULL;
 
-    size_t count = 0;
-    int rc = zlink_registry_query_snapshot(client, filter_ptr, NULL, &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_query_snapshot failed");
-    if (count == 0) {
-        napi_value arr;
-        napi_create_array_with_length(env, 0, &arr);
-        return arr;
+    for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
+        size_t count = 0;
+        int rc = zlink_registry_query_snapshot(client, filter_ptr, NULL, &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_query_snapshot failed");
+        }
+        if (count == 0) {
+            napi_value arr;
+            napi_create_array_with_length(env, 0, &arr);
+            return arr;
+        }
+
+        std::vector<zlink_registry_topology_entry_t> entries(count);
+        rc = zlink_registry_query_snapshot(client, filter_ptr, entries.data(), &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "registry_query_snapshot failed");
+        }
+        return create_registry_topology_array(env, entries.data(), count);
     }
 
-    std::vector<zlink_registry_topology_entry_t> entries(count);
-    rc = zlink_registry_query_snapshot(client, filter_ptr, entries.data(), &count);
-    if (rc != 0)
-        return throw_last_error(env, "registry_query_snapshot failed");
-    return create_registry_topology_array(env, entries.data(), count);
+    return throw_last_error(env, "registry_query_snapshot failed");
 }
 
 napi_value registry_query_destroy(napi_env env, napi_callback_info info)
@@ -621,42 +749,61 @@ napi_value discovery_get_providers(napi_env env, napi_callback_info info)
     void *disc = NULL;
     napi_get_value_external(env, argv[0], &disc);
 
-    size_t count = 0;
-    int rc = zlink_discovery_member_peers(disc, NULL, &count);
-    if (rc != 0)
-        return throw_last_error(env, "discovery_member_peers failed");
+    for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
+        size_t count = 0;
+        int rc = zlink_discovery_member_peers(disc, NULL, &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "discovery_member_peers failed");
+        }
 
-    napi_value arr;
-    napi_create_array_with_length(env, count, &arr);
-    if (count == 0)
-        return arr;
+        napi_value arr;
+        napi_create_array_with_length(env, count, &arr);
+        if (count == 0)
+            return arr;
 
-    std::vector<zlink_member_peer_entry_t> entries(count);
-    rc = zlink_discovery_member_peers(disc, entries.data(), &count);
-    if (rc != 0)
-        return throw_last_error(env, "discovery_member_peers failed");
+        std::vector<zlink_member_peer_entry_t> entries(count);
+        rc = zlink_discovery_member_peers(disc, entries.data(), &count);
+        if (rc != 0) {
+            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
+                continue;
+            return throw_last_error(env, "discovery_member_peers failed");
+        }
 
-    for (size_t i = 0; i < count; ++i) {
-        napi_value obj;
-        napi_create_object(env, &obj);
-        napi_value svc;
-        napi_value ep;
-        napi_value weight;
-        napi_value reg;
-        napi_create_string_utf8(env, entries[i].service_name, NAPI_AUTO_LENGTH,
-                                &svc);
-        napi_create_string_utf8(env, entries[i].endpoint, NAPI_AUTO_LENGTH,
-                                &ep);
-        napi_create_int64(env, entries[i].value, &weight);
-        napi_create_int64(env, 0, &reg);
-        napi_set_named_property(env, obj, "serviceName", svc);
-        napi_set_named_property(env, obj, "endpoint", ep);
-        napi_set_named_property(env, obj, "weight", weight);
-        napi_set_named_property(env, obj, "registeredAt", reg);
-        napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
+        return create_member_peer_array(env, entries.data(), count);
     }
 
-    return arr;
+    return throw_last_error(env, "discovery_member_peers failed");
+}
+
+napi_value discovery_member_peer_metadata(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external(env, argv[0], &discovery);
+    uint32_t service_role = 0;
+    napi_get_value_uint32(env, argv[1], &service_role);
+    std::string endpoint = get_string(env, argv[2]);
+
+    zlink_msg_t metadata;
+    int rc = zlink_msg_init(&metadata);
+    if (rc != 0)
+        return throw_last_error(env, "zlink_msg_init failed");
+    rc = zlink_discovery_member_peer_metadata(
+      discovery, static_cast<uint16_t>(service_role), endpoint.c_str(), &metadata);
+    if (rc != 0) {
+        (void) zlink_msg_close(&metadata);
+        return throw_last_error(env, "discovery_member_peer_metadata failed");
+    }
+
+    napi_value out;
+    napi_create_buffer_copy(env, zlink_msg_size(&metadata), zlink_msg_data(&metadata),
+                            NULL, &out);
+    (void) zlink_msg_close(&metadata);
+    return out;
 }
 
 napi_value discovery_open_monitor(napi_env env, napi_callback_info info)

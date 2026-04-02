@@ -6,12 +6,12 @@
 
 namespace {
 
-template<typename SpotT> class has_receive_t
+template<typename SpotT> class has_subscribe_result_t
 {
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().receive (), std::true_type ());
+      -> decltype (std::declval<T &> ().subscribe (), std::true_type ());
 
     template<typename> static std::false_type test (...);
 
@@ -19,12 +19,12 @@ template<typename SpotT> class has_receive_t
     static const bool value = decltype (test<SpotT> (0))::value;
 };
 
-template<typename SpotT> class has_try_receive_t
+template<typename SpotT> class has_try_subscribe_result_t
 {
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().try_receive (), std::true_type ());
+      -> decltype (std::declval<T &> ().try_subscribe (), std::true_type ());
 
     template<typename> static std::false_type test (...);
 
@@ -48,12 +48,106 @@ template<typename SpotT> class has_try_publish_t
     static const bool value = decltype (test<SpotT> (0))::value;
 };
 
-static_assert (has_receive_t<zlink::service::spot_t>::value,
-               "spot_t must expose receive");
-static_assert (has_try_receive_t<zlink::service::spot_t>::value,
-               "spot_t must expose try_receive");
+template<typename SpotT> class has_filter_subscribe_alias_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().subscribe (
+                      std::declval<const std::string &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SpotT> (0))::value;
+};
+
+template<typename SpotT> class has_filter_unsubscribe_alias_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().unsubscribe (
+                      std::declval<const std::string &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SpotT> (0))::value;
+};
+
+template<typename T> class has_monitor_open_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (std::declval<U &> ().monitor_open (),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+template<typename T> class has_close_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (std::declval<U &> ().close (),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+template<typename T> class has_on_event_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (std::declval<U &> ().on_event (
+                      static_cast<zlink_service_monitor_handler_fn> (NULL),
+                      static_cast<void *> (NULL)),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+static_assert (has_subscribe_result_t<zlink::service::spot_t>::value,
+               "spot_t must expose subscribe receive");
+static_assert (has_try_subscribe_result_t<zlink::service::spot_t>::value,
+               "spot_t must expose try_subscribe");
 static_assert (has_try_publish_t<zlink::service::spot_t>::value,
                "spot_t must expose try_publish");
+static_assert (!has_filter_subscribe_alias_t<zlink::service::spot_t>::value,
+               "spot_t must not expose subscribe(filter) alias");
+static_assert (!has_filter_unsubscribe_alias_t<zlink::service::spot_t>::value,
+               "spot_t must not expose unsubscribe(filter) alias");
+static_assert (has_monitor_open_t<zlink::service::spot_t>::value,
+               "spot_t must expose monitor_open");
+static_assert (has_monitor_open_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must expose monitor_open");
+static_assert (has_monitor_open_t<zlink::service::discovery_t>::value,
+               "discovery_t must expose monitor_open");
+static_assert (has_close_t<zlink::service::spot_t>::value,
+               "spot_t must expose close");
+static_assert (has_close_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must expose close");
+static_assert (has_close_t<zlink::service::discovery_t>::value,
+               "discovery_t must expose close");
+static_assert (has_close_t<zlink::service_monitor_handle_t>::value,
+               "service_monitor_handle_t must expose close");
+static_assert (has_on_event_t<zlink::service_monitor_handle_t>::value,
+               "service_monitor_handle_t must expose on_event");
 
 void test_registry_query_and_discovery_metadata ()
 {
@@ -106,7 +200,7 @@ void test_spot_node_snapshot_and_service_monitor ()
     size_t subject_count = 0;
     assert (node.subjects_snapshot (NULL, &subject_count) == 0);
 
-    zlink::service_monitor_handle_t monitor (node);
+    zlink::service_monitor_handle_t monitor = node.monitor_open ();
     assert (monitor.valid ());
 }
 
@@ -117,16 +211,17 @@ void test_unified_spot_self_delivery_recv_contract ()
     zlink::service::spot_t spot (node);
     assert (spot.valid ());
 
-    zlink::service_monitor_handle_t sub_monitor (
-      spot, zlink::service_monitor_event::spot_filter_applied
-              | zlink::service_monitor_event::error);
+    zlink::service_monitor_handle_t sub_monitor =
+      spot.monitor_open (zlink::service_monitor_event::spot_filter_applied
+                           | zlink::service_monitor_event::error);
     assert (sub_monitor.valid ());
-    zlink::service_monitor_handle_t pub_monitor (
-      spot.handle (), zlink::service_monitor_event::spot_first_delivery_ready_changed
-                        | zlink::service_monitor_event::error);
+    zlink::service_monitor_handle_t pub_monitor =
+      spot.monitor_open (
+        zlink::service_monitor_event::spot_first_delivery_ready_changed
+        | zlink::service_monitor_event::error);
     assert (pub_monitor.valid ());
 
-    assert (spot.subscribe ("topic:service-self") == 0);
+    assert (spot.set_subscription ("topic:service-self") == 0);
     assert (zlink_cpp_contract::wait_for_service_monitor_event (
       sub_monitor,
       static_cast<uint32_t> (
@@ -139,7 +234,7 @@ void test_unified_spot_self_delivery_recv_contract ()
       zlink_cpp_contract::make_message ("service-self");
     spot.publish ("topic:service-self", outbound);
 
-    const zlink::subscribed_t inbound = spot.receive ();
+    const zlink::subscribed_t inbound = spot.subscribe ();
     assert (inbound.topic == "topic:service-self");
     assert (inbound.parts.size () == 1);
     assert (inbound.parts[0].to_string () == "service-self");

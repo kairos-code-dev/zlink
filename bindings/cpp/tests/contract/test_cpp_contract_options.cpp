@@ -4,6 +4,86 @@
 
 namespace {
 
+template<typename T> class has_common_socket_options_facade_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (U::linger, U::sndhwm, U::rcvhwm, std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+template<typename T> class has_router_socket_options_facade_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (U::mandatory, U::handover, U::probe,
+                    U::connect_routing_id, std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+template<typename T> class has_dealer_socket_options_facade_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (U::probe, std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+template<typename T> class has_stream_socket_options_facade_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (U::notify, std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+template<typename T> class has_pub_socket_options_facade_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (U::verbose, U::verboser, U::nodrop, U::manual,
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
+template<typename T> class has_sub_socket_options_facade_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (U::topics_count, std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
 template<typename SpotT> class has_typed_pub_option_set_t
 {
   private:
@@ -38,6 +118,24 @@ static_assert (has_typed_pub_option_set_t<zlink::service::spot_t>::value,
                "spot_t must expose typed pub option setters");
 static_assert (has_typed_sub_option_get_t<zlink::service::spot_t>::value,
                "spot_t must expose typed sub option getters");
+static_assert (has_common_socket_options_facade_t<
+                 zlink::common_socket_options_t>::value,
+               "common_socket_options_t must exist");
+static_assert (has_router_socket_options_facade_t<
+                 zlink::router_socket_options_t>::value,
+               "router_socket_options_t must exist");
+static_assert (has_dealer_socket_options_facade_t<
+                 zlink::dealer_socket_options_t>::value,
+               "dealer_socket_options_t must exist");
+static_assert (has_stream_socket_options_facade_t<
+                 zlink::stream_socket_options_t>::value,
+               "stream_socket_options_t must exist");
+static_assert (has_pub_socket_options_facade_t<
+                 zlink::pub_socket_options_t>::value,
+               "pub_socket_options_t must exist");
+static_assert (has_sub_socket_options_facade_t<
+                 zlink::sub_socket_options_t>::value,
+               "sub_socket_options_t must exist");
 
 template<typename SocketT> class has_typed_router_option_set_t
 {
@@ -105,10 +203,11 @@ void test_socket_common_and_router_options ()
     assert (stream.get_option (zlink::stream_options::notify, &got_notify) == 0);
     assert (got_notify == notify);
 
-    assert (router.set_routing_id ("router-alpha") == 0);
-    std::string routing_id;
+    const zlink::routing_id_t expected_routing_id ("router-alpha");
+    assert (router.set_routing_id (expected_routing_id) == 0);
+    zlink::routing_id_t routing_id;
     assert (router.get_routing_id (routing_id) == 0);
-    assert (routing_id == "router-alpha");
+    assert (routing_id.to_string () == "router-alpha");
 }
 
 void test_spot_options ()

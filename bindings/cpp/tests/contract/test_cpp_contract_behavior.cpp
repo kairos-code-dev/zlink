@@ -28,7 +28,7 @@ template<typename SocketT> class has_receive_flags_overload_t
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().receive (zlink::recv_flag::dontwait),
+      -> decltype (std::declval<T &> ().recv(zlink::recv_flag::dontwait),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -123,7 +123,7 @@ void test_pair_try_receive_returns_empty_without_data ()
     zlink::context_t ctx;
     zlink::pair_socket_t socket (ctx);
 
-    const zlink::maybe_t<zlink::received_t> received = socket.try_receive ();
+    const zlink::maybe_t<zlink::received_t> received = socket.try_recv ();
     assert (!received);
 }
 
@@ -169,7 +169,7 @@ void test_router_try_send_reports_not_ready_for_unknown_peer ()
     zlink::router_socket_t router (ctx);
     assert (router.set_option (zlink::router_options::mandatory, 1) == 0);
 
-    zlink_routing_id_t routing_id;
+    zlink::routing_id_t routing_id;
     assert (zlink::routing_id_from ("UNKNOWN", &routing_id) == 0);
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("no-route");
@@ -236,8 +236,8 @@ void test_pair_receive_throws_in_callback_mode ()
     zlink::context_t ctx;
     zlink::pair_socket_t socket (ctx);
 
-    assert (socket.recv_handler (&discard_pair_parts, NULL) == 0);
-    expect_runtime_error ([&] { (void) socket.receive (); });
+    assert (socket.on_receive (&discard_pair_parts, NULL) == 0);
+    expect_runtime_error ([&] { (void) socket.recv (); });
     assert (zlink_errno () == EBUSY);
 }
 
@@ -246,8 +246,8 @@ void test_pair_try_receive_throws_in_callback_mode ()
     zlink::context_t ctx;
     zlink::pair_socket_t socket (ctx);
 
-    assert (socket.recv_handler (&discard_pair_parts, NULL) == 0);
-    expect_runtime_error ([&] { (void) socket.try_receive (); });
+    assert (socket.on_receive (&discard_pair_parts, NULL) == 0);
+    expect_runtime_error ([&] { (void) socket.try_recv (); });
     assert (zlink_errno () == EBUSY);
 }
 
@@ -259,7 +259,7 @@ void test_socket_monitor_try_receive_returns_empty_without_event ()
     zlink::monitor_handle_t monitor = socket.monitor_handle ();
     assert (monitor.valid ());
     const zlink::maybe_t<zlink_socket_monitor_event_t> event =
-      monitor.try_receive ();
+      monitor.try_recv ();
     assert (!event);
     assert (monitor.close () == 0);
 }
@@ -274,24 +274,24 @@ void test_service_monitor_try_receive_returns_empty_without_event ()
     zlink::service_monitor_handle_t monitor (spot);
     assert (monitor.valid ());
     const zlink::maybe_t<zlink_service_monitor_event_t> event =
-      monitor.try_receive ();
+      monitor.try_recv ();
     assert (!event);
     assert (monitor.close () == 0);
 }
 
 void test_routing_id_from_accepts_maximum_size ()
 {
-    zlink_routing_id_t routing_id;
+    zlink::routing_id_t routing_id;
     const std::string bytes (255, 'r');
 
     assert (zlink::routing_id_from (bytes, &routing_id) == 0);
-    assert (routing_id.size == bytes.size ());
+    assert (routing_id.size () == bytes.size ());
     assert (zlink::routing_id_to_string (routing_id) == bytes);
 }
 
 void test_routing_id_from_rejects_oversize_input ()
 {
-    zlink_routing_id_t routing_id;
+    zlink::routing_id_t routing_id;
     const std::string bytes (256, 'r');
 
     assert (zlink::routing_id_from (bytes, &routing_id) == -1);
@@ -300,7 +300,7 @@ void test_routing_id_from_rejects_oversize_input ()
 
 void test_routing_id_from_rejects_null_pointer_for_non_empty_bytes ()
 {
-    zlink_routing_id_t routing_id;
+    zlink::routing_id_t routing_id;
 
     assert (zlink::routing_id_from (NULL, 1, &routing_id) == -1);
     assert (errno == EINVAL);

@@ -13,7 +13,7 @@ test('pair sockets send and receive multipart through canonical api', () => {
         zlink.Message.copyOf('a'),
         zlink.Message.wrap(Buffer.from('b'))
     ]);
-    const received = left.receive();
+    const received = left.recv();
     assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['a', 'b']);
     right.close();
     left.close();

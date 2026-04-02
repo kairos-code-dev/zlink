@@ -13,7 +13,7 @@ async function runPubSubBenchmark(msgSize, options) {
         pub.bind(endpoint);
         sub.connect(endpoint);
         sub.setSubscription(topic);
-        const state = attachCallbackCollector((handler) => sub.subscribeHandler(handler), msgSize, options, (_, __, parts) => parts[0].toBuffer());
+        const state = attachCallbackCollector((handler) => sub.onSubscribe(handler), msgSize, options, (_, __, parts) => parts[0].toBuffer());
         await driveSender((payload) => (pub.tryPublish(topic, payload) === zlink.SendResult.Sent), state);
         return await finishCollector(state);
     }

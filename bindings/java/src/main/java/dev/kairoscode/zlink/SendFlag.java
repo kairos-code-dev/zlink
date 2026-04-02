@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-public enum SendFlag {
+enum SendFlag {
     NONE(0), DONTWAIT(1), SNDMORE(2), DONTWAIT_SNDMORE(3);
 
     private final int value;

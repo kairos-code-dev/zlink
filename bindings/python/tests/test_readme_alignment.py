@@ -11,8 +11,18 @@ class ReadmeAlignmentTests(unittest.TestCase):
         self.assertIn("bindings/README.md", readme)
         self.assertIn("core/include/zlink.h", readme)
         self.assertIn("multipart-only", readme)
+        self.assertIn("capability matrix", readme)
         self.assertIn("try_send", readme)
         self.assertIn("try_recv", readme)
+        self.assertIn("on_receive", readme)
+        self.assertIn("on_subscribe", readme)
+        self.assertIn("on_send_ready", readme)
+        self.assertIn("on_event", readme)
+        self.assertIn("attach_discovery", readme)
+        self.assertIn("MemberPeerEntry", readme)
+        self.assertIn("RegistryQueryClient", readme)
+        self.assertIn("Spot", readme)
+        self.assertIn("XPubSocket", readme)
         self.assertIn("tests/run_tests.sh", readme)
 
     def test_test_runner_script_exists_in_tests_directory(self):

@@ -5,7 +5,7 @@ using Zlink.Sockets.Internal;
 
 namespace Zlink;
 
-public abstract class PublisherSocketBase : SocketBase
+public abstract class PublisherSocketBase : ConnectableSocketBase
 {
     internal PublisherSocketBase(Context context, SocketType type)
         : base(context, type)
@@ -35,5 +35,10 @@ public abstract class PublisherSocketBase : SocketBase
     public SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
     {
         return Kernel.TryPublish(topic, parts);
+    }
+
+    public void OnSendReady(Action handler)
+    {
+        Kernel.SendReadyHandler(handler);
     }
 }

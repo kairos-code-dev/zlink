@@ -49,6 +49,13 @@ export class Received {
     this.routingId = routingId;
   }
 
+  singlePartOrThrow(): Message {
+    if (this.parts.length !== 1) {
+      throw new Error(`expected exactly 1 part but received ${this.parts.length}`);
+    }
+    return this.parts[0];
+  }
+
   close(): void {}
 }
 
@@ -61,6 +68,13 @@ export class Subscribed {
     this.routingId = routingId;
     this.topic = topic;
     this.parts = Object.freeze(parts.slice());
+  }
+
+  singlePartOrThrow(): Message {
+    if (this.parts.length !== 1) {
+      throw new Error(`expected exactly 1 part but received ${this.parts.length}`);
+    }
+    return this.parts[0];
   }
 
   close(): void {}

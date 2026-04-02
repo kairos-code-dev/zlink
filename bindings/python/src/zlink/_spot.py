@@ -2,6 +2,7 @@
 
 import ctypes
 
+from ._socket_base import _callback_send_flags, _enter_callback, _leave_callback
 from ._enums import (
     SendResult,
     SpotNodeState,
@@ -30,6 +31,8 @@ from ._core import (
     _report_unhandled_callback_exception,
     _raise_last_error,
     _routing_id_bytes,
+    _validated_c_string_bytes,
+    _validated_c_string_text,
     _validated_routing_id_bytes,
 )
 
@@ -148,17 +151,29 @@ class SpotNode:
             _raise_last_error()
 
     def bind(self, endpoint: str):
-        rc = lib().zlink_spot_node_bind(self._handle, endpoint.encode())
+        rc = lib().zlink_spot_node_bind(
+            self._handle,
+            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
+        )
         if rc != 0:
             _raise_last_error()
 
+    def last_endpoint(self) -> str:
+        return self.status_snapshot().local_endpoint
+
     def connect_peer(self, endpoint: str):
-        rc = lib().zlink_spot_node_connect_peer(self._handle, endpoint.encode())
+        rc = lib().zlink_spot_node_connect_peer(
+            self._handle,
+            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
+        )
         if rc != 0:
             _raise_last_error()
 
     def disconnect_peer(self, endpoint: str):
-        rc = lib().zlink_spot_node_disconnect_peer(self._handle, endpoint.encode())
+        rc = lib().zlink_spot_node_disconnect_peer(
+            self._handle,
+            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
+        )
         if rc != 0:
             _raise_last_error()
 
@@ -203,16 +218,19 @@ class SpotNode:
         if rc != 0:
             _raise_last_error()
 
-    def get_routing_id(self) -> bytes:
+    def get_routing_id(self):
         routing_id = ZlinkRoutingId()
         rc = lib().zlink_get_routing_id(self._handle, ctypes.byref(routing_id))
         if rc != 0:
             _raise_last_error()
-        return bytes(routing_id.data[: routing_id.size])
+        return _routing_id_bytes(routing_id)
 
     def set_tls_server(self, cert: str, key: str, require_client_cert: bool = False):
         rc = lib().zlink_set_tls_server(
-            self._handle, cert.encode(), key.encode(), int(require_client_cert)
+            self._handle,
+            _validated_c_string_text(cert, field="cert"),
+            _validated_c_string_text(key, field="key"),
+            int(require_client_cert),
         )
         if rc != 0:
             _raise_last_error()
@@ -220,8 +238,16 @@ class SpotNode:
     def set_tls_client(
         self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
     ):
-        ca_value = None if ca_cert is None else ca_cert.encode()
-        host_value = None if hostname is None else hostname.encode()
+        ca_value = (
+            None
+            if ca_cert is None
+            else _validated_c_string_text(ca_cert, field="ca_cert")
+        )
+        host_value = (
+            None
+            if hostname is None
+            else _validated_c_string_text(hostname, field="hostname")
+        )
         rc = lib().zlink_set_tls_client(
             self._handle, ca_value, host_value, int(trust_system)
         )
@@ -392,14 +418,15 @@ class Spot:
         return native_parts
 
     def publish(self, topic, payload):
-        topic_bytes = bytes(_as_bytes_view(topic))
+        topic_bytes = _validated_c_string_bytes(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
         for index, native in enumerate(native_parts):
             parts_array[index] = native
+        effective_flags = _callback_send_flags(0)
         rc = lib().zlink_publish(
-            self._handle, topic_bytes, parts_array, part_count, 0
+            self._handle, topic_bytes, parts_array, part_count, effective_flags
         )
         if rc != 0:
             for index in range(part_count):
@@ -407,7 +434,7 @@ class Spot:
             _raise_last_error()
 
     def try_publish(self, topic, payload):
-        topic_bytes = bytes(_as_bytes_view(topic))
+        topic_bytes = _validated_c_string_bytes(topic, field="topic")
         native_parts = self._native_parts_from_payload(payload)
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
@@ -453,10 +480,10 @@ class Spot:
         topic = topic_buf.raw[: topic_len.value]
         return Subscribed(topic, owner, _routing_id_bytes(routing_id))
 
-    def recv(self):
+    def subscribe(self):
         return self._recv_subscribed(0)
 
-    def try_recv(self):
+    def try_subscribe(self):
         try:
             return self._recv_subscribed(1)
         except Exception as exc:
@@ -465,12 +492,18 @@ class Spot:
             raise
 
     def set_subscription(self, topic):
-        rc = lib().zlink_set_subscription(self._handle, bytes(_as_bytes_view(topic)))
+        rc = lib().zlink_set_subscription(
+            self._handle,
+            _validated_c_string_bytes(topic, field="subscription"),
+        )
         if rc != 0:
             _raise_last_error()
 
     def unset_subscription(self, topic):
-        rc = lib().zlink_unset_subscription(self._handle, bytes(_as_bytes_view(topic)))
+        rc = lib().zlink_unset_subscription(
+            self._handle,
+            _validated_c_string_bytes(topic, field="subscription"),
+        )
         if rc != 0:
             _raise_last_error()
 
@@ -520,7 +553,7 @@ class Spot:
         if rc != 0:
             _raise_last_error()
 
-    def set_handler(self, handler):
+    def on_subscribe(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
         if self._handler_cb is not None:
@@ -535,6 +568,7 @@ class Spot:
                 topic = ctypes.string_at(topic_ptr, topic_len)
             owner = _ReceivedPartsOwner(parts_ptr, int(part_count))
             message = Subscribed(topic, owner, routing_id)
+            _enter_callback()
             try:
                 handler(message)
             except Exception:
@@ -544,6 +578,8 @@ class Spot:
                     _report_unhandled_callback_exception(handler)
             else:
                 message.close()
+            finally:
+                _leave_callback()
 
         callback = _SPOT_SUBSCRIBE_HANDLER(_callback)
         rc = lib().zlink_subscribe_handler(self._handle, callback, None)
@@ -552,15 +588,18 @@ class Spot:
         self._handler = handler
         self._handler_cb = callback
 
-    def set_send_ready_handler(self, handler):
+    def on_send_ready(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
 
         def _callback(_, __):
+            _enter_callback()
             try:
                 handler(self)
             except Exception:
                 _report_unhandled_callback_exception(handler)
+            finally:
+                _leave_callback()
 
         callback = _SOCKET_SEND_READY_HANDLER(_callback)
         rc = lib().zlink_send_ready_handler(self._handle, callback, None)

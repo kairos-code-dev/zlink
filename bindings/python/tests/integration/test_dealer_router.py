@@ -30,7 +30,7 @@ class DealerRouterScenarioTest(unittest.TestCase):
                 with router.recv() as received:
                     self.assertEqual(received.to_bytes_list(), [b"hello"])
                     self.assertIsNotNone(received.routing_id)
-                    router.send_to(received.routing_id, b"world")
+                    router.send(b"world", routing_id=received.routing_id)
                 self.assertTrue(
                     wait_for_socket_event(dealer, zlink.PollEvent.POLLIN, 2000)
                 )

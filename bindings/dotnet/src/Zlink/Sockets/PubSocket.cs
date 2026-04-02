@@ -4,13 +4,11 @@ namespace Zlink;
 
 public sealed class PubSocket : PublisherSocketBase
 {
+    public PubSocketOptions PubOptions { get; }
+
     public PubSocket(Context context)
         : base(context, SocketType.Pub)
     {
-    }
-
-    public void SetNoDrop(bool enabled)
-    {
-        SetOption(SocketOptions.XPubNoDrop, enabled ? 1 : 0);
+        PubOptions = new PubSocketOptions(this);
     }
 }

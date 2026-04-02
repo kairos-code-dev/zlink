@@ -109,7 +109,7 @@ bool wait_for_service_ready_count (zlink::service_monitor_handle_t &monitor_,
             continue;
 
         const zlink::maybe_t<zlink_service_monitor_event_t> event =
-          monitor_.try_receive ();
+          monitor_.try_recv();
         if (!event)
             continue;
         if (event->event_type
@@ -151,16 +151,24 @@ bool run_phase (zlink::service::spot_t &spot_,
             return false;
         }
 
-        const int rc = spot_.publish (
-          k_topic, payload_.data (), payload_.size (), zlink::send_flag::dontwait);
-        if (rc == 0) {
+        zlink::message_t outbound =
+          zlink::message_t::from_bytes (payload_.data (), payload_.size ());
+        if (!outbound.valid ()) {
+            errno = EINVAL;
+            return false;
+        }
+
+        const zlink::send_result_t result =
+          spot_.try_publish (k_topic, outbound);
+        if (result == zlink::send_result_t::sent) {
             continue;
         }
 
-        if (errno == EINTR)
-            continue;
-        if (errno != EAGAIN)
+        if (result != zlink::send_result_t::backpressured
+            && result != zlink::send_result_t::not_ready) {
+            errno = EFAULT;
             return false;
+        }
         std::this_thread::yield ();
     }
 

@@ -9,9 +9,11 @@ internal static class PerfSpotClient
 {
     private const string Pattern = "SPOT";
     private const uint ExpectedRunId = 1;
-    private const uint SpotMonitorEventError = 1u << 4;
-    private const uint SpotMonitorEventSubDeliveryReadyChanged = 1u << 19;
-    private const uint SpotReadyMonitorEvents = SpotMonitorEventError
+    private const ServiceMonitorEvents SpotMonitorEventError =
+        ServiceMonitorEvents.Error;
+    private const ServiceMonitorEvents SpotMonitorEventSubDeliveryReadyChanged =
+        ServiceMonitorEvents.SpotSubDeliveryReadyChanged;
+    private const ServiceMonitorEvents SpotReadyMonitorEvents = SpotMonitorEventError
         | SpotMonitorEventSubDeliveryReadyChanged;
 
     internal static int Run(string transport, int size, string endpoint)
@@ -173,7 +175,7 @@ internal static class PerfSpotClient
             var subscriber = new Spot(node);
             try
             {
-                ServiceMonitor monitor = subscriber.OpenMonitor(
+                ServiceMonitor monitor = subscriber.MonitorOpen(
                     SpotReadyMonitorEvents);
                 try
                 {
@@ -183,7 +185,7 @@ internal static class PerfSpotClient
                     {
                         var callbackState = new SpotCallbackState(
                             config.Size, config.LatencySampleCap);
-                        subscriber.SubscribeHandler((_, parts) =>
+                        subscriber.OnSubscribe((_, parts) =>
                         {
                             callbackState.OnMessage(parts);
                         });
@@ -224,14 +226,13 @@ internal static class PerfSpotClient
 
             while (Stopwatch.GetTimestamp() < deadlineTicks)
             {
-                ServiceMonitorEvent? evt = monitor.TryReceive();
-                if (evt == null)
+                if (!monitor.TryRecv(out ServiceMonitorEvent? evt))
                 {
                     spin.SpinOnce();
                     continue;
                 }
                 spin.Reset();
-                if (evt.Value.EventType == SpotMonitorEventError)
+                if (evt!.Value.EventType == SpotMonitorEventError)
                     return false;
                 if (evt.Value.EventType == SpotMonitorEventSubDeliveryReadyChanged
                     && evt.Value.Value > 0)
@@ -356,8 +357,8 @@ internal static class PerfSpotClient
     {
         try
         {
-            Subscribed? subscribed = subscriber.TrySubscribe();
-            if (subscribed == null)
+            if (!subscriber.TrySubscribe(out Subscribed? subscribed)
+                || subscribed == null)
                 return 0;
             return CopySubscribedPayload(subscribed, payloadBuffer);
         }

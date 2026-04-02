@@ -5,7 +5,7 @@ using Zlink.Sockets.Internal;
 
 namespace Zlink;
 
-public abstract class MessageSocketBase : SocketBase
+public abstract class MessageSocketBase : ConnectableSocketBase
 {
     internal MessageSocketBase(Context context, SocketType type)
         : base(context, type)
@@ -37,18 +37,24 @@ public abstract class MessageSocketBase : SocketBase
         return Kernel.TrySend(parts);
     }
 
-    public void RecvHandler(SocketRecvHandler handler)
+    public void OnReceive(SocketRecvHandler handler)
     {
         Kernel.RecvHandler(handler);
     }
 
-    public Received Receive()
+    public Received Recv()
     {
-        return Kernel.Receive();
+        return Kernel.Recv();
     }
 
-    public Received? TryReceive()
+    public bool TryRecv(out Received? received)
     {
-        return Kernel.TryReceive();
+        received = Kernel.TryRecv();
+        return received != null;
+    }
+
+    public void OnSendReady(Action handler)
+    {
+        Kernel.SendReadyHandler(handler);
     }
 }

@@ -86,6 +86,12 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 주의사항:
 - 반드시 `zlink_bind()` 또는 `zlink_connect()` **이전에** 설정
 - 연결 후 변경 불가
@@ -141,6 +147,12 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### 조회
@@ -191,6 +203,12 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 5. Connection Alias 설정
@@ -248,6 +266,12 @@ ROUTER에서 특정 연결을 의미 있는 이름으로 참조할 때 사용한
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 - `zlink_set_routing_id()`는 소켓 전체에 적용
@@ -346,6 +370,12 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 다중 클라이언트 구분
 
 === "C"
@@ -411,6 +441,12 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — 다중 DEALER 예제
 
 ### zlink_msg_t를 사용한 routing_id 처리
@@ -471,6 +507,12 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 7. STREAM 소켓에서 routing_id 사용법
@@ -539,6 +581,12 @@ STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 연결/해제 이벤트의 routing_id
 
 === "C"
@@ -601,6 +649,12 @@ STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별�
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > 참고: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
@@ -678,6 +732,12 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 문자열 routing_id
 
 사용자가 설정한 routing_id가 ASCII 문자열이면 직접 출력 가능.
@@ -737,6 +797,12 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 자동 생성 routing_id 확인
 
 === "C"
@@ -782,6 +848,12 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 9. 바이너리 처리 원칙
@@ -835,6 +907,12 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ---

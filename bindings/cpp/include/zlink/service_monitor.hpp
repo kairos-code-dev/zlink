@@ -104,13 +104,13 @@ class service_monitor_handle_t
     void *handle () noexcept { return _monitor; }
     const void *handle () const noexcept { return _monitor; }
 
-    int handler (zlink_service_monitor_handler_fn handler_,
-                 void *userdata_ = NULL)
+    int on_event (zlink_service_monitor_handler_fn handler_,
+                  void *userdata_ = NULL)
     {
         return zlink_service_monitor_handler (_monitor, handler_, userdata_);
     }
 
-    ZLINK_CPP_NODISCARD zlink_service_monitor_event_t receive ()
+    ZLINK_CPP_NODISCARD zlink_service_monitor_event_t recv ()
     {
         zlink_service_monitor_event_t event;
         const int rc = zlink_service_monitor_recv (_monitor, &event, 0);
@@ -118,7 +118,7 @@ class service_monitor_handle_t
         return event;
     }
 
-    ZLINK_CPP_NODISCARD maybe_t<zlink_service_monitor_event_t> try_receive ()
+    ZLINK_CPP_NODISCARD maybe_t<zlink_service_monitor_event_t> try_recv ()
     {
         zlink_service_monitor_event_t event;
         const int rc =
@@ -151,6 +151,24 @@ class service_monitor_handle_t
   private:
     void *_monitor;
 };
+
+inline service_monitor_handle_t
+service::discovery_t::monitor_open (service_monitor_event events_)
+{
+    return service_monitor_handle_t (*this, events_);
+}
+
+inline service_monitor_handle_t
+service::spot_t::monitor_open (service_monitor_event events_)
+{
+    return service_monitor_handle_t (*this, events_);
+}
+
+inline service_monitor_handle_t
+service::spot_node_t::monitor_open (service_monitor_event events_)
+{
+    return service_monitor_handle_t (*this, events_);
+}
 
 } // namespace zlink
 

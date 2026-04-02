@@ -147,6 +147,24 @@ I/O 스레드에서 이벤트 발생 즉시 핸들러가 호출된다.
     });
     ```
 
+=== "Go"
+
+    ```go
+    server := ctx.RouterSocket()
+    server.Bind("tcp://*:5555")
+
+    opts := zlink.MonitorOptions{Events: zlink::EVENT_ALL}
+    mon := server.MonitorOpen(opts)
+    mon.SetHandler(func(ev zlink.MonitorEvent) {
+        fmt.Printf("Event: 0x%v\n", ev.event())
+        fmt.Printf("Local: %v\n", ev.local_addr())
+        fmt.Printf("Remote: %v\n", ev.remote_addr())
+        if !ev.routing_id().is_empty() {
+            fmt.Printf("routing_id: %v\n", ev.routing_id())
+        }
+    });
+    ```
+
 이벤트 발생 시 `on_monitor_event` 콜백이 자동으로 호출된다.
 
 ### 이벤트 구조체
@@ -441,6 +459,22 @@ raw 소켓의 transport/session 상태를 알려준다.
     });
     ```
 
+=== "Go"
+
+    ```go
+    mon.SetHandler(func(ev zlink.MonitorEvent) {
+        if ev.event() == zlink::EVENT_DISCONNECTED {
+            match ev.disconnect_reason() {
+                zlink::DisconnectReason::Unknown => println!("Unknown disconnection"),
+                zlink::DisconnectReason::HandshakeFailed => println!("Handshake failed -- check TLS configuration"),
+                zlink::DisconnectReason::TransportError => println!("Transport error -- check network"),
+                zlink::DisconnectReason::CtxTerm => println!("Context terminated"),
+                _ => println!("Unknown reason={}", ev.value()),
+            }
+        }
+    });
+    ```
+
 ## 7. 이벤트 필터링 및 구독 프리셋
 
 ### 특정 이벤트만 구독
@@ -509,6 +543,15 @@ raw 소켓의 transport/session 상태를 알려준다.
     let opts = zlink::MonitorOptions::new(
         zlink::EVENT_CONNECTION_READY_CHANGED | zlink::EVENT_DISCONNECTED);
     let mon = server.monitor_open(&opts)?;
+    mon.set_handler(on_monitor_event);
+    ```
+
+=== "Go"
+
+    ```go
+    opts := zlink.MonitorOptions{Events: 
+        zlink::EVENT_CONNECTION_READY_CHANGED | zlink::EVENT_DISCONNECTED}
+    mon := server.MonitorOpen(opts)
     mon.set_handler(on_monitor_event);
     ```
 
@@ -646,6 +689,16 @@ monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
              snapshot.rcv_pending_msgs);
     ```
 
+=== "Go"
+
+    ```go
+    mon := socket.monitor_open(&zlink::MonitorOptions::new(zlink::EVENT_ALL))
+    snapshot := mon.snapshot()
+    println!("Ready peers: {}, sndq={}, rcvq={}",
+             snapshot.ready_count, snapshot.snd_pending_msgs,
+             snapshot.rcv_pending_msgs);
+    ```
+
 event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
 
 === "C"
@@ -725,6 +778,17 @@ event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
     });
     ```
 
+=== "Go"
+
+    ```go
+    mon.SetHandler(func(ev zlink.MonitorEvent) {
+        if ev.event() == zlink::EVENT_CONNECTION_READY_CHANGED {
+            snapshot := mon.snapshot().unwrap();
+            fmt.Printf("Ready peers now: %v\n", snapshot.ready_count)
+        }
+    });
+    ```
+
 ## 8.1 서비스 모니터
 
 서비스 모니터는 SPOT, Discovery 같은 서비스 핸들의
@@ -788,6 +852,13 @@ event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
     ```rust
     let opts = zlink::ServiceMonitorOptions::new(zlink::SERVICE_MONITOR_EVENT_ALL);
     let mon = spot_node.service_monitor_open(&opts)?;
+    ```
+
+=== "Go"
+
+    ```go
+    opts := zlink::ServiceMonitorOptions::new(zlink::SERVICE_MONITOR_EVENT_ALL);
+    mon := spot_node.service_monitor_open(&opts)
     ```
 
 대상 handle(discovery, spot, spot_node)을 넘기면 된다.
@@ -880,6 +951,19 @@ handle 종류는 런타임에 자동 판별된다.
     });
     ```
 
+=== "Go"
+
+    ```go
+    mon.SetHandler(func(ev zlink.MonitorEvent) {
+        if ev.event_type().contains(zlink::SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED) {
+            fmt.Println("sub delivery ready")
+        }
+        if ev.event_type().contains(zlink::SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED) {
+            fmt.Println("pub first delivery ready")
+        }
+    });
+    ```
+
 ### Recv 모드
 
 === "C"
@@ -941,6 +1025,14 @@ handle 종류는 런타임에 자동 판별된다.
     ```rust
     if let Some(ev) = mon.recv()? {
         println!("event: 0x{:x}, value: {}", ev.event_type(), ev.value());
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    if let Some(ev) = mon.recv()? {
+        fmt.Printf("event: 0x{:x}, value: %v\n", ev.event_type(), ev.value())
     }
     ```
 
@@ -1097,6 +1189,21 @@ handle 종류는 런타임에 자동 판별된다.
     mon_b.close();
     ```
 
+=== "Go"
+
+    ```go
+    opts := zlink.MonitorOptions{Events: zlink::EVENT_ALL}
+    mon_a := sock_a.MonitorOpen(opts)
+    mon_a.set_handler(|ev| fmt.Printf("Socket A event: 0x%v\n", ev.event()))
+    mon_b := sock_b.MonitorOpen(opts)
+    mon_b.set_handler(|ev| fmt.Printf("Socket B event: 0x%v\n", ev.event()))
+
+    // ... application logic ...
+
+    mon_a.Close()
+    mon_b.Close()
+    ```
+
 ## 10. 주의사항
 
 ### 모니터 스레드 안전성
@@ -1186,6 +1293,17 @@ handle 종류는 런타임에 자동 판별된다.
 
     // Snapshot reads may happen later from another worker thread
     let snapshot = mon.snapshot()?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.RouterSocket()
+    mon := socket.monitor_open(&zlink::MonitorOptions::new(zlink::EVENT_ALL))
+    mon.set_handler(on_monitor_event);
+
+    // Snapshot reads may happen later from another worker thread
+    snapshot := mon.snapshot()
     ```
 
 ### 동시 모니터 제한
@@ -1298,6 +1416,19 @@ handle 종류는 런타임에 자동 판별된다.
     });
     ```
 
+=== "Go"
+
+    ```go
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://0.0.0.0:9090")
+
+    mon := server.monitor_open(&zlink::MonitorOptions::new(zlink::EVENT_ALL))
+    mon.set_handler(move |ev| {
+        bytes := ev.to_bytes();
+        pub_sock.publish("monitor", &bytes, zlink::DONTWAIT).ok();
+    });
+    ```
+
 ### 모니터 종료 절차
 
 === "C"
@@ -1341,6 +1472,12 @@ handle 종류는 런타임에 자동 판별된다.
 
     ```rust
     mon.close();
+    ```
+
+=== "Go"
+
+    ```go
+    mon.Close()
     ```
 
 ## 11. 메시징 시작 전 준비 확인 (Ready Gate)
@@ -1453,6 +1590,18 @@ handle 종류는 런타임에 자동 판별된다.
     });
     ```
 
+=== "Go"
+
+    ```go
+    mon := router.monitor_open(
+        &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY_CHANGED))
+    mon.SetHandler(func(ev zlink.MonitorEvent) {
+        if ev.event() & zlink::EVENT_CONNECTION_READY_CHANGED != 0 {
+            // ROUTER: ev.routing_id() contains the peer identity
+        }
+    });
+    ```
+
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
 | PAIR | 양쪽 `CONNECTION_READY_CHANGED` | 양방향 send/recv |
@@ -1554,6 +1703,18 @@ STREAM은 ROUTER와 동일하게 동작한다 — routing_id는 TCP 연결이 �
     let mon = stream_server.monitor_open(
         &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY_CHANGED))?;
     mon.set_handler(|ev| {
+        if ev.event() & zlink::EVENT_CONNECTION_READY_CHANGED != 0 {
+            // ev.routing_id() contains the peer's routing_id
+        }
+    });
+    ```
+
+=== "Go"
+
+    ```go
+    mon := stream_server.monitor_open(
+        &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY_CHANGED))
+    mon.SetHandler(func(ev zlink.MonitorEvent) {
         if ev.event() & zlink::EVENT_CONNECTION_READY_CHANGED != 0 {
             // ev.routing_id() contains the peer's routing_id
         }
@@ -1706,6 +1867,24 @@ PUB과 SUB 각각에 별도 모니터를 열어서 양쪽 모두 ready를
     sub_mon.close();
     ```
 
+=== "Go"
+
+    ```go
+    sub.set_subscription("topic")
+
+    sub_mon := sub.monitor_open(
+        &zlink::MonitorOptions::new(zlink::EVENT_SUB_DELIVERY_READY_CHANGED))
+    pub_mon := pub.monitor_open(
+        &zlink::MonitorOptions::new(zlink::EVENT_PUB_DELIVERY_READY_CHANGED))
+
+    // Start messaging after both delivery-ready events
+    pub.publish(None, &part, 1, 0)
+    sub.subscribe(&mut parts, &mut count, 0, &mut topic_buf, &mut topic_len)
+
+    pub_mon.Close()
+    sub_mon.Close()
+    ```
+
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
 | PUB | `PUB_DELIVERY_READY_CHANGED(value>=expected_subs)` | `zlink_publish()` delivery |
@@ -1811,6 +1990,19 @@ SPOT은 sub과 pub에 각각 별도 service monitor를 열어서 다른 이벤�
     // Start messaging after both are ready
     ```
 
+=== "Go"
+
+    ```go
+    sub_mon := sub_node.service_monitor_open(&zlink::ServiceMonitorOptions::new(
+        zlink::SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+        | zlink::MONITOR_EVENT_ERROR))
+    pub_mon := pub_node.service_monitor_open(&zlink::ServiceMonitorOptions::new(
+        zlink::SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
+        | zlink::MONITOR_EVENT_ERROR))
+
+    // Start messaging after both are ready
+    ```
+
 | 서비스 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
 | SPOT sub | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 시작 |
@@ -1873,6 +2065,13 @@ snapshot/status 조회는 운영 관찰/디버깅용이며, 메시징 시작 판
     ```rust
     let status = discovery.status_snapshot()?;
     println!("state={}", status.state);
+    ```
+
+=== "Go"
+
+    ```go
+    status := discovery.status_snapshot()
+    fmt.Printf("state=%v\n", status.state)
     ```
 
 ---

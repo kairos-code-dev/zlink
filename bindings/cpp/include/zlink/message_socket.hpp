@@ -39,7 +39,7 @@ class message_socket_t : public base_socket_t
         return result;
     }
 
-    ZLINK_CPP_NODISCARD received_t receive ()
+    ZLINK_CPP_NODISCARD received_t recv ()
     {
         received_t received;
         const int rc = base_socket_t::receive (received);
@@ -47,7 +47,7 @@ class message_socket_t : public base_socket_t
         return received;
     }
 
-    ZLINK_CPP_NODISCARD maybe_t<received_t> try_receive ()
+    ZLINK_CPP_NODISCARD maybe_t<received_t> try_recv ()
     {
         received_t received;
         const int rc = base_socket_t::receive (received, recv_flag::dontwait);
@@ -59,17 +59,17 @@ class message_socket_t : public base_socket_t
         return maybe_t<received_t> ();
     }
 
-    ZLINK_CPP_NODISCARD int recv_handler (zlink_socket_msg_handler_fn handler_,
-                                          void *userdata_ = NULL)
+    ZLINK_CPP_NODISCARD int on_receive (zlink_socket_msg_handler_fn handler_,
+                                        void *userdata_ = NULL)
     {
-        return base_socket_t::recv_handler (handler_, userdata_);
+        return base_socket_t::on_receive (handler_, userdata_);
     }
 
     ZLINK_CPP_NODISCARD int
-    send_ready_handler (zlink_send_ready_handler_fn handler_,
-                        void *userdata_ = NULL)
+    on_send_ready (zlink_send_ready_handler_fn handler_,
+                   void *userdata_ = NULL)
     {
-        return base_socket_t::send_ready_handler (handler_, userdata_);
+        return base_socket_t::on_send_ready (handler_, userdata_);
     }
 
   protected:
@@ -81,13 +81,13 @@ class routed_message_socket_t : public message_socket_t
   public:
     using message_socket_t::send;
 
-    void send (const zlink_routing_id_t &target_rid_, message_t &part_)
+    void send (const routing_id_t &target_rid_, message_t &part_)
     {
         const int rc = base_socket_t::send (target_rid_, part_);
         throw_on_error (rc);
     }
 
-    void send (const zlink_routing_id_t &target_rid_,
+    void send (const routing_id_t &target_rid_,
                std::vector<message_t> &parts_)
     {
         const int rc = base_socket_t::send (target_rid_, parts_);
@@ -95,7 +95,7 @@ class routed_message_socket_t : public message_socket_t
     }
 
     ZLINK_CPP_NODISCARD send_result_t
-    try_send (const zlink_routing_id_t &target_rid_, message_t &part_)
+    try_send (const routing_id_t &target_rid_, message_t &part_)
     {
         send_result_t result = send_result_t::sent;
         const int rc = base_socket_t::try_send (result, target_rid_, part_);
@@ -104,7 +104,7 @@ class routed_message_socket_t : public message_socket_t
     }
 
     ZLINK_CPP_NODISCARD send_result_t
-    try_send (const zlink_routing_id_t &target_rid_,
+    try_send (const routing_id_t &target_rid_,
               std::vector<message_t> &parts_)
     {
         send_result_t result = send_result_t::sent;

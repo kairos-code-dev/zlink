@@ -12,6 +12,7 @@ POLL_SECONDS=30
 GATE_LABEL="phase2_thread_safe_stress"
 STRESS_COUNT=1
 INIT_ONLY=0
+CHECK_EXISTING_SUPERVISOR=0
 MODEL_ARG=()
 REASONING_EFFORT=""
 CURRENT_JOB_PID=""
@@ -49,6 +50,9 @@ Options:
                         (default: ${GATE_LABEL})
   --stress-count N      Default repeat count to pass to run_execution_gate_loop.sh
                         (default: ${STRESS_COUNT})
+  --check-existing-supervisor
+                        Terminate matching existing supervisor/child runs and
+                        acquire the shared supervisor lock before starting.
   --model MODEL         Pass --model MODEL to codex exec
   --reasoning-effort E  Pass -c model_reasoning_effort=E to codex exec
   -h, --help            Show this help text
@@ -343,6 +347,10 @@ while [[ $# -gt 0 ]]; do
       STRESS_COUNT="$2"
       shift 2
       ;;
+    --check-existing-supervisor)
+      CHECK_EXISTING_SUPERVISOR=1
+      shift
+      ;;
     --model)
       MODEL_ARG=(--model "$2")
       shift 2
@@ -408,9 +416,11 @@ EOF
   exit 0
 fi
 
-terminate_existing_supervisors
-terminate_existing_codex_children
-acquire_supervisor_lock
+if [[ "${CHECK_EXISTING_SUPERVISOR}" == "1" ]]; then
+  terminate_existing_supervisors
+  terminate_existing_codex_children
+  acquire_supervisor_lock
+fi
 
 timestamp="$(date '+%Y%m%d_%H%M%S')"
 session_dir="${LOGS_DIR}/codex_execution_guide_loop_${SESSION_SCOPE_ID}_${timestamp}"
@@ -430,7 +440,7 @@ Guide: ${GUIDE_PATH}
 Legacy secondary plan: ${MASTER_PLAN_PATH}
 Session dir: ${session_dir}
 Gate dir: ${gate_dir}
-Supervisor lock: ${SUPERVISOR_LOCK_DIR}
+Supervisor lock: ${SUPERVISOR_LOCK_DIR:-disabled}
 Max iterations: ${max_iterations_display}
 Gate status file: ${gate_status_file}
 Stress count: ${STRESS_COUNT}

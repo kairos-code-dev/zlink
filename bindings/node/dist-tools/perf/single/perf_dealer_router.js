@@ -11,7 +11,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
     try {
         router.bind(endpoint);
         dealer.connect(endpoint);
-        const state = attachCallbackCollector((handler) => router.recvHandler(handler), msgSize, options, (_, parts) => parts[0].toBuffer());
+        const state = attachCallbackCollector((handler) => router.onReceive(handler), msgSize, options, (_, parts) => parts[0].toBuffer());
         await driveSender((payload) => (dealer.trySend(payload) === zlink.SendResult.Sent), state);
         return await finishCollector(state);
     }

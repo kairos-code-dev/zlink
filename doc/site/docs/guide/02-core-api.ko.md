@@ -91,6 +91,17 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
     // 종료 — Drop trait
     ```
 
+=== "Go"
+
+    ```go
+    // 생성
+    ctx := zlink.NewContext()
+    ctx.SetIoThreads(4) // 기본 1; 연결이 많으면 4가 최적
+    ioThreads := ctx.IoThreads()
+
+    // 종료 — Drop trait
+    ```
+
 ### Context 옵션
 
 | 옵션 | 기본값 | 설명 |
@@ -159,6 +170,14 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 
     ```rust
     let socket = ctx.dealer_socket()?;
+    // ... 사용 ...
+    // Drop trait이 close 처리
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.DealerSocket()
     // ... 사용 ...
     // Drop trait이 close 처리
     ```
@@ -246,6 +265,15 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
     socket.disconnect("tcp://127.0.0.1:5555")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("tcp://*:5555")
+    socket.Connect("tcp://127.0.0.1:5555")
+    socket.Unbind("tcp://*:5555")
+    socket.Disconnect("tcp://127.0.0.1:5555")
+    ```
+
 ### 2.4 Socket Option
 
 === "C"
@@ -301,6 +329,13 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
     ```rust
     socket.set_sndhwm(5000)?;
     let value = socket.sndhwm()?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetOption(zlink.OptionSndHwm, 5000)
+    value := socket.GetOption(zlink.OptionSndHwm)
     ```
 
 주요 옵션:
@@ -423,6 +458,16 @@ option 하나를 수정할 때 어떤 모듈이 owner인지 바로 파악할 수
         zlink::Message::from("header"),
         zlink::Message::from("body"),
     ])?;
+    ```
+
+=== "Go"
+
+    ```go
+    // Simple send
+    socket.Send(zlink.NewMessage([]byte("Hello")))
+
+    // Multipart send
+    socket.SendMultipart([]zlink.Message{zlink.NewMessage([]byte("header")), zlink.NewMessage([]byte("body"))})
     ```
 
 기본적으로 `zlink_send()`는 send queue가 가득 차면(HWM 도달) blocking한다.
@@ -588,6 +633,26 @@ Socket은 기본적으로 pull mode로 시작한다.
     }
     ```
 
+=== "Go"
+
+    ```go
+    socket := ctx.PairSocket()
+    socket.Bind("tcp://*:5556")
+
+    // Blocking recv
+    source_rid, parts, _ := socket.Recv()
+    for (i, part) in parts.iter().enumerate() {
+        fmt.Printf("frame {}: %v\n", i, part.as_str()?)
+    }
+
+    // Non-blocking recv
+    received, err := socket.RecvDontWait()
+        Ok((rid, parts)) => { /* 처리 */ }
+        Err(e) if e.kind() == zlink::ErrorKind::Again => {}
+        Err(e) => return Err(e),
+    }
+    ```
+
 #### Callback Mode
 
 Socket 생성 후 handler callback을 부착하면 message 도착 시 I/O thread에서
@@ -678,6 +743,18 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
         }
         Ok(())
     })?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.StreamSocket()
+    socket.on_message(|rid, parts| {
+        for (i, part) in parts.iter().enumerate() {
+            fmt.Printf("frame {}: %v\n", i, part.as_str()?)
+        }
+
+    })
     ```
 
 > 두 mode의 비교와 고급 pattern은
@@ -776,6 +853,15 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     ```rust
     match socket.send(&zlink::Message::from(data)) {
         Ok(()) => {}
+        Err(e) => eprintln!("error: {}", e),
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    err := socket.Send(zlink.NewMessage(data))
+         => {}
         Err(e) => eprintln!("error: {}", e),
     }
     ```
@@ -997,6 +1083,27 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
         println!("[{}] recv: {}", rid, parts[0].as_str()?);
 
         Ok(())
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    func main() {
+        ctx := zlink.NewContext()
+
+        router := ctx.RouterSocket()
+        router.Bind("tcp://*:5555")
+
+        dealer := ctx.DealerSocket()
+        dealer.Connect("tcp://127.0.0.1:5555")
+
+        dealer.Send(zlink.NewMessage([]byte("request")))
+
+        rid, parts, _ := router.Recv()
+        fmt.Printf("[{}] recv: %v\n", rid, parts[0].as_str()?)
+
+
     }
     ```
 

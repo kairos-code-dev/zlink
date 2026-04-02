@@ -48,6 +48,83 @@ napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid)
     return out;
 }
 
+bool build_spot_node_peer_filter(napi_env env,
+                                 napi_value value,
+                                 zlink_spot_node_peer_filter_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (value == NULL)
+        return false;
+    napi_valuetype type = napi_undefined;
+    if (napi_typeof(env, value, &type) != napi_ok
+        || type == napi_undefined || type == napi_null) {
+        return false;
+    }
+
+    napi_value prop;
+    bool has_prop = false;
+    if (napi_has_named_property(env, value, "peerEndpoint", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "peerEndpoint", &prop) == napi_ok) {
+        std::string peer_endpoint = get_string(env, prop);
+        strncpy(out->peer_endpoint, peer_endpoint.c_str(),
+                sizeof(out->peer_endpoint) - 1);
+    }
+    if (napi_has_named_property(env, value, "source", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "source", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->source = static_cast<zlink_spot_peer_source_t>(raw);
+    }
+    if (napi_has_named_property(env, value, "state", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "state", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->state = static_cast<zlink_spot_peer_state_t>(raw);
+    }
+    return true;
+}
+
+bool build_spot_node_subject_filter(napi_env env,
+                                    napi_value value,
+                                    zlink_spot_node_subject_filter_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (value == NULL)
+        return false;
+    napi_valuetype type = napi_undefined;
+    if (napi_typeof(env, value, &type) != napi_ok
+        || type == napi_undefined || type == napi_null) {
+        return false;
+    }
+
+    napi_value prop;
+    bool has_prop = false;
+    if (napi_has_named_property(env, value, "role", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "role", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->role = static_cast<zlink_spot_role_t>(raw);
+    }
+    if (napi_has_named_property(env, value, "subject", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "subject", &prop) == napi_ok) {
+        std::string subject = get_string(env, prop);
+        strncpy(out->subject, subject.c_str(), sizeof(out->subject) - 1);
+    }
+    if (napi_has_named_property(env, value, "subjectKind", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "subjectKind", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->subject_kind = raw;
+    }
+    return true;
+}
+
 } // namespace
 
 napi_value spot_node_new(napi_env env, napi_callback_info info)
@@ -200,13 +277,6 @@ napi_value spot_node_set_tls_client(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_node_setsockopt(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_spot_node(
-      env, "SpotNode.setSockOpt is not available on the aligned public API");
-}
-
 napi_value spot_node_open_monitor(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -298,16 +368,63 @@ napi_value spot_node_peers_snapshot(napi_env env, napi_callback_info info)
     return arr;
 }
 
-napi_value spot_node_subjects_snapshot(napi_env env, napi_callback_info info)
+napi_value spot_node_peers_query(napi_env env, napi_callback_info info)
 {
-    napi_value argv[1];
-    size_t argc = 1;
+    napi_value argv[2];
+    size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *node = NULL;
     napi_get_value_external(env, argv[0], &node);
 
+    zlink_spot_node_peer_filter_t filter;
+    zlink_spot_node_peer_filter_t *filter_ptr =
+      build_spot_node_peer_filter(env, argc >= 2 ? argv[1] : NULL, &filter) ? &filter
+                                                                             : NULL;
+
     size_t count = 0;
-    int rc = zlink_spot_node_subjects_snapshot(node, NULL, NULL, &count);
+    int rc = zlink_spot_node_peers_query(node, filter_ptr, NULL, &count);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_peers_query failed");
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    if (count == 0)
+        return arr;
+
+    std::vector<zlink_spot_node_peer_entry_t> entries(count);
+    rc = zlink_spot_node_peers_query(node, filter_ptr, entries.data(), &count);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_peers_query failed");
+    for (size_t i = 0; i < count; ++i) {
+        napi_value obj;
+        napi_create_object(env, &obj);
+        set_string_property(env, obj, "serviceName", entries[i].service_name);
+        set_string_property(env, obj, "localEndpoint", entries[i].local_endpoint);
+        set_string_property(env, obj, "peerEndpoint", entries[i].peer_endpoint);
+        set_uint32_property(env, obj, "source", static_cast<uint32_t>(entries[i].source));
+        set_uint32_property(env, obj, "state", static_cast<uint32_t>(entries[i].state));
+        set_int64_property(env, obj, "connectedSinceMs",
+                           static_cast<int64_t>(entries[i].connected_since_ms));
+        set_int64_property(env, obj, "lastChangedMs",
+                           static_cast<int64_t>(entries[i].last_changed_ms));
+        napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
+    }
+    return arr;
+}
+
+napi_value spot_node_subjects_snapshot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_spot_node_subject_filter_t filter;
+    zlink_spot_node_subject_filter_t *filter_ptr =
+      build_spot_node_subject_filter(env, argc >= 2 ? argv[1] : NULL, &filter) ? &filter
+                                                                                : NULL;
+
+    size_t count = 0;
+    int rc = zlink_spot_node_subjects_snapshot(node, filter_ptr, NULL, &count);
     if (rc != 0)
         return throw_last_error(env, "spot_node_subjects_snapshot failed");
     napi_value arr;
@@ -316,7 +433,7 @@ napi_value spot_node_subjects_snapshot(napi_env env, napi_callback_info info)
         return arr;
 
     std::vector<zlink_spot_node_subject_entry_t> entries(count);
-    rc = zlink_spot_node_subjects_snapshot(node, NULL, entries.data(), &count);
+    rc = zlink_spot_node_subjects_snapshot(node, filter_ptr, entries.data(), &count);
     if (rc != 0)
         return throw_last_error(env, "spot_node_subjects_snapshot failed");
     for (size_t i = 0; i < count; ++i) {

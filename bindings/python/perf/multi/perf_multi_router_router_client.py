@@ -37,13 +37,13 @@ def main(argv=None):
                 nonlocal count
                 warmup_deadline = time.perf_counter() + args.warmup
                 while time.perf_counter() < warmup_deadline:
-                    sock.send_to(b"SERVER", stamp_payload(payload))
+                    sock.send(stamp_payload(payload), routing_id=b"SERVER")
                     with sock.recv():
                         pass
 
                 deadline = time.perf_counter() + args.duration
                 while time.perf_counter() < deadline:
-                    sock.send_to(b"SERVER", stamp_payload(payload))
+                    sock.send(stamp_payload(payload), routing_id=b"SERVER")
                     with sock.recv() as received:
                         sample = latency_us_from_message(received.to_bytes_list()[0])
                     with lock:

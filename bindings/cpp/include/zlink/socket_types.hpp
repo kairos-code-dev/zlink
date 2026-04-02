@@ -16,8 +16,32 @@ namespace detail
 class pub_option_socket_base_t : public publisher_socket_t
 {
   public:
-    using base_socket_t::get_option;
-    using base_socket_t::set_option;
+    ZLINK_CPP_NODISCARD int
+    set_option (socket_option_key_t<std::string> key_,
+                const std::string &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set_option (socket_option_key_t<T> key_,
+                                        const T &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_option (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int get_option (socket_option_key_t<T> key_,
+                                        T *value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
+    }
 
     ZLINK_CPP_NODISCARD int
     set_option (pub_option_key_t<std::string> key_, const std::string &value_)
@@ -55,8 +79,32 @@ class pub_option_socket_base_t : public publisher_socket_t
 class sub_option_socket_base_t : public subscriber_socket_t
 {
   public:
-    using base_socket_t::get_option;
-    using base_socket_t::set_option;
+    ZLINK_CPP_NODISCARD int
+    set_option (socket_option_key_t<std::string> key_,
+                const std::string &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set_option (socket_option_key_t<T> key_,
+                                        const T &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_option (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int get_option (socket_option_key_t<T> key_,
+                                        T *value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
+    }
 
     template<typename T>
     ZLINK_CPP_NODISCARD int set_option (sub_option_key_t<T> key_,
@@ -90,12 +138,36 @@ class pair_socket_t : public message_socket_t
 class dealer_socket_t : public message_socket_t
 {
   public:
-    using base_socket_t::get_option;
-    using base_socket_t::set_option;
-
     explicit dealer_socket_t (context_t &ctx_)
         : message_socket_t (ctx_, socket_type::dealer)
     {
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_option (socket_option_key_t<std::string> key_,
+                const std::string &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set_option (socket_option_key_t<T> key_,
+                                        const T &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_option (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int get_option (socket_option_key_t<T> key_,
+                                        T *value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
     }
 
     template<typename T>
@@ -105,36 +177,57 @@ class dealer_socket_t : public message_socket_t
         return set_dealer_option (key_, value_);
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    template<typename DiscoveryT>
+    ZLINK_CPP_NODISCARD int attach_discovery (DiscoveryT &discovery_)
     {
-        return base_socket_t::set_routing_id (data_, size_);
+        return base_socket_t::attach_discovery (discovery_);
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &routing_id_)
+    ZLINK_CPP_NODISCARD int set_routing_id (const routing_id_t &routing_id_)
     {
-        return base_socket_t::set_routing_id (routing_id_);
+        return base_socket_t::set_routing_id_raw (
+          routing_id_.to_string ());
     }
 
-    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t &routing_id_) const
+    ZLINK_CPP_NODISCARD int get_routing_id (routing_id_t &routing_id_) const
     {
-        return base_socket_t::get_routing_id (routing_id_);
-    }
-
-    ZLINK_CPP_NODISCARD int get_routing_id (std::string &routing_id_) const
-    {
-        return base_socket_t::get_routing_id (routing_id_);
+        return base_socket_t::get_routing_id_raw (routing_id_);
     }
 };
 
 class router_socket_t : public routed_message_socket_t
 {
   public:
-    using base_socket_t::get_option;
-    using base_socket_t::set_option;
-
     explicit router_socket_t (context_t &ctx_)
         : routed_message_socket_t (ctx_, socket_type::router)
     {
+    }
+
+    ZLINK_CPP_NODISCARD int
+    set_option (socket_option_key_t<std::string> key_,
+                const std::string &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set_option (socket_option_key_t<T> key_,
+                                        const T &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_option (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int get_option (socket_option_key_t<T> key_,
+                                        T *value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
     }
 
     ZLINK_CPP_NODISCARD int
@@ -163,36 +256,59 @@ class router_socket_t : public routed_message_socket_t
         return get_router_option (key_, value_);
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    template<typename DiscoveryT>
+    ZLINK_CPP_NODISCARD int attach_discovery (DiscoveryT &discovery_)
     {
-        return base_socket_t::set_routing_id (data_, size_);
+        return base_socket_t::attach_discovery (discovery_);
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &routing_id_)
+    ZLINK_CPP_NODISCARD int set_routing_id (const routing_id_t &routing_id_)
     {
-        return base_socket_t::set_routing_id (routing_id_);
+        return base_socket_t::set_routing_id_raw (
+          routing_id_.to_string ());
     }
 
-    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t &routing_id_) const
+    ZLINK_CPP_NODISCARD int get_routing_id (routing_id_t &routing_id_) const
     {
-        return base_socket_t::get_routing_id (routing_id_);
-    }
-
-    ZLINK_CPP_NODISCARD int get_routing_id (std::string &routing_id_) const
-    {
-        return base_socket_t::get_routing_id (routing_id_);
+        return base_socket_t::get_routing_id_raw (routing_id_);
     }
 };
 
 class stream_socket_t : public routed_message_socket_t
 {
   public:
-    using base_socket_t::get_option;
-    using base_socket_t::set_option;
-
     explicit stream_socket_t (context_t &ctx_)
         : routed_message_socket_t (ctx_, socket_type::stream)
     {
+    }
+
+    int connect (const std::string &) = delete;
+
+    ZLINK_CPP_NODISCARD int
+    set_option (socket_option_key_t<std::string> key_,
+                const std::string &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int set_option (socket_option_key_t<T> key_,
+                                        const T &value_)
+    {
+        return base_socket_t::set_option (key_, value_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    get_option (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
+    }
+
+    template<typename T>
+    ZLINK_CPP_NODISCARD int get_option (socket_option_key_t<T> key_,
+                                        T *value_) const
+    {
+        return base_socket_t::get_option (key_, value_);
     }
 
     template<typename T>
@@ -209,24 +325,15 @@ class stream_socket_t : public routed_message_socket_t
         return get_stream_option (key_, value_);
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    ZLINK_CPP_NODISCARD int set_routing_id (const routing_id_t &routing_id_)
     {
-        return base_socket_t::set_routing_id (data_, size_);
+        return base_socket_t::set_routing_id_raw (
+          routing_id_.to_string ());
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &routing_id_)
+    ZLINK_CPP_NODISCARD int get_routing_id (routing_id_t &routing_id_) const
     {
-        return base_socket_t::set_routing_id (routing_id_);
-    }
-
-    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t &routing_id_) const
-    {
-        return base_socket_t::get_routing_id (routing_id_);
-    }
-
-    ZLINK_CPP_NODISCARD int get_routing_id (std::string &routing_id_) const
-    {
-        return base_socket_t::get_routing_id (routing_id_);
+        return base_socket_t::get_routing_id_raw (routing_id_);
     }
 };
 
@@ -236,6 +343,12 @@ class pub_socket_t : public detail::pub_option_socket_base_t
     explicit pub_socket_t (context_t &ctx_)
         : detail::pub_option_socket_base_t (ctx_, socket_type::pub)
     {
+    }
+
+    template<typename DiscoveryT>
+    ZLINK_CPP_NODISCARD int attach_discovery (DiscoveryT &discovery_)
+    {
+        return base_socket_t::attach_discovery (discovery_);
     }
 };
 
@@ -276,6 +389,12 @@ class sub_socket_t : public detail::sub_option_socket_base_t
     explicit sub_socket_t (context_t &ctx_)
         : detail::sub_option_socket_base_t (ctx_, socket_type::sub)
     {
+    }
+
+    template<typename DiscoveryT>
+    ZLINK_CPP_NODISCARD int attach_discovery (DiscoveryT &discovery_)
+    {
+        return base_socket_t::attach_discovery (discovery_);
     }
 };
 

@@ -128,7 +128,7 @@ public sealed class test_stream_socket
 
     private static bool HasPublicReceiveWithoutRoutingId()
     {
-        return typeof(StreamSocket).GetMethod("Receive",
+        return typeof(StreamSocket).GetMethod("Recv",
             BindingFlags.Instance | BindingFlags.Public, binder: null,
             types: Type.EmptyTypes,
             modifiers: null) != null;
@@ -346,7 +346,7 @@ public sealed class test_stream_socket
         using var ctx = new Context();
         using var stream = new StreamSocket(ctx);
 
-        stream.SetNotify(true);
+        stream.StreamOptions.Notify = true;
         stream.AttachStreamRaw((_, _) => 0);
         stream.DetachStream();
     }
@@ -737,7 +737,7 @@ public sealed class test_stream_socket
         byte[] incoming = "hello"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        Received received = stream.Receive();
+        Received received = stream.Recv();
         using (Message payloadMessage = received.Parts[0])
         {
             string routingId = received.RoutingId;
@@ -778,7 +778,7 @@ public sealed class test_stream_socket
         byte[] incoming = "routing-id-check"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        Received received = stream.Receive();
+        Received received = stream.Recv();
         using (Message message = received.Parts[0])
         {
             string routingId = received.RoutingId;
@@ -800,44 +800,36 @@ public sealed class test_stream_socket
         stream.Bind(endpoint);
 
         using var monitorEvents = new CallbackEventQueue<SocketMonitorEvent>();
-        using SocketMonitor monitor = stream.OpenMonitor(
+        using SocketMonitor monitor = stream.MonitorOpen(
             SocketEvent.ConnectionReady | SocketEvent.Disconnected);
-        monitor.AttachHandler(monitorEvents.Enqueue);
+        monitor.OnEvent(monitorEvents.Enqueue);
 
         const int clients = 4;
         for (int i = 0; i < clients; i++)
         {
+            uint connectRid = 0;
             using var client = ConnectRawClient(port);
             NetworkStream ns = client.GetStream();
             SendAll(ns, "probe"u8);
-            Received received = stream.Receive();
+            Received received = stream.Recv();
             using (Message payload = received.Parts[0])
             {
                 string routingId = received.RoutingId;
                 Assert.False(string.IsNullOrEmpty(routingId));
                 Assert.Equal("probe", CoreTestSupport.Utf8(payload));
             }
-        }
+            Assert.True(TryReadMonitorEvent(monitorEvents,
+                SocketEvent.ConnectionReady, 3000, out connectRid));
+            Assert.True(connectRid > 0);
 
-        int ready = 0;
-        int disconnected = 0;
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-        {
-            while (monitorEvents.TryDequeue(50, out SocketMonitorEvent evt))
+            client.Dispose();
+            bool disconnected = TryReadMonitorEvent(monitorEvents,
+                SocketEvent.Disconnected, 3000, out uint disconnectRid);
+            if (disconnected)
             {
-                if (evt.Event == SocketEvent.ConnectionReady
-                    && evt.StreamRoutingId.HasValue)
-                {
-                    ready++;
-                }
-                else if (evt.Event == SocketEvent.Disconnected
-                    && evt.StreamRoutingId.HasValue)
-                {
-                    disconnected++;
-                }
+                Assert.True(disconnectRid > 0);
             }
-            return ready >= clients && disconnected >= clients;
-        }, 6000, 10));
+        }
     }
 
     [Fact]
@@ -955,15 +947,15 @@ public sealed class test_stream_socket
         stream.Bind(endpoint);
 
         using var monitorEvents = new CallbackEventQueue<SocketMonitorEvent>();
-        using SocketMonitor monitor = stream.OpenMonitor(
+        using SocketMonitor monitor = stream.MonitorOpen(
             SocketEvent.ConnectionReady | SocketEvent.Disconnected);
-        monitor.AttachHandler(monitorEvents.Enqueue);
+        monitor.OnEvent(monitorEvents.Enqueue);
 
         using var client = ConnectRawClient(port);
         NetworkStream ns = client.GetStream();
         SendAll(ns, "ok"u8);
 
-        Received received = stream.Receive();
+        Received received = stream.Recv();
         string serverRoutingId = received.RoutingId;
         using (Message payload = received.Parts[0])
         {
@@ -995,8 +987,7 @@ public sealed class test_stream_socket
 
         using var ctx = new Context();
         using var stream = new StreamSocket(ctx);
-        Assert.Throws<ZlinkException>(() =>
-            stream.Connect("tcp://127.0.0.1:5555"));
+        Assert.Null(typeof(StreamSocket).GetMethod("Connect"));
     }
 
     [Fact]

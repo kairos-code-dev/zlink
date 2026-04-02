@@ -27,7 +27,7 @@ public final class ServiceMonitor implements AutoCloseable {
     private MemorySegment callbackStub = MemorySegment.NULL;
     private volatile RuntimeException callbackFailure;
 
-    public ServiceMonitor(MemorySegment handle) {
+    ServiceMonitor(MemorySegment handle) {
         this.handle = handle;
     }
 

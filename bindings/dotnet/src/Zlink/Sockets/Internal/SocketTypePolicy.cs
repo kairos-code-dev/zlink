@@ -74,14 +74,19 @@ internal sealed class SocketTypePolicy
             SocketOption.XPubVerbose or SocketOption.XPubVerboser
                 or SocketOption.XPubManual or SocketOption.XPubManualLastValue
                 or SocketOption.XPubWelcomeMsg or SocketOption.TopicsCount
-                => _socketType == SocketType.XPub,
+                => _socketType == SocketType.Pub || _socketType == SocketType.XPub,
+            SocketOption.SubTopicsCount => _socketType == SocketType.Sub
+                || _socketType == SocketType.XSub,
             SocketOption.XPubNoDrop => _socketType == SocketType.Pub
                 || _socketType == SocketType.XPub,
             SocketOption.RouterMandatory or SocketOption.RouterHandover
                 => _socketType == SocketType.Router,
-            SocketOption.ProbeRouter => _socketType == SocketType.Dealer,
+            SocketOption.ProbeRouter => _socketType == SocketType.Dealer
+                || _socketType == SocketType.Router,
             SocketOption.RoutingId => _socketType == SocketType.Dealer
                 || _socketType == SocketType.Router,
+            SocketOption.ConnectRoutingId => _socketType == SocketType.Router
+                || _socketType == SocketType.Stream,
             _ => true
         };
     }

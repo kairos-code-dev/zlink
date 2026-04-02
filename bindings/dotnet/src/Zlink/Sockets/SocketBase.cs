@@ -14,24 +14,22 @@ public abstract class SocketBase : IDisposable
     internal SocketBase(Context context, SocketType type)
     {
         _kernel = new SocketKernel(context, type);
+        Options = new CommonSocketOptions(this);
     }
 
     internal SocketBase(SocketKernel kernel)
     {
         _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
+        Options = new CommonSocketOptions(this);
     }
 
     internal IntPtr Handle => _kernel.Handle;
     internal SocketKernel Kernel => _kernel;
+    public CommonSocketOptions Options { get; }
 
     public void Bind(string address)
     {
         _kernel.Bind(address);
-    }
-
-    public void Connect(string address)
-    {
-        _kernel.Connect(address);
     }
 
     public void Unbind(string address)
@@ -39,25 +37,20 @@ public abstract class SocketBase : IDisposable
         _kernel.Unbind(address);
     }
 
-    public void Disconnect(string address)
-    {
-        _kernel.Disconnect(address);
-    }
-
     public void AttachDiscovery(Discovery discovery)
     {
         _kernel.AttachDiscovery(discovery);
     }
 
-    public void SendReadyHandler(Action handler)
-    {
-        _kernel.SendReadyHandler(handler);
-    }
-
-    public SocketMonitor OpenMonitor(SocketEvent events)
+    public SocketMonitor MonitorOpen(SocketEvent events)
     {
         EnumValidation.EnsureSocketEvents(events, nameof(events));
-        return _kernel.OpenMonitor(events);
+        return _kernel.MonitorOpen(events);
+    }
+
+    public void Close()
+    {
+        Dispose();
     }
 
     [EditorBrowsable(EditorBrowsableState.Never)]

@@ -84,6 +84,12 @@ The own routing_id is automatically assigned a UUID when the socket is created a
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 Notes:
 - Must be set **before** `zlink_bind()` or `zlink_connect()`
 - Cannot be changed after connection
@@ -139,6 +145,12 @@ Notes:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > Reference: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### Querying
@@ -189,6 +201,12 @@ Notes:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 5. Connection Alias Setting
@@ -243,6 +261,12 @@ Notes:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 - `zlink_set_routing_id()` applies to the entire socket
@@ -341,6 +365,12 @@ When replying, pass the same routing_id to `zlink_send_rid()`.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### Distinguishing Multiple Clients
 
 === "C"
@@ -406,6 +436,12 @@ When replying, pass the same routing_id to `zlink_send_rid()`.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > Reference: `core/tests/test_router_multiple_dealers.cpp` — Multiple DEALER example
 
 ### Handling routing_id with zlink_msg_t
@@ -466,6 +502,12 @@ When replying, pass the same routing_id to `zlink_send_rid()`.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 7. Using routing_id with STREAM Sockets
@@ -534,6 +576,12 @@ STREAM sockets identify external clients using a 4B uint32 peer routing_id.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### routing_id in Connect/Disconnect Events
 
 === "C"
@@ -596,6 +644,12 @@ STREAM sockets identify external clients using a 4B uint32 peer routing_id.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > Reference: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
@@ -673,6 +727,12 @@ Since routing_id is binary data, printing it as a string may produce garbled out
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### String routing_id
 
 If the user-defined routing_id is an ASCII string, it can be printed directly.
@@ -732,6 +792,12 @@ If the user-defined routing_id is an ASCII string, it can be printed directly.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### Checking Auto-Generated routing_id
 
 === "C"
@@ -777,6 +843,12 @@ If the user-defined routing_id is an ASCII string, it can be printed directly.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 9. Binary Handling Principles
@@ -830,6 +902,12 @@ If the user-defined routing_id is an ASCII string, it can be printed directly.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ---

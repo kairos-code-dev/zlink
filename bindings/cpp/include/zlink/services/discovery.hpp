@@ -10,6 +10,8 @@
 
 namespace zlink
 {
+class service_monitor_handle_t;
+
 namespace service
 {
 
@@ -19,16 +21,18 @@ class discovery_t
     discovery_t (context_t &ctx_,
                  service_type service_type_,
                  const std::string &service_name_)
-        : _discovery (zlink_discovery_new (
-            ctx_.handle (), static_cast<zlink_service_type_t> (service_type_),
-            service_name_.c_str ())),
+        : _discovery (NULL),
           _last_error (0)
     {
+        validate_bounded_c_string (service_name_, 255u, "service_name");
+        _discovery = zlink_discovery_new (
+          ctx_.handle (), static_cast<zlink_service_type_t> (service_type_),
+          service_name_.c_str ());
         if (!_discovery)
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
-    ~discovery_t () { (void) destroy (); }
+    ~discovery_t () { (void) close (); }
 
     discovery_t (discovery_t &&other) noexcept
         : _discovery (other._discovery), _last_error (other._last_error)
@@ -42,7 +46,7 @@ class discovery_t
         if (this == &other)
             return *this;
 
-        (void) destroy ();
+        (void) close ();
         _discovery = other._discovery;
         _last_error = other._last_error;
         other._discovery = NULL;
@@ -59,6 +63,7 @@ class discovery_t
 
     ZLINK_CPP_NODISCARD int connect_registry (const std::string &endpoint_)
     {
+        validate_bounded_c_string (endpoint_, 255u, "endpoint");
         return zlink_discovery_connect_registry (_discovery, endpoint_.c_str ());
     }
 
@@ -115,6 +120,7 @@ class discovery_t
                           const std::string &endpoint_,
                           message_t &metadata_out_) const
     {
+        validate_bounded_c_string (endpoint_, 255u, "endpoint");
         zlink_msg_t native;
         const int rc = zlink_discovery_member_peer_metadata (
           _discovery, static_cast<uint16_t> (service_role_),
@@ -129,7 +135,10 @@ class discovery_t
         return -1;
     }
 
-    ZLINK_CPP_NODISCARD int destroy ()
+    ZLINK_CPP_NODISCARD service_monitor_handle_t
+    monitor_open (service_monitor_event events_ = service_monitor_event::all);
+
+    ZLINK_CPP_NODISCARD int close ()
     {
         if (!_discovery)
             return 0;

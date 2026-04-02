@@ -100,7 +100,7 @@ bool wait_for_service_monitor_event_endpoint (
             continue;
 
         const zlink::maybe_t<zlink_service_monitor_event_t> event =
-          monitor_.try_receive ();
+          monitor_.try_recv();
         if (!event)
             continue;
         if (event->event_type != event_type_)
@@ -189,7 +189,7 @@ void run_pattern_spot (const std::string &transport,
 
     const std::string endpoint = make_spot_endpoint (transport);
     if (pub_node.bind (endpoint) != 0 || sub_node.connect_peer (endpoint) != 0
-        || sub_spot.subscribe (k_topic) != 0
+        || sub_spot.set_subscription (k_topic) != 0
         || !perf::single::wait_service_monitor_event (
           sub_monitor,
           static_cast<uint32_t> (

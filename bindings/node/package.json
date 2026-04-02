@@ -41,7 +41,7 @@
     "pretest": "npm run build && npm run typecheck && npm run rebuild-native",
     "test": "./run_tests.sh",
     "presamples": "npm run build && npm run rebuild-native",
-    "samples": "./run_samples.sh"
+    "samples": "./samples/run_samples.sh"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",

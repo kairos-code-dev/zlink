@@ -25,8 +25,9 @@ public sealed class Registry : IDisposable
 
     public void Bind(string pubEndpoint, string routerEndpoint)
     {
-        ValidateNotEmpty(pubEndpoint, nameof(pubEndpoint));
-        ValidateNotEmpty(routerEndpoint, nameof(routerEndpoint));
+        BoundaryValidation.ValidateFixedUtf8(pubEndpoint, nameof(pubEndpoint));
+        BoundaryValidation.ValidateFixedUtf8(routerEndpoint,
+            nameof(routerEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_bind(_handle, pubEndpoint,
             routerEndpoint);
@@ -42,7 +43,8 @@ public sealed class Registry : IDisposable
 
     public void AddPeer(string peerPubEndpoint)
     {
-        ValidateNotEmpty(peerPubEndpoint, nameof(peerPubEndpoint));
+        BoundaryValidation.ValidateFixedUtf8(peerPubEndpoint,
+            nameof(peerPubEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_add_peer(_handle,
             peerPubEndpoint);
@@ -65,7 +67,7 @@ public sealed class Registry : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public RegistryStatus Snapshot()
+    public RegistryStatus StatusSnapshot()
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_status_snapshot(_handle,
@@ -74,25 +76,35 @@ public sealed class Registry : IDisposable
         return RegistryStatus.FromNative(ref native);
     }
 
-    public RegistryServiceSummaryEntry[] ServiceSummary(
-        ServiceKind? serviceKind = null, ushort? serviceRole = null,
-        string? serviceName = null)
+    public RegistryServiceSummaryEntry[] ServiceSummarySnapshot(
+        RegistryServiceSummaryFilter? filter = null)
     {
         EnsureNotDisposed();
         unsafe
         {
-            ZlinkRegistryServiceSummaryFilter filter = default;
+            ZlinkRegistryServiceSummaryFilter nativeFilter = default;
             IntPtr filterPtr = IntPtr.Zero;
-            if (serviceKind.HasValue || serviceRole.HasValue
-                || !string.IsNullOrEmpty(serviceName))
+            RegistryServiceSummaryFilter? requestedFilter = filter;
+            if (requestedFilter.HasValue)
             {
-                filter.ServiceKind = (int)serviceKind.GetValueOrDefault();
-                filter.ServiceRole = serviceRole ?? 0;
-                if (!string.IsNullOrEmpty(serviceName))
+                RegistryServiceSummaryFilter value = requestedFilter.Value;
+                if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
+                    || !string.IsNullOrEmpty(value.ServiceName))
                 {
-                    WriteFixedString(serviceName, filter.ServiceName, 256);
+                    nativeFilter.ServiceKind =
+                        (int)value.ServiceKind.GetValueOrDefault();
+                    nativeFilter.ServiceRole =
+                        (ushort)value.ServiceRole.GetValueOrDefault();
+                    if (!string.IsNullOrEmpty(value.ServiceName))
+                    {
+                        BoundaryValidation.ValidateFixedUtf8(value.ServiceName,
+                            nameof(RegistryServiceSummaryFilter.ServiceName));
+                        WriteFixedString(value.ServiceName,
+                            nativeFilter.ServiceName,
+                            256);
+                    }
+                    filterPtr = (IntPtr)(&nativeFilter);
                 }
-                filterPtr = (IntPtr)(&filter);
             }
 
             return ReadSummaryEntries(filterPtr);
@@ -105,35 +117,46 @@ public sealed class Registry : IDisposable
         return ReadTopologyEntries(IntPtr.Zero, true);
     }
 
-    public RegistryTopologyEntry[] TopologyQuery(ServiceKind? serviceKind = null,
-        ushort? serviceRole = null, string? serviceName = null,
-        string? routingId = null, int? state = null, int? source = null)
+    public RegistryTopologyEntry[] TopologyQuery(
+        RegistryTopologyFilter? filter = null)
     {
         EnsureNotDisposed();
         unsafe
         {
-            ZlinkRegistryTopologyFilter filter = default;
+            ZlinkRegistryTopologyFilter nativeFilter = default;
             IntPtr filterPtr = IntPtr.Zero;
-            if (serviceKind.HasValue || serviceRole.HasValue
-                || !string.IsNullOrEmpty(serviceName)
-                || !string.IsNullOrEmpty(routingId) || state.HasValue
-                || source.HasValue)
+            RegistryTopologyFilter? requestedFilter = filter;
+            if (requestedFilter.HasValue)
             {
-                filter.ServiceKind = (int)serviceKind.GetValueOrDefault();
-                filter.ServiceRole = serviceRole ?? 0;
-                filter.State = state ?? 0;
-                filter.Source = source ?? 0;
-                if (!string.IsNullOrEmpty(serviceName))
+                RegistryTopologyFilter value = requestedFilter.Value;
+                if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
+                    || !string.IsNullOrEmpty(value.ServiceName)
+                    || value.RoutingId.HasValue || value.State.HasValue
+                    || value.Source.HasValue)
                 {
-                    WriteFixedString(serviceName, filter.ServiceName, 256);
+                    nativeFilter.ServiceKind =
+                        (int)value.ServiceKind.GetValueOrDefault();
+                    nativeFilter.ServiceRole =
+                        (ushort)value.ServiceRole.GetValueOrDefault();
+                    nativeFilter.State = (int)value.State.GetValueOrDefault();
+                    nativeFilter.Source = (int)value.Source.GetValueOrDefault();
+                    if (!string.IsNullOrEmpty(value.ServiceName))
+                    {
+                        BoundaryValidation.ValidateFixedUtf8(value.ServiceName,
+                            nameof(RegistryTopologyFilter.ServiceName));
+                        WriteFixedString(value.ServiceName,
+                            nativeFilter.ServiceName,
+                            256);
+                    }
+                    if (value.RoutingId.HasValue)
+                    {
+                        nativeFilter.RoutingId = NativeHelpers.WriteRoutingId(
+                            RoutingIdCodec.FromPublicString(
+                                value.RoutingId.Value.Value,
+                                nameof(RegistryTopologyFilter.RoutingId)));
+                    }
+                    filterPtr = (IntPtr)(&nativeFilter);
                 }
-                if (!string.IsNullOrEmpty(routingId))
-                {
-                    filter.RoutingId = NativeHelpers.WriteRoutingId(
-                        RoutingIdCodec.FromPublicString(routingId,
-                            nameof(routingId)));
-                }
-                filterPtr = (IntPtr)(&filter);
             }
 
             return ReadTopologyEntries(filterPtr, false);
@@ -143,7 +166,7 @@ public sealed class Registry : IDisposable
     public MemberPeerEntry[] MemberPeers(ServiceType serviceType,
         string serviceName)
     {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
+        BoundaryValidation.ValidateFixedUtf8(serviceName, nameof(serviceName));
         EnsureNotDisposed();
 
         nuint count = 0;
@@ -178,19 +201,24 @@ public sealed class Registry : IDisposable
         }
     }
 
-    public Message GetMemberPeerMetadata(ServiceType serviceType,
-        string serviceName, ushort serviceRole, string endpoint)
+    public Message MemberPeerMetadata(ServiceType serviceType,
+        string serviceName, ServiceRole serviceRole, string endpoint)
     {
-        ValidateNotEmpty(serviceName, nameof(serviceName));
-        ValidateNotEmpty(endpoint, nameof(endpoint));
+        BoundaryValidation.ValidateFixedUtf8(serviceName, nameof(serviceName));
+        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
         EnsureNotDisposed();
 
         using var metadata = new Message();
         int rc = NativeMethods.zlink_registry_member_peer_metadata(_handle,
-            (int)serviceType, serviceName, serviceRole, endpoint,
+            (int)serviceType, serviceName, (ushort)serviceRole, endpoint,
             ref metadata.Handle);
         ZlinkException.ThrowIfError(rc);
         return metadata.Move();
+    }
+
+    public void Close()
+    {
+        Dispose();
     }
 
     public void Dispose()
@@ -211,14 +239,6 @@ public sealed class Registry : IDisposable
     {
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Registry));
-    }
-
-    private static void ValidateNotEmpty(string value, string paramName)
-    {
-        if (value == null)
-            throw new ArgumentNullException(paramName);
-        if (value.Length == 0)
-            throw new ArgumentException("Value must not be empty.", paramName);
     }
 
     private RegistryServiceSummaryEntry[] ReadSummaryEntries(IntPtr filterPtr)

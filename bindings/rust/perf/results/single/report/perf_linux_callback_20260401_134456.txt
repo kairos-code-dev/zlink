@@ -1,0 +1,9 @@
+## Effective Options (start)
+  pattern:   --pattern
+  recv:      callback
+  duration:  5s
+  warmup:    2s
+  msg_sizes: 64,256,1024,65536,131072,262144
+  transports: inproc
+
+UNSUPPORTED,rust,--pattern,unknown,pattern not implemented

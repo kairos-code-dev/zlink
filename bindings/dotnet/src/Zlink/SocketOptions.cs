@@ -13,7 +13,7 @@ internal enum SocketOptionValueKind
     String
 }
 
-public readonly struct SocketOptionKey<T>
+internal readonly struct SocketOptionKey<T>
 {
     internal SocketOptionKey(SocketOption option, SocketOptionValueKind valueKind)
     {
@@ -30,7 +30,7 @@ public readonly struct SocketOptionKey<T>
     }
 }
 
-public static class SocketOptions
+internal static class SocketOptions
 {
     private static SocketOptionKey<int> Int(SocketOption option)
     {
@@ -170,6 +170,8 @@ public static class SocketOptions
         Int(SocketOption.OnlyFirstSubscribe);
     public static SocketOptionKey<int> TopicsCount { get; } =
         Int(SocketOption.TopicsCount);
+    public static SocketOptionKey<int> SubTopicsCount { get; } =
+        Int(SocketOption.SubTopicsCount);
     public static SocketOptionKey<string> ZmpMetadata { get; } =
         String(SocketOption.ZmpMetadata);
 }

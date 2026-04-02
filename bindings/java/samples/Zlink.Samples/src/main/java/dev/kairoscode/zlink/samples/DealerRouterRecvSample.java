@@ -1,5 +1,3 @@
-/* SPDX-License-Identifier: MPL-2.0 */
-
 package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
@@ -11,26 +9,44 @@ import dev.kairoscode.zlink.RoutingId;
 public final class DealerRouterRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
-        String endpoint = SampleSupport.inprocEndpoint("dealer-router-recv");
+        String endpoint = SampleSupport.tcpEndpoint();
+
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
-             DealerSocket dealer = new DealerSocket(ctx)) {
-            dealer.setRoutingId(RoutingId.copyOf("dealer-a".getBytes()));
+             DealerSocket dealer = new DealerSocket(ctx);
+             var routerMonitor = router.monitorOpen(SampleSupport.CONNECTION_READY_EVENT);
+             var dealerMonitor = dealer.monitorOpen(SampleSupport.CONNECTION_READY_EVENT)) {
             router.bind(endpoint);
             dealer.connect(endpoint);
-            try (Message outbound = Message.copyOfUtf8("ping")) {
-                dealer.send(outbound);
+            SampleSupport.waitConnected(routerMonitor, dealerMonitor);
+
+            try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
+                dealer.send(request);
             }
+
             RoutingId rid;
             try (var received = router.recv()) {
+                String value = SampleSupport.singleUtf8(received);
+                if (!SampleSupport.DEALER_REQUEST.equals(value)) {
+                    throw new IllegalStateException("unexpected request: " + value);
+                }
                 rid = received.routingId();
-                System.out.println("dealer->router: " + SampleSupport.singleUtf8(received));
+                if (rid == null) {
+                    throw new IllegalStateException("router delivery missing routing id");
+                }
             }
-            try (Message replyPart = Message.copyOfUtf8("pong")) {
-                router.send(rid, replyPart);
+
+            try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
+                router.send(rid, reply);
             }
-            try (var reply = dealer.recv()) {
-                System.out.println("router->dealer: " + SampleSupport.singleUtf8(reply));
+
+            try (var received = dealer.recv()) {
+                String value = SampleSupport.singleUtf8(received);
+                if (!SampleSupport.DEALER_REPLY.equals(value)) {
+                    throw new IllegalStateException("unexpected reply: " + value);
+                }
+                System.out.println("[dealer-router/recv] send: \""
+                    + SampleSupport.DEALER_REQUEST + "\" \u2192 recv: \"" + value + "\"");
             }
         }
     }

@@ -20,7 +20,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
     client.connect(endpoint);
 
     const state = attachCallbackCollector(
-      (handler) => server.recvHandler(handler),
+      (handler) => server.onReceive(handler),
       msgSize,
       options,
       (_, parts) => parts[0].toBuffer()

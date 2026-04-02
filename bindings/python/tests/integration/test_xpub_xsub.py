@@ -20,7 +20,7 @@ class XpubXsubScenarioTest(unittest.TestCase):
                 xpub.bind(ep)
                 xsub.connect(ep)
                 xsub.set_subscription(b"topic")
-                event = xpub.recv_subscription_event()
+                event = xpub.receive_subscription_event()
                 self.assertTrue(event.subscribed)
                 self.assertEqual(event.topic, b"topic")
                 xpub.close()

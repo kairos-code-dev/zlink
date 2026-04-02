@@ -7,6 +7,7 @@ import dev.kairoscode.zlink.MemberPeerEntry;
 import dev.kairoscode.zlink.ServiceRole;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -27,7 +28,7 @@ public final class Registry implements AutoCloseable {
 
     /** Creates a registry handle owned by the supplied context. */
     public Registry(Context ctx) {
-        this.handle = Native.registryNew(ctx.handle());
+        this.handle = Native.registryNew(InternalAccess.contextHandle(ctx));
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError("zlink_registry_new");
     }

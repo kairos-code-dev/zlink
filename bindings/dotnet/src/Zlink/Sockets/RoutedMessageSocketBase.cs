@@ -57,18 +57,24 @@ public abstract class RoutedMessageSocketBase : SocketBase
         return Kernel.TrySend(routingId.Value, parts);
     }
 
-    public void RecvHandler(SocketRecvHandler handler)
+    public void OnReceive(SocketRecvHandler handler)
     {
         Kernel.RecvHandler(handler);
     }
 
-    public Received Receive()
+    public Received Recv()
     {
         return Kernel.ReceiveRouted();
     }
 
-    public Received? TryReceive()
+    public bool TryRecv(out Received? received)
     {
-        return Kernel.TryReceiveRouted();
+        received = Kernel.TryReceiveRouted();
+        return received != null;
+    }
+
+    public void OnSendReady(Action handler)
+    {
+        Kernel.SendReadyHandler(handler);
     }
 }

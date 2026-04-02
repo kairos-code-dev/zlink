@@ -91,6 +91,12 @@ through Discovery.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 3. Registry Configuration
 
 All configuration APIs must be called **before** `zlink_registry_bind()`.
@@ -141,6 +147,12 @@ All configuration APIs must be called **before** `zlink_registry_bind()`.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 3.2 Broadcast Interval
 
 === "C"
@@ -184,6 +196,12 @@ All configuration APIs must be called **before** `zlink_registry_bind()`.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ### 3.3 Socket Options
@@ -236,6 +254,12 @@ Apply low-level socket options to the Registry's internal sockets:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 | Socket Role | Constant | Purpose |
 |-------------|----------|---------|
 | PUB | `ZLINK_REGISTRY_SOCKET_PUB` | Broadcasts the service list |
@@ -285,6 +309,12 @@ Apply low-level socket options to the Registry's internal sockets:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ### 3.5 TLS Configuration
@@ -341,6 +371,12 @@ TLS is configured through socket options on the appropriate internal socket:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 4. Deployment Patterns
@@ -461,6 +497,12 @@ Useful for development, testing, or single-node deployments.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > **Tip**: When all components are in the same process, you can use
 > `inproc://` transport for zero-copy communication between the Registry
 > and Discovery.
@@ -517,6 +559,12 @@ Each Registry node needs a unique ID and the PUB endpoints of its peers:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ### 5.2 Synchronization Mechanism
@@ -634,6 +682,12 @@ all services. Connecting to multiple Registries is for failover in case of failu
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 6. Topology Introspection
 
 Registry provides APIs to inspect the global service topology. There are
@@ -701,6 +755,12 @@ process via query client).
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 #### Filtered Query
 
 === "C"
@@ -759,6 +819,12 @@ process via query client).
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 #### Topology Entry Fields
@@ -882,6 +948,12 @@ This is the pattern for operational tools and CLI utilities.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 6.3 Member Peer Introspection
 
 Registry and Discovery provide member peer queries that expose per-peer
@@ -948,6 +1020,12 @@ useful for weighted routing decisions and operational inspection.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 #### Member Peer Metadata
 
 === "C"
@@ -1000,6 +1078,12 @@ useful for weighted routing decisions and operational inspection.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 #### Member Peer Entry Fields
@@ -1079,6 +1163,12 @@ useful for weighted routing decisions and operational inspection.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 7. Operational Patterns

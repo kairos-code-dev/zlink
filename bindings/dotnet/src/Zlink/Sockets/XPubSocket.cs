@@ -4,24 +4,12 @@ namespace Zlink;
 
 public sealed class XPubSocket : PublisherSocketBase
 {
+    public XPubSocketOptions XPubOptions { get; }
+
     public XPubSocket(Context context)
         : base(context, SocketType.XPub)
     {
-    }
-
-    public void SetVerbose(bool enabled)
-    {
-        SetOption(SocketOptions.XPubVerbose, enabled ? 1 : 0);
-    }
-
-    public void SetVerboser(bool enabled)
-    {
-        SetOption(SocketOptions.XPubVerboser, enabled ? 1 : 0);
-    }
-
-    public void SetNoDrop(bool enabled)
-    {
-        SetOption(SocketOptions.XPubNoDrop, enabled ? 1 : 0);
+        XPubOptions = new XPubSocketOptions(this);
     }
 
     public SubscriptionEvent ReceiveSubscriptionEvent()
@@ -29,8 +17,9 @@ public sealed class XPubSocket : PublisherSocketBase
         return Kernel.ReceiveSubscriptionEvent();
     }
 
-    public SubscriptionEvent? TryReceiveSubscriptionEvent()
+    public bool TryReceiveSubscriptionEvent(out SubscriptionEvent? subscriptionEvent)
     {
-        return Kernel.TryReceiveSubscriptionEvent();
+        subscriptionEvent = Kernel.TryReceiveSubscriptionEvent();
+        return subscriptionEvent != null;
     }
 }

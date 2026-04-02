@@ -1,1 +1,1 @@
-`PubSubRecv` shows synchronous `Subscribe` on `PubSocket` and `SubSocket`.
+`PubSubRecv` shows canonical publish/subscribe direct receive with `PubSocket` and `SubSocket`.

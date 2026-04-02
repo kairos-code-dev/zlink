@@ -21,7 +21,7 @@ public sealed class SocketMonitor : IDisposable
 
     internal IntPtr Handle => _handle;
 
-    public void AttachHandler(Action<SocketMonitorEvent> handler)
+    public void OnEvent(Action<SocketMonitorEvent> handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
@@ -34,7 +34,7 @@ public sealed class SocketMonitor : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public SocketMonitorEvent Receive()
+    public SocketMonitorEvent Recv()
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
@@ -43,18 +43,23 @@ public sealed class SocketMonitor : IDisposable
         return SocketMonitorEvent.FromNative(ref native);
     }
 
-    public SocketMonitorEvent? TryReceive()
+    public bool TryRecv(out SocketMonitorEvent? monitorEvent)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
             1);
         if (rc == 0)
-            return SocketMonitorEvent.FromNative(ref native);
+        {
+            monitorEvent = SocketMonitorEvent.FromNative(ref native);
+            return true;
+        }
         if (ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
             == ErrorCode.EAgain)
         {
-            return null;
+            monitorEvent = null;
+            return false;
         }
+        monitorEvent = null;
         throw ZlinkException.FromLastError();
     }
 

@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'dev.kairoscode'
-version = '5.0.25'
+version = '5.0.26'
 description = 'zlink Java bindings — high-performance async messaging library'
 
 java {
@@ -19,6 +19,7 @@ repositories {
 
 dependencies {
     compileOnly 'io.netty:netty-buffer:4.1.100.Final'
+    runtimeOnly 'io.netty:netty-buffer:4.1.100.Final'
     testImplementation 'io.netty:netty-buffer:4.1.100.Final'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
@@ -41,6 +42,14 @@ tasks.register('integrationTest', Test) {
     filter {
         includeTestsMatching 'dev.kairoscode.zlink.integration.contract.*'
     }
+}
+
+javadoc {
+    options.encoding = 'UTF-8'
+    options.docTitle = 'zlink Java Binding API'
+    options.windowTitle = 'zlink Java Binding'
+    options.memberLevel = JavadocMemberLevel.PUBLIC
+    exclude 'dev/kairoscode/zlink/internal/**'
 }
 
 publishing {

@@ -170,6 +170,24 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템이다.
     ctx.term()?;
     ```
 
+=== "Go"
+
+    ```go
+    ctx := zlink.NewContext()
+    registry := zlink::Registry::new(&ctx)
+
+    registry.add_peer("tcp://registry2:5550")
+    registry.add_peer("tcp://registry3:5550")
+    registry.set_heartbeat(5000, 15000)
+    registry.set_broadcast_interval(30000)
+    registry.bind("tcp://*:5550", "tcp://*:5551")
+
+    // ... application logic ...
+
+    registry.destroy()
+    ctx.term()
+    ```
+
 ## 3. Discovery 사용
 
 === "C"
@@ -313,6 +331,26 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템이다.
     discovery.destroy()?;
     ```
 
+=== "Go"
+
+    ```go
+    discovery := zlink::Discovery::new(&ctx,
+        zlink::ServiceType::Spot, "order-service")
+
+    discovery.connect_registry("tcp://registry1:5551")
+    discovery.connect_registry("tcp://registry2:5551")
+
+    mon := discovery.service_monitor_open(&zlink::ServiceMonitorOptions::new(
+        zlink::DISCOVERY_MONITOR_EVENT_SERVICE_UP
+        | zlink::DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED))
+    mon.set_handler(on_discovery_event);
+
+    // ... Discovery delivers events through the callback ...
+
+    mon.Close()
+    discovery.destroy()
+    ```
+
 ## 3.1 소켓 패밀리 Discovery
 
 raw ROUTER/DEALER/PUB/SUB 소켓은 Discovery를 사용하여 자동 피어 발견과
@@ -427,6 +465,22 @@ lifecycle 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 �
     // ... publish messages ...
 
     discovery.destroy()?;
+    ```
+
+=== "Go"
+
+    ```go
+    discovery := zlink::Discovery::new(&ctx,
+        zlink::ServiceType::Socket, "price-feed")
+    discovery.connect_registry("tcp://registry1:5551")
+
+    pub_sock := ctx.PubSocket()
+    pub_sock.Bind("tcp://*:9100")
+    pub_sock.attach_discovery(&discovery)
+
+    // ... publish messages ...
+
+    discovery.destroy()
     ```
 
 **역할 매칭:** Discovery는 서비스 역할로 관련 원격 프로바이더를 결정한다.

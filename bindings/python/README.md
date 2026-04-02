@@ -13,15 +13,22 @@ This package must stay aligned with:
 The Python surface follows the binding policy instead of mirroring the raw C
 API directly. The public contract is:
 
-- multipart-only send and receive
-- blocking APIs use direct names like `send`, `recv`, `publish`
+- multipart-only send and subscribe/receive
+- the capability matrix from `bindings/README.md` is enforced by concrete
+  socket types instead of one generic bag
+- blocking APIs use direct names like `send`, `recv`, `publish`, `subscribe`
 - non-blocking APIs use `try*` names like `try_send`, `try_recv`,
-  `try_publish`
-- receive returns domain objects such as `Received`, `Subscribed`, and
-  `SubscriptionEvent`
+  `try_publish`, `try_subscribe`
+- receive and subscribe return domain objects such as `Received`,
+  `Subscribed`, `TopicMessage`, `RoutingId`, and `SubscriptionEvent`
 - raw public option bags like `setsockopt` and `getsockopt` are not exposed
 - typed option families are exposed through properties and capability objects
 - monitor sockets use canonical `recv()` and `try_recv()` entrypoints
+- service monitors use `recv()`, `try_recv()`, and `on_event()`
+- callback registration uses canonical names `on_receive`, `on_subscribe`,
+  and `on_send_ready`
+- callback removal by passing `None` is not part of the public contract;
+  callback lifecycle ends with socket close
 
 ## Surface Summary
 
@@ -37,15 +44,65 @@ methods:
 - `XPubSocket`
 - `XSubSocket`
 - `SpotNode` / `Spot`
-- `Registry` / `Discovery`
+- `Registry` / `Discovery` / `RegistryQueryClient`
+
+Examples of policy-enforced capability boundaries:
+
+- `SubSocket` exposes `subscribe`, `try_subscribe`, `set_subscription`,
+  `unset_subscription`, and `on_subscribe`, but not direct `recv`
+- `XPubSocket` is the only Python socket surface that exposes
+  `receive_subscription_event` / `try_receive_subscription_event`
+- `StreamSocket` keeps routed send/receive but does not expose generic
+  `connect` / `disconnect`
+- `Spot` is a pub/sub service facade on top of `SpotNode`; it exposes
+  `publish`, `try_publish`, `subscribe`, `try_subscribe`, `set_subscription`,
+  `unset_subscription`, `on_subscribe`, and `on_send_ready`, but not
+  `recv` / `try_recv` / `send` / `try_send`
+- `attach_discovery()` is only available on the discovery-aware socket subset,
+  and after `attach_discovery` the native lifecycle contract blocks manual
+  `connect`, `disconnect`, `unbind`, and `close`
 
 Common hot-path helpers are value-typed:
 
 - `Message`
 - `Received`
+- `TopicMessage`
 - `Subscribed`
+- `RoutingId`
 - `SubscriptionEvent`
 - `SendResult`
+
+Service and topology helpers are also surfaced as domain objects:
+
+- `ServiceEvent`
+- `MemberPeerEntry`
+- `RegistryStatus`
+- `RegistryTopologyEntry`
+- `RegistryServiceSummaryEntry`
+- `RegistryTopologyFilter`
+- `RegistryServiceSummaryFilter`
+
+## Boundary Rules
+
+The Python binding fail-fast validates values before the native call when the
+policy requires it:
+
+- endpoint, topic, and subscription strings/bytes reject embedded NUL
+- fixed-size `service_name` and endpoint inputs fail fast above 255 bytes
+- `RoutingId` enforces the native 255-byte maximum
+- typed integer options fail on signed/unsigned overflow instead of truncating
+- send/receive convenience does not change the multipart-only contract
+
+## Typed Options
+
+The canonical Python option facades are:
+
+- `CommonSocketOptions`
+- `RouterSocketOptions`
+- `DealerSocketOptions`
+- `StreamSocketOptions`
+- `PubSocketOptions`
+- `SubSocketOptions`
 
 ## Verification
 
@@ -62,7 +119,14 @@ The suite covers:
 - ownership and multipart receive semantics
 - monitor and discovery/service flows
 - perf runner smoke execution
-- perf/bench fastpath helper contract
+
+## Samples
+
+Run the canonical sample suite from `bindings/python`:
+
+```bash
+samples/run_samples.sh
+```
 
 ## Perf
 

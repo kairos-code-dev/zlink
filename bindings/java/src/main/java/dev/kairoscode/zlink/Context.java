@@ -14,7 +14,7 @@ public final class Context implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_ctx_new");
     }
 
-    public MemorySegment handle() {
+    MemorySegment handle() {
         return handle;
     }
 

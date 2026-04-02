@@ -85,11 +85,11 @@ internal static class PerfPair
         var recvThread = new Thread(() =>
         {
             long lastRecvTicks = Stopwatch.GetTimestamp();
+            var recvBuffer = new byte[payloadSize];
 
-            void AccountMessage(Message message)
+            void AccountMessage(int bytesRead)
             {
-                ReadOnlySpan<byte> frame = message.AsReadOnlySpan();
-                if (frame.Length != payloadSize)
+                if (bytesRead != payloadSize)
                     return;
 
                 Interlocked.Increment(ref received);
@@ -97,7 +97,7 @@ internal static class PerfPair
                     return;
 
                 long nowUs = TimestampUs();
-                long sentUs = DecodeHeader(frame);
+                long sentUs = DecodeHeader(recvBuffer.AsSpan(0, sizeof(long)));
                 double latencyUs = Math.Max(0L, nowUs - sentUs);
                 ReservoirSample(samples, latencyUs, ref sampleSeen,
                     latencyCap, ref rng);
@@ -108,26 +108,9 @@ internal static class PerfPair
                 while (true)
                 {
                     bool done = Volatile.Read(ref senderDone) != 0;
-                    try
-                    {
-                        using Message message = receiver.ReceiveMessage(
-                            done ? ReceiveFlags.DontWait : ReceiveFlags.None);
-                        lastRecvTicks = Stopwatch.GetTimestamp();
-                        AccountMessage(message);
-
-                        while (true)
-                        {
-                            using Message burst = receiver.ReceiveMessage(
-                                ReceiveFlags.DontWait);
-                            lastRecvTicks = Stopwatch.GetTimestamp();
-                            AccountMessage(burst);
-                        }
-                    }
-                    catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
-                    {
-                        continue;
-                    }
-                    catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
+                    if (!receiver.TryReceive(recvBuffer.AsSpan(),
+                            done ? ReceiveFlags.DontWait : ReceiveFlags.None,
+                            out int bytesRead))
                     {
                         if (done && Stopwatch.GetTimestamp() - lastRecvTicks
                             >= drainTicks)
@@ -135,6 +118,17 @@ internal static class PerfPair
                             break;
                         }
                         Thread.Yield();
+                        continue;
+                    }
+
+                    lastRecvTicks = Stopwatch.GetTimestamp();
+                    AccountMessage(bytesRead);
+
+                    while (receiver.TryReceive(recvBuffer.AsSpan(),
+                        ReceiveFlags.DontWait, out bytesRead))
+                    {
+                        lastRecvTicks = Stopwatch.GetTimestamp();
+                        AccountMessage(bytesRead);
                     }
                 }
             }
@@ -154,7 +148,7 @@ internal static class PerfPair
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
                 try
                 {
-                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                    SendBlocking(sender, payload, SendFlags.None);
                 }
                 catch
                 {
@@ -170,7 +164,7 @@ internal static class PerfPair
                 StampHeader(payload.AsSpan(0, sizeof(long)), TimestampUs());
                 try
                 {
-                    SendBlocking(sender, payload.AsSpan(), SendFlags.None);
+                    SendBlocking(sender, payload, SendFlags.None);
                 }
                 catch
                 {
@@ -192,17 +186,5 @@ internal static class PerfPair
             return received >= warmupCount;
 
         return received > 0 && latencySamples.Count > 0;
-    }
-
-    private static bool IsInterrupted(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EIntr || errno == 4;
-    }
-
-    private static bool IsWouldBlock(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EAgain || errno == 11;
     }
 }

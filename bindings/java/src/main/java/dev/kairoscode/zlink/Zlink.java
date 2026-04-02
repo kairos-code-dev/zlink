@@ -27,7 +27,7 @@ public final class Zlink {
         }
     }
 
-    public static void sleep(int seconds) {
+    static void sleep(int seconds) {
         if (seconds < 0)
             throw new IllegalArgumentException("seconds must be >= 0");
         Native.sleep(seconds);

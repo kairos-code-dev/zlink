@@ -27,8 +27,7 @@
 | 5 | Node/TypeScript | `typescript` |
 | 6 | C#/.NET | `csharp` |
 | 7 | Rust | `rust` |
-
-- Go는 바인딩 소스가 없으므로 제외한다.
+| 8 | Go | `go` |
 - 탭 라벨은 모든 페이지에서 동일해야 한다 (`content.tabs.link`로 전역 동기화).
 - 사용자가 한 번 "Python"을 선택하면 모든 코드 블록이 Python으로 전환된다.
 

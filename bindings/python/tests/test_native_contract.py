@@ -14,13 +14,20 @@ class NativeContractTests(unittest.TestCase):
         self.assertTrue(hasattr(native, "zlink_set_option"))
         self.assertTrue(hasattr(native, "zlink_get_option"))
         self.assertTrue(hasattr(native, "zlink_socket_monitor_open"))
+        self.assertTrue(hasattr(native, "zlink_socket_monitor_handler"))
         self.assertTrue(hasattr(native, "zlink_service_monitor_open"))
+        self.assertTrue(hasattr(native, "zlink_service_monitor_handler"))
         self.assertTrue(hasattr(native, "zlink_try_send"))
         self.assertTrue(hasattr(native, "zlink_try_send_rid"))
         self.assertTrue(hasattr(native, "zlink_try_publish"))
         self.assertTrue(hasattr(native, "zlink_registry_bind"))
+        self.assertTrue(hasattr(native, "zlink_registry_status_snapshot"))
+        self.assertTrue(hasattr(native, "zlink_registry_service_summary_snapshot"))
+        self.assertTrue(hasattr(native, "zlink_registry_member_peers"))
+        self.assertTrue(hasattr(native, "zlink_registry_topology_query"))
         self.assertTrue(hasattr(native, "zlink_discovery_new"))
         self.assertTrue(hasattr(native, "zlink_spot_new"))
+        self.assertTrue(hasattr(native, "zlink_registry_query_snapshot"))
 
         for removed_name in (
             "zlink_setsockopt",

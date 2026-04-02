@@ -488,7 +488,8 @@ class socket_t
     {
         received_.routing_id = empty_routing_id ();
         return perf_detail::recv_parts (
-          _socket, &received_.routing_id, flags_, received_.parts);
+          _socket, routing_id_native (received_.routing_id), flags_,
+          received_.parts);
     }
 
     int recv_handler (zlink_socket_msg_handler_fn handler_,
@@ -497,16 +498,34 @@ class socket_t
         return zlink_recv_handler (_socket, handler_, userdata_);
     }
 
+    int on_receive (zlink_socket_msg_handler_fn handler_,
+                    void *userdata_ = NULL)
+    {
+        return recv_handler (handler_, userdata_);
+    }
+
     int subscribe_handler (zlink_subscribe_handler_fn handler_,
                            void *userdata_ = NULL)
     {
         return zlink_subscribe_handler (_socket, handler_, userdata_);
     }
 
+    int on_subscribe (zlink_subscribe_handler_fn handler_,
+                      void *userdata_ = NULL)
+    {
+        return subscribe_handler (handler_, userdata_);
+    }
+
     int send_ready_handler (zlink_send_ready_handler_fn handler_,
                             void *userdata_ = NULL)
     {
         return zlink_send_ready_handler (_socket, handler_, userdata_);
+    }
+
+    int on_send_ready (zlink_send_ready_handler_fn handler_,
+                       void *userdata_ = NULL)
+    {
+        return send_ready_handler (handler_, userdata_);
     }
 
     int set_routing_id (const void *data_, size_t size_)

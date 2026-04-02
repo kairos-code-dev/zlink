@@ -125,6 +125,42 @@ class ZlinkMemberPeerEntry(ctypes.Structure):
     ]
 
 
+class ZlinkRegistryStatus(ctypes.Structure):
+    _fields_ = [
+        ("registry_id", ctypes.c_uint32),
+        ("bind_endpoint", ctypes.c_char * 256),
+        ("state", ctypes.c_uint32),
+        ("topology_entry_count", ctypes.c_uint32),
+        ("peer_registry_count", ctypes.c_uint32),
+        ("connected_peer_registry_count", ctypes.c_uint32),
+        ("list_seq", ctypes.c_uint64),
+        ("last_error", ctypes.c_int32),
+        ("last_changed_ms", ctypes.c_uint64),
+    ]
+
+
+class ZlinkRegistryServiceSummaryEntry(ctypes.Structure):
+    _fields_ = [
+        ("service_kind", ctypes.c_uint32),
+        ("service_role", ctypes.c_uint32),
+        ("service_name", ctypes.c_char * 256),
+        ("total_count", ctypes.c_uint32),
+        ("connecting_count", ctypes.c_uint32),
+        ("ready_count", ctypes.c_uint32),
+        ("error_count", ctypes.c_uint32),
+        ("stopped_count", ctypes.c_uint32),
+        ("last_reported_ms", ctypes.c_uint64),
+    ]
+
+
+class ZlinkRegistryServiceSummaryFilter(ctypes.Structure):
+    _fields_ = [
+        ("service_kind", ctypes.c_uint32),
+        ("service_role", ctypes.c_uint32),
+        ("service_name", ctypes.c_char * 256),
+    ]
+
+
 class ZlinkRegistryTopologyEntry(ctypes.Structure):
     _fields_ = [
         ("routing_id", ZlinkRoutingId),
@@ -138,6 +174,17 @@ class ZlinkRegistryTopologyEntry(ctypes.Structure):
         ("ready_count", ctypes.c_uint32),
         ("error_code", ctypes.c_uint32),
         ("last_reported_ms", ctypes.c_uint64),
+    ]
+
+
+class ZlinkRegistryTopologyFilter(ctypes.Structure):
+    _fields_ = [
+        ("service_kind", ctypes.c_uint32),
+        ("service_role", ctypes.c_uint32),
+        ("service_name", ctypes.c_char * 256),
+        ("routing_id", ZlinkRoutingId),
+        ("state", ctypes.c_uint32),
+        ("source", ctypes.c_uint32),
     ]
 
 
@@ -558,6 +605,44 @@ class _Lib:
             [ctypes.POINTER(ctypes.c_void_p)],
             ctypes.c_int,
         )
+        self._require(
+            "zlink_registry_status_snapshot",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkRegistryStatus)],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_service_summary_snapshot",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRegistryServiceSummaryFilter),
+                ctypes.POINTER(ZlinkRegistryServiceSummaryEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_member_peers",
+            [
+                ctypes.c_void_p,
+                ctypes.c_uint16,
+                ctypes.c_char_p,
+                ctypes.POINTER(ZlinkMemberPeerEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_member_peer_metadata",
+            [
+                ctypes.c_void_p,
+                ctypes.c_uint16,
+                ctypes.c_char_p,
+                ctypes.c_uint16,
+                ctypes.c_char_p,
+                ctypes.POINTER(ZlinkMsg),
+            ],
+            ctypes.c_int,
+        )
 
         self._require(
             "zlink_discovery_new",
@@ -702,6 +787,16 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_registry_topology_query",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRegistryTopologyFilter),
+                ctypes.POINTER(ZlinkRegistryTopologyEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_registry_query_client_new",
             [ctypes.c_void_p],
             ctypes.c_void_p,
@@ -709,6 +804,16 @@ class _Lib:
         self._require(
             "zlink_registry_query_client_connect",
             [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_query_snapshot",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkRegistryTopologyFilter),
+                ctypes.POINTER(ZlinkRegistryTopologyEntry),
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
             ctypes.c_int,
         )
         self._require(

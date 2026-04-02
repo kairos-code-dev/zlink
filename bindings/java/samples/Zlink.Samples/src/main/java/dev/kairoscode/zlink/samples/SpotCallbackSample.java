@@ -1,46 +1,61 @@
-/* SPDX-License-Identifier: MPL-2.0 */
-
 package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class SpotCallbackSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
+        String published = SampleSupport.SPOT_TOPIC + "/" + SampleSupport.SPOT_PAYLOAD;
         CountDownLatch delivered = new CountDownLatch(1);
-        CountDownLatch publishGate = new CountDownLatch(1);
-        String topicName = SampleSupport.uniqueTopic("sample.topic");
-        String endpoint = SampleSupport.tcpEndpoint();
+        AtomicReference<String> subscribed = new AtomicReference<>();
+        AtomicReference<Throwable> callbackError = new AtomicReference<>();
+
         try (Context ctx = new Context();
-             SpotNode serverNode = new SpotNode(ctx);
-             SpotNode clientNode = new SpotNode(ctx);
-             Spot publisherSpot = serverNode.wrapHandle();
-             Spot subscriber = clientNode.wrapHandle()) {
-            serverNode.bind(endpoint);
-            clientNode.connectPeer(endpoint);
+             SpotNode publisherNode = new SpotNode(ctx);
+             SpotNode subscriberNode = new SpotNode(ctx);
+             Spot publisher = new Spot(publisherNode);
+             Spot subscriber = new Spot(subscriberNode)) {
+            publisherNode.bind("tcp://127.0.0.1:0");
+            String endpoint = publisherNode.lastEndpoint();
+            subscriberNode.connectPeer(endpoint);
+            SampleSupport.awaitSpotFilterApplied(subscriber,
+                SampleSupport.SPOT_TOPIC);
+
             subscriber.onSubscribe((routingId, topic, received) -> {
-                try (received) {
-                    System.out.println("spot callback: " + topic + " -> "
-                      + received.firstPart().toUtf8String());
+                try {
+                    subscribed.set(topic + "/" + received.singlePartOrThrow().toUtf8String());
+                } catch (Throwable t) {
+                    callbackError.set(t);
+                } finally {
                     delivered.countDown();
                 }
             });
-            SampleSupport.subscribeAndAwaitSpotFilterApplied(subscriber,
-              topicName);
-            Thread publisher = new Thread(() -> {
-                SampleSupport.await(publishGate, "spot callback publish gate");
-                try (Message payload = Message.copyOfUtf8("spot-callback")) {
-                    publisherSpot.publish(topicName, payload);
+
+            try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
+                SendResult result = publisher.tryPublish(SampleSupport.SPOT_TOPIC, payload);
+                if (result != SendResult.SENT) {
+                    throw new IllegalStateException(
+                        "spot tryPublish returned " + result);
                 }
-            }, "spot-callback-publisher");
-            publisher.start();
-            publishGate.countDown();
+            }
+
             SampleSupport.await(delivered, "spot callback");
-            SampleSupport.awaitThread(publisher, "spot callback publisher");
+            if (callbackError.get() != null) {
+                throw new IllegalStateException("spot callback failed",
+                    callbackError.get());
+            }
+            String value = subscribed.get();
+            if (!published.equals(value)) {
+                throw new IllegalStateException("unexpected delivery: " + value);
+            }
+            System.out.println("[spot/callback] publish: \"" + published
+                + "\" \u2192 subscribe: \"" + value + "\"");
         }
     }
 }

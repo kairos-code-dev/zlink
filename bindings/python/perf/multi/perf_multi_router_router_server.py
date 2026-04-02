@@ -33,7 +33,10 @@ def main(argv=None):
                         if received is None:
                             break
                         with received:
-                            router.send_to(received.routing_id, received.to_bytes_list()[0])
+                            router.send(
+                                received.to_bytes_list()[0],
+                                routing_id=received.routing_id,
+                            )
 
 
 if __name__ == "__main__":

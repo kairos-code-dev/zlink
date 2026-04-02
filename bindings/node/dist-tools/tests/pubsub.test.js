@@ -3,7 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const net = require('node:net');
+const { spawn } = require('node:child_process');
 const { once } = require('node:events');
+const path = require('node:path');
 const zlink = require('../dist');
 async function reservePort() {
     const server = net.createServer();
@@ -18,7 +20,7 @@ test('spot exposes unified publish and subscribe surface', () => {
     const node = new zlink.SpotNode(ctx);
     const spot = new zlink.Spot(node);
     const sub = new zlink.SubSocket(ctx);
-    const monitor = spot.openMonitor();
+    const monitor = spot.monitorOpen();
     spot.setSubscription('topic');
     spot.unsetSubscription('topic');
     sub.setSubscription('topic');
@@ -35,7 +37,7 @@ test('spot trySubscribe receives published payload after one immediate turn', as
     const node = new zlink.SpotNode(ctx);
     const spot = new zlink.Spot(node);
     const topic = 'spot:direct';
-    const monitor = spot.openMonitor(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
+    const monitor = spot.monitorOpen(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
     spot.setSubscription(topic);
     while (true) {
         const event = monitor.recv();
@@ -54,15 +56,15 @@ test('spot trySubscribe receives published payload after one immediate turn', as
     node.close();
     ctx.close();
 });
-test('spot subscribeHandler delivers callback payloads', async () => {
+test('spot onSubscribe delivers callback payloads', async () => {
     const ctx = new zlink.Context();
     const node = new zlink.SpotNode(ctx);
     const spot = new zlink.Spot(node);
     const topic = 'spot:callback';
-    const monitor = spot.openMonitor(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
+    const monitor = spot.monitorOpen(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
     const received = await new Promise((resolve, reject) => {
         try {
-            spot.subscribeHandler((routingId, receivedTopic, parts) => {
+            spot.onSubscribe((routingId, receivedTopic, parts) => {
                 resolve({ routingId, receivedTopic, parts });
             });
         }
@@ -123,6 +125,37 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     finally {
         clientSpot.close();
         serverSpot.close();
+        clientNode.close();
+        serverNode.close();
+        ctx.close();
+    }
+});
+test('spot node peersQuery filters manual peer connections', async () => {
+    const ctx = new zlink.Context();
+    const serverNode = new zlink.SpotNode(ctx);
+    const clientNode = new zlink.SpotNode(ctx);
+    const port = await reservePort();
+    const endpoint = `tcp://127.0.0.1:${port}`;
+    try {
+        serverNode.bind(endpoint);
+        clientNode.connectPeer(endpoint);
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+            const peers = clientNode.peersQuery({ peerEndpoint: endpoint });
+            if (peers.length > 0) {
+                assert.equal(peers[0].peerEndpoint, endpoint);
+                assert.equal(peers[0].source, zlink.SpotPeerSource.MANUAL);
+                return;
+            }
+            await new Promise((resolve) => setImmediate(resolve));
+        }
+        assert.fail(`spot peersQuery timeout: ${JSON.stringify({
+            serverStatus: serverNode.statusSnapshot(),
+            clientStatus: clientNode.statusSnapshot(),
+            clientPeers: clientNode.peersSnapshot()
+        })}`);
+    }
+    finally {
         clientNode.close();
         serverNode.close();
         ctx.close();
@@ -191,11 +224,98 @@ test('multiple remote spot peers on one context all receive over tcp direct peer
         ctx.close();
     }
 });
+test('remote spot peer delivery works across child processes', async () => {
+    const port = await reservePort();
+    const endpoint = `tcp://127.0.0.1:${port}`;
+    const fixturesDir = path.join(__dirname, '..', '..', 'tests', 'fixtures');
+    const serverPath = path.join(fixturesDir, 'spot_child_server.js');
+    const clientPath = path.join(fixturesDir, 'spot_child_client.js');
+    const waitForLine = (child, expected, timeoutMs, sink) => {
+        return new Promise((resolve, reject) => {
+            let buffered = '';
+            let done = false;
+            const timeout = setTimeout(() => {
+                if (!done) {
+                    done = true;
+                    reject(new Error(`timeout waiting for ${expected}: ${sink()}`));
+                }
+            }, timeoutMs);
+            const onData = (chunk) => {
+                buffered += chunk.toString();
+                while (true) {
+                    const newline = buffered.indexOf('\n');
+                    if (newline === -1) {
+                        break;
+                    }
+                    const line = buffered.slice(0, newline).trim();
+                    buffered = buffered.slice(newline + 1);
+                    if (!line) {
+                        continue;
+                    }
+                    if (!done && line === expected) {
+                        done = true;
+                        clearTimeout(timeout);
+                        child.stdout.off('data', onData);
+                        resolve();
+                        return;
+                    }
+                }
+            };
+            child.stdout.on('data', onData);
+            child.once('exit', (code) => {
+                if (!done) {
+                    done = true;
+                    clearTimeout(timeout);
+                    child.stdout.off('data', onData);
+                    reject(new Error(`exited before ${expected}: ${code}: ${sink()}`));
+                }
+            });
+        });
+    };
+    const waitForExit = (child) => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+            return Promise.resolve();
+        }
+        return once(child, 'exit').then(() => { });
+    };
+    const server = spawn(process.execPath, [serverPath, '--endpoint', endpoint], {
+        cwd: path.join(__dirname, '..'),
+        stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const client = spawn(process.execPath, [clientPath, '--endpoint', endpoint], {
+        cwd: path.join(__dirname, '..'),
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let serverStderr = '';
+    let clientStderr = '';
+    server.stderr.on('data', (chunk) => {
+        serverStderr += chunk.toString();
+    });
+    client.stderr.on('data', (chunk) => {
+        clientStderr += chunk.toString();
+    });
+    try {
+        await waitForLine(server, `READY,${endpoint}`, 5000, () => serverStderr);
+        await waitForLine(client, 'CLIENT_READY', 5000, () => clientStderr);
+        server.stdin.write('START\n');
+        await waitForLine(client, 'RECEIVED,spot:child,payload', 5000, () => clientStderr);
+        const [clientCode] = await once(client, 'exit');
+        assert.equal(clientCode, 0, clientStderr);
+    }
+    finally {
+        if (server.stdin.writable) {
+            server.stdin.end();
+        }
+        server.kill('SIGTERM');
+        client.kill('SIGTERM');
+        await Promise.allSettled([waitForExit(server), waitForExit(client)]);
+    }
+});
 test('canonical pub/sub surface hides opposite-direction methods', () => {
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
     const sub = new zlink.SubSocket(ctx);
-    assert.equal(pub.receive, undefined);
+    assert.equal(pub.recv, undefined);
     assert.equal(typeof pub.tryPublish, 'function');
     assert.equal(pub.send, undefined);
     assert.equal(sub.send, undefined);
@@ -221,7 +341,7 @@ test('sub sockets receive Subscribed domain objects and TrySubscribe returns nul
     pub.close();
     ctx.close();
 });
-test('subscribeHandler delivers topic-aware multipart payloads', async () => {
+test('onSubscribe delivers topic-aware multipart payloads', async () => {
     const ctx = new zlink.Context();
     const pub = new zlink.PubSocket(ctx);
     const sub = new zlink.SubSocket(ctx);
@@ -230,7 +350,7 @@ test('subscribeHandler delivers topic-aware multipart payloads', async () => {
     sub.setSubscription('topic');
     const received = await new Promise((resolve, reject) => {
         try {
-            sub.subscribeHandler((routingId, topic, parts) => {
+            sub.onSubscribe((routingId, topic, parts) => {
                 resolve({ routingId, topic, parts });
             });
         }

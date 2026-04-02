@@ -10,9 +10,7 @@ const {
 } = require('../common/perf_metrics');
 
 const TOPIC = 'perf.topic';
-const SPOT_READY_EVENTS = zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED
-  | zlink.ServiceMonitorEvent.SPOT_SUBSCRIPTION_READY_CHANGED
-  | zlink.ServiceMonitorEvent.SPOT_READY_CHANGED
+const SPOT_READY_EVENTS = zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED
   | zlink.ServiceMonitorEvent.ERROR;
 
 function parseArgs(argv) {
@@ -47,14 +45,32 @@ async function main() {
   let stop = false;
   let stopResolve;
   let timeoutId = null;
+  let firstHeaderLogged = false;
   const stopped = new Promise((resolve) => {
     stopResolve = resolve;
   });
+  const waitForPeerDisconnectAfterTraffic = async () => {
+    while (!stop) {
+      if (
+        firstHeaderLogged
+        && slots.length > 0
+        && slots.every((slot) => slot.node.statusSnapshot().connectedPeerCount === 0)
+      ) {
+        stopResolve();
+        return;
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
 
   const handleDelivery = (received) => {
     const header = decodeMetricHeader(received.parts[0].toBuffer());
     if (!header) {
       return;
+    }
+    if (!firstHeaderLogged) {
+      firstHeaderLogged = true;
+      console.error(`spot client first header: phase=${header.phase} msgSize=${header.msgSize} runId=${header.runId}`);
     }
     if (header.phase === 1) {
       stopCount += 1;
@@ -68,27 +84,7 @@ async function main() {
 
   const waitForSubDeliveryReady = async (slot, timeoutMs) => {
     const deadline = Date.now() + timeoutMs;
-    let filterApplied = false;
-    let subscriptionReady = false;
     while (Date.now() < deadline) {
-      const snapshot = slot.monitor.snapshot();
-      const status = slot.node.statusSnapshot();
-      const subjects = slot.node.subjectsSnapshot();
-      if (
-        filterApplied
-        && subscriptionReady
-        && (snapshot.stateFlags & zlink.MonitorState.READY) !== 0
-        && snapshot.readyCount > 0
-        && status.connectedPeerCount > 0
-        && status.readySubjectCount > 0
-        && subjects.some((subject) => (
-          subject.role === zlink.SpotSocketRole.SUB
-          && subject.subject === TOPIC
-          && subject.readyPeerCount > 0
-        ))
-      ) {
-        return;
-      }
       const event = slot.monitor.tryRecv();
       if (!event) {
         await new Promise((resolve) => setImmediate(resolve));
@@ -97,21 +93,11 @@ async function main() {
       if (event.eventType === zlink.ServiceMonitorEvent.ERROR) {
         throw new Error(`spot client ready monitor error: ${JSON.stringify(event)}`);
       }
-      if (event.eventType === zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED) {
-        filterApplied = true;
-        continue;
-      }
-      if (
-        event.eventType === zlink.ServiceMonitorEvent.SPOT_SUBSCRIPTION_READY_CHANGED
-        && event.endpoint === options.endpoint
-        && event.value > 0
-      ) {
-        subscriptionReady = true;
+      if (event.eventType === zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED && event.value > 0) {
+        return;
       }
     }
     throw new Error(`spot client ready timeout: ${JSON.stringify({
-      filterApplied,
-      subscriptionReady,
       snapshot: slot.monitor.snapshot(),
       status: slot.node.statusSnapshot(),
       peers: slot.node.peersSnapshot(),
@@ -123,15 +109,18 @@ async function main() {
     for (let i = 0; i < options.clients; i += 1) {
       const node = new zlink.SpotNode(ctx);
       const spot = new zlink.Spot(node);
-      const monitor = spot.openMonitor(SPOT_READY_EVENTS);
+      const monitor = spot.monitorOpen(SPOT_READY_EVENTS);
       slots.push({ node, spot, monitor });
     }
 
     for (const slot of slots) {
+      slot.spot.setLinger(0);
+      slot.spot.setReceiveHighWaterMark(100);
+      slot.spot.setReceiveTimeout(200);
       slot.node.connectPeer(options.endpoint);
       slot.spot.setSubscription(TOPIC);
       if (options.recv === 'callback') {
-        slot.spot.subscribeHandler((routingId, topic, parts) => {
+        slot.spot.onSubscribe((routingId, topic, parts) => {
           void routingId;
           void topic;
           handleDelivery({ parts });
@@ -158,14 +147,20 @@ async function main() {
 
     for (const slot of slots) {
       await waitForSubDeliveryReady(slot, 10000);
+      console.error(`spot client ready: ${JSON.stringify({
+        status: slot.node.statusSnapshot(),
+        peers: slot.node.peersSnapshot(),
+        subjects: slot.node.subjectsSnapshot()
+      })}`);
       slot.monitor.close();
       slot.monitor = null;
     }
 
-    console.log('CLIENT_READY');
+    console.log(`CLIENT_READY,${options.msgSize}`);
 
     await Promise.race([
       stopped,
+      waitForPeerDisconnectAfterTraffic(),
       new Promise((_, reject) => {
         timeoutId = setTimeout(
           () => {

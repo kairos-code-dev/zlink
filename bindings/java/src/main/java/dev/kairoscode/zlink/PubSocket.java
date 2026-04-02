@@ -6,6 +6,8 @@ import dev.kairoscode.zlink.service.discovery.Discovery;
 import java.util.List;
 
 public final class PubSocket extends Socket {
+    private final PubSocketOptions options = new PubSocketOptions(this);
+
     public PubSocket(Context ctx) {
         super(ctx, SocketType.PUB);
     }
@@ -20,4 +22,5 @@ public final class PubSocket extends Socket {
     public SendResult tryPublish(String topicId, Message part) { return super.tryPublish(topicId, part); }
     public SendResult tryPublish(String topicId, List<Message> parts) { return super.tryPublish(topicId, parts); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
+    @Override public PubSocketOptions options() { return options; }
 }

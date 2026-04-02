@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.options.SocketOptionKey;
@@ -32,6 +33,33 @@ final class SocketCore {
         ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_SEND_READY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+    /**
+     * Tracks whether the current thread is executing inside a native callback
+     * (recv handler, subscribe handler, or send-ready handler).
+     *
+     * <p>Blocking sends from a callback run on the socket I/O thread.  If the
+     * send needs to retry (pipe full / EAGAIN), the retry loop blocks on
+     * {@code process_commands} which waits for I/O events that can only be
+     * delivered by the very same I/O thread, causing a deadlock.
+     *
+     * <p>All send paths check this flag and force {@code DONTWAIT} when inside
+     * a callback so the I/O thread is never blocked in a retry loop.
+     */
+    private static final ThreadLocal<Integer> CALLBACK_DEPTH =
+        ThreadLocal.withInitial(() -> 0);
+
+    static boolean inCallback() {
+        return CALLBACK_DEPTH.get() > 0;
+    }
+
+    private static void enterCallback() {
+        CALLBACK_DEPTH.set(CALLBACK_DEPTH.get() + 1);
+    }
+
+    private static void leaveCallback() {
+        CALLBACK_DEPTH.set(CALLBACK_DEPTH.get() - 1);
+    }
 
     private final Socket socket;
     private Arena sendScratchArena = Arena.ofShared();
@@ -87,7 +115,8 @@ final class SocketCore {
 
     void attachDiscovery(Discovery discovery) {
         Objects.requireNonNull(discovery, "discovery");
-        int rc = Native.socketAttachDiscovery(socket.handle(), discovery.handle());
+        int rc = Native.socketAttachDiscovery(socket.handle(),
+            InternalAccess.discoveryHandle(discovery));
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_socket_attach_discovery");
     }
@@ -345,10 +374,13 @@ final class SocketCore {
         SocketMessageHandler handler = receiveHandler;
         if (handler == null)
             return;
+        enterCallback();
         try (Received received = receivedFromCallback(sourceRid, parts, partCount)) {
             handler.onMessage(received);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
+        } finally {
+            leaveCallback();
         }
     }
 
@@ -361,11 +393,14 @@ final class SocketCore {
         SubscribeHandler handler = subscribeHandler;
         if (handler == null)
             return;
+        enterCallback();
         try (Received received = receivedFromCallback(sourceRid, parts, partCount)) {
             handler.onMessage(readRoutingId(sourceRid), decodeTopic(topic, topicLen),
                 received);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
+        } finally {
+            leaveCallback();
         }
     }
 
@@ -374,10 +409,13 @@ final class SocketCore {
         SendReadyHandler handler = sendReadyHandler;
         if (handler == null)
             return;
+        enterCallback();
         try {
             handler.onReady();
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
+        } finally {
+            leaveCallback();
         }
     }
 

@@ -54,7 +54,7 @@ static void test_spot_peer_pubsub ()
         assert (spot_a.valid ());
         assert (spot_b.valid ());
 
-        assert (spot_b.subscribe ("peer:topic") == 0);
+        assert (spot_b.set_subscription ("peer:topic") == 0);
         sleep_ms (150);
 
         std::vector<zlink::message_t> parts;
@@ -86,7 +86,7 @@ static void test_spot_multipart_peer_pubsub ()
     assert (spot_a.valid ());
     assert (spot_b.valid ());
 
-    assert (spot_b.subscribe ("mp:topic") == 0);
+    assert (spot_b.set_subscription ("mp:topic") == 0);
     sleep_ms (100);
 
     std::vector<zlink::message_t> parts;

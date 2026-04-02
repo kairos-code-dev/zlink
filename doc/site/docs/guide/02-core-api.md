@@ -91,6 +91,17 @@ A Context is the top-level object in zlink that manages the I/O thread pool and 
     // Terminate — Drop trait
     ```
 
+=== "Go"
+
+    ```go
+    // Create
+    ctx := zlink.NewContext()
+    ctx.SetIoThreads(4) // default 1; 4 is optimal under heavy load
+    ioThreads := ctx.IoThreads()
+
+    // Terminate
+    ```
+
 ### Context Options
 
 | Option | Default | Description |
@@ -161,6 +172,14 @@ can share the same socket handle to call send/recv/bind/connect, etc.
     let socket = ctx.dealer_socket()?;
     // ... use ...
     // Drop trait handles close
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.DealerSocket()
+    // ... use ...
+    // Close explicitly
     ```
 
 ### 2.2 Socket Type Constants
@@ -246,6 +265,15 @@ can share the same socket handle to call send/recv/bind/connect, etc.
     socket.disconnect("tcp://127.0.0.1:5555")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("tcp://*:5555")
+    socket.Connect("tcp://127.0.0.1:5555")
+    socket.Unbind("tcp://*:5555")
+    socket.Disconnect("tcp://127.0.0.1:5555")
+    ```
+
 ### 2.4 Socket Options
 
 === "C"
@@ -301,6 +329,13 @@ can share the same socket handle to call send/recv/bind/connect, etc.
     ```rust
     socket.set_sndhwm(5000)?;
     let value = socket.sndhwm()?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetOption(zlink.OptionSndHwm, 5000)
+    value := socket.GetOption(zlink.OptionSndHwm)
     ```
 
 Key options:
@@ -426,6 +461,16 @@ any given option.
         zlink::Message::from("header"),
         zlink::Message::from("body"),
     ])?;
+    ```
+
+=== "Go"
+
+    ```go
+    // Simple send
+    socket.Send(zlink.NewMessage([]byte("Hello")))
+
+    // Multipart send
+    socket.SendMultipart([]zlink.Message{zlink.NewMessage([]byte("header")), zlink.NewMessage([]byte("body"))})
     ```
 
 By default `zlink_send()` blocks when the send queue is full (HWM reached).
@@ -592,6 +637,26 @@ directly. Sockets start in pull mode by default.
     }
     ```
 
+=== "Go"
+
+    ```go
+    socket := ctx.PairSocket()
+    socket.Bind("tcp://*:5556")
+
+    // Blocking recv
+    source_rid, parts, _ := socket.Recv()
+    for (i, part) in parts.iter().enumerate() {
+        fmt.Printf("Frame {}: %v\n", i, part.as_str()?)
+    }
+
+    // Non-blocking recv
+    received, err := socket.RecvDontWait()
+        Ok((rid, parts)) => { /* process */ }
+        Err(e) if e.kind() == zlink::ErrorKind::Again => {}
+        Err(e) => return Err(e),
+    }
+    ```
+
 #### Callback Mode
 
 Attach a handler callback after socket creation. Messages are dispatched
@@ -683,6 +748,18 @@ removed for the lifetime of the socket. If a handler has been attached,
         }
         Ok(())
     })?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.StreamSocket()
+    socket.on_message(|rid, parts| {
+        for (i, part) in parts.iter().enumerate() {
+            fmt.Printf("Frame {}: %v\n", i, part.as_str()?)
+        }
+
+    })
     ```
 
 > For a comparison of the two modes and advanced patterns, see
@@ -777,6 +854,15 @@ separate thread.
     ```rust
     match socket.send(&zlink::Message::from(data)) {
         Ok(()) => {}
+        Err(e) => eprintln!("Error: {}", e),
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    err := socket.Send(zlink.NewMessage(data))
+         => {}
         Err(e) => eprintln!("Error: {}", e),
     }
     ```
@@ -1017,6 +1103,31 @@ Key error codes:
         println!("Received from [{}]: {}", rid, parts[0].as_str()?);
 
         Ok(())
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    func main() {
+        ctx := zlink.NewContext()
+
+        // ROUTER (server)
+        router := ctx.RouterSocket()
+        router.Bind("tcp://*:5555")
+
+        // DEALER (client)
+        dealer := ctx.DealerSocket()
+        dealer.Connect("tcp://127.0.0.1:5555")
+
+        // DEALER → ROUTER
+        dealer.Send(zlink.NewMessage([]byte("request")))
+
+        // Receive and print
+        rid, parts, _ := router.Recv()
+        fmt.Printf("Received from [{}]: %v\n", rid, parts[0].as_str()?)
+
+
     }
     ```
 

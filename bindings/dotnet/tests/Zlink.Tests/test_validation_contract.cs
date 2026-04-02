@@ -1,5 +1,6 @@
 using System;
 using Xunit;
+using Zlink.Service;
 
 namespace Zlink.Tests;
 
@@ -25,7 +26,7 @@ public sealed class test_validation_contract
         using var socket = new PairSocket(ctx);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            socket.OpenMonitor((SocketEvent)0x10000));
+            socket.MonitorOpen((SocketEvent)0x10000));
     }
 
     [Fact]
@@ -63,5 +64,40 @@ public sealed class test_validation_contract
             router.Send((string)null!, routedMessage));
         Assert.Throws<ArgumentNullException>(() =>
             pub.Publish((string)null!, publishedMessage));
+    }
+
+    [Fact]
+    public void service_monitor_open_rejects_unknown_event_flags()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            spot.MonitorOpen((ServiceMonitorEvents)(1u << 30)));
+    }
+
+    [Fact]
+    public void service_surface_rejects_overlong_fixed_utf8_inputs()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        string overlong = new string('a', 256);
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var registry = new Registry(ctx);
+        using var query = new RegistryQueryClient(ctx);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            _ = new Discovery(ctx, ServiceType.Spot, overlong));
+        Assert.Throws<ArgumentOutOfRangeException>(() => node.Bind(overlong));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            registry.Bind(overlong, "tcp://127.0.0.1:5555"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => query.Connect(overlong));
     }
 }

@@ -59,7 +59,7 @@ async function main() {
       for (let i = 0; i < dealers.length; i += 1) {
         stampPayload(warmupPayloads[i], { phase: 2, runId, msgSize: options.msgSize });
         dealers[i].send(warmupPayloads[i]);
-        dealers[i].receive();
+        dealers[i].recv();
       }
     }
 
@@ -69,7 +69,7 @@ async function main() {
       for (let i = 0; i < dealers.length; i += 1) {
         stampPayload(activePayloads[i], { phase: 0, runId, msgSize: options.msgSize });
         dealers[i].send(activePayloads[i]);
-        const echoed = dealers[i].receive();
+        const echoed = dealers[i].recv();
         collector.record(decodeMetricHeader(echoed.parts[0].toBuffer()), process.hrtime.bigint());
       }
     }

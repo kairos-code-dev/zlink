@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../../samples/common/sample_common.hpp"
+#include "../../samples/sample_common.hpp"
 
 
 namespace {
@@ -53,15 +53,15 @@ int main ()
     assert (pub_spot.valid ());
     assert (sub_spot.valid ());
 
-    zlink::service_monitor_handle_t sub_monitor (
-      sub_spot,
-      zlink::service_monitor_event::spot_filter_applied
+    zlink::service_monitor_handle_t sub_monitor =
+      sub_spot.monitor_open (
+        zlink::service_monitor_event::spot_filter_applied
         | zlink::service_monitor_event::spot_subscription_ready_changed
         | zlink::service_monitor_event::error);
     assert (sub_monitor.valid ());
-    zlink::service_monitor_handle_t pub_monitor (
-      pub_spot.handle (),
-      zlink::service_monitor_event::spot_first_delivery_ready_changed
+    zlink::service_monitor_handle_t pub_monitor =
+      pub_spot.monitor_open (
+        zlink::service_monitor_event::spot_first_delivery_ready_changed
         | zlink::service_monitor_event::error);
     assert (pub_monitor.valid ());
 
@@ -71,8 +71,8 @@ int main ()
 
     callback_state_t state;
     state.ready = false;
-    assert (sub_spot.subscribe_handler (&subscribe_callback, &state) == 0);
-    assert (sub_spot.subscribe ("topic:alpha") == 0);
+    assert (sub_spot.on_subscribe (&subscribe_callback, &state) == 0);
+    assert (sub_spot.set_subscription ("topic:alpha") == 0);
     assert (detail::wait_for_service_monitor_event (
       sub_monitor,
       static_cast<uint32_t> (
@@ -98,9 +98,9 @@ int main ()
     lock.unlock ();
     assert (pub_monitor.close () == 0);
     assert (sub_monitor.close () == 0);
-    assert (sub_spot.destroy () == 0);
-    assert (pub_spot.destroy () == 0);
-    assert (sub_node.destroy () == 0);
-    assert (pub_node.destroy () == 0);
+    assert (sub_spot.close () == 0);
+    assert (pub_spot.close () == 0);
+    assert (sub_node.close () == 0);
+    assert (pub_node.close () == 0);
     return 0;
 }

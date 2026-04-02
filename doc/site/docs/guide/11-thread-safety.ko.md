@@ -126,6 +126,12 @@
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 2.2 설정·운영 (설정 및 런타임 변경)
 
 이 함수들은 thread-safe하며, 라이브러리가 한 번에 하나씩 처리합니다.
@@ -208,6 +214,12 @@
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 `ZLINK_OPT_EVENTS`, `ZLINK_OPT_LAST_ENDPOINT` 같은 경량 읽기도 이 카테고리에
@@ -311,6 +323,12 @@ zlink가 명확한 에러 코드를 반환합니다:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 **콜백에서의 self-close:** send-ready 또는 monitor 콜백에서 자기 핸들의
 `close`를 호출하면, 실제 닫기는 콜백이 반환될 때까지 지연됩니다.
 콜백 내 use-after-free를 방지합니다.
@@ -369,6 +387,12 @@ zlink가 명확한 에러 코드를 반환합니다:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 === "C"
 
     ```c
@@ -414,6 +438,12 @@ zlink가 명확한 에러 코드를 반환합니다:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 !!! note "C API definition -- each binding wraps this into its idiomatic type."
@@ -522,6 +552,12 @@ zlink가 명확한 에러 코드를 반환합니다:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 7. 실용 패턴
 
 ### 7.1 멀티 스레드 워커 풀 (Socket)
@@ -623,6 +659,12 @@ zlink가 명확한 에러 코드를 반환합니다:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 8. 흔한 실수

@@ -72,6 +72,14 @@ are not TLS configuration surfaces and fail with `ENOTSUP`.
     socket.bind("tls://*:5555")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket := ctx.RouterSocket()
+    socket.SetTLSServer("/path/to/server.crt", "/path/to/server.key", false)
+    socket.Bind("tls://*:5555")
+    ```
+
 ## 3. TLS Client Setup
 
 === "C"
@@ -132,6 +140,14 @@ are not TLS configuration surfaces and fail with `ENOTSUP`.
     let socket = ctx.dealer_socket()?;
     socket.set_tls_client("/path/to/ca.crt", "server.example.com", false)?;
     socket.connect("tls://server.example.com:5555")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.DealerSocket()
+    socket.SetTLSClient("/path/to/ca.crt", "server.example.com", false)
+    socket.Connect("tls://server.example.com:5555")
     ```
 
 ## 4. WSS (WebSocket + TLS) Setup
@@ -198,6 +214,14 @@ WSS is a transport that adds TLS encryption to ws. It requires additional config
     let socket = ctx.stream_socket()?;
     socket.set_tls_server("/path/to/cert.pem", "/path/to/key.pem", false)?;
     socket.bind("wss://*:8443")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket := ctx.StreamSocket()
+    socket.SetTLSServer("/path/to/cert.pem", "/path/to/key.pem", false)
+    socket.Bind("wss://*:8443")
     ```
 
 ### WSS Client (External Raw Client)
@@ -270,6 +294,12 @@ Configures the server-side TLS certificate and key.
     socket.set_tls_server(cert_path, key_path, require_client_cert)?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.SetTLSServer(cert_path, key_path, require_client_cert)
+    ```
+
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `cert_path` | string | Certificate file path (PEM format) |
@@ -317,6 +347,12 @@ Configures the server-side TLS certificate and key.
 
     ```rust
     socket.set_tls_server("server.crt", "server.key", false)?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetTLSServer("server.crt", "server.key", false)
     ```
 
 - Must be set **before** `zlink_bind()`
@@ -367,6 +403,12 @@ Configures the client-side TLS CA certificate, hostname verification, and system
 
     ```rust
     socket.set_tls_client(ca_cert_path, hostname, trust_system)?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetTLSClient(ca_cert_path, hostname, trust_system)
     ```
 
 | Parameter | Type | Description |
@@ -443,6 +485,16 @@ Configures the client-side TLS CA certificate, hostname verification, and system
 
     // System CA only
     socket.set_tls_client(None, None, true)?;
+    ```
+
+=== "Go"
+
+    ```go
+    // Private CA with hostname verification
+    socket.SetTLSClient("ca.crt", "server.example.com", false)
+
+    // System CA only
+    socket.SetTLSClient(None, None, true)
     ```
 
 - When `ca_cert_path` is NULL, only the system CA store is used (if `trust_system=1`)
@@ -771,6 +823,29 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     }
     ```
 
+=== "Go"
+
+    ```go
+    func main() {
+        ctx := zlink.NewContext()
+
+        server := ctx.PairSocket()
+        server.SetTLSServer("server.crt", "server.key", false)
+        server.Bind("tls://*:5555")
+
+        client := ctx.PairSocket()
+        client.SetTLSClient("ca.crt", "localhost", false)
+        client.Connect("tls://127.0.0.1:5555")
+
+        client.Send(zlink.NewMessage([]byte("Secure Hello")))
+
+        rid, parts, _ := server.Recv()
+        fmt.Printf("Received: %v\n", parts[0].as_str()?)
+
+
+    }
+    ```
+
 ### WSS STREAM Server
 
 === "C"
@@ -867,6 +942,19 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     server.set_tls_server("server.crt", "server.key", false)?;
     server.set_linger(0)?;
     server.bind("wss://*:8443")?;
+
+    // External raw WSS client connects to this endpoint.
+    ```
+
+=== "Go"
+
+    ```go
+    ctx := zlink.NewContext()
+
+    server := ctx.StreamSocket()
+    server.SetTLSServer("server.crt", "server.key", false)
+    server.SetOption(zlink.OptionLinger, 0)
+    server.Bind("wss://*:8443")
 
     // External raw WSS client connects to this endpoint.
     ```

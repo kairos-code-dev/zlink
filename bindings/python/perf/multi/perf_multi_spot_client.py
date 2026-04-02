@@ -55,7 +55,11 @@ def main(argv=None):
                 node, spot = _make_client(ctx, args.endpoint, index)
                 clients.append((node, spot))
             for _, spot in clients:
-                spot.set_handler(lambda message: metrics_sink.on_payload(message.to_bytes_list()[0]))
+                spot.on_subscribe(
+                    lambda message: metrics_sink.on_payload(
+                        message.to_bytes_list()[0]
+                    )
+                )
 
             warmup_deadline = time.perf_counter() + args.warmup
             while time.perf_counter() < warmup_deadline:

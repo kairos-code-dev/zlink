@@ -1,8 +1,6 @@
 using SampleCommon;
 using Zlink;
 using Zlink.Service;
-using System;
-using System.Threading;
 
 if (!SampleSupport.IsNativeAvailable())
     return;
@@ -12,42 +10,35 @@ using var pubNode = new SpotNode(ctx);
 using var subNode = new SpotNode(ctx);
 using var publisher = new Spot(pubNode);
 using var subscriber = new Spot(subNode);
-const string topic = "spot:sample";
-string endpoint = SampleSupport.NewEndpoint("tcp", "spot-sample");
-pubNode.Bind(endpoint);
+const string topic = "room:lobby";
+const string payload = "hello-spot";
+pubNode.Bind("tcp://127.0.0.1:0");
+string endpoint = pubNode.LastEndpoint;
 subNode.ConnectPeer(endpoint);
-subscriber.SetSubscription(topic);
-DateTime deadline = DateTime.UtcNow.AddMilliseconds(5000);
-string payload = string.Empty;
-string receivedTopic = string.Empty;
-while (DateTime.UtcNow < deadline)
+using (ServiceMonitor pubMonitor = publisher.MonitorOpen(
+           ServiceMonitorEvents.SpotFirstDeliveryReadyChanged))
+using (ServiceMonitor subMonitor = subscriber.MonitorOpen(
+           ServiceMonitorEvents.SpotFilterApplied
+           | ServiceMonitorEvents.SpotSubscriptionReadyChanged))
 {
-    using (Message message = Message.FromString("spot-recv"))
-    {
-        _ = publisher.TryPublish(topic, message);
-    }
-
-    Subscribed? subscribed = subscriber.TrySubscribe();
-    if (subscribed == null)
-    {
-        Thread.Sleep(10);
-        continue;
-    }
-
-    try
-    {
-        receivedTopic = subscribed.Topic;
-        payload = subscribed.SinglePartOrThrow().GetString();
-        break;
-    }
-    finally
-    {
-        foreach (Message part in subscribed.Parts)
-            part.Dispose();
-    }
+    subscriber.SetSubscription(topic);
+    ServiceMonitorEvent filterEvent = subMonitor.Recv();
+    if ((filterEvent.EventType & ServiceMonitorEvents.SpotFilterApplied)
+        == ServiceMonitorEvents.None || filterEvent.Subject != topic)
+        throw new InvalidOperationException("unexpected SPOT_FILTER_APPLIED event");
+    ServiceMonitorEvent readyEvent = subMonitor.Recv();
+    if ((readyEvent.EventType
+            & ServiceMonitorEvents.SpotSubscriptionReadyChanged)
+        == ServiceMonitorEvents.None || readyEvent.Endpoint != endpoint)
+        throw new InvalidOperationException("unexpected SPOT_SUBSCRIPTION_READY_CHANGED event");
+    if ((pubMonitor.Snapshot().StateFlags & MonitorState.SendReady) == 0)
+        throw new InvalidOperationException("publisher spot monitor is not send-ready");
 }
 
-if (payload.Length == 0)
-    throw new TimeoutException("spot recv timeout");
+using (Message message = Message.FromString(payload))
+    publisher.Publish(topic, message);
 
-Console.WriteLine($"{receivedTopic}:{payload}");
+Subscribed subscribed = subscriber.Subscribe();
+string receivedTopic = subscribed.Topic;
+string receivedPayload = subscribed.SinglePartOrThrow().GetString();
+Console.WriteLine($"[spot/recv] publish: \"{topic}/{payload}\" -> subscribe: \"{receivedTopic}/{receivedPayload}\"");

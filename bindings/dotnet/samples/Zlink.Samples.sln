@@ -25,7 +25,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotRecv", "SpotRecv\SpotRe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotCallback", "SpotCallback\SpotCallback.csproj", "{58E5B9A3-E211-4F4F-8361-C27E9ED3DB1C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RegistryDiscoveryMonitor", "RegistryDiscoveryMonitor\RegistryDiscoveryMonitor.csproj", "{0BC25361-8FB0-4CB0-994C-191D4D71A769}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MonitorRecv", "MonitorRecv\MonitorRecv.csproj", "{0BC25361-8FB0-4CB0-994C-191D4D71A769}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

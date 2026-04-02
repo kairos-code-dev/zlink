@@ -272,7 +272,7 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
     int ready = 0;
     for (;;) {
         const zlink::maybe_t<zlink_socket_monitor_event_t> ev =
-          mon.monitor->try_receive ();
+          mon.monitor->try_recv();
         if (!ev)
             break;
         if (ev->event

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.26] - 2026-04-02
+
+### Fixed
+
+**Version Metadata Alignment**
+- Aligned the repository `VERSION` metadata and release changelog with the core public header/native runtime version so bindings and version-contract tests report the same `5.0.26` release number.
+
 ## [5.0.25] - 2026-03-31
 
 ### Fixed

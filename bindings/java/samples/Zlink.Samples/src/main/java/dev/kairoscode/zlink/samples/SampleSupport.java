@@ -2,9 +2,11 @@
 
 package dev.kairoscode.zlink.samples;
 
-import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.MonitorEventType;
+import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.ServiceMonitor;
+import dev.kairoscode.zlink.ServiceEvent;
 import dev.kairoscode.zlink.ZlinkVersion;
 import dev.kairoscode.zlink.service.spot.Spot;
 import java.io.IOException;
@@ -12,16 +14,21 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 final class SampleSupport {
     private static final Duration TIMEOUT = Duration.ofSeconds(180);
     private static final long SPOT_FILTER_APPLIED = 1L << 13;
+    static final String PAIR_PAYLOAD = "hello-pair";
+    static final String DEALER_REQUEST = "ping";
+    static final String DEALER_REPLY = "pong";
+    static final String STREAM_PAYLOAD = "hello-stream";
+    static final String PUBSUB_TOPIC = "prices";
+    static final String PUBSUB_PAYLOAD = "101.25";
+    static final String SPOT_TOPIC = "room:lobby";
+    static final String SPOT_PAYLOAD = "hello-spot";
 
     private SampleSupport() {
     }
@@ -38,14 +45,6 @@ final class SampleSupport {
         ZlinkVersion.get();
     }
 
-    static String inprocEndpoint(String prefix) {
-        return "inproc://" + prefix + "-" + UUID.randomUUID();
-    }
-
-    static String uniqueTopic(String prefix) {
-        return prefix + "." + UUID.randomUUID();
-    }
-
     static void await(CountDownLatch latch, String label) {
         try {
             if (!latch.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
@@ -57,42 +56,62 @@ final class SampleSupport {
         }
     }
 
-    static void awaitThread(Thread thread, String label) {
-        try {
-            thread.join(TIMEOUT.toMillis());
-            if (thread.isAlive()) {
-                throw new IllegalStateException(label + " timed out");
-            }
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(label + " interrupted", ex);
-        }
-    }
-
-    static Message wrapUtf8(String value) {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(value.length());
-        buffer.put(value.getBytes(StandardCharsets.UTF_8));
-        buffer.flip();
-        return Message.wrapDirect(buffer);
-    }
-
     static String singleUtf8(Received received) {
         return received.singlePartOrThrow().toUtf8String();
     }
 
-    static void subscribeAndAwaitSpotFilterApplied(Spot spot, String topic) {
-        try (ServiceMonitor subMonitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
-            CountDownLatch subReady = new CountDownLatch(1);
-            subMonitor.onEvent(event -> {
-                if ((event.eventType() & SPOT_FILTER_APPLIED) != 0) {
-                    subReady.countDown();
-                }
-            });
-            spot.setSubscription(topic);
-            await(subReady, "spot filter applied");
+    static final int CONNECTION_READY_EVENT =
+        MonitorEventType.CONNECTION_READY.getValue();
+    static final int STREAM_READY_EVENTS =
+        MonitorEventType.ACCEPTED.getValue()
+            | MonitorEventType.CONNECTION_READY.getValue();
+    static final int PUBSUB_READY_EVENTS =
+        MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
+            | MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue();
+
+    static void waitConnected(MonitorSocket... monitors) {
+        for (MonitorSocket monitor : monitors) {
+            monitor.recv();
         }
     }
 
+    static void waitStreamConnected(MonitorSocket monitor) {
+        while (true) {
+            var event = monitor.recv();
+            if (event.event() == MonitorEventType.ACCEPTED.getValue()
+                || event.event() == MonitorEventType.CONNECTION_READY.getValue()) {
+                return;
+            }
+        }
+    }
+
+    static void waitPubSubReady(MonitorSocket pubMonitor,
+                                MonitorSocket subMonitor) {
+        waitMonitorEvent(subMonitor,
+            MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue());
+        waitMonitorEvent(pubMonitor,
+            MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue());
+    }
+
+    static ServiceEvent awaitSpotFilterApplied(Spot spot, String topic) {
+        try (ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
+            if (monitor.tryRecv().isPresent()) {
+                throw new IllegalStateException(
+                    "spot monitor unexpectedly had a pending event");
+            }
+            spot.setSubscription(topic);
+            ServiceEvent event = monitor.recv();
+            if ((event.eventType() & SPOT_FILTER_APPLIED) == 0) {
+                throw new IllegalStateException(
+                    "expected filter-applied event but got " + event.eventType());
+            }
+            if (!topic.equals(event.subject())) {
+                throw new IllegalStateException(
+                    "unexpected monitor subject: " + event.subject());
+            }
+            return event;
+        }
+    }
 
     static java.net.Socket connectRawTcp(String endpoint) {
         try {
@@ -152,6 +171,15 @@ final class SampleSupport {
             read += n;
         }
         return data;
+    }
+
+    private static void waitMonitorEvent(MonitorSocket monitor, int eventType) {
+        while (true) {
+            var event = monitor.recv();
+            if (event.event() == eventType && event.value() > 0) {
+                return;
+            }
+        }
     }
 
 }

@@ -7,18 +7,23 @@ if (!SampleSupport.IsNativeAvailable())
 using var ctx = new Context();
 using var dealer = new DealerSocket(ctx);
 using var router = new RouterSocket(ctx);
-string endpoint = SampleSupport.NewEndpoint("inproc", "dealer-router-recv");
+string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+using var dealerMonitor = dealer.MonitorOpen(SocketEvent.ConnectionReady);
+using var routerMonitor = router.MonitorOpen(SocketEvent.ConnectionReady);
 router.Bind(endpoint);
 dealer.Connect(endpoint);
+SampleSupport.WaitConnected(routerMonitor, dealerMonitor);
 
-SampleSupport.SendUtf8UntilReady(dealer, "dealer-request", 2000);
-Received received = router.Receive();
+using (Message request = Message.FromString("ping"))
+    dealer.Send(request);
+Received received = router.Recv();
 string routingId = received.RoutingId;
 using (Message request = received.Parts[0])
 {
-    Console.WriteLine($"request:{request.GetString()}");
+    SampleSupport.EnsureEqual("ping", request.GetString(), "request");
 }
 
-using var reply = Message.FromString("dealer-reply");
+using var reply = Message.FromString("pong");
 router.Send(routingId, reply);
-Console.WriteLine(SampleSupport.ReceiveUtf8(dealer, 2000));
+string payload = SampleSupport.ReceiveUtf8(dealer, 2000);
+Console.WriteLine($"[dealer-router/recv] send: \"ping\" -> recv: \"{payload}\"");

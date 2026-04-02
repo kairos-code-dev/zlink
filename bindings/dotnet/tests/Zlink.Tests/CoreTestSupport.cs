@@ -154,9 +154,8 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            Received? received = socket.TryReceive();
-            if (received != null)
-                return received;
+            if (socket.TryRecv(out Received? received))
+                return received!;
             Thread.Sleep(10);
         }
         throw new TimeoutException("receive timeout");
@@ -202,10 +201,9 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            Subscribed? subscribed = socket.TrySubscribe();
-            if (subscribed != null)
+            if (socket.TrySubscribe(out Subscribed? subscribed))
             {
-                topic = subscribed.Topic;
+                    topic = subscribed!.Topic;
                 try
                 {
                     return subscribed.Parts.Count == 0
@@ -231,10 +229,9 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            SubscriptionEvent? ev = socket.TryReceiveSubscriptionEvent();
-            if (ev != null)
+            if (socket.TryReceiveSubscriptionEvent(out SubscriptionEvent? ev))
             {
-                subscribed = ev.Subscribed;
+                subscribed = ev!.Subscribed;
                 return Encoding.UTF8.GetBytes(ev.Topic);
             }
             Thread.Sleep(10);
@@ -248,7 +245,7 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            if (socket.TryReceiveSubscriptionEvent() != null)
+            if (socket.TryReceiveSubscriptionEvent(out _))
                 return false;
             Thread.Sleep(5);
         }
@@ -273,13 +270,12 @@ internal static class CoreTestSupport
         _ = maxSize;
         try
         {
-            Received? received = socket.TryReceive();
-            if (received == null)
+            if (!socket.TryRecv(out Received? received))
             {
                 lastPart = Array.Empty<byte>();
                 return false;
             }
-            IReadOnlyList<Message> parts = received.Parts;
+            IReadOnlyList<Message> parts = received!.Parts;
             if (parts.Count == 0)
             {
                 lastPart = Array.Empty<byte>();
@@ -309,13 +305,12 @@ internal static class CoreTestSupport
         _ = maxSize;
         try
         {
-            Received? received = socket.TryReceive();
-            if (received == null)
+            if (!socket.TryRecv(out Received? received))
             {
                 lastPart = Array.Empty<byte>();
                 return false;
             }
-            IReadOnlyList<Message> parts = received.Parts;
+            IReadOnlyList<Message> parts = received!.Parts;
             if (parts.Count == 0)
             {
                 lastPart = Array.Empty<byte>();
@@ -344,10 +339,9 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            Received? received = socket.TryReceive();
-            if (received != null)
+            if (socket.TryRecv(out Received? received))
             {
-                DisposeAll(received.Parts);
+                DisposeAll(received!.Parts);
                 return false;
             }
             Thread.Sleep(5);
@@ -361,10 +355,9 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            Subscribed? subscribed = socket.TrySubscribe();
-            if (subscribed != null)
+            if (socket.TrySubscribe(out Subscribed? subscribed))
             {
-                DisposeAll(subscribed.Parts);
+                DisposeAll(subscribed!.Parts);
                 return false;
             }
             Thread.Sleep(5);
@@ -378,12 +371,11 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            Received? received = socket.TryReceive();
-            if (received != null)
+            if (socket.TryRecv(out Received? received))
             {
                 try
                 {
-                    string payload = received.Parts.Count == 0
+                    string payload = received!.Parts.Count == 0
                         ? string.Empty
                         : Encoding.UTF8.GetString(
                             received.Parts[received.Parts.Count - 1].AsReadOnlySpan())
@@ -392,7 +384,7 @@ internal static class CoreTestSupport
                 }
                 finally
                 {
-                    DisposeAll(received.Parts);
+                    DisposeAll(received!.Parts);
                 }
             }
             Thread.Sleep(10);

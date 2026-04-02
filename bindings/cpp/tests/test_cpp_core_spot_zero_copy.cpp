@@ -71,7 +71,7 @@ void test_spot_publish_zero_local_delivery ()
         zlink::service::spot_t sub_spot (sub_node);
         assert (pub_spot.valid ());
         assert (sub_spot.valid ());
-        assert (sub_spot.subscribe ("zero:topic") == 0);
+        assert (sub_spot.set_subscription ("zero:topic") == 0);
         sleep_ms (100);
 
         char *payload = alloc_payload ("pong", 4);

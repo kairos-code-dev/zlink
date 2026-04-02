@@ -1,17 +1,25 @@
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import zlink
+from sample_common import tcp_endpoint, wait_connected
 
 
 def main():
+    port, endpoint = tcp_endpoint()
     with zlink.Context() as ctx:
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
-                endpoint = "inproc://py-example-pair"
-                server.bind(endpoint)
-                client.connect(endpoint)
+                with server.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as srv_mon:
+                    with client.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as cli_mon:
+                        server.bind(endpoint)
+                        client.connect(endpoint)
+                        wait_connected(srv_mon, cli_mon)
 
-                client.send(b"hello")
+                client.send(b"hello-pair")
                 with server.recv() as received:
-                    print(received.to_bytes_list()[0].decode("utf-8"))
+                    data = received.to_bytes_list()[0].decode("utf-8")
+                    print(f'[pair/recv] send: "hello-pair" \u2192 recv: "{data}"')
 
 
 if __name__ == "__main__":

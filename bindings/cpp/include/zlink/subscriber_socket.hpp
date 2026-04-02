@@ -49,10 +49,10 @@ class subscriber_socket_t : public base_socket_t
     }
 
     ZLINK_CPP_NODISCARD int
-    subscribe_handler (zlink_subscribe_handler_fn handler_,
-                       void *userdata_ = NULL)
+    on_subscribe (zlink_subscribe_handler_fn handler_,
+                  void *userdata_ = NULL)
     {
-        return base_socket_t::subscribe_handler (handler_, userdata_);
+        return base_socket_t::on_subscribe (handler_, userdata_);
     }
 
   protected:

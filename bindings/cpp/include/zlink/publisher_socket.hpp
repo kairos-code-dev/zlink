@@ -42,10 +42,10 @@ class publisher_socket_t : public base_socket_t
     }
 
     ZLINK_CPP_NODISCARD int
-    send_ready_handler (zlink_send_ready_handler_fn handler_,
-                        void *userdata_ = NULL)
+    on_send_ready (zlink_send_ready_handler_fn handler_,
+                   void *userdata_ = NULL)
     {
-        return base_socket_t::send_ready_handler (handler_, userdata_);
+        return base_socket_t::on_send_ready (handler_, userdata_);
     }
 
   protected:

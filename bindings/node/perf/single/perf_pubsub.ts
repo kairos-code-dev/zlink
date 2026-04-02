@@ -22,7 +22,7 @@ async function runPubSubBenchmark(msgSize, options) {
     sub.setSubscription(topic);
 
     const state = attachCallbackCollector(
-      (handler) => sub.subscribeHandler(handler),
+      (handler) => sub.onSubscribe(handler),
       msgSize,
       options,
       (_, __, parts) => parts[0].toBuffer()

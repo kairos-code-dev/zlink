@@ -88,6 +88,12 @@ Registry를 실행하고 Discovery를 통해 ROUTER 소켓을 연결하는 최�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 3. Registry 구성
 
 모든 구성 API는 `zlink_registry_bind()` **전에** 호출해야 한다.
@@ -138,6 +144,12 @@ Registry를 실행하고 Discovery를 통해 ROUTER 소켓을 연결하는 최�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 3.2 브로드캐스트 주기
 
 === "C"
@@ -181,6 +193,12 @@ Registry를 실행하고 Discovery를 통해 ROUTER 소켓을 연결하는 최�
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ### 3.3 소켓 옵션
@@ -233,6 +251,12 @@ Registry의 내부 소켓에 저수준 소켓 옵션을 적용한다:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 | 소켓 역할 | 상수 | 용도 |
 |-----------|------|------|
 | PUB | `ZLINK_REGISTRY_SOCKET_PUB` | 서비스 목록 브로드캐스트 |
@@ -282,6 +306,12 @@ Registry의 내부 소켓에 저수준 소켓 옵션을 적용한다:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ### 3.5 TLS 설정
@@ -338,6 +368,12 @@ TLS는 해당 내부 소켓의 소켓 옵션을 통해 구성한다:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 4. 배포 패턴
@@ -458,6 +494,12 @@ Registry, Discovery, 서비스(SPOT/Socket)가 모두 단일 프로세스에 존
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > **팁**: 모든 컴포넌트가 같은 프로세스에 있을 때 `inproc://` transport를
 > 사용하면 Registry와 Discovery 간 zero-copy 통신이 가능하다.
 
@@ -513,6 +555,12 @@ Registry, Discovery, 서비스(SPOT/Socket)가 모두 단일 프로세스에 존
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ### 5.2 동기화 메커니즘
@@ -630,6 +678,12 @@ Registry는 PUB/SUB 기반 flooding 동기화를 사용한다:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 6. 토폴로지 조회 (Topology Introspection)
 
 Registry는 글로벌 서비스 토폴로지를 조회하는 API를 제공한다. **로컬**(같은
@@ -697,6 +751,12 @@ Registry는 글로벌 서비스 토폴로지를 조회하는 API를 제공한다
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 #### 필터 기반 조회
 
 === "C"
@@ -755,6 +815,12 @@ Registry는 글로벌 서비스 토폴로지를 조회하는 API를 제공한다
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 #### 토폴로지 엔트리 필드
@@ -878,6 +944,12 @@ Registry는 글로벌 서비스 토폴로지를 조회하는 API를 제공한다
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 6.3 Member Peer 조회
 
 Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 opaque
@@ -944,6 +1016,12 @@ Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 opa
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 #### Member Peer 메타데이터
 
 === "C"
@@ -996,6 +1074,12 @@ Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 opa
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 #### Member Peer 엔트리 필드
@@ -1075,6 +1159,12 @@ Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 opa
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 7. 운영 패턴

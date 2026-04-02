@@ -75,44 +75,48 @@ if(ZLINK_CPP_BUILD_SAMPLES)
   endfunction()
 
   add_cpp_sample(
-    sample_cpp_pair_recv
-    samples/pair/pair_recv.cpp
+    sample_cpp_pair_recv_sample
+    samples/pair_recv_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_pair_callback
-    samples/pair/pair_callback.cpp
+    sample_cpp_pair_callback_sample
+    samples/pair_callback_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_pubsub_recv
-    samples/pubsub/pubsub_recv.cpp
+    sample_cpp_pubsub_recv_sample
+    samples/pubsub_recv_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_pubsub_callback
-    samples/pubsub/pubsub_callback.cpp
+    sample_cpp_pubsub_callback_sample
+    samples/pubsub_callback_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_dealer_router_recv
-    samples/dealer_router/dealer_router_recv.cpp
+    sample_cpp_dealer_router_recv_sample
+    samples/dealer_router_recv_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_dealer_router_callback
-    samples/dealer_router/dealer_router_callback.cpp
+    sample_cpp_dealer_router_callback_sample
+    samples/dealer_router_callback_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_stream_recv
-    samples/stream/stream_recv.cpp
+    sample_cpp_stream_recv_sample
+    samples/stream_recv_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_stream_callback
-    samples/stream/stream_callback.cpp
+    sample_cpp_stream_callback_sample
+    samples/stream_callback_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_spot_recv
-    samples/spot/spot_recv.cpp
+    sample_cpp_spot_recv_sample
+    samples/spot_recv_sample.cpp
   )
   add_cpp_sample(
-    sample_cpp_spot_callback
-    samples/spot/spot_callback.cpp
+    sample_cpp_spot_callback_sample
+    samples/spot_callback_sample.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_monitor_recv_sample
+    samples/monitor_recv_sample.cpp
   )
 endif()
 

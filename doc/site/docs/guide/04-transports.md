@@ -88,6 +88,15 @@ Standard TCP/IP network communication.
     socket.connect("tcp://server.example.com:5555")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("tcp://192.168.1.10:5555")
+    socket.Bind("tcp://*:5555")
+    socket.Connect("tcp://127.0.0.1:5555")
+    socket.Connect("tcp://server.example.com:5555")
+    ```
+
 ### Wildcard Port (Auto-Assignment)
 
 The OS automatically assigns an available port. Useful for tests or dynamic port environments.
@@ -156,6 +165,14 @@ The OS automatically assigns an available port. Useful for tests or dynamic port
     other_socket.connect(&endpoint)?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("tcp://127.0.0.1:*")
+    endpoint := socket.LastEndpoint()
+    other_socket.Connect(endpoint)
+    ```
+
 > Reference: `core/tests/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` wildcard bind pattern
 
 ### Using DNS Names
@@ -203,6 +220,12 @@ When a hostname is used with connect, DNS resolution is performed internally.
 
     ```rust
     socket.connect("tcp://localhost:5555")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.Connect("tcp://localhost:5555")
     ```
 
 > Note: DNS resolution is blocking. Using IP addresses is recommended in production.
@@ -317,6 +340,18 @@ When a hostname is used with connect, DNS resolution is performed internally.
     }
     ```
 
+=== "Go"
+
+    ```go
+    if err := socket.Bind("tcp://*:5555"); err != nil {
+        // Port 5555 already in use
+    }
+
+    if err := socket.Connect("tcp://invalid:99999"); err != nil {
+        efmt.Printf("Connection failed: %v\n", e)
+    }
+    ```
+
 ### Characteristics
 
 - **TCP_NODELAY** enabled (Nagle algorithm disabled)
@@ -383,6 +418,13 @@ Local inter-process communication based on Unix domain sockets.
     socket.connect("ipc:///tmp/myapp.ipc")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.Bind("ipc:///tmp/myapp.ipc")
+    socket.Connect("ipc:///tmp/myapp.ipc")
+    ```
+
 ### Wildcard Bind
 
 === "C"
@@ -436,6 +478,13 @@ Local inter-process communication based on Unix domain sockets.
     ```rust
     socket.bind("ipc://*")?;
     let endpoint = socket.last_endpoint()?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.Bind("ipc://*")
+    endpoint := socket.LastEndpoint()
     ```
 
 > Reference: `core/tests/test_router_multiple_dealers.cpp` -- `zlink_bind(router, "ipc://*")`
@@ -509,6 +558,14 @@ Local inter-process communication based on Unix domain sockets.
     }
     ```
 
+=== "Go"
+
+    ```go
+    if err := socket.Bind("ipc:///very/long/path/.../endpoint.ipc"); err != nil {
+        // IPC path exceeds system limit (108 characters)
+    }
+    ```
+
 > Reference: `core/tests/test_pair_ipc.cpp` -- `test_endpoint_too_long()`
 
 ### Characteristics
@@ -571,6 +628,13 @@ In-process communication. The fastest transport.
     ```rust
     socket_a.bind("inproc://workers")?;
     socket_b.connect("inproc://workers")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket_a.Bind("inproc://workers")
+    socket_b.Connect("inproc://workers")
     ```
 
 ### Error Handling
@@ -638,6 +702,14 @@ In-process communication. The fastest transport.
 
     ```rust
     if let Err(e) = socket.connect("inproc://nonexistent") {
+        // No bind exists yet
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    if err := socket.Connect("inproc://nonexistent"); err != nil {
         // No bind exists yet
     }
     ```
@@ -725,6 +797,15 @@ Integration with web browsers and external clients.
     socket.connect("ws://server:8080")?;
     socket.bind("ws://127.0.0.1:*")?;
     let endpoint = socket.last_endpoint()?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.Bind("ws://*:8080")
+    socket.Connect("ws://server:8080")
+    socket.Bind("ws://127.0.0.1:*")
+    endpoint := socket.LastEndpoint()
     ```
 
 > Reference: `core/tests/test_stream_socket.cpp` -- `test_stream_ws_basic()`
@@ -815,6 +896,16 @@ Encrypted WebSocket communication.
     socket.connect("wss://server:8443")?;
     ```
 
+=== "Go"
+
+    ```go
+    socket.SetTLSServer(cert_path, key_path, false)
+    socket.Bind("wss://*:8443")
+
+    socket.set_tls_client(ca_path, "localhost", false)
+    socket.Connect("wss://server:8443")
+    ```
+
 > Reference: `core/tests/test_stream_socket.cpp` -- `test_stream_wss_basic()`
 
 ### Additional Configuration Compared to ws
@@ -900,6 +991,16 @@ Native TLS encrypted communication.
 
     socket.set_tls_client("/path/to/ca.pem", None, true)?;
     socket.connect("tls://server:5555")?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetTLSServer("/path/to/cert.pem", "/path/to/key.pem", false)
+    socket.Bind("tls://*:5555")
+
+    socket.SetTLSClient("/path/to/ca.pem", "", true)
+    socket.Connect("tls://server:5555")
     ```
 
 For detailed TLS configuration, see the [TLS Security Guide](05-tls-security.md).
@@ -1016,6 +1117,17 @@ A single socket can bind or connect to multiple endpoints.
     dealer.connect("tcp://server2:5555")?;
     ```
 
+=== "Go"
+
+    ```go
+    router.Bind("tcp://192.168.1.10:5555")
+    router.Bind("tcp://10.0.0.1:5555")
+    router.Bind("ipc:///tmp/router.ipc")
+
+    dealer.Connect("tcp://server1:5555")
+    dealer.Connect("tcp://server2:5555")
+    ```
+
 ### ZLINK_OPT_LAST_ENDPOINT
 
 Query the actual assigned endpoint after a wildcard bind.
@@ -1071,6 +1183,13 @@ Query the actual assigned endpoint after a wildcard bind.
     ```rust
     socket.bind("tcp://127.0.0.1:*")?;
     println!("Bound endpoint: {}", socket.last_endpoint()?);
+    ```
+
+=== "Go"
+
+    ```go
+    socket.Bind("tcp://127.0.0.1:*")
+    fmt.Printf("Bound endpoint: %v\n", socket.last_endpoint()?)
     ```
 
 For performance comparisons, see the [Performance Guide](10-performance.md).

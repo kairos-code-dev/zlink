@@ -67,6 +67,12 @@ Used for receiving messages or initialization purposes. Creates a message withou
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 #### zlink_msg_init_size — Size-Specified (Requires Copy)
 
 Allocates a buffer of the specified size, then fills it directly via `zlink_msg_data()`. This is the pattern for **copying data into the message**.
@@ -114,6 +120,12 @@ Allocates a buffer of the specified size, then fills it directly via `zlink_msg_
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 **When to use:** When creating a message from data in your own buffer. Safe to free the original buffer immediately.
@@ -175,6 +187,12 @@ Transfers ownership of an external buffer to the message. Sends without copying.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 **When to use:** When you want to avoid copying large data. Delegates buffer deallocation timing to the library.
 
 > Reference: `core/tests/test_msg_ffn.cpp` — Verifies free function callback behavior
@@ -222,6 +240,12 @@ Transfers ownership of an external buffer to the message. Sends without copying.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > **Removed:** `zlink_msg_more()` and `ZLINK_MORE` have been removed from the header.
@@ -284,6 +308,12 @@ Transfers ownership of an external buffer to the message. Sends without copying.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > **Legacy:** `zlink_msg_send()` is still present in the header but planned for
 > removal. Use `zlink_send()` with a parts array instead.
 
@@ -343,6 +373,12 @@ Messages are received via handler callbacks registered at socket creation time. 
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 3.5 Deallocation
 
 === "C"
@@ -385,6 +421,12 @@ Messages are received via handler callbacks registered at socket creation time. 
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 4. Ownership Rules
@@ -461,6 +503,12 @@ Messages are received via handler callbacks registered at socket creation time. 
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 5. Zero-Copy Pattern Details
 
 ### Writing Free Function Callbacks
@@ -521,6 +569,12 @@ Messages are received via handler callbacks registered at socket creation time. 
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > Reference: `core/tests/test_msg_ffn.cpp` — `ffn()` callback writes "freed" to hint
@@ -584,6 +638,12 @@ Messages are received via handler callbacks registered at socket creation time. 
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > Reference: `core/tests/test_msg_ffn.cpp` — close/send/copy scenarios
 
 ### Constant Data with zlink_msg_init_data
@@ -640,6 +700,12 @@ Constant (literal, static) data can be sent without copying by using
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
@@ -713,6 +779,12 @@ Multipart messages are sent as a parts array in a single `zlink_send()` call.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > Reference: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
 
 ### Pattern 2: Topic + Data (PUB/SUB)
@@ -776,6 +848,12 @@ Multipart messages are sent as a parts array in a single `zlink_send()` call.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### Pattern 3: Multipart Processing in Handler Callback
 
 === "C"
@@ -830,6 +908,12 @@ Multipart messages are sent as a parts array in a single `zlink_send()` call.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 7. Message Copying
@@ -891,6 +975,12 @@ Increments the reference count instead of copying the data. Efficient for large 
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying shared property after copy
@@ -959,6 +1049,12 @@ threads.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages
 
 ## 8. Error Handling
@@ -1020,6 +1116,12 @@ threads.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 9. zlink_send (Multipart Msg-Based)
@@ -1091,6 +1193,12 @@ threads.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 For ROUTER directed sends, use `zlink_send_rid()`:
 
 === "C"
@@ -1133,6 +1241,12 @@ For ROUTER directed sends, use `zlink_send_rid()`:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > **Legacy:** `zlink_msg_send()` is still present in the header but planned for

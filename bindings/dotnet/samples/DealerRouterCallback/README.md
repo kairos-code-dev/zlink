@@ -1,1 +1,1 @@
-`DealerRouterCallback` shows `RecvHandler` on `DealerSocket` and `RouterSocket`.
+`DealerRouterCallback` shows routed callback handling with `DealerSocket` and `RouterSocket`.

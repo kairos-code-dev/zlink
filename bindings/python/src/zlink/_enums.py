@@ -146,6 +146,15 @@ class ServiceType(IntEnum):
     SOCKET = 0x3003
 
 
+class ServiceRole(IntEnum):
+    INVALID = 0
+    SPOT = 2
+    ROUTER = 3
+    DEALER = 4
+    PUB = 5
+    SUB = 6
+
+
 class ServiceMonitorMask(IntFlag):
     READY_CHANGED = 1 << 0
     PEER_UP = 1 << 2
@@ -217,3 +226,25 @@ class SpotPeerState(IntEnum):
 class SpotSocketRole(IntEnum):
     PUB = 1
     SUB = 2
+
+
+class RegistryState(IntEnum):
+    IDLE = 1
+    ACTIVE = 2
+    DEGRADED = 3
+    ERROR = 4
+
+
+class TopologySource(IntEnum):
+    MANUAL = 1
+    DISCOVERY = 2
+    REGISTRY = 3
+
+
+class TopologyState(IntEnum):
+    DISCOVERED = 1
+    CONNECTING = 2
+    READY = 3
+    LOST = 4
+    ERROR = 5
+    STOPPED = 6

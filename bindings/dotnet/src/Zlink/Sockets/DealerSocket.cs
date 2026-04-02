@@ -4,28 +4,11 @@ namespace Zlink;
 
 public sealed class DealerSocket : MessageSocketBase
 {
+    public DealerSocketOptions DealerOptions { get; }
+
     public DealerSocket(Context context)
         : base(context, SocketType.Dealer)
     {
-    }
-
-    public void SetRoutingId(string routingId)
-    {
-        SetOption(SocketOptions.RoutingId, routingId);
-    }
-
-    public void SetRoutingId(RoutingId routingId)
-    {
-        SetOption(SocketOptions.RoutingId, routingId.Value);
-    }
-
-    public string GetRoutingId()
-    {
-        return GetOption(SocketOptions.RoutingId);
-    }
-
-    public RoutingId GetRoutingIdValue()
-    {
-        return new RoutingId(GetRoutingId());
+        DealerOptions = new DealerSocketOptions(this);
     }
 }

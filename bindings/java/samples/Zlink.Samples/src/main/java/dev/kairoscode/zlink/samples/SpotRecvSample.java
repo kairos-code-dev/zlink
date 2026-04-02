@@ -1,41 +1,39 @@
-/* SPDX-License-Identifier: MPL-2.0 */
-
 package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
-import java.util.concurrent.CountDownLatch;
 
 public final class SpotRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
-        CountDownLatch recvReady = new CountDownLatch(1);
-        String topic = SampleSupport.uniqueTopic("sample.topic");
-        String endpoint = SampleSupport.tcpEndpoint();
+        String published = SampleSupport.SPOT_TOPIC + "/" + SampleSupport.SPOT_PAYLOAD;
+
         try (Context ctx = new Context();
-             SpotNode serverNode = new SpotNode(ctx);
-             SpotNode clientNode = new SpotNode(ctx);
-             Spot publisherSpot = serverNode.wrapHandle();
-             Spot subscriber = clientNode.wrapHandle()) {
-            serverNode.bind(endpoint);
-            clientNode.connectPeer(endpoint);
-            SampleSupport.subscribeAndAwaitSpotFilterApplied(subscriber,
-              topic);
-            Thread publisher = new Thread(() -> {
-                SampleSupport.await(recvReady, "spot recv publish gate");
-                try (Message payload = Message.copyOfUtf8("spot-sample")) {
-                    publisherSpot.publish(topic, payload);
-                }
-            }, "spot-recv-publisher");
-            publisher.start();
-            recvReady.countDown();
-            try (var received = subscriber.subscribe()) {
-                System.out.println("spot recv: " + received.topicId()
-                  + " -> " + received.firstPart().toUtf8String());
+             SpotNode publisherNode = new SpotNode(ctx);
+             SpotNode subscriberNode = new SpotNode(ctx);
+             Spot publisher = new Spot(publisherNode);
+            Spot subscriber = new Spot(subscriberNode)) {
+            publisherNode.bind("tcp://127.0.0.1:0");
+            String endpoint = publisherNode.lastEndpoint();
+            subscriberNode.connectPeer(endpoint);
+            SampleSupport.awaitSpotFilterApplied(subscriber,
+                SampleSupport.SPOT_TOPIC);
+
+            try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
+                publisher.publish(SampleSupport.SPOT_TOPIC, payload);
             }
-            SampleSupport.awaitThread(publisher, "spot recv publisher");
+
+            try (var received = subscriber.subscribe()) {
+                String value = received.topicId() + "/"
+                    + received.singlePartOrThrow().toUtf8String();
+                if (!published.equals(value)) {
+                    throw new IllegalStateException("unexpected delivery: " + value);
+                }
+                System.out.println("[spot/recv] publish: \"" + published
+                    + "\" \u2192 subscribe: \"" + value + "\"");
+            }
         }
     }
 }

@@ -175,6 +175,18 @@ SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 S
     node.attach_discovery(&discovery)?;
     ```
 
+=== "Go"
+
+    ```go
+    ctx := zlink.NewContext()
+    discovery := zlink::Discovery::new(&ctx, zlink::ServiceType::Spot, "spot-node")
+    discovery.connect_registry("tcp://registry1:5551")
+
+    node := zlink::SpotNode::new(&ctx)
+    node.Bind("tcp://*:9000")
+    node.attach_discovery(&discovery)
+    ```
+
 > `SpotNode`는 mesh 참여를 위한 토폴로지 및 라이프사이클 소유자이다.
 > 범용 data-plane facade(publish/subscribe)를 노출하지 않는다.
 > publish/subscribe를 사용하려면 `zlink_spot_new(node)`로 facade를 만든다.
@@ -240,6 +252,14 @@ Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 �
     ```rust
     node.bind("tcp://127.0.0.1:0")?;
     let status = node.status_snapshot()?;
+    // status.local_endpoint contains e.g. "tcp://127.0.0.1:43521"
+    ```
+
+=== "Go"
+
+    ```go
+    node.Bind("tcp://127.0.0.1:0")
+    status := node.status_snapshot()
     // status.local_endpoint contains e.g. "tcp://127.0.0.1:43521"
     ```
 
@@ -310,6 +330,15 @@ Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 �
     node.connect_peer("tcp://node3:9000")?;
     ```
 
+=== "Go"
+
+    ```go
+    node := zlink::SpotNode::new(&ctx)
+    node.Bind("tcp://*:9000")
+    node.connect_peer("tcp://node2:9000")
+    node.connect_peer("tcp://node3:9000")
+    ```
+
 **주의:** 수동 Mesh에서는 Discovery가 없으므로 Registry topology visibility도
 없다. 이는 의도된 제한이다.
 
@@ -357,6 +386,12 @@ Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 �
 
     ```rust
     let spot = zlink::Spot::new(&node)?;
+    ```
+
+=== "Go"
+
+    ```go
+    spot := zlink::Spot::new(&node)
     ```
 
 `zlink_spot_new(node)`는 기존 spot node를 빌리는 unified facade를
@@ -415,6 +450,12 @@ unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
 
     ```rust
     spot.publish("chat:room1:message", b"hello world")?;
+    ```
+
+=== "Go"
+
+    ```go
+    spot.publish("chat:room1:message", b"hello world")
     ```
 
 ### 4.3 구독 / 해제
@@ -487,6 +528,16 @@ unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
 
     spot.unset_subscription("chat:room1:message")?;
     spot.unset_subscription("chat:room1:*")?;
+    ```
+
+=== "Go"
+
+    ```go
+    spot.set_subscription("chat:room1:message")
+    spot.set_subscription("chat:room1:*")
+
+    spot.unset_subscription("chat:room1:message")
+    spot.unset_subscription("chat:room1:*")
     ```
 
 ### 4.4 메시지 수신
@@ -581,6 +632,16 @@ recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
     println!("Topic: {}, Parts: {}", topic, parts.len());
     ```
 
+=== "Go"
+
+    ```go
+    spot := zlink::Spot::new(&node)
+    spot.set_subscription("chat:room1:message")
+
+    let (topic, parts) = spot.subscribe()
+    fmt.Printf("Topic: {}, Parts: %v\n", topic, parts.len())
+    ```
+
 #### Callback 모드
 
 `zlink_subscribe_handler()`를 호출하면 recv 모드에서 callback 모드로
@@ -658,6 +719,15 @@ recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
     let spot = zlink::Spot::new(&node)?;
     spot.subscribe_handler(|source_rid, topic, parts| {
         println!("Topic: {}, Parts: {}", topic, parts.len());
+    });
+    ```
+
+=== "Go"
+
+    ```go
+    spot := zlink::Spot::new(&node)
+    spot.subscribe_handler(|source_rid, topic, parts| {
+        fmt.Printf("Topic: {}, Parts: %v\n", topic, parts.len())
     });
     ```
 
@@ -790,6 +860,14 @@ late join에 대한 과거 메시지 재전송은 보장하지 않는다.
     spot.destroy()?;
     node.destroy()?;
     discovery.destroy()?;
+    ```
+
+=== "Go"
+
+    ```go
+    spot.destroy()
+    node.destroy()
+    discovery.destroy()
     ```
 
 **정리 순서:** `spot`을 먼저 destroy하고, 그 다음 `SpotNode`, 마지막으로

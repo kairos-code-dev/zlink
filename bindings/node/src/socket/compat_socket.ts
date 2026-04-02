@@ -16,6 +16,14 @@ export class Socket extends DuplexSocket {
     super(ctx, type);
   }
 
+  connect(endpoint: string): void {
+    requireNative().socketConnect(this.nativeHandle(), endpoint);
+  }
+
+  disconnect(endpoint: string): void {
+    requireNative().socketDisconnect(this.nativeHandle(), endpoint);
+  }
+
   setSockOpt(option: number, value: BufferLike | string): void {
     this.setSockOptRaw(option, value);
   }

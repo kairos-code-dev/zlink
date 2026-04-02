@@ -1,32 +1,43 @@
-/* SPDX-License-Identifier: MPL-2.0 */
-
 package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.PairSocket;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class PairCallbackSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
-        String endpoint = SampleSupport.inprocEndpoint("pair-callback");
+        String endpoint = SampleSupport.tcpEndpoint();
         CountDownLatch delivered = new CountDownLatch(1);
+        AtomicReference<String> receivedValue = new AtomicReference<>();
+
         try (Context ctx = new Context();
              PairSocket server = new PairSocket(ctx);
-             PairSocket client = new PairSocket(ctx)) {
-            server.onReceive(received -> {
-                try (received) {
-                    System.out.println("pair callback: " + SampleSupport.singleUtf8(received));
-                    delivered.countDown();
-                }
-            });
+             PairSocket client = new PairSocket(ctx);
+             var serverMonitor = server.monitorOpen(SampleSupport.CONNECTION_READY_EVENT);
+             var clientMonitor = client.monitorOpen(SampleSupport.CONNECTION_READY_EVENT)) {
             server.bind(endpoint);
             client.connect(endpoint);
-            try (Message outbound = SampleSupport.wrapUtf8("pair-wrap")) {
+            SampleSupport.waitConnected(serverMonitor, clientMonitor);
+
+            server.onReceive(received -> {
+                receivedValue.set(SampleSupport.singleUtf8(received));
+                delivered.countDown();
+            });
+
+            try (Message outbound = Message.copyOfUtf8(SampleSupport.PAIR_PAYLOAD)) {
                 client.send(outbound);
             }
+
             SampleSupport.await(delivered, "pair callback");
+            String value = receivedValue.get();
+            if (!SampleSupport.PAIR_PAYLOAD.equals(value)) {
+                throw new IllegalStateException("unexpected payload: " + value);
+            }
+            System.out.println("[pair/callback] send: \"" + SampleSupport.PAIR_PAYLOAD
+                + "\" \u2192 recv: \"" + value + "\"");
         }
     }
 }

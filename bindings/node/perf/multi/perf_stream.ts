@@ -109,7 +109,7 @@ async function runStreamBenchmark(msgSize, options) {
     });
 
     if (options.recv === 'callback') {
-      stream.recvHandler((routingId, parts) => {
+      stream.onReceive((routingId, parts) => {
         processServerReceive({
           routingId,
           parts
@@ -118,7 +118,7 @@ async function runStreamBenchmark(msgSize, options) {
     } else {
       echoLoop = (async () => {
         while (!stopEchoLoop) {
-          const received = stream.tryReceive();
+          const received = stream.tryRecv();
           if (!received) {
             await new Promise((resolve) => setImmediate(resolve));
             continue;

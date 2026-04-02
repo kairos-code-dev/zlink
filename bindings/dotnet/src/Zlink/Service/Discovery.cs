@@ -9,17 +9,20 @@ namespace Zlink.Service;
 
 public sealed class Discovery : IDisposable
 {
-    private const uint DefaultMonitorEvents =
-        (1u << 0) | (1u << 4) | (1u << 5) | (1u << 6) | (1u << 7)
-        | (1u << 17);
+    private const ServiceMonitorEvents DefaultMonitorEvents =
+        ServiceMonitorEvents.DiscoveryReadyChanged
+        | ServiceMonitorEvents.Error
+        | ServiceMonitorEvents.DiscoveryServiceUp
+        | ServiceMonitorEvents.DiscoveryServiceDown
+        | ServiceMonitorEvents.DiscoveryProvidersChanged
+        | ServiceMonitorEvents.Closed;
     private IntPtr _handle;
 
     public Discovery(Context context, ServiceType serviceType, string serviceName)
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
-        if (serviceName == null)
-            throw new ArgumentNullException(nameof(serviceName));
+        BoundaryValidation.ValidateFixedUtf8(serviceName, nameof(serviceName));
         _handle = NativeMethods.zlink_discovery_new(context.Handle,
             (int)serviceType, serviceName);
         if (_handle == IntPtr.Zero)
@@ -30,7 +33,8 @@ public sealed class Discovery : IDisposable
 
     public void ConnectRegistry(string registryPubEndpoint)
     {
-        ValidateNotEmpty(registryPubEndpoint, nameof(registryPubEndpoint));
+        BoundaryValidation.ValidateFixedUtf8(registryPubEndpoint,
+            nameof(registryPubEndpoint));
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_connect_registry(_handle,
             registryPubEndpoint);
@@ -108,29 +112,36 @@ public sealed class Discovery : IDisposable
         }
     }
 
-    public Message GetMemberPeerMetadata(ushort serviceRole, string endpoint)
+    public Message MemberPeerMetadata(ServiceRole serviceRole, string endpoint)
     {
-        ValidateNotEmpty(endpoint, nameof(endpoint));
+        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
         EnsureNotDisposed();
         using var metadata = new Message();
         int rc = NativeMethods.zlink_discovery_member_peer_metadata(_handle,
-            serviceRole, endpoint, ref metadata.Handle);
+            (ushort)serviceRole, endpoint, ref metadata.Handle);
         ZlinkException.ThrowIfError(rc);
         return metadata.Move();
     }
 
-    public ServiceMonitor OpenMonitor(uint events = DefaultMonitorEvents)
+    public ServiceMonitor MonitorOpen(
+        ServiceMonitorEvents events = DefaultMonitorEvents)
     {
         EnsureNotDisposed();
+        EnumValidation.EnsureServiceMonitorEvents(events, nameof(events));
         var options = new ZlinkServiceMonitorOpenOptions
         {
-            Events = events
+            Events = (uint)events
         };
         IntPtr monitor = NativeMethods.zlink_service_monitor_open(_handle,
             in options);
         if (monitor == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return new ServiceMonitor(monitor);
+    }
+
+    public void Close()
+    {
+        Dispose();
     }
 
     public void Dispose()
@@ -152,13 +163,4 @@ public sealed class Discovery : IDisposable
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Discovery));
     }
-
-    private static void ValidateNotEmpty(string value, string paramName)
-    {
-        if (value == null)
-            throw new ArgumentNullException(paramName);
-        if (value.Length == 0)
-            throw new ArgumentException("Value must not be empty.", paramName);
-    }
-
 }

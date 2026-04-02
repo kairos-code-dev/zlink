@@ -34,11 +34,44 @@ public static class SampleSupport
 
     public static string NewEndpoint(string transport, string prefix)
     {
-        if (transport == "inproc")
-            return $"inproc://{prefix}-{Guid.NewGuid():N}";
-
         int port = ReservePort();
         return $"{transport}://127.0.0.1:{port}";
+    }
+
+    public static int ReservePort()
+    {
+        TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
+    }
+
+    public static void WaitConnected(params SocketMonitor[] monitors)
+    {
+        foreach (SocketMonitor monitor in monitors)
+            WaitMonitorEvent(monitor, 5000, SocketEvent.ConnectionReady);
+    }
+
+    public static SocketMonitorEvent WaitMonitorEvent(SocketMonitor monitor,
+        int timeoutMs, params SocketEvent[] expectedEvents)
+    {
+        if (expectedEvents == null || expectedEvents.Length == 0)
+        {
+            throw new ArgumentException("Expected monitor events are required.",
+                nameof(expectedEvents));
+        }
+
+        _ = timeoutMs;
+        SocketMonitorEvent evt = monitor.Recv();
+        for (int i = 0; i < expectedEvents.Length; i++)
+        {
+            if (evt.Event == expectedEvents[i])
+                return evt;
+        }
+
+        throw new InvalidOperationException(
+            $"Unexpected monitor event {evt.Event}.");
     }
 
     public static void WaitOrThrow(Func<bool> predicate, int timeoutMs,
@@ -55,94 +88,28 @@ public static class SampleSupport
         throw new TimeoutException(message);
     }
 
-    public static void SendUtf8UntilReady(MessageSocketBase socket, string payload,
-        int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            using var message = Message.FromString(payload);
-            SendResult result = socket.TrySend(message);
-            if (result == SendResult.Sent)
-                return;
-            if (result != SendResult.Backpressured
-                && result != SendResult.NotReady)
-            {
-                throw new InvalidOperationException(
-                    $"Unexpected send result: {result}");
-            }
-
-            Thread.Sleep(10);
-        }
-
-        throw new TimeoutException("send timeout");
-    }
-
-    public static void PublishUtf8UntilReady(PublisherSocketBase socket, string topic,
-        string payload, int timeoutMs)
-    {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            using var message = Message.FromString(payload);
-            SendResult result = socket.TryPublish(topic, message);
-            if (result == SendResult.Sent)
-                return;
-            if (result != SendResult.Backpressured
-                && result != SendResult.NotReady)
-            {
-                throw new InvalidOperationException(
-                    $"Unexpected publish result: {result}");
-            }
-
-            Thread.Sleep(10);
-        }
-
-        throw new TimeoutException("publish timeout");
-    }
-
     public static string ReceiveUtf8(MessageSocketBase socket, int timeoutMs)
     {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            Received? received = socket.TryReceive();
-            if (received != null)
-            {
-                if (received.Parts.Count == 0)
-                    throw new InvalidOperationException(
-                        "Expected at least one message part.");
-                using Message message = received.Parts[0];
-                return Encoding.UTF8.GetString(message.AsReadOnlySpan());
-            }
-
-            Thread.Sleep(10);
-        }
-
-        throw new TimeoutException("receive timeout");
+        _ = timeoutMs;
+        Received received = socket.Recv();
+        if (received.Parts.Count == 0)
+            throw new InvalidOperationException(
+                "Expected at least one message part.");
+        using Message message = received.Parts[0];
+        return Encoding.UTF8.GetString(message.AsReadOnlySpan());
     }
 
     public static string SubscribeUtf8(SubscriberSocketBase socket, out string topic,
         int timeoutMs)
     {
-        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            Subscribed? subscribed = socket.TrySubscribe();
-            if (subscribed != null)
-            {
-                topic = subscribed.Topic;
-                if (subscribed.Parts.Count == 0)
-                    throw new InvalidOperationException(
-                        "Expected at least one subscribed message part.");
-                using Message message = subscribed.Parts[0];
-                return Encoding.UTF8.GetString(message.AsReadOnlySpan());
-            }
-
-            Thread.Sleep(10);
-        }
-
-        throw new TimeoutException("subscribe timeout");
+        _ = timeoutMs;
+        Subscribed subscribed = socket.Subscribe();
+        topic = subscribed.Topic;
+        if (subscribed.Parts.Count == 0)
+            throw new InvalidOperationException(
+                "Expected at least one subscribed message part.");
+        using Message message = subscribed.Parts[0];
+        return Encoding.UTF8.GetString(message.AsReadOnlySpan());
     }
 
     public static TcpClient ConnectRawClient(int port)
@@ -180,12 +147,13 @@ public static class SampleSupport
         return int.Parse(endpoint.AsSpan(idx + 1));
     }
 
-    private static int ReservePort()
+    public static void EnsureEqual(string expected, string actual, string name)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
+        if (!string.Equals(expected, actual, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Expected {name} \"{expected}\" but received \"{actual}\".");
+        }
     }
+
 }

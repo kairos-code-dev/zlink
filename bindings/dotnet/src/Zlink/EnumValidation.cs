@@ -11,6 +11,8 @@ internal static class EnumValidation
         | PollEvents.PollOut
         | PollEvents.PollErr
         | PollEvents.PollPri;
+    private const ServiceMonitorEvents ValidServiceMonitorEvents =
+        ServiceMonitorEvents.All;
 
     internal static void EnsureContextOption(ContextOption option,
         string paramName)
@@ -37,6 +39,16 @@ internal static class EnumValidation
         {
             throw new ArgumentOutOfRangeException(paramName, events,
                 "Unknown poll event flag.");
+        }
+    }
+
+    internal static void EnsureServiceMonitorEvents(ServiceMonitorEvents events,
+        string paramName)
+    {
+        if ((((uint)events) & ~((uint)ValidServiceMonitorEvents)) != 0)
+        {
+            throw new ArgumentOutOfRangeException(paramName, events,
+                "Unknown service monitor event flag.");
         }
     }
 }

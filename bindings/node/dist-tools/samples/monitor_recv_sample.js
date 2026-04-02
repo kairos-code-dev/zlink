@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: MPL-2.0
+'use strict';
+Object.defineProperty(exports, "__esModule", { value: true });
+const assert = require('node:assert/strict');
+const { once } = require('node:events');
+const net = require('node:net');
+const zlink = require('../dist');
+async function reservePort() {
+    const srv = net.createServer();
+    srv.listen(0, '127.0.0.1');
+    await once(srv, 'listening');
+    const { port } = srv.address();
+    await new Promise((resolve, reject) => srv.close((error) => error ? reject(error) : resolve()));
+    return port;
+}
+async function main() {
+    const port = await reservePort();
+    const endpoint = `tcp://127.0.0.1:${port}`;
+    const ctx = new zlink.Context();
+    const server = new zlink.PairSocket(ctx);
+    const client = new zlink.PairSocket(ctx);
+    const serverMonitor = server.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+    const clientMonitor = client.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+    try {
+        assert.equal(serverMonitor.tryRecv(), null);
+        assert.equal(clientMonitor.tryRecv(), null);
+        server.bind(endpoint);
+        client.connect(endpoint);
+        const serverEvent = serverMonitor.recv();
+        const clientEvent = clientMonitor.recv();
+        assert.equal(serverEvent.event, zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+        assert.equal(clientEvent.event, zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+        console.log('[monitor/recv] recv: "connection-ready" → tryRecv: empty');
+    }
+    finally {
+        clientMonitor.close();
+        serverMonitor.close();
+        client.close();
+        server.close();
+        ctx.close();
+    }
+}
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

@@ -159,6 +159,12 @@ After:                                After:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 4. Message Lifecycle
 
 ### 4.1 Init — zlink_msg_init vs zlink_msg_init_size vs zlink_msg_init_data
@@ -211,6 +217,12 @@ Recv용 message나 `zlink_msg_copy()` target으로 사용. Data 없이 생성.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 #### zlink_msg_init_size — Size 지정 (copy 필요)
 
 지정된 size의 buffer를 할당한 후, `zlink_msg_data()`로 data를 직접 채운다.
@@ -259,6 +271,12 @@ Recv용 message나 `zlink_msg_copy()` target으로 사용. Data 없이 생성.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 **사용 시점:** 자체 buffer의 data를 message로 만들 때. 원본 buffer를 바로 해제해도 안전.
@@ -321,6 +339,12 @@ Free callback(ffn)으로 buffer 정리.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 **`ffn=NULL`인 경우 (CMSG):** buffer를 해제하지 않고 borrowed reference로
 유지한다. String literal이나 static data를 copy 없이 전송할 때 사용.
 이 경우 `zlink_msg_refcnt()`는 항상 1을 반환한다.
@@ -376,6 +400,12 @@ Free callback(ffn)으로 buffer 정리.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 **사용 시점:** 대용량 data의 copy를 피하고 싶을 때. Buffer 해제 시점을 library에 위임.
 
 > 참고: `core/tests/test_msg_ffn.cpp` — free function callback 동작 검증
@@ -423,6 +453,12 @@ Free callback(ffn)으로 buffer 정리.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > **제거됨:** `zlink_msg_more()`와 `ZLINK_MORE`는 header에서 제거되었다.
@@ -490,6 +526,12 @@ LMSG의 경우 refcount를 증가시키지 않고 pointer만 이전한다.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 **사용 시점:** message를 다른 변수로 넘길 때. `zlink_msg_copy()`와 달리
 refcount 증가가 없어 단순하다.
 
@@ -553,6 +595,12 @@ refcount를 증가시킨다. 양쪽 모두 `zlink_msg_close()` 필요.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > 참고: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`
 
 ### 4.4 Metadata Property — zlink_msg_gets
@@ -602,6 +650,12 @@ Message에 부착된 metadata property를 string으로 반환한다.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ### 4.5 Send
@@ -669,6 +723,12 @@ Message에 부착된 metadata property를 string으로 반환한다.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > **Legacy:** `zlink_msg_send()`는 아직 header에 존재하지만 제거 예정이다.
 > `zlink_send()`에 parts array를 전달하는 방식으로 대체한다.
 
@@ -729,6 +789,12 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### 4.7 Close
 
 === "C"
@@ -771,6 +837,12 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 5. Ownership 규칙
@@ -841,6 +913,12 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 6. Zero-Copy Pattern 상세
 
 ### Free Function Callback 작성법
@@ -903,6 +981,12 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > 참고: `core/tests/test_msg_ffn.cpp` — `ffn()` callback이 hint에 "freed" 기록
 
 ### Free Function 호출 시점
@@ -962,6 +1046,12 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > 참고: `core/tests/test_msg_ffn.cpp` — close/send/copy 각 시나리오
@@ -1036,6 +1126,12 @@ copy 없이 전송할 수 있다.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > 참고: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
 
 ## 7. Multipart Message 실전 Pattern
@@ -1107,6 +1203,12 @@ Multipart message는 `zlink_send()` 한 번의 호출로 parts array를 전송�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > 참고: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
 
 ### Pattern 2: Topic + Data (PUB/SUB)
@@ -1170,6 +1272,12 @@ Multipart message는 `zlink_send()` 한 번의 호출로 parts array를 전송�
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ### Pattern 3: Handler Callback에서 Multipart 처리
 
 === "C"
@@ -1224,6 +1332,12 @@ Multipart message는 `zlink_send()` 한 번의 호출로 parts array를 전송�
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 ## 8. Storage Refcount — zlink_msg_refcnt
@@ -1298,6 +1412,12 @@ Refcounted storage가 아니면 1을 반환한다.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 > 참고: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: constant message의 shared property
 
 ## 9. Error 처리
@@ -1361,6 +1481,12 @@ Refcounted storage가 아니면 1을 반환한다.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ## 10. zlink_send (Multipart Msg 기반)
 
 `zlink_send()`는 `zlink_msg_t` parts array와 part count를 받는다:
@@ -1405,6 +1531,12 @@ Refcounted storage가 아니면 1을 반환한다.
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 === "C"
@@ -1466,6 +1598,12 @@ Refcounted storage가 아니면 1을 반환한다.
     // Rust equivalent -- see C tab for full logic
     ```
 
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
+    ```
+
 ROUTER directed send에는 `zlink_send_rid()`를 사용한다:
 
 === "C"
@@ -1508,6 +1646,12 @@ ROUTER directed send에는 `zlink_send_rid()`를 사용한다:
 
     ```rust
     // Rust equivalent -- see C tab for full logic
+    ```
+
+=== "Go"
+
+    ```go
+    // Go equivalent -- see C tab for full logic
     ```
 
 > **Legacy:** `zlink_msg_send()`는 아직 header에 존재하지만 제거 예정이다.

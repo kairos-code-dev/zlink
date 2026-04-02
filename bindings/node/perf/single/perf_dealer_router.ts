@@ -20,7 +20,7 @@ async function runDealerRouterBenchmark(msgSize, options) {
     dealer.connect(endpoint);
 
     const state = attachCallbackCollector(
-      (handler) => router.recvHandler(handler),
+      (handler) => router.onReceive(handler),
       msgSize,
       options,
       (_, parts) => parts[0].toBuffer()

@@ -122,7 +122,7 @@ class callback_slot_t
         _stop.store (false, std::memory_order_release);
         _failed.store (false, std::memory_order_release);
         _synced.store (false, std::memory_order_release);
-        if (_spot->subscribe_handler (&callback_slot_t::handle_subscribe, this) != 0)
+        if (_spot->on_subscribe(&callback_slot_t::handle_subscribe, this) != 0)
             return false;
         _worker = std::thread (&callback_slot_t::worker_loop, this);
         return true;
@@ -134,7 +134,7 @@ class callback_slot_t
         if (_worker.joinable ())
             _worker.join ();
         if (_spot)
-            (void) _spot->subscribe_handler (NULL, NULL);
+            (void) _spot->on_subscribe(NULL, NULL);
         _spot = NULL;
     }
 
@@ -369,10 +369,10 @@ class spot_client_bench_t
                                     _settings.rcvtimeo_ms);
 
             slot->monitor.reset (new zlink::service_monitor_handle_t (
-              *slot->spot,
-              zlink::service_monitor_event::spot_filter_applied
+              slot->spot->monitor_open (
+                zlink::service_monitor_event::spot_filter_applied
                 | zlink::service_monitor_event::spot_subscription_ready_changed
-                | zlink::service_monitor_event::error));
+                | zlink::service_monitor_event::error)));
             if (!slot->monitor->valid ())
             {
                 debug_log ("monitor invalid");
@@ -386,7 +386,7 @@ class spot_client_bench_t
                 return false;
             }
 
-            if (slot->spot->subscribe (k_topic) != 0)
+            if (slot->spot->set_subscription (k_topic) != 0)
             {
                 debug_log ("subscribe failed");
                 return false;
@@ -535,16 +535,14 @@ class spot_client_bench_t
     bool drain_recv (client_slot_t &slot_, bool sync_only_, bool *progressed_out_)
     {
         for (;;) {
-            std::vector<zlink::message_t> parts;
-            std::string topic;
-            const int rc =
-              slot_.spot->recv (parts, topic, zlink::recv_flag::dontwait);
-            if (rc != 0) {
-                if (errno == EAGAIN || errno == EINTR)
-                    return true;
-                debug_log ("recv drain failed");
-                return false;
-            }
+            const zlink::maybe_t<zlink::subscribed_t> maybe_received =
+              slot_.spot->try_subscribe ();
+            if (!maybe_received)
+                return true;
+
+            const zlink::subscribed_t &received = *maybe_received;
+            const std::vector<zlink::message_t> &parts = received.parts;
+            const std::string &topic = received.topic;
 
             if (progressed_out_)
                 *progressed_out_ = true;

@@ -16,7 +16,7 @@ public delegate void SocketRecvHandler(string routingId, Message[] parts);
 public delegate void SocketSubscribeHandler(string routingId, string topic,
     Message[] parts);
 
-internal sealed class Socket : SocketBase
+internal sealed class Socket : ConnectableSocketBase
 {
     public Socket(Context context, SocketType type)
         : base(context, type)
@@ -60,6 +60,26 @@ internal sealed class Socket : SocketBase
         return Kernel.TrySend(message);
     }
 
+    internal void SendRawSingle(ReadOnlySpan<byte> payload, int flags)
+    {
+        Kernel.SendRawSingle(payload, flags);
+    }
+
+    internal SendResult TrySendRawSingle(ReadOnlySpan<byte> payload)
+    {
+        return Kernel.TrySendRawSingle(payload);
+    }
+
+    internal void SendBorrowedSingle(byte[] payload, int flags)
+    {
+        Kernel.SendBorrowedSingle(payload, flags);
+    }
+
+    internal SendResult TrySendBorrowedSingle(byte[] payload)
+    {
+        return Kernel.TrySendBorrowedSingle(payload);
+    }
+
     public SendResult TrySend(IReadOnlyList<Message> parts)
     {
         return Kernel.TrySend(parts);
@@ -80,6 +100,16 @@ internal sealed class Socket : SocketBase
         return Kernel.TrySend(routingId, message);
     }
 
+    internal void SendBorrowedSingle(string routingId, byte[] payload, int flags)
+    {
+        Kernel.SendBorrowedSingle(routingId, payload, flags);
+    }
+
+    internal SendResult TrySendBorrowedSingle(string routingId, byte[] payload)
+    {
+        return Kernel.TrySendBorrowedSingle(routingId, payload);
+    }
+
     public SendResult TrySend(string routingId, IReadOnlyList<Message> parts)
     {
         return Kernel.TrySend(routingId, parts);
@@ -98,6 +128,28 @@ internal sealed class Socket : SocketBase
     public SendResult TryPublish(string topic, Message message)
     {
         return Kernel.TryPublish(topic, message);
+    }
+
+    internal void PublishRawSingle(string topic, ReadOnlySpan<byte> payload,
+        int flags)
+    {
+        Kernel.PublishRawSingle(topic, payload, flags);
+    }
+
+    internal SendResult TryPublishRawSingle(string topic,
+        ReadOnlySpan<byte> payload)
+    {
+        return Kernel.TryPublishRawSingle(topic, payload);
+    }
+
+    internal void PublishBorrowedSingle(string topic, byte[] payload, int flags)
+    {
+        Kernel.PublishBorrowedSingle(topic, payload, flags);
+    }
+
+    internal SendResult TryPublishBorrowedSingle(string topic, byte[] payload)
+    {
+        return Kernel.TryPublishBorrowedSingle(topic, payload);
     }
 
     public SendResult TryPublish(string topic, IReadOnlyList<Message> parts)
@@ -130,6 +182,18 @@ internal sealed class Socket : SocketBase
         return Kernel.TrySubscribe();
     }
 
+    internal byte[][]? TryReceiveRawSubscribedFrames(int flags)
+    {
+        return Kernel.TryReceiveRawSubscribedFrames(flags);
+    }
+
+    internal int? TryReceiveRawSubscribedFrame(Span<byte> destination, int flags,
+        out byte[][] pendingFrames)
+    {
+        return Kernel.TryReceiveRawSubscribedFrame(destination, flags,
+            out pendingFrames);
+    }
+
     public void SubscribeHandler(SocketSubscribeHandler handler)
     {
         Kernel.SubscribeHandler(handler);
@@ -145,14 +209,14 @@ internal sealed class Socket : SocketBase
         return Kernel.TryReceiveSubscriptionEvent();
     }
 
-    public Received Receive()
+    public Received Recv()
     {
-        return Kernel.Receive();
+        return Kernel.Recv();
     }
 
-    public Received? TryReceive()
+    public Received? TryRecv()
     {
-        return Kernel.TryReceive();
+        return Kernel.TryRecv();
     }
 
     public Received ReceiveRouted()
@@ -164,4 +228,23 @@ internal sealed class Socket : SocketBase
     {
         return Kernel.TryReceiveRouted();
     }
+
+    internal byte[][]? TryReceiveRawFrames(int flags)
+    {
+        return Kernel.TryReceiveRawFrames(flags);
+    }
+
+    internal int? TryReceiveRawFrame(Span<byte> destination, int flags,
+        out byte[][] pendingFrames)
+    {
+        return Kernel.TryReceiveRawFrame(destination, flags, out pendingFrames);
+    }
+
+    internal int? TryReceiveRawRoutedFrame(Span<byte> routingDestination,
+        Span<byte> payloadDestination, int flags, out byte[][] pendingFrames)
+    {
+        return Kernel.TryReceiveRawRoutedFrame(routingDestination,
+            payloadDestination, flags, out pendingFrames);
+    }
+
 }

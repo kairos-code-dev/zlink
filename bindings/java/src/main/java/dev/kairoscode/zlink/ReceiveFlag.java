@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-public enum ReceiveFlag {
+enum ReceiveFlag {
     NONE(0), DONTWAIT(1);
 
     private final int value;

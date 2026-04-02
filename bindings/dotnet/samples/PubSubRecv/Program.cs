@@ -7,11 +7,16 @@ if (!SampleSupport.IsNativeAvailable())
 using var ctx = new Context();
 using var publisher = new PubSocket(ctx);
 using var subscriber = new SubSocket(ctx);
-string endpoint = SampleSupport.NewEndpoint("inproc", "pubsub-recv");
+string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+using var publisherMonitor = publisher.MonitorOpen(SocketEvent.ConnectionReady);
+using var subscriberMonitor = subscriber.MonitorOpen(SocketEvent.ConnectionReady);
 publisher.Bind(endpoint);
 subscriber.Connect(endpoint);
+SampleSupport.WaitConnected(publisherMonitor, subscriberMonitor);
 subscriber.SetSubscription("prices");
 
-SampleSupport.PublishUtf8UntilReady(publisher, "prices", "42", 2000);
+using (Message message = Message.FromString("101.25"))
+    publisher.Publish("prices", message);
 string payload = SampleSupport.SubscribeUtf8(subscriber, out string topic, 2000);
-Console.WriteLine($"{topic}:{payload}");
+Console.WriteLine(
+    $"[pubsub/recv] publish: \"prices/101.25\" -> subscribe: \"{topic}/{payload}\"");

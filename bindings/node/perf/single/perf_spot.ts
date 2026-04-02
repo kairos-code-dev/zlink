@@ -10,7 +10,7 @@ const {
 } = require('./perf_single_common');
 
 async function waitSpotFilterApplied(spot, topic) {
-  const monitor = spot.openMonitor(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
+  const monitor = spot.monitorOpen(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
   try {
     spot.setSubscription(topic);
     while (true) {
@@ -32,7 +32,7 @@ async function runSpotBenchmark(msgSize, options) {
 
   try {
     const state = attachCallbackCollector(
-      (handler) => spot.subscribeHandler(handler),
+      (handler) => spot.onSubscribe(handler),
       msgSize,
       options,
       (_, __, parts) => parts[0].toBuffer()

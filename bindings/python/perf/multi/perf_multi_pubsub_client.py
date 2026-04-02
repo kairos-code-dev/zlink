@@ -21,7 +21,7 @@ def _drain_ready(poller, active, latencies, deadline=None):
         while True:
             if deadline is not None and time.perf_counter() >= deadline:
                 return count
-            received = sock.try_recv()
+            received = sock.try_subscribe()
             if received is None:
                 break
             with received:

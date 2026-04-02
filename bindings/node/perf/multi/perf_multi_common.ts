@@ -16,6 +16,26 @@ async function reservePort() {
   return address.port;
 }
 
+async function reservePortInRange(basePort, attempts) {
+  for (let offset = 0; offset < attempts; offset += 1) {
+    const port = basePort + offset;
+    const server = net.createServer();
+    try {
+      server.listen(port, '127.0.0.1');
+      await once(server, 'listening');
+      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      return port;
+    } catch (_) {
+      server.close(() => {});
+    }
+  }
+  throw new Error(`unable to reserve port in range ${basePort}-${basePort + attempts - 1}`);
+}
+
+function nextSpotCandidatePort(basePort, offset, attempts) {
+  return basePort + (offset % attempts);
+}
+
 function collectLines(stream, onLine) {
   let buffered = '';
   stream.setEncoding('utf8');
@@ -38,6 +58,10 @@ function collectLines(stream, onLine) {
 async function waitForLine(processRef, expected, label, timeoutMs) {
   return new Promise((resolve, reject) => {
     let done = false;
+    if (processRef.__seenLines.includes(expected)) {
+      resolve();
+      return;
+    }
     const timeout = setTimeout(() => {
       if (!done) {
         done = true;
@@ -65,7 +89,9 @@ async function waitForLine(processRef, expected, label, timeoutMs) {
 
 function attachProcessCapture(child, resultLines) {
   child.__waiters = [];
+  child.__seenLines = [];
   collectLines(child.stdout, (line) => {
+    child.__seenLines.push(line);
     for (const waiter of child.__waiters) {
       if (waiter(line)) {
         return;
@@ -124,38 +150,92 @@ async function stopServer(server, label, timeoutMs = 5000) {
 }
 
 async function spawnMultiPair(serverScript, clientScript, args) {
-  const port = await reservePort();
-  const endpoint = `tcp://127.0.0.1:${port}`;
   const serverPath = path.join(__dirname, serverScript);
   const clientPath = path.join(__dirname, clientScript);
-  const sharedArgs = [
-    '--endpoint', endpoint,
-    '--msg-size', String(args.msgSize),
-    '--warmup', String(args.warmup),
-    '--duration', String(args.duration),
-    '--clients', String(args.clients),
-    '--recv', args.recv
-  ];
-
   const resultLines = [];
-  const server = spawn(process.execPath, [serverPath, ...sharedArgs], {
-    cwd: process.cwd(),
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-  attachProcessCapture(server, resultLines);
-  await waitForLine(server, `READY,${endpoint}`, serverScript, 5000);
+  let endpoint;
+  let sharedArgs;
+  let server;
+
+  if (args.pattern === 'MULTI_SPOT') {
+    const basePort = 32000 + ((process.pid % 1000) * 8);
+    let started = false;
+    let lastError = null;
+    for (let offset = 0; offset < 64; offset += 1) {
+      const port = nextSpotCandidatePort(basePort, offset, 64);
+      endpoint = `tcp://127.0.0.1:${port}`;
+      sharedArgs = [
+        '--endpoint', endpoint,
+        '--msg-size', String(args.msgSize),
+        '--warmup', String(args.warmup),
+        '--duration', String(args.duration),
+        '--clients', String(args.clients),
+        '--recv', args.recv
+      ];
+      server = spawn(process.execPath, [serverPath, ...sharedArgs], {
+        cwd: process.cwd(),
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      attachProcessCapture(server, resultLines);
+      try {
+        await waitForLine(server, `READY,${endpoint}`, serverScript, 3000);
+        started = true;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (!server.killed) {
+          server.kill('SIGKILL');
+          await once(server, 'exit');
+        }
+      }
+    }
+    if (!started) {
+      throw lastError || new Error('failed to start spot server');
+    }
+  } else {
+    const port = await reservePort();
+    endpoint = `tcp://127.0.0.1:${port}`;
+    sharedArgs = [
+      '--endpoint', endpoint,
+      '--msg-size', String(args.msgSize),
+      '--warmup', String(args.warmup),
+      '--duration', String(args.duration),
+      '--clients', String(args.clients),
+      '--recv', args.recv
+    ];
+    server = spawn(process.execPath, [serverPath, ...sharedArgs], {
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    attachProcessCapture(server, resultLines);
+    await waitForLine(server, `READY,${endpoint}`, serverScript, 5000);
+  }
 
   const client = spawn(process.execPath, [clientPath, ...sharedArgs], {
     cwd: process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe']
   });
   attachProcessCapture(client, resultLines);
-  await waitForLine(client, 'CLIENT_READY', clientScript, 5000);
+  const clientReadyLine = args.pattern === 'MULTI_SPOT'
+    ? `CLIENT_READY,${args.msgSize}`
+    : 'CLIENT_READY';
+  await waitForLine(client, clientReadyLine, clientScript, 10000);
 
-  server.stdin.write('GO\n');
-  const [clientCode] = await once(client, 'exit');
-  if (clientCode !== 0) {
-    throw new Error(`client failed (${clientScript}): ${clientCode}`);
+  if (args.pattern === 'MULTI_SPOT') {
+    await waitForLine(server, `PEERS_READY,${args.msgSize}`, serverScript, 10000);
+    server.stdin.write(`START,${args.msgSize}\n`);
+  } else {
+    server.stdin.write('GO\n');
+  }
+  const firstExit = await Promise.race([
+    once(client, 'exit').then(([code]) => ({ side: 'client', code })),
+    once(server, 'exit').then(([code]) => ({ side: 'server', code }))
+  ]);
+  if (firstExit.side === 'server') {
+    throw new Error(`server failed early (${serverScript}): ${firstExit.code}`);
+  }
+  if (firstExit.code !== 0) {
+    throw new Error(`client failed (${clientScript}): ${firstExit.code}`);
   }
 
   await stopServer(server, serverScript);

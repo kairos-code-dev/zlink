@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Threading;
 using Zlink.Native;
 
 namespace Zlink.Service;
@@ -18,7 +19,7 @@ public sealed class ServiceMonitor : IDisposable
         _handle = handle;
     }
 
-    public void AttachHandler(Action<ServiceMonitorEvent> handler)
+    public void OnEvent(Action<ServiceMonitorEvent> handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
@@ -31,28 +32,53 @@ public sealed class ServiceMonitor : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public ServiceMonitorEvent Receive()
+    public ServiceMonitorEvent Recv()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_service_monitor_recv(_handle, out var native,
-            0);
-        ZlinkException.ThrowIfError(rc);
-        return ServiceMonitorEvent.FromNative(ref native);
+        while (true)
+        {
+            int rc = NativeMethods.zlink_service_monitor_recv(_handle,
+                out var native, 0);
+            if (rc == 0)
+                return ServiceMonitorEvent.FromNative(ref native);
+
+            if (ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
+                == ErrorCode.EAgain)
+            {
+                Thread.Sleep(1);
+                continue;
+            }
+
+            throw ZlinkException.FromLastError();
+        }
     }
 
-    public ServiceMonitorEvent? TryReceive()
+    public bool TryRecv(out ServiceMonitorEvent? monitorEvent)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_service_monitor_recv(_handle, out var native,
             1);
         if (rc == 0)
-            return ServiceMonitorEvent.FromNative(ref native);
+        {
+            monitorEvent = ServiceMonitorEvent.FromNative(ref native);
+            return true;
+        }
         if (ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
             == ErrorCode.EAgain)
         {
-            return null;
+            monitorEvent = null;
+            return false;
         }
+        monitorEvent = null;
         throw ZlinkException.FromLastError();
+    }
+
+    public MonitorSnapshot Snapshot()
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_monitor_snapshot(_handle, out var native);
+        ZlinkException.ThrowIfError(rc);
+        return MonitorSnapshot.FromNative(ref native);
     }
 
     public void Close()

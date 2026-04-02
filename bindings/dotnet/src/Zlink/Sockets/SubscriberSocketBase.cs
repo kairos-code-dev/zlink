@@ -4,7 +4,7 @@ using Zlink.Sockets.Internal;
 
 namespace Zlink;
 
-public abstract class SubscriberSocketBase : SocketBase
+public abstract class SubscriberSocketBase : ConnectableSocketBase
 {
     internal SubscriberSocketBase(Context context, SocketType type)
         : base(context, type)
@@ -31,12 +31,13 @@ public abstract class SubscriberSocketBase : SocketBase
         return Kernel.Subscribe();
     }
 
-    public Subscribed? TrySubscribe()
+    public bool TrySubscribe(out Subscribed? subscribed)
     {
-        return Kernel.TrySubscribe();
+        subscribed = Kernel.TrySubscribe();
+        return subscribed != null;
     }
 
-    public void SubscribeHandler(SocketSubscribeHandler handler)
+    public void OnSubscribe(SocketSubscribeHandler handler)
     {
         Kernel.SubscribeHandler(handler);
     }

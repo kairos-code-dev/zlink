@@ -213,12 +213,6 @@ class base_socket_t : public socket_handle_t
         return zlink_disconnect (handle (), endpoint_.c_str ());
     }
 
-    template<typename DiscoveryT>
-    ZLINK_CPP_NODISCARD int attach_discovery (DiscoveryT &discovery_)
-    {
-        return zlink_socket_attach_discovery (handle (), discovery_.handle ());
-    }
-
     monitor_handle_t
     monitor_handle (monitor_event events_ = monitor_event::all) const
     {
@@ -285,6 +279,12 @@ class base_socket_t : public socket_handle_t
     }
 
   protected:
+    template<typename DiscoveryT>
+    ZLINK_CPP_NODISCARD int attach_discovery (DiscoveryT &discovery_)
+    {
+        return zlink_socket_attach_discovery (handle (), discovery_.handle ());
+    }
+
     base_socket_t () noexcept {}
 
     base_socket_t (context_t &ctx_, socket_type type_)
@@ -321,7 +321,7 @@ class base_socket_t : public socket_handle_t
         return rc;
     }
 
-    ZLINK_CPP_NODISCARD int send (const zlink_routing_id_t &target_rid_,
+    ZLINK_CPP_NODISCARD int send (const routing_id_t &target_rid_,
                                   message_t &part_,
                                   send_flag flags_ = send_flag::none)
     {
@@ -334,7 +334,7 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    send (const zlink_routing_id_t &target_rid_,
+    send (const routing_id_t &target_rid_,
           std::vector<message_t> &parts_,
           send_flag flags_ = send_flag::none)
     {
@@ -343,7 +343,8 @@ class base_socket_t : public socket_handle_t
             return -1;
 
         const int rc = zlink_send_rid (
-          handle (), &target_rid_, native_parts.empty () ? NULL : &native_parts[0],
+          handle (), routing_id_native (target_rid_),
+          native_parts.empty () ? NULL : &native_parts[0],
           native_parts.size (), static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0)
             detail::restore_parts_from_native (parts_, native_parts);
@@ -385,7 +386,7 @@ class base_socket_t : public socket_handle_t
 
     ZLINK_CPP_NODISCARD int
     try_send (send_result_t &result_,
-              const zlink_routing_id_t &target_rid_,
+              const routing_id_t &target_rid_,
               message_t &part_)
     {
         std::vector<message_t> parts (1);
@@ -398,7 +399,7 @@ class base_socket_t : public socket_handle_t
 
     ZLINK_CPP_NODISCARD int
     try_send (send_result_t &result_,
-              const zlink_routing_id_t &target_rid_,
+              const routing_id_t &target_rid_,
               std::vector<message_t> &parts_)
     {
         std::vector<zlink_msg_t> native_parts;
@@ -407,7 +408,8 @@ class base_socket_t : public socket_handle_t
 
         zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
         const int rc = zlink_try_send_rid (
-          handle (), &target_rid_, native_parts.empty () ? NULL : &native_parts[0],
+          handle (), routing_id_native (target_rid_),
+          native_parts.empty () ? NULL : &native_parts[0],
           native_parts.size (), &native_result);
         if (rc == 0) {
             result_ = detail::to_send_result (native_result);
@@ -423,15 +425,17 @@ class base_socket_t : public socket_handle_t
     ZLINK_CPP_NODISCARD int
     receive (received_t &received_, recv_flag flags_ = recv_flag::none)
     {
-        received_.routing_id = empty_routing_id ();
+        received_.routing_id = routing_id_t ();
         return detail::recv_parts (
-          handle (), &received_.routing_id, flags_, received_.parts);
+          handle (), routing_id_native (received_.routing_id), flags_,
+          received_.parts);
     }
 
     ZLINK_CPP_NODISCARD int publish (const std::string &topic_id_,
                                      message_t &part_,
                                      send_flag flags_ = send_flag::none)
     {
+        validate_no_embedded_null (topic_id_, "topic");
         std::vector<message_t> parts (1);
         parts[0] = std::move (part_);
         const int rc = publish (topic_id_, parts, flags_);
@@ -444,6 +448,7 @@ class base_socket_t : public socket_handle_t
                                      std::vector<message_t> &parts_,
                                      send_flag flags_ = send_flag::none)
     {
+        validate_no_embedded_null (topic_id_, "topic");
         std::vector<zlink_msg_t> native_parts;
         if (detail::move_parts_to_native (parts_, native_parts) != 0)
             return -1;
@@ -497,11 +502,13 @@ class base_socket_t : public socket_handle_t
 
     ZLINK_CPP_NODISCARD int set_subscription (const std::string &filter_)
     {
+        validate_no_embedded_null (filter_, "filter");
         return zlink_set_subscription (handle (), filter_.c_str ());
     }
 
     ZLINK_CPP_NODISCARD int unset_subscription (const std::string &filter_)
     {
+        validate_no_embedded_null (filter_, "filter");
         return zlink_unset_subscription (handle (), filter_.c_str ());
     }
 
@@ -539,14 +546,14 @@ class base_socket_t : public socket_handle_t
     ZLINK_CPP_NODISCARD int
     subscribe (subscribed_t &subscribed_, recv_flag flags_ = recv_flag::none)
     {
-        subscribed_.routing_id = empty_routing_id ();
+        subscribed_.routing_id = routing_id_t ();
         subscribed_.topic.clear ();
         return subscribe (
           subscribed_.routing_id, subscribed_.topic, subscribed_.parts, flags_);
     }
 
     ZLINK_CPP_NODISCARD int
-    subscribe (zlink_routing_id_t &source_rid_out_,
+    subscribe (routing_id_t &source_rid_out_,
                std::string &topic_id_out_,
                std::vector<message_t> &parts_out_,
                recv_flag flags_ = recv_flag::none)
@@ -555,9 +562,9 @@ class base_socket_t : public socket_handle_t
         zlink_msg_t *parts_native = NULL;
         size_t part_count = 0;
         size_t topic_size = topic_buffer.size ();
-        std::memset (&source_rid_out_, 0, sizeof (source_rid_out_));
         const int rc = zlink_subscribe (
-          handle (), &source_rid_out_, &parts_native, &part_count,
+          handle (), routing_id_native (source_rid_out_), &parts_native,
+          &part_count,
           topic_buffer.data (), &topic_size,
           static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0)
@@ -573,7 +580,7 @@ class base_socket_t : public socket_handle_t
     subscription_event (subscription_event_t &event_,
                         recv_flag flags_ = recv_flag::none)
     {
-        event_.routing_id = empty_routing_id ();
+        event_.routing_id = routing_id_t ();
         event_.topic.clear ();
         event_.subscribed = false;
         return subscription_event (
@@ -581,7 +588,7 @@ class base_socket_t : public socket_handle_t
     }
 
     ZLINK_CPP_NODISCARD int
-    subscription_event (zlink_routing_id_t &source_rid_out_,
+    subscription_event (routing_id_t &source_rid_out_,
                         bool &subscribed_out_,
                         std::string &topic_id_out_,
                         recv_flag flags_ = recv_flag::none)
@@ -589,9 +596,9 @@ class base_socket_t : public socket_handle_t
         std::vector<char> topic_buffer (256);
         size_t topic_size = topic_buffer.size ();
         int subscribed = 0;
-        std::memset (&source_rid_out_, 0, sizeof (source_rid_out_));
         const int rc = zlink_subscription_event (
-          handle (), &source_rid_out_, &subscribed, topic_buffer.data (),
+          handle (), routing_id_native (source_rid_out_), &subscribed,
+          topic_buffer.data (),
           &topic_size, static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0)
             return rc;
@@ -603,25 +610,26 @@ class base_socket_t : public socket_handle_t
         return 0;
     }
 
-    ZLINK_CPP_NODISCARD int recv_handler (zlink_socket_msg_handler_fn handler_,
-                                          void *userdata_ = NULL)
+    ZLINK_CPP_NODISCARD int on_receive (zlink_socket_msg_handler_fn handler_,
+                                        void *userdata_ = NULL)
     {
         return zlink_recv_handler (handle (), handler_, userdata_);
     }
 
     ZLINK_CPP_NODISCARD int
-    subscribe_handler (zlink_subscribe_handler_fn handler_, void *userdata_ = NULL)
+    on_subscribe (zlink_subscribe_handler_fn handler_, void *userdata_ = NULL)
     {
         return zlink_subscribe_handler (handle (), handler_, userdata_);
     }
 
     ZLINK_CPP_NODISCARD int
-    send_ready_handler (zlink_send_ready_handler_fn handler_,
-                        void *userdata_ = NULL)
+    on_send_ready (zlink_send_ready_handler_fn handler_,
+                   void *userdata_ = NULL)
     {
         return zlink_send_ready_handler (handle (), handler_, userdata_);
     }
 
+  protected:
     ZLINK_CPP_NODISCARD int
     set_option (socket_option option_, const void *value_, size_t size_)
     {
@@ -680,26 +688,27 @@ class base_socket_t : public socket_handle_t
           option_ == socket_option::last_endpoint ? 1024u : 512u, value_);
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const void *data_, size_t size_)
+    ZLINK_CPP_NODISCARD int set_routing_id_raw (const void *data_, size_t size_)
     {
         return zlink_set_routing_id (handle (), data_, size_);
     }
 
-    ZLINK_CPP_NODISCARD int set_routing_id (const std::string &routing_id_)
+    ZLINK_CPP_NODISCARD int set_routing_id_raw (const std::string &routing_id_)
     {
-        return set_routing_id (routing_id_.data (), routing_id_.size ());
+        return set_routing_id_raw (routing_id_.data (), routing_id_.size ());
     }
 
-    ZLINK_CPP_NODISCARD int get_routing_id (zlink_routing_id_t &routing_id_) const
+    ZLINK_CPP_NODISCARD int
+    get_routing_id_raw (routing_id_t &routing_id_) const
     {
-        std::memset (&routing_id_, 0, sizeof (routing_id_));
-        return zlink_get_routing_id (const_cast<void *> (handle ()), &routing_id_);
+        return zlink_get_routing_id (
+          const_cast<void *> (handle ()), routing_id_native (routing_id_));
     }
 
-    ZLINK_CPP_NODISCARD int get_routing_id (std::string &routing_id_) const
+    ZLINK_CPP_NODISCARD int get_routing_id_raw (std::string &routing_id_) const
     {
-        zlink_routing_id_t native_rid;
-        if (get_routing_id (native_rid) != 0)
+        routing_id_t native_rid;
+        if (get_routing_id_raw (native_rid) != 0)
             return -1;
         routing_id_ = routing_id_to_string (native_rid);
         return 0;

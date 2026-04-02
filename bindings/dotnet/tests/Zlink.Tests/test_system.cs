@@ -28,7 +28,7 @@ public sealed class test_system
         using var ctx = new Context();
         using var socket = new PairSocket(ctx);
 
-        Assert.Null(socket.TryReceive());
+        Assert.False(socket.TryRecv(out _));
         Assert.True(Runtime.Has("tcp") || !Runtime.Has("tcp"));
     }
 

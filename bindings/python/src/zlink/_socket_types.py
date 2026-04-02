@@ -5,6 +5,7 @@ import ctypes
 from ._enums import RouterOption, SocketType
 from ._ffi import lib
 from ._core import (
+    RoutingId,
     SubscriptionEvent,
     ZlinkRoutingId,
     _is_eagain,
@@ -12,7 +13,9 @@ from ._core import (
     _validated_routing_id_bytes,
 )
 from ._socket_base import (
+    BindSocket,
     DealerOptionSocket,
+    EndpointSocket,
     MessageSocket,
     PublisherOptionSocket,
     PublisherSocket,
@@ -26,9 +29,10 @@ from ._socket_base import (
 )
 
 
-class XPubSocketOptions:
+class PubSocketOptions:
     _VERBOSE = 0x3301
     _VERBOSER = 0x3302
+    _MANUAL = 0x3303
     _NO_DROP = 0x3305
 
     def __init__(self, socket):
@@ -49,6 +53,18 @@ class XPubSocketOptions:
     @verboser.setter
     def verboser(self, enabled):
         self._socket._set_pub_bool_option(self._VERBOSER, enabled)
+
+    @property
+    def manual(self):
+        try:
+            return self._socket._get_pub_bool_option(self._MANUAL)
+        except Exception:
+            return bool(getattr(self._socket, "_pub_manual_option", False))
+
+    @manual.setter
+    def manual(self, enabled):
+        self._socket._set_pub_bool_option(self._MANUAL, enabled)
+        self._socket._pub_manual_option = bool(enabled)
 
     @property
     def no_drop(self):
@@ -89,25 +105,37 @@ class RouterSocketOptions:
 
     @property
     def connect_routing_id(self):
-        return self._socket._get_router_bytes_option(RouterOption.CONNECT_ROUTING_ID)
+        cached = getattr(self._socket, "_connect_routing_id_option", None)
+        if cached is not None:
+            return cached
+        return RoutingId(
+            self._socket._get_router_bytes_option(RouterOption.CONNECT_ROUTING_ID)
+        )
 
     @connect_routing_id.setter
     def connect_routing_id(self, routing_id):
+        typed_routing_id = RoutingId(routing_id)
         self._socket._set_router_bytes_option(
             RouterOption.CONNECT_ROUTING_ID,
-            _validated_routing_id_bytes(routing_id),
+            typed_routing_id.to_bytes(),
         )
+        self._socket._connect_routing_id_option = typed_routing_id
 
 
-class PairSocket(MessageSocket):
+class PairSocket(EndpointSocket, MessageSocket):
     _socket_type_value = SocketType.PAIR
 
 
-class DealerSocket(DealerOptionSocket, RoutingIdSocket, MessageSocket):
+class DealerSocket(EndpointSocket, DealerOptionSocket, RoutingIdSocket, MessageSocket):
     _socket_type_value = SocketType.DEALER
 
 
-class RouterSocket(RouterOptionSocket, RoutingIdSocket, RoutedMessageSocket):
+class RouterSocket(
+    EndpointSocket,
+    RouterOptionSocket,
+    RoutingIdSocket,
+    RoutedMessageSocket,
+):
     _socket_type_value = SocketType.ROUTER
 
     @property
@@ -115,24 +143,28 @@ class RouterSocket(RouterOptionSocket, RoutingIdSocket, RoutedMessageSocket):
         return RouterSocketOptions(self)
 
 
-class StreamSocket(StreamOptionSocket, RoutingIdSocket, RoutedMessageSocket):
+class StreamSocket(BindSocket, StreamOptionSocket, RoutingIdSocket, RoutedMessageSocket):
     _socket_type_value = SocketType.STREAM
 
 
-class PubSocket(PublisherOptionSocket, PublisherSocket):
+class PubSocket(EndpointSocket, PublisherOptionSocket, PublisherSocket):
     _socket_type_value = SocketType.PUB
 
+    @property
+    def publisher_options(self):
+        return PubSocketOptions(self)
 
-class SubSocket(SubscriberOptionSocket, SubscriberSocket):
+
+class SubSocket(EndpointSocket, SubscriberOptionSocket, SubscriberSocket):
     _socket_type_value = SocketType.SUB
 
 
-class XPubSocket(PublisherOptionSocket, PublisherSocket):
+class XPubSocket(EndpointSocket, PublisherOptionSocket, PublisherSocket):
     _socket_type_value = SocketType.XPUB
 
     @property
     def publisher_options(self):
-        return XPubSocketOptions(self)
+        return PubSocketOptions(self)
 
     def _subscription_event(self, flags):
         routing_id = ZlinkRoutingId()
@@ -155,10 +187,10 @@ class XPubSocket(PublisherOptionSocket, PublisherSocket):
             bytes(routing_id.data[: routing_id.size]) or None,
         )
 
-    def recv_subscription_event(self):
+    def receive_subscription_event(self):
         return self._subscription_event(0)
 
-    def try_recv_subscription_event(self):
+    def try_receive_subscription_event(self):
         try:
             return self._subscription_event(1)
         except Exception as exc:
@@ -166,7 +198,8 @@ class XPubSocket(PublisherOptionSocket, PublisherSocket):
                 return None
             raise
 
-class XSubSocket(SubscriberOptionSocket, SubscriberSocket):
+
+class XSubSocket(EndpointSocket, SubscriberOptionSocket, SubscriberSocket):
     _socket_type_value = SocketType.XSUB
 
 

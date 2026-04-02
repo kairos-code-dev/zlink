@@ -1,20 +1,14 @@
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import socket
 import threading
-
 import zlink
-
-
-def _stream_port():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
+from sample_common import tcp_endpoint
 
 
 def main():
-    port = _stream_port()
-    endpoint = f"tcp://127.0.0.1:{port}"
+    port, endpoint = tcp_endpoint()
 
     with zlink.Context() as ctx:
         with zlink.StreamSocket(ctx) as server:
@@ -24,17 +18,17 @@ def main():
             def on_message(received):
                 observed["routing_id"] = received.routing_id
                 observed["parts"] = received.to_bytes_list()
-                print(received.routing_id, received.to_bytes_list())
                 done.set()
 
-            server.on_receive(on_message)
             server.bind(endpoint)
+            server.on_receive(on_message)
             with socket.create_connection(("127.0.0.1", port), timeout=3.0) as client:
-                client.sendall(b"stream-callback")
+                client.sendall(b"hello-stream")
                 if not done.wait(3.0):
                     raise TimeoutError("stream callback did not receive a message")
-                server.send_to(observed["routing_id"], b"stream-callback-reply")
-                print(client.recv(64).decode("utf-8"))
+                server.send(b"hello-stream", routing_id=observed["routing_id"])
+                echo = client.recv(64).decode("utf-8")
+                print(f'[stream/callback] send: "hello-stream" \u2192 recv: "{echo}"')
 
 
 if __name__ == "__main__":

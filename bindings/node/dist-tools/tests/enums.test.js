@@ -18,6 +18,10 @@ test('monitor and topology constants stay frozen', () => {
     assert.ok(Object.isFrozen(zlink.MonitorEvent));
     assert.ok(Object.isFrozen(zlink.ServiceMonitorEvent));
     assert.ok(Object.isFrozen(zlink.MonitorSnapshotDetail));
+    assert.ok(Object.isFrozen(zlink.SpotNodeState));
+    assert.ok(Object.isFrozen(zlink.SpotPeerSource));
+    assert.ok(Object.isFrozen(zlink.SpotPeerState));
+    assert.ok(Object.isFrozen(zlink.RegistryState));
     assert.ok(Object.isFrozen(zlink.TopologySource));
     assert.ok(Object.isFrozen(zlink.TopologyState));
 });

@@ -18,11 +18,11 @@ public sealed class test_monitor_contract
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "monitor-recv");
         server.Bind(endpoint);
 
-        using SocketMonitor monitor = server.OpenMonitor(
+        using SocketMonitor monitor = server.MonitorOpen(
             SocketEvent.ConnectionReady);
         client.Connect(endpoint);
 
-        SocketMonitorEvent evt = monitor.Receive();
+        SocketMonitorEvent evt = monitor.Recv();
         Assert.Equal(SocketEvent.ConnectionReady, evt.Event);
         Assert.False(string.IsNullOrEmpty(evt.RoutingId));
     }
@@ -40,9 +40,9 @@ public sealed class test_monitor_contract
         server.Bind(endpoint);
 
         using var events = new CallbackEventQueue<SocketMonitorEvent>();
-        using SocketMonitor monitor = server.OpenMonitor(
+        using SocketMonitor monitor = server.MonitorOpen(
             SocketEvent.ConnectionReady | SocketEvent.Disconnected);
-        monitor.AttachHandler(events.Enqueue);
+        monitor.OnEvent(events.Enqueue);
 
         client.Connect(endpoint);
 
@@ -69,9 +69,9 @@ public sealed class test_monitor_contract
             "monitor-try-recv-empty");
         server.Bind(endpoint);
 
-        using SocketMonitor monitor = server.OpenMonitor(
+        using SocketMonitor monitor = server.MonitorOpen(
             SocketEvent.ConnectionReady);
 
-        Assert.Null(monitor.TryReceive());
+        Assert.False(monitor.TryRecv(out _));
     }
 }

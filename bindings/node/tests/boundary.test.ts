@@ -27,3 +27,29 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
   dealer.close();
   ctx.close();
 });
+
+test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
+  const ctx = new zlink.Context();
+  const pair = new zlink.PairSocket(ctx);
+  const registry = new zlink.Registry(ctx);
+  const query = new zlink.RegistryQueryClient(ctx);
+  const discovery = new zlink.Discovery(ctx, zlink.ServiceType.SPOT, 'svc');
+  const node = new zlink.SpotNode(ctx);
+  const spot = new zlink.Spot(node);
+
+  assert.throws(() => pair.bind('tcp://127.0.0.1:5555\0bad'), /embedded null/);
+  assert.throws(() => pair.unbind('x'.repeat(256)), /at most 255 bytes/);
+  assert.throws(() => registry.bind('x'.repeat(256), 'tcp://127.0.0.1:5556'), /255 bytes/);
+  assert.throws(() => query.connect('tcp://127.0.0.1:5556\0bad'), /embedded null/);
+  assert.throws(() => discovery.connectRegistry('x'.repeat(256)), /255 bytes/);
+  assert.throws(() => node.bind('tcp://127.0.0.1:5557\0bad'), /embedded null/);
+  assert.throws(() => spot.setSubscription('topic\0bad'), /embedded null/);
+
+  spot.close();
+  node.close();
+  discovery.close();
+  query.close();
+  registry.close();
+  pair.close();
+  ctx.close();
+});

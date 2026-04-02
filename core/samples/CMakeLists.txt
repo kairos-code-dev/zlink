@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: MPL-2.0
+
+if(NOT TARGET libzlink)
+  message(FATAL_ERROR "libzlink target not found. Build core first.")
+endif()
+
+function(add_c_sample target_name source_file)
+  add_executable(${target_name} ${source_file})
+  target_link_libraries(${target_name} PRIVATE libzlink)
+  target_include_directories(${target_name} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  if(MSVC)
+    target_compile_options(${target_name} PRIVATE /UNDEBUG)
+  else()
+    target_compile_options(${target_name} PRIVATE -UNDEBUG)
+  endif()
+  set_target_properties(${target_name} PROPERTIES C_STANDARD 11)
+  if(UNIX AND NOT WIN32)
+    target_link_libraries(${target_name} PRIVATE pthread)
+    add_test(NAME sample_smoke_${target_name}
+      COMMAND /bin/bash -lc "$<TARGET_FILE:${target_name}>")
+  else()
+    add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
+  endif()
+  set_tests_properties(sample_smoke_${target_name} PROPERTIES
+    LABELS "sample-smoke"
+    TIMEOUT 120
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  )
+  if(WIN32)
+    set_tests_properties(sample_smoke_${target_name} PROPERTIES
+      ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
+  endif()
+endfunction()
+
+add_c_sample(
+  sample_c_pair_recv_sample
+  pair_recv_sample.c
+)
+add_c_sample(
+  sample_c_pair_callback_sample
+  pair_callback_sample.c
+)
+add_c_sample(
+  sample_c_pubsub_recv_sample
+  pubsub_recv_sample.c
+)
+add_c_sample(
+  sample_c_pubsub_callback_sample
+  pubsub_callback_sample.c
+)
+add_c_sample(
+  sample_c_dealer_router_recv_sample
+  dealer_router_recv_sample.c
+)
+add_c_sample(
+  sample_c_dealer_router_callback_sample
+  dealer_router_callback_sample.c
+)
+add_c_sample(
+  sample_c_stream_recv_sample
+  stream_recv_sample.c
+)
+add_c_sample(
+  sample_c_stream_callback_sample
+  stream_callback_sample.c
+)
+add_c_sample(
+  sample_c_spot_recv_sample
+  spot_recv_sample.c
+)
+add_c_sample(
+  sample_c_spot_callback_sample
+  spot_callback_sample.c
+)
+add_c_sample(
+  sample_c_monitor_recv_sample
+  monitor_recv_sample.c
+)

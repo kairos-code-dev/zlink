@@ -58,7 +58,7 @@ public sealed class test_pair_tcp
         using Message part2 = Message.FromString("world");
         client.Send(new[] { part1, part2 });
 
-        Received received = server.Receive();
+        Received received = server.Recv();
         try
         {
             Assert.Equal(2, received.Parts.Count);
@@ -206,7 +206,7 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        Assert.Null(receiver.TryReceive());
+        Assert.False(receiver.TryRecv(out _));
     }
 
     [Fact]
@@ -224,13 +224,13 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        receiver.RecvHandler((routingId, parts) =>
+        receiver.OnReceive((routingId, parts) =>
         {
             foreach (Message part in parts)
                 part.Dispose();
         });
 
-        var ex = Assert.Throws<ZlinkException>(() => receiver.TryReceive());
+        var ex = Assert.Throws<ZlinkException>(() => receiver.TryRecv(out _));
         Assert.Equal(ErrorCode.EBusy, ZlinkException.MapErrorCode(ex.Errno));
     }
 
@@ -247,10 +247,10 @@ public sealed class test_pair_tcp
             "pair-monitor-shape");
         server.Bind(endpoint);
 
-        using SocketMonitor monitor = server.OpenMonitor(SocketEvent.ConnectionReady
+        using SocketMonitor monitor = server.MonitorOpen(SocketEvent.ConnectionReady
             | SocketEvent.Disconnected);
         int callbackCount = 0;
-        monitor.AttachHandler(_ => Interlocked.Increment(ref callbackCount));
+        monitor.OnEvent(_ => Interlocked.Increment(ref callbackCount));
 
         client.Connect(endpoint);
         Thread.Sleep(50);
@@ -304,7 +304,7 @@ public sealed class test_pair_tcp
 
         using var ctx = new Context();
         using var router = new RouterSocket(ctx);
-        router.SetMandatory(true);
+        router.RouterOptions.Mandatory = true;
 
         using Message message = Message.FromString("no-route");
         SendResult result = router.TrySend("UNKNOWN", message);

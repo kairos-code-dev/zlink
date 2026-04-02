@@ -1573,6 +1573,16 @@ if(ZLINK_BUILD_TESTS)
 endif()
 
 # -----------------------------------------------------------------------------
+# C samples
+option(ZLINK_BUILD_C_SAMPLES "Build C API samples" OFF)
+if(ZLINK_BUILD_C_SAMPLES)
+  if(NOT ZLINK_BUILD_TESTS)
+    enable_testing()
+  endif()
+  add_subdirectory(samples)
+endif()
+
+# -----------------------------------------------------------------------------
 # benchmarks
 option(BUILD_BENCHMARKS "Build benchmark tools for performance comparison" OFF)
 if(BUILD_BENCHMARKS AND BUILD_SHARED)

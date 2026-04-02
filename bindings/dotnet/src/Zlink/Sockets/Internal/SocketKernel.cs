@@ -12,6 +12,10 @@ namespace Zlink.Sockets.Internal;
 
 internal sealed class SocketKernel : IDisposable
 {
+    private static readonly NativeMethods.ZlinkFreeFnDelegate BorrowedBufferFree =
+        OnBorrowedBufferFree;
+    private static readonly IntPtr BorrowedBufferFreePtr =
+        Marshal.GetFunctionPointerForDelegate(BorrowedBufferFree);
     private const int StackSendPartLimit = 8;
     private const int TopicBufferSize = 4096;
     private const int DontWaitFlag = 1;
@@ -155,6 +159,38 @@ internal sealed class SocketKernel : IDisposable
         return TrySendSingleCore(message);
     }
 
+    internal void SendRawSingle(ReadOnlySpan<byte> payload, int flags)
+    {
+        EnsureSupports(nameof(SendRawSingle),
+            SocketTypePolicy.SocketCapability.MessageSend);
+        SendRawSingleCore(payload, flags);
+    }
+
+    internal SendResult TrySendRawSingle(ReadOnlySpan<byte> payload)
+    {
+        EnsureSupports(nameof(TrySendRawSingle),
+            SocketTypePolicy.SocketCapability.MessageSend);
+        return TrySendRawSingleCore(payload);
+    }
+
+    internal void SendBorrowedSingle(byte[] payload, int flags)
+    {
+        EnsureSupports(nameof(SendBorrowedSingle),
+            SocketTypePolicy.SocketCapability.MessageSend);
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        SendBorrowedSingleCore(payload, flags);
+    }
+
+    internal SendResult TrySendBorrowedSingle(byte[] payload)
+    {
+        EnsureSupports(nameof(TrySendBorrowedSingle),
+            SocketTypePolicy.SocketCapability.MessageSend);
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        return TrySendBorrowedSingleCore(payload);
+    }
+
     public void Send(IReadOnlyList<Message> parts)
     {
         EnsureSupports(nameof(Send), SocketTypePolicy.SocketCapability.MessageSend);
@@ -215,6 +251,35 @@ internal sealed class SocketKernel : IDisposable
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         return TrySendRoutedSingleWithFlags(routingId, message);
+    }
+
+    internal void SendBorrowedSingle(string routingId, byte[] payload,
+        int flags)
+    {
+        EnsureSupports(nameof(SendBorrowedSingle),
+            SocketTypePolicy.SocketCapability.RoutedSend);
+        if (routingId == null)
+            throw new ArgumentNullException(nameof(routingId));
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+            nameof(routingId));
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        SendBorrowedSingleCore(ref nativeRoutingId, payload, flags);
+    }
+
+    internal SendResult TrySendBorrowedSingle(string routingId, byte[] payload)
+    {
+        EnsureSupports(nameof(TrySendBorrowedSingle),
+            SocketTypePolicy.SocketCapability.RoutedSend);
+        if (routingId == null)
+            throw new ArgumentNullException(nameof(routingId));
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+            nameof(routingId));
+        ZlinkRoutingId nativeRoutingId = NativeHelpers.WriteRoutingId(encoded);
+        return TrySendBorrowedSingleCore(ref nativeRoutingId, payload);
     }
 
     public void Send(string routingId, IReadOnlyList<Message> parts)
@@ -282,6 +347,48 @@ internal sealed class SocketKernel : IDisposable
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         return TryPublishSingleCore(topic, message);
+    }
+
+    internal void PublishRawSingle(string topic, ReadOnlySpan<byte> payload,
+        int flags)
+    {
+        EnsureSupports(nameof(PublishRawSingle),
+            SocketTypePolicy.SocketCapability.Publish);
+        if (topic == null)
+            throw new ArgumentNullException(nameof(topic));
+        PublishRawSingleCore(topic, payload, flags);
+    }
+
+    internal SendResult TryPublishRawSingle(string topic,
+        ReadOnlySpan<byte> payload)
+    {
+        EnsureSupports(nameof(TryPublishRawSingle),
+            SocketTypePolicy.SocketCapability.Publish);
+        if (topic == null)
+            throw new ArgumentNullException(nameof(topic));
+        return TryPublishRawSingleCore(topic, payload);
+    }
+
+    internal void PublishBorrowedSingle(string topic, byte[] payload, int flags)
+    {
+        EnsureSupports(nameof(PublishBorrowedSingle),
+            SocketTypePolicy.SocketCapability.Publish);
+        if (topic == null)
+            throw new ArgumentNullException(nameof(topic));
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        PublishBorrowedSingleCore(topic, payload, flags);
+    }
+
+    internal SendResult TryPublishBorrowedSingle(string topic, byte[] payload)
+    {
+        EnsureSupports(nameof(TryPublishBorrowedSingle),
+            SocketTypePolicy.SocketCapability.Publish);
+        if (topic == null)
+            throw new ArgumentNullException(nameof(topic));
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        return TryPublishBorrowedSingleCore(topic, payload);
     }
 
     public void Publish(string topic, IReadOnlyList<Message> parts)
@@ -391,6 +498,37 @@ internal sealed class SocketKernel : IDisposable
         return TryReceiveCore(() => SubscribeCore(DontWaitFlag));
     }
 
+    internal byte[][]? TryReceiveRawSubscribedFrames(int flags)
+    {
+        EnsureSupports(nameof(TryReceiveRawSubscribedFrames),
+            SocketTypePolicy.SocketCapability.SubscribeReceive);
+        try
+        {
+            return ReceiveRawSubscribedFramesCore(flags);
+        }
+        catch (ZlinkException ex) when (MapTryReceiveableError(ex))
+        {
+            return null;
+        }
+    }
+
+    internal int? TryReceiveRawSubscribedFrame(Span<byte> destination, int flags,
+        out byte[][] pendingFrames)
+    {
+        EnsureSupports(nameof(TryReceiveRawSubscribedFrame),
+            SocketTypePolicy.SocketCapability.SubscribeReceive);
+        try
+        {
+            return ReceiveRawSubscribedFrameCore(destination, flags,
+                out pendingFrames);
+        }
+        catch (ZlinkException ex) when (MapTryReceiveableError(ex))
+        {
+            pendingFrames = Array.Empty<byte[]>();
+            return null;
+        }
+    }
+
     public unsafe SubscriptionEvent ReceiveSubscriptionEvent()
     {
         EnsureSupports(nameof(ReceiveSubscriptionEvent),
@@ -421,33 +559,90 @@ internal sealed class SocketKernel : IDisposable
         return TryReceiveCore(() => ReceiveSubscriptionEventCore(DontWaitFlag));
     }
 
-    public Received Receive()
+    public Received Recv()
     {
-        EnsureSupports(nameof(Receive),
+        EnsureSupports(nameof(Recv),
             SocketTypePolicy.SocketCapability.MessageReceive);
         return ReceiveCore(0);
     }
 
-    public Received? TryReceive()
+    public Received? TryRecv()
     {
-        EnsureSupports(nameof(Receive),
+        EnsureSupports(nameof(TryRecv),
             SocketTypePolicy.SocketCapability.MessageReceive);
         return TryReceiveCore(() => ReceiveCore(DontWaitFlag));
     }
 
     public Received ReceiveRouted()
     {
-        EnsureSupports(nameof(Receive),
+        EnsureSupports(nameof(ReceiveRouted),
             SocketTypePolicy.SocketCapability.RoutedReceive);
         return ReceiveRoutedCore(0);
     }
 
     public Received? TryReceiveRouted()
     {
-        EnsureSupports(nameof(Receive),
+        EnsureSupports(nameof(TryReceiveRouted),
             SocketTypePolicy.SocketCapability.RoutedReceive);
         return TryReceiveCore(() => ReceiveRoutedCore(DontWaitFlag));
     }
+
+    internal byte[][]? TryReceiveRawFrames(int flags)
+    {
+        if (Type == SocketType.Router || Type == SocketType.Stream)
+        {
+            EnsureSupports(nameof(TryReceiveRawFrames),
+                SocketTypePolicy.SocketCapability.RoutedReceive);
+        }
+        else
+        {
+            EnsureSupports(nameof(TryReceiveRawFrames),
+                SocketTypePolicy.SocketCapability.MessageReceive);
+        }
+
+        try
+        {
+            return ReceiveRawFramesCore(flags);
+        }
+        catch (ZlinkException ex) when (MapTryReceiveableError(ex))
+        {
+            return null;
+        }
+    }
+
+    internal int? TryReceiveRawFrame(Span<byte> destination, int flags,
+        out byte[][] pendingFrames)
+    {
+        EnsureSupports(nameof(TryReceiveRawFrame),
+            SocketTypePolicy.SocketCapability.MessageReceive);
+        try
+        {
+            return ReceiveRawFrameCore(destination, flags, out pendingFrames);
+        }
+        catch (ZlinkException ex) when (MapTryReceiveableError(ex))
+        {
+            pendingFrames = Array.Empty<byte[]>();
+            return null;
+        }
+    }
+
+    internal int? TryReceiveRawRoutedFrame(Span<byte> routingDestination,
+        Span<byte> payloadDestination, int flags, out byte[][] pendingFrames)
+    {
+        EnsureSupports(nameof(TryReceiveRawRoutedFrame),
+            SocketTypePolicy.SocketCapability.RoutedReceive);
+        try
+        {
+            return ReceiveRawRoutedFrameCore(routingDestination,
+                payloadDestination, flags, out pendingFrames);
+        }
+        catch (ZlinkException ex) when (MapTryReceiveableError(ex))
+        {
+            pendingFrames = Array.Empty<byte[]>();
+            return null;
+        }
+    }
+
 
     public void SetOption(SocketOptionKey<int> option, int value)
     {
@@ -534,7 +729,7 @@ internal sealed class SocketKernel : IDisposable
         return _options.GetString(option.Option, initialSize);
     }
 
-    public SocketMonitor OpenMonitor(SocketEvent events)
+    public SocketMonitor MonitorOpen(SocketEvent events)
     {
         ZlinkSocketMonitorOpenOptions options = new()
         {
@@ -745,6 +940,78 @@ internal sealed class SocketKernel : IDisposable
         }
     }
 
+    private unsafe byte[][] ReceiveRawSubscribedFramesCore(int flags)
+    {
+        IntPtr nativeParts = IntPtr.Zero;
+        nuint partCount = 0;
+        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        try
+        {
+            nuint topicLength = TopicBufferSize;
+            int rc = NativeMethods.zlink_subscribe(Handle, IntPtr.Zero,
+                out nativeParts, out partCount, topicBuffer, ref topicLength,
+                flags);
+            ZlinkException.ThrowIfError(rc);
+
+            int total = checked((int)partCount);
+            var frames = new byte[total][];
+            ZlinkMsg* src = (ZlinkMsg*)nativeParts;
+            for (int i = 0; i < total; i++)
+            {
+                IntPtr msgPtr = new IntPtr(src + i);
+                int size = checked((int)NativeMethods.zlink_msg_size(msgPtr));
+                if (size == 0)
+                {
+                    frames[i] = Array.Empty<byte>();
+                    continue;
+                }
+
+                IntPtr dataPtr = NativeMethods.zlink_msg_data(msgPtr);
+                if (dataPtr == IntPtr.Zero)
+                {
+                    frames[i] = Array.Empty<byte>();
+                    continue;
+                }
+
+                byte[] payload = new byte[size];
+                new ReadOnlySpan<byte>((void*)dataPtr, size).CopyTo(payload);
+                frames[i] = payload;
+            }
+
+            return frames;
+        }
+        finally
+        {
+            if (nativeParts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(nativeParts, partCount);
+            ArrayPool<byte>.Shared.Return(topicBuffer);
+        }
+    }
+
+    private unsafe int ReceiveRawSubscribedFrameCore(Span<byte> destination,
+        int flags, out byte[][] pendingFrames)
+    {
+        IntPtr nativeParts = IntPtr.Zero;
+        nuint partCount = 0;
+        byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
+        try
+        {
+            nuint topicLength = TopicBufferSize;
+            int rc = NativeMethods.zlink_subscribe(Handle, IntPtr.Zero,
+                out nativeParts, out partCount, topicBuffer, ref topicLength,
+                flags);
+            ZlinkException.ThrowIfError(rc);
+            return CopyFirstFrameAndCollectPending(nativeParts, partCount,
+                destination, out pendingFrames);
+        }
+        finally
+        {
+            if (nativeParts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(nativeParts, partCount);
+            ArrayPool<byte>.Shared.Return(topicBuffer);
+        }
+    }
+
     private unsafe SubscriptionEvent ReceiveSubscriptionEventCore(int flags)
     {
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
@@ -815,6 +1082,170 @@ internal sealed class SocketKernel : IDisposable
         }
     }
 
+    private unsafe byte[][] ReceiveRawFramesCore(int flags)
+    {
+        IntPtr nativeParts = IntPtr.Zero;
+        nuint partCount = 0;
+        ZlinkRoutingId nativeRoutingId = default;
+        try
+        {
+            int rc = NativeMethods.zlink_recv(Handle, out nativeRoutingId,
+                out nativeParts, out partCount, flags);
+            ZlinkException.ThrowIfError(rc);
+
+            int routingCount = nativeRoutingId.Size > 0 ? 1 : 0;
+            int total = checked((int)partCount) + routingCount;
+            var frames = new byte[total][];
+            int index = 0;
+            if (routingCount != 0)
+                frames[index++] = NativeHelpers.ReadRoutingId(ref nativeRoutingId);
+
+            ZlinkMsg* src = (ZlinkMsg*)nativeParts;
+            for (int i = 0; i < (int)partCount; i++)
+            {
+                IntPtr msgPtr = new IntPtr(src + i);
+                int size = checked((int)NativeMethods.zlink_msg_size(msgPtr));
+                if (size == 0)
+                {
+                    frames[index++] = Array.Empty<byte>();
+                    continue;
+                }
+
+                IntPtr dataPtr = NativeMethods.zlink_msg_data(msgPtr);
+                if (dataPtr == IntPtr.Zero)
+                {
+                    frames[index++] = Array.Empty<byte>();
+                    continue;
+                }
+
+                byte[] payload = new byte[size];
+                new ReadOnlySpan<byte>((void*)dataPtr, size).CopyTo(payload);
+                frames[index++] = payload;
+            }
+
+            return frames;
+        }
+        finally
+        {
+            if (nativeParts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(nativeParts, partCount);
+        }
+    }
+
+    private unsafe int ReceiveRawFrameCore(Span<byte> destination, int flags,
+        out byte[][] pendingFrames)
+    {
+        IntPtr nativeParts = IntPtr.Zero;
+        nuint partCount = 0;
+        try
+        {
+            int rc = NativeMethods.zlink_recv(Handle, IntPtr.Zero,
+                out nativeParts, out partCount, flags);
+            ZlinkException.ThrowIfError(rc);
+            return CopyFirstFrameAndCollectPending(nativeParts, partCount,
+                destination, out pendingFrames);
+        }
+        finally
+        {
+            if (nativeParts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(nativeParts, partCount);
+        }
+    }
+
+    private unsafe int ReceiveRawRoutedFrameCore(Span<byte> routingDestination,
+        Span<byte> payloadDestination, int flags, out byte[][] pendingFrames)
+    {
+        IntPtr nativeParts = IntPtr.Zero;
+        nuint partCount = 0;
+        ZlinkRoutingId nativeRoutingId = default;
+        try
+        {
+            int rc = NativeMethods.zlink_recv(Handle, out nativeRoutingId,
+                out nativeParts, out partCount, flags);
+            ZlinkException.ThrowIfError(rc);
+            CopyRoutingId(ref nativeRoutingId, routingDestination);
+            return CopyFirstFrameAndCollectPending(nativeParts, partCount,
+                payloadDestination, out pendingFrames);
+        }
+        finally
+        {
+            if (nativeParts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(nativeParts, partCount);
+        }
+    }
+
+    private static unsafe int CopyFirstFrameAndCollectPending(IntPtr nativeParts,
+        nuint partCount, Span<byte> destination, out byte[][] pendingFrames)
+    {
+        int total = checked((int)partCount);
+        if (total <= 0)
+        {
+            pendingFrames = Array.Empty<byte[]>();
+            return 0;
+        }
+
+        ZlinkMsg* src = (ZlinkMsg*)nativeParts;
+        IntPtr firstPtr = new IntPtr(src);
+        int firstSize = checked((int)NativeMethods.zlink_msg_size(firstPtr));
+        if (firstSize > destination.Length)
+        {
+            throw new ArgumentException("Destination buffer is too small.",
+                nameof(destination));
+        }
+
+        IntPtr firstData = NativeMethods.zlink_msg_data(firstPtr);
+        if (firstSize != 0 && firstData != IntPtr.Zero)
+            new ReadOnlySpan<byte>((void*)firstData, firstSize).CopyTo(destination);
+
+        if (total == 1)
+        {
+            pendingFrames = Array.Empty<byte[]>();
+            return firstSize;
+        }
+
+        pendingFrames = new byte[total - 1][];
+        for (int i = 1; i < total; i++)
+        {
+            IntPtr msgPtr = new IntPtr(src + i);
+            int size = checked((int)NativeMethods.zlink_msg_size(msgPtr));
+            if (size == 0)
+            {
+                pendingFrames[i - 1] = Array.Empty<byte>();
+                continue;
+            }
+
+            IntPtr dataPtr = NativeMethods.zlink_msg_data(msgPtr);
+            if (dataPtr == IntPtr.Zero)
+            {
+                pendingFrames[i - 1] = Array.Empty<byte>();
+                continue;
+            }
+
+            byte[] payload = new byte[size];
+            new ReadOnlySpan<byte>((void*)dataPtr, size).CopyTo(payload);
+            pendingFrames[i - 1] = payload;
+        }
+
+        return firstSize;
+    }
+
+    private static unsafe void CopyRoutingId(ref ZlinkRoutingId routingId,
+        Span<byte> destination)
+    {
+        int size = routingId.Size;
+        if (size > destination.Length)
+        {
+            throw new ArgumentException("Destination buffer is too small.",
+                nameof(destination));
+        }
+
+        if (size <= 0)
+            return;
+
+        fixed (byte* src = routingId.Data)
+            new ReadOnlySpan<byte>(src, size).CopyTo(destination);
+    }
+
     private static T? TryReceiveCore<T>(Func<T> operation) where T : class
     {
         try
@@ -831,6 +1262,13 @@ internal sealed class SocketKernel : IDisposable
     {
         ErrorCode code = ZlinkException.MapErrorCode(ex.Errno);
         return code == ErrorCode.EAgain;
+    }
+
+    private static void OnBorrowedBufferFree(IntPtr data, IntPtr hint)
+    {
+        if (hint == IntPtr.Zero)
+            return;
+        GCHandle.FromIntPtr(hint).Free();
     }
 
     private static SendResult MapSendResult(int rc)
@@ -1176,6 +1614,152 @@ internal sealed class SocketKernel : IDisposable
         }
     }
 
+    private unsafe void SendRawSingleCore(ReadOnlySpan<byte> payload, int flags)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        try
+        {
+            int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
+                (nuint)payload.Length);
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+
+            if (payload.Length != 0)
+            {
+                IntPtr dataPtr = NativeMethods.zlink_msg_data(ref nativePart);
+                if (dataPtr == IntPtr.Zero)
+                    throw new InvalidOperationException("Message data is null.");
+                payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
+            }
+
+            int rc = NativeMethods.zlink_send(Handle, (IntPtr)(&nativePart), 1,
+                flags);
+            if (rc < 0)
+            {
+                NativeMethods.zlink_msg_close(ref nativePart);
+                initialized = false;
+            }
+            ZlinkException.ThrowIfError(rc);
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            throw;
+        }
+    }
+
+    private unsafe SendResult TrySendRawSingleCore(ReadOnlySpan<byte> payload)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        try
+        {
+            int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
+                (nuint)payload.Length);
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+
+            if (payload.Length != 0)
+            {
+                IntPtr dataPtr = NativeMethods.zlink_msg_data(ref nativePart);
+                if (dataPtr == IntPtr.Zero)
+                    throw new InvalidOperationException("Message data is null.");
+                payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
+            }
+
+            int rc = NativeMethods.zlink_send(Handle, (IntPtr)(&nativePart), 1,
+                DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            NativeMethods.zlink_msg_close(ref nativePart);
+            initialized = false;
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult != null)
+                return sendResult.Value;
+            throw ZlinkException.FromLastError();
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            throw;
+        }
+    }
+
+    private unsafe void SendBorrowedSingleCore(byte[] payload, int flags)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        GCHandle handle = default;
+        try
+        {
+            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
+                handle.AddrOfPinnedObject(), (nuint)payload.Length,
+                BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+            handle = default;
+
+            int rc = NativeMethods.zlink_send(Handle, (IntPtr)(&nativePart), 1,
+                flags);
+            if (rc < 0)
+            {
+                NativeMethods.zlink_msg_close(ref nativePart);
+                initialized = false;
+            }
+            ZlinkException.ThrowIfError(rc);
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            if (handle.IsAllocated)
+                handle.Free();
+            throw;
+        }
+    }
+
+    private unsafe SendResult TrySendBorrowedSingleCore(byte[] payload)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        GCHandle handle = default;
+        try
+        {
+            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
+                handle.AddrOfPinnedObject(), (nuint)payload.Length,
+                BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+            handle = default;
+
+            int rc = NativeMethods.zlink_send(Handle, (IntPtr)(&nativePart), 1,
+                DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            NativeMethods.zlink_msg_close(ref nativePart);
+            initialized = false;
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult != null)
+                return sendResult.Value;
+            throw ZlinkException.FromLastError();
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            if (handle.IsAllocated)
+                handle.Free();
+            throw;
+        }
+    }
+
     private unsafe void PublishCore(string topic, ReadOnlySpan<Message> parts,
         int flags, string paramName)
     {
@@ -1309,6 +1893,156 @@ internal sealed class SocketKernel : IDisposable
         {
             if (moved)
                 message.RestoreFrom(ref nativePart);
+            throw;
+        }
+    }
+
+    private unsafe void PublishRawSingleCore(string topic,
+        ReadOnlySpan<byte> payload, int flags)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        try
+        {
+            int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
+                (nuint)payload.Length);
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+
+            if (payload.Length != 0)
+            {
+                IntPtr dataPtr = NativeMethods.zlink_msg_data(ref nativePart);
+                if (dataPtr == IntPtr.Zero)
+                    throw new InvalidOperationException("Message data is null.");
+                payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
+            }
+
+            int rc = NativeMethods.zlink_publish(Handle, topic,
+                (IntPtr)(&nativePart), 1, flags);
+            if (rc < 0)
+            {
+                NativeMethods.zlink_msg_close(ref nativePart);
+                initialized = false;
+            }
+            ZlinkException.ThrowIfError(rc);
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            throw;
+        }
+    }
+
+    private unsafe SendResult TryPublishRawSingleCore(string topic,
+        ReadOnlySpan<byte> payload)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        try
+        {
+            int initRc = NativeMethods.zlink_msg_init_size(ref nativePart,
+                (nuint)payload.Length);
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+
+            if (payload.Length != 0)
+            {
+                IntPtr dataPtr = NativeMethods.zlink_msg_data(ref nativePart);
+                if (dataPtr == IntPtr.Zero)
+                    throw new InvalidOperationException("Message data is null.");
+                payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
+            }
+
+            int rc = NativeMethods.zlink_publish(Handle, topic,
+                (IntPtr)(&nativePart), 1, DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            NativeMethods.zlink_msg_close(ref nativePart);
+            initialized = false;
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult != null)
+                return sendResult.Value;
+            throw ZlinkException.FromLastError();
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            throw;
+        }
+    }
+
+    private unsafe void PublishBorrowedSingleCore(string topic, byte[] payload,
+        int flags)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        GCHandle handle = default;
+        try
+        {
+            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
+                handle.AddrOfPinnedObject(), (nuint)payload.Length,
+                BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+            handle = default;
+
+            int rc = NativeMethods.zlink_publish(Handle, topic,
+                (IntPtr)(&nativePart), 1, flags);
+            if (rc < 0)
+            {
+                NativeMethods.zlink_msg_close(ref nativePart);
+                initialized = false;
+            }
+            ZlinkException.ThrowIfError(rc);
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            if (handle.IsAllocated)
+                handle.Free();
+            throw;
+        }
+    }
+
+    private unsafe SendResult TryPublishBorrowedSingleCore(string topic,
+        byte[] payload)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        GCHandle handle = default;
+        try
+        {
+            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
+                handle.AddrOfPinnedObject(), (nuint)payload.Length,
+                BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+            handle = default;
+
+            int rc = NativeMethods.zlink_publish(Handle, topic,
+                (IntPtr)(&nativePart), 1, DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            NativeMethods.zlink_msg_close(ref nativePart);
+            initialized = false;
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult != null)
+                return sendResult.Value;
+            throw ZlinkException.FromLastError();
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            if (handle.IsAllocated)
+                handle.Free();
             throw;
         }
     }
@@ -1447,6 +2181,79 @@ internal sealed class SocketKernel : IDisposable
         {
             if (moved)
                 message.RestoreFrom(ref nativePart);
+            throw;
+        }
+    }
+
+    private unsafe void SendBorrowedSingleCore(ref ZlinkRoutingId routingId,
+        byte[] payload, int flags)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        GCHandle handle = default;
+        try
+        {
+            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
+                handle.AddrOfPinnedObject(), (nuint)payload.Length,
+                BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+            handle = default;
+
+            int rc = NativeMethods.zlink_send_rid(Handle, ref routingId,
+                (IntPtr)(&nativePart), 1, flags);
+            if (rc < 0)
+            {
+                NativeMethods.zlink_msg_close(ref nativePart);
+                initialized = false;
+            }
+            ZlinkException.ThrowIfError(rc);
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            if (handle.IsAllocated)
+                handle.Free();
+            throw;
+        }
+    }
+
+    private unsafe SendResult TrySendBorrowedSingleCore(
+        ref ZlinkRoutingId routingId, byte[] payload)
+    {
+        ZlinkMsg nativePart = default;
+        bool initialized = false;
+        GCHandle handle = default;
+        try
+        {
+            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
+                handle.AddrOfPinnedObject(), (nuint)payload.Length,
+                BorrowedBufferFreePtr, GCHandle.ToIntPtr(handle));
+            ZlinkException.ThrowIfError(initRc);
+            initialized = true;
+            handle = default;
+
+            int rc = NativeMethods.zlink_send_rid(Handle, ref routingId,
+                (IntPtr)(&nativePart), 1, DontWaitFlag);
+            if (rc == 0)
+                return SendResult.Sent;
+
+            NativeMethods.zlink_msg_close(ref nativePart);
+            initialized = false;
+            SendResult? sendResult = TryMapSendResultFromErrno();
+            if (sendResult != null)
+                return sendResult.Value;
+            throw ZlinkException.FromLastError();
+        }
+        catch
+        {
+            if (initialized)
+                NativeMethods.zlink_msg_close(ref nativePart);
+            if (handle.IsAllocated)
+                handle.Free();
             throw;
         }
     }

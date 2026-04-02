@@ -9,6 +9,7 @@ using static PerfRunner;
 internal static class PerfSpot
 {
     private const string Topic = "bench";
+    private const int BorrowedPublishThreshold = 65536;
 
     internal static int RunSpot(string transport, int size)
     {
@@ -231,11 +232,12 @@ internal static class PerfSpot
         return received > 0 && (latCount == 0 || latencySamples.Count > 0);
     }
 
-    private static SendResult TryPublishPayload(Spot publisher,
-        ReadOnlySpan<byte> payload)
+    private static SendResult TryPublishPayload(Spot publisher, byte[] payload)
     {
-        using Message message = Message.FromBytes(payload);
-        return publisher.TryPublish(Topic, message);
+        if (payload.Length >= BorrowedPublishThreshold)
+            return publisher.TryPublishBorrowedSingle(Topic, payload);
+
+        return publisher.TryPublishRawSingle(Topic, payload);
     }
 
     private static bool TryReceiveSinglePayload(Spot subscriber, Span<byte> buffer,
@@ -244,35 +246,16 @@ internal static class PerfSpot
         read = 0;
         try
         {
-            Subscribed? subscribed = nonBlocking
-                ? subscriber.TrySubscribe()
-                : subscriber.Subscribe();
-            if (subscribed == null)
+            int? received = subscriber.TryReceiveRawSubscribedFrame(buffer,
+                nonBlocking ? 1 : 0, out byte[][] pendingFrames);
+            if (received == null || pendingFrames.Length != 0)
                 return false;
-            read = CopySubscribedPayload(subscribed, buffer);
+            read = received.Value;
             return read > 0;
         }
         catch (ZlinkException ex) when (nonBlocking && IsWouldBlock(ex.Errno))
         {
             return false;
-        }
-    }
-
-    private static int CopySubscribedPayload(Subscribed subscribed,
-        Span<byte> buffer)
-    {
-        try
-        {
-            if (!subscribed.HasSinglePart)
-                return 0;
-
-            Message part = subscribed.SinglePartOrThrow();
-            return part.CopyTo(buffer);
-        }
-        finally
-        {
-            foreach (Message part in subscribed.Parts)
-                part.Dispose();
         }
     }
 

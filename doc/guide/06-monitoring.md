@@ -88,8 +88,6 @@ These report transport/session state for raw sockets.
 | `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | Handshake failed (generic) | errno | — | Both | check network |
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed (protocol error) | error code | — | Both | check version/config |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed (auth) | — | — | Both | check TLS/auth config |
-| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription propagated | reserved | — | SUB side | **start `zlink_subscribe()` recv** |
-| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber ready membership changed | reserved | — | PUB side | **start `zlink_publish()` delivery** |
 | `MONITOR_STOPPED` | `0x0400` | Monitor stopped | — | — | Both | `zlink_monitor_close()` |
 
 ### Connection flow
@@ -327,11 +325,11 @@ The handle kind is determined automatically at runtime.
 ```c
 void on_spot_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED) {
-        printf("sub delivery ready\n");
+    if (ev->event_type & ZLINK_MONITOR_EVENT_PEER_UP) {
+        printf("peer connected\n");
     }
-    if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED) {
-        printf("pub first delivery ready\n");
+    if (ev->event_type & ZLINK_SPOT_SUB_FILTER_APPLIED) {
+        printf("subscription filter applied\n");
     }
 }
 
@@ -357,11 +355,11 @@ Different services emit different events.
 
 | Constant | Description | `value` | After this event |
 |---|---|---|---|
-| `SUB_DELIVERY_READY_CHANGED` | sub delivery readiness changed | — | **start receiving** |
-| `PUB_FIRST_DELIVERY_READY_CHANGED` | at least one subscriber ready | — | **start `zlink_publish()` delivery** |
+| `PEER_UP` | peer connected | — | topology edge observed |
+| `PEER_DOWN` | peer disconnected | — | topology loss observed |
 | `SPOT_SUB_FILTER_APPLIED` | subscription filter propagated to peer | — | — |
-| `SPOT_SUB_SUBSCRIPTION_READY` | subscription receive ready | — | — |
-| `SPOT_PUB_DELIVERY_READY_CHANGED` | subject-specific remote delivery-ready changed | — | — |
+| `PUB_QUEUE_FULL` | publisher queue reached pressure | — | apply backpressure handling |
+| `PUB_QUEUE_DRAINED` | publisher queue drained | — | resume normal flow |
 
 #### Discovery events
 
@@ -511,29 +509,25 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 
 ### 11.3 Raw sockets — PUB/SUB
 
-Raw PUB/SUB sockets provide delivery-ready events via the socket monitor.
-Open separate monitors on PUB and SUB and wait for both before messaging.
-
-- `SUB_DELIVERY_READY_CHANGED` — subscription propagated, receiving possible
-- `PUB_DELIVERY_READY_CHANGED` — publisher-side delivery-ready membership changed
+For internal perf on raw PUB/SUB, use `CONNECTION_READY_CHANGED` for each
+expected client and then wait a fixed 1-second settle window before messaging.
+Perf does not use delivery-ready monitor events.
 
 ```c
 zlink_set_subscription(sub, "topic");
 
-/* SUB monitor: wait for subscription propagation */
+/* SUB/PUB perf gate: wait for connection-ready */
 zlink_socket_monitor_open_options_t sub_opts = {
-    .events = ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
 };
 void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
 
-/* PUB monitor: wait for subscriber readiness */
 zlink_socket_monitor_open_options_t pub_opts = {
-    .events = ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
 };
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-/* Start messaging after both delivery-ready edges */
-/* expected_subs is validated via monitor event counting */
+/* Start after expected clients are connection-ready, then settle 1 second */
 zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
 zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
 
@@ -543,38 +537,36 @@ zlink_monitor_close(&sub_mon);
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| PUB | `PUB_DELIVERY_READY_CHANGED` + expected_subs event counting | `zlink_publish()` delivery |
-| SUB | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` recv |
+| PUB | `CONNECTION_READY_CHANGED` + expected client counting + 1s settle | `zlink_publish()` delivery |
+| SUB | `CONNECTION_READY_CHANGED` + expected client counting + 1s settle | `zlink_subscribe()` recv |
 
 ### 11.4 Services — SPOT
 
-SPOT uses separate service monitors for sub and pub, each subscribing to
-different events.
+For internal perf on SPOT, use `PEER_UP` for the expected client count and then
+wait a fixed 1-second settle window before messaging. Perf does not use
+delivery-ready or first-delivery monitor events.
 
 ```c
-/* Sub monitor: subscribe to SUB_DELIVERY_READY_CHANGED */
+/* SPOT perf gate: subscribe to PEER_UP */
 zlink_service_monitor_open_options_t sub_opts = {
-    .events = ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+    .events = ZLINK_MONITOR_EVENT_PEER_UP
               | ZLINK_MONITOR_EVENT_ERROR
 };
 void *sub_mon = zlink_service_monitor_open(sub_node, &sub_opts);
 
-/* Pub monitor: subscribe to PUB_FIRST_DELIVERY_READY_CHANGED */
 zlink_service_monitor_open_options_t pub_opts = {
-    .events = ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
+    .events = ZLINK_MONITOR_EVENT_PEER_UP
               | ZLINK_MONITOR_EVENT_ERROR
 };
 void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 
-/* Start messaging after both are ready */
-/* sub ready → zlink_subscribe() for receiving */
-/* pub ready → zlink_publish() for delivery */
+/* Start after expected clients reached PEER_UP, then settle 1 second */
 ```
 
 | Service | Wait for | Then you can |
 |---|---|---|
-| SPOT sub | `SUB_DELIVERY_READY_CHANGED` | start receiving via `zlink_subscribe()` |
-| SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | start delivering via `zlink_publish()` |
+| SPOT sub | `PEER_UP` + expected client counting + 1s settle | start receiving via `zlink_subscribe()` |
+| SPOT pub | `PEER_UP` + expected client counting + 1s settle | start delivering via `zlink_publish()` |
 
 ### 11.5 Snapshots
 

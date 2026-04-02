@@ -75,7 +75,7 @@ raw 소켓의 transport/session 상태를 알려준다.
 
 | 상수 | 값 | 설명 | `value` | 발생 측 |
 |---|---|---|---|---|
-| `CONNECTION_READY_CHANGED` | `0x1000` | 핸드셰이크 완료, 메시징 가능 | ready 수 | 양쪽 |
+| `CONNECTION_READY_CHANGED` | `0x1000` | 핸드셰이크 완료, 메시징 가능 | reserved | 양쪽 |
 | `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | 클라이언트 |
 | `ACCEPTED` | `0x0020` | 수신 연결 accept | fd | 서버 |
 | `DISCONNECTED` | `0x0200` | 세션 종료 | reason 코드 | 양쪽 |
@@ -89,13 +89,9 @@ raw 소켓의 transport/session 상태를 알려준다.
 | `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 핸드셰이크 실패 (일반) | errno | 양쪽 |
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | 양쪽 |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | 양쪽 |
-| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB 전파 완료 | reserved | SUB 측 |
-| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber 준비 변화 | reserved | PUB 측 |
 | `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | 양쪽 |
 
 - `CONNECTION_READY_CHANGED`: 모든 소켓에서 `routing_id`에 peer id 포함
-- `SUB_DELIVERY_READY_CHANGED` 이후 `zlink_subscribe()` 수신 시작 가능
-- `PUB_DELIVERY_READY_CHANGED` 이후 `zlink_publish()` delivery 시작 가능
 
 ### 연결 흐름
 
@@ -360,11 +356,11 @@ handle 종류는 런타임에 자동 판별된다.
 ```c
 void on_spot_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED) {
-        printf("sub delivery ready\n");
+    if (ev->event_type & ZLINK_MONITOR_EVENT_PEER_UP) {
+        printf("peer connected\n");
     }
-    if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED) {
-        printf("pub first delivery ready\n");
+    if (ev->event_type & ZLINK_SPOT_SUB_FILTER_APPLIED) {
+        printf("subscription filter applied\n");
     }
 }
 
@@ -390,11 +386,11 @@ if (rc == 0) {
 
 | 상수 | 설명 | `value` | 이후 가능한 동작 |
 |---|---|---|---|
-| `SUB_DELIVERY_READY_CHANGED` | sub delivery 준비 상태 변화 | — | **수신 시작 가능** |
-| `PUB_FIRST_DELIVERY_READY_CHANGED` | 최소 1개 subscriber 준비 | — | **`zlink_publish()` delivery 시작** |
+| `PEER_UP` | 피어 연결 | — | topology edge 관찰 |
+| `PEER_DOWN` | 피어 연결 해제 | — | topology loss 관찰 |
 | `SPOT_SUB_FILTER_APPLIED` | 구독 필터가 peer에 전파됨 | — | — |
-| `SPOT_SUB_SUBSCRIPTION_READY` | 구독 수신 준비 완료 | — | — |
-| `SPOT_PUB_DELIVERY_READY_CHANGED` | subject별 remote delivery-ready 변화 | — | — |
+| `PUB_QUEUE_FULL` | publisher 큐 압력 발생 | — | backpressure 처리 |
+| `PUB_QUEUE_DRAINED` | publisher 큐 배출 완료 | — | 정상 흐름 재개 |
 
 #### Discovery 이벤트
 
@@ -526,7 +522,7 @@ zlink_monitor_close(&mon);
 - `sleep`/고정 지연으로 ready를 추정하지 않는다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 이벤트일 뿐,
   메시징 시작 기준으로 쓰지 않는다.
-- delivery-ready event를 받은 뒤에 메시징을 시작한다.
+- perf에서는 low-cost event를 expected peer 수만큼 센 뒤 고정 settle 1초 후 시작한다.
 
 ### 11.1 Raw 소켓 — PAIR, DEALER, ROUTER
 
@@ -591,31 +587,25 @@ STREAM도 다른 raw 소켓과 동일하게
 
 ### 11.3 Raw 소켓 — PUB/SUB
 
-raw PUB/SUB 소켓은 `CONNECTION_READY_CHANGED`가 아니라 **delivery-ready**
-이벤트를 기다려야 한다. 연결만으로는 구독 전파가 완료되지 않기 때문이다.
-PUB과 SUB 각각에 별도 모니터를 열어서 양쪽 모두 ready를
-확인한 뒤 메시징한다.
-
-- `SUB_DELIVERY_READY_CHANGED` — subscription이 전파되어 수신 가능
-- `PUB_DELIVERY_READY_CHANGED` — publisher 측 delivery-ready membership 변화
+raw PUB/SUB perf는 `CONNECTION_READY_CHANGED`를 expected client 수만큼 받은 뒤
+고정 settle 1초를 대기하고 메시징을 시작한다. perf는 delivery-ready exactness를
+gate로 사용하지 않는다.
 
 ```c
 zlink_set_subscription(sub, "topic");
 
-/* SUB 모니터: subscription 전파 완료 대기 */
+/* SUB/PUB perf gate: connection-ready 대기 */
 zlink_socket_monitor_open_options_t sub_opts = {
-    .events = ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
 };
 void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
 
-/* PUB 모니터: subscriber 준비 완료 대기 */
 zlink_socket_monitor_open_options_t pub_opts = {
-    .events = ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
 };
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-/* 양쪽 delivery-ready edge 확인 후 메시징 */
-/* expected_subs 충족 여부는 monitor event counting 으로 판단 */
+/* expected client 수만큼 connection-ready 수신 후 settle 1초 */
 zlink_publish(pub, "topic", &part, 1, 0);
 zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
 
@@ -625,40 +615,38 @@ zlink_monitor_close(&sub_mon);
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| PUB | `PUB_DELIVERY_READY_CHANGED` + expected_subs event counting | `zlink_publish()` delivery |
-| SUB | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 |
+| PUB | `CONNECTION_READY_CHANGED` + expected client counting + 1초 settle | `zlink_publish()` delivery |
+| SUB | `CONNECTION_READY_CHANGED` + expected client counting + 1초 settle | `zlink_subscribe()` 수신 |
 
 ### 11.4 서비스 — SPOT
 
-SPOT은 sub과 pub에 각각 별도 service monitor를 열어서 다른 이벤트를 구독한다.
+SPOT perf는 `PEER_UP`를 expected client 수만큼 받은 뒤 고정 settle 1초를
+대기하고 메시징을 시작한다.
 
 ```c
-/* sub 모니터: SUB_DELIVERY_READY_CHANGED 구독 */
+/* SPOT perf gate: PEER_UP 구독 */
 zlink_service_monitor_open_options_t sub_opts = {
-    .events = ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
+    .events = ZLINK_MONITOR_EVENT_PEER_UP
               | ZLINK_MONITOR_EVENT_ERROR
 };
 void *sub_mon = zlink_service_monitor_open(sub_node, &sub_opts);
 
-/* pub 모니터: PUB_FIRST_DELIVERY_READY_CHANGED 구독 */
 zlink_service_monitor_open_options_t pub_opts = {
-    .events = ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
+    .events = ZLINK_MONITOR_EVENT_PEER_UP
               | ZLINK_MONITOR_EVENT_ERROR
 };
 void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
 
-/* 양쪽 모두 ready 확인 후 메시징 시작 */
-/* sub ready → zlink_subscribe()로 수신 가능 */
-/* pub ready → zlink_publish()로 delivery 가능 */
+/* expected client 수만큼 PEER_UP 수신 후 settle 1초 뒤 시작 */
 ```
 
 | 서비스 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| SPOT sub | `SUB_DELIVERY_READY_CHANGED` | `zlink_subscribe()` 수신 시작 |
-| SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | `zlink_publish()` delivery 시작 |
+| SPOT sub | `PEER_UP` + expected client counting + 1초 settle | `zlink_subscribe()` 수신 시작 |
+| SPOT pub | `PEER_UP` + expected client counting + 1초 settle | `zlink_publish()` delivery 시작 |
 
 snapshot/status 조회는 운영 관찰/디버깅용이며, aggregate ready count는
-제공하지 않는다. 메시징 시작 판정에는 위 이벤트와 event counting 을 사용한다.
+제공하지 않는다. perf 메시징 시작 판정에는 위 low-cost event와 settle 정책을 사용한다.
 
 ### 11.5 Snapshot
 

@@ -103,15 +103,14 @@
   - callback 모델: `multi = callback recv + bounded queue + metric worker + send_ready_handler backpressure`
   - backpressure 전략: `echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
 - 연결 준비와 benchmark start gate는 socket/service monitoring의
-  **공식 ready event**만 사용한다.
-- multi perf의 ready gate는 이벤트 1개를 직접 기다리는 얇은 helper로 끝내야
+  **low-cost ready event**만 사용한다.
+- multi perf의 ready gate는 low-cost event counting + 고정 settle 1초로 끝내야
   한다. ready bool/count를 callback state에 복사하기 위한 구조체, heap alloc,
   mutex/cv wrapper, pattern별 별도 ready monitor 계층은 만들지 않는다.
-- multi perf는 delivery-ready event 확인 이전에 측정을 시작하지 않는다.
 - multi perf start gate 구현에서 아래를 금지한다.
   - ad-hoc sleep/retry handshake loop
   - monitor snapshot polling
-- 공식 ready event 직접 대기 helper는 허용한다. 단, helper가 callback-state
+- 공식 low-cost event 직접 대기 helper는 허용한다. 단, helper가 callback-state
   wrapper, snapshot polling, 첫 전송 성공 대기, route/subscription preflight를
   감춘 래퍼가 되어서는 안 된다.
 - multi lifecycle에서 아래 단계는 만들지 않는다.
@@ -141,18 +140,15 @@ multi는 runner의 `READY,<endpoint>`/`START,<size>` orchestration과 별개로,
 | MULTI_DEALER_DEALER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
 | MULTI_DEALER_ROUTER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
 | MULTI_ROUTER_ROUTER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
-| MULTI_PUBSUB | server(pub) | `PUB_DELIVERY_READY_CHANGED` event counting |
-| MULTI_PUBSUB | client(sub) 각 소켓 | `SUB_DELIVERY_READY_CHANGED` |
-| MULTI_SPOT | server(pub) | `SPOT_PUB_DELIVERY_READY_CHANGED` event counting |
-| MULTI_SPOT | client(sub) 각 소켓 | `SPOT_SUB_DELIVERY_READY_CHANGED` |
+| MULTI_PUBSUB | client 각 소켓 | `CONNECTION_READY_CHANGED` |
+| MULTI_SPOT | client 각 소켓 | `PEER_UP` |
 | MULTI_STREAM | client 각 연결 | transport connect 완료 + stream protocol ready (`connect_ok == target clients`) |
 
 - `expected_clients`는 해당 케이스에서 runner가 요구한 client 수와 동일하다.
-- multi PUBSUB/SPOT는 ready event를 직접 counting 해서 판정한다.
-- multi SPOT server는 `SPOT_PUB_DELIVERY_READY_CHANGED`를 expected client 수만큼
-  counting 해서 exact-count start gate로 사용한다. 퍼센트 quorum이나 완화
-  임계값을 두지 않는다.
+- multi는 expected client 수만큼 low-cost event를 직접 counting 해서 판정한다.
+- multi는 low-cost gate 이후 settle 1초를 대기하고 측정을 시작한다.
 - multi policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
+- multi policy 는 delivery-ready event gate도 사용하지 않는다.
 
 ### 1.2 프로세스 모델
 
@@ -192,7 +188,7 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
 - 여기서 `READY,<endpoint>`는 어디까지나 프로세스 orchestration 용도다.
   benchmark start gate를 대체하지 않으며, 실제 측정 시작 조건은 각 바이너리
-  내부의 공식 ready event gate가 담당한다.
+  내부의 low-cost ready event gate가 담당한다.
 
 #### 소스 파일 구조
 
@@ -829,7 +825,7 @@ server 프로세스:
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| ready | event-based | pattern별 공식 ready event | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` |
+| ready | event-based | pattern별 low-cost ready event + settle 1초 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` |
 | warmup | time-based | 2s | `PERF_MULTI_WARMUP_SECONDS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
@@ -1214,30 +1210,33 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 - `zlink_msg_data()` 반환 포인터를 직접 참조하여 불필요한 복사를 피한다. 내용 검증이 필요 없는 throughput 측정에서는 payload를 읽지 않는다.
 - Multi의 대량 클라이언트(1000~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.
 
-### 13.3 연결 준비 확인: MONITOR delivery-ready event 전용
+### 13.3 연결 준비 확인: MONITOR low-cost event 전용
 
 client 프로세스가 server에 대한 benchmark start gate를 확인할 때는 반드시
-**MONITOR 공식 ready event**를 사용한다. Sleep, handshake barrier
+**MONITOR low-cost ready event**를 사용한다. Sleep, handshake barrier
 (첫 메시지 전송 성공 대기), monitor snapshot polling 등 우회적 방법을 연결
 확인 수단으로 사용하지 않는다.
 
 | 항목 | 규칙 |
 |------|------|
-| 연결 확인 API | `zlink_socket_monitor_open(...)` 또는 `zlink_service_monitor_open(...)` 뒤에 공식 ready event 직접 대기 helper 사용 |
-| 감시 이벤트 | 패턴별 공식 ready event를 사용하며, 기준 표는 [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md) §11을 따른다 |
+| 연결 확인 API | `zlink_socket_monitor_open(...)` 또는 `zlink_service_monitor_open(...)` 뒤에 low-cost ready event 직접 대기 helper 사용 |
+| 감시 이벤트 | raw는 `CONNECTION_READY_CHANGED`, SPOT은 `PEER_UP`, 기준 표는 [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md) §11을 따른다 |
 | 대기 방식 | app thread에서 타임아웃 기반으로 ready event를 직접 기다린다 — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | `PERF_MULTI_MONITOR_HWM` (기본 1,000) — monitor event queue 상한 |
 
-- **이유**: perf start gate는 실제 delivery 가능 시점만 써야 한다. Sleep은 환경에 따라 불충분하거나 과다하고, handshake barrier와 snapshot polling은 측정 인프라 오버헤드를 늘리거나 잘못된 ready 판정을 만들 수 있다.
+- **이유**: perf start gate는 저비용 edge를 기준으로 하고, 실제 benchmark 시작은
+  고정 settle 1초 뒤에 맞춘다. Sleep은 환경에 따라 불충분하거나 과다하고,
+  handshake barrier와 snapshot polling은 측정 인프라 오버헤드를 늘리거나
+  잘못된 ready 판정을 만들 수 있다.
 - monitor handle은 pattern 파일 안에서 직접 열고 닫되, ready gate는 이벤트 1개
-  직접 대기로 끝낸다. ready bool/count를 보관하기 위한 callback-state wrapper는
-  두지 않는다.
+  직접 대기로 끝내지 않고 expected client 수 event counting 뒤 settle 1초로
+  끝낸다. ready bool/count를 보관하기 위한 callback-state wrapper는 두지 않는다.
 - `READY,<endpoint>` / `CLIENT_READY,<msg_size>` 같은 stdout 제어 메시지는
   runner와 프로세스 순서를 맞추기 위한 외부 orchestration 신호일 뿐이다.
-  이 신호만으로 delivery-ready를 판정하거나 측정을 시작해서는 안 된다.
+  이 신호만으로 low-cost ready를 판정하거나 측정을 시작해서는 안 된다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 용도로만 사용한다. perf 시작 gate로 승격하지 않는다.
-- server 측에서도 동일하게 guide §11에 정의된 delivery-ready event를 기준으로 준비를 판정한다.
+- server 측에서도 동일하게 guide §11에 정의된 low-cost event를 기준으로 준비를 판정한다.
 
 ---
 

@@ -31,8 +31,8 @@
 - size 변경 시마다 별도 프로세스로 실행하여 케이스 간 메트릭 오염을 방지한다.
 - `single`의 공식 lifecycle은 `ready -> warmup -> active`다.
 - 재시도 로직은 두지 않는다.
-- 연결 준비/handshake는 pattern별 공식 ready event만 사용한다.
-- ready gate는 그 이벤트 1개를 직접 기다리는 얇은 helper로 끝내야 한다.
+- 연결 준비/handshake는 pattern별 low-cost ready event만 사용한다.
+- ready gate는 expected peer 수 low-cost event counting + settle 1초로 끝내야 한다.
   ready bool/count를 복사하기 위한 별도 state struct, heap alloc, mutex/cv,
   callback wrapper 계층은 만들지 않는다.
 - single perf의 ready gate는
@@ -42,8 +42,9 @@
   허용하며, retry loop나 sleep 기반 보정은 금지한다.
 - start gate 구현에서 monitor snapshot polling은 금지한다.
 - `setup_connected_pair()`, `wait_ready()`, service-ready wait helper는
-  허용한다. 단, 내부 구현은 공식 ready event 직접 대기여야 하며 callback-state
-  wrapper나 snapshot polling을 helper 뒤에 숨기는 방식은 정책 위반이다.
+  허용한다. 단, 내부 구현은 low-cost event counting + bounded 1회 settle 이어야
+  하며 callback-state wrapper나 snapshot polling을 helper 뒤에 숨기는 방식은
+  정책 위반이다.
 - `single`에서 아래 단계/개념은 새로 만들지 않는다.
   - `preflight`
   - `prime`
@@ -101,20 +102,20 @@
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| ready | event-based | pattern별 공식 ready event | `PERF_CONNECT_READY_TIMEOUT_MS` 계열 timeout |
+| ready | event-based | pattern별 low-cost ready event + settle 1초 | `PERF_CONNECT_READY_TIMEOUT_MS` 계열 timeout |
 | warmup | time-based | 2s | `PERF_SINGLE_WARMUP_SECONDS` |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
 
 - warmup 데이터는 최종 집계에서 제외한다.
-- `setup_connected_pair()`는 내부적으로 공식 monitoring ready gate를
+- `setup_connected_pair()`는 내부적으로 low-cost monitoring ready gate를
   캡슐화한 helper인 경우에만 허용된다. 별도/독자적인 start gate 규칙으로
   취급하지 않는다.
-- pattern별 공식 ready event는 single 측정의 공식 start gate다. benchmark
+- pattern별 low-cost ready event는 single 측정의 공식 start gate다. benchmark
   시작 전 준비 판정은 monitoring event로 해결하고, perf 파일 안의 커스텀
   handshake loop, sleep, monitor snapshot polling으로 대체하지 않는다.
 - 패턴 파일에서는 callback plumbing을 직접 노출하기보다 공통 helper를 통해
   `wait_*ready*()` 형태로 감싸도 된다. 이 경우에도 ready source는 반드시
-  공식 ready event 직접 대기여야 한다.
+  low-cost event counting + settle 1초여야 한다.
 - active에서만 throughput/latency를 계산한다.
 - `single`은 별도 settle/prime/idle-drain phase를 두지 않는다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
@@ -334,18 +335,15 @@ perf는 추가 precondition(`FILTER_APPLIED`, custom handshake, quorum 완화)�
 | 패턴 | 송신 시작 기준 | 수신 시작 기준 |
 |------|----------------|----------------|
 | PAIR | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
-| PUBSUB | `PUB_DELIVERY_READY_CHANGED` event counting | `SUB_DELIVERY_READY_CHANGED` |
+| PUBSUB | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
 | DEALER_DEALER | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
 | DEALER_ROUTER | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
 | ROUTER_ROUTER | `CONNECTION_READY_CHANGED` | `CONNECTION_READY_CHANGED` |
-| SPOT | `PUB_FIRST_DELIVERY_READY_CHANGED` | `SUB_DELIVERY_READY_CHANGED` |
+| SPOT | `PEER_UP` | `PEER_UP` |
 
-- SPOT single은 `SPOT_SUB_FILTER_APPLIED`를 ready gate로 사용하지 않는다.
-- SPOT single은 `PUB_FIRST_DELIVERY_READY_CHANGED` 이후
-  `zlink_publish()` delivery가 가능해야 한다.
-- SPOT single은 `SUB_DELIVERY_READY_CHANGED` 이후 `zlink_subscribe()`
-  수신이 가능해야 한다.
 - single policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
+- single policy 는 delivery-ready event gate 도 사용하지 않는다.
+- single은 gate event 수신 뒤 settle 1초를 대기하고 측정을 시작한다.
 
 #### 패턴 방향 분류
 

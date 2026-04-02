@@ -52,16 +52,17 @@ Detail flags:
 
 ## Semantic Levels
 
-- `PEER_UP` / `PEER_DOWN`: connection-level visibility only
+- `CONNECTION_READY_CHANGED`: low-cost transport-ready edge
+- `PEER_UP` / `PEER_DOWN`: low-cost peer topology edge
 - `SUB_FILTER_APPLIED`: local subscriber filter installed
-- `SUBSCRIPTION_READY_CHANGED`: subscriber-side subscription readiness changed
-- `*_DELIVERY_READY_CHANGED`: first-delivery contract for a specific subject
+- queue events: local backpressure observation only
 
-Recommended gates:
-- start publish only after `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`
-- start subscriber measurement only after
-  `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`
-- do not use `PEER_UP` as a first-delivery gate
+Recommended perf gates:
+- raw socket perf: count `ZLINK_EVENT_CONNECTION_READY_CHANGED` until the
+  expected client count, then wait a fixed 1-second settle window
+- SPOT perf: count `ZLINK_MONITOR_EVENT_PEER_UP` until the expected client
+  count, then wait a fixed 1-second settle window
+- do not use delivery-ready or aggregate-ready monitor events as perf gates
 
 ## Raw Socket Monitor Events
 
@@ -113,12 +114,8 @@ Disconnect reasons:
 | Constant | Producer | Meaning |
 |---|---|---|
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | Spot sub / node-sub monitor | Local filter installed |
-| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY_CHANGED` | Spot sub / node-sub monitor | Subscription readiness changed |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | Spot pub / node-pub monitor | PUB queue is full |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | Spot pub / node-pub monitor | PUB queue has been drained |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | Spot sub / node-sub monitor | Subject-specific delivery-ready state changed |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | Subject-specific remote delivery-ready membership/state changed |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | Spot pub / node-pub monitor | First-delivery-safe remote readiness changed; use this as the publisher control gate |
 
 SPOT subject rules:
 - sub-side `subject_kind` is populated for exact topic and pattern subscriptions
@@ -129,24 +126,18 @@ SPOT subject rules:
 
 ## Examples
 
-Subscriber gate:
+Raw perf gate:
 
 ```c
-if (event->event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
-    && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-    && strcmp(event->subject, "bench") == 0
-    ) {
-    /* first publish can be received now */
+if (event->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+    ++ready_clients;
 }
 ```
 
-Publisher gate:
+SPOT perf gate:
 
 ```c
-if (event->event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-    && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-    && strcmp(event->subject, "bench") == 0
-    ) {
-    /* first publish can be sent now */
+if (event->event_type == ZLINK_MONITOR_EVENT_PEER_UP) {
+    ++ready_clients;
 }
 ```

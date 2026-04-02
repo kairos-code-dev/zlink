@@ -54,17 +54,17 @@ detail flag:
 
 ## semantic level
 
-- `PEER_UP` / `PEER_DOWN`: 연결 수준
+- `CONNECTION_READY_CHANGED`: 저비용 transport-ready edge
+- `PEER_UP` / `PEER_DOWN`: 저비용 peer topology edge
 - `SUB_FILTER_APPLIED`: local subscriber filter 설치 완료
-- `SUBSCRIPTION_READY_CHANGED`: subscriber 쪽 subscription readiness 변화
-- `*_DELIVERY_READY_CHANGED`: 특정 subject에 대해 첫 delivery 보장 가능 상태
+- queue 이벤트: 로컬 backpressure 관찰
 
-권장 gate:
-- publisher는 `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`를 기다린 뒤
-  publish 시작
-- subscriber는 `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`를 기다린 뒤
-  측정/통신 시작
-- `PEER_UP`를 first-delivery gate로 쓰지 않음
+권장 perf gate:
+- raw socket perf: `ZLINK_EVENT_CONNECTION_READY_CHANGED`를 expected client 수만큼
+  세고 고정 settle 1초 뒤 시작
+- SPOT perf: `ZLINK_MONITOR_EVENT_PEER_UP`를 expected client 수만큼 세고
+  고정 settle 1초 뒤 시작
+- delivery-ready 또는 aggregate-ready monitor event를 perf gate로 사용하지 않음
 
 ## Raw Socket Monitor 이벤트
 
@@ -116,14 +116,8 @@ disconnect reason:
 | 상수 | 발생 주체 | 의미 |
 |---|---|---|
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | sub monitor | local filter 설치 완료 |
-| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY_CHANGED` | sub monitor | subscription readiness 변화 |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | pub monitor | PUB 큐가 가득 참 |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | pub monitor | PUB 큐가 비워짐 |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | sub monitor | subject별 delivery-ready 변화 |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | pub monitor | subject별 remote delivery-ready 변화 |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | pub monitor | first-delivery-safe ready 변화 |
-
-`FIRST_DELIVERY_READY_CHANGED`는 publisher 제어 gate로 사용합니다.
 
 SPOT subject 규칙:
 - sub 쪽은 exact topic / pattern에 대해 `subject_kind`가 채워집니다.
@@ -134,24 +128,18 @@ SPOT subject 규칙:
 
 ## 예시
 
-subscriber gate:
+raw perf gate:
 
 ```c
-if (event->event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
-    && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-    && strcmp(event->subject, "bench") == 0
-    ) {
-    /* 이제 첫 publish를 받을 수 있다 */
+if (event->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+    ++ready_clients;
 }
 ```
 
-publisher gate:
+SPOT perf gate:
 
 ```c
-if (event->event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-    && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-    && strcmp(event->subject, "bench") == 0
-    ) {
-    /* 이제 첫 publish를 보낼 수 있다 */
+if (event->event_type == ZLINK_MONITOR_EVENT_PEER_UP) {
+    ++ready_clients;
 }
 ```

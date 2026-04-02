@@ -142,5 +142,7 @@ bugs. Hot-path measurements should stay close to the canonical Python receive
 and publish/send paths and must not hide extra copies, conversions, or helper
 layers behind the benchmark wrapper.
 
-Readiness gates in Python perf and samples must use event counting rather than
-monitor payload counts or monitor snapshot ready counts.
+Readiness gates in Python perf and samples must use low-cost event counting
+rather than monitor payload counts or monitor snapshot ready counts.
+- raw sockets: `CONNECTION_READY_CHANGED` + fixed 1-second settle
+- SPOT: `PEER_UP` + fixed 1-second settle

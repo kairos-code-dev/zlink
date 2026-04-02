@@ -157,8 +157,6 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | 연결 readiness 변화. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러로 핸드셰이크 실패. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패로 핸드셰이크 실패. |
-| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness 변화. |
-| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness 변화. |
 | `ZLINK_EVENT_ALL` | `0xFFFF` | 모든 이벤트 구독. |
 
 ### 연결 해제 사유
@@ -297,8 +295,8 @@ int zlink_monitor_close (void **monitor_p_);
 
 서비스 모니터는 서비스 계층 컴포넌트(Discovery, SPOT)의 상태 전이
 이벤트를 제공합니다. transport 레벨 이벤트를 보고하는 소켓 모니터와 달리,
-서비스 모니터는 readiness, route 변화, SPOT 필터 적용 등의 상위 수준 이벤트를
-보고합니다.
+서비스 모니터는 peer topology 변화, route 변화, queue pressure, SPOT 필터
+적용 등의 상위 수준 이벤트를 보고합니다.
 
 `zlink_service_monitor_open()`의 target은 모든 서비스 핸들(Discovery,
 Spot, SpotNode)을 받습니다. 서비스 종류는 핸들의 runtime tag에서
@@ -388,7 +386,6 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | Discovery readiness 변화 |
 | `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | 검색된 서비스가 활성화됨 |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | 검색된 서비스가 비활성화됨 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | 서비스 provider 집합이 변경됨 |
@@ -397,14 +394,9 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | SPOT readiness 변화 |
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | 구독 필터 적용됨 |
-| `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` | `1 << 14` | 구독 readiness 변화 |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB 큐가 가득 참 |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB 큐가 비워짐 |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | subject별 remote delivery-ready 변화 |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | subject별 delivery-ready 변화 |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | first-delivery-safe ready 변화 |
 
 #### 서비스 모니터 이벤트 마스크 상수
 
@@ -417,18 +409,12 @@ typedef struct zlink_service_monitor_open_options_t
 - `..._EVENT_CLOSED` -> `ZLINK_MONITOR_EVENT_CLOSED`
 
 **Discovery:**
-- `..._DISCOVERY_READY_CHANGED` -> `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED`
 - `..._DISCOVERY_SERVICE_UP` -> `ZLINK_DISCOVERY_SERVICE_UP`
 - `..._DISCOVERY_SERVICE_DOWN` -> `ZLINK_DISCOVERY_SERVICE_DOWN`
 - `..._DISCOVERY_PROVIDERS_CHANGED` -> `ZLINK_DISCOVERY_PROVIDERS_CHANGED`
 
 **SPOT:**
-- `..._SPOT_READY_CHANGED` -> `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED`
 - `..._SPOT_FILTER_APPLIED` -> `ZLINK_SPOT_SUB_FILTER_APPLIED`
-- `..._SPOT_SUBSCRIPTION_READY_CHANGED` -> `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED`
-- `..._SPOT_PUB_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED`
-- `..._SPOT_SUB_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`
-- `..._SPOT_FIRST_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`
 - `ZLINK_SERVICE_MONITOR_EVENT_ALL` -> 모든 서비스 이벤트
 
 ### Detail 플래그 상수

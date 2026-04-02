@@ -90,28 +90,25 @@
 - registry summary/topology query는 global/coarse 상태 확인용으로만 사용한다.
 - registry summary는 eventually consistent view이므로 benchmark의 final strict
   start gate로 사용하지 않는다.
-- strict start readiness가 필요하면 local service monitor를 사용한다.
-- perf 연결 준비/handshake는 socket/service monitoring의 **공식 ready event**
-  만 사용한다. 일반 socket은 `CONNECTION_READY_CHANGED`, service pattern은
-  해당 pattern의 공식 `*_READY_CHANGED` 이벤트를 기준으로 삼는다.
-- perf의 ready gate는 **이벤트 1개를 직접 기다리는 얇은 helper**로 끝내야
-  한다. ready bool/count를 callback state에 복사하기 위한 별도 구조체,
-  heap alloc, mutex/cv wrapper, handler attach 계층을 새로 만들지 않는다.
-- perf 바이너리는 delivery-ready event 확인 이후에만 측정을 시작해야 한다.
-- `setup_connected_pair()` 같은 helper는 내부적으로 위 공식 monitoring
-  ready gate를 캡슐화한 경우에만 허용된다. helper 자체가 별도
-  start gate 규칙이 되어서는 안 된다.
-- `wait_ready()`, service-ready wait helper 같은 동기 helper는 허용한다. 단,
-  내부 구현은 공식 ready event를 직접 기다리는 얇은 helper여야 하며,
-  callback-state wrapper나 snapshot polling을 helper 뒤에 숨기는 형태는
-  금지한다.
-- suite별 정책 문서는 pattern별 ready gate event를 명시해야 한다. perf는
-  그 표에 없는 추가 precondition(`FILTER_APPLIED`, quorum 완화, 보정용
-  handshake 단계)을 두지 않는다.
-- 공식 ready event 이후에 메시징이 불가능하면 perf에서 우회하지 않고 core
-  버그로 보고한다.
+- perf 연결 준비/handshake는 low-cost monitor event만 사용한다.
+  - 일반 raw 패턴: `CONNECTION_READY_CHANGED`
+  - SPOT: `PEER_UP`
+- perf ready gate는 아래 두 단계로 고정한다.
+  - 1. expected client 수만큼 low-cost event 수신
+  - 2. 고정 settle 1초 대기 후 측정 시작
+- settle 1초는 internal local network perf 환경 기준이다.
+- `setup_connected_pair()` 같은 helper는 위 두 단계만 캡슐화한 경우에만
+  허용된다. helper 자체가 별도 start gate 규칙이 되어서는 안 된다.
+- `wait_ready()` 같은 동기 helper는 허용한다. 단, 내부 구현은 low-cost
+  monitor event counting + bounded 1회 settle만 수행해야 하며,
+  delivery-ready event나 snapshot polling을 helper 뒤에 숨기면 안 된다.
+- suite별 정책 문서는 pattern별 low-cost ready gate event를 명시해야 한다.
+  perf는 그 표에 없는 추가 precondition(`FILTER_APPLIED`, delivery-ready exact count,
+  quorum 완화, 보정용 handshake 단계)을 두지 않는다.
+- low-cost gate 이후 settle 1초가 지났는데도 메시징이 불가능하면 perf에서
+  우회하지 않고 core/runtime bug 또는 환경 문제로 본다.
 - perf start gate 구현에서 아래를 금지한다.
-  - `sleep`/`msleep`/고정 지연
+  - 정책으로 고정된 1초 settle 외의 `sleep`/`msleep`/고정 지연
   - monitor snapshot polling
   - ad-hoc retry loop
 - perf lifecycle에서 아래와 같은 **벤치 단계**를 새로 만들지 않는다.
@@ -670,7 +667,7 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 | TLS 설정 | `setup_tls_client`, `setup_tls_server` |
 | Context RAII | `ctx_guard_t` 등 리소스 관리 wrapper |
 | 타이머/스톱워치 | `stopwatch_t`, 시간 측정 유틸리티 |
-| Monitor 유틸리티 | 공식 ready event 직접 대기 helper |
+| Monitor 유틸리티 | low-cost ready event counting + settle helper |
 | transport 가용성 검사 | `transport_available()` |
 | 공통 cleanup | socket / monitor / context close helper |
 

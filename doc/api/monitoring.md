@@ -153,8 +153,6 @@ bitwise OR.
 | `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | Connection readiness changed. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed due to a protocol error. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed due to authentication failure. |
-| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness changed. |
-| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness changed. |
 | `ZLINK_EVENT_ALL` | `0xFFFF` | Subscribe to all events. |
 
 ### Disconnect Reasons
@@ -297,7 +295,8 @@ monitors and service monitors.
 Service monitors provide state transition events for service-layer
 components (Discovery and SPOT). Unlike raw socket monitors that
 report transport-level events, service monitors report higher-level events
-such as readiness, route changes, and SPOT filter application.
+such as peer topology changes, route changes, queue pressure, and SPOT
+filter application.
 
 The target for `zlink_service_monitor_open()` is any service handle
 (Discovery, Spot, or SpotNode). The service kind is determined
@@ -387,7 +386,6 @@ typedef struct zlink_service_monitor_open_options_t
 
 | Constant | Bit | Description |
 |----------|-----|-------------|
-| `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | Discovery readiness changed; `value` is the current ready count |
 | `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | A discovered service came up |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | A discovered service went down |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | The set of providers for a service changed |
@@ -396,14 +394,9 @@ typedef struct zlink_service_monitor_open_options_t
 
 | Constant | Bit | Description |
 |----------|-----|-------------|
-| `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | SPOT readiness changed; `value` is the current ready count |
 | `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | Subscription filter applied |
-| `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` | `1 << 14` | Subscription readiness changed; `value` is the current ready count |
 | `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB queue is full |
 | `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB queue has been drained |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | Subject-specific remote delivery-ready membership/state changed |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | Subject-specific delivery-ready state changed |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | Publisher-side first-delivery-safe readiness changed |
 
 #### Service Monitor Event Mask Constants
 
@@ -415,16 +408,10 @@ They map to the same underlying bits as the per-service constants above.
 |----------|---------|
 | `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | `ZLINK_MONITOR_EVENT_ERROR` |
 | `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | `ZLINK_MONITOR_EVENT_CLOSED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED` | `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED` | `ZLINK_SPOT_SUB_FILTER_APPLIED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_ALL` | All service events |
 
 ### Detail Flag Constants

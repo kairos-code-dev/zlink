@@ -113,6 +113,28 @@ make_loopback_bind_plan (const boost::asio::ip::tcp::endpoint &endpoint, int ccu
     return plan;
 }
 
+inline boost::asio::ip::tcp::endpoint resolve_stream_target_endpoint (
+  boost::asio::io_context &io_,
+  const std::string &host_,
+  int port_)
+{
+    boost::system::error_code ec;
+    const boost::asio::ip::address parsed =
+      boost::asio::ip::make_address (host_, ec);
+    if (!ec)
+        return boost::asio::ip::tcp::endpoint (
+          parsed, static_cast<unsigned short> (port_));
+
+    boost::asio::ip::tcp::resolver resolver (io_);
+    boost::asio::ip::tcp::resolver::results_type resolved =
+      resolver.resolve (host_, std::to_string (port_), ec);
+    if (ec || resolved.begin () == resolved.end ())
+        boost::asio::detail::throw_error (
+          ec ? ec : boost::asio::error::host_not_found);
+
+    return resolved.begin ()->endpoint ();
+}
+
 // --- Benchmark orchestrator ---
 // Manages worker threads, sessions, phase transitions, and metrics collection.
 // Implements bench_client_iface_t so sessions can report events thread-safely.
@@ -142,8 +164,7 @@ class bench_client_t : public bench_client_iface_t
           collect_metrics (false),
           rtt_samples_bits (new std::atomic<uint64_t>[k_rtt_sample_capacity]),
           sample_overwrite_idx (0),
-          endpoint (boost::asio::ip::make_address (opt.host),
-                    static_cast<unsigned short> (opt.port)),
+          endpoint (resolve_stream_target_endpoint (io, opt.host, opt.port)),
           loopback_bind_plan ()
     {
         loopback_bind_plan = make_loopback_bind_plan (endpoint, opt.ccu);

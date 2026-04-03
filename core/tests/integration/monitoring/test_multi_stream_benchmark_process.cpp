@@ -286,7 +286,8 @@ bool stdout_contains_metric (process_capture_t *proc_, const char *metric_)
     return false;
 }
 
-void run_multi_stream_process_case (const char *recv_mode_)
+void run_multi_stream_process_case (const char *recv_mode_,
+                                    const char *transport_)
 {
     process_capture_t server;
     process_capture_t client;
@@ -306,7 +307,7 @@ void run_multi_stream_process_case (const char *recv_mode_)
 
     std::vector<std::string> server_args;
     server_args.push_back ("current");
-    server_args.push_back ("tcp");
+    server_args.push_back (transport_);
     TEST_ASSERT_TRUE (
       start_process (server_path, server_args, common_env, &server));
 
@@ -317,19 +318,13 @@ void run_multi_stream_process_case (const char *recv_mode_)
     if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
         endpoint.erase (endpoint.size () - 1);
 
-    const std::string::size_type colon = endpoint.find_last_of (':');
-    TEST_ASSERT_TRUE (colon != std::string::npos);
-    const std::string port = endpoint.substr (colon + 1);
-
     std::vector<std::string> client_args;
     client_args.push_back ("--pattern");
     client_args.push_back ("MULTI_STREAM");
     client_args.push_back ("--transport");
-    client_args.push_back ("tcp");
-    client_args.push_back ("--host");
-    client_args.push_back ("127.0.0.1");
-    client_args.push_back ("--port");
-    client_args.push_back (port);
+    client_args.push_back (transport_);
+    client_args.push_back ("--endpoint");
+    client_args.push_back (endpoint);
     client_args.push_back ("--sizes");
     client_args.push_back ("64");
     client_args.push_back ("--duration");
@@ -351,9 +346,15 @@ void run_multi_stream_process_case (const char *recv_mode_)
     close_process_capture (&client);
     TEST_ASSERT_EQUAL_INT_MESSAGE (0, client_rc, client.stderr_text.c_str ());
     TEST_ASSERT_TRUE (stdout_contains_metric (
-      &client, "RESULT,current,MULTI_STREAM,tcp,64,throughput"));
+      &client,
+      (std::string ("RESULT,current,MULTI_STREAM,") + transport_
+       + ",64,throughput")
+        .c_str ()));
     TEST_ASSERT_TRUE (stdout_contains_metric (
-      &client, "RESULT,current,MULTI_STREAM,tcp,64,latency"));
+      &client,
+      (std::string ("RESULT,current,MULTI_STREAM,") + transport_
+       + ",64,latency")
+        .c_str ()));
 
     write_stdin_line (&server, "STOP\n");
 
@@ -362,18 +363,31 @@ void run_multi_stream_process_case (const char *recv_mode_)
     close_process_capture (&server);
     TEST_ASSERT_EQUAL_INT_MESSAGE (0, server_rc, server.stderr_text.c_str ());
     TEST_ASSERT_TRUE (stdout_contains_metric (
-      &server, "RESULT,current,MULTI_STREAM,tcp,64,server_cpu_pct"));
+      &server,
+      (std::string ("RESULT,current,MULTI_STREAM,") + transport_
+       + ",64,server_cpu_pct")
+        .c_str ()));
 }
 } // namespace
 
 void test_multi_stream_process_recv_smoke ()
 {
-    run_multi_stream_process_case ("recv");
+    run_multi_stream_process_case ("recv", "tcp");
 }
 
 void test_multi_stream_process_callback_smoke ()
 {
-    run_multi_stream_process_case ("callback");
+    run_multi_stream_process_case ("callback", "tcp");
+}
+
+void test_multi_stream_process_callback_tls_smoke ()
+{
+    run_multi_stream_process_case ("callback", "tls");
+}
+
+void test_multi_stream_process_callback_wss_smoke ()
+{
+    run_multi_stream_process_case ("callback", "wss");
 }
 
 int main (int argc, char **argv)
@@ -383,6 +397,8 @@ int main (int argc, char **argv)
     UNITY_BEGIN ();
     RUN_TEST (test_multi_stream_process_recv_smoke);
     RUN_TEST (test_multi_stream_process_callback_smoke);
+    RUN_TEST (test_multi_stream_process_callback_tls_smoke);
+    RUN_TEST (test_multi_stream_process_callback_wss_smoke);
     return UNITY_END ();
 }
 

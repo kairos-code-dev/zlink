@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"time"
 	"zlink"
 	"zlink/samples/internal/samplecommon"
@@ -26,13 +27,6 @@ func main() {
 	subscriber, err := subscriberNode.Spot()
 	samplecommon.MustStep("subscriber", err)
 	defer subscriber.Close()
-
-	pubMon, err := publisher.MonitorOpen(zlink.ServiceMonitorEventConnectionReady)
-	samplecommon.MustStep("pubMon", err)
-	defer pubMon.Close()
-	subMon, err := subscriber.MonitorOpen(zlink.ServiceMonitorEventSpotFilterApplied | zlink.ServiceMonitorEventConnectionReady)
-	samplecommon.MustStep("subMon", err)
-	defer subMon.Close()
 
 	topic := "room:lobby"
 	payload := "hello-spot"
@@ -59,28 +53,27 @@ func main() {
 	samplecommon.MustStep("subscriberNode.ConnectPeer", subscriberNode.ConnectPeer(endpoint))
 	samplecommon.MustStep("subscriber.SetSubscription", subscriber.SetSubscription(topic))
 
-	filterEvent := samplecommon.WaitServiceEvent(subMon, zlink.ServiceMonitorEventSpotFilterApplied)
-	if filterEvent.Subject != topic {
-		samplecommon.Must(fmt.Errorf("unexpected filter subject %q", filterEvent.Subject))
-	}
-	readyEvent := samplecommon.WaitServiceEvent(subMon, zlink.ServiceMonitorEventConnectionReady)
-	_ = readyEvent
-	pubSnapshot, err := pubMon.Snapshot()
-	samplecommon.MustStep("pubMon.Snapshot", err)
-	if !pubSnapshot.IsReady() {
-		samplecommon.Must(fmt.Errorf("publisher spot monitor is not ready"))
-	}
+	samplecommon.WaitUntil(5*time.Second, "spot peer connection", func() bool {
+		status, err := subscriberNode.StatusSnapshot()
+		return err == nil && status != nil && status.ConnectedPeerCount > 0
+	})
 
-	samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, samplecommon.Message(payload)))
-
-	var out result
-	select {
-	case out = <-delivered:
-	case <-time.After(5 * time.Second):
-		samplecommon.Must(fmt.Errorf("spot callback sample timed out"))
+	var got string
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, samplecommon.Message(payload)))
+		select {
+		case out := <-delivered:
+			samplecommon.Must(out.err)
+			got = out.value
+			goto done
+		default:
+			runtime.Gosched()
+		}
 	}
-	samplecommon.Must(out.err)
-	got := out.value
+	samplecommon.Must(fmt.Errorf("spot callback sample timed out"))
+
+done:
 
 	want := topic + "/" + payload
 	if !bytes.Equal([]byte(got), []byte(want)) {

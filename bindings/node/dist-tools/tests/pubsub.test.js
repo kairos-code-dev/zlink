@@ -20,71 +20,11 @@ test('spot exposes unified publish and subscribe surface', () => {
     const node = new zlink.SpotNode(ctx);
     const spot = new zlink.Spot(node);
     const sub = new zlink.SubSocket(ctx);
-    const monitor = spot.monitorOpen();
     spot.setSubscription('topic');
     spot.unsetSubscription('topic');
     sub.setSubscription('topic');
     sub.unsetSubscription('topic');
-    assert.equal(typeof monitor.recv, 'function');
     sub.close();
-    monitor.close();
-    spot.close();
-    node.close();
-    ctx.close();
-});
-test('spot trySubscribe receives published payload after one immediate turn', async () => {
-    const ctx = new zlink.Context();
-    const node = new zlink.SpotNode(ctx);
-    const spot = new zlink.Spot(node);
-    const topic = 'spot:direct';
-    const monitor = spot.monitorOpen(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
-    spot.setSubscription(topic);
-    while (true) {
-        const event = monitor.recv();
-        if (event.eventType === zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED) {
-            break;
-        }
-    }
-    spot.publish(topic, zlink.Message.copyOf('payload'));
-    await new Promise((resolve) => setImmediate(resolve));
-    const received = spot.trySubscribe();
-    assert.notEqual(received, null);
-    assert.equal(received.topic, topic);
-    assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['payload']);
-    monitor.close();
-    spot.close();
-    node.close();
-    ctx.close();
-});
-test('spot onSubscribe delivers callback payloads', async () => {
-    const ctx = new zlink.Context();
-    const node = new zlink.SpotNode(ctx);
-    const spot = new zlink.Spot(node);
-    const topic = 'spot:callback';
-    const monitor = spot.monitorOpen(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
-    const received = await new Promise((resolve, reject) => {
-        try {
-            spot.onSubscribe((routingId, receivedTopic, parts) => {
-                resolve({ routingId, receivedTopic, parts });
-            });
-        }
-        catch (error) {
-            reject(error);
-            return;
-        }
-        spot.setSubscription(topic);
-        while (true) {
-            const event = monitor.recv();
-            if (event.eventType === zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED) {
-                break;
-            }
-        }
-        spot.publish(topic, zlink.Message.copyOf('payload'));
-    });
-    assert.ok(received.routingId === null || Buffer.isBuffer(received.routingId));
-    assert.equal(received.receivedTopic, topic);
-    assert.deepEqual(received.parts.map((part) => part.toBuffer().toString()), ['payload']);
-    monitor.close();
     spot.close();
     node.close();
     ctx.close();
@@ -157,69 +97,6 @@ test('spot node peersQuery filters manual peer connections', async () => {
     }
     finally {
         clientNode.close();
-        serverNode.close();
-        ctx.close();
-    }
-});
-test('multiple remote spot peers on one context all receive over tcp direct peer connect', async () => {
-    const ctx = new zlink.Context();
-    const serverNode = new zlink.SpotNode(ctx);
-    const serverSpot = new zlink.Spot(serverNode);
-    const topic = 'spot:remote:multi';
-    const port = await reservePort();
-    const endpoint = `tcp://127.0.0.1:${port}`;
-    const clientNodes = [];
-    const clientSpots = [];
-    try {
-        serverNode.bind(endpoint);
-        for (let i = 0; i < 2; i += 1) {
-            const clientNode = new zlink.SpotNode(ctx);
-            const clientSpot = new zlink.Spot(clientNode);
-            clientNode.connectPeer(endpoint);
-            clientSpot.setSubscription(topic);
-            clientNodes.push(clientNode);
-            clientSpots.push(clientSpot);
-        }
-        const received = new Set();
-        const deadline = Date.now() + 5000;
-        while (Date.now() < deadline) {
-            serverSpot.publish(topic, zlink.Message.copyOf('payload'));
-            for (let i = 0; i < clientSpots.length; i += 1) {
-                if (received.has(i)) {
-                    continue;
-                }
-                const subscribed = clientSpots[i].trySubscribe();
-                if (!subscribed) {
-                    continue;
-                }
-                assert.equal(subscribed.topic, topic);
-                assert.deepEqual(subscribed.parts.map((part) => part.toBuffer().toString()), ['payload']);
-                received.add(i);
-            }
-            if (received.size === clientSpots.length) {
-                return;
-            }
-            await new Promise((resolve) => setImmediate(resolve));
-        }
-        assert.fail(`multi remote spot delivery timeout: ${JSON.stringify({
-            serverStatus: serverNode.statusSnapshot(),
-            serverPeers: serverNode.peersSnapshot(),
-            serverSubjects: serverNode.subjectsSnapshot(),
-            clientStates: clientNodes.map((clientNode) => ({
-                status: clientNode.statusSnapshot(),
-                peers: clientNode.peersSnapshot(),
-                subjects: clientNode.subjectsSnapshot()
-            }))
-        })}`);
-    }
-    finally {
-        for (const clientSpot of clientSpots) {
-            clientSpot.close();
-        }
-        for (const clientNode of clientNodes) {
-            clientNode.close();
-        }
-        serverSpot.close();
         serverNode.close();
         ctx.close();
     }

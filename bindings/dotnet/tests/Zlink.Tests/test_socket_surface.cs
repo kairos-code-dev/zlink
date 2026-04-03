@@ -176,9 +176,10 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(ServiceMonitorEvents),
             typeof(ServiceMonitorEvent).GetProperty(nameof(ServiceMonitorEvent.EventType))!
                 .PropertyType);
-        Assert.Equal(typeof(ServiceMonitorEvents),
-            typeof(Spot).GetMethod(nameof(Spot.MonitorOpen))!
-                .GetParameters()[0].ParameterType);
+        Assert.False(HasPublicInstanceMethod(typeof(Spot), "MonitorOpen",
+            typeof(ServiceMonitorEvents)));
+        Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "MonitorOpen",
+            typeof(ServiceMonitorEvents)));
     }
 
     [Fact]
@@ -190,7 +191,7 @@ public sealed class test_socket_surface
             typeof(SpotNodePeerFilter)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "SubjectsSnapshot",
             typeof(SpotNodeSubjectFilter?)));
-        Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "MonitorOpen",
+        Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "MonitorOpen",
             typeof(ServiceMonitorEvents)));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "Snapshot"));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "Peers"));

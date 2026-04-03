@@ -70,8 +70,7 @@ raw socket TLS convenience helpers, raw publish(topic, payload).
 
 `Spot` follows the same multipart/domain-return direction:
 `publish()` / `tryPublish()`, `setSubscription()` / `unsetSubscription()`,
-`subscribe()` / `trySubscribe()`, `onSubscribe()`, `onSendReady()`,
-`monitorOpen()`.
+`subscribe()` / `trySubscribe()`, `onSubscribe()`, `onSendReady()`.
 
 `Discovery` uses `connectRegistry()`, `setValue()` / `getValue()`,
 `setMetadata()` / `getMetadata()`, `memberPeers()`,
@@ -79,7 +78,7 @@ raw socket TLS convenience helpers, raw publish(topic, payload).
 
 `SpotNode` uses `bind()`, `connectPeer()` / `disconnectPeer()`,
 `attachDiscovery()`, `statusSnapshot()`, `peersSnapshot()`,
-`peersQuery()`, `subjectsSnapshot(filter?)`, `monitorOpen()`.
+`peersQuery()`, `subjectsSnapshot(filter?)`.
 
 `Registry` uses `bind()`, `setId()`, `addPeer()`, `setHeartbeat()`,
 `setBroadcastInterval()`, `statusSnapshot()`,
@@ -136,5 +135,5 @@ cd bindings/node && npm run perf:multi -- --recv recv --pattern STREAM --warmup 
   [`doc/perf/`](/home/hep7/project/kairos/zlink/doc/perf)
 - readiness gates in binding perf must use low-cost event counting, not
   aggregate ready counts from monitor payloads or snapshots
-- raw sockets: `CONNECTION_READY` + fixed 1-second settle
-- SPOT: `PEER_UP` + fixed 1-second settle
+- raw sockets: `CONNECTION_READY` event counting
+- SPOT: explicit benchmark barrier protocol; no service monitor gate

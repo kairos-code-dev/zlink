@@ -67,17 +67,17 @@ public sealed class test_validation_contract
     }
 
     [Fact]
-    public void service_monitor_open_rejects_unknown_event_flags()
+    public void discovery_monitor_open_rejects_unknown_event_flags()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = new Context();
-        using var node = new SpotNode(ctx);
-        using var spot = new Spot(node);
+        using var discovery = new Discovery(ctx, ServiceType.Spot,
+            "svc-validation");
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            spot.MonitorOpen((ServiceMonitorEvents)(1u << 30)));
+            discovery.MonitorOpen((ServiceMonitorEvents)(1u << 30)));
     }
 
     [Fact]

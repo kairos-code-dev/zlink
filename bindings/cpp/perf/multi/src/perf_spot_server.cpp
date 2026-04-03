@@ -128,86 +128,24 @@ bool configure_spot_server_tls (zlink::service::spot_node_t &node_,
     return node_.set_tls_server (cert, key) == 0;
 }
 
-bool open_spot_pub_ready_probe (zlink::service_monitor_handle_t *monitor_out_,
-                                zlink::service::spot_node_t &node_)
-{
-    if (!monitor_out_)
-        return false;
-
-    zlink::service_monitor_handle_t monitor (
-      node_.handle (),
-      zlink::service_monitor_event::peer_up
-        | zlink::service_monitor_event::error);
-    if (!monitor.valid ())
-        return false;
-    perf::multi::configure_perf_monitor_socket (monitor.handle ());
-    *monitor_out_ = std::move (monitor);
-    return true;
-}
-
-bool wait_for_spot_pub_ready (zlink::service_monitor_handle_t &monitor_,
+bool wait_for_spot_pub_ready (zlink::service::spot_node_t &node_,
                               uint64_t min_value_,
                               int timeout_ms_)
 {
     if (min_value_ == 0)
         return true;
 
-    uint64_t ready_count = 0;
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (
                             std::max (timeout_ms_, 1));
-
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_pollitem_t item;
-        item.socket = monitor_.handle ();
-        item.fd = 0;
-        item.events = ZLINK_POLLIN;
-        item.revents = 0;
-
-        const auto remaining =
-          deadline - std::chrono::steady_clock::now ();
-        int wait_ms = static_cast<int> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
-            .count ());
-        if (wait_ms < 1)
-            wait_ms = 1;
-
-        const int poll_rc = zlink_poll (&item, 1, wait_ms);
-        if (poll_rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            return false;
+        zlink_spot_node_status_t status;
+        std::memset (&status, 0, sizeof (status));
+        if (node_.status_snapshot (status) == 0
+            && static_cast<uint64_t> (status.connected_peer_count) >= min_value_) {
+            return true;
         }
-        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        for (;;) {
-            const zlink::maybe_t<zlink_service_monitor_event_t> event =
-              monitor_.try_recv ();
-            if (!event)
-                break;
-
-            if (event->event_type
-                == static_cast<uint32_t> (
-                  zlink::service_monitor_event::error)) {
-                errno = event->error_code != 0 ? event->error_code : EIO;
-                return false;
-            }
-
-            if (event->event_type
-                != static_cast<uint32_t> (
-                  zlink::service_monitor_event::peer_up)) {
-                continue;
-            }
-            ++ready_count;
-            if (perf_debug_enabled ()) {
-                std::cerr << "spot server: ready event type="
-                          << event->event_type << " count=" << ready_count
-                          << std::endl;
-            }
-            if (ready_count >= min_value_)
-                return true;
-        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
 
     errno = ETIMEDOUT;
@@ -445,10 +383,6 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
                        ? 1
                        : 0);
 
-    zlink::service_monitor_handle_t monitor;
-    if (!open_spot_pub_ready_probe (&monitor, node))
-        return false;
-
     perf::multi::print_ready (endpoint);
 
     {
@@ -465,7 +399,7 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     const int ready_timeout_ms =
       resolve_spot_pub_ready_timeout_ms (settings, transport_);
     if (!wait_for_spot_pub_ready (
-          monitor, static_cast<uint64_t> (ready_quorum), ready_timeout_ms)) {
+          node, static_cast<uint64_t> (ready_quorum), ready_timeout_ms)) {
         debug_log ("pub ready gate timed out errno=" + std::to_string (errno));
         debug_dump_spot_node_state (node);
         return false;

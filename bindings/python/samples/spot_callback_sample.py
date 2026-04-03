@@ -1,78 +1,43 @@
-import socket as _socket
 import threading
-import time
 
 import zlink
 from sample_support import wait_until
 
-
-def _reserve_tcp_port():
-    sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
-
-
-def _poll_service_event(monitor, timeout_ms):
-    with zlink.Poller() as poller:
-        poller.add_socket(monitor, zlink.PollEvent.POLLIN)
-        ready = poller.poll(timeout_ms)
-    if not ready:
-        return None
-    return monitor.recv()
-
-
-def _wait_service_event_type(monitor, expected_event_type, timeout_ms=5000):
-    deadline = time.monotonic() + (timeout_ms / 1000.0)
-    expected_value = int(expected_event_type)
-    while time.monotonic() < deadline:
-        remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
-        event = _poll_service_event(monitor, remaining_ms)
-        if event is None:
-            continue
-        if int(event.event_type) == expected_value:
-            return event
-    raise TimeoutError("timed out waiting for spot filter event")
 def main():
-    port = _reserve_tcp_port()
-    endpoint = f"tcp://127.0.0.1:{port}"
-
     with zlink.Context() as ctx:
-        with zlink.SpotNode(ctx) as node:
-            with zlink.Spot(node) as spot:
-                done = threading.Event()
-                observed = {}
+        with zlink.SpotNode(ctx) as pub_node:
+            with zlink.SpotNode(ctx) as sub_node:
+                with zlink.Spot(pub_node) as pub_spot:
+                    with zlink.Spot(sub_node) as sub_spot:
+                        done = threading.Event()
+                        observed = {}
 
-                def on_message(message):
-                    observed["topic"] = message.topic
-                    observed["payload"] = message.to_bytes_list()
-                    done.set()
+                        def on_message(message):
+                            observed["topic"] = message.topic
+                            observed["payload"] = message.to_bytes_list()
+                            done.set()
 
-                node.bind(endpoint)
-                node.connect_peer(endpoint)
-                wait_until(
-                    lambda: node.status_snapshot().connected_peer_count >= 1,
-                    description="spot connection readiness",
-                )
+                        pub_node.bind("tcp://127.0.0.1:0")
+                        endpoint = pub_node.last_endpoint()
+                        sub_node.connect_peer(endpoint)
+                        wait_until(
+                            lambda: sub_node.status_snapshot().connected_peer_count >= 1,
+                            description="spot connection readiness",
+                        )
 
-                spot.on_subscribe(on_message)
-                spot.on_send_ready(lambda _: None)
-                with spot.open_monitor(zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED) as monitor:
-                    spot.set_subscription(b"room:lobby")
-                    _wait_service_event_type(
-                        monitor,
-                        zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED,
-                    )
+                        sub_spot.set_subscription(b"room:lobby")
+                        sub_spot.on_subscribe(on_message)
 
-                spot.publish(b"room:lobby", [b"hello-spot"])
-                if not done.wait(5.0):
-                    raise TimeoutError("spot callback did not receive a message")
-                if observed["topic"] != b"room:lobby":
-                    raise AssertionError("unexpected spot callback topic")
-                if observed["payload"] != [b"hello-spot"]:
-                    raise AssertionError("unexpected spot callback payload")
-                print('[spot/callback] publish: "room:lobby/hello-spot" → subscribe: "room:lobby/hello-spot"')
+                        def attempt_delivery():
+                            pub_spot.publish(b"room:lobby", [b"hello-spot"])
+                            return done.is_set()
+
+                        wait_until(attempt_delivery, description="spot callback delivery")
+                        if observed["topic"] != b"room:lobby":
+                            raise AssertionError("unexpected spot callback topic")
+                        if observed["payload"] != [b"hello-spot"]:
+                            raise AssertionError("unexpected spot callback payload")
+                        print('[spot/callback] publish: "room:lobby/hello-spot" → subscribe: "room:lobby/hello-spot"')
 
 
 if __name__ == "__main__":

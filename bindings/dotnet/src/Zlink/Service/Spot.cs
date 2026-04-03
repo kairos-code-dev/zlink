@@ -13,13 +13,6 @@ namespace Zlink.Service;
 
 public sealed class SpotNode : IDisposable
 {
-    private const ServiceMonitorEvents DefaultMonitorEvents =
-        ServiceMonitorEvents.SpotReadyChanged
-        | ServiceMonitorEvents.Error
-        | ServiceMonitorEvents.SpotFilterApplied
-        | ServiceMonitorEvents.SpotSubscriptionReadyChanged
-        | ServiceMonitorEvents.Closed
-        | ServiceMonitorEvents.SpotSubDeliveryReadyChanged;
     private IntPtr _handle;
     public SpotNodePublisherOptions PublisherOptions { get; }
     public SpotNodeSubscriberOptions SubscriberOptions { get; }
@@ -209,22 +202,6 @@ public sealed class SpotNode : IDisposable
         }
     }
 
-    public ServiceMonitor MonitorOpen(
-        ServiceMonitorEvents events = DefaultMonitorEvents)
-    {
-        EnsureNotDisposed();
-        EnumValidation.EnsureServiceMonitorEvents(events, nameof(events));
-        var options = new ZlinkServiceMonitorOpenOptions
-        {
-            Events = (uint)events
-        };
-        IntPtr monitor = NativeMethods.zlink_service_monitor_open(_handle,
-            in options);
-        if (monitor == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return new ServiceMonitor(monitor);
-    }
-
     public void Close()
     {
         Dispose();
@@ -348,13 +325,6 @@ public sealed class Spot : IDisposable
         OnBorrowedBufferFree;
     private static readonly IntPtr BorrowedBufferFreePtr =
         Marshal.GetFunctionPointerForDelegate(BorrowedBufferFree);
-    private const ServiceMonitorEvents DefaultMonitorEvents =
-        ServiceMonitorEvents.SpotReadyChanged
-        | ServiceMonitorEvents.Error
-        | ServiceMonitorEvents.SpotFilterApplied
-        | ServiceMonitorEvents.SpotSubscriptionReadyChanged
-        | ServiceMonitorEvents.Closed
-        | ServiceMonitorEvents.SpotSubDeliveryReadyChanged;
     private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
     private const int TopicCacheLimit = 1024;
@@ -556,22 +526,6 @@ public sealed class Spot : IDisposable
         ZlinkException.ThrowIfError(rc);
         _sendReadyHandler = handler;
         _sendReadyHandlerNative = native;
-    }
-
-    public ServiceMonitor MonitorOpen(
-        ServiceMonitorEvents events = DefaultMonitorEvents)
-    {
-        EnsureNotDisposed();
-        EnumValidation.EnsureServiceMonitorEvents(events, nameof(events));
-        var options = new ZlinkServiceMonitorOpenOptions
-        {
-            Events = (uint)events
-        };
-        IntPtr monitor = NativeMethods.zlink_service_monitor_open(_handle,
-            in options);
-        if (monitor == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return new ServiceMonitor(monitor);
     }
 
     public void Close()

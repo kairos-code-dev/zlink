@@ -267,11 +267,12 @@ void test_socket_monitor_try_receive_returns_empty_without_event ()
 void test_service_monitor_try_receive_returns_empty_without_event ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_node_t node (ctx);
-    zlink::service::spot_t spot (node);
-    assert (spot.valid ());
+    zlink::service::discovery_t discovery (
+      ctx, zlink::service_type::spot, "behavior-monitor");
+    assert (discovery.valid ());
 
-    zlink::service_monitor_handle_t monitor (spot);
+    zlink::service_monitor_handle_t monitor (
+      discovery, zlink::service_monitor_event::discovery_service_up);
     assert (monitor.valid ());
     const zlink::maybe_t<zlink_service_monitor_event_t> event =
       monitor.try_recv ();

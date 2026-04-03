@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 26
+#define ZLINK_VERSION_PATCH 27
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -1140,7 +1140,6 @@ typedef enum zlink_service_kind_t
 } zlink_service_kind_t;
 
 typedef uint32_t zlink_discovery_monitor_event_mask_t;
-typedef uint32_t zlink_spot_monitor_event_mask_t;
 typedef uint32_t zlink_service_event_detail_mask_t;
 typedef uint32_t zlink_service_monitor_event_mask_t;
 
@@ -1155,34 +1154,10 @@ typedef uint32_t zlink_service_monitor_event_mask_t;
 #define ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED                                 \
     ((zlink_discovery_monitor_event_mask_t) (1u << 17))
 
-#define ZLINK_SPOT_MONITOR_EVENT_PEER_UP                                     \
-    ((zlink_spot_monitor_event_mask_t) (1u << 2))
-#define ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN                                   \
-    ((zlink_spot_monitor_event_mask_t) (1u << 3))
-#define ZLINK_SPOT_MONITOR_EVENT_ERROR                                       \
-    ((zlink_spot_monitor_event_mask_t) (1u << 4))
-#define ZLINK_SPOT_MONITOR_EVENT_CONNECTION_READY                            \
-    ((zlink_spot_monitor_event_mask_t) (1u << 14))
-#define ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED                          \
-    ((zlink_spot_monitor_event_mask_t) (1u << 13))
-#define ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL                              \
-    ((zlink_spot_monitor_event_mask_t) (1u << 15))
-#define ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED                           \
-    ((zlink_spot_monitor_event_mask_t) (1u << 16))
-#define ZLINK_SPOT_MONITOR_EVENT_CLOSED                                      \
-    ((zlink_spot_monitor_event_mask_t) (1u << 17))
-
-#define ZLINK_MONITOR_EVENT_PEER_UP ZLINK_SPOT_MONITOR_EVENT_PEER_UP
-#define ZLINK_MONITOR_EVENT_PEER_DOWN ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN
-#define ZLINK_MONITOR_EVENT_CONNECTION_READY                                 \
-    ZLINK_SPOT_MONITOR_EVENT_CONNECTION_READY
 #define ZLINK_MONITOR_EVENT_ERROR ZLINK_DISCOVERY_MONITOR_EVENT_ERROR
 #define ZLINK_DISCOVERY_SERVICE_UP ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
 #define ZLINK_DISCOVERY_SERVICE_DOWN ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
 #define ZLINK_DISCOVERY_PROVIDERS_CHANGED ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
-#define ZLINK_SPOT_SUB_FILTER_APPLIED ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
-#define ZLINK_SPOT_PUB_QUEUE_FULL ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL
-#define ZLINK_SPOT_PUB_QUEUE_DRAINED ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED
 #define ZLINK_MONITOR_EVENT_CLOSED ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED
 #define ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME                              \
     ((zlink_service_event_detail_mask_t) 0x0001u)
@@ -1254,25 +1229,13 @@ typedef enum zlink_monitor_target_kind_t
     ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_DOWN
 #define ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED              \
     ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED
-#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_UP                             \
-    ZLINK_SPOT_MONITOR_EVENT_PEER_UP
-#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_DOWN                           \
-    ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN
-#define ZLINK_SERVICE_MONITOR_EVENT_CONNECTION_READY                         \
-    ZLINK_SPOT_MONITOR_EVENT_CONNECTION_READY
-#define ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED                       \
-    ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
 #define ZLINK_SERVICE_MONITOR_EVENT_ALL                                       \
     ((zlink_service_monitor_event_mask_t)                                     \
       (ZLINK_SERVICE_MONITOR_EVENT_ERROR                                      \
        | ZLINK_SERVICE_MONITOR_EVENT_CLOSED                                   \
        | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP                     \
        | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN                   \
-       | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED              \
-       | ZLINK_SERVICE_MONITOR_EVENT_CONNECTION_READY                         \
-       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_UP                             \
-       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_DOWN                           \
-       | ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED))
+       | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED))
 
 ZLINK_EXPORT void *zlink_service_monitor_open (
   void *target_,

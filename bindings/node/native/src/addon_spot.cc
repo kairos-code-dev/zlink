@@ -1,9 +1,175 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "addon_api.h"
+#include <memory>
+#include <mutex>
+#include <vector>
 #include <errno.h>
 
 namespace {
+
+static const size_t k_spot_send_ready_slot_count = 8;
+
+struct spot_send_ready_js_state_t
+{
+    spot_send_ready_js_state_t () : used (false), spot (NULL), env (NULL), tsfn (NULL) {}
+
+    bool used;
+    void *spot;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
+static std::mutex g_spot_send_ready_slots_mu;
+static spot_send_ready_js_state_t
+  g_spot_send_ready_slots[k_spot_send_ready_slot_count];
+
+spot_send_ready_js_state_t *find_spot_send_ready_slot_by_spot_unsafe(void *spot)
+{
+    for (size_t i = 0; i < k_spot_send_ready_slot_count; ++i) {
+        if (g_spot_send_ready_slots[i].used
+            && g_spot_send_ready_slots[i].spot == spot) {
+            return &g_spot_send_ready_slots[i];
+        }
+    }
+    return NULL;
+}
+
+spot_send_ready_js_state_t *find_free_spot_send_ready_slot_unsafe()
+{
+    for (size_t i = 0; i < k_spot_send_ready_slot_count; ++i) {
+        if (!g_spot_send_ready_slots[i].used)
+            return &g_spot_send_ready_slots[i];
+    }
+    return NULL;
+}
+
+void reset_spot_send_ready_slot_unsafe(spot_send_ready_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->spot = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+}
+
+void spot_send_ready_tsfn_finalize(napi_env env,
+                                   void *finalize_data,
+                                   void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    spot_send_ready_js_state_t *state =
+      static_cast<spot_send_ready_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_spot_send_ready_slots_mu);
+    reset_spot_send_ready_slot_unsafe(state);
+}
+
+void spot_send_ready_tsfn_call_js(napi_env env,
+                                  napi_value js_cb,
+                                  void *context,
+                                  void *data)
+{
+    (void) context;
+    std::unique_ptr<int> payload(static_cast<int *>(data));
+    if (!env || !js_cb || !payload)
+        return;
+
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    (void) napi_call_function(env, this_arg, js_cb, 0, NULL, &recv);
+}
+
+void release_spot_send_ready_handler_slot(void *spot)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_spot_send_ready_slots_mu);
+        spot_send_ready_js_state_t *state =
+          find_spot_send_ready_slot_by_spot_unsafe(spot);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_spot_send_ready_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+}
+
+void spot_send_ready_dispatch(void *closure, void *)
+{
+    spot_send_ready_js_state_t *state =
+      static_cast<spot_send_ready_js_state_t *>(closure);
+    if (!state)
+        return;
+
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_spot_send_ready_slots_mu);
+        if (!state->used || !state->tsfn)
+            return;
+        tsfn = state->tsfn;
+    }
+
+    std::unique_ptr<int> payload(new int(1));
+    if (napi_call_threadsafe_function(
+          tsfn, payload.get(), napi_tsfn_nonblocking)
+        != napi_ok) {
+        return;
+    }
+    (void) payload.release();
+}
+
+bool attach_spot_send_ready_handler(napi_env env, void *spot, napi_value handler)
+{
+    spot_send_ready_js_state_t *slot = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_spot_send_ready_slots_mu);
+        if (find_spot_send_ready_slot_by_spot_unsafe(spot)) {
+            napi_throw_error(env, NULL, "sendReadyHandler already attached");
+            return false;
+        }
+        slot = find_free_spot_send_ready_slot_unsafe();
+        if (!slot) {
+            napi_throw_error(env, NULL, "no free sendReadyHandler slot");
+            return false;
+        }
+    }
+
+    napi_value resource_name;
+    napi_create_string_utf8(
+      env, "zlink-spot-send-ready-handler", NAPI_AUTO_LENGTH, &resource_name);
+    napi_threadsafe_function tsfn = NULL;
+    napi_status tsfn_status = napi_create_threadsafe_function(
+      env, handler, NULL, resource_name, 0, 1, slot,
+      spot_send_ready_tsfn_finalize, slot, spot_send_ready_tsfn_call_js,
+      &tsfn);
+    if (tsfn_status != napi_ok) {
+      napi_throw_error(
+        env, NULL, "sendReadyHandler failed to create callback queue");
+      return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_spot_send_ready_slots_mu);
+        slot->used = true;
+        slot->spot = spot;
+        slot->env = env;
+        slot->tsfn = tsfn;
+    }
+
+    int rc = zlink_send_ready_handler(spot, &spot_send_ready_dispatch, slot);
+    if (rc != 0) {
+        release_spot_send_ready_handler_slot(spot);
+        throw_last_error(env, "sendReadyHandler failed");
+        return false;
+    }
+    return true;
+}
 
 napi_value unsupported_spot_node(napi_env env, const char *method)
 {
@@ -277,27 +443,6 @@ napi_value spot_node_set_tls_client(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_node_open_monitor(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *node = NULL;
-    napi_get_value_external(env, argv[0], &node);
-    uint32_t events = 0;
-    napi_get_value_uint32(env, argv[1], &events);
-
-    zlink_service_monitor_open_options_t options;
-    options.events = static_cast<zlink_service_monitor_event_mask_t>(events);
-    void *monitor = zlink_service_monitor_open(node, &options);
-    if (!monitor)
-        return throw_last_error(env, "spot_node_open_monitor failed");
-
-    napi_value ext;
-    napi_create_external(env, monitor, NULL, NULL, &ext);
-    return ext;
-}
-
 napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -502,6 +647,7 @@ napi_value spot_destroy(napi_env env, napi_callback_info info)
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
     release_socket_subscribe_handler_slot(spot);
+    release_spot_send_ready_handler_slot(spot);
     void *tmp = spot;
     int rc = zlink_spot_destroy(&tmp);
     if (rc != 0)
@@ -618,21 +764,27 @@ napi_value spot_try_publish(napi_env env, napi_callback_info info)
     return out;
 }
 
-static void noop_send_ready_handler(void *, void *)
+napi_value spot_send_ready_handler(napi_env env, napi_callback_info info)
 {
-}
-
-napi_value spot_enable_send_ready_noop(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
+    napi_value argv[2];
+    size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(
+          env, NULL, "sendReadyHandler requires (spot, handler)");
+        return NULL;
+    }
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    const int rc =
-      zlink_send_ready_handler(spot, &noop_send_ready_handler, NULL);
-    if (rc != 0)
-        return throw_last_error(env, "spot_enable_send_ready_noop failed");
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(
+          env, NULL, "sendReadyHandler handler must be a function");
+        return NULL;
+    }
+    if (!attach_spot_send_ready_handler(env, spot, argv[1]))
+        return NULL;
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
@@ -796,25 +948,4 @@ napi_value spot_subscribe_handler(napi_env env, napi_callback_info info)
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
-}
-
-napi_value spot_open_monitor(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    uint32_t events = 0;
-    napi_get_value_uint32(env, argv[1], &events);
-
-    zlink_service_monitor_open_options_t options;
-    options.events = static_cast<zlink_service_monitor_event_mask_t>(events);
-    void *monitor = zlink_service_monitor_open(spot, &options);
-    if (!monitor)
-        return throw_last_error(env, "spot_open_monitor failed");
-
-    napi_value ext;
-    napi_create_external(env, monitor, NULL, NULL, &ext);
-    return ext;
 }

@@ -3,7 +3,6 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
@@ -114,15 +113,6 @@ public final class SpotNode implements AutoCloseable {
                   "zlink_spot_node_set_tls_client");
             }
         }
-    }
-
-    /** Opens a service monitor for the spot node handle. */
-    public ServiceMonitor monitorOpen(int events) {
-        MemorySegment monitor = Native.serviceMonitorOpen(handle, events);
-        if (monitor == null || monitor.address() == 0) {
-            throw ZlinkException.fromLastError("zlink_service_monitor_open");
-        }
-        return InternalAccess.serviceMonitor(monitor);
     }
 
     /** Returns the current node status snapshot. */

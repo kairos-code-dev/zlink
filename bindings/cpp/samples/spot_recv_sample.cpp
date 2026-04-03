@@ -15,17 +15,6 @@ int main ()
     assert (pub_spot.valid ());
     assert (sub_spot.valid ());
 
-    zlink::service_monitor_handle_t sub_monitor =
-      sub_spot.monitor_open (
-        zlink::service_monitor_event::spot_filter_applied
-        | zlink::service_monitor_event::error);
-    assert (sub_monitor.valid ());
-    zlink::service_monitor_handle_t pub_monitor =
-      pub_spot.monitor_open (
-        zlink::service_monitor_event::peer_up
-        | zlink::service_monitor_event::error);
-    assert (pub_monitor.valid ());
-
     assert (pub_node.bind ("tcp://127.0.0.1:0") == 0);
     const std::string endpoint = pub_node.last_endpoint ();
     assert (!endpoint.empty ());
@@ -33,7 +22,6 @@ int main ()
 
     const std::string topic = detail::k_spot_topic;
     assert (sub_spot.set_subscription (topic) == 0);
-    assert (detail::wait_spot_ready (sub_monitor, pub_monitor, endpoint));
 
     const std::string sent = detail::k_spot_payload;
     zlink::message_t outbound = detail::make_message (sent);
@@ -47,8 +35,6 @@ int main ()
     std::printf (
       "[spot/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n",
       topic.c_str (), sent.c_str (), inbound.topic.c_str (), received.c_str ());
-    assert (pub_monitor.close () == 0);
-    assert (sub_monitor.close () == 0);
     assert (sub_spot.close () == 0);
     assert (pub_spot.close () == 0);
     assert (sub_node.close () == 0);

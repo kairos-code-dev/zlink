@@ -5,10 +5,7 @@ package dev.kairoscode.zlink.samples;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.Received;
-import dev.kairoscode.zlink.ServiceMonitor;
-import dev.kairoscode.zlink.ServiceEvent;
 import dev.kairoscode.zlink.ZlinkVersion;
-import dev.kairoscode.zlink.service.spot.Spot;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -20,7 +17,6 @@ import java.util.concurrent.TimeUnit;
 
 final class SampleSupport {
     private static final Duration TIMEOUT = Duration.ofSeconds(180);
-    private static final long SPOT_FILTER_APPLIED = 1L << 13;
     static final String PAIR_PAYLOAD = "hello-pair";
     static final String DEALER_REQUEST = "ping";
     static final String DEALER_REPLY = "pong";
@@ -54,6 +50,17 @@ final class SampleSupport {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(label + " interrupted", ex);
         }
+    }
+
+    static void waitUntil(String label, Condition condition) {
+        long deadlineNanos = System.nanoTime() + TIMEOUT.toNanos();
+        while (System.nanoTime() < deadlineNanos) {
+            if (condition.check()) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new IllegalStateException(label + " timed out");
     }
 
     static String singleUtf8(Received received) {
@@ -90,26 +97,6 @@ final class SampleSupport {
             MonitorEventType.CONNECTION_READY.getValue());
         waitMonitorEvent(pubMonitor,
             MonitorEventType.CONNECTION_READY.getValue());
-    }
-
-    static ServiceEvent awaitSpotFilterApplied(Spot spot, String topic) {
-        try (ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
-            if (monitor.tryRecv().isPresent()) {
-                throw new IllegalStateException(
-                    "spot monitor unexpectedly had a pending event");
-            }
-            spot.setSubscription(topic);
-            ServiceEvent event = monitor.recv();
-            if ((event.eventType() & SPOT_FILTER_APPLIED) == 0) {
-                throw new IllegalStateException(
-                    "expected filter-applied event but got " + event.eventType());
-            }
-            if (!topic.equals(event.subject())) {
-                throw new IllegalStateException(
-                    "unexpected monitor subject: " + event.subject());
-            }
-            return event;
-        }
     }
 
     static java.net.Socket connectRawTcp(String endpoint) {
@@ -181,4 +168,8 @@ final class SampleSupport {
         }
     }
 
+    @FunctionalInterface
+    interface Condition {
+        boolean check();
+    }
 }

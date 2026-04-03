@@ -32,26 +32,17 @@ subscriber.OnSubscribe((receivedTopic, parts) =>
             parts[i].Dispose();
     }
 });
-using (ServiceMonitor pubMonitor = publisher.MonitorOpen(
-           ServiceMonitorEvents.SpotFirstDeliveryReadyChanged))
-using (ServiceMonitor subMonitor = subscriber.MonitorOpen(
-           ServiceMonitorEvents.SpotFilterApplied
-           | ServiceMonitorEvents.SpotSubscriptionReadyChanged))
+subscriber.SetSubscription(topic);
+SampleSupport.WaitOrThrow(
+    () => subNode.StatusSnapshot().ConnectedPeerCount > 0,
+    5000,
+    "spot peer connection");
+
+DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+while (!signal.IsSet && DateTime.UtcNow < deadline)
 {
-    subscriber.SetSubscription(topic);
-    ServiceMonitorEvent filterEvent = subMonitor.Recv();
-    if ((filterEvent.EventType & ServiceMonitorEvents.SpotFilterApplied)
-        == ServiceMonitorEvents.None || filterEvent.Subject != topic)
-        throw new InvalidOperationException("unexpected SPOT_FILTER_APPLIED event");
-    ServiceMonitorEvent readyEvent = subMonitor.Recv();
-    if ((readyEvent.EventType
-            & ServiceMonitorEvents.SpotSubscriptionReadyChanged)
-        == ServiceMonitorEvents.None || readyEvent.Endpoint != endpoint)
-        throw new InvalidOperationException("unexpected SPOT_SUBSCRIPTION_READY_CHANGED event");
-    if ((pubMonitor.Snapshot().StateFlags & MonitorState.SendReady) == 0)
-        throw new InvalidOperationException("publisher spot monitor is not send-ready");
+    using (Message message = Message.FromString(payload))
+        publisher.Publish(topic, message);
 }
-using (Message message = Message.FromString(payload))
-    publisher.Publish(topic, message);
 SampleSupport.WaitOrThrow(() => signal.IsSet, 5000, "spot callback timeout");
 Console.WriteLine($"[spot/callback] publish: \"{topic}/{payload}\" -> subscribe: \"{output}\"");

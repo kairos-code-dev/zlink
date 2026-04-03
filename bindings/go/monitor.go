@@ -28,16 +28,12 @@ const (
 	MonitorEventAll              = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
 	MonitorEventConnectionReady = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
 
-	ServiceMonitorEventAll                       = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_ALL)
+	ServiceMonitorEventAll                       = ServiceMonitorEventError | ServiceMonitorEventClosed | ServiceMonitorEventDiscoveryServiceUp | ServiceMonitorEventDiscoveryServiceDown | ServiceMonitorEventDiscoveryProvidersChanged
 	ServiceMonitorEventError                     = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_ERROR)
 	ServiceMonitorEventClosed                    = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_CLOSED)
 	ServiceMonitorEventDiscoveryServiceUp        = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
 	ServiceMonitorEventDiscoveryServiceDown      = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN)
 	ServiceMonitorEventDiscoveryProvidersChanged = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED)
-	ServiceMonitorEventConnectionReady           = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_CONNECTION_READY)
-	ServiceMonitorEventSpotPeerUp                = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_UP)
-	ServiceMonitorEventSpotPeerDown              = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_DOWN)
-	ServiceMonitorEventSpotFilterApplied         = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED)
 )
 
 type MonitorEvent struct {
@@ -138,27 +134,7 @@ func OpenSocketMonitor(socket any, events uint32) (*SocketMonitor, error) {
 func OpenServiceMonitor(target any, events uint32) (*ServiceMonitor, error) {
 	var handle unsafe.Pointer
 	switch t := target.(type) {
-	case *PairSocket:
-		handle = t.raw()
-	case *PubSocket:
-		handle = t.raw()
-	case *SubSocket:
-		handle = t.raw()
-	case *DealerSocket:
-		handle = t.raw()
-	case *RouterSocket:
-		handle = t.raw()
-	case *XPubSocket:
-		handle = t.raw()
-	case *XSubSocket:
-		handle = t.raw()
-	case *StreamSocket:
-		handle = t.raw()
 	case *Discovery:
-		handle = t.raw()
-	case *Spot:
-		handle = t.raw()
-	case *SpotNode:
 		handle = t.raw()
 	default:
 		return nil, validationError("unsupported service monitor target type %T", target)

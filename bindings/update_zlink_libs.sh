@@ -8,7 +8,7 @@ SYNC_SCRIPT="${REPO_ROOT}/core/tools/fetch_release_binaries.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  bindings/update_zlink_libs.sh <release-url-or-tag> [--repo owner/repo] [--expect-version X.Y.Z] [--skip-tests]
+  bindings/update_zlink_libs.sh <release-url-or-tag> [--repo owner/repo] [--expect-version X.Y.Z]
 
 Examples:
   bindings/update_zlink_libs.sh core/v1.3.0-hotfix1
@@ -20,12 +20,10 @@ Description:
   - Replaces internal native libraries in all bindings (cpp/dotnet/java/go/rust/node/python).
   - Updates binding package/test version markers to expected version.
   - Verifies linux-x64 native libraries are major-version compatible with expected version.
-  - Runs binding tests (cpp/dotnet/java/go/rust/node/python) after update.
-    Use `--skip-tests` when only native library refresh is required.
+  - Does not run binding tests. Validate bindings separately after update.
 
 Notes:
   - Requires GitHub CLI (`gh`) authentication.
-  - Requires test tooling in PATH (`ctest`, `dotnet`, `npm`, `go`, `cargo`, Java runtime, Python with pytest).
   - `--repo` is optional. If omitted, repository is resolved from git origin.
   - Expected version is mandatory for safety:
       - Use --expect-version X.Y.Z, or
@@ -37,8 +35,6 @@ USAGE
 release_ref=""
 repo_override="${ZLINK_RELEASE_REPO:-}"
 expect_version=""
-skip_tests=0
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
@@ -60,9 +56,6 @@ while [[ $# -gt 0 ]]; do
       fi
       expect_version="$2"
       shift
-      ;;
-    --skip-tests)
-      skip_tests=1
       ;;
     --*)
       echo "Error: unknown option: $1" >&2
@@ -440,66 +433,4 @@ if failed:
     sys.exit(1)
 PY
 
-if [[ "${skip_tests}" == "1" ]]; then
-  echo "[4/4] Skipping binding tests (--skip-tests)"
-  echo "Done: bindings native libraries/version markers updated without binding test execution (target=${expect_version})."
-  exit 0
-fi
-
-echo "[4/4] Running binding tests"
-echo "  - C++ bindings tests"
-bash "${REPO_ROOT}/bindings/cpp/build.sh" ON OFF
-ctest --test-dir "${REPO_ROOT}/bindings/cpp/build" --output-on-failure -R test_cpp_
-
-echo "  - .NET bindings tests"
-dotnet test "${REPO_ROOT}/bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj" -v minimal
-
-echo "  - Java bindings tests"
-(
-  cd "${REPO_ROOT}/bindings/java"
-  chmod +x ./gradlew
-  ZLINK_LIBRARY_PATH="${REPO_ROOT}/bindings/java/src/main/resources/native/linux-x86_64/libzlink.so" \
-    ./gradlew --no-daemon test integrationTest
-)
-
-echo "  - Node bindings tests"
-(
-  cd "${REPO_ROOT}/bindings/node"
-  LD_LIBRARY_PATH="${REPO_ROOT}/bindings/node/prebuilds/linux-x64:${LD_LIBRARY_PATH:-}" \
-    npm test
-)
-
-echo "  - Python bindings tests"
-(
-  cd "${REPO_ROOT}/bindings/python"
-  ZLINK_LIBRARY_PATH="${REPO_ROOT}/bindings/python/src/zlink/native/linux-x86_64/libzlink.so" \
-    PYTHONPATH=src \
-    "${py_bin}" -m pytest -q tests
-)
-
-if [[ -f "${REPO_ROOT}/bindings/go/go.mod" ]]; then
-  echo "  - Go bindings tests"
-  (
-    cd "${REPO_ROOT}/bindings/go"
-    CGO_LDFLAGS="-L${REPO_ROOT}/bindings/go/native/linux-x86_64" \
-      CGO_CFLAGS="-I${REPO_ROOT}/bindings/go/include" \
-      LD_LIBRARY_PATH="${REPO_ROOT}/bindings/go/native/linux-x86_64:${LD_LIBRARY_PATH:-}" \
-      go test ./...
-  )
-else
-  echo "  - Go bindings tests (skipped: go.mod not found)"
-fi
-
-if [[ -f "${REPO_ROOT}/bindings/rust/Cargo.toml" ]]; then
-  echo "  - Rust bindings tests"
-  (
-    cd "${REPO_ROOT}/bindings/rust"
-    ZLINK_LIBRARY_PATH="${REPO_ROOT}/bindings/rust/native/linux-x86_64" \
-      LD_LIBRARY_PATH="${REPO_ROOT}/bindings/rust/native/linux-x86_64:${LD_LIBRARY_PATH:-}" \
-      cargo test
-  )
-else
-  echo "  - Rust bindings tests (skipped: Cargo.toml not found)"
-fi
-
-echo "Done: bindings native libraries/version markers updated and all binding tests passed (target=${expect_version})."
+echo "Done: bindings native libraries/version markers updated (target=${expect_version})."

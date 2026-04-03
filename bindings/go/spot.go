@@ -348,11 +348,3 @@ func (s *Spot) OnSendReady(handler func()) error {
 	s.core.sendReadyHandle = handle
 	return nil
 }
-
-func (n *SpotNode) MonitorOpen(events uint32) (*ServiceMonitor, error) {
-	return OpenServiceMonitor(n, events)
-}
-
-func (s *Spot) MonitorOpen(events uint32) (*ServiceMonitor, error) {
-	return OpenServiceMonitor(s, events)
-}

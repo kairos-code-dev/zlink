@@ -132,10 +132,10 @@ static_assert (!has_filter_subscribe_alias_t<zlink::service::spot_t>::value,
                "spot_t must not expose subscribe(filter) alias");
 static_assert (!has_filter_unsubscribe_alias_t<zlink::service::spot_t>::value,
                "spot_t must not expose unsubscribe(filter) alias");
-static_assert (has_monitor_open_t<zlink::service::spot_t>::value,
-               "spot_t must expose monitor_open");
-static_assert (has_monitor_open_t<zlink::service::spot_node_t>::value,
-               "spot_node_t must expose monitor_open");
+static_assert (!has_monitor_open_t<zlink::service::spot_t>::value,
+               "spot_t must not expose monitor_open");
+static_assert (!has_monitor_open_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must not expose monitor_open");
 static_assert (has_monitor_open_t<zlink::service::discovery_t>::value,
                "discovery_t must expose monitor_open");
 static_assert (has_close_t<zlink::service::spot_t>::value,
@@ -181,7 +181,7 @@ void test_registry_query_and_discovery_metadata ()
     assert (discovery.member_peers (NULL, &peer_count) == 0);
 }
 
-void test_spot_node_snapshot_and_service_monitor ()
+void test_spot_node_snapshot_contract ()
 {
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
@@ -200,8 +200,6 @@ void test_spot_node_snapshot_and_service_monitor ()
     size_t subject_count = 0;
     assert (node.subjects_snapshot (NULL, &subject_count) == 0);
 
-    zlink::service_monitor_handle_t monitor = node.monitor_open ();
-    assert (monitor.valid ());
 }
 
 void test_unified_spot_self_delivery_recv_contract ()
@@ -211,26 +209,7 @@ void test_unified_spot_self_delivery_recv_contract ()
     zlink::service::spot_t spot (node);
     assert (spot.valid ());
 
-    zlink::service_monitor_handle_t sub_monitor =
-      spot.monitor_open (zlink::service_monitor_event::spot_filter_applied
-                           | zlink::service_monitor_event::error);
-    assert (sub_monitor.valid ());
-    zlink::service_monitor_handle_t pub_monitor =
-      spot.monitor_open (
-        zlink::service_monitor_event::peer_up
-        | zlink::service_monitor_event::error);
-    assert (pub_monitor.valid ());
-
     assert (spot.set_subscription ("topic:service-self") == 0);
-    assert (zlink_cpp_contract::wait_for_service_monitor_event (
-      sub_monitor,
-      static_cast<uint32_t> (
-        zlink::service_monitor_event::spot_filter_applied),
-      10000));
-    assert (zlink_cpp_contract::wait_for_service_monitor_event (
-      pub_monitor,
-      static_cast<uint32_t> (zlink::service_monitor_event::peer_up),
-      10000));
 
     zlink::message_t outbound =
       zlink_cpp_contract::make_message ("service-self");
@@ -241,8 +220,6 @@ void test_unified_spot_self_delivery_recv_contract ()
     assert (inbound.parts.size () == 1);
     assert (inbound.parts[0].to_string () == "service-self");
 
-    assert (pub_monitor.close () == 0);
-    assert (sub_monitor.close () == 0);
 }
 
 void test_unified_spot_wrap_node_surface_contract ()
@@ -260,7 +237,7 @@ void test_unified_spot_wrap_node_surface_contract ()
 int main ()
 {
     test_registry_query_and_discovery_metadata ();
-    test_spot_node_snapshot_and_service_monitor ();
+    test_spot_node_snapshot_contract ();
     test_unified_spot_self_delivery_recv_contract ();
     test_unified_spot_wrap_node_surface_contract ();
     return 0;

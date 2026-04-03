@@ -2,9 +2,10 @@ package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -24,8 +25,9 @@ public final class SpotCallbackSample {
             publisherNode.bind("tcp://127.0.0.1:0");
             String endpoint = publisherNode.lastEndpoint();
             subscriberNode.connectPeer(endpoint);
-            SampleSupport.awaitSpotFilterApplied(subscriber,
-                SampleSupport.SPOT_TOPIC);
+            subscriber.setSubscription(SampleSupport.SPOT_TOPIC);
+            SampleSupport.waitUntil("spot peer connection",
+                () -> subscriberNode.statusSnapshot().connectedPeerCount() > 0);
 
             subscriber.onSubscribe((routingId, topic, received) -> {
                 try {
@@ -37,12 +39,12 @@ public final class SpotCallbackSample {
                 }
             });
 
-            try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
-                SendResult result = publisher.tryPublish(SampleSupport.SPOT_TOPIC, payload);
-                if (result != SendResult.SENT) {
-                    throw new IllegalStateException(
-                        "spot tryPublish returned " + result);
+            Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
+            while (delivered.getCount() > 0 && Instant.now().isBefore(deadline)) {
+                try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
+                    publisher.publish(SampleSupport.SPOT_TOPIC, payload);
                 }
+                Thread.onSpinWait();
             }
 
             SampleSupport.await(delivered, "spot callback");

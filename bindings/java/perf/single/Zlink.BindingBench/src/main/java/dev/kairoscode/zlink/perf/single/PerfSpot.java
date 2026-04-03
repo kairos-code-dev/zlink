@@ -4,7 +4,6 @@ package dev.kairoscode.zlink.perf.single;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
@@ -13,8 +12,6 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
 final class PerfSpot {
-    private static final long SPOT_FILTER_APPLIED = 1L << 13;
-
     private PerfSpot() {
     }
 
@@ -24,8 +21,7 @@ final class PerfSpot {
         PerfUtil.Metrics metrics = new PerfUtil.Metrics();
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
-             Spot spot = new Spot(node);
-             ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
+             Spot spot = new Spot(node)) {
             spot.onSubscribe((routingId, recvTopic, received) -> {
                 try (received) {
                     byte phase = PerfUtil.phase(received.firstPart());
@@ -39,7 +35,6 @@ final class PerfSpot {
                 }
             });
             spot.setSubscription(topic);
-            monitor.recv();
             Thread traffic = SingleSendLoops.oneWaySend(
                 () -> send(spot, topic, config.size(), (byte) 2),
                 () -> send(spot, topic, config.size(), (byte) 0),

@@ -5,10 +5,6 @@ const readline = require('node:readline');
 const zlink = require('../../dist');
 const { createPayload, stampPayload } = require('../common/perf_metrics');
 const TOPIC = 'perf.topic';
-const PUB_READY_EVENTS = zlink.ServiceMonitorEvent.SPOT_READY_CHANGED
-    | zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-    | zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED
-    | zlink.ServiceMonitorEvent.ERROR;
 function ensureMeshPubBudgetDefault() {
     if (!process.env.ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM) {
         process.env.ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM = '100';
@@ -44,8 +40,6 @@ async function main() {
     const warmupPayload = createPayload(options.msgSize);
     const activePayload = createPayload(options.msgSize);
     const stopPayload = createPayload(options.msgSize);
-    let monitor = null;
-    let readyCount = 0;
     let peersReady = false;
     const publishUntil = async (payload, phase, deadlineNs) => {
         while (process.hrtime.bigint() < deadlineNs) {
@@ -72,7 +66,6 @@ async function main() {
     };
     try {
         node.bind(options.endpoint);
-        monitor = spot.monitorOpen(PUB_READY_EVENTS);
         spot.setLinger(0);
         spot.setSendHighWaterMark(100);
         spot.setSendTimeout(200);
@@ -81,29 +74,14 @@ async function main() {
         const waitForPeersReady = (async () => {
             const deadline = Date.now() + 10000;
             while (Date.now() < deadline) {
-                const event = monitor.tryRecv();
-                if (!event) {
-                    await new Promise((resolve) => setImmediate(resolve));
-                    continue;
-                }
-                if (event.eventType === zlink.ServiceMonitorEvent.ERROR) {
-                    throw new Error(`spot server ready monitor error: ${JSON.stringify(event)}`);
-                }
-                if ((event.eventType === zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-                    || event.eventType === zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED)
-                    && event.value > readyCount) {
-                    readyCount = event.value;
-                }
-                if (readyCount >= options.clients) {
+                if (node.statusSnapshot().readySubjectCount >= options.clients) {
                     peersReady = true;
                     console.log(`PEERS_READY,${options.msgSize}`);
                     return;
                 }
+                await new Promise((resolve) => setImmediate(resolve));
             }
             throw new Error(`spot server ready timeout: ${JSON.stringify({
-                readyCount,
-                snapshot: monitor.snapshot(),
-                expectedReadyCount: options.clients,
                 status: node.statusSnapshot(),
                 peers: node.peersSnapshot(),
                 subjects: node.subjectsSnapshot(),
@@ -124,9 +102,6 @@ async function main() {
         }
     }
     finally {
-        if (monitor) {
-            monitor.close();
-        }
         spot.close();
         node.close();
         ctx.close();

@@ -43,7 +43,7 @@ class EnumValueTests(unittest.TestCase):
     def test_monitor_event_values(self):
         self.assertEqual(int(zlink.MonitorEvent.CONNECTED), 0x0001)
         self.assertEqual(int(zlink.MonitorEvent.DISCONNECTED), 0x0200)
-        self.assertEqual(int(zlink.MonitorEvent.ALL), 0xFFFF)
+        self.assertEqual(int(zlink.MonitorEvent.ALL), 0x7FFF)
 
     def test_disconnect_reason_values(self):
         self.assertEqual(int(zlink.DisconnectReason.UNKNOWN), 0)

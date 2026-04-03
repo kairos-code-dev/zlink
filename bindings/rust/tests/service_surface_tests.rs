@@ -20,12 +20,11 @@ fn discovery_service_monitor_and_member_surfaces_exist() {
 }
 
 #[test]
-fn spot_node_snapshot_and_monitor_surfaces_exist() {
+fn spot_node_snapshot_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let endpoint = format!("tcp://127.0.0.1:{}", reserve_tcp_port());
     node.bind(&endpoint).unwrap();
-    let _monitor_open = SpotNode::monitor_open;
     let _ = node.status_snapshot().unwrap();
     let _ = node.peers_snapshot().unwrap();
     let _ = node.subjects_snapshot().unwrap();
@@ -38,7 +37,6 @@ fn spot_callback_surfaces_exist() {
     let mut spot = Spot::new(&node).unwrap();
     spot.on_subscribe(|_topic_message| {}).unwrap();
     spot.on_send_ready(|| {}).unwrap();
-    let _ = spot.monitor_open(SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED);
 }
 
 #[test]

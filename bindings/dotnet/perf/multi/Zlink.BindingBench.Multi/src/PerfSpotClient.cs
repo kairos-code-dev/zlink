@@ -9,13 +9,6 @@ internal static class PerfSpotClient
 {
     private const string Pattern = "SPOT";
     private const uint ExpectedRunId = 1;
-    private const ServiceMonitorEvents SpotMonitorEventError =
-        ServiceMonitorEvents.Error;
-    private const ServiceMonitorEvents SpotMonitorEventSubDeliveryReadyChanged =
-        ServiceMonitorEvents.SpotSubDeliveryReadyChanged;
-    private const ServiceMonitorEvents SpotReadyMonitorEvents = SpotMonitorEventError
-        | SpotMonitorEventSubDeliveryReadyChanged;
-
     internal static int Run(string transport, int size, string endpoint)
     {
         SpotClientConfig config = BuildConfig(transport, size);
@@ -167,16 +160,12 @@ internal static class PerfSpotClient
     private static SpotClientSlot CreateSlot(Context ctx, SpotClientConfig config,
         PerfRecvMode recvMode, string serverEndpoint)
     {
-        var node = new SpotNode(ctx);
-        try
-        {
-            ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
-            ApplySpotNodeSubscriberOptions(node);
-            var subscriber = new Spot(node);
+            var node = new SpotNode(ctx);
             try
             {
-                ServiceMonitor monitor = subscriber.MonitorOpen(
-                    SpotReadyMonitorEvents);
+                ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
+                ApplySpotNodeSubscriberOptions(node);
+                var subscriber = new Spot(node);
                 try
                 {
                     node.ConnectPeer(serverEndpoint);
@@ -189,22 +178,15 @@ internal static class PerfSpotClient
                         {
                             callbackState.OnMessage(parts);
                         });
-                        return new SpotClientSlot(node, subscriber, monitor,
-                            callbackState);
+                        return new SpotClientSlot(node, subscriber, callbackState);
                     }
 
-                    return new SpotClientSlot(node, subscriber, monitor, null);
+                    return new SpotClientSlot(node, subscriber, null);
                 }
                 catch
                 {
-                    monitor.Dispose();
+                    subscriber.Dispose();
                     throw;
-                }
-            }
-            catch
-            {
-                subscriber.Dispose();
-                throw;
             }
         }
         catch
@@ -220,30 +202,15 @@ internal static class PerfSpotClient
         var spin = new SpinWait();
         for (int i = 0; i < slots.Count; i++)
         {
-            ServiceMonitor? monitor = slots[i].Monitor;
-            if (monitor == null)
-                return false;
-
             while (Stopwatch.GetTimestamp() < deadlineTicks)
             {
-                if (!monitor.TryRecv(out ServiceMonitorEvent? evt))
-                {
-                    spin.SpinOnce();
-                    continue;
-                }
-                spin.Reset();
-                if (evt!.Value.EventType == SpotMonitorEventError)
-                    return false;
-                if (evt.Value.EventType == SpotMonitorEventSubDeliveryReadyChanged
-                    && evt.Value.Value > 0)
-                {
-                    monitor.Dispose();
-                    slots[i].Monitor = null;
+                if (slots[i].Node.StatusSnapshot().ConnectedPeerCount > 0)
                     break;
-                }
+
+                spin.SpinOnce();
             }
 
-            if (slots[i].Monitor != null)
+            if (slots[i].Node.StatusSnapshot().ConnectedPeerCount == 0)
                 return false;
         }
 
@@ -630,22 +597,19 @@ internal static class PerfSpotClient
     private sealed class SpotClientSlot : IDisposable
     {
         internal SpotClientSlot(SpotNode node, Spot subscriber,
-            ServiceMonitor monitor, SpotCallbackState? callbackState)
+            SpotCallbackState? callbackState)
         {
             Node = node;
             Subscriber = subscriber;
-            Monitor = monitor;
             CallbackState = callbackState;
         }
 
         internal SpotNode Node { get; }
         internal Spot Subscriber { get; }
-        internal ServiceMonitor? Monitor { get; set; }
         internal SpotCallbackState? CallbackState { get; }
 
         public void Dispose()
         {
-            Monitor?.Dispose();
             Subscriber.Dispose();
             Node.Dispose();
         }

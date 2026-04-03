@@ -170,6 +170,9 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(Context.class, "handle"));
             assertFalse(hasPublicMethod(Discovery.class, "handle"));
             assertFalse(hasPublicMethod(Spot.class, "handle"));
+            assertFalse(hasPublicMethod(Spot.class, "monitorOpen", int.class));
+            assertFalse(hasPublicMethod(dev.kairoscode.zlink.service.spot.SpotNode.class,
+                "monitorOpen", int.class));
             assertFalse(hasPublicMethod(MonitorSocket.class, "recv",
                 RECEIVE_FLAG_CLASS));
             assertFalse(hasPublicMethod(PairSocket.class, "send", Message.class,

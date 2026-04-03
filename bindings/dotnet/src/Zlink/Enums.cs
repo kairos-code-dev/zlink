@@ -213,20 +213,12 @@ public enum ServiceMonitorEvents : uint
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
-    ConnectionReady = 1u << 14,
-    SpotPeerUp = 1u << 2,
-    SpotPeerDown = 1u << 3,
-    SpotFilterApplied = 1u << 13,
     Closed = 1u << 17,
     All = Error
         | Closed
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
-        | ConnectionReady
-        | SpotPeerUp
-        | SpotPeerDown
-        | SpotFilterApplied
 }
 
 [Flags]

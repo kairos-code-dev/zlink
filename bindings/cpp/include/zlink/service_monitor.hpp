@@ -10,17 +10,6 @@
 namespace zlink
 {
 
-namespace detail
-{
-
-inline service_monitor_event
-normalize_spot_service_monitor_events (service_monitor_event events_) noexcept
-{
-    return events_;
-}
-
-} // namespace detail
-
 class service_monitor_handle_t
 {
   public:
@@ -42,24 +31,6 @@ class service_monitor_handle_t
       service::discovery_t &discovery_,
       service_monitor_event events_ = service_monitor_event::all)
         : service_monitor_handle_t (discovery_.handle (), events_)
-    {
-    }
-
-    explicit service_monitor_handle_t (
-      service::spot_t &spot_,
-      service_monitor_event events_ = service_monitor_event::all)
-        : service_monitor_handle_t (
-            spot_.handle (),
-            detail::normalize_spot_service_monitor_events (events_))
-    {
-    }
-
-    explicit service_monitor_handle_t (
-      service::spot_node_t &node_,
-      service_monitor_event events_ = service_monitor_event::all)
-        : service_monitor_handle_t (
-            node_.handle (),
-            detail::normalize_spot_service_monitor_events (events_))
     {
     }
 
@@ -148,18 +119,6 @@ class service_monitor_handle_t
 
 inline service_monitor_handle_t
 service::discovery_t::monitor_open (service_monitor_event events_)
-{
-    return service_monitor_handle_t (*this, events_);
-}
-
-inline service_monitor_handle_t
-service::spot_t::monitor_open (service_monitor_event events_)
-{
-    return service_monitor_handle_t (*this, events_);
-}
-
-inline service_monitor_handle_t
-service::spot_node_t::monitor_open (service_monitor_event events_)
 {
     return service_monitor_handle_t (*this, events_);
 }

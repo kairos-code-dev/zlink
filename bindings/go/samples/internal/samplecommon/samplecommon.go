@@ -84,6 +84,17 @@ func MustStep(step string, err error) {
 	}
 }
 
+func WaitUntil(timeout time.Duration, description string, predicate func() bool) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if predicate() {
+			return
+		}
+		runtime.Gosched()
+	}
+	Must(fmt.Errorf("timed out waiting for %s", description))
+}
+
 func WaitServiceEvent(monitor *zlink.ServiceMonitor, eventMask uint32) *zlink.ServiceMonitorEvent {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

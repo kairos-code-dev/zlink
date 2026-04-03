@@ -53,17 +53,6 @@ int main ()
     assert (pub_spot.valid ());
     assert (sub_spot.valid ());
 
-    zlink::service_monitor_handle_t sub_monitor =
-      sub_spot.monitor_open (
-        zlink::service_monitor_event::spot_filter_applied
-        | zlink::service_monitor_event::error);
-    assert (sub_monitor.valid ());
-    zlink::service_monitor_handle_t pub_monitor =
-      pub_spot.monitor_open (
-        zlink::service_monitor_event::peer_up
-        | zlink::service_monitor_event::error);
-    assert (pub_monitor.valid ());
-
     const std::string endpoint = detail::unique_tcp ("spot-callback");
     assert (pub_node.bind (endpoint) == 0);
     assert (sub_node.connect_peer (endpoint) == 0);
@@ -72,15 +61,6 @@ int main ()
     state.ready = false;
     assert (sub_spot.on_subscribe (&subscribe_callback, &state) == 0);
     assert (sub_spot.set_subscription ("topic:alpha") == 0);
-    assert (detail::wait_for_service_monitor_event (
-      sub_monitor,
-      static_cast<uint32_t> (
-        zlink::service_monitor_event::spot_filter_applied),
-      10000));
-    assert (detail::wait_for_service_monitor_event (
-      pub_monitor,
-      static_cast<uint32_t> (zlink::service_monitor_event::peer_up),
-      10000));
 
     zlink::message_t outbound =
       detail::make_message ("spot-callback");
@@ -91,8 +71,6 @@ int main ()
     assert (state.topic == "topic:alpha");
     assert (state.payload == "spot-callback");
     lock.unlock ();
-    assert (pub_monitor.close () == 0);
-    assert (sub_monitor.close () == 0);
     assert (sub_spot.close () == 0);
     assert (pub_spot.close () == 0);
     assert (sub_node.close () == 0);

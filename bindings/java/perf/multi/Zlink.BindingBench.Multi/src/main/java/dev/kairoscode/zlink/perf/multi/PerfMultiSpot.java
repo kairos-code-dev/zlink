@@ -4,7 +4,6 @@ package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
@@ -14,7 +13,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class PerfMultiSpot {
-    private static final long SPOT_FILTER_APPLIED = 1L << 13;
     private static final String TOPIC = "perf.topic";
 
     private PerfMultiSpot() {
@@ -66,11 +64,10 @@ final class PerfMultiSpot {
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
              Spot subscriber = new Spot(node);
-             ServiceMonitor monitor = subscriber.monitorOpen((int) SPOT_FILTER_APPLIED)) {
+        ) {
             configureNodeTlsClient(node, config.transport());
             node.connectPeer(config.endpoint());
             subscriber.setSubscription(TOPIC);
-            monitor.recv();
             ready.countDown();
             if (ready.getCount() == 0L) {
                 metrics.startResourceWindow();

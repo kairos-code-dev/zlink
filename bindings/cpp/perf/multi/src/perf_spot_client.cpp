@@ -88,57 +88,18 @@ bool configure_spot_client_tls (zlink::service::spot_node_t &node_,
     return node_.set_tls_client (ca, "localhost", false) == 0;
 }
 
-bool wait_for_sub_delivery_ready (zlink::service_monitor_handle_t &monitor_,
+bool wait_for_sub_delivery_ready (zlink::service::spot_node_t &node_,
                                   int timeout_ms_)
 {
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (
                             std::max (timeout_ms_, 1));
-
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_pollitem_t item;
-        item.socket = monitor_.handle ();
-        item.fd = 0;
-        item.events = ZLINK_POLLIN;
-        item.revents = 0;
-
-        const auto remaining =
-          deadline - std::chrono::steady_clock::now ();
-        int wait_ms = static_cast<int> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
-            .count ());
-        if (wait_ms < 1)
-            wait_ms = 1;
-
-        const int poll_rc = zlink_poll (&item, 1, wait_ms);
-        if (poll_rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            return false;
-        }
-        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        for (;;) {
-            const zlink::maybe_t<zlink_service_monitor_event_t> event =
-              monitor_.try_recv ();
-            if (!event)
-                break;
-
-            if (event->event_type
-                == static_cast<uint32_t> (
-                  zlink::service_monitor_event::error)) {
-                errno = event->error_code != 0 ? event->error_code : EIO;
-                return false;
-            }
-
-            if (event->event_type
-                != static_cast<uint32_t> (
-                  zlink::service_monitor_event::peer_up)) {
-                continue;
-            }
+        zlink_spot_node_status_t status;
+        std::memset (&status, 0, sizeof (status));
+        if (node_.status_snapshot (status) == 0 && status.connected_peer_count > 0)
             return true;
-        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
 
     errno = ETIMEDOUT;
@@ -364,12 +325,11 @@ struct client_slot_t
 {
     std::unique_ptr<zlink::service::spot_node_t> node;
     std::unique_ptr<zlink::service::spot_t> spot;
-    std::unique_ptr<zlink::service_monitor_handle_t> monitor;
     callback_slot_t callback;
     bool synced;
 
     client_slot_t ()
-        : node (), spot (), monitor (), callback (), synced (false)
+        : node (), spot (), callback (), synced (false)
     {
     }
 };
@@ -464,18 +424,6 @@ class spot_client_bench_t
             (void) slot->spot->set (zlink::socket_options::rcvtimeo,
                                     _settings.rcvtimeo_ms);
 
-            slot->monitor.reset (new zlink::service_monitor_handle_t (
-              slot->spot->monitor_open (
-                zlink::service_monitor_event::peer_up
-                | zlink::service_monitor_event::error)));
-            if (!slot->monitor->valid ())
-            {
-                debug_log ("monitor invalid");
-                return false;
-            }
-            perf::multi::configure_perf_monitor_socket (
-              slot->monitor->handle ());
-
             if (_callback_mode
                 && !slot->callback.attach (
                   *slot->spot, &_active_start_us, _msg_size, active_duration_us)) {
@@ -509,11 +457,10 @@ class spot_client_bench_t
               std::chrono::duration_cast<std::chrono::milliseconds> (
                 ready_deadline - now)
                 .count ());
-            if (!wait_for_sub_delivery_ready (*_slots[i]->monitor, remaining_ms)) {
+            if (!wait_for_sub_delivery_ready (*_slots[i]->node, remaining_ms)) {
                 debug_log ("sub delivery ready wait failed");
                 return false;
             }
-            _slots[i]->monitor.reset ();
         }
 
         return !_slots.empty ();

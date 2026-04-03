@@ -26,11 +26,11 @@ function parseArgs(argv) {
     return options;
 }
 async function waitPubReady(pub) {
-    const monitor = pub.monitorOpen(zlink.MonitorEvent.PUB_DELIVERY_READY_CHANGED);
+    const monitor = pub.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
     try {
         while (true) {
             const event = monitor.recv();
-            if (event.event === zlink.MonitorEvent.PUB_DELIVERY_READY_CHANGED && event.value >= 1) {
+            if (event.event === zlink.MonitorEvent.CONNECTION_READY) {
                 return;
             }
         }

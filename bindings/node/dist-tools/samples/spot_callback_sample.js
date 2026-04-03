@@ -5,9 +5,6 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('../dist');
-const FILTER_APPLIED = zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED;
-const PUB_READY = zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-    | zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED;
 const topic = 'room:lobby';
 const sent = 'hello-spot';
 async function reservePort() {
@@ -25,8 +22,6 @@ async function main() {
     const subNode = new zlink.SpotNode(ctx);
     const pub = new zlink.Spot(pubNode);
     const sub = new zlink.Spot(subNode);
-    const subMonitor = sub.monitorOpen(FILTER_APPLIED);
-    const pubMonitor = pub.monitorOpen(PUB_READY);
     try {
         const receivedPromise = new Promise((resolve, reject) => {
             try {
@@ -44,35 +39,16 @@ async function main() {
         pubNode.bind(endpoint);
         subNode.connectPeer(endpoint);
         sub.setSubscription(topic);
-        let filterApplied = false;
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
-            const event = subMonitor.tryRecv();
-            if (!event) {
-                await new Promise((resolve) => setImmediate(resolve));
-                continue;
-            }
-            if (event.eventType === FILTER_APPLIED) {
-                filterApplied = true;
+            if (pubNode.statusSnapshot().connectedPeerCount > 0
+                && subNode.statusSnapshot().readySubjectCount > 0) {
                 break;
             }
+            await new Promise((resolve) => setImmediate(resolve));
         }
-        assert.equal(filterApplied, true);
-        let pubReady = false;
-        while (Date.now() < deadline) {
-            const event = pubMonitor.tryRecv();
-            if (!event) {
-                await new Promise((resolve) => setImmediate(resolve));
-                continue;
-            }
-            if ((event.eventType === zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-                || event.eventType === zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED)
-                && event.value > 0) {
-                pubReady = true;
-                break;
-            }
-        }
-        assert.equal(pubReady, true);
+        assert.ok(pubNode.statusSnapshot().connectedPeerCount > 0);
+        assert.ok(subNode.statusSnapshot().readySubjectCount > 0);
         pub.publish(topic, zlink.Message.copyOf(sent));
         const received = await Promise.race([receivedPromise, timeoutPromise]);
         assert.ok(received.routingId === null || Buffer.isBuffer(received.routingId));
@@ -82,8 +58,6 @@ async function main() {
         console.log(`[spot/callback] publish: "${topic}/${sent}" \u2192 subscribe: "${topic}/${recv}"`);
     }
     finally {
-        pubMonitor.close();
-        subMonitor.close();
         sub.close();
         pub.close();
         subNode.close();

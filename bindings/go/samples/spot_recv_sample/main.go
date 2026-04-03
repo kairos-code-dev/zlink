@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"runtime"
+	"time"
 	"zlink"
 	"zlink/samples/internal/samplecommon"
 )
@@ -26,13 +28,6 @@ func main() {
 	samplecommon.MustStep("subscriber", err)
 	defer func() { samplecommon.MustStep("subscriber.Close", subscriber.Close()) }()
 
-	pubMon, err := publisher.MonitorOpen(zlink.ServiceMonitorEventConnectionReady)
-	samplecommon.MustStep("pubMon", err)
-	defer func() { samplecommon.MustStep("pubMon.Close", pubMon.Close()) }()
-	subMon, err := subscriber.MonitorOpen(zlink.ServiceMonitorEventSpotFilterApplied | zlink.ServiceMonitorEventConnectionReady)
-	samplecommon.MustStep("subMon", err)
-	defer func() { samplecommon.MustStep("subMon.Close", subMon.Close()) }()
-
 	topic := "room:lobby"
 	payload := "hello-spot"
 	endpoint := samplecommon.UniqueTCP("spot-recv")
@@ -40,22 +35,26 @@ func main() {
 	samplecommon.MustStep("subscriberNode.ConnectPeer", subscriberNode.ConnectPeer(endpoint))
 	samplecommon.MustStep("subscriber.SetSubscription", subscriber.SetSubscription(topic))
 
-	filterEvent := samplecommon.WaitServiceEvent(subMon, zlink.ServiceMonitorEventSpotFilterApplied)
-	if filterEvent.Subject != topic {
-		samplecommon.Must(fmt.Errorf("unexpected filter subject %q", filterEvent.Subject))
-	}
-	readyEvent := samplecommon.WaitServiceEvent(subMon, zlink.ServiceMonitorEventConnectionReady)
-	_ = readyEvent
-	pubSnapshot, err := pubMon.Snapshot()
-	samplecommon.MustStep("pubMon.Snapshot", err)
-	if !pubSnapshot.IsReady() {
-		samplecommon.Must(fmt.Errorf("publisher spot monitor is not ready"))
-	}
+	samplecommon.WaitUntil(5*time.Second, "spot peer connection", func() bool {
+		status, err := subscriberNode.StatusSnapshot()
+		return err == nil && status != nil && status.ConnectedPeerCount > 0
+	})
 
-	samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, samplecommon.Message(payload)))
-
-	message, err := subscriber.Subscribe()
-	samplecommon.MustStep("subscriber.Subscribe", err)
+	var message *zlink.TopicMessage
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, samplecommon.Message(payload)))
+		received, ok, err := subscriber.TrySubscribe()
+		samplecommon.MustStep("subscriber.TrySubscribe", err)
+		if ok {
+			message = received
+			break
+		}
+		runtime.Gosched()
+	}
+	if message == nil {
+		samplecommon.Must(fmt.Errorf("spot delivery did not arrive within 5s"))
+	}
 	defer func() { samplecommon.MustStep("message.Close", message.Close()) }()
 	part, err := message.SinglePartOrError()
 	samplecommon.MustStep("message.SinglePartOrError", err)

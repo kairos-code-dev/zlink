@@ -31,8 +31,8 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("source_kind"),
                     ValueLayout.JAVA_INT.withName("state_flags"),
                     ValueLayout.JAVA_INT.withName("detail_flags"),
-                    ValueLayout.JAVA_LONG.withName("snd_pending_msgs"),
-                    ValueLayout.JAVA_LONG.withName("rcv_pending_msgs"));
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("snd_pending_msgs"),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("rcv_pending_msgs"));
     public static final long MONITOR_SNAPSHOT_SOURCE_KIND_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("source_kind"));

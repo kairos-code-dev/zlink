@@ -16,7 +16,7 @@ pub fn wait_connected(monitors: &[&zlink::SocketMonitor]) {
     for monitor in monitors {
         loop {
             let event = monitor.recv().expect("monitor recv failed");
-            if event.is_connection_ready_changed()
+            if event.is_connection_ready()
                 || monitor
                     .snapshot()
                     .expect("monitor snapshot failed")
@@ -32,7 +32,7 @@ pub fn wait_stream_connected(monitor: &zlink::SocketMonitor) {
     loop {
         let event = monitor.recv().expect("monitor recv failed");
         if event.is_accepted()
-            || event.is_connection_ready_changed()
+            || event.is_connection_ready()
             || monitor
                 .snapshot()
                 .expect("monitor snapshot failed")

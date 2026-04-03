@@ -98,9 +98,6 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachDiscovery") {
 		t.Fatalf("SpotNode should expose AttachDiscovery")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "MonitorOpen") {
-		t.Fatalf("SpotNode should expose MonitorOpen")
-	}
 	if !hasMethod((*zlink.Spot)(nil), "Publish") {
 		t.Fatalf("Spot should expose Publish")
 	}
@@ -115,9 +112,6 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Spot)(nil), "OnSendReady") {
 		t.Fatalf("Spot should expose OnSendReady")
-	}
-	if !hasMethod((*zlink.Spot)(nil), "MonitorOpen") {
-		t.Fatalf("Spot should expose MonitorOpen")
 	}
 	if hasMethod((*zlink.PubSocket)(nil), "ReceiveSubscriptionEvent") {
 		t.Fatalf("PubSocket should not expose ReceiveSubscriptionEvent")

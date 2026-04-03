@@ -1,9 +1,22 @@
 //! SPOT recv sample – demonstrates direct subscribe on a spot facade.
 
-use zlink::{
-    Context, Message, SERVICE_MONITOR_EVENT_CONNECTION_READY,
-    SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED, Spot, SpotNode,
-};
+use std::time::{Duration, Instant};
+
+use zlink::{Context, Message, Spot, SpotNode};
+
+fn wait_until<F>(mut predicate: F, timeout: Duration, description: &str)
+where
+    F: FnMut() -> bool,
+{
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if predicate() {
+            return;
+        }
+        std::thread::yield_now();
+    }
+    panic!("timed out waiting for {description}");
+}
 
 fn main() {
     let ctx = Context::new().expect("context creation failed");
@@ -12,16 +25,6 @@ fn main() {
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
     let publisher = Spot::new(&publisher_node).expect("publisher spot failed");
     let subscriber = Spot::new(&subscriber_node).expect("subscriber spot failed");
-
-    let publisher_monitor = publisher
-        .monitor_open(SERVICE_MONITOR_EVENT_CONNECTION_READY)
-        .expect("publisher monitor open failed");
-    let subscriber_monitor = subscriber
-        .monitor_open(
-            SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED
-                | SERVICE_MONITOR_EVENT_CONNECTION_READY,
-        )
-        .expect("subscriber monitor open failed");
 
     publisher_node
         .bind("tcp://127.0.0.1:0")
@@ -36,29 +39,33 @@ fn main() {
         .set_subscription("room:lobby")
         .expect("set_subscription failed");
 
-    let filter_event = subscriber_monitor.recv().expect("filter event recv failed");
-    assert!(
-        filter_event.is_spot_filter_applied(),
-        "unexpected filter event"
+    wait_until(
+        || {
+            subscriber_node
+                .status_snapshot()
+                .map(|status| status.connected_peer_count > 0)
+                .unwrap_or(false)
+        },
+        Duration::from_secs(5),
+        "spot peer connection",
     );
-    assert_eq!(filter_event.subject, "room:lobby");
 
-    let ready_event = subscriber_monitor.recv().expect("ready event recv failed");
-    assert!(ready_event.is_connection_ready(), "unexpected connection-ready event");
-
-    let pub_snapshot = publisher_monitor
-        .snapshot()
-        .expect("publisher snapshot failed");
-    assert!(pub_snapshot.is_ready(), "publisher spot monitor is not ready");
-
-    publisher
-        .publish(
-            "room:lobby",
-            vec![Message::from_bytes(b"hello-spot").unwrap()],
-        )
-        .expect("publish failed");
-
-    let message = subscriber.subscribe().expect("subscribe failed");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut message = None;
+    while Instant::now() < deadline {
+        publisher
+            .publish(
+                "room:lobby",
+                vec![Message::from_bytes(b"hello-spot").unwrap()],
+            )
+            .expect("publish failed");
+        if let Some(received) = subscriber.try_subscribe().expect("try_subscribe failed") {
+            message = Some(received);
+            break;
+        }
+        std::thread::yield_now();
+    }
+    let message = message.expect("spot delivery did not arrive within 5s");
     let payload = message.parts()[0].as_str().unwrap_or("(binary)");
     assert_eq!(message.topic(), "room:lobby");
     assert_eq!(payload, "hello-spot");

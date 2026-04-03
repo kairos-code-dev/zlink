@@ -338,9 +338,6 @@ class spot_node_t
           _node, filter_, entries_, count_);
     }
 
-    ZLINK_CPP_NODISCARD service_monitor_handle_t
-    monitor_open (service_monitor_event events_ = service_monitor_event::all);
-
     ZLINK_CPP_NODISCARD int close ()
     {
         if (!_node)
@@ -520,9 +517,6 @@ class spot_t
     {
         return zlink_send_ready_handler (_spot, handler_, userdata_);
     }
-
-    ZLINK_CPP_NODISCARD service_monitor_handle_t
-    monitor_open (service_monitor_event events_ = service_monitor_event::all);
 
     void *handle () const { return _spot; }
 

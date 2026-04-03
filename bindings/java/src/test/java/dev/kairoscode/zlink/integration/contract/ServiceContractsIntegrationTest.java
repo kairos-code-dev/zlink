@@ -4,8 +4,6 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.SendResult;
-import dev.kairoscode.zlink.ServiceEvent;
-import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.service.discovery.Discovery;
@@ -17,14 +15,15 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.time.Duration;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ServiceContractsIntegrationTest {
-    private static final long SPOT_FILTER_APPLIED = 1L << 13;
-
     @Test
     void discoveryRegistryAndSpotNodeExposeCanonicalSnapshots() {
         TestSupport.assumeNative();
@@ -73,23 +72,11 @@ class ServiceContractsIntegrationTest {
 
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
-             Spot spot = new Spot(node);
-             ServiceMonitor monitor = spot.monitorOpen((int) SPOT_FILTER_APPLIED)) {
-            assertTrue(monitor.tryRecv().isEmpty());
-            CountDownLatch ready = new CountDownLatch(1);
-            AtomicReference<ServiceEvent> eventRef = new AtomicReference<>();
-            monitor.onEvent(event -> {
-                if ((event.eventType() & SPOT_FILTER_APPLIED) != 0) {
-                    eventRef.set(event);
-                    ready.countDown();
-                }
-            });
+             Spot spot = new Spot(node)) {
             spot.setSubscription("svc-topic");
-            assertTrue(await(ready), "spot filter applied");
-            ServiceEvent event = eventRef.get();
-            assertEquals(SPOT_FILTER_APPLIED, event.eventType() & SPOT_FILTER_APPLIED);
-            assertEquals("svc-topic", event.subject());
-            assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
+            assertEquals(0, node.statusSnapshot().connectedPeerCount());
+            assertTrue(node.subjectsSnapshot().stream()
+                .anyMatch(entry -> "svc-topic".equals(entry.subject())));
         }
     }
 
@@ -103,22 +90,30 @@ class ServiceContractsIntegrationTest {
              SpotNode serverNode = new SpotNode(ctx);
              SpotNode clientNode = new SpotNode(ctx);
              Spot publisher = new Spot(serverNode);
-             Spot subscriber = new Spot(clientNode);
-             ServiceMonitor monitor = subscriber.monitorOpen((int) SPOT_FILTER_APPLIED)) {
+             Spot subscriber = new Spot(clientNode)) {
             serverNode.bind(endpoint);
             clientNode.connectPeer(endpoint);
-            CountDownLatch ready = new CountDownLatch(1);
-            monitor.onEvent(event -> {
-                if ((event.eventType() & SPOT_FILTER_APPLIED) != 0) {
-                    ready.countDown();
-                }
-            });
             subscriber.setSubscription("perf-topic");
-            assertTrue(await(ready), "spot filter applied");
-            try (var payload = dev.kairoscode.zlink.Message.copyOfUtf8("perf-body")) {
-                assertEquals(SendResult.SENT,
-                    publisher.tryPublish("perf-topic", payload));
+            awaitCondition(() -> clientNode.statusSnapshot().connectedPeerCount() > 0,
+                "spot peer connection");
+            Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
+            while (Instant.now().isBefore(deadline)) {
+                try (var payload = dev.kairoscode.zlink.Message.copyOfUtf8("perf-body")) {
+                    assertEquals(SendResult.SENT,
+                        publisher.tryPublish("perf-topic", payload));
+                }
+                var delivery = subscriber.trySubscribe();
+                if (delivery.isPresent()) {
+                    try (var topicMessage = delivery.get()) {
+                        assertEquals("perf-topic", topicMessage.topicId());
+                        assertArrayEquals("perf-body".getBytes(),
+                            topicMessage.singlePartOrThrow().toByteArray());
+                        return;
+                    }
+                }
+                Thread.onSpinWait();
             }
+            assertFalse(true, "spot publish/subscribe delivery timed out");
         }
     }
 
@@ -129,5 +124,21 @@ class ServiceContractsIntegrationTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("await interrupted", ex);
         }
+    }
+
+    private static void awaitCondition(Check check, String label) {
+        Instant deadline = Instant.now().plusMillis(TestSupport.DEFAULT_TIMEOUT_MS);
+        while (Instant.now().isBefore(deadline)) {
+            if (check.ready()) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new IllegalStateException(label + " timed out");
+    }
+
+    @FunctionalInterface
+    private interface Check {
+        boolean ready();
     }
 }

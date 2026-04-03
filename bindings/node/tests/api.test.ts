@@ -41,8 +41,6 @@ test('service objects expose aligned monitor and query surface', () => {
   discovery.setMetadata(Buffer.from('meta'));
 
   const discoveryMonitor = discovery.monitorOpen();
-  const nodeMonitor = node.monitorOpen();
-  const spotMonitor = spot.monitorOpen();
 
   assert.equal(registry.statusSnapshot().topologyEntryCount, 0);
   assert.deepEqual(registry.serviceSummarySnapshot(), []);
@@ -62,10 +60,6 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(typeof discoveryMonitor.recv, 'function');
   assert.equal(typeof discoveryMonitor.tryRecv, 'function');
   assert.equal(typeof discoveryMonitor.onEvent, 'function');
-  assert.equal(typeof nodeMonitor.close, 'function');
-  assert.equal(typeof nodeMonitor.tryRecv, 'function');
-  assert.equal(typeof spotMonitor.close, 'function');
-  assert.equal(typeof spotMonitor.tryRecv, 'function');
   assert.equal(registry.setEndpoints, undefined);
   assert.equal(registry.start, undefined);
   assert.equal(registry.setSockOpt, undefined);
@@ -78,8 +72,6 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(node.subPeers, undefined);
   assert.throws(() => registry.bind('inproc://registry-pub-2', 'inproc://registry-router-2'), /only be called once/);
 
-  spotMonitor.close();
-  nodeMonitor.close();
   discoveryMonitor.close();
   query.close();
   spot.close();

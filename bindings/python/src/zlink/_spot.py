@@ -1,14 +1,11 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+import errno
+import threading
 
 from ._socket_base import _callback_send_flags, _enter_callback, _leave_callback
-from ._enums import (
-    SendResult,
-    SpotNodeState,
-    SpotPeerSource,
-    SpotPeerState,
-)
+from ._enums import SendResult, SpotNodeState, SpotPeerSource, SpotPeerState
 from ._ffi import (
     ZlinkMsg,
     ZlinkRoutingId,
@@ -22,6 +19,7 @@ from ._ffi import (
 from ._core import (
     Message,
     Subscribed,
+    ZlinkError,
     _SOCKET_SEND_READY_HANDLER,
     _ReceivedPartsOwner,
     _as_bytes_view,
@@ -254,11 +252,6 @@ class SpotNode:
         if rc != 0:
             _raise_last_error()
 
-    def open_monitor(self, events):
-        from ._monitor import open_service_monitor
-
-        return open_service_monitor(self, events)
-
     def wrap_handle(self):
         handle = lib().zlink_spot_new(self._handle)
         if not handle:
@@ -384,6 +377,8 @@ class Spot:
         obj._handle = handle
         obj._handler = None
         obj._handler_cb = None
+        obj._subscribe_thread = None
+        obj._subscribe_stop = None
         obj._send_ready_handler = None
         obj._send_ready_handler_cb = None
         return obj
@@ -391,6 +386,8 @@ class Spot:
     def __init__(self, node):
         self._handler = None
         self._handler_cb = None
+        self._subscribe_thread = None
+        self._subscribe_stop = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
         self._own = True
@@ -481,9 +478,11 @@ class Spot:
         return Subscribed(topic, owner, _routing_id_bytes(routing_id))
 
     def subscribe(self):
+        self._ensure_subscribe_direct_mode()
         return self._recv_subscribed(0)
 
     def try_subscribe(self):
+        self._ensure_subscribe_direct_mode()
         try:
             return self._recv_subscribed(1)
         except Exception as exc:
@@ -556,37 +555,39 @@ class Spot:
     def on_subscribe(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
-        if self._handler_cb is not None:
+        if self._subscribe_thread is not None:
             raise RuntimeError("subscribe handler is already attached")
+        self._handler = handler
+        self._handler_cb = True
+        stop = threading.Event()
+        self._subscribe_stop = stop
 
-        def _callback(routing_id_ptr, topic_ptr, topic_len, parts_ptr, part_count, _):
-            routing_id = None
-            if routing_id_ptr:
-                routing_id = _routing_id_bytes(routing_id_ptr.contents)
-            topic = b""
-            if topic_ptr and topic_len:
-                topic = ctypes.string_at(topic_ptr, topic_len)
-            owner = _ReceivedPartsOwner(parts_ptr, int(part_count))
-            message = Subscribed(topic, owner, routing_id)
-            _enter_callback()
-            try:
-                handler(message)
-            except Exception:
+        def _callback_loop():
+            while not stop.is_set():
                 try:
+                    message = self._recv_subscribed(0)
+                except Exception:
+                    if stop.is_set() or not self._handle:
+                        return
+                    _report_unhandled_callback_exception(handler)
+                    return
+                _enter_callback()
+                try:
+                    handler(message)
+                except Exception:
+                    try:
+                        message.close()
+                    finally:
+                        _report_unhandled_callback_exception(handler)
+                else:
                     message.close()
                 finally:
-                    _report_unhandled_callback_exception(handler)
-            else:
-                message.close()
-            finally:
-                _leave_callback()
+                    _leave_callback()
 
-        callback = _SPOT_SUBSCRIBE_HANDLER(_callback)
-        rc = lib().zlink_subscribe_handler(self._handle, callback, None)
-        if rc != 0:
-            _raise_last_error()
-        self._handler = handler
-        self._handler_cb = callback
+        thread = threading.Thread(target=_callback_loop, name="zlink-spot-sub")
+        thread.daemon = True
+        self._subscribe_thread = thread
+        thread.start()
 
     def on_send_ready(self, handler):
         if handler is None:
@@ -608,23 +609,34 @@ class Spot:
         self._send_ready_handler = handler
         self._send_ready_handler_cb = callback
 
-    def open_monitor(self, events):
-        from ._monitor import open_service_monitor
-
-        return open_service_monitor(self, events)
-
     def close(self):
         if not self._handle:
             return
+        stop = self._subscribe_stop
+        thread = self._subscribe_thread
+        if stop is not None:
+            stop.set()
         self._handler = None
         self._handler_cb = None
+        self._subscribe_stop = None
+        self._subscribe_thread = None
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
         handle = ctypes.c_void_p(self._handle)
         self._handle = None
         rc = lib().zlink_spot_destroy(ctypes.byref(handle))
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
         if rc != 0:
             _raise_last_error()
+
+    def _ensure_subscribe_direct_mode(self):
+        if self._subscribe_thread is not None:
+            raise ZlinkError(errno.EBUSY, "spot is in callback subscribe mode")
+
+    def _validate_poller_events(self, events):
+        if self._subscribe_thread is not None and (events & 1):
+            raise ZlinkError(errno.EBUSY, "spot is in callback subscribe mode")
 
     def __enter__(self):
         return self

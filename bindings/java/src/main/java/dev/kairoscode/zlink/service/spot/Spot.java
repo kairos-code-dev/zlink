@@ -7,7 +7,6 @@ import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendResult;
 import dev.kairoscode.zlink.SendReadyHandler;
-import dev.kairoscode.zlink.ServiceMonitor;
 import dev.kairoscode.zlink.SubscribeHandler;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.ZlinkException;
@@ -235,16 +234,6 @@ public final class Spot implements AutoCloseable {
             if (!success)
                 closeArena(arena);
         }
-    }
-
-    /** Opens a service monitor for the spot handle. */
-    public ServiceMonitor monitorOpen(int events) {
-        ensureOpen();
-        MemorySegment monitor = Native.serviceMonitorOpen(handle, events);
-        if (monitor == null || monitor.address() == 0) {
-            throw ZlinkException.fromLastError("zlink_service_monitor_open");
-        }
-        return InternalAccess.serviceMonitor(monitor);
     }
 
     public TopicMessage subscribe() {

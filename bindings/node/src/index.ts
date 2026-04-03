@@ -526,10 +526,6 @@ export const ServiceMonitorEvent = Object.freeze({
   DISCOVERY_SERVICE_UP: 1 << 5,
   DISCOVERY_SERVICE_DOWN: 1 << 6,
   DISCOVERY_PROVIDERS_CHANGED: 1 << 7,
-  CONNECTION_READY: 1 << 14,
-  SPOT_PEER_UP: 1 << 2,
-  SPOT_PEER_DOWN: 1 << 3,
-  SPOT_FILTER_APPLIED: 1 << 13,
 } as const);
 export const SpotNodeState = Object.freeze({
   IDLE: 1, CONNECTING: 2, PARTIAL_READY: 3, READY: 4, ERROR: 5
@@ -1594,14 +1590,6 @@ export class SpotNode {
     ) as SpotNodeSubjectEntry[];
   }
 
-  monitorOpen(
-    events = ServiceMonitorEvent.ERROR
-      | ServiceMonitorEvent.CLOSED
-      | ServiceMonitorEvent.SPOT_PEER_UP
-  ): ServiceMonitor {
-    return new ServiceMonitor(requireNative().spotNodeOpenMonitor(this._native, events | 0));
-  }
-
   close(): void {
     if (!this._native) return;
     requireNative().spotNodeDestroy(this._native);
@@ -1615,7 +1603,6 @@ export class Spot {
 
   constructor(node: SpotNode) {
     this._native = requireNative().spotNew(node.nativeHandle());
-    requireNative().spotEnableSendReadyNoop(this._native);
   }
 
   private setSocketOption(option: number, value: Buffer): void {
@@ -1738,21 +1725,7 @@ export class Spot {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(
-      ServiceMonitorEvent.SPOT_PEER_UP
-    );
-    startEventPollingLoop(
-      () => this._native != null,
-      () => monitor.tryRecv(),
-      (event) => event.eventType === ServiceMonitorEvent.SPOT_PEER_UP,
-      () => handler()
-    );
-  }
-
-  monitorOpen(
-    events = ServiceMonitorEvent.ERROR | ServiceMonitorEvent.CLOSED
-  ): ServiceMonitor {
-    return new ServiceMonitor(requireNative().spotOpenMonitor(this._native, events | 0));
+    requireNative().spotSendReadyHandler(this._native, handler);
   }
 
   close(): void {

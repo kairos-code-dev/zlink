@@ -50,19 +50,17 @@ void test_socket_monitor_open_recv_snapshot ()
     assert (monitor.snapshot (snapshot) == 0);
 }
 
-void test_service_monitor_open_snapshot ()
+void test_discovery_service_monitor_open_recv ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_node_t node (ctx);
-    zlink::service::spot_t spot (node);
-    assert (spot.valid ());
+    zlink::service::discovery_t discovery (
+      ctx, zlink::service_type::spot, "monitor-contract");
+    assert (discovery.valid ());
 
-    zlink::service_monitor_handle_t monitor = spot.monitor_open ();
+    zlink::service_monitor_handle_t monitor = discovery.monitor_open (
+      zlink::service_monitor_event::discovery_service_up);
     assert (monitor.valid ());
     (void) monitor.try_recv ();
-
-    zlink_monitor_snapshot_t snapshot;
-    assert (monitor.snapshot (snapshot) == 0);
 }
 
 } // namespace
@@ -70,6 +68,6 @@ void test_service_monitor_open_snapshot ()
 int main ()
 {
     test_socket_monitor_open_recv_snapshot ();
-    test_service_monitor_open_snapshot ();
+    test_discovery_service_monitor_open_recv ();
     return 0;
 }

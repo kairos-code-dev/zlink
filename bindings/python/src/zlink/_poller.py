@@ -15,6 +15,9 @@ class Poller:
         self._next_user_data = 1
 
     def add_socket(self, socket, events, tag=None):
+        validator = getattr(socket, "_validate_poller_events", None)
+        if validator is not None:
+            validator(int(events))
         user_data = ctypes.c_void_p(self._next_user_data)
         self._next_user_data += 1
         rc = lib().zlink_poller_add(

@@ -137,7 +137,7 @@ pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
     loop {
         if Instant::now() > deadline { break; }
         match mon.try_recv() {
-            Ok(Some(ev)) if ev.is_connection_ready_changed() || ev.is_accepted() => break,
+            Ok(Some(ev)) if ev.is_connection_ready() || ev.is_accepted() => break,
             Ok(Some(_)) => continue,
             Ok(None) => { std::thread::sleep(Duration::from_millis(10)); }
             Err(_) => break,

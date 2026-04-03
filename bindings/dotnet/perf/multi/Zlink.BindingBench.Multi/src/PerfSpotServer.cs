@@ -9,16 +9,6 @@ internal static class PerfSpotServer
     private const string Pattern = "SPOT";
     private const uint RunId = 1;
     private const string Topic = "bench";
-    private const ServiceMonitorEvents SpotMonitorEventError =
-        ServiceMonitorEvents.Error;
-    private const ServiceMonitorEvents SpotMonitorEventPubDeliveryReadyChanged =
-        ServiceMonitorEvents.SpotPubDeliveryReadyChanged;
-    private const ServiceMonitorEvents SpotMonitorEventPubFirstDeliveryReadyChanged =
-        ServiceMonitorEvents.SpotFirstDeliveryReadyChanged;
-    private const ServiceMonitorEvents SpotReadyMonitorEvents = SpotMonitorEventError
-        | SpotMonitorEventPubDeliveryReadyChanged
-        | SpotMonitorEventPubFirstDeliveryReadyChanged;
-
     internal static int Run(string transport, int size)
     {
         SpotServerConfig config = BuildConfig(transport, size);
@@ -29,7 +19,6 @@ internal static class PerfSpotServer
         ApplyMultiServerContextOptions(ctx);
         using var nodePub = new SpotNode(ctx);
         using var spotPub = new Spot(nodePub);
-        using ServiceMonitor monitor = spotPub.MonitorOpen(SpotReadyMonitorEvents);
 
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
         TryConfigureSpotPublisherSocket(nodePub, Pattern, config.SndTimeoutMs,
@@ -38,12 +27,6 @@ internal static class PerfSpotServer
         StartControlWatcher(control);
 
         Console.WriteLine($"READY,{config.Endpoint}");
-        if (!WaitForSpotReadyCount(monitor, config.ClientCount,
-                config.ReadyTimeoutMs))
-        {
-            Console.Error.WriteLine("multi_server_error:spot_pub_not_ready");
-            return 2;
-        }
         if (!WaitForStart(control, config.Size, config.ReadyTimeoutMs))
         {
             Console.Error.WriteLine("multi_server_error:no_start_signal");
@@ -157,43 +140,6 @@ internal static class PerfSpotServer
 
             spin.SpinOnce();
         }
-    }
-
-    private static bool WaitForSpotReadyCount(ServiceMonitor monitor,
-        int expectedReady, int timeoutMs)
-    {
-        if (expectedReady <= 0)
-            return true;
-
-        uint readyCount = 0;
-        long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
-        var spin = new SpinWait();
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            if (!monitor.TryRecv(out ServiceMonitorEvent? evt))
-            {
-                spin.SpinOnce();
-                continue;
-            }
-            spin.Reset();
-
-            if (evt!.Value.EventType == SpotMonitorEventError)
-                return false;
-
-            if (evt.Value.EventType != SpotMonitorEventPubDeliveryReadyChanged
-                && evt.Value.EventType != SpotMonitorEventPubFirstDeliveryReadyChanged)
-            {
-                continue;
-            }
-
-            readyCount = Math.Max(readyCount, evt.Value.Value);
-            if (readyCount >= expectedReady)
-                return true;
-        }
-
-        // Multi perf treats publisher-ready monitor events as advisory because
-        // some runtime/transport combinations do not emit a stable ready count.
-        return true;
     }
 
     private static void StartControlWatcher(ControlState control)

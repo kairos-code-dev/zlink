@@ -21,27 +21,6 @@ def _make_client(ctx, endpoint, index):
     spot = node.wrap_handle()
     spot.set_subscription(TOPIC)
     return node, spot
-
-
-def _wait_spot_client_ready(spot, timeout_s):
-    with spot.open_monitor(
-        zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
-        | zlink.ServiceMonitorMask.PEER_UP
-    ) as monitor:
-        deadline = time.perf_counter() + timeout_s
-        filter_ready = False
-        peer_ready = False
-        while time.perf_counter() < deadline:
-            event = monitor.recv()
-            if event.event_type == zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED:
-                filter_ready = True
-            elif event.event_type == zlink.ServiceMonitorMask.PEER_UP:
-                peer_ready = True
-            if filter_ready and peer_ready:
-                return
-    raise RuntimeError('timed out waiting for spot client readiness')
-
-
 def main(argv=None):
     args = parse_client_args(
         argv or sys.argv[1:], pattern="spot", allowed_recv={"recv", "callback"}

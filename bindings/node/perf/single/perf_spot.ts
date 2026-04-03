@@ -9,21 +9,6 @@ const {
   finishCollector
 } = require('./perf_single_common');
 
-async function waitSpotFilterApplied(spot, topic) {
-  const monitor = spot.monitorOpen(zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED);
-  try {
-    spot.setSubscription(topic);
-    while (true) {
-      const event = monitor.recv();
-      if (event.eventType === zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED) {
-        return;
-      }
-    }
-  } finally {
-    monitor.close();
-  }
-}
-
 async function runSpotBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
@@ -38,7 +23,7 @@ async function runSpotBenchmark(msgSize, options) {
       (_, __, parts) => parts[0].toBuffer()
     );
 
-    await waitSpotFilterApplied(spot, topic);
+    spot.setSubscription(topic);
     await driveSender((payload) => (
       spot.tryPublish(topic, payload) === zlink.SendResult.Sent
     ), state);

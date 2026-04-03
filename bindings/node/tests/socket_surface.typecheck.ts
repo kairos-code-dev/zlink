@@ -117,15 +117,14 @@ spot.onSubscribe(() => {});
 spot.onSendReady(() => {});
 // @ts-expect-error spot does not expose recv
 spot.recv();
+// @ts-expect-error spot no longer exposes service monitor
+spot.monitorOpen();
+// @ts-expect-error spot node no longer exposes service monitor
+spotNode.monitorOpen();
 
 const monitor = pub.monitorOpen(zlink.MonitorEvent.ALL);
 monitor.recv();
 monitor.tryRecv();
 monitor.close();
-
-const serviceMonitor = spot.monitorOpen();
-serviceMonitor.recv();
-serviceMonitor.tryRecv();
-serviceMonitor.close();
 
 ctx.close();

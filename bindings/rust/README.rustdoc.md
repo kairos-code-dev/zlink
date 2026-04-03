@@ -29,7 +29,7 @@ bindings/rust/target/doc/zlink/index.html
 - `*_READY_CHANGED` monitor events are readiness edge/state notifications.
 - Rust bindings must not interpret monitor `value` as an aggregate ready count.
 - Monitor snapshots are for state/queue inspection, not ready-count gates.
-- Perf or readiness verification in Rust bindings must use low-cost event
-  counting when an expected peer count is required.
-- raw sockets: `CONNECTION_READY` + fixed 1-second settle
-- SPOT: `PEER_UP` + fixed 1-second settle
+- Perf or readiness verification in Rust bindings must follow the shared perf
+  policy.
+- raw sockets: `CONNECTION_READY` event counting
+- SPOT: explicit benchmark barrier protocol; no service monitor gate

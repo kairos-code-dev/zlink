@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import unittest
 import warnings
 from pathlib import Path
@@ -342,27 +343,29 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.SpotNode(ctx) as node:
-                with zlink.Spot(node) as spot:
-                    with spot.open_monitor(
-                        zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
-                    ) as monitor:
-                        spot.on_send_ready(lambda _: None)
-                        spot.set_subscription(b"room:lobby")
-                        while True:
-                            event = monitor.recv()
-                            if (
-                                event.event_type
-                                == zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
-                            ):
+            with zlink.SpotNode(ctx) as server_node:
+                with zlink.SpotNode(ctx) as client_node:
+                    with zlink.Spot(server_node) as server_spot:
+                        with zlink.Spot(client_node) as client_spot:
+                            endpoint = _tcp_endpoint()
+                            server_node.bind(endpoint)
+                            client_node.connect_peer(endpoint)
+                            client_spot.set_subscription(b"room:lobby")
+                            deadline = time.monotonic() + 5.0
+                            while time.monotonic() < deadline:
+                                server_spot.publish(b"room:lobby", [b"hello"])
+                                received = client_spot.try_subscribe()
+                                if received is None:
+                                    time.sleep(0.01)
+                                    continue
+                                with received:
+                                    self.assertIsInstance(received, zlink.Subscribed)
+                                    self.assertEqual(received.topic, b"room:lobby")
+                                    self.assertEqual(received.to_bytes_list(), [b"hello"])
+                                    self.assertIsNotNone(received.routing_id)
                                 break
-
-                        spot.publish(b"room:lobby", [b"hello"])
-                        with spot.subscribe() as received:
-                            self.assertIsInstance(received, zlink.Subscribed)
-                            self.assertEqual(received.topic, b"room:lobby")
-                            self.assertEqual(received.to_bytes_list(), [b"hello"])
-                            self.assertIsNotNone(received.routing_id)
+                            else:
+                                self.fail("spot subscribe did not receive direct peer payload")
 
     def test_spot_try_subscribe_returns_none_when_no_message(self):
         try:
@@ -760,33 +763,41 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertEqual(node.subjects_snapshot(), [])
                     self.assertIsInstance(spot, zlink.Spot)
 
-    def test_service_monitor_on_event_uses_typed_service_event(self):
+    def test_discovery_monitor_on_event_uses_typed_service_event(self):
         try:
             ctx = zlink.Context()
         except OSError:
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.SpotNode(ctx) as node:
-                with zlink.Spot(node) as spot:
-                    observed = {}
-                    ready = threading.Event()
+            with zlink.Registry(ctx) as registry:
+                with zlink.Discovery(ctx, zlink.ServiceType.SPOT, "py-monitor") as discovery:
+                    with zlink.SpotNode(ctx) as node:
+                        observed = {}
+                        ready = threading.Event()
+                        pub_endpoint = _tcp_endpoint()
+                        router_endpoint = _tcp_endpoint()
+                        service_endpoint = _tcp_endpoint()
 
-                    def on_event(event):
-                        observed["event"] = event
-                        ready.set()
+                        def on_event(event):
+                            observed["event"] = event
+                            ready.set()
 
-                    with spot.open_monitor(
-                        zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
-                    ) as monitor:
-                        monitor.on_event(on_event)
-                        spot.set_subscription(b"room:lobby")
-                        self.assertTrue(ready.wait(3.0))
-                        self.assertIsInstance(observed["event"], zlink.ServiceEvent)
-                        self.assertEqual(
-                            observed["event"].event_type,
-                            zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED,
-                        )
+                        registry.bind(pub_endpoint, router_endpoint)
+                        discovery.connect_registry(router_endpoint)
+                        node.attach_discovery(discovery)
+
+                        with discovery.open_monitor(
+                            zlink.ServiceMonitorMask.DISCOVERY_SERVICE_UP
+                        ) as monitor:
+                            monitor.on_event(on_event)
+                            node.bind(service_endpoint)
+                            self.assertTrue(ready.wait(5.0))
+                            self.assertIsInstance(observed["event"], zlink.ServiceEvent)
+                            self.assertEqual(
+                                observed["event"].event_type,
+                                zlink.ServiceMonitorMask.DISCOVERY_SERVICE_UP,
+                            )
 
     def test_attach_discovery_blocks_manual_socket_lifecycle_paths(self):
         try:

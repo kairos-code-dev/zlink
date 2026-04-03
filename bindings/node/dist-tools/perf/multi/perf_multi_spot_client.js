@@ -4,8 +4,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
 const { createMetricCollector, decodeMetricHeader, summarizeMetrics } = require('../common/perf_metrics');
 const TOPIC = 'perf.topic';
-const SPOT_READY_EVENTS = zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED
-    | zlink.ServiceMonitorEvent.ERROR;
 function parseArgs(argv) {
     const options = { endpoint: '', msgSize: 256, warmup: 1, duration: 2, clients: 1, recv: 'recv' };
     for (let i = 0; i < argv.length; i += 1) {
@@ -78,20 +76,12 @@ async function main() {
     const waitForSubDeliveryReady = async (slot, timeoutMs) => {
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
-            const event = slot.monitor.tryRecv();
-            if (!event) {
-                await new Promise((resolve) => setImmediate(resolve));
-                continue;
-            }
-            if (event.eventType === zlink.ServiceMonitorEvent.ERROR) {
-                throw new Error(`spot client ready monitor error: ${JSON.stringify(event)}`);
-            }
-            if (event.eventType === zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED && event.value > 0) {
+            if (slot.node.statusSnapshot().readySubjectCount > 0) {
                 return;
             }
+            await new Promise((resolve) => setImmediate(resolve));
         }
         throw new Error(`spot client ready timeout: ${JSON.stringify({
-            snapshot: slot.monitor.snapshot(),
             status: slot.node.statusSnapshot(),
             peers: slot.node.peersSnapshot(),
             subjects: slot.node.subjectsSnapshot()
@@ -101,8 +91,7 @@ async function main() {
         for (let i = 0; i < options.clients; i += 1) {
             const node = new zlink.SpotNode(ctx);
             const spot = new zlink.Spot(node);
-            const monitor = spot.monitorOpen(SPOT_READY_EVENTS);
-            slots.push({ node, spot, monitor });
+            slots.push({ node, spot });
         }
         for (const slot of slots) {
             slot.spot.setLinger(0);
@@ -144,8 +133,6 @@ async function main() {
                 peers: slot.node.peersSnapshot(),
                 subjects: slot.node.subjectsSnapshot()
             })}`);
-            slot.monitor.close();
-            slot.monitor = null;
         }
         console.log(`CLIENT_READY,${options.msgSize}`);
         await Promise.race([
@@ -180,9 +167,6 @@ async function main() {
         }
         await collector.close();
         for (const slot of slots) {
-            if (slot.monitor) {
-                slot.monitor.close();
-            }
             slot.spot.close();
             slot.node.close();
         }

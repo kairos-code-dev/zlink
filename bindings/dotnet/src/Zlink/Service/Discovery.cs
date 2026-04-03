@@ -10,8 +10,7 @@ namespace Zlink.Service;
 public sealed class Discovery : IDisposable
 {
     private const ServiceMonitorEvents DefaultMonitorEvents =
-        ServiceMonitorEvents.DiscoveryReadyChanged
-        | ServiceMonitorEvents.Error
+        ServiceMonitorEvents.Error
         | ServiceMonitorEvents.DiscoveryServiceUp
         | ServiceMonitorEvents.DiscoveryServiceDown
         | ServiceMonitorEvents.DiscoveryProvidersChanged

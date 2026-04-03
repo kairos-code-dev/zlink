@@ -749,10 +749,6 @@ impl SpotNode {
         check_rc(unsafe { ffi::zlink_spot_node_attach_discovery(self.handle, discovery.raw()) })
     }
 
-    pub fn monitor_open(&self, events: u32) -> Result<crate::monitor::ServiceMonitor, ZlinkError> {
-        crate::monitor::ServiceMonitor::open(self, events)
-    }
-
     pub fn status_snapshot(&self) -> Result<SpotNodeStatus, ZlinkError> {
         let mut raw = MaybeUninit::<ffi::zlink_spot_node_status_t>::uninit();
         check_rc(unsafe { ffi::zlink_spot_node_status_snapshot(self.handle, raw.as_mut_ptr()) })?;
@@ -977,10 +973,6 @@ impl Spot {
             topic,
             parts,
         )))
-    }
-
-    pub fn monitor_open(&self, events: u32) -> Result<crate::monitor::ServiceMonitor, ZlinkError> {
-        crate::monitor::ServiceMonitor::open(self, events)
     }
 
     pub fn on_subscribe<F>(&mut self, handler: F) -> Result<(), ZlinkError>

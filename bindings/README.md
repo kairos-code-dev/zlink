@@ -68,8 +68,8 @@
   가정하면 안 된다.
 - readiness gate 가 필요하면 low-cost event edge 를 직접 사용해야 한다.
 - raw perf/샘플은 `CONNECTION_READY` event counting 을 사용한다.
-- SPOT perf/샘플은 `PEER_UP` event counting 을 사용한다.
-- perf gate 는 expected peer 수 충족 뒤 고정 settle 1초를 둔다.
+- SPOT perf/샘플은 service monitor gate 를 사용하지 않는다.
+- SPOT perf 는 explicit `READY/START` barrier protocol 을 사용한다.
 - delivery-ready/count 계열 monitor event 를 새 gate contract 로 만들면 안 된다.
 
 ## POSD Structure Policy

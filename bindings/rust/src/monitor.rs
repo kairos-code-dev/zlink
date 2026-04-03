@@ -27,39 +27,11 @@ pub const SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED: u32 =
 /// Bitmask for discovery closed monitor events.
 pub const SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED: u32 = ffi::ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED;
 
-/// Bitmask for SPOT peer-up service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_PEER_UP: u32 = ffi::ZLINK_SPOT_MONITOR_EVENT_PEER_UP;
-
-/// Bitmask for SPOT peer-down service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_PEER_DOWN: u32 = ffi::ZLINK_SPOT_MONITOR_EVENT_PEER_DOWN;
-
-/// Bitmask for SPOT error service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_ERROR: u32 = ffi::ZLINK_SPOT_MONITOR_EVENT_ERROR;
-
-/// Bitmask for SPOT connection-ready service monitor events.
-pub const SERVICE_MONITOR_EVENT_CONNECTION_READY: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_CONNECTION_READY;
-
-/// Bitmask for SPOT filter-applied service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED;
-
-/// Bitmask for SPOT queue-full service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_PUB_QUEUE_FULL: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL;
-
-/// Bitmask for SPOT queue-drained service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_PUB_QUEUE_DRAINED: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED;
-
-/// Bitmask for SPOT closed service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_CLOSED: u32 = ffi::ZLINK_SPOT_MONITOR_EVENT_CLOSED;
-
 use crate::error::{ZlinkError, check_rc};
 use crate::ffi;
 use crate::message::RoutingId;
 use crate::service::ServiceKind;
-use crate::service::{Discovery, Spot, SpotNode};
+use crate::service::Discovery;
 use crate::socket::*;
 
 /// Typed monitor target for socket monitor observation.
@@ -74,7 +46,7 @@ impl<'a> MonitorTarget<'a> {
     }
 }
 
-/// Typed service monitor target for discovery/spot observation.
+/// Typed service monitor target for discovery observation.
 pub struct ServiceMonitorTarget<'a> {
     handle: *mut c_void,
     _marker: PhantomData<&'a ()>,
@@ -110,24 +82,6 @@ impl_monitor_target_from_ref!(StreamSocket);
 
 impl<'a> From<&'a Discovery> for ServiceMonitorTarget<'a> {
     fn from(target: &'a Discovery) -> Self {
-        Self {
-            handle: target.raw(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> From<&'a SpotNode> for ServiceMonitorTarget<'a> {
-    fn from(target: &'a SpotNode) -> Self {
-        Self {
-            handle: target.raw(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> From<&'a Spot> for ServiceMonitorTarget<'a> {
-    fn from(target: &'a Spot) -> Self {
         Self {
             handle: target.raw(),
             _marker: PhantomData,
@@ -339,7 +293,7 @@ impl Drop for SocketMonitor {
 // ServiceEvent – typed service monitor event
 // ---------------------------------------------------------------------------
 
-/// A service/discovery/spot monitor event.
+/// A discovery service monitor event.
 #[derive(Debug, Clone)]
 pub struct ServiceEvent {
     pub service_kind: ServiceKind,
@@ -355,7 +309,7 @@ pub struct ServiceEvent {
     pub subject_kind: u32,
 }
 
-/// Typed service monitor event kind set.
+/// Typed discovery service monitor event kind set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceEventType(u32);
 
@@ -388,38 +342,6 @@ impl ServiceEventType {
         self.contains(SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED)
     }
 
-    pub fn is_connection_ready(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_CONNECTION_READY)
-    }
-
-    pub fn is_spot_peer_up(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_PEER_UP)
-    }
-
-    pub fn is_spot_peer_down(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_PEER_DOWN)
-    }
-
-    pub fn is_spot_error(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_ERROR)
-    }
-
-    pub fn is_spot_filter_applied(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED)
-    }
-
-    pub fn is_spot_pub_queue_full(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_PUB_QUEUE_FULL)
-    }
-
-    pub fn is_spot_pub_queue_drained(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_PUB_QUEUE_DRAINED)
-    }
-
-    pub fn is_spot_closed(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_CLOSED)
-    }
-
 }
 
 impl ServiceEvent {
@@ -438,21 +360,13 @@ impl ServiceEvent {
             subject_kind: raw.subject_kind,
         }
     }
-
-    pub fn is_spot_filter_applied(&self) -> bool {
-        self.event_type.is_spot_filter_applied()
-    }
-
-    pub fn is_connection_ready(&self) -> bool {
-        self.event_type.is_connection_ready()
-    }
 }
 
 // ---------------------------------------------------------------------------
 // ServiceMonitor
 // ---------------------------------------------------------------------------
 
-/// Monitor handle for service/discovery/spot lifecycle events.
+/// Monitor handle for discovery service lifecycle events.
 pub struct ServiceMonitor {
     handle: *mut c_void,
     _cb: Option<super::socket::CallbackBox>,
@@ -461,7 +375,7 @@ pub struct ServiceMonitor {
 unsafe impl Send for ServiceMonitor {}
 
 impl ServiceMonitor {
-    /// Open a service monitor on a discovery, spot, or spot-node handle.
+    /// Open a service monitor on a discovery handle.
     pub fn open<'a>(
         target: impl Into<ServiceMonitorTarget<'a>>,
         events: u32,

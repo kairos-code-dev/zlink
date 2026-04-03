@@ -367,10 +367,10 @@ The diagram below shows the ownership relationships and interactions between zli
 └─────────┘  └──────┬──────┘
                     │
                     v
-            ┌───────────────┐
+            ┌────────────────┐
             │i_asio_transport│
-            │  (transport)  │
-            └───────────────┘
+            │  (transport)   │
+            └────────────────┘
 ```
 
 **Key ownership relationships**:
@@ -466,22 +466,22 @@ Strategy classes for message distribution and collection are separated by socket
 Trie-based data structures used for topic matching in PUB/SUB patterns:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                 Subscription Topic Trie Structure           │
-│                                                             │
-│                       (root)                                │
-│                      /      \                               │
-│                  "news"    "stock"                          │
-│                   /          /   \                          │
-│              "weather"   "AAPL"  "GOOGL"                    │
-│                                                             │
+┌──────────────────────────────────────────────────────────────┐
+│                 Subscription Topic Trie Structure            │
+│                                                              │
+│                       (root)                                 │
+│                      /      \                                │
+│                  "news"    "stock"                           │
+│                   /          /   \                           │
+│              "weather"   "AAPL"  "GOOGL"                     │
+│                                                              │
 │  - XPUB: mtrie_t (multi-trie, per-pipe subscription tracking)│
-│  - XSUB: Depends on ZLINK_USE_RADIX_TREE macro              │
-│    - radix_tree_t (when enabled, memory-efficient)          │
-│    - trie_with_size_t (default, fast lookup)                │
-│  - Lookup complexity: O(m), m = topic string length         │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+│  - XSUB: Depends on ZLINK_USE_RADIX_TREE macro               │
+│    - radix_tree_t (when enabled, memory-efficient)           │
+│    - trie_with_size_t (default, fast lookup)                 │
+│  - Lookup complexity: O(m), m = topic string length          │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -510,14 +510,14 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 │  ┌─────────────────┐         ┌──────────────────────────────┐    │
 │  │ async_read_some │--------→│      on_read_complete        │    │
 │  │  (async read)   │         │  - Data receive complete CB  │    │
-│  └──────────────────────────────────────────────────────────┘         │  - Parse message via decoder  │   │
+│  └─────────────────┘         │  - Parse message via decoder │    │
 │                              │  - Forward message to session│    │
 │                              └──────────────────────────────┘    │
 │                                                                  │
 │  ┌─────────────────┐         ┌──────────────────────────────┐    │
 │  │async_write_some │--------→│     on_write_complete        │    │
 │  │  (async write)  │         │  - Data send complete CB     │    │
-│  └──────────────────────────────────────────────────────────┘         │  - Encode next message        │   │
+│  └─────────────────┘         │  - Encode next message       │    │
 │                              │  - Repeat if more data to send│   │
 │                              └──────────────────────────────┘    │
 │                                                                  │
@@ -880,7 +880,7 @@ ctx_t internal structure:
 │  _sockets: array_t<socket_base_t>     Active socket list │
 │  _empty_slots: vector<uint32_t>       Empty slot reuse   │
 │  _io_threads: vector<io_thread_t*>    I/O thread pool    │
-│  _slots: vector<i_mailbox*>           Inter-thread mailbox│
+│  _slots: vector<i_mailbox*>          Inter-thread mailbox│
 │  _endpoints: map<string, endpoint_t>  inproc registry    │
 │  _pending_connections: multimap       Pending connections│
 │                                                          │

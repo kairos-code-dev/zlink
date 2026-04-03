@@ -151,8 +151,8 @@ topic. `source_rid_out_`, `parts_out_`, and `topic_id_out_` are filled on
 success. Pass `ZLINK_DONTWAIT` in `flags_` for non-blocking operation.
 Returns `EBUSY` in callback model.
 
-Use `zlink_service_monitor_open()` plus `zlink_monitor_snapshot()` for
-aggregate ready-peer and queue inspection.
+Use `zlink_spot_node_status_snapshot()`, `zlink_spot_node_peers_snapshot()`,
+and `zlink_spot_node_subjects_snapshot()` for observability.
 
 ## Internal Mesh Publish Budget
 
@@ -200,22 +200,8 @@ typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
 
 ## Monitoring
 
-SPOT monitoring uses the unified `zlink_service_monitor_open()` entrypoint
-for both Spot and SpotNode handles:
-
-```c
-void *zlink_service_monitor_open(void *target,
-                                 const zlink_service_monitor_open_options_t *options);
-```
-
-- `target` is a unified Spot handle or a SpotNode handle. The target kind
-  (Spot vs SpotNode) is determined automatically from the handle.
-- The `role` parameter from the previous per-type APIs is removed.
-- `options->events` selects the event mask to subscribe to.
-- Close the returned monitor handle with `zlink_monitor_close()`.
-- Split `zlink_spot_pub_monitor_open()` and `zlink_spot_sub_monitor_open()` are
-  not public APIs.
-- See [events.md](events.md) for the event catalog and readiness semantics.
+SPOT no longer exposes a public service-monitor surface. Use SpotNode
+status/query APIs instead of `zlink_service_monitor_open()`.
 
 ## Snapshot / Introspection
 

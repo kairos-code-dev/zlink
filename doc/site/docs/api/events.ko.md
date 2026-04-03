@@ -7,6 +7,8 @@ canonical catalog입니다.
 사용 기준:
 - [monitoring.ko.md](monitoring.ko.md): monitor API와 peer inspection API
 - 이 문서: 이벤트 의미, payload 필드, 권장 gate
+- [socket-family-monitor-contract-spec.ko.md](../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md):
+  패밀리별 제어 가능 범위와 회귀 테스트 기준
 
 ## Service Event 모델
 
@@ -28,7 +30,7 @@ typedef struct zlink_service_event_t
 ```
 
 필드 의미:
-- `value`는 이벤��별 숫자 값이며 aggregate readiness 카운트로 해석하지
+- `value`는 이벤트별 숫자 값이며 aggregate readiness 카운트로 해석하지
   않습니다.
 - `subject`는 `detail_flags`에 `ZLINK_EVENT_DETAIL_SUBJECT`가 있을 때만
   유효합니다.
@@ -77,7 +79,7 @@ detail flag:
 | `ZLINK_EVENT_CLOSED` | 정상 close |
 | `ZLINK_EVENT_CLOSE_FAILED` | close 실패 |
 | `ZLINK_EVENT_DISCONNECTED` | 세션 연결 해제 |
-| `ZLINK_EVENT_MONITOR_STOPPED` | socket monitor ��료 |
+| `ZLINK_EVENT_MONITOR_STOPPED` | socket monitor 종료 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | 상세 정보 없는 handshake 실패 |
 | `ZLINK_EVENT_CONNECTION_READY` | transport handshake 이후 ready edge / first usable send path |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | protocol handshake 오류 |

@@ -148,8 +148,9 @@ handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하�
 `parts_out_`, `topic_id_out_`이 채워집니다. non-blocking 동작은 `flags_`에
 `ZLINK_DONTWAIT`를 전달합니다. callback 모드에서는 `EBUSY`로 실패합니다.
 
-aggregate ready-peer / queue 조회는 `zlink_service_monitor_open()`과
-`zlink_monitor_snapshot()` 조합을 사용합니다.
+관찰/운영 상태 확인은 `zlink_spot_node_status_snapshot()`,
+`zlink_spot_node_peers_snapshot()`, `zlink_spot_node_subjects_snapshot()`을
+사용합니다.
 
 ## Internal Mesh Publish Budget
 
@@ -199,22 +200,8 @@ typedef void (*zlink_subscribe_handler_fn)(const zlink_routing_id_t *source_rid,
 
 ## 모니터링
 
-SPOT 모니터링은 Spot과 SpotNode 모두에 대해 unified `zlink_service_monitor_open()`
-entrypoint를 사용합니다.
-
-```c
-void *zlink_service_monitor_open(void *target,
-                                 const zlink_service_monitor_open_options_t *options);
-```
-
-- `target`은 unified Spot 핸들이거나 SpotNode 핸들입니다. target 종류
-  (Spot vs SpotNode)는 핸들에서 자동으로 판별됩니다.
-- 이전 per-type API의 `role` 파라미터는 제거되었습니다.
-- `options->events`로 구독할 이벤트 마스크를 선택합니다.
-- 반환된 monitor 핸들은 `zlink_monitor_close()`로 닫습니다.
-- split `zlink_spot_pub_monitor_open()` / `zlink_spot_sub_monitor_open()`는
-  public API가 아닙니다.
-- 상세 event 정의와 readiness 의미는 [events.ko.md](events.ko.md)를 참고합니다.
+SPOT은 더 이상 public service-monitor surface를 노출하지 않습니다.
+`zlink_service_monitor_open()` 대신 SpotNode status/query API를 사용합니다.
 
 ## 스냅샷 / 인트로스펙션
 

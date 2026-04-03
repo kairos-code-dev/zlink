@@ -91,239 +91,308 @@ The ROUTER socket is a **routing_id-based routing** socket. It automatically pre
     router.Bind("tcp://*:5558")
     ```
 
-### Receiving Messages
+### Message Exchange
 
-ROUTER receives messages via a handler callback attached after socket creation.
+A complete DEALER-ROUTER example: a DEALER connects and sends a request,
+the ROUTER receives it with `source_rid` identifying the sender, and
+replies back using `zlink_send_rid()`.
 
 === "C"
 
     ```c
-    /* DEALER sends "Hello" → handler receives source_rid + parts */
-    void on_message(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    int main(void)
     {
+        void *ctx = zlink_ctx_new();
+
+        void *router = zlink_socket(ctx, ZLINK_ROUTER);
+        zlink_bind(router, "tcp://*:5558");
+
+        void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+        zlink_set_routing_id(dealer, "D1", 2);
+        zlink_connect(dealer, "tcp://127.0.0.1:5558");
+
+        /* DEALER sends a request */
+        zlink_msg_t req;
+        zlink_msg_init_size(&req, 5);
+        memcpy(zlink_msg_data(&req), "Hello", 5);
+        zlink_send(dealer, &req, 1, 0);
+
+        /* ROUTER receives -- source_rid identifies the sender */
+        zlink_routing_id_t source_rid;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        zlink_recv(router, &source_rid, &parts, &part_count, 0);
         printf("From [%.*s]: %.*s\n",
-               (int)source_rid->size, source_rid->data,
+               (int)source_rid.size, source_rid.data,
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
-    }
+        zlink_multipart_close(parts, part_count);
 
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    /* Receive with zlink_recv() */
+        /* ROUTER replies to the sender */
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, 5);
+        memcpy(zlink_msg_data(&reply), "World", 5);
+        zlink_send_rid(router, &source_rid, &reply, 1, 0);
+
+        /* DEALER receives the reply */
+        zlink_recv(dealer, &source_rid, &parts, &part_count, 0);
+        printf("Reply: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, part_count);
+
+        zlink_close(dealer);
+        zlink_close(router);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    zlink::router_socket_t router(ctx);
-    // Receive with recv()
-    auto [source_rid, parts] = router.recv();
-    std::cout << "From [" << source_rid.to_string() << "]: "
-              << parts[0].to_string() << "\n";
+    #include <zlink/socket.hpp>
+    #include <iostream>
+
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::router_socket_t router(ctx);
+        router.bind("tcp://*:5558");
+
+        zlink::dealer_socket_t dealer(ctx);
+        dealer.set_routing_id("D1");
+        dealer.connect("tcp://127.0.0.1:5558");
+
+        // DEALER sends a request
+        dealer.send(zlink::message_t("Hello", 5));
+
+        // ROUTER receives -- source_rid identifies the sender
+        auto [source_rid, parts] = router.recv();
+        std::cout << "From [" << source_rid.to_string() << "]: "
+                  << parts[0].to_string() << std::endl;
+
+        // ROUTER replies to the sender
+        router.send_rid(source_rid, zlink::message_t("World", 5));
+
+        // DEALER receives the reply
+        auto [rid2, reply] = dealer.recv();
+        std::cout << "Reply: " << reply[0].to_string() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    RouterSocket router = new RouterSocket(ctx);
-    // Receive with recv()
-    RecvResult result = router.recv();
-    RoutingId sourceRid = result.routingId();
-    System.out.println("From [" + sourceRid + "]: "
-        + new String(result.parts()[0].data()));
+    import dev.kairoscode.zlink.*;
+
+    public class RouterExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            RouterSocket router = new RouterSocket(ctx);
+            router.bind("tcp://*:5558");
+
+            DealerSocket dealer = new DealerSocket(ctx);
+            dealer.setRoutingId("D1");
+            dealer.connect("tcp://127.0.0.1:5558");
+
+            // DEALER sends a request
+            dealer.send(new Message("Hello".getBytes()));
+
+            // ROUTER receives -- sourceRid identifies the sender
+            RecvResult result = router.recv();
+            System.out.println("From [" + result.routingId() + "]: "
+                + new String(result.parts()[0].data()));
+
+            // ROUTER replies to the sender
+            router.sendRid(result.routingId(), new Message("World".getBytes()));
+
+            // DEALER receives the reply
+            Message reply = dealer.recv();
+            System.out.println("Reply: " + reply.partAsString(0));
+
+            dealer.close();
+            router.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
+    import zlink
+
+    ctx = zlink.Context()
+
     router = zlink.RouterSocket(ctx)
-    # Receive with recv()
+    router.bind("tcp://*:5558")
+
+    dealer = zlink.DealerSocket(ctx)
+    dealer.set_routing_id(b"D1")
+    dealer.connect("tcp://127.0.0.1:5558")
+
+    # DEALER sends a request
+    dealer.send(b"Hello")
+
+    # ROUTER receives -- source_rid identifies the sender
     source_rid, parts = router.recv()
     print(f"From [{source_rid}]: {parts[0].data().decode()}")
+
+    # ROUTER replies to the sender
+    router.send_rid(source_rid, b"World")
+
+    # DEALER receives the reply
+    _, reply = dealer.recv()
+    print(f"Reply: {reply[0].decode()}")
+
+    dealer.close()
+    router.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
     const router = new zlink.RouterSocket(ctx);
-    // Receive with recv()
+    router.bind('tcp://*:5558');
+
+    const dealer = new zlink.DealerSocket(ctx);
+    dealer.setRoutingId(Buffer.from('D1'));
+    dealer.connect('tcp://127.0.0.1:5558');
+
+    // DEALER sends a request
+    dealer.send(Buffer.from('Hello'));
+
+    // ROUTER receives -- sourceRid identifies the sender
     const { sourceRid, parts } = router.recv();
-    console.log(`From [${sourceRid}]: ${parts[0].data().toString()}`);
+    console.log(`From [${sourceRid}]: ${parts[0].toString()}`);
+
+    // ROUTER replies to the sender
+    router.sendRid(sourceRid, Buffer.from('World'));
+
+    // DEALER receives the reply
+    const reply = dealer.recv();
+    console.log(`Reply: ${reply.parts[0].toString()}`);
+
+    dealer.close();
+    router.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
+    using Zlink;
+
+    using var ctx = new Context();
+
     using var router = new RouterSocket(ctx);
-    // Receive with Recv()
+    router.Bind("tcp://*:5558");
+
+    using var dealer = new DealerSocket(ctx);
+    dealer.SetRoutingId("D1"u8);
+    dealer.Connect("tcp://127.0.0.1:5558");
+
+    // DEALER sends a request
+    dealer.Send(new Message("Hello"u8));
+
+    // ROUTER receives -- sourceRid identifies the sender
     var (sourceRid, parts) = router.Recv();
     Console.WriteLine($"From [{sourceRid}]: {parts[0].DataString()}");
-    ```
 
-=== "Rust"
-
-    ```rust
-    let router = ctx.router_socket()?;
-    // Receive with recv()
-    let (source_rid, parts) = router.recv()?;
-    println!("From [{}]: {}", source_rid, parts[0].as_str()?);
-    ```
-
-=== "Go"
-
-    ```go
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    // Receive with recv()
-    source_rid, parts, err := router.Recv()
-    if err != nil { panic(err) }
-    fmt.Printf("From [%v]: %v\n", source_rid, string(parts[0].Data()))
-    ```
-
-### Sending Messages
-
-When replying, use `zlink_send_rid` with the `source_rid` to specify the target.
-
-=== "C"
-
-    ```c
-    /* Reply using source_rid from the callback */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    ```
-
-=== "C++"
-
-    ```cpp
-    // Reply using source_rid from recv()
-    zlink::message_t reply("World", 5);
-    router.send_rid(source_rid, reply);
-    ```
-
-=== "Java"
-
-    ```java
-    // Reply using sourceRid from recv()
-    Message reply = new Message("World".getBytes());
-    router.sendRid(sourceRid, reply);
-    ```
-
-=== "Python"
-
-    ```python
-    # Reply using source_rid from recv()
-    router.send_rid(source_rid, b"World")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    // Reply using sourceRid from recv()
-    router.sendRid(sourceRid, Buffer.from("World"));
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    // Reply using sourceRid from Recv()
+    // ROUTER replies to the sender
     router.SendRid(sourceRid, new Message("World"u8));
+
+    // DEALER receives the reply
+    var (_, reply) = dealer.Recv();
+    Console.WriteLine($"Reply: {reply[0].DataString()}");
     ```
 
 === "Rust"
 
     ```rust
-    // Reply using source_rid from recv()
-    router.send_rid(&source_rid, &zlink::Message::from("World"))?;
-    ```
+    use zlink::Context;
 
-=== "Go"
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new()?;
 
-    ```go
-    // Reply using source_rid from recv()
-    router.SendTo(source_rid, zlink.NewMessage([]byte("World")))
-    ```
+        let router = ctx.router_socket()?;
+        router.bind("tcp://*:5558")?;
 
-### Receive Modes
+        let dealer = ctx.dealer_socket()?;
+        dealer.set_routing_id("D1")?;
+        dealer.connect("tcp://127.0.0.1:5558")?;
 
-**Pull mode**: without attaching a handler, call `zlink_recv()` to
-receive synchronously.
+        // DEALER sends a request
+        dealer.send(&zlink::Message::from("Hello"))?;
 
-=== "C"
+        // ROUTER receives -- source_rid identifies the sender
+        let (source_rid, parts) = router.recv()?;
+        println!("From [{}]: {}", source_rid, parts[0].as_str()?);
 
-    ```c
-    zlink_routing_id_t source_rid;
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    int rc = zlink_recv(router, &source_rid, &parts, &part_count, 0);
-    if (rc == 0) {
-        /* source_rid identifies the sender */
-        /* process parts[0..part_count-1] */
-        zlink_multipart_close(parts, part_count);
-        free(parts);
+        // ROUTER replies to the sender
+        router.send_rid(&source_rid, &zlink::Message::from("World"))?;
+
+        // DEALER receives the reply
+        let (_, reply) = dealer.recv()?;
+        println!("Reply: {}", reply[0].as_str()?);
+
+        Ok(())
     }
     ```
 
-=== "C++"
-
-    ```cpp
-    auto [source_rid, parts] = router.recv();
-    // source_rid identifies the sender
-    // process parts[0..N]
-    ```
-
-=== "Java"
-
-    ```java
-    RecvResult result = router.recv();
-    RoutingId sourceRid = result.routingId();
-    // sourceRid identifies the sender
-    // process result.parts()
-    ```
-
-=== "Python"
-
-    ```python
-    source_rid, parts = router.recv()
-    # source_rid identifies the sender
-    # process parts
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const { sourceRid, parts } = router.recv();
-    // sourceRid identifies the sender
-    // process parts
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    var (sourceRid, parts) = router.Recv();
-    // sourceRid identifies the sender
-    // process parts
-    ```
-
-=== "Rust"
-
-    ```rust
-    let (source_rid, parts) = router.recv()?;
-    // source_rid identifies the sender
-    // process parts
-    ```
-
 === "Go"
 
     ```go
-    source_rid, parts, err := router.Recv()
-    if err != nil { panic(err) }
-    // source_rid identifies the sender
-    // process parts
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        router, _ := ctx.RouterSocket()
+        defer router.Close()
+        router.Bind("tcp://*:5558")
+
+        dealer, _ := ctx.DealerSocket()
+        defer dealer.Close()
+        dealer.SetRoutingId("D1")
+        dealer.Connect("tcp://127.0.0.1:5558")
+
+        // DEALER sends a request
+        dealer.Send(zlink.NewMessage([]byte("Hello")))
+
+        // ROUTER receives -- source_rid identifies the sender
+        sourceRid, parts, _ := router.Recv()
+        fmt.Printf("From [%v]: %s\n", sourceRid, string(parts[0].Data()))
+
+        // ROUTER replies to the sender
+        router.SendTo(sourceRid, zlink.NewMessage([]byte("World")))
+
+        // DEALER receives the reply
+        _, reply, _ := dealer.Recv()
+        fmt.Printf("Reply: %s\n", string(reply[0].Data()))
+    }
     ```
 
 > When the per-peer send queue is full (HWM), ROUTER returns

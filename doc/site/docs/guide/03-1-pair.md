@@ -19,492 +19,299 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
 
 ## 2. Basic Usage
 
-### Creation and Connection
+### Message Exchange
+
+A complete PAIR example: create a context, bind/connect two sockets,
+send a message, receive it, and clean up.
 
 === "C"
 
     ```c
-    void *ctx = zlink_ctx_new();
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* Server side */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(server, "tcp://*:5555");
-
-    /* Client side */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(client, "tcp://127.0.0.1:5555");
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::context_t ctx;
-
-    // Server side
-    zlink::pair_socket_t server(ctx);
-    server.bind("tcp://*:5555");
-
-    // Client side
-    zlink::pair_socket_t client(ctx);
-    client.connect("tcp://127.0.0.1:5555");
-    ```
-
-=== "Java"
-
-    ```java
-    Context ctx = new Context();
-
-    // Server side
-    PairSocket server = new PairSocket(ctx);
-    server.bind("tcp://*:5555");
-
-    // Client side
-    PairSocket client = new PairSocket(ctx);
-    client.connect("tcp://127.0.0.1:5555");
-    ```
-
-=== "Python"
-
-    ```python
-    ctx = zlink.Context()
-
-    # Server side
-    server = zlink.PairSocket(ctx)
-    server.bind("tcp://*:5555")
-
-    # Client side
-    client = zlink.PairSocket(ctx)
-    client.connect("tcp://127.0.0.1:5555")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const ctx = new zlink.Context();
-
-    // Server side
-    const server = new zlink.PairSocket(ctx);
-    server.bind("tcp://*:5555");
-
-    // Client side
-    const client = new zlink.PairSocket(ctx);
-    client.connect("tcp://127.0.0.1:5555");
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    var ctx = new Context();
-
-    // Server side
-    var server = new PairSocket(ctx);
-    server.Bind("tcp://*:5555");
-
-    // Client side
-    var client = new PairSocket(ctx);
-    client.Connect("tcp://127.0.0.1:5555");
-    ```
-
-=== "Rust"
-
-    ```rust
-    let ctx = Context::new();
-
-    // Server side
-    let server = ctx.pair_socket();
-    server.bind("tcp://*:5555");
-
-    // Client side
-    let client = ctx.pair_socket();
-    client.connect("tcp://127.0.0.1:5555");
-    ```
-
-=== "Go"
-
-    ```go
-    ctx, err := zlink.NewContext()
-    if err != nil { log.Fatal(err) }
-    defer ctx.Close()
-
-    // Server side
-    server, err := ctx.PairSocket()
-    if err != nil { log.Fatal(err) }
-    server.Bind("tcp://*:5555")
-
-    // Client side
-    client, err := ctx.PairSocket()
-    if err != nil { log.Fatal(err) }
-    client.Connect("tcp://127.0.0.1:5555")
-    ```
-
-### Message Exchange
-
-!!! note "C API Callback Signature"
-    The receive handler uses C-specific types (`zlink_routing_id_t`,
-    `zlink_msg_t`). Each binding provides its own idiomatic callback or
-    receive interface.
-
-    ```c
-    /* Define receive handler */
-    void on_message(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
+    int main(void)
     {
+        void *ctx = zlink_ctx_new();
+
+        void *server = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(server, "tcp://*:5555");
+
+        void *client = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(client, "tcp://127.0.0.1:5555");
+
+        /* Send from client to server */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 10);
+        memcpy(zlink_msg_data(&msg), "hello-pair", 10);
+        zlink_send(client, &msg, 1, 0);
+
+        /* Receive on server */
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts;
+        size_t count;
+        zlink_recv(server, &rid, &parts, &count, 0);
         printf("Received: %.*s\n",
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
+        zlink_multipart_close(parts, count);
+
+        /* Send reply back (bidirectional) */
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, 5);
+        memcpy(zlink_msg_data(&reply), "World", 5);
+        zlink_send(server, &reply, 1, 0);
+
+        zlink_recv(client, &rid, &parts, &count, 0);
+        printf("Reply: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(client);
+        zlink_close(server);
+        zlink_ctx_term(ctx);
+        return 0;
     }
-    ```
-
-=== "C"
-
-    ```c
-    /* Server stays in recv model */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
-
-    /* Client (send only) */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
-
-    /* ... bind/connect ... */
-
-    /* Client → Server */
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 5);
-    memcpy(zlink_msg_data(&msg), "Hello", 5);
-    zlink_send(client, &msg, 1, 0);
-    /* Server receives with zlink_recv() or poller + zlink_recv() */
-
-    /* Server → Client (bidirectional, but client needs handler too for receiving) */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send(server, &reply, 1, 0);
     ```
 
 === "C++"
 
     ```cpp
-    // Server stays in recv model
-    zlink::pair_socket_t server(ctx);
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // Client (send only)
-    zlink::pair_socket_t client(ctx);
+    int main()
+    {
+        zlink::context_t ctx;
 
-    // ... bind/connect ...
+        zlink::pair_socket_t server(ctx);
+        server.bind("tcp://*:5555");
 
-    // Client → Server
-    client.send("Hello");
+        zlink::pair_socket_t client(ctx);
+        client.connect("tcp://127.0.0.1:5555");
 
-    // Server → Client
-    server.send("World");
+        // Send from client to server
+        client.send("hello-pair");
+
+        // Receive on server
+        auto [rid, parts] = server.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        // Send reply back (bidirectional)
+        server.send("World");
+
+        auto [rid2, reply] = client.recv();
+        std::cout << "Reply: " << reply[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    // Server stays in recv model
-    PairSocket server = new PairSocket(ctx);
+    import dev.kairoscode.zlink.*;
 
-    // Client (send only)
-    PairSocket client = new PairSocket(ctx);
+    public class PairExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    // ... bind/connect ...
+            PairSocket server = new PairSocket(ctx);
+            server.bind("tcp://*:5555");
 
-    // Client → Server
-    client.send("Hello");
+            PairSocket client = new PairSocket(ctx);
+            client.connect("tcp://127.0.0.1:5555");
 
-    // Server → Client
-    server.send("World");
+            // Send from client to server
+            client.send("hello-pair");
+
+            // Receive on server
+            Message msg = server.recv();
+            System.out.println("Received: " + msg.partAsString(0));
+
+            // Send reply back (bidirectional)
+            server.send("World");
+
+            Message reply = client.recv();
+            System.out.println("Reply: " + reply.partAsString(0));
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
-    # Server stays in recv model
+    import zlink
+
+    ctx = zlink.Context()
+
     server = zlink.PairSocket(ctx)
+    server.bind("tcp://*:5555")
 
-    # Client (send only)
     client = zlink.PairSocket(ctx)
+    client.connect("tcp://127.0.0.1:5555")
 
-    # ... bind/connect ...
+    # Send from client to server
+    client.send(b"hello-pair")
 
-    # Client → Server
-    client.send(b"Hello")
+    # Receive on server
+    source_rid, parts = server.recv()
+    print(f"Received: {parts[0].decode()}")
 
-    # Server → Client
+    # Send reply back (bidirectional)
     server.send(b"World")
+
+    source_rid, reply = client.recv()
+    print(f"Reply: {reply[0].decode()}")
+
+    client.close()
+    server.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // Server stays in recv model
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
     const server = new zlink.PairSocket(ctx);
+    server.bind('tcp://*:5555');
 
-    // Client (send only)
     const client = new zlink.PairSocket(ctx);
+    client.connect('tcp://127.0.0.1:5555');
 
-    // ... bind/connect ...
+    // Send from client to server
+    client.send(Buffer.from('hello-pair'));
 
-    // Client → Server
-    client.send(Buffer.from("Hello"));
+    // Receive on server
+    const [rid, parts] = server.receive();
+    console.log(`Received: ${parts[0].toString()}`);
 
-    // Server → Client
-    server.send(Buffer.from("World"));
+    // Send reply back (bidirectional)
+    server.send(Buffer.from('World'));
+
+    const [rid2, reply] = client.receive();
+    console.log(`Reply: ${reply[0].toString()}`);
+
+    client.close();
+    server.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // Server stays in recv model
+    using Zlink;
+
+    var ctx = new Context();
+
     var server = new PairSocket(ctx);
+    server.Bind("tcp://*:5555");
 
-    // Client (send only)
     var client = new PairSocket(ctx);
+    client.Connect("tcp://127.0.0.1:5555");
 
-    // ... bind/connect ...
+    // Send from client to server
+    client.Send("hello-pair");
 
-    // Client → Server
-    client.Send("Hello");
+    // Receive on server
+    var (rid, parts) = server.Receive();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
 
-    // Server → Client
+    // Send reply back (bidirectional)
     server.Send("World");
+
+    var (rid2, reply) = client.Receive();
+    Console.WriteLine($"Reply: {reply[0].GetString()}");
+
+    client.Close();
+    server.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    // Server stays in recv model
-    let server = ctx.pair_socket();
+    use zlink::Context;
 
-    // Client (send only)
-    let client = ctx.pair_socket();
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    // ... bind/connect ...
+        let server = ctx.pair_socket();
+        server.bind("tcp://*:5555")?;
 
-    // Client → Server
-    client.send(b"Hello");
+        let client = ctx.pair_socket();
+        client.connect("tcp://127.0.0.1:5555")?;
 
-    // Server → Client
-    server.send(b"World");
-    ```
+        // Send from client to server
+        client.send(b"hello-pair")?;
 
-=== "Go"
+        // Receive on server
+        let (rid, parts) = server.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].data()));
 
-    ```go
-    // Server stays in recv model
-    server, _ := ctx.PairSocket()
+        // Send reply back (bidirectional)
+        server.send(b"World")?;
 
-    // Client (send only)
-    client, _ := ctx.PairSocket()
+        let (rid2, reply) = client.recv()?;
+        println!("Reply: {}", String::from_utf8_lossy(reply[0].data()));
 
-    // ... bind/connect ...
-
-    // Client → Server
-    client.Send(zlink.NewMessage([]byte("Hello")))
-
-    // Server → Client
-    server.Send(zlink.NewMessage([]byte("World")))
-    ```
-
-??? example "Full Sample Code"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pair_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_callback_sample.c) |
-    | C++ | [pair_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_callback_sample.cpp) |
-    | Java | [PairCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairCallbackSample.java) |
-    | Python | [pair_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_callback.py) |
-    | Node | [pair_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairCallback/Program.cs) |
-    | Rust | [pair_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_callback_sample/main.go) |
-
-### Sending Multipart Data
-
-Multipart data is sent as a parts array in a single `zlink_send` call.
-
-=== "C"
-
-    ```c
-    zlink_msg_t parts[2];
-    zlink_msg_init_size(&parts[0], 3);
-    memcpy(zlink_msg_data(&parts[0]), "foo", 3);
-    zlink_msg_init_size(&parts[1], 6);
-    memcpy(zlink_msg_data(&parts[1]), "foobar", 6);
-    zlink_send(server, parts, 2, 0);
-
-    /* Receiver pulls both frames from one zlink_recv() call:
-       parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
-    ```
-
-=== "C++"
-
-    ```cpp
-    server.send({"foo", "foobar"});
-
-    // Receiver pulls both frames from one recv() call:
-    // parts[0] = "foo", parts[1] = "foobar"
-    ```
-
-=== "Java"
-
-    ```java
-    server.send("foo", "foobar");
-
-    // Receiver pulls both frames from one recv() call:
-    // parts[0] = "foo", parts[1] = "foobar"
-    ```
-
-=== "Python"
-
-    ```python
-    server.send([b"foo", b"foobar"])
-
-    # Receiver pulls both frames from one recv() call:
-    # parts[0] = b"foo", parts[1] = b"foobar"
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    server.send([Buffer.from("foo"), Buffer.from("foobar")]);
-
-    // Receiver pulls both frames from one receive() call:
-    // parts[0] = "foo", parts[1] = "foobar"
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    server.Send("foo", "foobar");
-
-    // Receiver pulls both frames from one Receive() call:
-    // parts[0] = "foo", parts[1] = "foobar"
-    ```
-
-=== "Rust"
-
-    ```rust
-    server.send(&[b"foo", b"foobar"]);
-
-    // Receiver pulls both frames from one recv() call:
-    // parts[0] = "foo", parts[1] = "foobar"
-    ```
-
-=== "Go"
-
-    ```go
-    server.SendMultipart([]zlink.Message{
-        zlink.NewMessage([]byte("foo")),
-        zlink.NewMessage([]byte("foobar")),
-    })
-
-    // Receiver pulls both frames from one recv() call:
-    // parts[0] = "foo", parts[1] = "foobar"
-    ```
-
-> Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
-
-### Receive Modes
-
-PAIR is recv/poller-only in the public API.
-Use `zlink_recv()` to receive synchronously.
-
-=== "C"
-
-    ```c
-    void *pair = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(pair, "tcp://*:5556");
-
-    zlink_routing_id_t source_rid;
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
-    if (rc == 0) {
-        /* process parts[0..part_count-1] */
-        zlink_multipart_close(parts, part_count);
-        free(parts);
+        Ok(())
     }
     ```
 
-=== "C++"
-
-    ```cpp
-    zlink::pair_socket_t pair(ctx);
-    pair.bind("tcp://*:5556");
-
-    auto [source_rid, parts] = pair.recv();
-    // process parts[0..N-1]
-    ```
-
-=== "Java"
-
-    ```java
-    PairSocket pair = new PairSocket(ctx);
-    pair.bind("tcp://*:5556");
-
-    Message msg = pair.recv();
-    // process msg.parts()
-    ```
-
-=== "Python"
-
-    ```python
-    pair = zlink.PairSocket(ctx)
-    pair.bind("tcp://*:5556")
-
-    source_rid, parts = pair.recv()
-    # process parts[0..N-1]
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const pair = new zlink.PairSocket(ctx);
-    pair.bind("tcp://*:5556");
-
-    const [sourceRid, parts] = pair.receive();
-    // process parts[0..N-1]
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    var pair = new PairSocket(ctx);
-    pair.Bind("tcp://*:5556");
-
-    var (sourceRid, parts) = pair.Receive();
-    // process parts[0..N-1]
-    ```
-
-=== "Rust"
-
-    ```rust
-    let pair = ctx.pair_socket();
-    pair.bind("tcp://*:5556");
-
-    let (source_rid, parts) = pair.recv();
-    // process parts[0..N-1]
-    ```
-
 === "Go"
 
     ```go
-    pair, _ := ctx.PairSocket()
-    pair.Bind("tcp://*:5556")
+    package main
 
-    received, err := pair.Recv()
-    if err != nil { log.Fatal(err) }
-    defer received.Close()
-    // process received parts
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("tcp://*:5555")
+
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect("tcp://127.0.0.1:5555")
+
+        // Send from client to server
+        client.Send(zlink.NewMessage([]byte("hello-pair")))
+
+        // Receive on server
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+
+        // Send reply back (bidirectional)
+        server.Send(zlink.NewMessage([]byte("World")))
+
+        reply, err := client.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Reply: %s\n", reply.Parts[0].Data())
+        reply.Close()
+    }
     ```
-
-> When HWM is reached, `zlink_send()` blocks (default) or returns
-> `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
-> see [Performance Guide](10-performance.md).
 
 ??? example "Full Sample Code"
 
@@ -519,6 +326,265 @@ Use `zlink_recv()` to receive synchronously.
     | Rust | [pair_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_recv_sample/main.go) |
 
+### Sending Multipart Data
+
+Multipart data is sent as a parts array in a single `zlink_send` call.
+Both frames arrive together in one `zlink_recv()` call on the receiver.
+
+=== "C"
+
+    ```c
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+
+        void *sender = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(sender, "tcp://*:5556");
+
+        void *receiver = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(receiver, "tcp://127.0.0.1:5556");
+
+        /* Send two frames as one multipart message */
+        zlink_msg_t parts[2];
+        zlink_msg_init_size(&parts[0], 6);
+        memcpy(zlink_msg_data(&parts[0]), "header", 6);
+        zlink_msg_init_size(&parts[1], 7);
+        memcpy(zlink_msg_data(&parts[1]), "payload", 7);
+        zlink_send(sender, parts, 2, 0);
+
+        /* Receive both frames in one call */
+        zlink_routing_id_t rid;
+        zlink_msg_t *recv_parts;
+        size_t count;
+        zlink_recv(receiver, &rid, &recv_parts, &count, 0);
+        printf("Frame 0: %.*s\n",
+               (int)zlink_msg_size(&recv_parts[0]),
+               (char *)zlink_msg_data(&recv_parts[0]));
+        printf("Frame 1: %.*s\n",
+               (int)zlink_msg_size(&recv_parts[1]),
+               (char *)zlink_msg_data(&recv_parts[1]));
+        zlink_multipart_close(recv_parts, count);
+
+        zlink_close(receiver);
+        zlink_close(sender);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
+
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::pair_socket_t sender(ctx);
+        sender.bind("tcp://*:5556");
+
+        zlink::pair_socket_t receiver(ctx);
+        receiver.connect("tcp://127.0.0.1:5556");
+
+        // Send two frames as one multipart message
+        sender.send({"header", "payload"});
+
+        // Receive both frames in one call
+        auto [rid, parts] = receiver.recv();
+        std::cout << "Frame 0: " << parts[0].str() << std::endl;
+        std::cout << "Frame 1: " << parts[1].str() << std::endl;
+
+        return 0;
+    }
+    ```
+
+=== "Java"
+
+    ```java
+    import dev.kairoscode.zlink.*;
+
+    public class PairMultipartExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            PairSocket sender = new PairSocket(ctx);
+            sender.bind("tcp://*:5556");
+
+            PairSocket receiver = new PairSocket(ctx);
+            receiver.connect("tcp://127.0.0.1:5556");
+
+            // Send two frames as one multipart message
+            sender.send("header", "payload");
+
+            // Receive both frames in one call
+            Message msg = receiver.recv();
+            System.out.println("Frame 0: " + msg.partAsString(0));
+            System.out.println("Frame 1: " + msg.partAsString(1));
+
+            receiver.close();
+            sender.close();
+            ctx.close();
+        }
+    }
+    ```
+
+=== "Python"
+
+    ```python
+    import zlink
+
+    ctx = zlink.Context()
+
+    sender = zlink.PairSocket(ctx)
+    sender.bind("tcp://*:5556")
+
+    receiver = zlink.PairSocket(ctx)
+    receiver.connect("tcp://127.0.0.1:5556")
+
+    # Send two frames as one multipart message
+    sender.send([b"header", b"payload"])
+
+    # Receive both frames in one call
+    source_rid, parts = receiver.recv()
+    print(f"Frame 0: {parts[0].decode()}")
+    print(f"Frame 1: {parts[1].decode()}")
+
+    receiver.close()
+    sender.close()
+    ctx.term()
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const sender = new zlink.PairSocket(ctx);
+    sender.bind('tcp://*:5556');
+
+    const receiver = new zlink.PairSocket(ctx);
+    receiver.connect('tcp://127.0.0.1:5556');
+
+    // Send two frames as one multipart message
+    sender.send([Buffer.from('header'), Buffer.from('payload')]);
+
+    // Receive both frames in one call
+    const [rid, parts] = receiver.receive();
+    console.log(`Frame 0: ${parts[0].toString()}`);
+    console.log(`Frame 1: ${parts[1].toString()}`);
+
+    receiver.close();
+    sender.close();
+    ctx.term();
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
+    var sender = new PairSocket(ctx);
+    sender.Bind("tcp://*:5556");
+
+    var receiver = new PairSocket(ctx);
+    receiver.Connect("tcp://127.0.0.1:5556");
+
+    // Send two frames as one multipart message
+    sender.Send("header", "payload");
+
+    // Receive both frames in one call
+    var (rid, parts) = receiver.Receive();
+    Console.WriteLine($"Frame 0: {parts[0].GetString()}");
+    Console.WriteLine($"Frame 1: {parts[1].GetString()}");
+
+    receiver.Close();
+    sender.Close();
+    ctx.Term();
+    ```
+
+=== "Rust"
+
+    ```rust
+    use zlink::Context;
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let sender = ctx.pair_socket();
+        sender.bind("tcp://*:5556")?;
+
+        let receiver = ctx.pair_socket();
+        receiver.connect("tcp://127.0.0.1:5556")?;
+
+        // Send two frames as one multipart message
+        sender.send(&[b"header", b"payload"])?;
+
+        // Receive both frames in one call
+        let (rid, parts) = receiver.recv()?;
+        println!("Frame 0: {}", String::from_utf8_lossy(parts[0].data()));
+        println!("Frame 1: {}", String::from_utf8_lossy(parts[1].data()));
+
+        Ok(())
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        sender, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer sender.Close()
+        sender.Bind("tcp://*:5556")
+
+        receiver, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer receiver.Close()
+        receiver.Connect("tcp://127.0.0.1:5556")
+
+        // Send two frames as one multipart message
+        sender.SendMultipart([]zlink.Message{
+            zlink.NewMessage([]byte("header")),
+            zlink.NewMessage([]byte("payload")),
+        })
+
+        // Receive both frames in one call
+        received, err := receiver.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Frame 0: %s\n", received.Parts[0].Data())
+        fmt.Printf("Frame 1: %s\n", received.Parts[1].Data())
+        received.Close()
+    }
+    ```
+
+> Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
+
+> When HWM is reached, `zlink_send()` blocks (default) or returns
+> `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
+> see [Performance Guide](10-performance.md).
+
 ## 3. Message Format
 
 PAIR socket message frames contain **application data only**.
@@ -531,63 +597,8 @@ Multipart frame:  [frame1][frame2]...[frameN]
 > For `source_rid` and the common receive interface, see
 > [Socket Patterns Overview](03-0-socket-patterns.md#7-common-receive-interface).
 
-Multipart send:
-
-=== "C"
-
-    ```c
-    zlink_msg_t parts[2];
-    zlink_msg_init_size(&parts[0], 6);
-    memcpy(zlink_msg_data(&parts[0]), "header", 6);
-    zlink_msg_init_size(&parts[1], 4);
-    memcpy(zlink_msg_data(&parts[1]), "body", 4);
-    zlink_send(server, parts, 2, 0);
-    ```
-
-=== "C++"
-
-    ```cpp
-    server.send({"header", "body"});
-    ```
-
-=== "Java"
-
-    ```java
-    server.send("header", "body");
-    ```
-
-=== "Python"
-
-    ```python
-    server.send([b"header", b"body"])
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    server.send([Buffer.from("header"), Buffer.from("body")]);
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    server.Send("header", "body");
-    ```
-
-=== "Rust"
-
-    ```rust
-    server.send(&[b"header", b"body"]);
-    ```
-
-=== "Go"
-
-    ```go
-    server.SendMultipart([]zlink.Message{
-        zlink.NewMessage([]byte("header")),
-        zlink.NewMessage([]byte("body")),
-    })
-    ```
+For a complete multipart send/receive example, see
+[Sending Multipart Data](#sending-multipart-data) above.
 
 ## 4. Socket Options
 
@@ -669,322 +680,760 @@ Multipart send:
 
 ### Pattern 1: Inter-thread Signaling (inproc)
 
-The most common PAIR use case. Zero-copy communication between threads via the inproc transport.
+The most common PAIR use case. Zero-copy communication between threads via the inproc transport. The worker thread signals completion to the main thread.
 
 === "C"
 
     ```c
-    /* Main thread */
-    void *signal = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(signal, "inproc://signal");
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* Worker thread */
-    void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(worker_signal, "inproc://signal");
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
 
-    /* Worker → Main: task completion signal */
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 4);
-    memcpy(zlink_msg_data(&msg), "DONE", 4);
-    zlink_send(worker_signal, &msg, 1, 0);
+        /* Main thread side */
+        void *main_sock = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(main_sock, "inproc://signal");
 
-    /* Main: on_signal callback receives "DONE" asynchronously */
+        /* Worker thread side (same context) */
+        void *worker_sock = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(worker_sock, "inproc://signal");
+
+        /* Worker sends completion signal */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 4);
+        memcpy(zlink_msg_data(&msg), "DONE", 4);
+        zlink_send(worker_sock, &msg, 1, 0);
+
+        /* Main thread receives signal */
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts;
+        size_t count;
+        zlink_recv(main_sock, &rid, &parts, &count, 0);
+        printf("Signal: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(worker_sock);
+        zlink_close(main_sock);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    // Main thread
-    zlink::pair_socket_t signal(ctx);
-    signal.bind("inproc://signal");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // Worker thread
-    zlink::pair_socket_t worker_signal(ctx);
-    worker_signal.connect("inproc://signal");
+    int main()
+    {
+        zlink::context_t ctx;
 
-    // Worker → Main: task completion signal
-    worker_signal.send("DONE");
+        // Main thread side
+        zlink::pair_socket_t main_sock(ctx);
+        main_sock.bind("inproc://signal");
+
+        // Worker thread side (same context)
+        zlink::pair_socket_t worker_sock(ctx);
+        worker_sock.connect("inproc://signal");
+
+        // Worker sends completion signal
+        worker_sock.send("DONE");
+
+        // Main thread receives signal
+        auto [rid, parts] = main_sock.recv();
+        std::cout << "Signal: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    // Main thread
-    PairSocket signal = new PairSocket(ctx);
-    signal.bind("inproc://signal");
+    import dev.kairoscode.zlink.*;
 
-    // Worker thread
-    PairSocket workerSignal = new PairSocket(ctx);
-    workerSignal.connect("inproc://signal");
+    public class InprocSignalExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    // Worker → Main: task completion signal
-    workerSignal.send("DONE");
+            // Main thread side
+            PairSocket mainSock = new PairSocket(ctx);
+            mainSock.bind("inproc://signal");
+
+            // Worker thread side (same context)
+            PairSocket workerSock = new PairSocket(ctx);
+            workerSock.connect("inproc://signal");
+
+            // Worker sends completion signal
+            workerSock.send("DONE");
+
+            // Main thread receives signal
+            Message msg = mainSock.recv();
+            System.out.println("Signal: " + msg.partAsString(0));
+
+            workerSock.close();
+            mainSock.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
-    # Main thread
-    signal = zlink.PairSocket(ctx)
-    signal.bind("inproc://signal")
+    import zlink
 
-    # Worker thread
-    worker_signal = zlink.PairSocket(ctx)
-    worker_signal.connect("inproc://signal")
+    ctx = zlink.Context()
 
-    # Worker → Main: task completion signal
-    worker_signal.send(b"DONE")
+    # Main thread side
+    main_sock = zlink.PairSocket(ctx)
+    main_sock.bind("inproc://signal")
+
+    # Worker thread side (same context)
+    worker_sock = zlink.PairSocket(ctx)
+    worker_sock.connect("inproc://signal")
+
+    # Worker sends completion signal
+    worker_sock.send(b"DONE")
+
+    # Main thread receives signal
+    source_rid, parts = main_sock.recv()
+    print(f"Signal: {parts[0].decode()}")
+
+    worker_sock.close()
+    main_sock.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // Main thread
-    const signal = new zlink.PairSocket(ctx);
-    signal.bind("inproc://signal");
+    import * as zlink from 'zlink';
 
-    // Worker thread
-    const workerSignal = new zlink.PairSocket(ctx);
-    workerSignal.connect("inproc://signal");
+    const ctx = new zlink.Context();
 
-    // Worker → Main: task completion signal
-    workerSignal.send(Buffer.from("DONE"));
+    // Main thread side
+    const mainSock = new zlink.PairSocket(ctx);
+    mainSock.bind('inproc://signal');
+
+    // Worker thread side (same context)
+    const workerSock = new zlink.PairSocket(ctx);
+    workerSock.connect('inproc://signal');
+
+    // Worker sends completion signal
+    workerSock.send(Buffer.from('DONE'));
+
+    // Main thread receives signal
+    const [rid, parts] = mainSock.receive();
+    console.log(`Signal: ${parts[0].toString()}`);
+
+    workerSock.close();
+    mainSock.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // Main thread
-    var signal = new PairSocket(ctx);
-    signal.Bind("inproc://signal");
+    using Zlink;
 
-    // Worker thread
-    var workerSignal = new PairSocket(ctx);
-    workerSignal.Connect("inproc://signal");
+    var ctx = new Context();
 
-    // Worker → Main: task completion signal
-    workerSignal.Send("DONE");
+    // Main thread side
+    var mainSock = new PairSocket(ctx);
+    mainSock.Bind("inproc://signal");
+
+    // Worker thread side (same context)
+    var workerSock = new PairSocket(ctx);
+    workerSock.Connect("inproc://signal");
+
+    // Worker sends completion signal
+    workerSock.Send("DONE");
+
+    // Main thread receives signal
+    var (rid, parts) = mainSock.Receive();
+    Console.WriteLine($"Signal: {parts[0].GetString()}");
+
+    workerSock.Close();
+    mainSock.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    // Main thread
-    let signal = ctx.pair_socket();
-    signal.bind("inproc://signal");
+    use zlink::Context;
 
-    // Worker thread
-    let worker_signal = ctx.pair_socket();
-    worker_signal.connect("inproc://signal");
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    // Worker → Main: task completion signal
-    worker_signal.send(b"DONE");
+        // Main thread side
+        let main_sock = ctx.pair_socket();
+        main_sock.bind("inproc://signal")?;
+
+        // Worker thread side (same context)
+        let worker_sock = ctx.pair_socket();
+        worker_sock.connect("inproc://signal")?;
+
+        // Worker sends completion signal
+        worker_sock.send(b"DONE")?;
+
+        // Main thread receives signal
+        let (rid, parts) = main_sock.recv()?;
+        println!("Signal: {}", String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    // Main thread
-    signal, _ := ctx.PairSocket()
-    signal.Bind("inproc://signal")
+    package main
 
-    // Worker thread
-    workerSignal, _ := ctx.PairSocket()
-    workerSignal.Connect("inproc://signal")
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
 
-    // Worker → Main: task completion signal
-    workerSignal.Send(zlink.NewMessage([]byte("DONE")))
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        // Main thread side
+        mainSock, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer mainSock.Close()
+        mainSock.Bind("inproc://signal")
+
+        // Worker thread side (same context)
+        workerSock, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer workerSock.Close()
+        workerSock.Connect("inproc://signal")
+
+        // Worker sends completion signal
+        workerSock.Send(zlink.NewMessage([]byte("DONE")))
+
+        // Main thread receives signal
+        received, err := mainSock.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Signal: %s\n", received.Parts[0].Data())
+        received.Close()
+    }
     ```
 
-> Reference: `core/tests/test_pair_inproc.cpp` -- bind → connect → bounce pattern
+> Reference: `core/tests/test_pair_inproc.cpp` -- bind -> connect -> bounce pattern
 
-### Pattern 2: TCP Communication
+### Pattern 2: TCP Communication with Wildcard Port
 
-1:1 communication over the network. Wildcard bind enables automatic port assignment.
+1:1 communication over the network. Wildcard bind lets the OS assign a free port, then the client queries the assigned endpoint to connect.
 
 === "C"
 
     ```c
-    /* Server: wildcard port */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(server, "tcp://127.0.0.1:*");
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* Query the assigned endpoint */
-    char endpoint[256];
-    size_t len = sizeof(endpoint);
-    zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
 
-    /* Client: connect using the queried endpoint */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(client, endpoint);
+        /* Server: wildcard port */
+        void *server = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(server, "tcp://127.0.0.1:*");
+
+        /* Query the assigned endpoint */
+        char endpoint[256];
+        size_t len = sizeof(endpoint);
+        zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
+        printf("Server bound to: %s\n", endpoint);
+
+        /* Client: connect using the queried endpoint */
+        void *client = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(client, endpoint);
+
+        /* Exchange a message */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 4);
+        memcpy(zlink_msg_data(&msg), "ping", 4);
+        zlink_send(client, &msg, 1, 0);
+
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts;
+        size_t count;
+        zlink_recv(server, &rid, &parts, &count, 0);
+        printf("Received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(client);
+        zlink_close(server);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    // Server: wildcard port
-    zlink::pair_socket_t server(ctx);
-    server.bind("tcp://127.0.0.1:*");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // Query the assigned endpoint
-    auto endpoint = server.get_option<std::string>(ZLINK_OPT_LAST_ENDPOINT);
+    int main()
+    {
+        zlink::context_t ctx;
 
-    // Client: connect using the queried endpoint
-    zlink::pair_socket_t client(ctx);
-    client.connect(endpoint);
+        // Server: wildcard port
+        zlink::pair_socket_t server(ctx);
+        server.bind("tcp://127.0.0.1:*");
+
+        // Query the assigned endpoint
+        auto endpoint = server.get_option<std::string>(ZLINK_OPT_LAST_ENDPOINT);
+        std::cout << "Server bound to: " << endpoint << std::endl;
+
+        // Client: connect using the queried endpoint
+        zlink::pair_socket_t client(ctx);
+        client.connect(endpoint);
+
+        // Exchange a message
+        client.send("ping");
+
+        auto [rid, parts] = server.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    // Server: wildcard port
-    PairSocket server = new PairSocket(ctx);
-    server.bind("tcp://127.0.0.1:*");
+    import dev.kairoscode.zlink.*;
 
-    // Query the assigned endpoint
-    String endpoint = server.getOption(ZLINK_OPT_LAST_ENDPOINT);
+    public class TcpWildcardExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    // Client: connect using the queried endpoint
-    PairSocket client = new PairSocket(ctx);
-    client.connect(endpoint);
+            // Server: wildcard port
+            PairSocket server = new PairSocket(ctx);
+            server.bind("tcp://127.0.0.1:*");
+
+            // Query the assigned endpoint
+            String endpoint = server.getOption(ZLINK_OPT_LAST_ENDPOINT);
+            System.out.println("Server bound to: " + endpoint);
+
+            // Client: connect using the queried endpoint
+            PairSocket client = new PairSocket(ctx);
+            client.connect(endpoint);
+
+            // Exchange a message
+            client.send("ping");
+
+            Message msg = server.recv();
+            System.out.println("Received: " + msg.partAsString(0));
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
+    import zlink
+
+    ctx = zlink.Context()
+
     # Server: wildcard port
     server = zlink.PairSocket(ctx)
     server.bind("tcp://127.0.0.1:*")
 
     # Query the assigned endpoint
     endpoint = server.get_option(ZLINK_OPT_LAST_ENDPOINT)
+    print(f"Server bound to: {endpoint}")
 
     # Client: connect using the queried endpoint
     client = zlink.PairSocket(ctx)
     client.connect(endpoint)
+
+    # Exchange a message
+    client.send(b"ping")
+
+    source_rid, parts = server.recv()
+    print(f"Received: {parts[0].decode()}")
+
+    client.close()
+    server.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
     // Server: wildcard port
     const server = new zlink.PairSocket(ctx);
-    server.bind("tcp://127.0.0.1:*");
+    server.bind('tcp://127.0.0.1:*');
 
     // Query the assigned endpoint
     const endpoint = server.getOption(ZLINK_OPT_LAST_ENDPOINT);
+    console.log(`Server bound to: ${endpoint}`);
 
     // Client: connect using the queried endpoint
     const client = new zlink.PairSocket(ctx);
     client.connect(endpoint);
+
+    // Exchange a message
+    client.send(Buffer.from('ping'));
+
+    const [rid, parts] = server.receive();
+    console.log(`Received: ${parts[0].toString()}`);
+
+    client.close();
+    server.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
     // Server: wildcard port
     var server = new PairSocket(ctx);
     server.Bind("tcp://127.0.0.1:*");
 
     // Query the assigned endpoint
     var endpoint = server.GetOption(ZLINK_OPT_LAST_ENDPOINT);
+    Console.WriteLine($"Server bound to: {endpoint}");
 
     // Client: connect using the queried endpoint
     var client = new PairSocket(ctx);
     client.Connect(endpoint);
+
+    // Exchange a message
+    client.Send("ping");
+
+    var (rid, parts) = server.Receive();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
+
+    client.Close();
+    server.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    // Server: wildcard port
-    let server = ctx.pair_socket();
-    server.bind("tcp://127.0.0.1:*");
+    use zlink::Context;
 
-    // Query the assigned endpoint
-    let endpoint = server.get_option::<String>(ZLINK_OPT_LAST_ENDPOINT);
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    // Client: connect using the queried endpoint
-    let client = ctx.pair_socket();
-    client.connect(&endpoint);
+        // Server: wildcard port
+        let server = ctx.pair_socket();
+        server.bind("tcp://127.0.0.1:*")?;
+
+        // Query the assigned endpoint
+        let endpoint = server.get_option::<String>(ZLINK_OPT_LAST_ENDPOINT);
+        println!("Server bound to: {}", endpoint);
+
+        // Client: connect using the queried endpoint
+        let client = ctx.pair_socket();
+        client.connect(&endpoint)?;
+
+        // Exchange a message
+        client.send(b"ping")?;
+
+        let (rid, parts) = server.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    // Server: wildcard port
-    server, _ := ctx.PairSocket()
-    server.Bind("tcp://127.0.0.1:*")
+    package main
 
-    // Query the assigned endpoint
-    status, _ := server.StatusSnapshot()
-    endpoint := status.LocalEndpoint
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
 
-    // Client: connect using the queried endpoint
-    client, _ := ctx.PairSocket()
-    client.Connect(endpoint)
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        // Server: wildcard port
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("tcp://127.0.0.1:*")
+
+        // Query the assigned endpoint
+        status, _ := server.StatusSnapshot()
+        endpoint := status.LocalEndpoint
+        fmt.Printf("Server bound to: %s\n", endpoint)
+
+        // Client: connect using the queried endpoint
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect(endpoint)
+
+        // Exchange a message
+        client.Send(zlink.NewMessage([]byte("ping")))
+
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+    }
     ```
 
 > Reference: `core/tests/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` + wildcard bind
 
 ### Pattern 3: Connection by DNS Name
 
-You can also connect using a hostname.
+Connect using a hostname instead of an IP address. The server binds on a fixed port and the client resolves `localhost` to connect.
 
 === "C"
 
     ```c
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(client, "tcp://localhost:5555");
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+
+        void *server = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(server, "tcp://*:5555");
+
+        void *client = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(client, "tcp://localhost:5555");
+
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 4);
+        memcpy(zlink_msg_data(&msg), "ping", 4);
+        zlink_send(client, &msg, 1, 0);
+
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts;
+        size_t count;
+        zlink_recv(server, &rid, &parts, &count, 0);
+        printf("Received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(client);
+        zlink_close(server);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    zlink::pair_socket_t client(ctx);
-    client.connect("tcp://localhost:5555");
+    #include <zlink/socket.hpp>
+    #include <iostream>
+
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::pair_socket_t server(ctx);
+        server.bind("tcp://*:5555");
+
+        zlink::pair_socket_t client(ctx);
+        client.connect("tcp://localhost:5555");
+
+        client.send("ping");
+
+        auto [rid, parts] = server.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    PairSocket client = new PairSocket(ctx);
-    client.connect("tcp://localhost:5555");
+    import dev.kairoscode.zlink.*;
+
+    public class DnsConnectExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            PairSocket server = new PairSocket(ctx);
+            server.bind("tcp://*:5555");
+
+            PairSocket client = new PairSocket(ctx);
+            client.connect("tcp://localhost:5555");
+
+            client.send("ping");
+
+            Message msg = server.recv();
+            System.out.println("Received: " + msg.partAsString(0));
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
+    import zlink
+
+    ctx = zlink.Context()
+
+    server = zlink.PairSocket(ctx)
+    server.bind("tcp://*:5555")
+
     client = zlink.PairSocket(ctx)
     client.connect("tcp://localhost:5555")
+
+    client.send(b"ping")
+
+    source_rid, parts = server.recv()
+    print(f"Received: {parts[0].decode()}")
+
+    client.close()
+    server.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const server = new zlink.PairSocket(ctx);
+    server.bind('tcp://*:5555');
+
     const client = new zlink.PairSocket(ctx);
-    client.connect("tcp://localhost:5555");
+    client.connect('tcp://localhost:5555');
+
+    client.send(Buffer.from('ping'));
+
+    const [rid, parts] = server.receive();
+    console.log(`Received: ${parts[0].toString()}`);
+
+    client.close();
+    server.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
+    var server = new PairSocket(ctx);
+    server.Bind("tcp://*:5555");
+
     var client = new PairSocket(ctx);
     client.Connect("tcp://localhost:5555");
+
+    client.Send("ping");
+
+    var (rid, parts) = server.Receive();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
+
+    client.Close();
+    server.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    let client = ctx.pair_socket();
-    client.connect("tcp://localhost:5555");
+    use zlink::Context;
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let server = ctx.pair_socket();
+        server.bind("tcp://*:5555")?;
+
+        let client = ctx.pair_socket();
+        client.connect("tcp://localhost:5555")?;
+
+        client.send(b"ping")?;
+
+        let (rid, parts) = server.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    client, _ := ctx.PairSocket()
-    client.Connect("tcp://localhost:5555")
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("tcp://*:5555")
+
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect("tcp://localhost:5555")
+
+        client.Send(zlink.NewMessage([]byte("ping")))
+
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+    }
     ```
 
 > Reference: `core/tests/test_pair_tcp.cpp` -- `test_pair_tcp_connect_by_name()`
@@ -996,81 +1445,218 @@ Inter-process communication on the same machine (Linux/macOS).
 === "C"
 
     ```c
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(server, "ipc:///tmp/myapp.ipc");
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(client, "ipc:///tmp/myapp.ipc");
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+
+        void *server = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(server, "ipc:///tmp/myapp.ipc");
+
+        void *client = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(client, "ipc:///tmp/myapp.ipc");
+
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 8);
+        memcpy(zlink_msg_data(&msg), "ipc-ping", 8);
+        zlink_send(client, &msg, 1, 0);
+
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts;
+        size_t count;
+        zlink_recv(server, &rid, &parts, &count, 0);
+        printf("Received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(client);
+        zlink_close(server);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    zlink::pair_socket_t server(ctx);
-    server.bind("ipc:///tmp/myapp.ipc");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    zlink::pair_socket_t client(ctx);
-    client.connect("ipc:///tmp/myapp.ipc");
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::pair_socket_t server(ctx);
+        server.bind("ipc:///tmp/myapp.ipc");
+
+        zlink::pair_socket_t client(ctx);
+        client.connect("ipc:///tmp/myapp.ipc");
+
+        client.send("ipc-ping");
+
+        auto [rid, parts] = server.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    PairSocket server = new PairSocket(ctx);
-    server.bind("ipc:///tmp/myapp.ipc");
+    import dev.kairoscode.zlink.*;
 
-    PairSocket client = new PairSocket(ctx);
-    client.connect("ipc:///tmp/myapp.ipc");
+    public class IpcExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            PairSocket server = new PairSocket(ctx);
+            server.bind("ipc:///tmp/myapp.ipc");
+
+            PairSocket client = new PairSocket(ctx);
+            client.connect("ipc:///tmp/myapp.ipc");
+
+            client.send("ipc-ping");
+
+            Message msg = server.recv();
+            System.out.println("Received: " + msg.partAsString(0));
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
+    import zlink
+
+    ctx = zlink.Context()
+
     server = zlink.PairSocket(ctx)
     server.bind("ipc:///tmp/myapp.ipc")
 
     client = zlink.PairSocket(ctx)
     client.connect("ipc:///tmp/myapp.ipc")
+
+    client.send(b"ipc-ping")
+
+    source_rid, parts = server.recv()
+    print(f"Received: {parts[0].decode()}")
+
+    client.close()
+    server.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
     const server = new zlink.PairSocket(ctx);
-    server.bind("ipc:///tmp/myapp.ipc");
+    server.bind('ipc:///tmp/myapp.ipc');
 
     const client = new zlink.PairSocket(ctx);
-    client.connect("ipc:///tmp/myapp.ipc");
+    client.connect('ipc:///tmp/myapp.ipc');
+
+    client.send(Buffer.from('ipc-ping'));
+
+    const [rid, parts] = server.receive();
+    console.log(`Received: ${parts[0].toString()}`);
+
+    client.close();
+    server.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
     var server = new PairSocket(ctx);
     server.Bind("ipc:///tmp/myapp.ipc");
 
     var client = new PairSocket(ctx);
     client.Connect("ipc:///tmp/myapp.ipc");
+
+    client.Send("ipc-ping");
+
+    var (rid, parts) = server.Receive();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
+
+    client.Close();
+    server.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    let server = ctx.pair_socket();
-    server.bind("ipc:///tmp/myapp.ipc");
+    use zlink::Context;
 
-    let client = ctx.pair_socket();
-    client.connect("ipc:///tmp/myapp.ipc");
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let server = ctx.pair_socket();
+        server.bind("ipc:///tmp/myapp.ipc")?;
+
+        let client = ctx.pair_socket();
+        client.connect("ipc:///tmp/myapp.ipc")?;
+
+        client.send(b"ipc-ping")?;
+
+        let (rid, parts) = server.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    server, _ := ctx.PairSocket()
-    server.Bind("ipc:///tmp/myapp.ipc")
+    package main
 
-    client, _ := ctx.PairSocket()
-    client.Connect("ipc:///tmp/myapp.ipc")
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("ipc:///tmp/myapp.ipc")
+
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect("ipc:///tmp/myapp.ipc")
+
+        client.Send(zlink.NewMessage([]byte("ipc-ping")))
+
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+    }
     ```
 
 > Reference: `core/tests/test_pair_ipc.cpp` -- includes IPC path length validation

@@ -70,209 +70,288 @@ PUB ──── XSUB ═══ XPUB ──── SUB
 
 ## 2. PUB/SUB 기본 사용법
 
-### 발행자 (PUB)
+### 메시지 교환
+
+완전한 XPUB/SUB 예제: 컨텍스트 생성, 발행자/구독자 설정,
+구독 전파 대기, 메시지 발행, 수신, 정리까지 전체 흐름.
 
 === "C"
 
     ```c
-    void *pub = zlink_socket(ctx, ZLINK_PUB);
-    zlink_bind(pub, "tcp://*:5556");
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* 메시지 발행 — 구독자가 없으면 드롭 */
-    zlink_msg_t part;
-    zlink_msg_init_size(&part, 14);
-    memcpy(zlink_msg_data(&part), "weather: sunny", 14);
-    zlink_publish(pub, NULL, &part, 1, 0);
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::pub_socket_t pub(ctx);
-    pub.bind("tcp://*:5556");
-
-    // 메시지 발행 — 구독자가 없으면 드롭
-    pub.publish("weather", "sunny");
-    ```
-
-=== "Java"
-
-    ```java
-    PubSocket pub = new PubSocket(ctx);
-    pub.bind("tcp://*:5556");
-
-    // 메시지 발행 — 구독자가 없으면 드롭
-    pub.publish("weather", "sunny");
-    ```
-
-=== "Python"
-
-    ```python
-    pub = zlink.PubSocket(ctx)
-    pub.bind("tcp://*:5556")
-
-    # 메시지 발행 — 구독자가 없으면 드롭
-    pub.publish("weather", b"sunny")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const pub = new zlink.PubSocket(ctx);
-    pub.bind("tcp://*:5556");
-
-    // 메시지 발행 — 구독자가 없으면 드롭
-    pub.publish("weather", Buffer.from("sunny"));
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    var pub = new PubSocket(ctx);
-    pub.Bind("tcp://*:5556");
-
-    // 메시지 발행 — 구독자가 없으면 드롭
-    pub.Publish("weather", "sunny");
-    ```
-
-=== "Rust"
-
-    ```rust
-    let pub_sock = ctx.pub_socket();
-    pub_sock.bind("tcp://*:5556");
-
-    // 메시지 발행 — 구독자가 없으면 드롭
-    pub_sock.publish("weather", b"sunny");
-    ```
-
-=== "Go"
-
-    ```go
-    pubSock, _ := ctx.PubSocket()
-    pubSock.Bind("tcp://*:5556")
-
-    // 메시지 발행 — 구독자가 없으면 드롭
-    pubSock.Publish("weather", zlink.NewMessage([]byte("sunny")))
-    ```
-
-### 구독자 (SUB)
-
-!!! note "C API 콜백 시그니처"
-    토픽 핸들러는 C 전용 타입(`zlink_routing_id_t`, `zlink_msg_t`)을
-    사용한다. 각 바인딩은 자체적인 관용적 콜백/수신 인터페이스를 제공한다.
-
-    ```c
-    void on_topic(const zlink_routing_id_t *source_rid,
-                  const char *topic, size_t topic_len,
-                  zlink_msg_t *parts, size_t part_count,
-                  void *userdata)
+    int main(void)
     {
+        void *ctx = zlink_ctx_new();
+
+        void *pub = zlink_socket(ctx, ZLINK_XPUB);
+        zlink_bind(pub, "tcp://*:5556");
+
+        void *sub = zlink_socket(ctx, ZLINK_SUB);
+        zlink_connect(sub, "tcp://127.0.0.1:5556");
+        zlink_set_subscription(sub, "weather");
+
+        /* 구독 전파 대기 */
+        zlink_routing_id_t rid;
+        int subscribed;
+        char topic[256];
+        size_t topic_len = sizeof(topic);
+        zlink_subscription_event(pub, &rid, &subscribed, topic, &topic_len, 0);
+
+        /* 발행 */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 5);
+        memcpy(zlink_msg_data(&msg), "sunny", 5);
+        zlink_publish(pub, "weather", &msg, 1, 0);
+
+        /* 수신 */
+        zlink_msg_t *parts;
+        size_t count;
+        char recv_topic[256];
+        size_t recv_topic_len = sizeof(recv_topic);
+        zlink_subscribe(sub, &rid, &parts, &count,
+                        recv_topic, &recv_topic_len, 0);
         printf("Topic: %.*s, Data: %.*s\n",
-               (int)topic_len, topic,
+               (int)recv_topic_len, recv_topic,
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
+        zlink_multipart_close(parts, count);
+
+        zlink_close(sub);
+        zlink_close(pub);
+        zlink_ctx_term(ctx);
+        return 0;
     }
     ```
 
-=== "C"
-
-    ```c
-    void *sub = zlink_socket(ctx, ZLINK_SUB);
-    zlink_connect(sub, "tcp://127.0.0.1:5556");
-
-    /* 토픽 구독 — connect 후 설정 */
-    zlink_set_subscription(sub, "weather");
-
-    /* zlink_subscribe() 또는 zlink_subscribe_handler()로 수신 */
-    ```
-
 === "C++"
 
     ```cpp
-    zlink::sub_socket_t sub(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // 토픽 구독 — connect 후 설정
-    sub.set_subscription("weather");
+    int main()
+    {
+        zlink::context_t ctx;
 
-    // subscribe() 또는 subscribe_handler()로 수신
+        zlink::xpub_socket_t pub(ctx);
+        pub.bind("tcp://*:5556");
+
+        zlink::sub_socket_t sub(ctx);
+        sub.connect("tcp://127.0.0.1:5556");
+        sub.set_subscription("weather");
+
+        // 구독 전파 대기
+        auto [ev_rid, subscribed, ev_topic] = pub.subscription_event();
+
+        // 발행
+        pub.publish("weather", "sunny");
+
+        // 수신
+        auto [rid, topic, parts] = sub.subscribe();
+        std::cout << "Topic: " << topic
+                  << ", Data: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    SubSocket sub = new SubSocket(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
+    import dev.kairoscode.zlink.*;
 
-    // 토픽 구독 — connect 후 설정
-    sub.setSubscription("weather");
+    public class PubSubExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    // subscribe() 또는 subscribeHandler()로 수신
+            XPubSocket pub = new XPubSocket(ctx);
+            pub.bind("tcp://*:5556");
+
+            SubSocket sub = new SubSocket(ctx);
+            sub.connect("tcp://127.0.0.1:5556");
+            sub.setSubscription("weather");
+
+            // 구독 전파 대기
+            pub.subscriptionEvent();
+
+            // 발행
+            pub.publish("weather", "sunny");
+
+            // 수신
+            SubscribeResult result = sub.subscribe();
+            System.out.println("Topic: " + result.topic()
+                + ", Data: " + result.partAsString(0));
+
+            sub.close();
+            pub.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
+    import zlink
+
+    ctx = zlink.Context()
+
+    pub = zlink.XPubSocket(ctx)
+    pub.bind("tcp://*:5556")
+
     sub = zlink.SubSocket(ctx)
     sub.connect("tcp://127.0.0.1:5556")
-
-    # 토픽 구독 — connect 후 설정
     sub.set_subscription("weather")
 
-    # subscribe() 또는 subscribe_handler()로 수신
+    # 구독 전파 대기
+    pub.subscription_event()
+
+    # 발행
+    pub.publish("weather", b"sunny")
+
+    # 수신
+    source_rid, topic, parts = sub.subscribe()
+    print(f"Topic: {topic}, Data: {parts[0].decode()}")
+
+    sub.close()
+    pub.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const pub = new zlink.XPubSocket(ctx);
+    pub.bind('tcp://*:5556');
+
     const sub = new zlink.SubSocket(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
+    sub.connect('tcp://127.0.0.1:5556');
+    sub.setSubscription('weather');
 
-    // 토픽 구독 — connect 후 설정
-    sub.setSubscription("weather");
+    // 구독 전파 대기
+    pub.subscriptionEvent();
 
-    // subscribe() 또는 subscribeHandler()로 수신
+    // 발행
+    pub.publish('weather', Buffer.from('sunny'));
+
+    // 수신
+    const [rid, topic, parts] = sub.subscribe();
+    console.log(`Topic: ${topic}, Data: ${parts[0].toString()}`);
+
+    sub.close();
+    pub.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
+    var pub = new XPubSocket(ctx);
+    pub.Bind("tcp://*:5556");
+
     var sub = new SubSocket(ctx);
     sub.Connect("tcp://127.0.0.1:5556");
-
-    // 토픽 구독 — connect 후 설정
     sub.SetSubscription("weather");
 
-    // Subscribe() 또는 SubscribeHandler()로 수신
+    // 구독 전파 대기
+    pub.SubscriptionEvent();
+
+    // 발행
+    pub.Publish("weather", "sunny");
+
+    // 수신
+    var (rid, topic, parts) = sub.Subscribe();
+    Console.WriteLine($"Topic: {topic}, Data: {parts[0].GetString()}");
+
+    sub.Close();
+    pub.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    let sub = ctx.sub_socket();
-    sub.connect("tcp://127.0.0.1:5556");
+    use zlink::Context;
 
-    // 토픽 구독 — connect 후 설정
-    sub.set_subscription("weather");
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    // subscribe() 또는 subscribe_handler()로 수신
+        let pub_sock = ctx.xpub_socket();
+        pub_sock.bind("tcp://*:5556")?;
+
+        let sub = ctx.sub_socket();
+        sub.connect("tcp://127.0.0.1:5556")?;
+        sub.set_subscription("weather")?;
+
+        // 구독 전파 대기
+        pub_sock.subscription_event()?;
+
+        // 발행
+        pub_sock.publish("weather", b"sunny")?;
+
+        // 수신
+        let (rid, topic, parts) = sub.subscribe()?;
+        println!("Topic: {}, Data: {}",
+                 topic, String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    sub, _ := ctx.SubSocket()
-    sub.Connect("tcp://127.0.0.1:5556")
+    package main
 
-    // 토픽 구독 — connect 후 설정
-    sub.SetSubscription("weather")
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
 
-    // Subscribe() 또는 SubscribeHandler()로 수신
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        pub, err := ctx.XPubSocket()
+        if err != nil { log.Fatal(err) }
+        defer pub.Close()
+        pub.Bind("tcp://*:5556")
+
+        sub, err := ctx.SubSocket()
+        if err != nil { log.Fatal(err) }
+        defer sub.Close()
+        sub.Connect("tcp://127.0.0.1:5556")
+        sub.SetSubscription("weather")
+
+        // 구독 전파 대기
+        pub.SubscriptionEvent()
+
+        // 발행
+        pub.Publish("weather", zlink.NewMessage([]byte("sunny")))
+
+        // 수신
+        result, err := sub.Subscribe()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Topic: %s, Data: %s\n",
+                   result.Topic, result.Parts[0].Data())
+        result.Close()
+    }
     ```
 
-> 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
+> 참고: `core/tests/test_pubsub.cpp` -- 빈 구독("") -> 모든 메시지 수신
 
 ### 송수신 요약
 
@@ -634,148 +713,272 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 
 ### 패턴 1: 기본 PUB/SUB
 
+완전한 PUB/SUB 예제. XPUB을 사용하여 발행 전에 구독자 준비를 감지한다.
+
 === "C"
 
     ```c
-    /* PUB */
-    void *pub = zlink_socket(ctx, ZLINK_PUB);
-    zlink_bind(pub, "tcp://*:5556");
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* SUB — 모든 메시지 수신 */
-    void *sub = zlink_socket(ctx, ZLINK_SUB);
-    zlink_connect(sub, "tcp://127.0.0.1:5556");
-    zlink_set_subscription(sub, "");
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
 
-    msleep(100);  /* 구독이 PUB에 도달할 시간 */
+        void *pub = zlink_socket(ctx, ZLINK_XPUB);
+        zlink_bind(pub, "tcp://*:5556");
 
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 4);
-    memcpy(zlink_msg_data(&msg), "test", 4);
-    zlink_publish(pub, NULL, &msg, 1, 0);
+        void *sub = zlink_socket(ctx, ZLINK_SUB);
+        zlink_connect(sub, "tcp://127.0.0.1:5556");
+        zlink_set_subscription(sub, "");
 
-    /* on_topic 콜백이 비동기로 수신 */
+        /* 구독 전파 대기 */
+        zlink_routing_id_t rid;
+        int subscribed;
+        char topic[256];
+        size_t topic_len = sizeof(topic);
+        zlink_subscription_event(pub, &rid, &subscribed,
+                                 topic, &topic_len, 0);
+
+        /* 발행 */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 4);
+        memcpy(zlink_msg_data(&msg), "test", 4);
+        zlink_publish(pub, "greeting", &msg, 1, 0);
+
+        /* 수신 */
+        zlink_msg_t *parts;
+        size_t count;
+        char recv_topic[256];
+        size_t recv_topic_len = sizeof(recv_topic);
+        zlink_subscribe(sub, &rid, &parts, &count,
+                        recv_topic, &recv_topic_len, 0);
+        printf("Topic: %.*s, Data: %.*s\n",
+               (int)recv_topic_len, recv_topic,
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(sub);
+        zlink_close(pub);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    // PUB
-    zlink::pub_socket_t pub(ctx);
-    pub.bind("tcp://*:5556");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // SUB — 모든 메시지 수신
-    zlink::sub_socket_t sub(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.set_subscription("");
+    int main()
+    {
+        zlink::context_t ctx;
 
-    msleep(100);  // 구독이 PUB에 도달할 시간
+        zlink::xpub_socket_t pub(ctx);
+        pub.bind("tcp://*:5556");
 
-    pub.publish("", "test");
+        zlink::sub_socket_t sub(ctx);
+        sub.connect("tcp://127.0.0.1:5556");
+        sub.set_subscription("");
+
+        // 구독 전파 대기
+        pub.subscription_event();
+
+        pub.publish("greeting", "test");
+
+        auto [rid, topic, parts] = sub.subscribe();
+        std::cout << "Topic: " << topic
+                  << ", Data: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    // PUB
-    PubSocket pub = new PubSocket(ctx);
-    pub.bind("tcp://*:5556");
+    import dev.kairoscode.zlink.*;
 
-    // SUB — 모든 메시지 수신
-    SubSocket sub = new SubSocket(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.setSubscription("");
+    public class PubSubBasicExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    Thread.sleep(100);  // 구독이 PUB에 도달할 시간
+            XPubSocket pub = new XPubSocket(ctx);
+            pub.bind("tcp://*:5556");
 
-    pub.publish("", "test");
+            SubSocket sub = new SubSocket(ctx);
+            sub.connect("tcp://127.0.0.1:5556");
+            sub.setSubscription("");
+
+            // 구독 전파 대기
+            pub.subscriptionEvent();
+
+            pub.publish("greeting", "test");
+
+            SubscribeResult result = sub.subscribe();
+            System.out.println("Topic: " + result.topic()
+                + ", Data: " + result.partAsString(0));
+
+            sub.close();
+            pub.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
-    # PUB
-    pub = zlink.PubSocket(ctx)
+    import zlink
+
+    ctx = zlink.Context()
+
+    pub = zlink.XPubSocket(ctx)
     pub.bind("tcp://*:5556")
 
-    # SUB — 모든 메시지 수신
     sub = zlink.SubSocket(ctx)
     sub.connect("tcp://127.0.0.1:5556")
     sub.set_subscription("")
 
-    time.sleep(0.1)  # 구독이 PUB에 도달할 시간
+    # 구독 전파 대기
+    pub.subscription_event()
 
-    pub.publish("", b"test")
+    pub.publish("greeting", b"test")
+
+    source_rid, topic, parts = sub.subscribe()
+    print(f"Topic: {topic}, Data: {parts[0].decode()}")
+
+    sub.close()
+    pub.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // PUB
-    const pub = new zlink.PubSocket(ctx);
-    pub.bind("tcp://*:5556");
+    import * as zlink from 'zlink';
 
-    // SUB — 모든 메시지 수신
+    const ctx = new zlink.Context();
+
+    const pub = new zlink.XPubSocket(ctx);
+    pub.bind('tcp://*:5556');
+
     const sub = new zlink.SubSocket(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.setSubscription("");
+    sub.connect('tcp://127.0.0.1:5556');
+    sub.setSubscription('');
 
-    await sleep(100);  // 구독이 PUB에 도달할 시간
+    // 구독 전파 대기
+    pub.subscriptionEvent();
 
-    pub.publish("", Buffer.from("test"));
+    pub.publish('greeting', Buffer.from('test'));
+
+    const [rid, topic, parts] = sub.subscribe();
+    console.log(`Topic: ${topic}, Data: ${parts[0].toString()}`);
+
+    sub.close();
+    pub.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // PUB
-    var pub = new PubSocket(ctx);
+    using Zlink;
+
+    var ctx = new Context();
+
+    var pub = new XPubSocket(ctx);
     pub.Bind("tcp://*:5556");
 
-    // SUB — 모든 메시지 수신
     var sub = new SubSocket(ctx);
     sub.Connect("tcp://127.0.0.1:5556");
     sub.SetSubscription("");
 
-    Thread.Sleep(100);  // 구독이 PUB에 도달할 시간
+    // 구독 전파 대기
+    pub.SubscriptionEvent();
 
-    pub.Publish("", "test");
+    pub.Publish("greeting", "test");
+
+    var (rid, topic, parts) = sub.Subscribe();
+    Console.WriteLine($"Topic: {topic}, Data: {parts[0].GetString()}");
+
+    sub.Close();
+    pub.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    // PUB
-    let pub_sock = ctx.pub_socket();
-    pub_sock.bind("tcp://*:5556");
+    use zlink::Context;
 
-    // SUB — 모든 메시지 수신
-    let sub = ctx.sub_socket();
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.set_subscription("");
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    thread::sleep(Duration::from_millis(100));  // 구독이 PUB에 도달할 시간
+        let pub_sock = ctx.xpub_socket();
+        pub_sock.bind("tcp://*:5556")?;
 
-    pub_sock.publish("", b"test");
+        let sub = ctx.sub_socket();
+        sub.connect("tcp://127.0.0.1:5556")?;
+        sub.set_subscription("")?;
+
+        // 구독 전파 대기
+        pub_sock.subscription_event()?;
+
+        pub_sock.publish("greeting", b"test")?;
+
+        let (rid, topic, parts) = sub.subscribe()?;
+        println!("Topic: {}, Data: {}",
+                 topic, String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    // PUB
-    pubSock, _ := ctx.PubSocket()
-    pubSock.Bind("tcp://*:5556")
+    package main
 
-    // SUB — 모든 메시지 수신
-    sub, _ := ctx.SubSocket()
-    sub.Connect("tcp://127.0.0.1:5556")
-    sub.SetSubscription("")
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
 
-    time.Sleep(100 * time.Millisecond)  // 구독이 PUB에 도달할 시간
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
 
-    pubSock.Publish("", zlink.NewMessage([]byte("test")))
+        pub, err := ctx.XPubSocket()
+        if err != nil { log.Fatal(err) }
+        defer pub.Close()
+        pub.Bind("tcp://*:5556")
+
+        sub, err := ctx.SubSocket()
+        if err != nil { log.Fatal(err) }
+        defer sub.Close()
+        sub.Connect("tcp://127.0.0.1:5556")
+        sub.SetSubscription("")
+
+        // 구독 전파 대기
+        pub.SubscriptionEvent()
+
+        pub.Publish("greeting", zlink.NewMessage([]byte("test")))
+
+        result, err := sub.Subscribe()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Topic: %s, Data: %s\n",
+                   result.Topic, result.Parts[0].Data())
+        result.Close()
+    }
     ```
 
-> 참고: `core/tests/test_pubsub.cpp` — `test_tcp()`
+> 참고: `core/tests/test_pubsub.cpp` -- `test_tcp()`
 
 ### 패턴 2: 다중 SUB
 

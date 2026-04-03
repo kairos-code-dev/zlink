@@ -166,7 +166,8 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     /* 클라이언트 (송신 전용) */
     void *client = zlink_socket(ctx, ZLINK_PAIR);
 
-    /* ... bind/connect ... */
+    zlink_bind(server, "tcp://*:5555");
+    zlink_connect(client, "tcp://127.0.0.1:5555");
 
     /* 클라이언트 → 서버 */
     zlink_msg_t msg;
@@ -191,7 +192,8 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     // 클라이언트 (송신 전용)
     zlink::pair_socket_t client(ctx);
 
-    // ... bind/connect ...
+    server.bind("tcp://*:5555");
+    client.connect("tcp://127.0.0.1:5555");
 
     // 클라이언트 → 서버
     client.send("Hello");
@@ -209,7 +211,8 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     // 클라이언트 (송신 전용)
     PairSocket client = new PairSocket(ctx);
 
-    // ... bind/connect ...
+    server.bind("tcp://*:5555");
+    client.connect("tcp://127.0.0.1:5555");
 
     // 클라이언트 → 서버
     client.send("Hello");
@@ -227,7 +230,8 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     # 클라이언트 (송신 전용)
     client = zlink.PairSocket(ctx)
 
-    # ... bind/connect ...
+    server.bind("tcp://*:5555")
+    client.connect("tcp://127.0.0.1:5555")
 
     # 클라이언트 → 서버
     client.send(b"Hello")
@@ -245,7 +249,8 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     // 클라이언트 (송신 전용)
     const client = new zlink.PairSocket(ctx);
 
-    // ... bind/connect ...
+    server.bind('tcp://*:5555');
+    client.connect('tcp://127.0.0.1:5555');
 
     // 클라이언트 → 서버
     client.send(Buffer.from("Hello"));
@@ -263,7 +268,8 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     // 클라이언트 (송신 전용)
     var client = new PairSocket(ctx);
 
-    // ... bind/connect ...
+    server.Bind("tcp://*:5555");
+    client.Connect("tcp://127.0.0.1:5555");
 
     // 클라이언트 → 서버
     client.Send("Hello");
@@ -281,7 +287,8 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     // 클라이언트 (송신 전용)
     let client = ctx.pair_socket();
 
-    // ... bind/connect ...
+    server.bind("tcp://*:5555")?;
+    client.connect("tcp://127.0.0.1:5555")?;
 
     // 클라이언트 → 서버
     client.send(b"Hello");
@@ -299,7 +306,8 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     // 클라이언트 (송신 전용)
     client, _ := ctx.PairSocket()
 
-    // ... bind/connect ...
+    server.Bind("tcp://*:5555")
+    client.Connect("tcp://127.0.0.1:5555")
 
     // 클라이언트 → 서버
     client.Send(zlink.NewMessage([]byte("Hello")))

@@ -142,6 +142,13 @@ In STREAM callbacks, connect/disconnect events must be distinguished from data.
 === "C"
 
     ```c
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+    #include <stdint.h>
+
+    static void *g_stream;
+
     void on_message(const zlink_routing_id_t *source_rid,
                     zlink_msg_t *parts, size_t part_count,
                     void *userdata)
@@ -151,148 +158,269 @@ In STREAM callbacks, connect/disconnect events must be distinguished from data.
             size_t size = zlink_msg_size(&parts[i]);
 
             if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-                /* new client connected */
+                printf("Client connected\n");
             } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-                /* client disconnected */
+                printf("Client disconnected\n");
             } else {
-                /* echo reply */
+                printf("Data: %.*s\n", (int)size, (char *)data);
                 zlink_msg_t reply;
                 zlink_msg_init_size(&reply, size);
                 memcpy(zlink_msg_data(&reply), data, size);
-                zlink_send_rid(stream, source_rid, &reply, 1, 0);
+                zlink_send_rid(g_stream, source_rid, &reply, 1, 0);
             }
             zlink_msg_close(&parts[i]);
         }
     }
 
-    /* Attach callback dispatch (permanent, cannot be undone) */
-    zlink_recv_handler(stream, on_message, NULL);
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+
+        g_stream = zlink_socket(ctx, ZLINK_STREAM);
+        int notify = 0;
+        zlink_set_option(g_stream, ZLINK_OPT_STREAM_NOTIFY, &notify, sizeof(notify));
+        zlink_bind(g_stream, "tcp://*:8080");
+
+        /* Attach echo callback (permanent, cannot be undone) */
+        zlink_recv_handler(g_stream, on_message, NULL);
+
+        /* Block while the callback handles connections.
+           In production, use zlink_poll or an event loop. */
+        getchar();
+
+        zlink_close(g_stream);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    stream.on_message([&](const zlink::routing_id_t& source_rid,
-                          std::span<zlink::message_t> parts) {
-        for (auto& part : parts) {
-            auto data = part.data();
-            if (data.size() == 1 && data[0] == 0x01) {
-                // new client connected
-            } else if (data.size() == 1 && data[0] == 0x00) {
-                // client disconnected
-            } else {
-                // echo reply
-                stream.send_rid(source_rid, part);
+    #include <zlink/socket.hpp>
+    #include <iostream>
+
+    int main()
+    {
+        zlink::context_t ctx;
+        zlink::stream_socket_t stream(ctx);
+        stream.set_option(zlink::opt::linger, 0);
+        stream.bind("tcp://*:8080");
+
+        stream.on_message([&](const zlink::routing_id_t& source_rid,
+                              std::span<zlink::message_t> parts) {
+            for (auto& part : parts) {
+                auto data = part.data();
+                if (data.size() == 1 && data[0] == 0x01) {
+                    std::cout << "Client connected" << std::endl;
+                } else if (data.size() == 1 && data[0] == 0x00) {
+                    std::cout << "Client disconnected" << std::endl;
+                } else {
+                    std::cout << "Data: " << part.str() << std::endl;
+                    stream.send_rid(source_rid, part);
+                }
             }
-        }
-    });
+        });
+
+        std::cin.get();
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    stream.onMessage((sourceRid, parts) -> {
-        for (Message part : parts) {
-            byte[] data = part.data();
-            if (data.length == 1 && data[0] == 0x01) {
-                // new client connected
-            } else if (data.length == 1 && data[0] == 0x00) {
-                // client disconnected
-            } else {
-                // echo reply
-                stream.sendRid(sourceRid, part);
-            }
+    import dev.kairoscode.zlink.*;
+
+    public class StreamCallbackExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+            StreamSocket stream = new StreamSocket(ctx);
+            stream.setLinger(0);
+            stream.bind("tcp://*:8080");
+
+            stream.onMessage((sourceRid, parts) -> {
+                for (Message part : parts) {
+                    byte[] data = part.data();
+                    if (data.length == 1 && data[0] == 0x01) {
+                        System.out.println("Client connected");
+                    } else if (data.length == 1 && data[0] == 0x00) {
+                        System.out.println("Client disconnected");
+                    } else {
+                        System.out.println("Data: " + new String(data));
+                        stream.sendRid(sourceRid, part);
+                    }
+                }
+            });
+
+            System.out.println("Echo server running on :8080");
+            try { Thread.sleep(Long.MAX_VALUE); } catch (InterruptedException e) {}
+            stream.close();
+            ctx.close();
         }
-    });
+    }
     ```
 
 === "Python"
 
     ```python
+    import zlink
+    import time
+
+    ctx = zlink.Context()
+    stream = zlink.StreamSocket(ctx)
+    stream.set_option(zlink.OPT_LINGER, 0)
+    stream.bind("tcp://*:8080")
+
     def on_message(source_rid, parts):
         for part in parts:
             data = part.data()
             if data == b"\x01":
-                pass  # new client connected
+                print("Client connected")
             elif data == b"\x00":
-                pass  # client disconnected
+                print("Client disconnected")
             else:
-                # echo reply
+                print(f"Data: {data.decode()}")
                 stream.send_rid(source_rid, data)
 
     stream.on_message(on_message)
+
+    print("Echo server running on :8080")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+
+    stream.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+    const stream = new zlink.StreamSocket(ctx);
+    stream.setOption(zlink.OPT_LINGER, 0);
+    stream.bind('tcp://*:8080');
+
     stream.onMessage((sourceRid: Buffer, parts: Buffer[]) => {
         for (const part of parts) {
             if (part.length === 1 && part[0] === 0x01) {
-                // new client connected
+                console.log('Client connected');
             } else if (part.length === 1 && part[0] === 0x00) {
-                // client disconnected
+                console.log('Client disconnected');
             } else {
-                // echo reply
+                console.log(`Data: ${part.toString()}`);
                 stream.sendRid(sourceRid, part);
             }
         }
     });
+
+    console.log('Echo server running on :8080');
     ```
 
 === "C#/.NET"
 
     ```csharp
+    using Zlink;
+
+    using var ctx = new Context();
+    using var stream = new StreamSocket(ctx);
+    stream.Linger = 0;
+    stream.Bind("tcp://*:8080");
+
     stream.OnMessage((sourceRid, parts) => {
         foreach (var part in parts) {
             var data = part.Data;
             if (data.Length == 1 && data.Span[0] == 0x01) {
-                // new client connected
+                Console.WriteLine("Client connected");
             } else if (data.Length == 1 && data.Span[0] == 0x00) {
-                // client disconnected
+                Console.WriteLine("Client disconnected");
             } else {
-                // echo reply
+                Console.WriteLine($"Data: {part.GetString()}");
                 stream.SendRid(sourceRid, part);
             }
         }
     });
+
+    Console.WriteLine("Echo server running on :8080");
+    Console.ReadLine();
     ```
 
 === "Rust"
 
     ```rust
-    stream.on_message(|source_rid, parts| {
-        for part in parts {
-            let data = part.as_bytes();
-            if data == [0x01] {
-                // new client connected
-            } else if data == [0x00] {
-                // client disconnected
-            } else {
-                // echo reply
-                stream.send_rid(source_rid, part)?;
+    use zlink::Context;
+    use std::io;
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+        let stream = ctx.stream_socket()?;
+        stream.set_linger(0)?;
+        stream.bind("tcp://*:8080")?;
+
+        stream.on_message(|source_rid, parts| {
+            for part in parts {
+                let data = part.as_bytes();
+                if data == [0x01] {
+                    println!("Client connected");
+                } else if data == [0x00] {
+                    println!("Client disconnected");
+                } else {
+                    println!("Data: {}", String::from_utf8_lossy(data));
+                    stream.send_rid(source_rid, part)?;
+                }
             }
-        }
+            Ok(())
+        })?;
+
+        println!("Echo server running on :8080");
+        let mut buf = String::new();
+        io::stdin().read_line(&mut buf)?;
         Ok(())
-    })?;
+    }
     ```
 
 === "Go"
 
     ```go
-    stream.RecvHandler(func(source_rid zlink.RoutingID, parts []zlink.Message) {
-        for _, part := range parts {
-            data := part.Data()
-            if data[0] == 0x01 {
-                // new client connected
-            } else if data[0] == 0x00 {
-                // client disconnected
-            } else {
-                // echo reply
-                stream.SendTo(source_rid, part)
+    package main
+
+    import (
+        "fmt"
+        "os"
+        "os/signal"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, _ := zlink.NewContext()
+        stream, _ := ctx.StreamSocket()
+        stream.SetOption(zlink.OptionLinger, 0)
+        stream.Bind("tcp://*:8080")
+
+        stream.RecvHandler(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
+            for _, part := range parts {
+                data := part.Data()
+                if len(data) == 1 && data[0] == 0x01 {
+                    fmt.Println("Client connected")
+                } else if len(data) == 1 && data[0] == 0x00 {
+                    fmt.Println("Client disconnected")
+                } else {
+                    fmt.Printf("Data: %s\n", string(data))
+                    stream.SendTo(sourceRid, part)
+                }
             }
-        }
-    })
+        })
+
+        fmt.Println("Echo server running on :8080")
+        c := make(chan os.Signal, 1)
+        signal.Notify(c, os.Interrupt)
+        <-c
+    }
     ```
 
 ### Key Points

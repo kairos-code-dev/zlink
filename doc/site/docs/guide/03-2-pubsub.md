@@ -69,210 +69,288 @@ PUB ──── XSUB ═══ XPUB ──── SUB
 
 ## 2. PUB/SUB Basic Usage
 
-### Publisher (PUB)
+### Message Exchange
+
+A complete XPUB/SUB example: create a context, set up publisher and subscriber,
+wait for the subscription to propagate, publish a message, receive it, and clean up.
 
 === "C"
 
     ```c
-    void *pub = zlink_socket(ctx, ZLINK_PUB);
-    zlink_bind(pub, "tcp://*:5556");
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* Publish message -- dropped if there are no subscribers */
-    zlink_msg_t part;
-    zlink_msg_init_size(&part, 14);
-    memcpy(zlink_msg_data(&part), "weather: sunny", 14);
-    zlink_publish(pub, NULL, &part, 1, 0);
-    ```
-
-=== "C++"
-
-    ```cpp
-    zlink::pub_socket_t pub(ctx);
-    pub.bind("tcp://*:5556");
-
-    // Publish message -- dropped if there are no subscribers
-    pub.publish("weather", "sunny");
-    ```
-
-=== "Java"
-
-    ```java
-    PubSocket pub = new PubSocket(ctx);
-    pub.bind("tcp://*:5556");
-
-    // Publish message -- dropped if there are no subscribers
-    pub.publish("weather", "sunny");
-    ```
-
-=== "Python"
-
-    ```python
-    pub = zlink.PubSocket(ctx)
-    pub.bind("tcp://*:5556")
-
-    # Publish message -- dropped if there are no subscribers
-    pub.publish("weather", b"sunny")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const pub = new zlink.PubSocket(ctx);
-    pub.bind("tcp://*:5556");
-
-    // Publish message -- dropped if there are no subscribers
-    pub.publish("weather", Buffer.from("sunny"));
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    var pub = new PubSocket(ctx);
-    pub.Bind("tcp://*:5556");
-
-    // Publish message -- dropped if there are no subscribers
-    pub.Publish("weather", "sunny");
-    ```
-
-=== "Rust"
-
-    ```rust
-    let pub_sock = ctx.pub_socket();
-    pub_sock.bind("tcp://*:5556");
-
-    // Publish message -- dropped if there are no subscribers
-    pub_sock.publish("weather", b"sunny");
-    ```
-
-=== "Go"
-
-    ```go
-    pubSock, _ := ctx.PubSocket()
-    pubSock.Bind("tcp://*:5556")
-
-    // Publish message -- dropped if there are no subscribers
-    pubSock.Publish("weather", zlink.NewMessage([]byte("sunny")))
-    ```
-
-### Subscriber (SUB)
-
-!!! note "C API Callback Signature"
-    The topic handler uses C-specific types (`zlink_routing_id_t`,
-    `zlink_msg_t`). Each binding provides its own idiomatic callback or
-    receive interface.
-
-    ```c
-    void on_topic(const zlink_routing_id_t *source_rid,
-                  const char *topic, size_t topic_len,
-                  zlink_msg_t *parts, size_t part_count,
-                  void *userdata)
+    int main(void)
     {
+        void *ctx = zlink_ctx_new();
+
+        void *pub = zlink_socket(ctx, ZLINK_XPUB);
+        zlink_bind(pub, "tcp://*:5556");
+
+        void *sub = zlink_socket(ctx, ZLINK_SUB);
+        zlink_connect(sub, "tcp://127.0.0.1:5556");
+        zlink_set_subscription(sub, "weather");
+
+        /* Wait for subscription to propagate */
+        zlink_routing_id_t rid;
+        int subscribed;
+        char topic[256];
+        size_t topic_len = sizeof(topic);
+        zlink_subscription_event(pub, &rid, &subscribed, topic, &topic_len, 0);
+
+        /* Publish */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 5);
+        memcpy(zlink_msg_data(&msg), "sunny", 5);
+        zlink_publish(pub, "weather", &msg, 1, 0);
+
+        /* Receive */
+        zlink_msg_t *parts;
+        size_t count;
+        char recv_topic[256];
+        size_t recv_topic_len = sizeof(recv_topic);
+        zlink_subscribe(sub, &rid, &parts, &count,
+                        recv_topic, &recv_topic_len, 0);
         printf("Topic: %.*s, Data: %.*s\n",
-               (int)topic_len, topic,
+               (int)recv_topic_len, recv_topic,
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
+        zlink_multipart_close(parts, count);
+
+        zlink_close(sub);
+        zlink_close(pub);
+        zlink_ctx_term(ctx);
+        return 0;
     }
     ```
 
-=== "C"
-
-    ```c
-    void *sub = zlink_socket(ctx, ZLINK_SUB);
-    zlink_connect(sub, "tcp://127.0.0.1:5556");
-
-    /* Subscribe to topic -- set after connect */
-    zlink_set_subscription(sub, "weather");
-
-    /* Use zlink_subscribe() or zlink_subscribe_handler() to receive */
-    ```
-
 === "C++"
 
     ```cpp
-    zlink::sub_socket_t sub(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // Subscribe to topic -- set after connect
-    sub.set_subscription("weather");
+    int main()
+    {
+        zlink::context_t ctx;
 
-    // Use subscribe() or subscribe_handler() to receive
+        zlink::xpub_socket_t pub(ctx);
+        pub.bind("tcp://*:5556");
+
+        zlink::sub_socket_t sub(ctx);
+        sub.connect("tcp://127.0.0.1:5556");
+        sub.set_subscription("weather");
+
+        // Wait for subscription to propagate
+        auto [ev_rid, subscribed, ev_topic] = pub.subscription_event();
+
+        // Publish
+        pub.publish("weather", "sunny");
+
+        // Receive
+        auto [rid, topic, parts] = sub.subscribe();
+        std::cout << "Topic: " << topic
+                  << ", Data: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    SubSocket sub = new SubSocket(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
+    import dev.kairoscode.zlink.*;
 
-    // Subscribe to topic -- set after connect
-    sub.setSubscription("weather");
+    public class PubSubExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    // Use subscribe() or subscribeHandler() to receive
+            XPubSocket pub = new XPubSocket(ctx);
+            pub.bind("tcp://*:5556");
+
+            SubSocket sub = new SubSocket(ctx);
+            sub.connect("tcp://127.0.0.1:5556");
+            sub.setSubscription("weather");
+
+            // Wait for subscription to propagate
+            pub.subscriptionEvent();
+
+            // Publish
+            pub.publish("weather", "sunny");
+
+            // Receive
+            SubscribeResult result = sub.subscribe();
+            System.out.println("Topic: " + result.topic()
+                + ", Data: " + result.partAsString(0));
+
+            sub.close();
+            pub.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
+    import zlink
+
+    ctx = zlink.Context()
+
+    pub = zlink.XPubSocket(ctx)
+    pub.bind("tcp://*:5556")
+
     sub = zlink.SubSocket(ctx)
     sub.connect("tcp://127.0.0.1:5556")
-
-    # Subscribe to topic -- set after connect
     sub.set_subscription("weather")
 
-    # Use subscribe() or subscribe_handler() to receive
+    # Wait for subscription to propagate
+    pub.subscription_event()
+
+    # Publish
+    pub.publish("weather", b"sunny")
+
+    # Receive
+    source_rid, topic, parts = sub.subscribe()
+    print(f"Topic: {topic}, Data: {parts[0].decode()}")
+
+    sub.close()
+    pub.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const pub = new zlink.XPubSocket(ctx);
+    pub.bind('tcp://*:5556');
+
     const sub = new zlink.SubSocket(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
+    sub.connect('tcp://127.0.0.1:5556');
+    sub.setSubscription('weather');
 
-    // Subscribe to topic -- set after connect
-    sub.setSubscription("weather");
+    // Wait for subscription to propagate
+    pub.subscriptionEvent();
 
-    // Use subscribe() or subscribeHandler() to receive
+    // Publish
+    pub.publish('weather', Buffer.from('sunny'));
+
+    // Receive
+    const [rid, topic, parts] = sub.subscribe();
+    console.log(`Topic: ${topic}, Data: ${parts[0].toString()}`);
+
+    sub.close();
+    pub.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
+    var pub = new XPubSocket(ctx);
+    pub.Bind("tcp://*:5556");
+
     var sub = new SubSocket(ctx);
     sub.Connect("tcp://127.0.0.1:5556");
-
-    // Subscribe to topic -- set after connect
     sub.SetSubscription("weather");
 
-    // Use Subscribe() or SubscribeHandler() to receive
+    // Wait for subscription to propagate
+    pub.SubscriptionEvent();
+
+    // Publish
+    pub.Publish("weather", "sunny");
+
+    // Receive
+    var (rid, topic, parts) = sub.Subscribe();
+    Console.WriteLine($"Topic: {topic}, Data: {parts[0].GetString()}");
+
+    sub.Close();
+    pub.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    let sub = ctx.sub_socket();
-    sub.connect("tcp://127.0.0.1:5556");
+    use zlink::Context;
 
-    // Subscribe to topic -- set after connect
-    sub.set_subscription("weather");
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    // Use subscribe() or subscribe_handler() to receive
+        let pub_sock = ctx.xpub_socket();
+        pub_sock.bind("tcp://*:5556")?;
+
+        let sub = ctx.sub_socket();
+        sub.connect("tcp://127.0.0.1:5556")?;
+        sub.set_subscription("weather")?;
+
+        // Wait for subscription to propagate
+        pub_sock.subscription_event()?;
+
+        // Publish
+        pub_sock.publish("weather", b"sunny")?;
+
+        // Receive
+        let (rid, topic, parts) = sub.subscribe()?;
+        println!("Topic: {}, Data: {}",
+                 topic, String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    sub, _ := ctx.SubSocket()
-    sub.Connect("tcp://127.0.0.1:5556")
+    package main
 
-    // Subscribe to topic -- set after connect
-    sub.SetSubscription("weather")
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
 
-    // Use Subscribe() or SubscribeHandler() to receive
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        pub, err := ctx.XPubSocket()
+        if err != nil { log.Fatal(err) }
+        defer pub.Close()
+        pub.Bind("tcp://*:5556")
+
+        sub, err := ctx.SubSocket()
+        if err != nil { log.Fatal(err) }
+        defer sub.Close()
+        sub.Connect("tcp://127.0.0.1:5556")
+        sub.SetSubscription("weather")
+
+        // Wait for subscription to propagate
+        pub.SubscriptionEvent()
+
+        // Publish
+        pub.Publish("weather", zlink.NewMessage([]byte("sunny")))
+
+        // Receive
+        result, err := sub.Subscribe()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Topic: %s, Data: %s\n",
+                   result.Topic, result.Parts[0].Data())
+        result.Close()
+    }
     ```
 
-> Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
+> Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") receives all messages
 
 ### Sending and Receiving Summary
 
@@ -636,145 +714,270 @@ side. Callers never need to assemble topic frames manually.
 
 ### Pattern 1: Basic PUB/SUB
 
+A complete PUB/SUB example using XPUB so the publisher can detect
+when the subscriber is ready before publishing.
+
 === "C"
 
     ```c
-    /* PUB */
-    void *pub = zlink_socket(ctx, ZLINK_PUB);
-    zlink_bind(pub, "tcp://*:5556");
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* SUB -- receive all messages */
-    void *sub = zlink_socket(ctx, ZLINK_SUB);
-    zlink_connect(sub, "tcp://127.0.0.1:5556");
-    zlink_set_subscription(sub, "");
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
 
-    msleep(100);  /* time for subscription to reach PUB */
+        void *pub = zlink_socket(ctx, ZLINK_XPUB);
+        zlink_bind(pub, "tcp://*:5556");
 
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 4);
-    memcpy(zlink_msg_data(&msg), "test", 4);
-    zlink_publish(pub, NULL, &msg, 1, 0);
+        void *sub = zlink_socket(ctx, ZLINK_SUB);
+        zlink_connect(sub, "tcp://127.0.0.1:5556");
+        zlink_set_subscription(sub, "");
 
-    /* on_topic callback receives "test" asynchronously */
+        /* Wait for subscription to propagate */
+        zlink_routing_id_t rid;
+        int subscribed;
+        char topic[256];
+        size_t topic_len = sizeof(topic);
+        zlink_subscription_event(pub, &rid, &subscribed,
+                                 topic, &topic_len, 0);
+
+        /* Publish */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 4);
+        memcpy(zlink_msg_data(&msg), "test", 4);
+        zlink_publish(pub, "greeting", &msg, 1, 0);
+
+        /* Receive */
+        zlink_msg_t *parts;
+        size_t count;
+        char recv_topic[256];
+        size_t recv_topic_len = sizeof(recv_topic);
+        zlink_subscribe(sub, &rid, &parts, &count,
+                        recv_topic, &recv_topic_len, 0);
+        printf("Topic: %.*s, Data: %.*s\n",
+               (int)recv_topic_len, recv_topic,
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(sub);
+        zlink_close(pub);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    // PUB
-    zlink::pub_socket_t pub(ctx);
-    pub.bind("tcp://*:5556");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // SUB -- receive all messages
-    zlink::sub_socket_t sub(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.set_subscription("");
+    int main()
+    {
+        zlink::context_t ctx;
 
-    msleep(100);  // time for subscription to reach PUB
+        zlink::xpub_socket_t pub(ctx);
+        pub.bind("tcp://*:5556");
 
-    pub.publish("", "test");
+        zlink::sub_socket_t sub(ctx);
+        sub.connect("tcp://127.0.0.1:5556");
+        sub.set_subscription("");
+
+        // Wait for subscription to propagate
+        pub.subscription_event();
+
+        pub.publish("greeting", "test");
+
+        auto [rid, topic, parts] = sub.subscribe();
+        std::cout << "Topic: " << topic
+                  << ", Data: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    // PUB
-    PubSocket pub = new PubSocket(ctx);
-    pub.bind("tcp://*:5556");
+    import dev.kairoscode.zlink.*;
 
-    // SUB -- receive all messages
-    SubSocket sub = new SubSocket(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.setSubscription("");
+    public class PubSubBasicExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    Thread.sleep(100);  // time for subscription to reach PUB
+            XPubSocket pub = new XPubSocket(ctx);
+            pub.bind("tcp://*:5556");
 
-    pub.publish("", "test");
+            SubSocket sub = new SubSocket(ctx);
+            sub.connect("tcp://127.0.0.1:5556");
+            sub.setSubscription("");
+
+            // Wait for subscription to propagate
+            pub.subscriptionEvent();
+
+            pub.publish("greeting", "test");
+
+            SubscribeResult result = sub.subscribe();
+            System.out.println("Topic: " + result.topic()
+                + ", Data: " + result.partAsString(0));
+
+            sub.close();
+            pub.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
-    # PUB
-    pub = zlink.PubSocket(ctx)
+    import zlink
+
+    ctx = zlink.Context()
+
+    pub = zlink.XPubSocket(ctx)
     pub.bind("tcp://*:5556")
 
-    # SUB -- receive all messages
     sub = zlink.SubSocket(ctx)
     sub.connect("tcp://127.0.0.1:5556")
     sub.set_subscription("")
 
-    time.sleep(0.1)  # time for subscription to reach PUB
+    # Wait for subscription to propagate
+    pub.subscription_event()
 
-    pub.publish("", b"test")
+    pub.publish("greeting", b"test")
+
+    source_rid, topic, parts = sub.subscribe()
+    print(f"Topic: {topic}, Data: {parts[0].decode()}")
+
+    sub.close()
+    pub.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // PUB
-    const pub = new zlink.PubSocket(ctx);
-    pub.bind("tcp://*:5556");
+    import * as zlink from 'zlink';
 
-    // SUB -- receive all messages
+    const ctx = new zlink.Context();
+
+    const pub = new zlink.XPubSocket(ctx);
+    pub.bind('tcp://*:5556');
+
     const sub = new zlink.SubSocket(ctx);
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.setSubscription("");
+    sub.connect('tcp://127.0.0.1:5556');
+    sub.setSubscription('');
 
-    await sleep(100);  // time for subscription to reach PUB
+    // Wait for subscription to propagate
+    pub.subscriptionEvent();
 
-    pub.publish("", Buffer.from("test"));
+    pub.publish('greeting', Buffer.from('test'));
+
+    const [rid, topic, parts] = sub.subscribe();
+    console.log(`Topic: ${topic}, Data: ${parts[0].toString()}`);
+
+    sub.close();
+    pub.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // PUB
-    var pub = new PubSocket(ctx);
+    using Zlink;
+
+    var ctx = new Context();
+
+    var pub = new XPubSocket(ctx);
     pub.Bind("tcp://*:5556");
 
-    // SUB -- receive all messages
     var sub = new SubSocket(ctx);
     sub.Connect("tcp://127.0.0.1:5556");
     sub.SetSubscription("");
 
-    Thread.Sleep(100);  // time for subscription to reach PUB
+    // Wait for subscription to propagate
+    pub.SubscriptionEvent();
 
-    pub.Publish("", "test");
+    pub.Publish("greeting", "test");
+
+    var (rid, topic, parts) = sub.Subscribe();
+    Console.WriteLine($"Topic: {topic}, Data: {parts[0].GetString()}");
+
+    sub.Close();
+    pub.Close();
+    ctx.Term();
     ```
 
 === "Rust"
 
     ```rust
-    // PUB
-    let pub_sock = ctx.pub_socket();
-    pub_sock.bind("tcp://*:5556");
+    use zlink::Context;
 
-    // SUB -- receive all messages
-    let sub = ctx.sub_socket();
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.set_subscription("");
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    thread::sleep(Duration::from_millis(100));  // time for subscription to reach PUB
+        let pub_sock = ctx.xpub_socket();
+        pub_sock.bind("tcp://*:5556")?;
 
-    pub_sock.publish("", b"test");
+        let sub = ctx.sub_socket();
+        sub.connect("tcp://127.0.0.1:5556")?;
+        sub.set_subscription("")?;
+
+        // Wait for subscription to propagate
+        pub_sock.subscription_event()?;
+
+        pub_sock.publish("greeting", b"test")?;
+
+        let (rid, topic, parts) = sub.subscribe()?;
+        println!("Topic: {}, Data: {}",
+                 topic, String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    // PUB
-    pubSock, _ := ctx.PubSocket()
-    pubSock.Bind("tcp://*:5556")
+    package main
 
-    // SUB -- receive all messages
-    sub, _ := ctx.SubSocket()
-    sub.Connect("tcp://127.0.0.1:5556")
-    sub.SetSubscription("")
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
 
-    time.Sleep(100 * time.Millisecond)  // time for subscription to reach PUB
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
 
-    pubSock.Publish("", zlink.NewMessage([]byte("test")))
+        pub, err := ctx.XPubSocket()
+        if err != nil { log.Fatal(err) }
+        defer pub.Close()
+        pub.Bind("tcp://*:5556")
+
+        sub, err := ctx.SubSocket()
+        if err != nil { log.Fatal(err) }
+        defer sub.Close()
+        sub.Connect("tcp://127.0.0.1:5556")
+        sub.SetSubscription("")
+
+        // Wait for subscription to propagate
+        pub.SubscriptionEvent()
+
+        pub.Publish("greeting", zlink.NewMessage([]byte("test")))
+
+        result, err := sub.Subscribe()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Topic: %s, Data: %s\n",
+                   result.Topic, result.Parts[0].Data())
+        result.Close()
+    }
     ```
 
 > Reference: `core/tests/test_pubsub.cpp` -- `test_tcp()`

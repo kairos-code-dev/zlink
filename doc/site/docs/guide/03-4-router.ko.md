@@ -137,238 +137,307 @@ DEALER → ROUTER: round-robin 부하분산 + routing_id 응답 라우팅
     router.Bind("tcp://*:5558")
     ```
 
-### 메시지 수신
+### 메시지 교환
 
-ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신한다.
+DEALER-ROUTER 전체 예제: DEALER가 연결 후 요청을 전송하고,
+ROUTER가 `source_rid`로 송신자를 식별하여 `zlink_send_rid()`로 응답한다.
 
 === "C"
 
     ```c
-    /* DEALER가 "Hello" 전송 → 핸들러가 source_rid + parts를 수신 */
-    void on_message(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    int main(void)
     {
+        void *ctx = zlink_ctx_new();
+
+        void *router = zlink_socket(ctx, ZLINK_ROUTER);
+        zlink_bind(router, "tcp://*:5558");
+
+        void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+        zlink_set_routing_id(dealer, "D1", 2);
+        zlink_connect(dealer, "tcp://127.0.0.1:5558");
+
+        /* DEALER가 요청 전송 */
+        zlink_msg_t req;
+        zlink_msg_init_size(&req, 5);
+        memcpy(zlink_msg_data(&req), "Hello", 5);
+        zlink_send(dealer, &req, 1, 0);
+
+        /* ROUTER 수신 -- source_rid로 송신자 식별 */
+        zlink_routing_id_t source_rid;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        zlink_recv(router, &source_rid, &parts, &part_count, 0);
         printf("[%.*s]로부터: %.*s\n",
-               (int)source_rid->size, source_rid->data,
+               (int)source_rid.size, source_rid.data,
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
-    }
+        zlink_multipart_close(parts, part_count);
 
-    void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    /* zlink_recv()로 수신 */
+        /* ROUTER가 송신자에게 응답 */
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, 5);
+        memcpy(zlink_msg_data(&reply), "World", 5);
+        zlink_send_rid(router, &source_rid, &reply, 1, 0);
+
+        /* DEALER가 응답 수신 */
+        zlink_recv(dealer, &source_rid, &parts, &part_count, 0);
+        printf("Reply: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, part_count);
+
+        zlink_close(dealer);
+        zlink_close(router);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    zlink::router_socket_t router(ctx);
-    // recv()로 수신
-    auto [source_rid, parts] = router.recv();
-    std::cout << "[" << source_rid.to_string() << "]로부터: "
-              << parts[0].to_string() << "\n";
+    #include <zlink/socket.hpp>
+    #include <iostream>
+
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::router_socket_t router(ctx);
+        router.bind("tcp://*:5558");
+
+        zlink::dealer_socket_t dealer(ctx);
+        dealer.set_routing_id("D1");
+        dealer.connect("tcp://127.0.0.1:5558");
+
+        // DEALER가 요청 전송
+        dealer.send(zlink::message_t("Hello", 5));
+
+        // ROUTER 수신 -- source_rid로 송신자 식별
+        auto [source_rid, parts] = router.recv();
+        std::cout << "[" << source_rid.to_string() << "]로부터: "
+                  << parts[0].to_string() << std::endl;
+
+        // ROUTER가 송신자에게 응답
+        router.send_rid(source_rid, zlink::message_t("World", 5));
+
+        // DEALER가 응답 수신
+        auto [rid2, reply] = dealer.recv();
+        std::cout << "Reply: " << reply[0].to_string() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    RouterSocket router = new RouterSocket(ctx);
-    // recv()로 수신
-    RecvResult result = router.recv();
-    RoutingId sourceRid = result.routingId();
-    System.out.println("[" + sourceRid + "]로부터: "
-        + new String(result.parts()[0].data()));
+    import dev.kairoscode.zlink.*;
+
+    public class RouterExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            RouterSocket router = new RouterSocket(ctx);
+            router.bind("tcp://*:5558");
+
+            DealerSocket dealer = new DealerSocket(ctx);
+            dealer.setRoutingId("D1");
+            dealer.connect("tcp://127.0.0.1:5558");
+
+            // DEALER가 요청 전송
+            dealer.send(new Message("Hello".getBytes()));
+
+            // ROUTER 수신 -- sourceRid로 송신자 식별
+            RecvResult result = router.recv();
+            System.out.println("[" + result.routingId() + "]로부터: "
+                + new String(result.parts()[0].data()));
+
+            // ROUTER가 송신자에게 응답
+            router.sendRid(result.routingId(), new Message("World".getBytes()));
+
+            // DEALER가 응답 수신
+            Message reply = dealer.recv();
+            System.out.println("Reply: " + reply.partAsString(0));
+
+            dealer.close();
+            router.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Python"
 
     ```python
+    import zlink
+
+    ctx = zlink.Context()
+
     router = zlink.RouterSocket(ctx)
-    # recv()로 수신
+    router.bind("tcp://*:5558")
+
+    dealer = zlink.DealerSocket(ctx)
+    dealer.set_routing_id(b"D1")
+    dealer.connect("tcp://127.0.0.1:5558")
+
+    # DEALER가 요청 전송
+    dealer.send(b"Hello")
+
+    # ROUTER 수신 -- source_rid로 송신자 식별
     source_rid, parts = router.recv()
     print(f"[{source_rid}]로부터: {parts[0].data().decode()}")
+
+    # ROUTER가 송신자에게 응답
+    router.send_rid(source_rid, b"World")
+
+    # DEALER가 응답 수신
+    _, reply = dealer.recv()
+    print(f"Reply: {reply[0].decode()}")
+
+    dealer.close()
+    router.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
     const router = new zlink.RouterSocket(ctx);
-    // recv()로 수신
+    router.bind('tcp://*:5558');
+
+    const dealer = new zlink.DealerSocket(ctx);
+    dealer.setRoutingId(Buffer.from('D1'));
+    dealer.connect('tcp://127.0.0.1:5558');
+
+    // DEALER가 요청 전송
+    dealer.send(Buffer.from('Hello'));
+
+    // ROUTER 수신 -- sourceRid로 송신자 식별
     const { sourceRid, parts } = router.recv();
-    console.log(`[${sourceRid}]로부터: ${parts[0].data().toString()}`);
+    console.log(`[${sourceRid}]로부터: ${parts[0].toString()}`);
+
+    // ROUTER가 송신자에게 응답
+    router.sendRid(sourceRid, Buffer.from('World'));
+
+    // DEALER가 응답 수신
+    const reply = dealer.recv();
+    console.log(`Reply: ${reply.parts[0].toString()}`);
+
+    dealer.close();
+    router.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
+    using Zlink;
+
+    using var ctx = new Context();
+
     using var router = new RouterSocket(ctx);
-    // Recv()로 수신
+    router.Bind("tcp://*:5558");
+
+    using var dealer = new DealerSocket(ctx);
+    dealer.SetRoutingId("D1"u8);
+    dealer.Connect("tcp://127.0.0.1:5558");
+
+    // DEALER가 요청 전송
+    dealer.Send(new Message("Hello"u8));
+
+    // ROUTER 수신 -- sourceRid로 송신자 식별
     var (sourceRid, parts) = router.Recv();
     Console.WriteLine($"[{sourceRid}]로부터: {parts[0].DataString()}");
-    ```
 
-=== "Rust"
-
-    ```rust
-    let router = ctx.router_socket()?;
-    // recv()로 수신
-    let (source_rid, parts) = router.recv()?;
-    println!("[{}]로부터: {}", source_rid, parts[0].as_str()?);
-    ```
-
-=== "Go"
-
-    ```go
-    router, err := ctx.RouterSocket()
-    if err != nil { panic(err) }
-    // recv()로 수신
-    source_rid, parts, err := router.Recv()
-    if err != nil { panic(err) }
-    fmt.Printf("[%v]로부터: %v\n", source_rid, string(parts[0].Data()))
-    ```
-
-### 메시지 송신
-
-응답 시 `zlink_send_rid`에 콜백의 `source_rid`를 전달하여 대상을 지정한다.
-
-=== "C"
-
-    ```c
-    /* 콜백의 source_rid를 사용하여 응답 */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    ```
-
-=== "C++"
-
-    ```cpp
-    // recv()의 source_rid를 사용하여 응답
-    zlink::message_t reply("World", 5);
-    router.send_rid(source_rid, reply);
-    ```
-
-=== "Java"
-
-    ```java
-    // recv()의 sourceRid를 사용하여 응답
-    Message reply = new Message("World".getBytes());
-    router.sendRid(sourceRid, reply);
-    ```
-
-=== "Python"
-
-    ```python
-    # recv()의 source_rid를 사용하여 응답
-    router.send_rid(source_rid, b"World")
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    // recv()의 sourceRid를 사용하여 응답
-    router.sendRid(sourceRid, Buffer.from("World"));
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    // Recv()의 sourceRid를 사용하여 응답
+    // ROUTER가 송신자에게 응답
     router.SendRid(sourceRid, new Message("World"u8));
+
+    // DEALER가 응답 수신
+    var (_, reply) = dealer.Recv();
+    Console.WriteLine($"Reply: {reply[0].DataString()}");
     ```
 
 === "Rust"
 
     ```rust
-    // recv()의 source_rid를 사용하여 응답
-    router.send_rid(&source_rid, &zlink::Message::from("World"))?;
-    ```
+    use zlink::Context;
 
-=== "Go"
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new()?;
 
-    ```go
-    // recv()의 source_rid를 사용하여 응답
-    router.SendTo(source_rid, zlink.NewMessage([]byte("World")))
-    ```
+        let router = ctx.router_socket()?;
+        router.bind("tcp://*:5558")?;
 
-### 수신 모드
+        let dealer = ctx.dealer_socket()?;
+        dealer.set_routing_id("D1")?;
+        dealer.connect("tcp://127.0.0.1:5558")?;
 
-**Pull 모드**: 핸들러를 부착하지 않으면 `zlink_recv()`로 동기 수신한다.
+        // DEALER가 요청 전송
+        dealer.send(&zlink::Message::from("Hello"))?;
 
-=== "C"
+        // ROUTER 수신 -- source_rid로 송신자 식별
+        let (source_rid, parts) = router.recv()?;
+        println!("[{}]로부터: {}", source_rid, parts[0].as_str()?);
 
-    ```c
-    zlink_routing_id_t source_rid;
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    int rc = zlink_recv(router, &source_rid, &parts, &part_count, 0);
-    if (rc == 0) {
-        /* source_rid로 송신자 식별 */
-        /* parts[0..part_count-1] 처리 */
-        zlink_multipart_close(parts, part_count);
-        free(parts);
+        // ROUTER가 송신자에게 응답
+        router.send_rid(&source_rid, &zlink::Message::from("World"))?;
+
+        // DEALER가 응답 수신
+        let (_, reply) = dealer.recv()?;
+        println!("Reply: {}", reply[0].as_str()?);
+
+        Ok(())
     }
     ```
 
-=== "C++"
-
-    ```cpp
-    auto [source_rid, parts] = router.recv();
-    // source_rid로 송신자 식별
-    // parts[0..N] 처리
-    ```
-
-=== "Java"
-
-    ```java
-    RecvResult result = router.recv();
-    RoutingId sourceRid = result.routingId();
-    // sourceRid로 송신자 식별
-    // result.parts() 처리
-    ```
-
-=== "Python"
-
-    ```python
-    source_rid, parts = router.recv()
-    # source_rid로 송신자 식별
-    # parts 처리
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const { sourceRid, parts } = router.recv();
-    // sourceRid로 송신자 식별
-    // parts 처리
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    var (sourceRid, parts) = router.Recv();
-    // sourceRid로 송신자 식별
-    // parts 처리
-    ```
-
-=== "Rust"
-
-    ```rust
-    let (source_rid, parts) = router.recv()?;
-    // source_rid로 송신자 식별
-    // parts 처리
-    ```
-
 === "Go"
 
     ```go
-    source_rid, parts, err := router.Recv()
-    if err != nil { panic(err) }
-    // source_rid로 송신자 식별
-    // parts 처리
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        router, _ := ctx.RouterSocket()
+        defer router.Close()
+        router.Bind("tcp://*:5558")
+
+        dealer, _ := ctx.DealerSocket()
+        defer dealer.Close()
+        dealer.SetRoutingId("D1")
+        dealer.Connect("tcp://127.0.0.1:5558")
+
+        // DEALER가 요청 전송
+        dealer.Send(zlink.NewMessage([]byte("Hello")))
+
+        // ROUTER 수신 -- source_rid로 송신자 식별
+        sourceRid, parts, _ := router.Recv()
+        fmt.Printf("[%v]로부터: %s\n", sourceRid, string(parts[0].Data()))
+
+        // ROUTER가 송신자에게 응답
+        router.SendTo(sourceRid, zlink.NewMessage([]byte("World")))
+
+        // DEALER가 응답 수신
+        _, reply, _ := dealer.Recv()
+        fmt.Printf("Reply: %s\n", string(reply[0].Data()))
+    }
     ```
 
 > 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY` 활성 시

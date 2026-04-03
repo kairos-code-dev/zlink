@@ -14,34 +14,6 @@ void noop_send_ready_handler (void *subject_, void *userdata_)
     LIBZLINK_UNUSED (userdata_);
 }
 
-struct monitor_idle_enqueue_context_t
-{
-    monitor_idle_enqueue_context_t (zlink::socket_monitor_runtime_t *runtime_,
-                                    uint64_t event_) :
-        runtime (runtime_),
-        event_value (event_),
-        calls (0)
-    {
-    }
-
-    zlink::socket_monitor_runtime_t *runtime;
-    uint64_t event_value;
-    int calls;
-};
-
-void enqueue_monitor_event_on_idle (void *arg_)
-{
-    monitor_idle_enqueue_context_t *context =
-      static_cast<monitor_idle_enqueue_context_t *> (arg_);
-    ++context->calls;
-    if (context->calls != 1)
-        return;
-
-    zlink::socket_monitor_event_record_t record;
-    record.event = context->event_value;
-    context->runtime->enqueue_worker_event (record, 1);
-}
-
 zlink::endpoint_uri_pair_t make_bind_endpoint (const char *local_,
                                                const char *remote_)
 {
@@ -104,7 +76,7 @@ void test_socket_monitor_runtime_erases_only_matching_ready_connection ()
     TEST_ASSERT_EQUAL_UINT32 (0u, runtime.ready_count ());
 }
 
-void test_socket_monitor_runtime_dequeues_enqueued_worker_event ()
+void test_socket_monitor_runtime_dequeues_enqueued_worker_event_nowait ()
 {
     zlink::socket_monitor_runtime_t runtime;
     zlink::socket_monitor_event_record_t record;
@@ -112,39 +84,45 @@ void test_socket_monitor_runtime_dequeues_enqueued_worker_event ()
     runtime.enqueue_worker_event (record, 1);
 
     zlink::socket_monitor_event_record_t dequeued;
-    TEST_ASSERT_TRUE (
-      runtime.dequeue_worker_event (&dequeued, false, NULL, NULL));
+    TEST_ASSERT_TRUE (runtime.dequeue_worker_event_nowait (&dequeued));
     TEST_ASSERT_EQUAL_UINT64 (41u, dequeued.event);
 }
 
-void test_socket_monitor_runtime_idle_pump_can_publish_worker_event ()
+void test_socket_monitor_runtime_hwm_drops_lossy_events ()
 {
     zlink::socket_monitor_runtime_t runtime;
-    monitor_idle_enqueue_context_t context (&runtime, 57);
+    zlink::socket_monitor_event_record_t first;
+    zlink::socket_monitor_event_record_t second;
     zlink::socket_monitor_event_record_t dequeued;
+    first.event = 57;
+    second.event = 58;
 
-    TEST_ASSERT_TRUE (runtime.dequeue_worker_event (
-      &dequeued, true, &enqueue_monitor_event_on_idle, &context));
-    TEST_ASSERT_EQUAL_INT (1, context.calls);
+    runtime.enqueue_worker_event (first, 1);
+    runtime.enqueue_worker_event (second, 1);
+    TEST_ASSERT_TRUE (runtime.dequeue_worker_event_nowait (&dequeued));
     TEST_ASSERT_EQUAL_UINT64 (57u, dequeued.event);
+    TEST_ASSERT_FALSE (runtime.dequeue_worker_event_nowait (&dequeued));
 }
 
 void test_socket_monitor_runtime_reset_clears_stop_state ()
 {
     zlink::socket_monitor_runtime_t runtime;
     zlink::socket_monitor_event_record_t record;
-    record.event = 73;
-    runtime.enqueue_worker_event (record, 1);
-    runtime.stop_worker ();
-
     zlink::socket_monitor_event_record_t dequeued;
-    TEST_ASSERT_FALSE (
-      runtime.dequeue_worker_event (&dequeued, false, NULL, NULL));
+    record.event = 73;
+
+    runtime.start_task (11);
+    runtime.enqueue_worker_event (record, 1);
+    runtime.stop_task ();
+    TEST_ASSERT_FALSE (runtime.dequeue_worker_event_nowait (&dequeued));
+    TEST_ASSERT_FALSE (runtime.task_running);
+    TEST_ASSERT_EQUAL_UINT64 (0u, runtime.task_id);
 
     runtime.reset_worker_state ();
+    TEST_ASSERT_FALSE (runtime.queue_stop);
+    TEST_ASSERT_FALSE (runtime.task_running);
     runtime.enqueue_worker_event (record, 1);
-    TEST_ASSERT_TRUE (
-      runtime.dequeue_worker_event (&dequeued, false, NULL, NULL));
+    TEST_ASSERT_TRUE (runtime.dequeue_worker_event_nowait (&dequeued));
     TEST_ASSERT_EQUAL_UINT64 (73u, dequeued.event);
 }
 
@@ -490,8 +468,8 @@ int main (int argc, char **argv)
     UNITY_BEGIN ();
     RUN_TEST (test_socket_monitor_runtime_tracks_ready_connections_once);
     RUN_TEST (test_socket_monitor_runtime_erases_only_matching_ready_connection);
-    RUN_TEST (test_socket_monitor_runtime_dequeues_enqueued_worker_event);
-    RUN_TEST (test_socket_monitor_runtime_idle_pump_can_publish_worker_event);
+    RUN_TEST (test_socket_monitor_runtime_dequeues_enqueued_worker_event_nowait);
+    RUN_TEST (test_socket_monitor_runtime_hwm_drops_lossy_events);
     RUN_TEST (test_socket_monitor_runtime_reset_clears_stop_state);
     RUN_TEST (test_socket_endpoint_runtime_tracks_last_recv_source_rid);
     RUN_TEST (test_socket_endpoint_runtime_tracks_last_endpoint);

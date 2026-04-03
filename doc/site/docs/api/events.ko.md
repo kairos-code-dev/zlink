@@ -1,14 +1,12 @@
 
 # 이벤트 카탈로그
 
-이 문서는 raw socket monitor 이벤트와 service monitor 이벤트의 canonical
-catalog입니다.
+이 문서는 raw socket monitor 이벤트와 남아 있는 service monitor 이벤트의
+canonical catalog입니다.
 
 사용 기준:
 - [monitoring.ko.md](monitoring.ko.md): monitor API와 peer inspection API
 - 이 문서: 이벤트 의미, payload 필드, 권장 gate
-- socket-family-monitor-contract-spec:
-  패밀리별 제어 가능 범위와 회귀 테스트 기준
 
 ## Service Event 모델
 
@@ -30,13 +28,14 @@ typedef struct zlink_service_event_t
 ```
 
 필드 의미:
-- `value`는 이벤트별 숫자 값입니다. 모든 `*_READY_CHANGED` 이벤트에서는
-  `current_ready_count` (절대 readiness 카운트)를 뜻합니다.
+- `value`는 이벤��별 숫자 값이며 aggregate readiness 카운트로 해석하지
+  않습니다.
 - `subject`는 `detail_flags`에 `ZLINK_EVENT_DETAIL_SUBJECT`가 있을 때만
   유효합니다.
 - `subject_kind`는 `detail_flags`에
   `ZLINK_EVENT_DETAIL_SUBJECT_KIND`가 있을 때만 유효합니다.
-- `routing_id`는 `SUBJECT_RID` 또는 `PEER_RID`가 있을 때만 유효합니다.
+- 문자열/식별자 필드는 항상 초기화되지만, 계약상 의미는 대응하는
+  `detail_flags` 비트가 있을 때만 유효합니다.
 
 subject kind 상수:
 - `ZLINK_SERVICE_EVENT_SUBJECT_NONE`
@@ -53,17 +52,16 @@ detail flag:
 
 ## semantic level
 
-- `PEER_UP` / `PEER_DOWN`: 연결 수준
-- `SUB_FILTER_APPLIED`: local subscriber filter 설치 완료
-- `SUBSCRIPTION_READY_CHANGED`: subscriber 쪽 subscription readiness 변화
-- `*_DELIVERY_READY_CHANGED`: 특정 subject에 대해 첫 delivery 보장 가능 상태
+- `CONNECTION_READY`: raw socket 전용 저비용 ready edge
+  - raw socket: send/recv ready edge
+- queue 이벤트: 로컬 backpressure 관찰
 
-권장 gate:
-- publisher는 `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`에서 `value >= 1`을
-  기다린 뒤 publish 시작
-- subscriber는 `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`에서 `value == 1`을
-  기다린 뒤 측정/통신 시작
-- `PEER_UP`를 first-delivery gate로 쓰지 않음
+권장 perf gate:
+- raw socket perf: `ZLINK_EVENT_CONNECTION_READY`를 expected client 수만큼
+  센다
+- SPOT perf: service monitor를 사용하지 않고 explicit `READY/START`
+  barrier protocol을 사용한다
+- delivery-ready 또는 aggregate-ready monitor event를 perf gate로 사용하지 않음
 
 ## Raw Socket Monitor 이벤트
 
@@ -79,9 +77,9 @@ detail flag:
 | `ZLINK_EVENT_CLOSED` | 정상 close |
 | `ZLINK_EVENT_CLOSE_FAILED` | close 실패 |
 | `ZLINK_EVENT_DISCONNECTED` | 세션 연결 해제 |
-| `ZLINK_EVENT_MONITOR_STOPPED` | socket monitor 종료 |
+| `ZLINK_EVENT_MONITOR_STOPPED` | socket monitor ��료 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | 상세 정보 없는 handshake 실패 |
-| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | transport handshake readiness 변화 |
+| `ZLINK_EVENT_CONNECTION_READY` | transport handshake 이후 ready edge / first usable send path |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | protocol handshake 오류 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | auth handshake 오류 |
 
@@ -97,8 +95,6 @@ disconnect reason:
 
 | 상수 | 의미 |
 |---|---|
-| `ZLINK_MONITOR_EVENT_PEER_UP` | 피어 연결 |
-| `ZLINK_MONITOR_EVENT_PEER_DOWN` | 피어 연결 해제 |
 | `ZLINK_MONITOR_EVENT_ERROR` | 오류 발생 |
 | `ZLINK_MONITOR_EVENT_CLOSED` | monitor terminal 이벤트 |
 
@@ -110,48 +106,20 @@ disconnect reason:
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | provider 소실 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 |
 
-### SPOT
-
-| 상수 | 발생 주체 | 의미 |
-|---|---|---|
-| `ZLINK_SPOT_SUB_FILTER_APPLIED` | sub monitor | local filter 설치 완료 |
-| `ZLINK_SPOT_SUB_SUBSCRIPTION_READY_CHANGED` | sub monitor | subscription readiness 변화 |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | pub monitor | PUB 큐가 가득 참 |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | pub monitor | PUB 큐가 비워짐 |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | sub monitor | subject별 delivery-ready 변화 |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | pub monitor | subject별 remote delivery-ready 변화 |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | pub monitor | first-delivery-safe ready 변화 |
-
-모든 `*_READY_CHANGED` 이벤트에서 `value`는 `current_ready_count`입니다.
-`FIRST_DELIVERY_READY_CHANGED`는 publisher 제어 gate로 사용합니다.
-
-SPOT subject 규칙:
-- sub 쪽은 exact topic / pattern에 대해 `subject_kind`가 채워집니다.
-- pub 쪽은 `subject`는 채우지만, remote subscription frame만으로는 exact와
-  pattern origin을 항상 복원할 수 없어 `subject_kind`가 비어 있을 수 있습니다.
-- pattern subscription은 sub-side monitor에서 public API와 동일하게 trailing
-  `*`를 포함한 문자열로 노출됩니다.
-
 ## 예시
 
-subscriber gate:
+raw perf gate:
 
 ```c
-if (event->event_type == ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED
-    && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-    && strcmp(event->subject, "bench") == 0
-    && event->value == 1) {
-    /* 이제 첫 publish를 받을 수 있다 */
+if (event->event == ZLINK_EVENT_CONNECTION_READY) {
+    ++ready_clients;
 }
 ```
 
-publisher gate:
+SPOT perf gate:
 
 ```c
-if (event->event_type == ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED
-    && (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-    && strcmp(event->subject, "bench") == 0
-    && event->value >= 1) {
-    /* 이제 첫 publish를 보낼 수 있다 */
-}
+/* client가 control topic으로 READY 송신 */
+/* server가 READY == expected_clients를 기다림 */
+/* server가 START broadcast */
 ```

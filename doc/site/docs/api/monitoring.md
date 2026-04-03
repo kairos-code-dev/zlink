@@ -25,8 +25,8 @@ Both classes follow the same **recv/callback delivery model**:
 All monitors are closed with `zlink_monitor_close()`.
 
 Use socket monitors for transport/socket diagnostics. Use service
-monitors for local service state transitions such as readiness, route
-changes, and SPOT filter application.
+monitors only for services that still expose a public service-monitor
+surface, such as Discovery.
 
 ## Types
 
@@ -50,10 +50,10 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 | Field | Description |
 |---|---|
 | `event` | Bitmask indicating the event type (one of the `ZLINK_EVENT_*` constants). |
-| `value` | Event-specific value. For connection events this is the file descriptor; for error events it is the errno or protocol error code; for disconnect events it is a `ZLINK_DISCONNECT_*` reason; for `*_READY_CHANGED` events it is the current ready count. |
-| `routing_id` | The routing identity of the peer involved in the event, if applicable. |
-| `local_addr` | Null-terminated local endpoint address string. |
-| `remote_addr` | Null-terminated remote endpoint address string. |
+| `value` | Event-specific value. For many failure events it carries errno or protocol codes. For `CONNECTION_READY` it is reserved and must not be interpreted as an aggregate ready count. |
+| `routing_id` | Peer identity for peer-bound events. For peer-less events the field is still initialized and can be zero. |
+| `local_addr` | Null-terminated local endpoint address string. Always initialized. |
+| `remote_addr` | Null-terminated remote endpoint address string. Always initialized. |
 
 ### zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn
 
@@ -87,7 +87,6 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_source_kind_t source_kind;
     zlink_monitor_state_mask_t state_flags;
     zlink_monitor_snapshot_detail_mask_t detail_flags;
-    uint32_t ready_count;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
 } zlink_monitor_snapshot_t;
@@ -96,9 +95,8 @@ typedef struct zlink_monitor_snapshot_t
 | Field | Description |
 |---|---|
 | `source_kind` | Snapshot source (`SOCKET`, `SPOT_PUB`, `SPOT_SUB`). |
-| `state_flags` | Aggregate state bits such as `READY`, `BOUND_READY`, `SEND_READY`. |
+| `state_flags` | Aggregate state bits such as `READY`, `BOUND_READY`, `CLOSED`. `READY` is supported only on raw socket monitor sources and uses the same contract as `CONNECTION_READY`. |
 | `detail_flags` | Indicates which numeric fields are populated. |
-| `ready_count` | Aggregate ready/connected peer count when supported. |
 | `snd_pending_msgs` | Aggregate local outbound backlog in messages when supported. |
 | `rcv_pending_msgs` | Aggregate local inbound backlog snapshot when supported. |
 
@@ -119,16 +117,14 @@ typedef enum zlink_monitor_source_kind_t
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `ZLINK_MONITOR_STATE_READY` | `1 << 0` | The source is ready (at least one connection). |
+| `ZLINK_MONITOR_STATE_READY` | `1 << 0` | Raw-socket ready level. For `SOCKET` it means a usable connection exists. SPOT sources do not use `READY`. |
 | `ZLINK_MONITOR_STATE_BOUND_READY` | `1 << 1` | The source has a successful bind. |
-| `ZLINK_MONITOR_STATE_SEND_READY` | `1 << 2` | The source can accept send operations. |
 | `ZLINK_MONITOR_STATE_CLOSED` | `1 << 3` | The source has been closed. |
 
 ### Monitor Snapshot Detail Mask
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT` | `1 << 0` | `ready_count` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` field is populated. |
 
@@ -152,12 +148,10 @@ bitwise OR.
 | `ZLINK_EVENT_DISCONNECTED` | `0x0200` | Session disconnected. The event value carries a `ZLINK_DISCONNECT_*` reason. |
 | `ZLINK_EVENT_MONITOR_STOPPED` | `0x0400` | Monitor has been stopped and will produce no more events. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | Handshake failed with no further detail available. |
-| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | Connection readiness changed. `value` is the current ready count. |
+| `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | Ready edge for raw sockets. Messaging may start immediately after this event on supported raw socket families. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed due to a protocol error. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed due to authentication failure. |
-| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness changed. `value` is the current ready count. |
-| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness changed. `value` is the current ready count. |
-| `ZLINK_EVENT_ALL` | `0xFFFF` | Subscribe to all events. |
+| `ZLINK_EVENT_ALL` | `0x7FFF` | Subscribe to all events. |
 
 ### Disconnect Reasons
 
@@ -297,14 +291,15 @@ monitors and service monitors.
 ## Service Monitor API
 
 Service monitors provide state transition events for service-layer
-components (Discovery and SPOT). Unlike raw socket monitors that
-report transport-level events, service monitors report higher-level events
-such as readiness, route changes, and SPOT filter application.
+components that expose a public service-monitor surface. Unlike raw
+socket monitors that report transport-level events, service monitors
+report higher-level service events such as Discovery membership changes.
 
 The target for `zlink_service_monitor_open()` is any service handle
-(Discovery, Spot, or SpotNode). The service kind is determined
-from the handle's runtime tag -- there is no per-service open function and
-no `role` parameter. Internal pub/sub structure is hidden.
+that still exposes public service monitoring, such as Discovery. SPOT
+and SpotNode no longer expose a public service-monitor surface. The
+service kind is determined from the handle's runtime tag -- there is no
+per-service open function and no `role` parameter.
 
 ### zlink_service_event_t / zlink_service_monitor_event_t
 
@@ -371,8 +366,8 @@ typedef struct zlink_service_monitor_open_options_t
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery component |
-| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | SPOT Subscriber component |
-| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | SPOT Publisher component |
+| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | Reserved legacy value; SPOT no longer exposes a public service monitor |
+| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | Reserved legacy value; SPOT no longer exposes a public service monitor |
 
 ### Service Event Constants
 
@@ -380,8 +375,6 @@ typedef struct zlink_service_monitor_open_options_t
 
 | Constant | Bit | Description |
 |----------|-----|-------------|
-| `ZLINK_MONITOR_EVENT_PEER_UP` | `1 << 2` | A peer connected |
-| `ZLINK_MONITOR_EVENT_PEER_DOWN` | `1 << 3` | A peer disconnected |
 | `ZLINK_MONITOR_EVENT_ERROR` | `1 << 4` | An error occurred |
 | `ZLINK_MONITOR_EVENT_CLOSED` | `1 << 17` | Monitor closed |
 
@@ -389,23 +382,9 @@ typedef struct zlink_service_monitor_open_options_t
 
 | Constant | Bit | Description |
 |----------|-----|-------------|
-| `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | Discovery readiness changed; `value` is the current ready count |
 | `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | A discovered service came up |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | A discovered service went down |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | The set of providers for a service changed |
-
-#### SPOT Events
-
-| Constant | Bit | Description |
-|----------|-----|-------------|
-| `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | SPOT readiness changed; `value` is the current ready count |
-| `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | Subscription filter applied |
-| `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` | `1 << 14` | Subscription readiness changed; `value` is the current ready count |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB queue is full |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB queue has been drained |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | Subject-specific remote delivery-ready count changed |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | Subject-specific delivery-ready state changed |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | Publisher-side first-delivery-safe ready count changed |
 
 #### Service Monitor Event Mask Constants
 
@@ -417,16 +396,9 @@ They map to the same underlying bits as the per-service constants above.
 |----------|---------|
 | `ZLINK_SERVICE_MONITOR_EVENT_ERROR` | `ZLINK_MONITOR_EVENT_ERROR` |
 | `ZLINK_SERVICE_MONITOR_EVENT_CLOSED` | `ZLINK_MONITOR_EVENT_CLOSED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED` | `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP` | `ZLINK_DISCOVERY_SERVICE_UP` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN` | `ZLINK_DISCOVERY_SERVICE_DOWN` |
 | `ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED` | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED` | `ZLINK_SPOT_SUB_FILTER_APPLIED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED` | `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` |
-| `ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED` | `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` |
 | `ZLINK_SERVICE_MONITOR_EVENT_ALL` | All service events |
 
 ### Detail Flag Constants
@@ -452,11 +424,10 @@ void *zlink_service_monitor_open (
   const zlink_service_monitor_open_options_t *options_);
 ```
 
-Creates a service monitor on any service handle and returns a handle.
-`target_` can be a Discovery, Spot, or SpotNode handle -- the
-service kind is determined from the handle's runtime tag. For Spot and
-SpotNode targets, internal pub/sub structure is hidden; there is no `role`
-parameter.
+Creates a service monitor on a service handle that exposes public service
+monitoring and returns a handle. `target_` can be a Discovery handle.
+SPOT and SpotNode must not be passed here; use SpotNode status/query
+APIs and benchmark control barriers instead.
 
 The `options_->events` bitmask selects which events to observe, using the
 unified `zlink_service_monitor_event_mask_t` type.

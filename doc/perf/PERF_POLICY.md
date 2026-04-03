@@ -136,7 +136,7 @@
 - SPOT 은 service monitor 를 사용하지 않으며, perf-ready 는 barrier protocol 로만
   정의한다.
 - monitor event rename:
-  - `CONNECTION_READY_CHANGED` 는 `CONNECTION_READY` 로 rename 된다.
+  - raw socket ready event 는 `CONNECTION_READY` 이다.
 - routing 검증이 필요한 패턴(예: ROUTER)은 monitor-ready 이후
   단발성 self-check 1회만 수행하고, 실패 시 즉시 fail 처리한다.
 - registry/bootstrap/query/summary 조회는 measurement phase 밖에서만 수행한다.

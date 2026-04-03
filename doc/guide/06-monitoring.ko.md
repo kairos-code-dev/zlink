@@ -104,7 +104,7 @@ raw 소켓의 transport/session 상태를 알려준다.
 ### CONNECTION_READY 상세
 
 핸드셰이크 완료 후 발생한다. 이 이벤트를 받으면 즉시 메시지를 보내고 받을 수 있다.
-`*_READY_CHANGED` 이벤트의 `value` 필드는 aggregate ready count 계약이 아니다.
+`CONNECTION_READY` 이벤트의 `value` 필드는 reserved이며 aggregate ready count 계약이 아니다.
 readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 한다.
 
 - ROUTER/STREAM에서는 `ev->routing_id`에 peer identity가 포함된다.

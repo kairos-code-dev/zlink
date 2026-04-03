@@ -23,9 +23,9 @@ canonical 이벤트 카탈로그는 이제 [events.ko.md](events.ko.md)에 정�
 
 모든 모니터는 `zlink_monitor_close()`로 닫습니다.
 
-transport/socket 진단은 소켓 모니터를 사용하고, readiness,
-route 변화, registration 결과, SPOT filter 적용 같은 service 상태 전이는
-서비스 모니터를 사용합니다.
+transport/socket 진단은 소켓 모니터를 사용하고, 공개 service-monitor
+surface를 유지하는 서비스의 상태 전이는 서비스 모니터를 사용합니다.
+현재 대표 대상은 Discovery입니다.
 
 ## 타입
 
@@ -50,15 +50,14 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 |------|------|
 | `event` | 이벤트 타입을 나타내는 비트마스크 (`ZLINK_EVENT_*` 상수 중 하나). |
 | `value` | 이벤트별 값 (아래 참조). |
-| `routing_id` | 이벤트 관련 피어의 라우팅 아이덴티티. |
-| `local_addr` | null 종료 로컬 엔드포인트 주소 문자열. |
-| `remote_addr` | null 종료 원격 엔드포인트 주소 문자열. |
+| `routing_id` | peer-bound 이벤트의 피어 라우팅 아이덴티티. peer-less 이벤트에서도 초기화되며 0일 수 있음. |
+| `local_addr` | null 종료 로컬 엔드포인트 주소 문자열. 항상 초기화됨. |
+| `remote_addr` | null 종료 원격 엔드포인트 주소 문자열. 항상 초기화됨. |
 
 `value` 필드 해석:
-- 연결 이벤트: 파일 디스크립터
-- 에러 이벤트: errno 또는 프로토콜 에러 코드
+- 다수 failure 이벤트: errno 또는 프로토콜 에러 코드
 - 연결 해제 이벤트: `ZLINK_DISCONNECT_*` 사유
-- `*_READY_CHANGED` 이벤트: 현재 ready count
+- `CONNECTION_READY`: 예약된 필드이며 aggregate ready count로 해석하지 않음
 
 ### zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn
 
@@ -92,7 +91,6 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_source_kind_t source_kind;
     zlink_monitor_state_mask_t state_flags;
     zlink_monitor_snapshot_detail_mask_t detail_flags;
-    uint32_t ready_count;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
 } zlink_monitor_snapshot_t;
@@ -101,9 +99,8 @@ typedef struct zlink_monitor_snapshot_t
 | 필드 | 설명 |
 |------|------|
 | `source_kind` | snapshot source(`SOCKET`, `SPOT_PUB`, `SPOT_SUB`) |
-| `state_flags` | `READY`, `BOUND_READY`, `SEND_READY` 같은 aggregate 상태 |
+| `state_flags` | `READY`, `BOUND_READY`, `CLOSED` 같은 aggregate 상태. `READY`는 raw socket monitor source에서만 지원되며 `CONNECTION_READY`와 같은 계약을 가짐 |
 | `detail_flags` | 어떤 numeric field가 채워졌는지 표시 |
-| `ready_count` | 지원되는 경우 aggregate ready/connected peer 수 |
 | `snd_pending_msgs` | 지원되는 경우 aggregate 로컬 송신 backlog |
 | `rcv_pending_msgs` | 지원되는 경우 aggregate 로컬 수신 backlog snapshot |
 
@@ -124,16 +121,14 @@ typedef enum zlink_monitor_source_kind_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_MONITOR_STATE_READY` | `1 << 0` | source가 ready (최소 하나의 연결). |
+| `ZLINK_MONITOR_STATE_READY` | `1 << 0` | raw socket의 ready level. `SOCKET`은 usable connection 존재를 뜻하며 SPOT source는 `READY`를 사용하지 않음. |
 | `ZLINK_MONITOR_STATE_BOUND_READY` | `1 << 1` | source에 성공적인 bind가 있음. |
-| `ZLINK_MONITOR_STATE_SEND_READY` | `1 << 2` | source가 send 연산을 수락할 수 있음. |
 | `ZLINK_MONITOR_STATE_CLOSED` | `1 << 3` | source가 닫힘. |
 
 ### Monitor Snapshot Detail Mask
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT` | `1 << 0` | `ready_count` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
 
@@ -156,12 +151,10 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_EVENT_DISCONNECTED` | `0x0200` | 세션 연결 해제됨. |
 | `ZLINK_EVENT_MONITOR_STOPPED` | `0x0400` | 모니터 중지됨. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | 핸드셰이크 실패 (상세 없음). |
-| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | `0x1000` | 연결 readiness 변화. |
+| `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | raw socket의 ready edge. 지원 raw socket 패밀리에서는 이 이벤트 이후 즉시 메시징을 시작할 수 있음. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러로 핸드셰이크 실패. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패로 핸드셰이크 실패. |
-| `ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB delivery readiness 변화. |
-| `ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB delivery readiness 변화. |
-| `ZLINK_EVENT_ALL` | `0xFFFF` | 모든 이벤트 구독. |
+| `ZLINK_EVENT_ALL` | `0x7FFF` | 모든 이벤트 구독. |
 
 ### 연결 해제 사유
 
@@ -297,15 +290,16 @@ int zlink_monitor_close (void **monitor_p_);
 
 ## 서비스 모니터 API
 
-서비스 모니터는 서비스 계층 컴포넌트(Discovery, SPOT)의 상태 전이
-이벤트를 제공합니다. transport 레벨 이벤트를 보고하는 소켓 모니터와 달리,
-서비스 모니터는 readiness, route 변화, SPOT 필터 적용 등의 상위 수준 이벤트를
-보고합니다.
+서비스 모니터는 공개 service-monitor surface를 유지하는 서비스 계층
+컴포넌트의 상태 전이 이벤트를 제공합니다. transport 레벨 이벤트를 보고하는
+소켓 모니터와 달리, 서비스 모니터는 Discovery membership 변화 같은
+상위 수준 이벤트를 보고합니다.
 
-`zlink_service_monitor_open()`의 target은 모든 서비스 핸들(Discovery,
-Spot, SpotNode)을 받습니다. 서비스 종류는 핸들의 runtime tag에서
-결정되며, per-service open 함수나 `role` 파라미터는 없습니다. 내부
-pub/sub 구조는 숨겨집니다.
+`zlink_service_monitor_open()`의 target은 공개 service monitor를 제공하는
+서비스 핸들입니다. 현재 대표 대상은 Discovery이며, Spot과 SpotNode는
+더 이상 공개 service-monitor surface를 제공하지 않습니다. 서비스 종류는
+핸들의 runtime tag에서 결정되며, per-service open 함수나 `role`
+파라미터는 없습니다.
 
 ### zlink_service_event_t / zlink_service_monitor_event_t
 
@@ -372,8 +366,8 @@ typedef struct zlink_service_monitor_open_options_t
 | 상수 | 값 | 설명 |
 |------|-----|------|
 | `ZLINK_SERVICE_KIND_DISCOVERY` | 1 | Discovery 컴포넌트 |
-| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | SPOT Subscriber 컴포넌트 |
-| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | SPOT Publisher 컴포넌트 |
+| `ZLINK_SERVICE_KIND_SPOT_SUB` | 3 | 예약된 legacy 값. SPOT은 더 이상 공개 service monitor를 제공하지 않음 |
+| `ZLINK_SERVICE_KIND_SPOT_PUB` | 4 | 예약된 legacy 값. SPOT은 더 이상 공개 service monitor를 제공하지 않음 |
 
 ### 서비스 이벤트 상수
 
@@ -381,8 +375,6 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_MONITOR_EVENT_PEER_UP` | `1 << 2` | 피어 연결됨 |
-| `ZLINK_MONITOR_EVENT_PEER_DOWN` | `1 << 3` | 피어 연결 해제됨 |
 | `ZLINK_MONITOR_EVENT_ERROR` | `1 << 4` | 에러 발생 |
 | `ZLINK_MONITOR_EVENT_CLOSED` | `1 << 17` | 모니터 닫힘 |
 
@@ -390,23 +382,9 @@ typedef struct zlink_service_monitor_open_options_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | Discovery readiness 변화 |
 | `ZLINK_DISCOVERY_SERVICE_UP` | `1 << 5` | 검색된 서비스가 활성화됨 |
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | `1 << 6` | 검색된 서비스가 비활성화됨 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | `1 << 7` | 서비스 provider 집합이 변경됨 |
-
-#### SPOT 이벤트
-
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED` | `1 << 0` | SPOT readiness 변화 |
-| `ZLINK_SPOT_SUB_FILTER_APPLIED` | `1 << 13` | 구독 필터 적용됨 |
-| `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED` | `1 << 14` | 구독 readiness 변화 |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | `1 << 15` | PUB 큐가 가득 참 |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | `1 << 16` | PUB 큐가 비워짐 |
-| `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED` | `1 << 18` | subject별 remote delivery-ready 변화 |
-| `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED` | `1 << 19` | subject별 delivery-ready 변화 |
-| `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED` | `1 << 20` | first-delivery-safe ready 변화 |
 
 #### 서비스 모니터 이벤트 마스크 상수
 
@@ -419,18 +397,10 @@ typedef struct zlink_service_monitor_open_options_t
 - `..._EVENT_CLOSED` -> `ZLINK_MONITOR_EVENT_CLOSED`
 
 **Discovery:**
-- `..._DISCOVERY_READY_CHANGED` -> `ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED`
 - `..._DISCOVERY_SERVICE_UP` -> `ZLINK_DISCOVERY_SERVICE_UP`
 - `..._DISCOVERY_SERVICE_DOWN` -> `ZLINK_DISCOVERY_SERVICE_DOWN`
 - `..._DISCOVERY_PROVIDERS_CHANGED` -> `ZLINK_DISCOVERY_PROVIDERS_CHANGED`
 
-**SPOT:**
-- `..._SPOT_READY_CHANGED` -> `ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED`
-- `..._SPOT_FILTER_APPLIED` -> `ZLINK_SPOT_SUB_FILTER_APPLIED`
-- `..._SPOT_SUBSCRIPTION_READY_CHANGED` -> `ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED`
-- `..._SPOT_PUB_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_PUB_DELIVERY_READY_CHANGED`
-- `..._SPOT_SUB_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_SUB_DELIVERY_READY_CHANGED`
-- `..._SPOT_FIRST_DELIVERY_READY_CHANGED` -> `ZLINK_SPOT_PUB_FIRST_DELIVERY_READY_CHANGED`
 - `ZLINK_SERVICE_MONITOR_EVENT_ALL` -> 모든 서비스 이벤트
 
 ### Detail 플래그 상수
@@ -456,10 +426,10 @@ void *zlink_service_monitor_open (
   const zlink_service_monitor_open_options_t *options_);
 ```
 
-모든 서비스 핸들에 서비스 모니터를 생성하고 핸들을 반환합니다. `target_`은
-Discovery, Spot, SpotNode 핸들을 받을 수 있으며, 서비스 종류는
-핸들의 runtime tag에서 결정됩니다. Spot 및 SpotNode target의 경우 내부
-pub/sub 구조가 숨겨지며, `role` 파라미터는 없습니다.
+공개 service monitor를 제공하는 서비스 핸들에 서비스 모니터를 생성하고
+핸들을 반환합니다. `target_`은 Discovery 핸들을 받을 수 있습니다.
+Spot 및 SpotNode는 더 이상 여기 대상이 아니며, SpotNode status/query
+API와 benchmark control barrier를 사용해야 합니다.
 
 `options_->events` 비트마스크로 관찰할 이벤트를 선택하며, 통합 마스크 타입인
 `zlink_service_monitor_event_mask_t`를 사용합니다.

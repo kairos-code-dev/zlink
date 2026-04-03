@@ -204,9 +204,9 @@ These report transport/session state for raw sockets.
 
 | Constant | Value | Description | `value` | `routing_id` | Side | After this event |
 |---|---|---|---|---|---|---|
-| `CONNECTION_READY_CHANGED` | `0x1000` | Handshake complete, messaging ready | `current_ready_count` | peer id (all sockets) | Both | **start send/recv** |
-| `CONNECTED` | `0x0001` | TCP connection established (pre-handshake) | fd | — | Client | wait for `CONNECTION_READY_CHANGED` |
-| `ACCEPTED` | `0x0020` | Incoming connection accepted (pre-handshake) | fd | — | Server | wait for `CONNECTION_READY_CHANGED` |
+| `CONNECTION_READY` | `0x1000` | Ready edge after handshake | reserved | peer id | Both | **start send/recv** |
+| `CONNECTED` | `0x0001` | TCP connection established (pre-handshake) | provider-specific | peer id or sentinel | Client | wait for `CONNECTION_READY` |
+| `ACCEPTED` | `0x0020` | Incoming connection accepted (pre-handshake) | provider-specific | peer id or sentinel | Server | wait for `CONNECTION_READY` |
 | `DISCONNECTED` | `0x0200` | Session terminated | reason code | Possible | Both | trigger reconnection |
 | `LISTENING` | `0x0008` | Bind succeeded, listening | fd | — | Server | — |
 | `CLOSED` | `0x0080` | Intentional close completed | — | — | Both | — |
@@ -218,22 +218,21 @@ These report transport/session state for raw sockets.
 | `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | Handshake failed (generic) | errno | — | Both | check network |
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | Handshake failed (protocol error) | error code | — | Both | check version/config |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | Handshake failed (auth) | — | — | Both | check TLS/auth config |
-| `SUB_DELIVERY_READY_CHANGED` | `0x8000` | SUB subscription propagated | `0`/`1` (boolean) | — | SUB side | **start `zlink_subscribe()` recv** |
-| `PUB_DELIVERY_READY_CHANGED` | `0x10000` | PUB subscriber ready | `current_ready_count` | — | PUB side | **start `zlink_publish()` delivery** |
 | `MONITOR_STOPPED` | `0x0400` | Monitor stopped | — | — | Both | `zlink_monitor_close()` |
 
 ### Connection flow
 
 ```
-Client: CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY_CHANGED → start send/recv
-Server: LISTENING → ACCEPTED → CONNECTION_READY_CHANGED → start send/recv
-Close:  CONNECTION_READY_CHANGED → DISCONNECTED → CONNECT_DELAYED → reconnect...
+Client: CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY → start send/recv
+Server: LISTENING → ACCEPTED → CONNECTION_READY → start send/recv
+Close:  CONNECTION_READY → DISCONNECTED → CONNECT_DELAYED → reconnect...
 ```
 
-### CONNECTION_READY_CHANGED details
+### CONNECTION_READY details
 
 Fired after a successful handshake. Once received, messaging can start immediately.
-The `value` field contains `current_ready_count` -- the absolute number of ready peers.
+The `value` field of `CONNECTION_READY` is reserved and must not be used
+as an aggregate ready-count contract.
 
 - `ev->routing_id` contains the peer identity on all socket types.
 
@@ -260,10 +259,10 @@ When `HANDSHAKE_FAILED_PROTOCOL` fires, the `value` field contains one of these 
 
 ```
 Client side:
-  CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY_CHANGED
+  CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY
 
 Server side:
-  ACCEPTED → CONNECTION_READY_CHANGED
+  ACCEPTED → CONNECTION_READY
 ```
 
 ### Handshake Failure
@@ -279,14 +278,14 @@ Server side:
 ### Normal Disconnection
 
 ```
-CONNECTION_READY_CHANGED → DISCONNECTED
+CONNECTION_READY → DISCONNECTED
 ```
 
 ### Reconnection
 
 ```
-CONNECTED → CONNECTION_READY_CHANGED → DISCONNECTED →
-CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY_CHANGED
+CONNECTED → CONNECTION_READY → DISCONNECTED →
+CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY
 ```
 
 ## 6. DISCONNECTED Reason Codes
@@ -468,7 +467,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
     ```c
     /* Connection/disconnection events only */
     zlink_socket_monitor_open_options_t opts = {
-        .events = ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED,
+        .events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
     };
     void *mon = zlink_socket_monitor_open(server, &opts);
     zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
@@ -478,7 +477,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
     ```cpp
     zlink::monitor_options opts;
-    opts.events = zlink::event::connection_ready_changed | zlink::event::disconnected;
+    opts.events = zlink::event::connection_ready | zlink::event::disconnected;
     auto mon = server.monitor_open(opts);
     mon.set_handler(on_monitor_event);
     ```
@@ -487,7 +486,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
     ```java
     var opts = new MonitorOptions(
-        MonitorEvent.CONNECTION_READY_CHANGED | MonitorEvent.DISCONNECTED);
+        MonitorEvent.CONNECTION_READY | MonitorEvent.DISCONNECTED);
     var mon = server.monitorOpen(opts);
     mon.setHandler(this::onMonitorEvent);
     ```
@@ -496,7 +495,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
     ```python
     opts = zlink.MonitorOptions(
-        events=zlink.EVENT_CONNECTION_READY_CHANGED | zlink.EVENT_DISCONNECTED)
+        events=zlink.EVENT_CONNECTION_READY | zlink.EVENT_DISCONNECTED)
     mon = server.monitor_open(opts)
     mon.set_handler(on_monitor_event)
     ```
@@ -505,7 +504,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
     ```typescript
     const opts = {
-        events: zlink.EVENT_CONNECTION_READY_CHANGED | zlink.EVENT_DISCONNECTED
+        events: zlink.EVENT_CONNECTION_READY | zlink.EVENT_DISCONNECTED
     };
     const mon = server.monitorOpen(opts);
     mon.setHandler(onMonitorEvent);
@@ -515,7 +514,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
     ```csharp
     var opts = new MonitorOptions {
-        Events = MonitorEvent.ConnectionReadyChanged | MonitorEvent.Disconnected
+        Events = MonitorEvent.ConnectionReady | MonitorEvent.Disconnected
     };
     using var mon = server.MonitorOpen(opts);
     mon.SetHandler(OnMonitorEvent);
@@ -525,7 +524,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
     ```rust
     let opts = zlink::MonitorOptions::new(
-        zlink::EVENT_CONNECTION_READY_CHANGED | zlink::EVENT_DISCONNECTED);
+        zlink::EVENT_CONNECTION_READY | zlink::EVENT_DISCONNECTED);
     let mon = server.monitor_open(&opts)?;
     mon.set_handler(on_monitor_event);
     ```
@@ -534,7 +533,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
     ```go
     opts := zlink.MonitorOptions{Events:
-        zlink.EventConnectionReadyChanged | zlink.EventDisconnected}
+        zlink.EventConnectionReady | zlink.EventDisconnected}
     mon, err := server.MonitorOpen(opts)
     if err != nil { log.Fatal(err) }
     mon.SetHandler(onMonitorEvent)
@@ -544,7 +543,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
 
 | Preset | Event Mask | Purpose |
 |--------|-----------|---------|
-| Basic | `CONNECTION_READY_CHANGED \| DISCONNECTED` | Connection state tracking |
+| Basic | `CONNECTION_READY \| DISCONNECTED` | Connection state tracking |
 | Debug | Basic + `CONNECTED \| ACCEPTED \| CONNECT_DELAYED \| CONNECT_RETRIED` | Detailed connection process |
 | Security | Basic + `HANDSHAKE_FAILED_*` | Authentication failure detection |
 | Full | `ZLINK_EVENT_ALL` | All events |
@@ -556,7 +555,7 @@ The `value` field of the `DISCONNECTED` event contains the reason for disconnect
     ```c
     /* Basic preset */
     #define MONITOR_PRESET_BASIC \
-        (ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED)
+        (ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED)
 
     /* Debug preset */
     #define MONITOR_PRESET_DEBUG \
@@ -581,7 +580,6 @@ Query the current aggregate state from a monitor handle at any time.
 
 | Field | Description |
 |-------|-------------|
-| `ready_count` | Number of currently ready peers |
 | `snd_pending_msgs` | Messages pending in send queue (capped by SNDHWM) |
 | `rcv_pending_msgs` | Messages pending in receive queue (capped by RCVHWM, approximate) |
 
@@ -615,8 +613,7 @@ When these values approach the HWM, backpressure is occurring.
     void *monitor = zlink_socket_monitor_open(socket, &opts);
     zlink_monitor_snapshot_t snapshot;
     zlink_monitor_snapshot(monitor, &snapshot);
-    printf("Ready peers: %u, sndq=%llu, rcvq=%llu\n",
-           snapshot.ready_count,
+    printf("sndq=%llu, rcvq=%llu\n",
            (unsigned long long) snapshot.snd_pending_msgs,
            (unsigned long long) snapshot.rcv_pending_msgs);
     ```
@@ -626,8 +623,8 @@ When these values approach the HWM, backpressure is occurring.
     ```cpp
     auto mon = socket.monitor_open({zlink::event::all});
     auto snapshot = mon.snapshot();
-    std::println("Ready peers: {}, sndq={}, rcvq={}",
-                 snapshot.ready_count, snapshot.snd_pending_msgs,
+    std::println("sndq={}, rcvq={}",
+                 snapshot.snd_pending_msgs,
                  snapshot.rcv_pending_msgs);
     ```
 
@@ -636,8 +633,8 @@ When these values approach the HWM, backpressure is occurring.
     ```java
     var mon = socket.monitorOpen(new MonitorOptions(MonitorEvent.ALL));
     var snapshot = mon.snapshot();
-    System.out.printf("Ready peers: %d, sndq=%d, rcvq=%d%n",
-        snapshot.readyCount(), snapshot.sndPendingMsgs(), snapshot.rcvPendingMsgs());
+    System.out.printf("sndq=%d, rcvq=%d%n",
+        snapshot.sndPendingMsgs(), snapshot.rcvPendingMsgs());
     ```
 
 === "Python"
@@ -645,8 +642,7 @@ When these values approach the HWM, backpressure is occurring.
     ```python
     mon = socket.monitor_open(zlink.MonitorOptions(events=zlink.EVENT_ALL))
     snapshot = mon.snapshot()
-    print(f"Ready peers: {snapshot.ready_count}, "
-          f"sndq={snapshot.snd_pending_msgs}, rcvq={snapshot.rcv_pending_msgs}")
+    print(f"sndq={snapshot.snd_pending_msgs}, rcvq={snapshot.rcv_pending_msgs}")
     ```
 
 === "Node/TypeScript"
@@ -654,8 +650,7 @@ When these values approach the HWM, backpressure is occurring.
     ```typescript
     const mon = socket.monitorOpen({ events: zlink.EVENT_ALL });
     const snapshot = mon.snapshot();
-    console.log(`Ready peers: ${snapshot.readyCount}, ` +
-                `sndq=${snapshot.sndPendingMsgs}, rcvq=${snapshot.rcvPendingMsgs}`);
+    console.log(`sndq=${snapshot.sndPendingMsgs}, rcvq=${snapshot.rcvPendingMsgs}`);
     ```
 
 === "C#/.NET"
@@ -663,8 +658,7 @@ When these values approach the HWM, backpressure is occurring.
     ```csharp
     using var mon = socket.MonitorOpen(new MonitorOptions { Events = MonitorEvent.All });
     var snapshot = mon.Snapshot();
-    Console.WriteLine($"Ready peers: {snapshot.ReadyCount}, " +
-        $"sndq={snapshot.SndPendingMsgs}, rcvq={snapshot.RcvPendingMsgs}");
+    Console.WriteLine($"sndq={snapshot.SndPendingMsgs}, rcvq={snapshot.RcvPendingMsgs}");
     ```
 
 === "Rust"
@@ -672,8 +666,8 @@ When these values approach the HWM, backpressure is occurring.
     ```rust
     let mon = socket.monitor_open(&zlink::MonitorOptions::new(zlink::EVENT_ALL))?;
     let snapshot = mon.snapshot()?;
-    println!("Ready peers: {}, sndq={}, rcvq={}",
-             snapshot.ready_count, snapshot.snd_pending_msgs,
+    println!("sndq={}, rcvq={}",
+             snapshot.snd_pending_msgs,
              snapshot.rcv_pending_msgs);
     ```
 
@@ -685,8 +679,8 @@ When these values approach the HWM, backpressure is occurring.
     if err != nil { log.Fatal(err) }
     snapshot, err := mon.Snapshot()
     if err != nil { log.Fatal(err) }
-    fmt.Printf("Ready peers: %d, sndq=%d, rcvq=%d\n",
-        snapshot.ReadyCount, snapshot.SndPendingMsgs,
+    fmt.Printf("sndq=%d, rcvq=%d\n",
+        snapshot.SndPendingMsgs,
         snapshot.RcvPendingMsgs)
     ```
 
@@ -697,10 +691,10 @@ You can also combine snapshot queries inside event callbacks.
     ```c
     void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
     {
-        if (ev->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+        if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
             zlink_monitor_snapshot_t snapshot;
             zlink_monitor_snapshot(g_monitor, &snapshot);
-            printf("Ready peers now: %u\n", snapshot.ready_count);
+            printf("Monitor snapshot updated\n");
         }
     }
     ```
@@ -709,9 +703,9 @@ You can also combine snapshot queries inside event callbacks.
 
     ```cpp
     mon.set_handler([&](const zlink::monitor_event& ev) {
-        if (ev.event() == zlink::event::connection_ready_changed) {
+        if (ev.event() == zlink::event::connection_ready) {
             auto snapshot = mon.snapshot();
-            std::println("Ready peers now: {}", snapshot.ready_count);
+            std::println("Monitor snapshot updated");
         }
     });
     ```
@@ -720,9 +714,9 @@ You can also combine snapshot queries inside event callbacks.
 
     ```java
     mon.setHandler((ev) -> {
-        if (ev.event() == MonitorEvent.CONNECTION_READY_CHANGED) {
+        if (ev.event() == MonitorEvent.CONNECTION_READY) {
             var snapshot = mon.snapshot();
-            System.out.printf("Ready peers now: %d%n", snapshot.readyCount());
+            System.out.println("Monitor snapshot updated");
         }
     });
     ```
@@ -731,18 +725,18 @@ You can also combine snapshot queries inside event callbacks.
 
     ```python
     def on_monitor(ev):
-        if ev.event == zlink.EVENT_CONNECTION_READY_CHANGED:
+        if ev.event == zlink.EVENT_CONNECTION_READY:
             snapshot = mon.snapshot()
-            print(f"Ready peers now: {snapshot.ready_count}")
+            print("Monitor snapshot updated")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
     mon.setHandler((ev) => {
-        if (ev.event === zlink.EVENT_CONNECTION_READY_CHANGED) {
+        if (ev.event === zlink.EVENT_CONNECTION_READY) {
             const snapshot = mon.snapshot();
-            console.log(`Ready peers now: ${snapshot.readyCount}`);
+            console.log("Monitor snapshot updated");
         }
     });
     ```
@@ -751,9 +745,9 @@ You can also combine snapshot queries inside event callbacks.
 
     ```csharp
     mon.SetHandler((ev) => {
-        if (ev.Event == MonitorEvent.ConnectionReadyChanged) {
+        if (ev.Event == MonitorEvent.ConnectionReady) {
             var snapshot = mon.Snapshot();
-            Console.WriteLine($"Ready peers now: {snapshot.ReadyCount}");
+            Console.WriteLine("Monitor snapshot updated");
         }
     });
     ```
@@ -762,9 +756,9 @@ You can also combine snapshot queries inside event callbacks.
 
     ```rust
     mon.set_handler(|ev| {
-        if ev.event() == zlink::EVENT_CONNECTION_READY_CHANGED {
+        if ev.event() == zlink::EVENT_CONNECTION_READY {
             let snapshot = mon.snapshot().unwrap();
-            println!("Ready peers now: {}", snapshot.ready_count);
+            println!("Monitor snapshot updated");
         }
     });
     ```
@@ -773,17 +767,19 @@ You can also combine snapshot queries inside event callbacks.
 
     ```go
     mon.SetHandler(func(ev zlink.MonitorEvent) {
-        if ev.Event() == zlink.EventConnectionReadyChanged {
+        if ev.Event() == zlink.EventConnectionReady {
             snapshot, _ := mon.Snapshot()
-            fmt.Printf("Ready peers now: %d\n", snapshot.ReadyCount)
+            fmt.Println("Monitor snapshot updated")
         }
     })
     ```
 
 ## 8.1 Service Monitor
 
-The service monitor observes state changes on service handles such as
-SPOT and Discovery. It is a separate API from the socket monitor.
+The service monitor observes state changes on service handles that still
+expose a public service-monitor surface, such as Discovery. It is a
+separate API from the socket monitor.
+SPOT and SpotNode no longer expose a public service-monitor surface.
 
 - **Event type**: `zlink_service_event_t` (different from socket monitor's `zlink_monitor_event_t`)
 - **Callback type**: `zlink_service_monitor_handler_fn`
@@ -795,11 +791,13 @@ SPOT and Discovery. It is a separate API from the socket monitor.
 === "C"
 
     ```c
-    /* SPOT service monitor */
+    /* Discovery service monitor */
     zlink_service_monitor_open_options_t opts = {
-        .events = ZLINK_SERVICE_MONITOR_EVENT_ALL
+        .events = ZLINK_SERVICE_MONITOR_EVENT_ERROR
+                  | ZLINK_SERVICE_MONITOR_EVENT_CLOSED
+                  | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED
     };
-    void *mon = zlink_service_monitor_open(spot_node, &opts);
+    void *mon = zlink_service_monitor_open(discovery, &opts);
     ```
 
 === "C++"
@@ -853,107 +851,25 @@ SPOT and Discovery. It is a separate API from the socket monitor.
     if err != nil { log.Fatal(err) }
     ```
 
-Pass any service handle (discovery, spot, spot_node).
-The handle kind is determined automatically at runtime.
+Pass a service handle that supports public service monitoring.
+SPOT and SpotNode no longer expose a public service-monitor surface.
 
 ### Callback mode
 
 === "C"
 
     ```c
-    void on_spot_event(const zlink_service_event_t *ev, void *userdata)
+    void on_service_event(const zlink_service_event_t *ev, void *userdata)
     {
-        if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED) {
-            printf("sub delivery ready\n");
+        if (ev->event_type & ZLINK_DISCOVERY_PROVIDERS_CHANGED) {
+            printf("provider set changed\n");
         }
-        if (ev->event_type & ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED) {
-            printf("pub first delivery ready\n");
+        if (ev->event_type & ZLINK_MONITOR_EVENT_ERROR) {
+            printf("service error: %d\n", ev->error_code);
         }
     }
 
-    zlink_service_monitor_handler(mon, on_spot_event, NULL);
-    ```
-
-=== "C++"
-
-    ```cpp
-    mon.set_handler([](const zlink::service_event& ev) {
-        if (ev.event_type() & zlink::spot_monitor_event::sub_delivery_ready_changed)
-            std::println("sub delivery ready");
-        if (ev.event_type() & zlink::spot_monitor_event::pub_first_delivery_ready_changed)
-            std::println("pub first delivery ready");
-    });
-    ```
-
-=== "Java"
-
-    ```java
-    mon.setHandler((ev) -> {
-        if ((ev.eventType() & SpotMonitorEvent.SUB_DELIVERY_READY_CHANGED) != 0)
-            System.out.println("sub delivery ready");
-        if ((ev.eventType() & SpotMonitorEvent.PUB_FIRST_DELIVERY_READY_CHANGED) != 0)
-            System.out.println("pub first delivery ready");
-    });
-    ```
-
-=== "Python"
-
-    ```python
-    def on_spot_event(ev):
-        if ev.event_type & zlink.SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED:
-            print("sub delivery ready")
-        if ev.event_type & zlink.SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED:
-            print("pub first delivery ready")
-
-    mon.set_handler(on_spot_event)
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    mon.setHandler((ev) => {
-        if (ev.eventType & zlink.SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED)
-            console.log("sub delivery ready");
-        if (ev.eventType & zlink.SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED)
-            console.log("pub first delivery ready");
-    });
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    mon.SetHandler((ev) => {
-        if (ev.EventType.HasFlag(SpotMonitorEvent.SubDeliveryReadyChanged))
-            Console.WriteLine("sub delivery ready");
-        if (ev.EventType.HasFlag(SpotMonitorEvent.PubFirstDeliveryReadyChanged))
-            Console.WriteLine("pub first delivery ready");
-    });
-    ```
-
-=== "Rust"
-
-    ```rust
-    mon.set_handler(|ev| {
-        if ev.event_type().contains(zlink::SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED) {
-            println!("sub delivery ready");
-        }
-        if ev.event_type().contains(zlink::SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED) {
-            println!("pub first delivery ready");
-        }
-    });
-    ```
-
-=== "Go"
-
-    ```go
-    mon.SetHandler(func(ev zlink.ServiceEvent) {
-        if ev.EventType()&zlink.SpotMonitorEventSubDeliveryReadyChanged != 0 {
-            fmt.Println("sub delivery ready")
-        }
-        if ev.EventType()&zlink.SpotMonitorEventPubFirstDeliveryReadyChanged != 0 {
-            fmt.Println("pub first delivery ready")
-        }
-    })
+    zlink_service_monitor_handler(mon, on_service_event, NULL);
     ```
 
 ### Recv mode
@@ -1034,16 +950,6 @@ The handle kind is determined automatically at runtime.
 Events observed via `zlink_service_monitor_open()`.
 Different services emit different events.
 
-#### SPOT events
-
-| Constant | Description | `value` | After this event |
-|---|---|---|---|
-| `SUB_DELIVERY_READY_CHANGED` | sub delivery readiness changed | — | **start receiving** |
-| `PUB_FIRST_DELIVERY_READY_CHANGED` | at least one subscriber ready | — | **start `zlink_publish()` delivery** |
-| `SPOT_SUB_FILTER_APPLIED` | subscription filter propagated to peer | — | — |
-| `SPOT_SUB_SUBSCRIPTION_READY` | subscription receive ready | — | — |
-| `SPOT_PUB_DELIVERY_READY_CHANGED` | subject-specific remote delivery-ready changed | — | — |
-
 #### Discovery events
 
 | Constant | Description | `value` | After this event |
@@ -1051,6 +957,13 @@ Different services emit different events.
 | `DISCOVERY_SERVICE_UP` | discovered service came up | — | — |
 | `DISCOVERY_SERVICE_DOWN` | discovered service went down | — | — |
 | `DISCOVERY_PROVIDERS_CHANGED` | provider set changed | — | — |
+
+#### Common events (all services)
+
+| Constant | Description |
+|---|---|
+| `MONITOR_EVENT_ERROR` | error occurred |
+| `MONITOR_EVENT_CLOSED` | monitor closed |
 
 #### Common events (all services)
 
@@ -1371,19 +1284,19 @@ receive, wait for the right event.
 
 ### 11.1 Raw sockets — PAIR, DEALER, ROUTER
 
-Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
+Ready to send/recv immediately after `CONNECTION_READY`.
 
 === "C"
 
     ```c
     /* DEALER/ROUTER example */
     zlink_socket_monitor_open_options_t opts = {
-        .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+        .events = ZLINK_EVENT_CONNECTION_READY
     };
     void *mon = zlink_socket_monitor_open(router, &opts);
 
     void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
-        if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+        if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
             /* ROUTER: ev->routing_id contains the peer identity */
             /* routed send is possible now */
         }
@@ -1394,9 +1307,9 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 === "C++"
 
     ```cpp
-    auto mon = router.monitor_open({zlink::event::connection_ready_changed});
+    auto mon = router.monitor_open({zlink::event::connection_ready});
     mon.set_handler([](const zlink::monitor_event& ev) {
-        if (ev.event() & zlink::event::connection_ready_changed) {
+        if (ev.event() & zlink::event::connection_ready) {
             // ROUTER: ev.routing_id() contains the peer identity
             // routed send is possible now
         }
@@ -1407,9 +1320,9 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 
     ```java
     var mon = router.monitorOpen(
-        new MonitorOptions(MonitorEvent.CONNECTION_READY_CHANGED));
+        new MonitorOptions(MonitorEvent.CONNECTION_READY));
     mon.setHandler(ev -> {
-        if ((ev.event() & MonitorEvent.CONNECTION_READY_CHANGED) != 0) {
+        if ((ev.event() & MonitorEvent.CONNECTION_READY) != 0) {
             // ROUTER: ev.routingId() contains the peer identity
         }
     });
@@ -1419,9 +1332,9 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 
     ```python
     mon = router.monitor_open(
-        zlink.MonitorOptions(events=zlink.EVENT_CONNECTION_READY_CHANGED))
+        zlink.MonitorOptions(events=zlink.EVENT_CONNECTION_READY))
     def on_ready(ev):
-        if ev.event & zlink.EVENT_CONNECTION_READY_CHANGED:
+        if ev.event & zlink.EVENT_CONNECTION_READY:
             # ROUTER: ev.routing_id contains the peer identity
             pass
     mon.set_handler(on_ready)
@@ -1431,10 +1344,10 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 
     ```typescript
     const mon = router.monitorOpen({
-        events: zlink.EVENT_CONNECTION_READY_CHANGED
+        events: zlink.EVENT_CONNECTION_READY
     });
     mon.setHandler((ev) => {
-        if (ev.event & zlink.EVENT_CONNECTION_READY_CHANGED) {
+        if (ev.event & zlink.EVENT_CONNECTION_READY) {
             // ROUTER: ev.routingId contains the peer identity
         }
     });
@@ -1444,9 +1357,9 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 
     ```csharp
     using var mon = router.MonitorOpen(
-        new MonitorOptions { Events = MonitorEvent.ConnectionReadyChanged });
+        new MonitorOptions { Events = MonitorEvent.ConnectionReady });
     mon.SetHandler(ev => {
-        if (ev.Event.HasFlag(MonitorEvent.ConnectionReadyChanged)) {
+        if (ev.Event.HasFlag(MonitorEvent.ConnectionReady)) {
             // ROUTER: ev.RoutingId contains the peer identity
         }
     });
@@ -1456,9 +1369,9 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 
     ```rust
     let mon = router.monitor_open(
-        &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY_CHANGED))?;
+        &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY))?;
     mon.set_handler(|ev| {
-        if ev.event() & zlink::EVENT_CONNECTION_READY_CHANGED != 0 {
+        if ev.event() & zlink::EVENT_CONNECTION_READY != 0 {
             // ROUTER: ev.routing_id() contains the peer identity
         }
     });
@@ -1467,10 +1380,10 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 === "Go"
 
     ```go
-    opts := zlink.MonitorOptions{Events: zlink.EventConnectionReadyChanged}
+    opts := zlink.MonitorOptions{Events: zlink.EventConnectionReady}
     mon, _ := router.MonitorOpen(opts)
     mon.SetHandler(func(ev zlink.MonitorEvent) {
-        if ev.Event()&zlink.EventConnectionReadyChanged != 0 {
+        if ev.Event()&zlink.EventConnectionReady != 0 {
             // ROUTER: ev.RoutingID() contains the peer identity
         }
     })
@@ -1478,35 +1391,35 @@ Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| PAIR | `CONNECTION_READY_CHANGED` on both sides | bidirectional send/recv |
-| DEALER | `CONNECTION_READY_CHANGED` | send/recv |
-| ROUTER | `CONNECTION_READY_CHANGED` | routed send/recv using `ev->routing_id` |
+| PAIR | `CONNECTION_READY` on both sides | bidirectional send/recv |
+| DEALER | `CONNECTION_READY` | send/recv |
+| ROUTER | `CONNECTION_READY` | routed send/recv using `ev->routing_id` |
 
 ### 11.2 Raw sockets — STREAM
 
 STREAM works like ROUTER — the routing_id is assigned when the TCP
 connection is established, not when the first payload arrives.
-`CONNECTION_READY_CHANGED` fires with the routing_id before any payload
+`CONNECTION_READY` fires with the routing_id before any payload
 is delivered to the application. Sequence:
 
 1. Client connects via raw TCP
-2. Server receives `CONNECTION_READY_CHANGED` with `ev->routing_id`
+2. Server receives `CONNECTION_READY` with `ev->routing_id`
 3. Server can now send to the client using the routing_id
 4. Client payload (if any) arrives after the ready event
 
 === "C"
 
     ```c
-    /* STREAM server: CONNECTION_READY_CHANGED -> routing_id available -> send/recv */
+    /* STREAM server: CONNECTION_READY -> routing_id available -> send/recv */
     void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
-        if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+        if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
             /* ev->routing_id contains the peer's routing_id */
             /* send to this peer immediately, or wait for inbound payload */
         }
     }
 
     zlink_socket_monitor_open_options_t opts = {
-        .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+        .events = ZLINK_EVENT_CONNECTION_READY
     };
     void *mon = zlink_socket_monitor_open(stream_server, &opts);
     zlink_socket_monitor_handler(mon, on_ready, NULL);
@@ -1515,9 +1428,9 @@ is delivered to the application. Sequence:
 === "C++"
 
     ```cpp
-    auto mon = stream_server.monitor_open({zlink::event::connection_ready_changed});
+    auto mon = stream_server.monitor_open({zlink::event::connection_ready});
     mon.set_handler([](const zlink::monitor_event& ev) {
-        if (ev.event() & zlink::event::connection_ready_changed) {
+        if (ev.event() & zlink::event::connection_ready) {
             // ev.routing_id() contains the peer's routing_id
         }
     });
@@ -1527,9 +1440,9 @@ is delivered to the application. Sequence:
 
     ```java
     var mon = streamServer.monitorOpen(
-        new MonitorOptions(MonitorEvent.CONNECTION_READY_CHANGED));
+        new MonitorOptions(MonitorEvent.CONNECTION_READY));
     mon.setHandler(ev -> {
-        if ((ev.event() & MonitorEvent.CONNECTION_READY_CHANGED) != 0) {
+        if ((ev.event() & MonitorEvent.CONNECTION_READY) != 0) {
             // ev.routingId() contains the peer's routing_id
         }
     });
@@ -1539,9 +1452,9 @@ is delivered to the application. Sequence:
 
     ```python
     mon = stream_server.monitor_open(
-        zlink.MonitorOptions(events=zlink.EVENT_CONNECTION_READY_CHANGED))
+        zlink.MonitorOptions(events=zlink.EVENT_CONNECTION_READY))
     def on_ready(ev):
-        if ev.event & zlink.EVENT_CONNECTION_READY_CHANGED:
+        if ev.event & zlink.EVENT_CONNECTION_READY:
             # ev.routing_id contains the peer's routing_id
             pass
     mon.set_handler(on_ready)
@@ -1551,10 +1464,10 @@ is delivered to the application. Sequence:
 
     ```typescript
     const mon = streamServer.monitorOpen({
-        events: zlink.EVENT_CONNECTION_READY_CHANGED
+        events: zlink.EVENT_CONNECTION_READY
     });
     mon.setHandler((ev) => {
-        if (ev.event & zlink.EVENT_CONNECTION_READY_CHANGED) {
+        if (ev.event & zlink.EVENT_CONNECTION_READY) {
             // ev.routingId contains the peer's routing_id
         }
     });
@@ -1564,9 +1477,9 @@ is delivered to the application. Sequence:
 
     ```csharp
     using var mon = streamServer.MonitorOpen(
-        new MonitorOptions { Events = MonitorEvent.ConnectionReadyChanged });
+        new MonitorOptions { Events = MonitorEvent.ConnectionReady });
     mon.SetHandler(ev => {
-        if (ev.Event.HasFlag(MonitorEvent.ConnectionReadyChanged)) {
+        if (ev.Event.HasFlag(MonitorEvent.ConnectionReady)) {
             // ev.RoutingId contains the peer's routing_id
         }
     });
@@ -1576,9 +1489,9 @@ is delivered to the application. Sequence:
 
     ```rust
     let mon = stream_server.monitor_open(
-        &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY_CHANGED))?;
+        &zlink::MonitorOptions::new(zlink::EVENT_CONNECTION_READY))?;
     mon.set_handler(|ev| {
-        if ev.event() & zlink::EVENT_CONNECTION_READY_CHANGED != 0 {
+        if ev.event() & zlink::EVENT_CONNECTION_READY != 0 {
             // ev.routing_id() contains the peer's routing_id
         }
     });
@@ -1587,10 +1500,10 @@ is delivered to the application. Sequence:
 === "Go"
 
     ```go
-    opts := zlink.MonitorOptions{Events: zlink.EventConnectionReadyChanged}
+    opts := zlink.MonitorOptions{Events: zlink.EventConnectionReady}
     mon, _ := streamServer.MonitorOpen(opts)
     mon.SetHandler(func(ev zlink.MonitorEvent) {
-        if ev.Event()&zlink.EventConnectionReadyChanged != 0 {
+        if ev.Event()&zlink.EventConnectionReady != 0 {
             // ev.RoutingID() contains the peer's routing_id
         }
     })
@@ -1598,289 +1511,58 @@ is delivered to the application. Sequence:
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| STREAM | `CONNECTION_READY_CHANGED` | send/recv using `ev->routing_id` |
+| STREAM | `CONNECTION_READY` | send/recv using `ev->routing_id` |
 
 ### 11.3 Raw sockets — PUB/SUB
 
-Raw PUB/SUB sockets provide delivery-ready events via the socket monitor.
-Open separate monitors on PUB and SUB and wait for both before messaging.
+For internal perf on raw PUB/SUB, use `CONNECTION_READY` for each
+expected client before messaging. Perf does not use delivery-ready
+monitor events.
 
-- `SUB_DELIVERY_READY_CHANGED(value=1)` — subscription propagated, receiving possible (0/1 boolean)
-- `PUB_DELIVERY_READY_CHANGED(value>0)` — ready subscriber count (absolute count); check against expected subscriber count
+```c
+zlink_set_subscription(sub, "topic");
 
-=== "C"
+/* SUB/PUB perf gate: wait for connection-ready */
+zlink_socket_monitor_open_options_t sub_opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY
+};
+void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
 
-    ```c
-    zlink_set_subscription(sub, "topic");
+zlink_socket_monitor_open_options_t pub_opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY
+};
+void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-    /* SUB monitor: wait for subscription propagation */
-    zlink_socket_monitor_open_options_t sub_opts = {
-        .events = ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
-    };
-    void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
+/* Start after expected clients are connection-ready */
+zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
+zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
 
-    /* PUB monitor: wait for subscriber readiness */
-    zlink_socket_monitor_open_options_t pub_opts = {
-        .events = ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED
-    };
-    void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
-
-    /* Start messaging after both delivery-ready events */
-    /* SUB_DELIVERY_READY_CHANGED(value=1) + PUB_DELIVERY_READY_CHANGED(value>=expected_subs) */
-    zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
-    zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
-
-    zlink_monitor_close(&pub_mon);
-    zlink_monitor_close(&sub_mon);
-    ```
-
-=== "C++"
-
-    ```cpp
-    sub.set_subscription("topic");
-
-    auto sub_mon = sub.monitor_open({zlink::event::sub_delivery_ready_changed});
-    auto pub_mon = pub.monitor_open({zlink::event::pub_delivery_ready_changed});
-
-    // Start messaging after both delivery-ready events
-    pub.publish(nullptr, part, 1, 0);
-    sub.subscribe(parts, count, 0, topic_buf, topic_len);
-
-    pub_mon.close();
-    sub_mon.close();
-    ```
-
-=== "Java"
-
-    ```java
-    sub.setSubscription("topic");
-
-    var subMon = sub.monitorOpen(
-        new MonitorOptions(MonitorEvent.SUB_DELIVERY_READY_CHANGED));
-    var pubMon = pub.monitorOpen(
-        new MonitorOptions(MonitorEvent.PUB_DELIVERY_READY_CHANGED));
-
-    // Start messaging after both delivery-ready events
-    pub.publish(null, part);
-    sub.subscribe(topicBuf);
-
-    pubMon.close();
-    subMon.close();
-    ```
-
-=== "Python"
-
-    ```python
-    sub.set_subscription("topic")
-
-    sub_mon = sub.monitor_open(
-        zlink.MonitorOptions(events=zlink.EVENT_SUB_DELIVERY_READY_CHANGED))
-    pub_mon = pub.monitor_open(
-        zlink.MonitorOptions(events=zlink.EVENT_PUB_DELIVERY_READY_CHANGED))
-
-    # Start messaging after both delivery-ready events
-    pub.publish(None, part)
-    sub.subscribe()
-
-    pub_mon.close()
-    sub_mon.close()
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    sub.setSubscription("topic");
-
-    const subMon = sub.monitorOpen({
-        events: zlink.EVENT_SUB_DELIVERY_READY_CHANGED });
-    const pubMon = pub.monitorOpen({
-        events: zlink.EVENT_PUB_DELIVERY_READY_CHANGED });
-
-    // Start messaging after both delivery-ready events
-    pub.publish(null, part);
-    sub.subscribe(topicBuf);
-
-    pubMon.close();
-    subMon.close();
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    sub.SetSubscription("topic");
-
-    using var subMon = sub.MonitorOpen(
-        new MonitorOptions { Events = MonitorEvent.SubDeliveryReadyChanged });
-    using var pubMon = pub.MonitorOpen(
-        new MonitorOptions { Events = MonitorEvent.PubDeliveryReadyChanged });
-
-    // Start messaging after both delivery-ready events
-    pub.Publish(null, part);
-    sub.Subscribe(topicBuf);
-    ```
-
-=== "Rust"
-
-    ```rust
-    sub.set_subscription("topic")?;
-
-    let sub_mon = sub.monitor_open(
-        &zlink::MonitorOptions::new(zlink::EVENT_SUB_DELIVERY_READY_CHANGED))?;
-    let pub_mon = pub.monitor_open(
-        &zlink::MonitorOptions::new(zlink::EVENT_PUB_DELIVERY_READY_CHANGED))?;
-
-    // Start messaging after both delivery-ready events
-    pub.publish(None, &part, 1, 0)?;
-    sub.subscribe(&mut parts, &mut count, 0, &mut topic_buf, &mut topic_len)?;
-
-    pub_mon.close();
-    sub_mon.close();
-    ```
-
-=== "Go"
-
-    ```go
-    sub.SetSubscription("topic")
-
-    subOpts := zlink.MonitorOptions{Events: zlink.EventSubDeliveryReadyChanged}
-    subMon, _ := sub.MonitorOpen(subOpts)
-    pubOpts := zlink.MonitorOptions{Events: zlink.EventPubDeliveryReadyChanged}
-    pubMon, _ := pub.MonitorOpen(pubOpts)
-
-    // Start messaging after both delivery-ready events
-    pub.Publish("", zlink.NewMessage(partData))
-    topic, parts, _ := sub.Subscribe()
-    _, _ = topic, parts
-
-    pubMon.Close()
-    subMon.Close()
-    ```
+zlink_monitor_close(&pub_mon);
+zlink_monitor_close(&sub_mon);
+```
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| PUB | `PUB_DELIVERY_READY_CHANGED(value>=expected_subs)` | `zlink_publish()` delivery |
-| SUB | `SUB_DELIVERY_READY_CHANGED(value=1)` | `zlink_subscribe()` recv |
+| PUB | `CONNECTION_READY` + expected client counting | `zlink_publish()` delivery |
+| SUB | `CONNECTION_READY` + expected client counting | `zlink_subscribe()` recv |
 
 ### 11.4 Services — SPOT
 
-SPOT uses separate service monitors for sub and pub, each subscribing to
-different events.
+SPOT no longer exposes a public service-monitor surface. For internal
+perf on SPOT, use an explicit benchmark control barrier instead of
+monitor events.
 
-=== "C"
-
-    ```c
-    /* Sub monitor: subscribe to SUB_DELIVERY_READY_CHANGED */
-    zlink_service_monitor_open_options_t sub_opts = {
-        .events = ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
-                  | ZLINK_MONITOR_EVENT_ERROR
-    };
-    void *sub_mon = zlink_service_monitor_open(sub_node, &sub_opts);
-
-    /* Pub monitor: subscribe to PUB_FIRST_DELIVERY_READY_CHANGED */
-    zlink_service_monitor_open_options_t pub_opts = {
-        .events = ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
-                  | ZLINK_MONITOR_EVENT_ERROR
-    };
-    void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
-
-    /* Start messaging after both are ready */
-    ```
-
-=== "C++"
-
-    ```cpp
-    auto sub_mon = sub_node.service_monitor_open(
-        {zlink::spot_monitor_event::sub_delivery_ready_changed
-         | zlink::monitor_event::error});
-    auto pub_mon = pub_node.service_monitor_open(
-        {zlink::spot_monitor_event::pub_first_delivery_ready_changed
-         | zlink::monitor_event::error});
-
-    // Start messaging after both are ready
-    ```
-
-=== "Java"
-
-    ```java
-    var subMon = subNode.serviceMonitorOpen(new ServiceMonitorOptions(
-        SpotMonitorEvent.SUB_DELIVERY_READY_CHANGED | MonitorEvent.ERROR));
-    var pubMon = pubNode.serviceMonitorOpen(new ServiceMonitorOptions(
-        SpotMonitorEvent.PUB_FIRST_DELIVERY_READY_CHANGED | MonitorEvent.ERROR));
-
-    // Start messaging after both are ready
-    ```
-
-=== "Python"
-
-    ```python
-    sub_mon = sub_node.service_monitor_open(zlink.ServiceMonitorOptions(
-        events=zlink.SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
-               | zlink.MONITOR_EVENT_ERROR))
-    pub_mon = pub_node.service_monitor_open(zlink.ServiceMonitorOptions(
-        events=zlink.SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
-               | zlink.MONITOR_EVENT_ERROR))
-
-    # Start messaging after both are ready
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    const subMon = subNode.serviceMonitorOpen({
-        events: zlink.SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
-              | zlink.MONITOR_EVENT_ERROR
-    });
-    const pubMon = pubNode.serviceMonitorOpen({
-        events: zlink.SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
-              | zlink.MONITOR_EVENT_ERROR
-    });
-
-    // Start messaging after both are ready
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    using var subMon = subNode.ServiceMonitorOpen(new ServiceMonitorOptions {
-        Events = SpotMonitorEvent.SubDeliveryReadyChanged | MonitorEvent.Error });
-    using var pubMon = pubNode.ServiceMonitorOpen(new ServiceMonitorOptions {
-        Events = SpotMonitorEvent.PubFirstDeliveryReadyChanged | MonitorEvent.Error });
-
-    // Start messaging after both are ready
-    ```
-
-=== "Rust"
-
-    ```rust
-    let sub_mon = sub_node.service_monitor_open(&zlink::ServiceMonitorOptions::new(
-        zlink::SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
-        | zlink::MONITOR_EVENT_ERROR))?;
-    let pub_mon = pub_node.service_monitor_open(&zlink::ServiceMonitorOptions::new(
-        zlink::SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
-        | zlink::MONITOR_EVENT_ERROR))?;
-
-    // Start messaging after both are ready
-    ```
-
-=== "Go"
-
-    ```go
-    subOpts := zlink.ServiceMonitorOptions{Events:
-        zlink.SpotMonitorEventSubDeliveryReadyChanged |
-        zlink.MonitorEventError}
-    subMon, _ := subNode.ServiceMonitorOpen(subOpts)
-    pubOpts := zlink.ServiceMonitorOptions{Events:
-        zlink.SpotMonitorEventPubFirstDeliveryReadyChanged |
-        zlink.MonitorEventError}
-    pubMon, _ := pubNode.ServiceMonitorOpen(pubOpts)
-
-    // Start messaging after both are ready
-    ```
+```c
+/* SPOT perf gate: explicit READY/START barrier */
+send_control_ready(client_id);
+wait_ready_count(expected_clients);
+broadcast_control_start();
+```
 
 | Service | Wait for | Then you can |
 |---|---|---|
-| SPOT sub | `SUB_DELIVERY_READY_CHANGED` | start receiving via `zlink_subscribe()` |
-| SPOT pub | `PUB_FIRST_DELIVERY_READY_CHANGED` | start delivering via `zlink_publish()` |
+| SPOT sub | explicit `READY/START` barrier | start receiving via `zlink_subscribe()` |
+| SPOT pub | explicit `READY/START` barrier | start delivering via `zlink_publish()` |
 
 ### 11.5 Snapshots
 

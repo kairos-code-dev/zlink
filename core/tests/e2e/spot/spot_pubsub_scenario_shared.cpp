@@ -650,3 +650,83 @@ void run_spot_peer_tcp_test ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
     step_log ("spot peer transport: term ctx done");
 }
+
+void run_spot_peer_reverse_tcp_test ()
+{
+    const char *topic = "tcp:reverse";
+    const char *payload = "reverse-msg";
+    const char *bind_prefix = "tcp://127.0.0.1:";
+
+    step_log ("spot peer reverse transport: create ctx");
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    step_log ("spot peer reverse transport: create nodes");
+    void *node_a = create_spot_node (ctx, "spot-test");
+    TEST_ASSERT_NOT_NULL (node_a);
+    void *node_b = create_spot_node (ctx, "spot-test");
+    TEST_ASSERT_NOT_NULL (node_b);
+    void *sub_a = create_spot_sub_handle (node_a, &queued_spot_handler);
+    void *pub_b = create_spot_pub_handle (node_b);
+    TEST_ASSERT_NOT_NULL (sub_a);
+    TEST_ASSERT_NOT_NULL (pub_b);
+    char endpoint_a[MAX_SOCKET_STRING] = {0};
+    char endpoint_b[MAX_SOCKET_STRING] = {0};
+    int port_seed = 29020;
+
+    step_log ("spot peer reverse transport: bind node_a");
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      node_a, bind_prefix, &port_seed, endpoint_a));
+    step_log ("spot peer reverse transport: bind node_b");
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      node_b, bind_prefix, &port_seed, endpoint_b));
+
+    step_log ("spot peer reverse transport: warm node_b default pub");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_b, "__warmup__", NULL, 0, 0));
+
+    step_log ("spot peer reverse transport: connect node_b -> node_a");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (node_b, endpoint_a));
+    step_log ("spot peer reverse transport: connect node_a -> node_b");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (node_a, endpoint_b));
+
+    step_log ("spot peer reverse transport: subscribe node_a");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_a, topic));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      node_a, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 3000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      node_b, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 3000));
+
+    zlink_msg_t parts[1];
+    const size_t payload_size = strlen (payload);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], payload_size));
+    memcpy (zlink_msg_data (&parts[0]), payload, payload_size);
+
+    step_log ("spot peer reverse transport: publish");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_b, topic, parts, 1, 0));
+
+    step_log ("spot peer reverse transport: wait delivery");
+    TEST_ASSERT_TRUE (
+      wait_for_spot_message (sub_a, topic, payload, payload_size, 2000));
+
+    step_log ("spot peer reverse transport: detach subscriber");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (sub_a, topic));
+
+    step_log ("spot peer reverse transport: disconnect peers");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_disconnect_peer (node_b, endpoint_a));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_disconnect_peer (node_a, endpoint_b));
+
+    step_log ("spot peer reverse transport: destroy nodes");
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&node_b));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&node_a));
+    step_log ("spot peer reverse transport: shutdown ctx");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
+    step_log ("spot peer reverse transport: term ctx");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    step_log ("spot peer reverse transport: term ctx done");
+}

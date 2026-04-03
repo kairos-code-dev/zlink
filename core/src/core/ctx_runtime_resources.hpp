@@ -5,6 +5,8 @@
 
 #include "core/ctx_io_thread_registry.hpp"
 
+#include <vector>
+
 namespace zlink
 {
 class ctx_t;
@@ -28,6 +30,8 @@ class ctx_runtime_resources_t
 
     service_control_runtime_t *service_control_runtime () const;
     service_control_runtime_t *service_data_runtime () const;
+    service_control_runtime_t *service_data_runtime_for_key (
+      uint32_t key_) const;
     object_t *reaper_object () const;
     void stop_reaper ();
 
@@ -47,7 +51,7 @@ class ctx_runtime_resources_t
 
     reaper_t *_reaper;
     service_control_runtime_t *_service_control_runtime;
-    service_control_runtime_t *_service_data_runtime;
+    std::vector<service_control_runtime_t *> _service_data_runtimes;
     ctx_io_thread_registry_t _io_thread_registry;
 };
 }

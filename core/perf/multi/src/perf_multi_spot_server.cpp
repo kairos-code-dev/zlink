@@ -38,8 +38,6 @@ static const int k_spot_role_pub = 1;
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
-static const char *k_ctrl_topic = "__perf_ctrl";
-static const size_t k_ctrl_topic_len = sizeof("__perf_ctrl") - 1;
 static const uint32_t k_metric_run_id = 1U;
 
 static std::atomic<bool> g_queue_probe_pending(false);
@@ -55,6 +53,7 @@ struct spot_server_state_t
     spot_server_state_t() :
         node(NULL),
         pub(NULL),
+        control_node(NULL),
         control_pub(NULL),
         control_sub(NULL),
         msg_size(0),
@@ -69,6 +68,7 @@ struct spot_server_state_t
 
     void *node;
     void *pub;
+    void *control_node;
     void *control_pub;
     void *control_sub;
     size_t msg_size;
@@ -84,6 +84,8 @@ struct spot_server_state_t
     std::mutex ready_mutex;
     std::condition_variable ready_cv;
     std::map<size_t, std::set<size_t> > ready_slots_by_size;
+    std::map<size_t, size_t> ready_count_by_size;
+    std::vector<std::string> control_peer_endpoints;
 };
 
 spot_server_state_t *g_server_state = NULL;
@@ -167,72 +169,53 @@ bool parse_ready_command(const void *data,
     return true;
 }
 
-bool server_control_sub_ready (spot_server_state_t *state)
+bool parse_ready_count_command(const void *data,
+                               size_t size,
+                               size_t *msg_size_out,
+                               size_t *ready_count_out)
 {
-    if (!state || !state->node || state->expected_ready_count == 0)
-        return false;
-
-    zlink_spot_node_status_t status;
-    if (zlink_spot_node_status_snapshot (state->node, &status) != 0
-        || status.connected_peer_count < state->expected_ready_count) {
+    static const char prefix[] = "READY_COUNT,";
+    if (!data || !msg_size_out || !ready_count_out
+        || size < (sizeof(prefix) - 1)
+        || std::memcmp(data, prefix, sizeof(prefix) - 1) != 0) {
         return false;
     }
 
-    zlink_spot_node_subject_filter_t filter;
-    std::memset (&filter, 0, sizeof (filter));
-    filter.role = ZLINK_SPOT_ROLE_SUB;
-    std::strncpy (filter.subject, k_ctrl_topic, sizeof (filter.subject) - 1);
-    filter.subject[sizeof (filter.subject) - 1] = '\0';
-
-    size_t count = 0;
-    if (zlink_spot_node_subjects_snapshot (state->node, &filter, NULL, &count)
-        != 0
-        || count == 0) {
+    std::string line(static_cast<const char *>(data), size);
+    const size_t comma = line.find(',', sizeof(prefix) - 1);
+    if (comma == std::string::npos)
         return false;
-    }
 
-    std::vector<zlink_spot_node_subject_entry_t> rows (count);
-    if (zlink_spot_node_subjects_snapshot (
-          state->node, &filter, &rows[0], &count)
-        != 0) {
+    char *end = NULL;
+    const unsigned long long msg_size =
+      std::strtoull(line.c_str() + (sizeof(prefix) - 1), &end, 10);
+    if (!end || static_cast<size_t>(end - line.c_str()) != comma || msg_size == 0)
         return false;
-    }
 
-    for (size_t i = 0; i < count; ++i) {
-        if (std::strcmp (rows[i].subject, k_ctrl_topic) != 0)
-            continue;
-        if (rows[i].ready_peer_count > 0) {
-            return true;
-        }
-    }
+    const unsigned long long ready_count =
+      std::strtoull(line.c_str() + comma + 1, &end, 10);
+    if (!end || *end != '\0' || ready_count == 0)
+        return false;
 
-    return false;
+    *msg_size_out = static_cast<size_t>(msg_size);
+    *ready_count_out = static_cast<size_t>(ready_count);
+    return true;
 }
 
-bool wait_for_control_sub_ready (spot_server_state_t *state, int timeout_ms)
+bool parse_connect_command(const std::string &line, std::string *endpoint_out)
 {
-    if (!state || timeout_ms <= 0)
+    static const char prefix[] = "CONNECT_CONTROL,";
+    if (!endpoint_out
+        || line.compare(0, sizeof(prefix) - 1, prefix) != 0) {
         return false;
-
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms);
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        if (server_control_sub_ready (state))
-            return true;
-        if (perf_stop_requested ().load (std::memory_order_acquire)
-            || state->fatal_errno.load (std::memory_order_acquire) != 0) {
-            return false;
-        }
-
-        zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll (&item, 0, 5) < 0 && zlink_errno () != EINTR)
-            return false;
     }
 
-    errno = ETIMEDOUT;
-    return false;
+    const std::string endpoint = line.substr(sizeof(prefix) - 1);
+    if (endpoint.empty())
+        return false;
+
+    *endpoint_out = endpoint;
+    return true;
 }
 
 void emit_requested_queue_probe(const std::string &lib_name,
@@ -282,6 +265,41 @@ bool apply_spot_server_options(void *pub,
     return true;
 }
 
+bool apply_spot_control_options(void *pub,
+                                void *sub,
+                                const multi_bench_settings_t &settings)
+{
+    if (!pub || !sub)
+        return false;
+
+    const int linger_ms = 0;
+    const int timeout_ms = std::max(1000, settings.connect_ready_timeout_ms);
+    const int hwm = std::max<int>(1024, static_cast<int>(settings.clients * 8));
+    const int nodrop = 1;
+
+    if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
+                         sizeof(linger_ms))
+          != 0
+        || zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm)) != 0
+        || zlink_set_option(pub, ZLINK_OPT_SNDTIMEO, &timeout_ms,
+                            sizeof(timeout_ms))
+             != 0
+        || zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop,
+                                sizeof(nodrop))
+             != 0
+        || zlink_set_option(sub, ZLINK_OPT_LINGER, &linger_ms,
+                            sizeof(linger_ms))
+             != 0
+        || zlink_set_option(sub, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm)) != 0
+        || zlink_set_option(sub, ZLINK_OPT_RCVTIMEO, &timeout_ms,
+                            sizeof(timeout_ms))
+             != 0) {
+        return false;
+    }
+
+    return true;
+}
+
 std::string bind_spot_endpoint(void *node,
                                const std::string &transport,
                                const std::string &token)
@@ -301,6 +319,27 @@ std::string bind_spot_endpoint(void *node,
     base_port += static_cast<int>(::getpid() % 1000) * 8;
 #endif
     (void) token;
+    return perf_bind_fixed_endpoint_range(
+      node, transport, base_port, 64, &perf_bind_spot_node_endpoint);
+}
+
+std::string bind_control_spot_endpoint(void *node,
+                                       const std::string &transport)
+{
+    const int bind_port =
+      resolve_multi_int_env("PERF_MULTI_SERVER_CONTROL_BIND_PORT", 0, 0);
+    if (bind_port > 0) {
+        return perf_bind_endpoint_once(node,
+                                       make_fixed_endpoint(transport, bind_port),
+                                       transport,
+                                       &perf_bind_spot_node_endpoint,
+                                       false);
+    }
+
+    int base_port = 32128;
+#if !defined(_WIN32)
+    base_port += static_cast<int>(::getpid() % 1000) * 8;
+#endif
     return perf_bind_fixed_endpoint_range(
       node, transport, base_port, 64, &perf_bind_spot_node_endpoint);
 }
@@ -346,6 +385,115 @@ void notify_size_start(spot_server_state_t *state, size_t msg_size)
     state->start_wait_cv.notify_all();
 }
 
+bool connect_control_peer(spot_server_state_t *state,
+                          const std::string &endpoint)
+{
+    if (!state || !state->control_node || endpoint.empty()) {
+        errno = EINVAL;
+        return false;
+    }
+
+    if (zlink_spot_node_connect_peer(state->control_node, endpoint.c_str()) != 0)
+        return false;
+
+    if (bench_transition_debug_enabled()) {
+        zlink_spot_node_status_t status;
+        std::memset(&status, 0, sizeof(status));
+        if (zlink_spot_node_status_snapshot(state->control_node, &status) == 0) {
+            std::cerr << "[multi-spot-server] reverse connect ok ts_us="
+                      << perf_multi_metric::now_us()
+                      << " endpoint=" << endpoint
+                      << " active=" << status.active_peer_count
+                      << " connected=" << status.connected_peer_count
+                      << " ready_subjects=" << status.ready_subject_count
+                      << std::endl;
+        } else {
+            std::cerr << "[multi-spot-server] reverse connect ok ts_us="
+                      << perf_multi_metric::now_us()
+                      << " endpoint=" << endpoint << std::endl;
+        }
+    }
+
+    return true;
+}
+
+bool wait_for_control_peer_connection(spot_server_state_t *state,
+                                      size_t expected_connected_count,
+                                      int timeout_ms)
+{
+    if (!state || !state->control_node || expected_connected_count == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(std::max(1, timeout_ms));
+    while (std::chrono::steady_clock::now() < deadline) {
+        zlink_spot_node_status_t status;
+        std::memset(&status, 0, sizeof(status));
+        if (zlink_spot_node_status_snapshot(state->control_node, &status) == 0
+            && status.connected_peer_count >= expected_connected_count) {
+            return true;
+        }
+
+        if (perf_stop_requested ().load(std::memory_order_acquire)
+            || state->fatal_errno.load(std::memory_order_acquire) != 0) {
+            errno = EIO;
+            return false;
+        }
+
+        zlink_pollitem_t item = {NULL, 0, 0, 0};
+        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
+            return false;
+    }
+
+    errno = ETIMEDOUT;
+    return false;
+}
+
+bool register_control_peer_endpoint(spot_server_state_t *state,
+                                    const std::string &endpoint)
+{
+    if (!state || endpoint.empty())
+        return false;
+
+    for (size_t i = 0; i < state->control_peer_endpoints.size(); ++i) {
+        if (state->control_peer_endpoints[i] == endpoint)
+            return true;
+    }
+
+    state->control_peer_endpoints.push_back(endpoint);
+    return true;
+}
+
+bool ensure_control_peers_connected(spot_server_state_t *state)
+{
+    if (!state)
+        return false;
+
+    for (size_t i = 0; i < state->control_peer_endpoints.size(); ++i) {
+        if (!connect_control_peer(state, state->control_peer_endpoints[i]))
+            return false;
+    }
+
+    return true;
+}
+
+void disconnect_control_peers(spot_server_state_t *state)
+{
+    if (!state || !state->control_node)
+        return;
+
+    for (size_t i = 0; i < state->control_peer_endpoints.size(); ++i) {
+        const std::string &endpoint = state->control_peer_endpoints[i];
+        if (endpoint.empty())
+            continue;
+        (void) zlink_spot_node_disconnect_peer(state->control_node,
+                                               endpoint.c_str());
+    }
+}
+
 void record_ready_slot(spot_server_state_t *state,
                        size_t msg_size,
                        size_t slot_index)
@@ -362,6 +510,20 @@ void record_ready_slot(spot_server_state_t *state,
                   << perf_multi_metric::now_us()
                   << " size=" << msg_size
                   << " slot=" << slot_index << std::endl;
+    }
+    state->ready_cv.notify_all();
+}
+
+void record_ready_count(spot_server_state_t *state,
+                        size_t msg_size,
+                        size_t ready_count)
+{
+    if (!state || msg_size == 0 || ready_count == 0)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(state->ready_mutex);
+        state->ready_count_by_size[msg_size] += ready_count;
     }
     state->ready_cv.notify_all();
 }
@@ -392,16 +554,35 @@ bool wait_for_ready_slots(spot_server_state_t *state,
         if (rc == 0) {
             size_t ready_size = 0;
             size_t slot_index = 0;
+            size_t ready_count = 0;
             if (topic_len > 0 && topic[topic_len - 1] == '\0')
                 --topic_len;
-            if (topic_len == k_ctrl_topic_len
-                && std::memcmp(topic, k_ctrl_topic, k_ctrl_topic_len) == 0
+            if (bench_transition_debug_enabled() && part_count > 0) {
+                std::string payload(
+                  static_cast<const char *>(zlink_msg_data(&parts[0])),
+                  zlink_msg_size(&parts[0]));
+                std::cerr << "[multi-spot-server] ctrl recv ts_us="
+                          << perf_multi_metric::now_us()
+                          << " topic="
+                          << std::string(topic, topic_len)
+                          << " payload=" << payload << std::endl;
+            }
+            if (topic_len == std::strlen(k_topic)
+                && std::memcmp(topic, k_topic, std::strlen(k_topic)) == 0
                 && part_count > 0
                 && parse_ready_command(zlink_msg_data(&parts[0]),
                                        zlink_msg_size(&parts[0]),
                                        &ready_size,
                                        &slot_index)) {
                 record_ready_slot(state, ready_size, slot_index);
+            } else if (topic_len == std::strlen(k_topic)
+                       && std::memcmp(topic, k_topic, std::strlen(k_topic)) == 0
+                       && part_count > 0
+                       && parse_ready_count_command(zlink_msg_data(&parts[0]),
+                                                   zlink_msg_size(&parts[0]),
+                                                   &ready_size,
+                                                   &ready_count)) {
+                record_ready_count(state, ready_size, ready_count);
             }
             perf_close_multipart(parts, part_count);
         } else {
@@ -419,10 +600,16 @@ bool wait_for_ready_slots(spot_server_state_t *state,
 
         {
             std::lock_guard<std::mutex> lock(state->ready_mutex);
+            size_t ready_units = 0;
+            std::map<size_t, size_t>::const_iterator count_it =
+              state->ready_count_by_size.find(msg_size);
+            if (count_it != state->ready_count_by_size.end())
+                ready_units += count_it->second;
             std::map<size_t, std::set<size_t> >::const_iterator it =
               state->ready_slots_by_size.find(msg_size);
-            if (it != state->ready_slots_by_size.end()
-                && it->second.size() >= state->expected_ready_count) {
+            if (it != state->ready_slots_by_size.end())
+                ready_units += it->second.size();
+            if (ready_units >= state->expected_ready_count) {
                 return true;
             }
         }
@@ -455,7 +642,7 @@ bool publish_control_start(spot_server_state_t *state, size_t msg_size)
     if (zlink_msg_init_size(&part, static_cast<size_t>(payload_len)) != 0)
         return false;
     std::memcpy(zlink_msg_data(&part), payload, static_cast<size_t>(payload_len));
-    const int rc = zlink_publish(state->control_pub, k_ctrl_topic, &part, 1, 0);
+    const int rc = zlink_publish(state->control_pub, k_topic, &part, 1, 0);
     const int saved_errno = rc == 0 ? 0 : errno;
     (void) zlink_msg_close(&part);
     if (rc == 0)
@@ -670,11 +857,19 @@ bool run_server_loop(spot_server_state_t *state,
                       << " size=" << msg_sizes[i]
                       << " timeout_ms=" << start_timeout_ms << std::endl;
         }
-        if (!wait_for_control_sub_ready (state, start_timeout_ms)) {
+        if (!wait_for_size_start (state, msg_sizes[i], start_timeout_ms)) {
             if (bench_transition_debug_enabled()) {
-                std::cerr << "[multi-spot-server] control sub not ready ts_us="
+                std::cerr << "[multi-spot-server] runner start timeout ts_us="
                           << perf_multi_metric::now_us()
                           << " size=" << msg_sizes[i] << std::endl;
+            }
+            return false;
+        }
+        if (!ensure_control_peers_connected(state)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-server] ensure control peers failed"
+                          << " size=" << msg_sizes[i]
+                          << " err=" << zlink_errno() << std::endl;
             }
             return false;
         }
@@ -744,6 +939,8 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
+    sync_spot_internal_mesh_pub_hwm(
+      bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm));
     ctx_guard_t ctx;
     if (!ctx.valid())
         return 1;
@@ -758,32 +955,41 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     void *node = zlink_spot_node_new(ctx.get());
+    void *control_node = zlink_spot_node_new(ctx.get());
     void *pub = NULL;
     void *control_pub = NULL;
     void *control_sub = NULL;
-    if (!node) {
+    if (!node || !control_node) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-server] node create failed err="
                       << zlink_errno() << std::endl;
+        if (node)
+            zlink_spot_node_destroy(&node);
+        if (control_node)
+            zlink_spot_node_destroy(&control_node);
         return 1;
     }
 
-    if (!setup_tls_server(node, transport)) {
+    if (!setup_tls_server(node, transport)
+        || !setup_tls_server(control_node, transport)
+        || !setup_tls_client(control_node, transport)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-server] tls configure failed err="
                       << zlink_errno() << std::endl;
         zlink_spot_node_destroy(&node);
+        zlink_spot_node_destroy(&control_node);
         return 1;
     }
 
     pub = perf_create_default_spot_handle(node);
     if (!pub) {
         zlink_spot_node_destroy(&node);
+        zlink_spot_node_destroy(&control_node);
         return 1;
     }
 
-    control_pub = perf_create_default_spot_handle(node);
-    control_sub = perf_create_default_spot_handle(node);
+    control_pub = perf_create_default_spot_handle(control_node);
+    control_sub = perf_create_default_spot_handle(control_node);
     if (!control_pub || !control_sub) {
         if (control_pub)
             perf_destroy_default_spot_handle(&control_pub);
@@ -791,11 +997,13 @@ int run_server_benchmark(const std::string &lib_name,
             perf_destroy_default_spot_handle(&control_sub);
         perf_destroy_default_spot_handle(&pub);
         zlink_spot_node_destroy(&node);
+        zlink_spot_node_destroy(&control_node);
         return 1;
     }
 
     if (!apply_spot_server_options(pub, settings)
-        || zlink_set_subscription(control_sub, k_ctrl_topic) != 0) {
+        || !apply_spot_control_options(control_pub, control_sub, settings)
+        || zlink_set_subscription(control_sub, k_topic) != 0) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-server] pub init failed err="
                       << zlink_errno() << std::endl;
@@ -803,6 +1011,7 @@ int run_server_benchmark(const std::string &lib_name,
         perf_destroy_default_spot_handle(&control_sub);
         perf_destroy_default_spot_handle(&pub);
         zlink_spot_node_destroy(&node);
+        zlink_spot_node_destroy(&control_node);
         return 1;
     }
 
@@ -817,29 +1026,111 @@ int run_server_benchmark(const std::string &lib_name,
         perf_destroy_default_spot_handle(&control_sub);
         perf_destroy_default_spot_handle(&pub);
         zlink_spot_node_destroy(&node);
+        zlink_spot_node_destroy(&control_node);
+        return 1;
+    }
+
+    const std::string control_endpoint =
+      bind_control_spot_endpoint(control_node, transport);
+    if (control_endpoint.empty()) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-server] control bind failed err="
+                      << zlink_errno() << std::endl;
+        perf_destroy_default_spot_handle(&control_pub);
+        perf_destroy_default_spot_handle(&control_sub);
+        perf_destroy_default_spot_handle(&pub);
+        zlink_spot_node_destroy(&node);
+        zlink_spot_node_destroy(&control_node);
+        return 1;
+    }
+    if (zlink_publish(control_pub, "__warmup__", NULL, 0, 0) != 0) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-server] control warmup failed err="
+                      << zlink_errno() << std::endl;
+        perf_destroy_default_spot_handle(&control_pub);
+        perf_destroy_default_spot_handle(&control_sub);
+        perf_destroy_default_spot_handle(&pub);
+        zlink_spot_node_destroy(&node);
+        zlink_spot_node_destroy(&control_node);
         return 1;
     }
 
     spot_server_state_t state;
     state.node = node;
     state.pub = pub;
+    state.control_node = control_node;
     state.control_pub = control_pub;
     state.control_sub = control_sub;
     state.expected_ready_count = std::max<size_t>(1, settings.clients);
     g_server_state = &state;
+    const int connect_ready_timeout_ms = settings.connect_ready_timeout_ms;
 
     perf_stop_requested ().store(false, std::memory_order_release);
     g_queue_probe_pending.store(false, std::memory_order_release);
     g_queue_probe_size.store(0, std::memory_order_release);
     install_perf_signal_handlers();
 
-    std::thread stdin_watcher([]() {
+    std::thread stdin_watcher([connect_ready_timeout_ms]() {
         std::string line;
         while (std::getline(std::cin, line)) {
+            if (bench_transition_debug_enabled()) {
+                std::cerr << "[multi-spot-server] stdin line ts_us="
+                          << perf_multi_metric::now_us()
+                          << " line=" << line << std::endl;
+            }
             size_t queue_size = 0;
             size_t start_size = 0;
+            std::string connect_endpoint;
             if (parse_queue_probe_command(line, &queue_size)) {
                 request_queue_probe(queue_size);
+                continue;
+            }
+            if (parse_connect_command(line, &connect_endpoint)) {
+                if (bench_transition_debug_enabled()) {
+                    std::cerr << "[multi-spot-server] reverse connect request ts_us="
+                              << perf_multi_metric::now_us()
+                              << " endpoint=" << connect_endpoint
+                              << std::endl;
+                }
+                (void) register_control_peer_endpoint(g_server_state,
+                                                      connect_endpoint);
+                if (!connect_control_peer(g_server_state, connect_endpoint)) {
+                    if (bench_debug_enabled()) {
+                        std::cerr << "[multi-spot-server] reverse connect failed"
+                                  << " endpoint=" << connect_endpoint
+                                  << " err=" << zlink_errno() << std::endl;
+                    }
+                    if (g_server_state) {
+                        const int err =
+                          zlink_errno() != 0 ? zlink_errno() : errno;
+                        g_server_state->fatal_errno.store(
+                          err != 0 ? err : EIO,
+                          std::memory_order_release);
+                    }
+                    perf_stop_requested ().store(true, std::memory_order_release);
+                    return;
+                }
+                if (!wait_for_control_peer_connection(
+                      g_server_state,
+                      g_server_state->control_peer_endpoints.size(),
+                      connect_ready_timeout_ms)) {
+                    if (bench_debug_enabled()) {
+                        std::cerr << "[multi-spot-server] reverse connect settle failed"
+                                  << " endpoint=" << connect_endpoint
+                                  << " err=" << zlink_errno() << std::endl;
+                    }
+                    if (g_server_state) {
+                        const int err =
+                          zlink_errno() != 0 ? zlink_errno() : errno;
+                        g_server_state->fatal_errno.store(
+                          err != 0 ? err : ETIMEDOUT,
+                          std::memory_order_release);
+                    }
+                    perf_stop_requested ().store(true, std::memory_order_release);
+                    return;
+                }
+                std::cout << "CONTROL_CONNECTED," << connect_endpoint
+                          << std::endl;
                 continue;
             }
             if (parse_start_command(line, &start_size)) {
@@ -858,6 +1149,7 @@ int run_server_benchmark(const std::string &lib_name,
       bench_multi_capture_cpu_sample();
 
     std::cout << "READY," << endpoint << std::endl;
+    std::cout << "CONTROL_READY," << control_endpoint << std::endl;
     if (bench_transition_debug_enabled()) {
         std::cerr << "[multi-spot-server] phase gate open ts_us="
                   << perf_multi_metric::now_us()

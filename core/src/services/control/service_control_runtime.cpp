@@ -37,7 +37,7 @@ bool service_control_runtime_t::start ()
 
     _stopping = false;
     _active_task_id = 0;
-    _ctx->start_thread (_thread, run, this, _thread_name);
+    _ctx->start_thread (_thread, run, this, _thread_name.c_str ());
     _running = true;
     return true;
 }

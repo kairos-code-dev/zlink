@@ -13,6 +13,15 @@ void test_spot_peer_tcp ()
     run_spot_peer_tcp_test ();
 }
 
+void test_spot_peer_tcp_reverse_publish ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+    run_spot_peer_reverse_tcp_test ();
+}
+
 void test_spot_multi_publisher ()
 {
     void *ctx = zlink_ctx_new ();

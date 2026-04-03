@@ -223,6 +223,7 @@ inline std::string perf_normalize_bind_endpoint_host(
     std::string normalized = endpoint;
     const std::string any_v4 = "://0.0.0.0:";
     const std::string any_v6 = "://[::]:";
+    const std::string loopback_v4 = "://127.0.0.1:";
     const std::string host =
       std::string("://") + perf_loopback_host_for_transport(transport) + ":";
     size_t pos = normalized.find(any_v4);
@@ -231,6 +232,15 @@ inline std::string perf_normalize_bind_endpoint_host(
     pos = normalized.find(any_v6);
     if (pos != std::string::npos)
         normalized.replace(pos, any_v6.size(), host);
+    if (perf_is_tls_transport(transport)) {
+        pos = normalized.find(loopback_v4);
+        if (pos != std::string::npos)
+            normalized.replace(pos, loopback_v4.size(), host);
+    }
+    if ((transport == "ws" || transport == "wss") && normalized.size() > 1
+        && normalized[normalized.size() - 1] == '/') {
+        normalized.erase(normalized.size() - 1);
+    }
     return normalized;
 }
 

@@ -10,6 +10,7 @@
 #include "utils/mutex.hpp"
 
 #include <map>
+#include <string>
 
 namespace zlink
 {
@@ -58,7 +59,7 @@ class service_control_runtime_t
     void loop ();
 
     ctx_t *_ctx;
-    const char *_thread_name;
+    std::string _thread_name;
     thread_t _thread;
     mutex_t _sync;
     condition_variable_t _cv;

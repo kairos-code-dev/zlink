@@ -9,6 +9,7 @@ static bool should_run_spot_e2e_smoke_test (const char *name_)
 {
     static const char *const smoke_cases[] = {
       "test_spot_peer_tcp",
+      "test_spot_peer_tcp_reverse_publish",
       "test_spot_multi_publisher",
       "test_spot_node_direct_local_and_child_interop",
       "test_spot_sub_handler_basic",
@@ -45,6 +46,7 @@ int main (int, char **)
             RUN_TEST (name);                                                   \
     } while (0)
     RUN_SPOT_TEST (test_spot_peer_tcp);
+    RUN_SPOT_TEST (test_spot_peer_tcp_reverse_publish);
     RUN_SPOT_TEST (test_spot_multi_publisher);
     RUN_SPOT_TEST (test_spot_node_direct_local_and_child_interop);
     RUN_SPOT_TEST (test_spot_sub_handler_basic);

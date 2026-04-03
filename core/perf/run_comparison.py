@@ -683,16 +683,23 @@ def run_command_with_metrics(
     on_stdout_line=None,
     on_stderr_line=None,
     on_sample=None,
+    on_process_start=None,
 ):
     started = time.monotonic()
     proc = subprocess.Popen(
         cmd,
         env=env,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
     )
+    if on_process_start is not None:
+        try:
+            on_process_start(proc)
+        except Exception:
+            pass
     out_queue = queue.Queue()
     capture_limit = resolve_output_capture_limit()
     stdout_buffer = BoundedTextBuffer(capture_limit)
@@ -1230,6 +1237,8 @@ def pattern_default_hwm(pattern_name):
 def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
         return 4
+    if normalize_multi_pattern_name(pattern_name) == "SPOT":
+        return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 8))
     return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
 
 
@@ -1279,6 +1288,16 @@ def parse_ready_endpoint(line):
     return parts[1].strip()
 
 
+def parse_control_ready_endpoint(line):
+    stripped = line.strip()
+    if not stripped.startswith("CONTROL_READY,"):
+        return ""
+    parts = stripped.split(",", 1)
+    if len(parts) != 2:
+        return ""
+    return parts[1].strip()
+
+
 def parse_client_ready_size(line):
     stripped = line.strip()
     if not stripped.startswith("CLIENT_READY,"):
@@ -1291,6 +1310,28 @@ def parse_client_ready_size(line):
     except (TypeError, ValueError):
         return None
     return size_value if size_value > 0 else None
+
+
+def parse_client_endpoint(line):
+    stripped = line.strip()
+    if not stripped.startswith("CLIENT_CONTROL_ENDPOINT,"):
+        return None
+    parts = stripped.split(",", 1)
+    if len(parts) != 2:
+        return None
+    endpoint = parts[1].strip()
+    return endpoint or None
+
+
+def parse_control_connected_endpoint(line):
+    stripped = line.strip()
+    if not stripped.startswith("CONTROL_CONNECTED,"):
+        return None
+    parts = stripped.split(",", 1)
+    if len(parts) != 2:
+        return None
+    endpoint = parts[1].strip()
+    return endpoint or None
 
 
 def parse_client_done_size(line):
@@ -1577,9 +1618,20 @@ def run_sizes_test_stream_shared(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
+    control_connected = [False]
+    pending_ready_sizes = set()
+    client_proc = [None]
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
+        if parse_control_connected_endpoint(line):
+            control_connected[0] = True
+            try:
+                if client_proc[0] and client_proc[0].stdin:
+                    client_proc[0].stdin.write(line)
+                    client_proc[0].stdin.flush()
+            except Exception:
+                pass
         emit_result_metrics_from_line(
             line, transport, expected_sizes, result_line_callback
         )
@@ -1686,10 +1738,13 @@ def run_sizes_test_stream_shared(
             t.start()
 
         endpoint = ""
+        control_endpoint = ""
+        control_endpoint = ""
+        control_endpoint = ""
         early_status = ""
         early_reason = ""
         ready_deadline = time.monotonic() + (ready_timeout_ms / 1000.0)
-        while not endpoint and time.monotonic() <= ready_deadline:
+        while (not endpoint or not control_endpoint) and time.monotonic() <= ready_deadline:
             try:
                 stream_name, line = out_queue.get(timeout=0.05)
             except queue.Empty:
@@ -1717,6 +1772,9 @@ def run_sizes_test_stream_shared(
                 parsed_ep = parse_ready_endpoint(line)
                 if parsed_ep:
                     endpoint = parsed_ep
+                parsed_ctrl_ep = parse_control_ready_endpoint(line)
+                if parsed_ctrl_ep:
+                    control_endpoint = parsed_ctrl_ep
             else:
                 server_stderr_buffer.append(line)
 
@@ -1734,7 +1792,7 @@ def run_sizes_test_stream_shared(
                 "warnings": [],
             }
 
-        if not endpoint:
+        if not endpoint or not control_endpoint:
             pump_server_output_nonblocking()
             was_running_before_stop = server_proc and server_proc.poll() is None
             stop_server()
@@ -1775,6 +1833,20 @@ def run_sizes_test_stream_shared(
         last_client_mem = [None]
         last_client_size = [None]
         queue_probe_requested_sizes = set()
+
+        def maybe_send_size_start(size_value):
+            if not control_connected[0] or size_value is None:
+                return
+            try:
+                if server_proc.stdin:
+                    server_proc.stdin.write(f"START,{size_value}\n")
+                    server_proc.stdin.flush()
+                if client_proc[0] and client_proc[0].stdin:
+                    client_proc[0].stdin.write(f"START,{size_value}\n")
+                    client_proc[0].stdin.flush()
+                pending_ready_sizes.discard(size_value)
+            except Exception:
+                pass
 
         def update_live_size_from_line(line):
             parsed_line, _warning = parse_result_line(
@@ -1877,14 +1949,21 @@ def run_sizes_test_stream_shared(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
-            ready_size = parse_client_ready_size(line)
-            if ready_size is not None:
+            client_endpoint = parse_client_endpoint(line)
+            if client_endpoint:
                 try:
                     if server_proc.stdin:
-                        server_proc.stdin.write(f"START,{ready_size}\n")
+                        server_proc.stdin.write(
+                            f"CONNECT_CONTROL,{client_endpoint}\n"
+                        )
                         server_proc.stdin.flush()
                 except Exception:
                     pass
+                return
+            ready_size = parse_client_ready_size(line)
+            if ready_size is not None:
+                pending_ready_sizes.add(ready_size)
+                maybe_send_size_start(ready_size)
                 return
             update_live_size_from_line(line)
             emit_result_metrics_from_line(
@@ -1897,20 +1976,26 @@ def run_sizes_test_stream_shared(
                 _line_transport, line_size, metric_name, _value = parsed_line
                 if normalize_metric_name(metric_name) == "throughput":
                     request_server_queue_probe(line_size)
+            if control_connected[0] and pending_ready_sizes:
+                maybe_send_size_start(next(iter(pending_ready_sizes)))
             emit_live_server_metrics()
             emit_live_client_metrics(None, None)
 
         def on_client_sample(sample_cpu, sample_mem):
             pump_server_output_nonblocking()
+            if control_connected[0] and pending_ready_sizes:
+                maybe_send_size_start(next(iter(pending_ready_sizes)))
             emit_live_server_metrics()
             emit_live_client_metrics(sample_cpu, sample_mem)
 
         sampled = run_command_with_metrics(
-            client_cmd + ["--endpoint", endpoint],
+            client_cmd
+            + ["--endpoint", endpoint, "--control-endpoint", control_endpoint],
             client_env,
             timeout_sec,
             on_stdout_line=on_client_stdout_line,
             on_sample=on_client_sample,
+            on_process_start=lambda proc: client_proc.__setitem__(0, proc),
         )
         pump_server_output_nonblocking()
         emit_live_server_metrics(force=True)
@@ -1921,6 +2006,7 @@ def run_sizes_test_stream_shared(
             sys.stderr.write(client_stderr)
         progress_meta = {
             "server_endpoint": endpoint,
+            "server_control_endpoint": control_endpoint,
             "client_stderr": client_stderr,
         }
 
@@ -2164,9 +2250,20 @@ def run_sizes_test_split(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
+    control_connected = [False]
+    pending_ready_sizes = set()
+    client_proc = [None]
 
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
+        if parse_control_connected_endpoint(line):
+            control_connected[0] = True
+            try:
+                if client_proc[0] and client_proc[0].stdin:
+                    client_proc[0].stdin.write(line)
+                    client_proc[0].stdin.flush()
+            except Exception:
+                pass
         emit_result_metrics_from_line(
             line, transport, expected_sizes, result_line_callback
         )
@@ -2273,10 +2370,11 @@ def run_sizes_test_split(
             t.start()
 
         endpoint = ""
+        control_endpoint = ""
         early_status = ""
         early_reason = ""
         ready_deadline = time.monotonic() + (ready_timeout_ms / 1000.0)
-        while not endpoint and time.monotonic() <= ready_deadline:
+        while (not endpoint or not control_endpoint) and time.monotonic() <= ready_deadline:
             try:
                 stream_name, line = out_queue.get(timeout=0.05)
             except queue.Empty:
@@ -2304,6 +2402,9 @@ def run_sizes_test_split(
                 parsed_ep = parse_ready_endpoint(line)
                 if parsed_ep:
                     endpoint = parsed_ep
+                parsed_ctrl_ep = parse_control_ready_endpoint(line)
+                if parsed_ctrl_ep:
+                    control_endpoint = parsed_ctrl_ep
             else:
                 server_stderr_buffer.append(line)
 
@@ -2321,7 +2422,7 @@ def run_sizes_test_split(
                 "warnings": [],
             }
 
-        if not endpoint:
+        if not endpoint or not control_endpoint:
             pump_server_output_nonblocking()
             was_running_before_stop = server_proc and server_proc.poll() is None
             stop_server()
@@ -2359,6 +2460,20 @@ def run_sizes_test_split(
         last_server_size = [None]
         queue_probe_requested_sizes = set()
         stop_requested_sizes = set()
+
+        def maybe_send_size_start(size_value):
+            if not control_connected[0] or size_value is None:
+                return
+            try:
+                if server_proc.stdin:
+                    server_proc.stdin.write(f"START,{size_value}\n")
+                    server_proc.stdin.flush()
+                if client_proc[0] and client_proc[0].stdin:
+                    client_proc[0].stdin.write(f"START,{size_value}\n")
+                    client_proc[0].stdin.flush()
+                pending_ready_sizes.discard(size_value)
+            except Exception:
+                pass
 
         def update_live_size_from_line(line):
             parsed_line, _warning = parse_result_line(
@@ -2427,14 +2542,21 @@ def run_sizes_test_split(
 
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
-            ready_size = parse_client_ready_size(line)
-            if ready_size is not None:
+            client_endpoint = parse_client_endpoint(line)
+            if client_endpoint:
                 try:
                     if server_proc.stdin:
-                        server_proc.stdin.write(f"START,{ready_size}\n")
+                        server_proc.stdin.write(
+                            f"CONNECT_CONTROL,{client_endpoint}\n"
+                        )
                         server_proc.stdin.flush()
                 except Exception:
                     pass
+                return
+            ready_size = parse_client_ready_size(line)
+            if ready_size is not None:
+                pending_ready_sizes.add(ready_size)
+                maybe_send_size_start(ready_size)
                 return
             done_size = parse_client_done_size(line)
             if done_size is not None:
@@ -2451,6 +2573,8 @@ def run_sizes_test_split(
             emit_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
             )
+            if control_connected[0] and pending_ready_sizes:
+                maybe_send_size_start(next(iter(pending_ready_sizes)))
             parsed_line, _warning = parse_result_line(
                 line, transport, expected_sizes
             )
@@ -2460,7 +2584,12 @@ def run_sizes_test_split(
                     request_server_queue_probe(line_size)
             emit_live_server_metrics()
 
-        client_cmd = client_cmd + ["--endpoint", endpoint]
+        client_cmd = client_cmd + [
+            "--endpoint",
+            endpoint,
+            "--control-endpoint",
+            control_endpoint,
+        ]
         sampled = run_command_with_metrics(
             client_cmd,
             client_env,
@@ -2468,8 +2597,12 @@ def run_sizes_test_split(
             on_stdout_line=on_client_stdout_line,
             on_sample=lambda _cpu, _mem: (
                 pump_server_output_nonblocking(),
+                maybe_send_size_start(next(iter(pending_ready_sizes)))
+                if control_connected[0] and pending_ready_sizes
+                else None,
                 emit_live_server_metrics(),
             ),
+            on_process_start=lambda proc: client_proc.__setitem__(0, proc),
         )
         pump_server_output_nonblocking()
         emit_live_server_metrics(force=True)
@@ -2479,6 +2612,7 @@ def run_sizes_test_split(
             sys.stderr.write(client_stderr)
         progress_meta = {
             "server_endpoint": endpoint,
+            "server_control_endpoint": control_endpoint,
             "client_stderr": client_stderr,
         }
 

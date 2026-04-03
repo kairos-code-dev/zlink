@@ -15,6 +15,7 @@ namespace zlink
 {
 class socket_base_t;
 class spot_node_t;
+class service_control_runtime_t;
 
 enum spot_attachment_kind_t
 {
@@ -91,6 +92,7 @@ struct spot_runtime_t
     socket_base_t *peer_ctrl_sub;
     socket_base_t *local_pub_ingress_sub;
     socket_base_t *local_fanout_xpub;
+    service_control_runtime_t *data_plane_runtime;
     atomic_counter_t stop;
     uint32_t node_id;
     std::string bound_endpoint;

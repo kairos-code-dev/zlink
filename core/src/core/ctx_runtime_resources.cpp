@@ -2,7 +2,9 @@
 
 #include "utils/precompiled.hpp"
 
+#include <algorithm>
 #include <new>
+#include <sstream>
 
 #include "core/ctx_runtime_resources.hpp"
 
@@ -20,8 +22,7 @@ const int term_and_reaper_threads_count = 2;
 
 zlink::ctx_runtime_resources_t::ctx_runtime_resources_t () :
     _reaper (NULL),
-    _service_control_runtime (NULL),
-    _service_data_runtime (NULL)
+    _service_control_runtime (NULL)
 {
 }
 
@@ -62,11 +63,13 @@ void zlink::ctx_runtime_resources_t::teardown (
         delete _service_control_runtime;
         _service_control_runtime = NULL;
     }
-    if (_service_data_runtime) {
-        _service_data_runtime->stop ();
-        delete _service_data_runtime;
-        _service_data_runtime = NULL;
+    for (size_t i = 0; i < _service_data_runtimes.size (); ++i) {
+        if (_service_data_runtimes[i]) {
+            _service_data_runtimes[i]->stop ();
+            delete _service_data_runtimes[i];
+        }
     }
+    _service_data_runtimes.clear ();
 
     _io_thread_registry.stop_all ();
     _io_thread_registry.destroy_all ();
@@ -85,7 +88,21 @@ zlink::ctx_runtime_resources_t::service_control_runtime () const
 zlink::service_control_runtime_t *
 zlink::ctx_runtime_resources_t::service_data_runtime () const
 {
-    return _service_data_runtime;
+    return service_data_runtime_for_key (0);
+}
+
+zlink::service_control_runtime_t *
+zlink::ctx_runtime_resources_t::service_data_runtime_for_key (
+  uint32_t key_) const
+{
+    if (_service_data_runtimes.empty ())
+        return NULL;
+
+    const size_t index =
+      _service_data_runtimes.size () == 1
+        ? 0
+        : static_cast<size_t> (key_) % _service_data_runtimes.size ();
+    return _service_data_runtimes[index];
 }
 
 zlink::object_t *zlink::ctx_runtime_resources_t::reaper_object () const
@@ -150,14 +167,33 @@ bool zlink::ctx_runtime_resources_t::start_service_runtime_locked (ctx_t &ctx_)
 bool zlink::ctx_runtime_resources_t::start_service_data_runtime_locked (
   ctx_t &ctx_)
 {
-    _service_data_runtime =
-      new (std::nothrow) service_control_runtime_t (&ctx_, "service-data");
-    if (!_service_data_runtime) {
-        errno = ENOMEM;
-        return false;
+    int runtime_count = ctx_.get (ZLINK_IO_THREADS);
+    if (runtime_count <= 0)
+        runtime_count = 1;
+    runtime_count = std::min (runtime_count, 8);
+
+    for (int i = 0; i < runtime_count; ++i) {
+        std::ostringstream name;
+        if (runtime_count == 1)
+            name << "service-data";
+        else
+            name << "service-data-" << i;
+
+        service_control_runtime_t *runtime =
+          new (std::nothrow)
+            service_control_runtime_t (&ctx_, name.str ().c_str ());
+        if (!runtime) {
+            errno = ENOMEM;
+            return false;
+        }
+        if (!runtime->start ()) {
+            delete runtime;
+            return false;
+        }
+        _service_data_runtimes.push_back (runtime);
     }
 
-    return _service_data_runtime->start ();
+    return !_service_data_runtimes.empty ();
 }
 
 bool zlink::ctx_runtime_resources_t::start_io_threads_locked (

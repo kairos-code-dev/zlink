@@ -14,6 +14,19 @@ namespace zlink
 {
 namespace
 {
+static uint32_t resolve_spot_data_runtime_interval_ms ()
+{
+    const char *raw = std::getenv ("ZLINK_SPOT_DATA_RUNTIME_INTERVAL_MS");
+    if (!raw || !*raw)
+        return 1;
+
+    char *end = NULL;
+    const unsigned long parsed = std::strtoul (raw, &end, 10);
+    if (!end || *end != '\0' || parsed == 0)
+        return 1;
+    return static_cast<uint32_t> (parsed);
+}
+
 static void preserve_first_error_local (int rc_, int *first_error_)
 {
     if (rc_ == 0 || !first_error_ || *first_error_ != 0)
@@ -61,6 +74,7 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     peer_ctrl_sub (NULL),
     local_pub_ingress_sub (NULL),
     local_fanout_xpub (NULL),
+    data_plane_runtime (NULL),
     stop (0),
     node_id (generate_random ()),
     faulted (false),
@@ -253,8 +267,8 @@ int spot_runtime_t::start ()
         return -1;
     }
 
-    service_control_runtime_t *runtime = owner->_ctx->service_data_runtime ();
-    if (!runtime) {
+    data_plane_runtime = owner->_ctx->service_data_runtime_for_key (node_id);
+    if (!data_plane_runtime) {
         errno = ETERM;
         stop.set (1);
         stop_sockets ();
@@ -264,7 +278,10 @@ int spot_runtime_t::start ()
     }
 
     const uint64_t task_id =
-      runtime->add_periodic_task (&spot_data_plane_t::task_entry, owner, 10, true);
+      data_plane_runtime->add_periodic_task (&spot_data_plane_t::task_entry,
+                                             owner,
+                                             resolve_spot_data_runtime_interval_ms (),
+                                             true);
     if (task_id == 0) {
         stop.set (1);
         stop_sockets ();
@@ -447,10 +464,8 @@ int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
     if (arg_ && send_ascii_frame_local (data_ctrl_front, arg_, 0) != 0)
         return -1;
 
-    service_control_runtime_t *runtime =
-      owner && owner->_ctx ? owner->_ctx->service_data_runtime () : NULL;
-    if (runtime && data_plane_task_id_value != 0)
-        runtime->wakeup_task (data_plane_task_id_value);
+    if (data_plane_runtime && data_plane_task_id_value != 0)
+        data_plane_runtime->wakeup_task (data_plane_task_id_value);
 
     int reply_errno = 0;
     if (!spot_node_t::recv_ctrl_reply (data_ctrl_front, &reply_errno)) {
@@ -549,11 +564,10 @@ int spot_runtime_t::stop_and_join ()
         }
     }
     stop_sockets ();
-    service_control_runtime_t *runtime =
-      owner && owner->_ctx ? owner->_ctx->service_data_runtime () : NULL;
     const uint64_t task_id = clear_data_plane_task_id ();
-    if (runtime && task_id != 0)
-        (void) runtime->remove_task (task_id);
+    if (data_plane_runtime && task_id != 0)
+        (void) data_plane_runtime->remove_task (task_id);
+    data_plane_runtime = NULL;
     if (data_plane_running) {
         spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
                                              &data_plane_protocol_state);
@@ -587,11 +601,10 @@ int spot_runtime_t::abortive_stop ()
 {
     abortive_shutdown = true;
     stop.set (1);
-    service_control_runtime_t *runtime =
-      owner && owner->_ctx ? owner->_ctx->service_data_runtime () : NULL;
     const uint64_t task_id = clear_data_plane_task_id ();
-    if (runtime && task_id != 0)
-        (void) runtime->remove_task (task_id);
+    if (data_plane_runtime && task_id != 0)
+        (void) data_plane_runtime->remove_task (task_id);
+    data_plane_runtime = NULL;
     if (data_plane_running) {
         spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
                                              &data_plane_protocol_state);

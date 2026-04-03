@@ -24,6 +24,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_dealer_dealer_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
+  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
@@ -545,6 +546,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
 
 set(SPOT_PUBSUB_CASES
     test_spot_peer_tcp
+    test_spot_peer_tcp_reverse_publish
     test_spot_multi_publisher
     test_spot_node_direct_local_and_child_interop
     test_spot_sub_handler_basic
@@ -552,7 +554,8 @@ set(SPOT_PUBSUB_CASES
     test_spot_node_discovery_direct_and_child_interop)
 
 set(SPOT_PUBSUB_PEER_TEST_SPECS
-    test_spot_pubsub_scenario_peer_tcp=test_spot_peer_tcp)
+    test_spot_pubsub_scenario_peer_tcp=test_spot_peer_tcp
+    test_spot_pubsub_scenario_peer_tcp_reverse_publish=test_spot_peer_tcp_reverse_publish)
 
 set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     test_spot_pubsub_scenario_multi_publisher=test_spot_multi_publisher
@@ -742,6 +745,7 @@ endif()
 
 set(REGRESSION_SERIAL_TESTS
     test_multi_dealer_dealer_benchmark_process
+    test_multi_spot_benchmark_process
     test_router_concurrent_routed_recv
     test_transport_matrix
     ${STREAM_SOCKET_REGRESSION_TEST_NAMES}

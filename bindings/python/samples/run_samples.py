@@ -1,4 +1,5 @@
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,28 @@ SAMPLES = [
 ]
 
 
+def _run_python_script(script_path, *, timeout, cwd, env):
+    proc = subprocess.Popen(
+        [sys.executable, str(script_path)],
+        cwd=str(cwd),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGTERM)
+        try:
+            stdout, stderr = proc.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            stdout, stderr = proc.communicate()
+    return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+
+
 def main():
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(
@@ -34,12 +57,10 @@ def main():
     passed = 0
     for name in SAMPLES:
         sample_path = SAMPLES_DIR / name
-        result = subprocess.run(
-            [sys.executable, str(sample_path)],
-            cwd=str(ROOT),
+        result = _run_python_script(
+            sample_path,
+            cwd=ROOT,
             env=env,
-            capture_output=True,
-            text=True,
             timeout=120,
         )
         if result.stdout:

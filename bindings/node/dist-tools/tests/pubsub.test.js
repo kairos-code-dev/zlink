@@ -107,6 +107,42 @@ test('remote spot peer delivery works across child processes', async () => {
     const fixturesDir = path.join(__dirname, '..', '..', 'tests', 'fixtures');
     const serverPath = path.join(fixturesDir, 'spot_child_server.js');
     const clientPath = path.join(fixturesDir, 'spot_child_client.js');
+    const waitForExit = (child) => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+            return Promise.resolve();
+        }
+        return once(child, 'exit').then(() => { });
+    };
+    const terminateChildTree = async (child) => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+            return;
+        }
+        try {
+            process.kill(-child.pid, 'SIGTERM');
+        }
+        catch (error) {
+            if (!error || error.code !== 'ESRCH') {
+                throw error;
+            }
+            return;
+        }
+        const exited = await Promise.race([
+            waitForExit(child).then(() => true),
+            new Promise((resolve) => setTimeout(() => resolve(false), 2000))
+        ]);
+        if (exited) {
+            return;
+        }
+        try {
+            process.kill(-child.pid, 'SIGKILL');
+        }
+        catch (error) {
+            if (!error || error.code !== 'ESRCH') {
+                throw error;
+            }
+        }
+        await Promise.allSettled([waitForExit(child)]);
+    };
     const waitForLine = (child, expected, timeoutMs, sink) => {
         return new Promise((resolve, reject) => {
             let buffered = '';
@@ -149,19 +185,15 @@ test('remote spot peer delivery works across child processes', async () => {
             });
         });
     };
-    const waitForExit = (child) => {
-        if (child.exitCode !== null || child.signalCode !== null) {
-            return Promise.resolve();
-        }
-        return once(child, 'exit').then(() => { });
-    };
     const server = spawn(process.execPath, [serverPath, '--endpoint', endpoint], {
         cwd: path.join(__dirname, '..'),
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: true
     });
     const client = spawn(process.execPath, [clientPath, '--endpoint', endpoint], {
         cwd: path.join(__dirname, '..'),
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true
     });
     let serverStderr = '';
     let clientStderr = '';
@@ -183,9 +215,7 @@ test('remote spot peer delivery works across child processes', async () => {
         if (server.stdin.writable) {
             server.stdin.end();
         }
-        server.kill('SIGTERM');
-        client.kill('SIGTERM');
-        await Promise.allSettled([waitForExit(server), waitForExit(client)]);
+        await Promise.allSettled([terminateChildTree(server), terminateChildTree(client)]);
     }
 });
 test('canonical pub/sub surface hides opposite-direction methods', () => {

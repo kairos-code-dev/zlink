@@ -565,8 +565,11 @@ class Spot:
         def _callback_loop():
             while not stop.is_set():
                 try:
-                    message = self._recv_subscribed(0)
-                except Exception:
+                    message = self._recv_subscribed(1)
+                except Exception as exc:
+                    if _is_eagain(exc):
+                        stop.wait(0.05)
+                        continue
                     if stop.is_set() or not self._handle:
                         return
                     _report_unhandled_callback_exception(handler)
@@ -616,6 +619,8 @@ class Spot:
         thread = self._subscribe_thread
         if stop is not None:
             stop.set()
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
         self._handler = None
         self._handler_cb = None
         self._subscribe_stop = None
@@ -625,8 +630,6 @@ class Spot:
         handle = ctypes.c_void_p(self._handle)
         self._handle = None
         rc = lib().zlink_spot_destroy(ctypes.byref(handle))
-        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
-            thread.join(timeout=1.0)
         if rc != 0:
             _raise_last_error()
 

@@ -1,5 +1,6 @@
 import socket
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -21,6 +22,28 @@ def _tcp_endpoint():
     port = sock.getsockname()[1]
     sock.close()
     return f"tcp://127.0.0.1:{port}"
+
+
+def _run_python_script(script_path, *, timeout, env):
+    proc = subprocess.Popen(
+        [sys.executable, str(script_path)],
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGTERM)
+        try:
+            stdout, stderr = proc.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            stdout, stderr = proc.communicate()
+    return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
 
 
 class CoreApiAlignmentTests(unittest.TestCase):
@@ -379,11 +402,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertIsNone(spot.try_subscribe())
 
     def test_spot_callback_receives_subscribed_domain_type(self):
-        result = subprocess.run(
-            [sys.executable, str(SAMPLES_DIR / "spot_callback_sample.py")],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
+        result = _run_python_script(
+            SAMPLES_DIR / "spot_callback_sample.py",
             timeout=30,
             env={
                 **os.environ,
@@ -895,11 +915,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink, "TopologyState"))
 
     def test_example_runner_executes_all_examples(self):
-        result = subprocess.run(
-            [sys.executable, str(ROOT / "examples" / "run_all_examples.py")],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
+        result = _run_python_script(
+            ROOT / "examples" / "run_all_examples.py",
             timeout=180,
             env={
                 **os.environ,

@@ -7,9 +7,7 @@ const zlink = require('../../dist');
 const { createPayload, stampPayload } = require('../common/perf_metrics');
 
 const TOPIC = 'perf.topic';
-const PUB_READY_EVENTS = zlink.ServiceMonitorEvent.SPOT_READY_CHANGED
-  | zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-  | zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED
+const PUB_READY_EVENTS = zlink.ServiceMonitorEvent.CONNECTION_READY
   | zlink.ServiceMonitorEvent.ERROR;
 
 function ensureMeshPubBudgetDefault() {
@@ -93,12 +91,8 @@ async function main() {
         if (event.eventType === zlink.ServiceMonitorEvent.ERROR) {
           throw new Error(`spot server ready monitor error: ${JSON.stringify(event)}`);
         }
-        if (
-          (event.eventType === zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-            || event.eventType === zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED)
-          && event.value > readyCount
-        ) {
-          readyCount = event.value;
+        if (event.eventType === zlink.ServiceMonitorEvent.CONNECTION_READY) {
+          readyCount += 1;
         }
         if (readyCount >= options.clients) {
           peersReady = true;

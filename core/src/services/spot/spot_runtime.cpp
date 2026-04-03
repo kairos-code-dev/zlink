@@ -5,6 +5,7 @@
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "services/control/service_control_runtime.hpp"
 
 #include "sockets/socket_base.hpp"
 #include "utils/random.hpp"
@@ -65,6 +66,10 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     faulted (false),
     fault_errno (0),
     abortive_shutdown (false),
+    data_plane_task_id_value (0),
+    data_plane_running (false),
+    next_bootstrap_ms (0),
+    last_bootstrap_peer_version (UINT64_MAX),
     next_attachment_id (0)
 {
     if (node_id == 0)
@@ -234,20 +239,41 @@ int spot_runtime_t::start ()
     data_ctrl_front->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout,
                                  sizeof (timeout));
 
-    data_plane_thread.start (spot_data_plane_t::thread_entry, owner, "spot-data");
-
     int worker_errno = 0;
-    if (!spot_node_t::recv_ctrl_reply (data_ctrl_front, &worker_errno)) {
+    if (spot_data_plane_t::initialize_runtime (owner, this, &data_plane_state) != 0
+        || !spot_node_t::recv_ctrl_reply (data_ctrl_front, &worker_errno)) {
         errno = worker_errno != 0 ? worker_errno : ETIMEDOUT;
         stop.set (1);
         stop_sockets ();
-        if (data_plane_thread.get_started ())
-            data_plane_thread.stop ();
+        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
+                                             &data_plane_protocol_state);
         if (owner)
             owner->untrack_owned_socket (data_ctrl_front);
         close_socket_ptr_local (&data_ctrl_front);
         return -1;
     }
+
+    service_control_runtime_t *runtime = owner->_ctx->service_data_runtime ();
+    if (!runtime) {
+        errno = ETERM;
+        stop.set (1);
+        stop_sockets ();
+        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
+                                             &data_plane_protocol_state);
+        return -1;
+    }
+
+    const uint64_t task_id =
+      runtime->add_periodic_task (&spot_data_plane_t::task_entry, owner, 10, true);
+    if (task_id == 0) {
+        stop.set (1);
+        stop_sockets ();
+        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
+                                             &data_plane_protocol_state);
+        return -1;
+    }
+    data_plane_task_id_value = task_id;
+    data_plane_running = true;
     return 0;
 }
 
@@ -421,6 +447,11 @@ int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
     if (arg_ && send_ascii_frame_local (data_ctrl_front, arg_, 0) != 0)
         return -1;
 
+    service_control_runtime_t *runtime =
+      owner && owner->_ctx ? owner->_ctx->service_data_runtime () : NULL;
+    if (runtime && data_plane_task_id_value != 0)
+        runtime->wakeup_task (data_plane_task_id_value);
+
     int reply_errno = 0;
     if (!spot_node_t::recv_ctrl_reply (data_ctrl_front, &reply_errno)) {
         errno = reply_errno != 0 ? reply_errno : ETIMEDOUT;
@@ -433,6 +464,32 @@ void spot_runtime_t::mark_fault (int err_)
 {
     faulted = true;
     fault_errno = err_ != 0 ? err_ : EIO;
+}
+
+bool spot_runtime_t::try_set_data_plane_task_id (uint64_t task_id_)
+{
+    if (task_id_ == 0)
+        return false;
+
+    scoped_lock_t lock (control_state_sync);
+    if (data_plane_task_id_value != 0)
+        return false;
+    data_plane_task_id_value = task_id_;
+    return true;
+}
+
+uint64_t spot_runtime_t::data_plane_task_id () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (control_state_sync));
+    return data_plane_task_id_value;
+}
+
+uint64_t spot_runtime_t::clear_data_plane_task_id ()
+{
+    scoped_lock_t lock (control_state_sync);
+    const uint64_t task_id = data_plane_task_id_value;
+    data_plane_task_id_value = 0;
+    return task_id;
 }
 
 bool spot_runtime_t::try_set_control_task_id (uint64_t task_id_)
@@ -492,8 +549,16 @@ int spot_runtime_t::stop_and_join ()
         }
     }
     stop_sockets ();
-    if (data_plane_thread.get_started ())
-        data_plane_thread.stop ();
+    service_control_runtime_t *runtime =
+      owner && owner->_ctx ? owner->_ctx->service_data_runtime () : NULL;
+    const uint64_t task_id = clear_data_plane_task_id ();
+    if (runtime && task_id != 0)
+        (void) runtime->remove_task (task_id);
+    if (data_plane_running) {
+        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
+                                             &data_plane_protocol_state);
+        data_plane_running = false;
+    }
     return 0;
 }
 
@@ -522,6 +587,16 @@ int spot_runtime_t::abortive_stop ()
 {
     abortive_shutdown = true;
     stop.set (1);
+    service_control_runtime_t *runtime =
+      owner && owner->_ctx ? owner->_ctx->service_data_runtime () : NULL;
+    const uint64_t task_id = clear_data_plane_task_id ();
+    if (runtime && task_id != 0)
+        (void) runtime->remove_task (task_id);
+    if (data_plane_running) {
+        spot_data_plane_t::teardown_runtime (owner, this, &data_plane_state,
+                                             &data_plane_protocol_state);
+        data_plane_running = false;
+    }
 
     socket_base_t *ctrl_front = NULL;
     socket_base_t *ctrl_back = NULL;

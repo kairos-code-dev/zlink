@@ -239,7 +239,7 @@ enum
 
 enum
 {
-    ZLINK_EVENT_CONNECTION_READY_CHANGED = 0x1001,
+    ZLINK_EVENT_CONNECTION_READY = 0x1001,
     ZLINK_EVENT_BIND_FAILED = 0x1002,
     ZLINK_EVENT_ACCEPT_FAILED = 0x1003,
     ZLINK_EVENT_CLOSE_FAILED = 0x1004,
@@ -808,7 +808,7 @@ inline uint64_t zlink_translate_monitor_event (int socket_type_, uint16_t raw_ev
                 return ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED;
             if (socket_type_ == ZMQ_PUB)
                 return ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED;
-            return ZLINK_EVENT_CONNECTION_READY_CHANGED;
+            return ZLINK_EVENT_CONNECTION_READY;
         case ZMQ_EVENT_BIND_FAILED:
             return ZLINK_EVENT_BIND_FAILED;
 #ifdef ZMQ_EVENT_ACCEPT_FAILED
@@ -874,7 +874,7 @@ inline int zlink_recv_monitor_event_raw (zlink_monitor_handle_t *handle_,
 
     std::memset (out_, 0, sizeof (*out_));
     out_->event = zlink_translate_monitor_event (handle_->socket_type, raw_event);
-    if (out_->event == ZLINK_EVENT_CONNECTION_READY_CHANGED
+    if (out_->event == ZLINK_EVENT_CONNECTION_READY
         || out_->event == ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED
         || out_->event == ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED) {
         out_->value = handle_->ready_count.fetch_add (1, std::memory_order_acq_rel) + 1;

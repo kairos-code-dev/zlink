@@ -57,27 +57,8 @@ bool discovery_t::check_tag () const
 
 void discovery_t::emit_ready_changed (uint32_t ready_count_)
 {
-    zlink_service_event_t event;
-    bool emit = false;
-    {
-        scoped_lock_t lock (_sync);
-        if (_monitor_ready_count == ready_count_)
-            return;
-        _monitor_ready_count = ready_count_;
-        memset (&event, 0, sizeof (event));
-        event.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
-        event.event_type = ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED;
-        event.value = ready_count_;
-        const zlink_routing_id_t &routing_id =
-          _bootstrap_runtime->routing_id_value ();
-        if (routing_id.size > 0) {
-            event.detail_flags |= ZLINK_EVENT_DETAIL_SUBJECT_RID;
-            event.routing_id = routing_id;
-        }
-        emit = true;
-    }
-    if (emit)
-        _monitor.emit (event);
+    scoped_lock_t lock (_sync);
+    _monitor_ready_count = ready_count_;
 }
 
 void discovery_t::set_discovery_summary_enabled (bool enabled_)

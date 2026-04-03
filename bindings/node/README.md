@@ -136,5 +136,5 @@ cd bindings/node && npm run perf:multi -- --recv recv --pattern STREAM --warmup 
   [`doc/perf/`](/home/hep7/project/kairos/zlink/doc/perf)
 - readiness gates in binding perf must use low-cost event counting, not
   aggregate ready counts from monitor payloads or snapshots
-- raw sockets: `CONNECTION_READY_CHANGED` + fixed 1-second settle
+- raw sockets: `CONNECTION_READY` + fixed 1-second settle
 - SPOT: `PEER_UP` + fixed 1-second settle

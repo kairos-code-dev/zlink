@@ -20,21 +20,14 @@ namespace zlink
 {
 namespace
 {
-void initialize_poller (socket_poller_t *poller_,
-                        const spot_data_plane_runtime_state_t &state_)
-{
-    poller_->add (state_.ctrl, NULL, ZLINK_POLLIN);
-    poller_->add (state_.ingress, NULL, ZLINK_POLLIN);
-    poller_->add (state_.mesh_xsub, NULL, ZLINK_POLLIN);
-    poller_->add (state_.peer_ctrl_sub, NULL, ZLINK_POLLIN);
-    poller_->add (state_.mesh_xsub_monitor, NULL, ZLINK_POLLIN);
-}
-
 void service_runtime_sockets (spot_runtime_t *runtime_,
                               spot_data_plane_runtime_state_t *state_)
 {
+    spot_data_plane_forwarder_t::pump_socket_commands (state_->ctrl);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_xsub);
+    spot_data_plane_forwarder_t::pump_socket_commands (
+      state_->mesh_xsub_monitor);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_sub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ingress);
@@ -249,9 +242,6 @@ int spot_data_plane_loop_t::run_until_shutdown (
   spot_data_plane_runtime_state_t *state_,
   spot_data_plane_protocol_state_t *protocol_state_out_)
 {
-    socket_poller_t poller;
-    initialize_poller (&poller, *state_);
-
     bool running = true;
     int fatal_errno = 0;
     uint64_t next_bootstrap_ms = 0;
@@ -272,7 +262,7 @@ int spot_data_plane_loop_t::run_until_shutdown (
 
         socket_poller_t::event_t events[5];
         const int rc =
-          poller.wait (events, 5,
+          state_->poller->wait (events, 5,
                        resolve_data_plane_poll_timeout_ms (next_bootstrap_ms));
         if (rc < 0) {
             if (errno == EAGAIN || errno == EINTR)
@@ -296,6 +286,51 @@ int spot_data_plane_loop_t::run_until_shutdown (
         }
     }
 
+    return fatal_errno;
+}
+
+int spot_data_plane_loop_t::run_once (
+  spot_node_t *node_,
+  spot_runtime_t *runtime_,
+  spot_data_plane_runtime_state_t *state_,
+  spot_data_plane_protocol_state_t *protocol_state_,
+  uint64_t *next_bootstrap_ms_,
+  uint64_t *last_bootstrap_peer_version_,
+  bool *running_out_)
+{
+    if (!node_ || !runtime_ || !state_ || !protocol_state_ || !next_bootstrap_ms_
+        || !last_bootstrap_peer_version_ || !running_out_) {
+        errno = EINVAL;
+        return EINVAL;
+    }
+
+    *running_out_ = true;
+    if (!state_->poller)
+        return EFAULT;
+    service_runtime_sockets (runtime_, state_);
+
+    if (drain_peer_ctrl_messages (node_, state_, protocol_state_) != 0)
+        return errno;
+
+    socket_poller_t::event_t events[5];
+    const int rc = state_->poller->wait (events, 5, 0);
+    if (rc < 0) {
+        if (errno == EAGAIN || errno == EINTR)
+            return 0;
+        return errno;
+    }
+
+    int fatal_errno =
+      dispatch_ready_events (events, rc, node_, runtime_, state_,
+                             protocol_state_, running_out_);
+    if (!*running_out_ || fatal_errno != 0)
+        return fatal_errno;
+
+    fatal_errno = publish_bootstrap_if_due (
+      node_, runtime_, state_, protocol_state_, next_bootstrap_ms_,
+      last_bootstrap_peer_version_);
+    if (fatal_errno != 0)
+        *running_out_ = false;
     return fatal_errno;
 }
 }

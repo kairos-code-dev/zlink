@@ -37,9 +37,9 @@ int main (void)
     assert (client != NULL);
 
     void *server_monitor = open_socket_monitor (
-      server, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+      server, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
     void *client_monitor = open_socket_monitor (
-      client, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+      client, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     int rc = zlink_bind (server, "tcp://127.0.0.1:0");
     assert (rc == 0);

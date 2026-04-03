@@ -26,6 +26,14 @@ Current policy is intentionally conservative:
 - `e2e` => `serial`
 - `regression` => `serial`
 
+Important:
+
+- there is no separate `integration-fast` or `integration-heavy` lane today
+- the repository keeps a single `integration` lane
+- fast/heavy distinction is enforced by registration policy, not by extra lane
+- heavy scale, matrix, long-sequence, and historical flake coverage should
+  move to `regression`, not stay in the default `integration` lane
+
 `RESOURCE_LOCK` only coordinates tests inside one `ctest` process. Do not run
 multiple `ctest` commands concurrently for serial lanes.
 
@@ -95,19 +103,27 @@ Default runner behavior:
 - `e2e` only when `--include-e2e` is specified
 - `regression` only when `--include-regression` is specified
 
-SPOT WSS first-delivery note:
+Default time budget:
 
-- `test_spot_pubsub_scenario_unified_wss_ready_delivery` defaults to a single
-  iteration in normal lanes.
-- To rerun the historical flake regression with repeated attempts, execute the
-  single-iteration test repeatedly via CTest.
+- `unittest` lane total: target `<= 10s`
+- `integration` lane total: target `<= 120s`
+- `e2e` lane total: target `<= 180s`
 
-```bash
-ctest --test-dir core/build \
-  --output-on-failure \
-  --repeat until-fail:16 \
-  -R '^test_spot_pubsub_scenario_unified_wss_ready_delivery$'
-```
+Recommended per-test budget:
+
+- `unittest`: target `<= 1s`, hard review above `3s`
+- `integration`: target `<= 5s`, hard review above `10s`
+- `e2e` binary: target `<= 30s`, hard review above `60s`
+- `regression`: no default budget, but explicit purpose is required
+
+SPOT default note:
+
+- Default SPOT coverage keeps only the fast functional scenarios:
+  `peer_tcp`, `multi_publisher`, `node_child_interop`, `sub_handler_basic`,
+  `recv_handle_isolation`, `node_discovery_interop`, and the reduced
+  `service_introspection` split cases.
+- Large transport matrices, repeated WSS/TLS permutations, and historical
+  first-delivery flakes are intentionally excluded from the default lane.
 
 ## Writing Tests
 
@@ -116,6 +132,8 @@ ctest --test-dir core/build \
 - Add new representative executable-level smoke tests under `core/tests/e2e/`.
 - Add long-running or historical flake coverage under the `regression` lane
   unless it must remain in the default integration path.
+- Every pattern must retain its minimum coverage set:
+  `basic`, `invalid`, `teardown`, and `status-or-topology`.
 - Start new tests in the safest lane first. Only promote to `parallel-safe`
   after confirming the test does not depend on live socket timing, discovery
   state, global env mutation, or teardown ordering.
@@ -130,12 +148,13 @@ ctest --test-dir core/build \
   Its top-level CTest entry is intentionally not registered; use the
   `test_thread_safe_scaling_raw` and `test_thread_safe_scaling_spot` cases
   instead.
-- `test_spot_node_discovery_direct_and_child_interop` and
-  `test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery` remain in
-  `core/tests/e2e/spot/test_spot_pubsub_scenario.cpp`, but they are not part
-  of the default split integration lane. Both still expose flaky
-  discovery-driven SPOT behavior and should be run only while working on those
-  core bugs.
+- `test_spot_node_discovery_direct_and_child_interop` remains in
+  `core/tests/e2e/spot/test_spot_pubsub_scenario.cpp` as the only discovery
+  scenario in the default SPOT set. Larger multi-node/discovery stress cases
+  were removed from the default lane and should return only as targeted
+  regression coverage.
+- heavy process benchmark coverage should not stay in the default lane unless
+  it is the single representative smoke for that pattern.
 - `run_thread_safe_contract_stress.sh` repeats the selected thread-safe
   contract cases at the CTest layer. It does not add retry logic inside the
   tests themselves.

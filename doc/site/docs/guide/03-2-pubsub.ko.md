@@ -387,6 +387,320 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
     | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
 
+#### Callback 모드
+
+`zlink_subscribe_handler()`로 콜백을 등록하면 recv 모드에서 callback 모드로
+단방향 전환된다. 이후 도착하는 메시지는 콜백을 통해 자동 dispatch된다.
+
+=== "C"
+
+    ```c
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    void on_topic_message(const zlink_routing_id_t *source_rid,
+                          const char *topic, size_t topic_len,
+                          zlink_msg_t *parts, size_t part_count,
+                          void *userdata)
+    {
+        printf("Callback: topic=%.*s data=%.*s\n",
+               (int)topic_len, topic,
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        for (size_t i = 0; i < part_count; i++)
+            zlink_msg_close(&parts[i]);
+    }
+
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+
+        void *pub = zlink_socket(ctx, ZLINK_XPUB);
+        zlink_bind(pub, "tcp://*:5556");
+
+        void *sub = zlink_socket(ctx, ZLINK_SUB);
+        zlink_connect(sub, "tcp://127.0.0.1:5556");
+        zlink_set_subscription(sub, "weather");
+
+        /* 구독 전파 대기 */
+        zlink_routing_id_t rid;
+        int subscribed;
+        char topic[256];
+        size_t topic_len = sizeof(topic);
+        zlink_subscription_event(pub, &rid, &subscribed,
+                                 topic, &topic_len, 0);
+
+        /* callback 모드로 전환 */
+        zlink_subscribe_handler(sub, on_topic_message, NULL);
+
+        /* 발행 */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 5);
+        memcpy(zlink_msg_data(&msg), "sunny", 5);
+        zlink_publish(pub, "weather", &msg, 1, 0);
+
+        zlink_msleep(200);  /* 콜백 실행 대기 */
+
+        zlink_close(sub);
+        zlink_close(pub);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
+    #include <thread>
+    #include <chrono>
+
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::xpub_socket_t pub(ctx);
+        pub.bind("tcp://*:5556");
+
+        zlink::sub_socket_t sub(ctx);
+        sub.connect("tcp://127.0.0.1:5556");
+        sub.set_subscription("weather");
+
+        // 구독 전파 대기
+        pub.subscription_event();
+
+        // callback 모드로 전환
+        sub.subscribe_handler([](const zlink::routing_id_t& source_rid,
+                                 std::string_view topic,
+                                 std::span<zlink::msg> parts) {
+            std::cout << "Callback: topic=" << topic
+                      << " data=" << parts[0].str() << std::endl;
+        });
+
+        // 발행
+        pub.publish("weather", "sunny");
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        return 0;
+    }
+    ```
+
+=== "Java"
+
+    ```java
+    import dev.kairoscode.zlink.*;
+
+    public class PubSubCallbackExample {
+        public static void main(String[] args) throws Exception {
+            Context ctx = new Context();
+
+            XPubSocket pub = new XPubSocket(ctx);
+            pub.bind("tcp://*:5556");
+
+            SubSocket sub = new SubSocket(ctx);
+            sub.connect("tcp://127.0.0.1:5556");
+            sub.setSubscription("weather");
+
+            // 구독 전파 대기
+            pub.subscriptionEvent();
+
+            // callback 모드로 전환
+            sub.onSubscribe((sourceRid, topic, parts) -> {
+                System.out.println("Callback: topic=" + topic
+                    + " data=" + parts[0].dataAsString());
+            });
+
+            // 발행
+            pub.publish("weather", "sunny");
+
+            Thread.sleep(200);
+
+            sub.close();
+            pub.close();
+            ctx.close();
+        }
+    }
+    ```
+
+=== "Python"
+
+    ```python
+    import zlink
+    import time
+
+    ctx = zlink.Context()
+
+    pub = zlink.XPubSocket(ctx)
+    pub.bind("tcp://*:5556")
+
+    sub = zlink.SubSocket(ctx)
+    sub.connect("tcp://127.0.0.1:5556")
+    sub.set_subscription("weather")
+
+    # 구독 전파 대기
+    pub.subscription_event()
+
+    # callback 모드로 전환
+    def on_topic_message(source_rid, topic, parts):
+        print(f"Callback: topic={topic} data={parts[0].decode()}")
+
+    sub.subscribe_handler(on_topic_message)
+
+    # 발행
+    pub.publish("weather", b"sunny")
+
+    time.sleep(0.2)
+
+    sub.close()
+    pub.close()
+    ctx.term()
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const pub = new zlink.XPubSocket(ctx);
+    pub.bind('tcp://*:5556');
+
+    const sub = new zlink.SubSocket(ctx);
+    sub.connect('tcp://127.0.0.1:5556');
+    sub.setSubscription('weather');
+
+    // 구독 전파 대기
+    pub.subscriptionEvent();
+
+    // callback 모드로 전환
+    sub.subscribeHandler((sourceRid, topic, parts) => {
+        console.log(`Callback: topic=${topic} data=${parts[0].toString()}`);
+    });
+
+    // 발행
+    pub.publish('weather', Buffer.from('sunny'));
+
+    await new Promise(r => setTimeout(r, 200));
+
+    sub.close();
+    pub.close();
+    ctx.term();
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
+    var pub = new XPubSocket(ctx);
+    pub.Bind("tcp://*:5556");
+
+    var sub = new SubSocket(ctx);
+    sub.Connect("tcp://127.0.0.1:5556");
+    sub.SetSubscription("weather");
+
+    // 구독 전파 대기
+    pub.SubscriptionEvent();
+
+    // callback 모드로 전환
+    sub.SubscribeHandler((sourceRid, topic, parts) => {
+        Console.WriteLine($"Callback: topic={topic} data={parts[0].GetString()}");
+    });
+
+    // 발행
+    pub.Publish("weather", "sunny");
+
+    Thread.Sleep(200);
+
+    sub.Close();
+    pub.Close();
+    ctx.Term();
+    ```
+
+=== "Rust"
+
+    ```rust
+    use zlink::Context;
+    use std::thread;
+    use std::time::Duration;
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let pub_sock = ctx.xpub_socket();
+        pub_sock.bind("tcp://*:5556")?;
+
+        let sub = ctx.sub_socket();
+        sub.connect("tcp://127.0.0.1:5556")?;
+        sub.set_subscription("weather")?;
+
+        // 구독 전파 대기
+        pub_sock.subscription_event()?;
+
+        // callback 모드로 전환
+        sub.subscribe_handler(|source_rid, topic, parts| {
+            println!("Callback: topic={} data={}",
+                     topic, String::from_utf8_lossy(parts[0].data()));
+        });
+
+        // 발행
+        pub_sock.publish("weather", b"sunny")?;
+
+        thread::sleep(Duration::from_millis(200));
+
+        Ok(())
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "time"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        pub, err := ctx.XPubSocket()
+        if err != nil { log.Fatal(err) }
+        defer pub.Close()
+        pub.Bind("tcp://*:5556")
+
+        sub, err := ctx.SubSocket()
+        if err != nil { log.Fatal(err) }
+        defer sub.Close()
+        sub.Connect("tcp://127.0.0.1:5556")
+        sub.SetSubscription("weather")
+
+        // 구독 전파 대기
+        pub.SubscriptionEvent()
+
+        // callback 모드로 전환
+        sub.OnSubscribe(func(sourceRid zlink.RoutingID, topic string, parts []zlink.Message) {
+            fmt.Printf("Callback: topic=%s data=%s\n", topic, parts[0].Data())
+        })
+
+        // 발행
+        pub.Publish("weather", zlink.NewMessage([]byte("sunny")))
+
+        time.Sleep(200 * time.Millisecond)
+    }
+    ```
+
 ??? example "Full Sample Code -- Callback"
 
     | Language | Source |

@@ -352,6 +352,318 @@ and DEALER client, send a request, receive it, reply, and clean up.
     | Rust | [dealer_router_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/dealer_router_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/dealer_router_recv_sample/main.go) |
 
+### Callback Mode
+
+The ROUTER uses `zlink_recv_handler()` to handle incoming messages
+via callback. The DEALER sends a request and receives the reply
+with blocking `zlink_recv()`.
+
+=== "C"
+
+    ```c
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    void on_request(const zlink_routing_id_t *source_rid,
+                    zlink_msg_t *parts, size_t count, void *userdata)
+    {
+        printf("Router callback: %.*s from peer\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+
+        /* Reply back using the source routing id */
+        void *router = (void *)userdata;
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, 4);
+        memcpy(zlink_msg_data(&reply), "pong", 4);
+        zlink_send_rid(router, source_rid, &reply, 1, 0);
+
+        zlink_multipart_close(parts, count);
+    }
+
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+        void *router = zlink_socket(ctx, ZLINK_ROUTER);
+        void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+
+        zlink_bind(router, "tcp://*:5557");
+        zlink_set_routing_id(dealer, "CLIENT", 6);
+        zlink_connect(dealer, "tcp://127.0.0.1:5557");
+
+        /* Router uses callback to receive and reply */
+        zlink_recv_handler(router, on_request, router);
+
+        /* Dealer sends request */
+        zlink_msg_t req;
+        zlink_msg_init_size(&req, 4);
+        memcpy(zlink_msg_data(&req), "ping", 4);
+        zlink_send(dealer, &req, 1, 0);
+
+        /* Dealer receives reply (blocking recv) */
+        zlink_routing_id_t src;
+        zlink_msg_t *parts;
+        size_t cnt;
+        zlink_recv(dealer, &src, &parts, &cnt, 0);
+        printf("Reply: %.*s\n", (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, cnt);
+
+        zlink_close(dealer);
+        zlink_close(router);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
+
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::router_socket_t router(ctx);
+        router.bind("tcp://*:5557");
+
+        zlink::dealer_socket_t dealer(ctx);
+        dealer.set_routing_id("CLIENT");
+        dealer.connect("tcp://127.0.0.1:5557");
+
+        // Router uses callback to receive and reply
+        router.on_receive([&](const zlink::routing_id_t& source_rid,
+                              std::span<zlink::message_t> parts) {
+            std::cout << "Router callback: " << parts[0].str() << std::endl;
+            router.send_rid(source_rid, zlink::message_t("pong", 4));
+        });
+
+        // Dealer sends request
+        dealer.send(zlink::message_t("ping", 4));
+
+        // Dealer receives reply (blocking recv)
+        auto [rid, reply] = dealer.recv();
+        std::cout << "Reply: " << reply[0].str() << std::endl;
+
+        return 0;
+    }
+    ```
+
+=== "Java"
+
+    ```java
+    import dev.kairoscode.zlink.*;
+
+    public class DealerRouterCallbackExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            RouterSocket router = new RouterSocket(ctx);
+            router.bind("tcp://*:5557");
+
+            DealerSocket dealer = new DealerSocket(ctx);
+            dealer.setRoutingId("CLIENT");
+            dealer.connect("tcp://127.0.0.1:5557");
+
+            // Router uses callback to receive and reply
+            router.onReceive(received -> {
+                System.out.println("Router callback: "
+                    + new String(received.parts()[0].data()));
+                router.sendRid(received.routingId(),
+                    new Message("pong".getBytes()));
+            });
+
+            // Dealer sends request
+            dealer.send(new Message("ping".getBytes()));
+
+            // Dealer receives reply (blocking recv)
+            Message reply = dealer.recv();
+            System.out.println("Reply: " + reply.partAsString(0));
+
+            dealer.close();
+            router.close();
+            ctx.close();
+        }
+    }
+    ```
+
+=== "Python"
+
+    ```python
+    import zlink
+
+    ctx = zlink.Context()
+
+    router = zlink.RouterSocket(ctx)
+    router.bind("tcp://*:5557")
+
+    dealer = zlink.DealerSocket(ctx)
+    dealer.set_routing_id("CLIENT")
+    dealer.connect("tcp://127.0.0.1:5557")
+
+    # Router uses callback to receive and reply
+    def on_request(source_rid, parts):
+        print(f"Router callback: {parts[0].decode()}")
+        router.send_rid(source_rid, b"pong")
+
+    router.on_receive(on_request)
+
+    # Dealer sends request
+    dealer.send(b"ping")
+
+    # Dealer receives reply (blocking recv)
+    _, reply = dealer.recv()
+    print(f"Reply: {reply[0].decode()}")
+
+    dealer.close()
+    router.close()
+    ctx.term()
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const router = new zlink.RouterSocket(ctx);
+    router.bind('tcp://*:5557');
+
+    const dealer = new zlink.DealerSocket(ctx);
+    dealer.setRoutingId('CLIENT');
+    dealer.connect('tcp://127.0.0.1:5557');
+
+    // Router uses callback to receive and reply
+    router.recvHandler((sourceRid: Buffer, parts: Buffer[]) => {
+        console.log(`Router callback: ${parts[0].toString()}`);
+        router.sendRid(sourceRid, Buffer.from('pong'));
+    });
+
+    // Dealer sends request
+    dealer.send(Buffer.from('ping'));
+
+    // Dealer receives reply (blocking recv)
+    const [rid, reply] = dealer.receive();
+    console.log(`Reply: ${reply[0].toString()}`);
+
+    dealer.close();
+    router.close();
+    ctx.term();
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    using Zlink;
+
+    using var ctx = new Context();
+
+    using var router = new RouterSocket(ctx);
+    router.Bind("tcp://*:5557");
+
+    using var dealer = new DealerSocket(ctx);
+    dealer.SetRoutingId("CLIENT");
+    dealer.Connect("tcp://127.0.0.1:5557");
+
+    // Router uses callback to receive and reply
+    router.RecvHandler((sourceRid, parts) => {
+        Console.WriteLine($"Router callback: {parts[0].GetString()}");
+        router.SendRid(sourceRid, new Message("pong"u8));
+    });
+
+    // Dealer sends request
+    dealer.Send(new Message("ping"u8));
+
+    // Dealer receives reply (blocking recv)
+    var (rid, reply) = dealer.Recv();
+    Console.WriteLine($"Reply: {reply[0].DataString()}");
+    ```
+
+=== "Rust"
+
+    ```rust
+    use zlink::Context;
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let router = ctx.router_socket();
+        router.bind("tcp://*:5557")?;
+
+        let dealer = ctx.dealer_socket();
+        dealer.set_routing_id("CLIENT")?;
+        dealer.connect("tcp://127.0.0.1:5557")?;
+
+        // Router uses callback to receive and reply
+        let send_handle = router.send_handle();
+        router.on_receive(move |source_rid, parts| {
+            println!("Router callback: {}",
+                     String::from_utf8_lossy(parts[0].data()));
+            send_handle.send_rid(source_rid, b"pong")?;
+            Ok(())
+        })?;
+
+        // Dealer sends request
+        dealer.send(b"ping")?;
+
+        // Dealer receives reply (blocking recv)
+        let (_, reply) = dealer.recv()?;
+        println!("Reply: {}",
+                 String::from_utf8_lossy(reply[0].data()));
+
+        Ok(())
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        router, err := ctx.RouterSocket()
+        if err != nil { log.Fatal(err) }
+        defer router.Close()
+        router.Bind("tcp://*:5557")
+
+        dealer, err := ctx.DealerSocket()
+        if err != nil { log.Fatal(err) }
+        defer dealer.Close()
+        rid, _ := zlink.NewRoutingID([]byte("CLIENT"))
+        dealer.SetRoutingID(rid)
+        dealer.Connect("tcp://127.0.0.1:5557")
+
+        // Router uses callback to receive and reply
+        router.OnMessage(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
+            fmt.Printf("Router callback: %s\n", string(parts[0].Data()))
+            router.SendTo(sourceRid, zlink.NewMessage([]byte("pong")))
+        })
+
+        // Dealer sends request
+        dealer.Send(zlink.NewMessage([]byte("ping")))
+
+        // Dealer receives reply (blocking recv)
+        reply, err := dealer.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Reply: %s\n", reply.Parts[0].Data())
+        reply.Close()
+    }
+    ```
+
 ??? example "Full Sample Code -- Callback"
 
     | Language | Source |

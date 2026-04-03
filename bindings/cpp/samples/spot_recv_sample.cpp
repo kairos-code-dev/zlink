@@ -18,12 +18,11 @@ int main ()
     zlink::service_monitor_handle_t sub_monitor =
       sub_spot.monitor_open (
         zlink::service_monitor_event::spot_filter_applied
-        | zlink::service_monitor_event::spot_subscription_ready_changed
         | zlink::service_monitor_event::error);
     assert (sub_monitor.valid ());
     zlink::service_monitor_handle_t pub_monitor =
       pub_spot.monitor_open (
-        zlink::service_monitor_event::spot_first_delivery_ready_changed
+        zlink::service_monitor_event::peer_up
         | zlink::service_monitor_event::error);
     assert (pub_monitor.valid ());
 

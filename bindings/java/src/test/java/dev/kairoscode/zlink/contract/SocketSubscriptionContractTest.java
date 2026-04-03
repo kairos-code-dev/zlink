@@ -43,8 +43,7 @@ public class SocketSubscriptionContractTest {
     public void publishUsesCanonicalTopicPath() throws Exception {
         TestSupport.assumeNative();
 
-        int readyEvents = MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
-            | MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue();
+        int readyEvents = MonitorEventType.CONNECTION_READY.getValue();
         CountDownLatch delivered = new CountDownLatch(1);
         AtomicReference<String> topic = new AtomicReference<>();
         AtomicReference<byte[]> payload = new AtomicReference<>();
@@ -64,10 +63,10 @@ public class SocketSubscriptionContractTest {
             pub.bind(endpoint);
             sub.setSubscription("topic-a");
             sub.connect(endpoint);
-            TestSupport.awaitDeliveryReady(subMonitor,
-                MonitorEventType.SUB_DELIVERY_READY_CHANGED);
-            TestSupport.awaitDeliveryReady(pubMonitor,
-                MonitorEventType.PUB_DELIVERY_READY_CHANGED);
+            TestSupport.awaitMonitorEvent(subMonitor,
+                MonitorEventType.CONNECTION_READY);
+            TestSupport.awaitMonitorEvent(pubMonitor,
+                MonitorEventType.CONNECTION_READY);
 
             try (Message part = Message.copyOfUtf8("payload")) {
                 pub.publish("topic-a", part);
@@ -84,8 +83,7 @@ public class SocketSubscriptionContractTest {
     public void subscribePullsTopicAwareMessage() {
         TestSupport.assumeNative();
 
-        int readyEvents = MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
-            | MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue();
+        int readyEvents = MonitorEventType.CONNECTION_READY.getValue();
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
@@ -95,10 +93,10 @@ public class SocketSubscriptionContractTest {
             pub.bind(endpoint);
             sub.setSubscription("topic-b");
             sub.connect(endpoint);
-            TestSupport.awaitDeliveryReady(subMonitor,
-                MonitorEventType.SUB_DELIVERY_READY_CHANGED);
-            TestSupport.awaitDeliveryReady(pubMonitor,
-                MonitorEventType.PUB_DELIVERY_READY_CHANGED);
+            TestSupport.awaitMonitorEvent(subMonitor,
+                MonitorEventType.CONNECTION_READY);
+            TestSupport.awaitMonitorEvent(pubMonitor,
+                MonitorEventType.CONNECTION_READY);
 
             try (Message part = Message.copyOfUtf8("payload-b")) {
                 pub.publish("topic-b", part);

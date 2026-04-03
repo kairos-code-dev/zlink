@@ -31,5 +31,5 @@ bindings/rust/target/doc/zlink/index.html
 - Monitor snapshots are for state/queue inspection, not ready-count gates.
 - Perf or readiness verification in Rust bindings must use low-cost event
   counting when an expected peer count is required.
-- raw sockets: `CONNECTION_READY_CHANGED` + fixed 1-second settle
+- raw sockets: `CONNECTION_READY` + fixed 1-second settle
 - SPOT: `PEER_UP` + fixed 1-second settle

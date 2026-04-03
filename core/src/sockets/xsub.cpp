@@ -146,14 +146,9 @@ uint32_t zlink::xsub_t::compute_delivery_ready_count () const
 void zlink::xsub_t::refresh_delivery_ready_state (
   const endpoint_uri_pair_t &endpoint_uri_pair_)
 {
+    LIBZLINK_UNUSED (endpoint_uri_pair_);
     const uint32_t ready_count = compute_delivery_ready_count ();
-    const uint32_t previous =
-      _delivery_ready_count.exchange (ready_count, std::memory_order_acq_rel);
-    if (ready_count == previous)
-        return;
-
-    emit_socket_monitor_value_event (ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED,
-                                     ready_count, endpoint_uri_pair_);
+    _delivery_ready_count.store (ready_count, std::memory_order_release);
 }
 
 uint32_t zlink::xsub_t::monitor_ready_count () const

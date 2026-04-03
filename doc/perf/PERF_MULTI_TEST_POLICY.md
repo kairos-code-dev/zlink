@@ -102,10 +102,12 @@
   - recv 모델: `multi = poller POLLIN drain + POLLOUT backpressure`
   - callback 모델: `multi = callback recv + bounded queue + metric worker + send_ready_handler backpressure`
   - backpressure 전략: `echo 서버: deque, echo 클라이언트/one-way sender: bool 플래그`
-- 연결 준비와 benchmark start gate는 socket/service monitoring의
-  **low-cost ready event**만 사용한다.
-- multi perf의 ready gate는 low-cost event counting + 고정 settle 1초로 끝내야
-  한다. ready bool/count를 callback state에 복사하기 위한 구조체, heap alloc,
+- 연결 준비와 benchmark start gate는 pattern별 contract를 사용한다.
+  - raw pattern: socket monitoring 의 **low-cost ready event**
+  - SPOT: explicit `READY/START` barrier protocol
+- multi perf의 ready gate는 raw pattern 에서만 low-cost event counting 을
+  사용한다. SPOT 은 service monitor / snapshot 이 아니라 barrier 로 끝내야 한다.
+  ready bool/count를 callback state에 복사하기 위한 구조체, heap alloc,
   mutex/cv wrapper, pattern별 별도 ready monitor 계층은 만들지 않는다.
 - multi perf start gate 구현에서 아래를 금지한다.
   - ad-hoc sleep/retry handshake loop
@@ -130,25 +132,32 @@
 #### pattern별 ready gate 기준
 
 multi는 runner의 `READY,<endpoint>`/`START,<size>` orchestration과 별개로,
-각 바이너리 내부에서 아래 공식 monitor event만으로 실제 메시징 시작 가능
-여부를 판정한다. perf는 추가 quorum 완화나 우회 gate를 두지 않는다. 아래
-이벤트 이후 send/recv가 불가능하면 perf 문제가 아니라 core 버그로 보고
-수정한다.
+각 바이너리 내부에서 아래 계약만으로 실제 메시징 시작 가능 여부를 판정한다.
+perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
 
 | 패턴 | 역할 | ready gate |
 |------|------|------------|
-| MULTI_DEALER_DEALER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
-| MULTI_DEALER_ROUTER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
-| MULTI_ROUTER_ROUTER | client 각 소켓 | `CONNECTION_READY_CHANGED` |
-| MULTI_PUBSUB | client 각 소켓 | `CONNECTION_READY_CHANGED` |
-| MULTI_SPOT | client 각 소켓 | `PEER_UP` |
+| MULTI_DEALER_DEALER | client 각 소켓 | `CONNECTION_READY` |
+| MULTI_DEALER_ROUTER | client 각 소켓 | `CONNECTION_READY` |
+| MULTI_ROUTER_ROUTER | client 각 소켓 | `CONNECTION_READY` |
+| MULTI_PUBSUB | client 각 소켓 | `CONNECTION_READY` |
+| MULTI_SPOT | client 각 spot | explicit `READY/START` barrier |
 | MULTI_STREAM | client 각 연결 | transport connect 완료 + stream protocol ready (`connect_ok == target clients`) |
 
 - `expected_clients`는 해당 케이스에서 runner가 요구한 client 수와 동일하다.
-- multi는 expected client 수만큼 low-cost event를 직접 counting 해서 판정한다.
-- multi는 low-cost gate 이후 settle 1초를 대기하고 측정을 시작한다.
+- raw pattern 은 expected client 수만큼 low-cost event를 직접 counting 해서 판정한다.
+- SPOT 은 각 client spot 이 `READY` control message 를 보내고, server 가
+  unique client 기준 `READY == expected_clients` 를 만족하면 `START` 를
+  broadcast 해서 판정한다.
+- 단, SPOT client 는 `connect_peer()` 직후 즉시 `READY` 를 보내지 않는다.
+  local benchmark network 정책으로, 각 client spot 이 connect setup 을 모두
+  끝낸 뒤 고정 stabilization window(기본 1초)를 거쳐 server spot 에
+  `READY` 를 전송한다.
+- server 는 expected client 수의 `READY` 를 모두 받은 뒤에만 `START` 를
+  broadcast 한다.
 - multi policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
 - multi policy 는 delivery-ready event gate도 사용하지 않는다.
+- multi SPOT 은 service monitor gate 도 사용하지 않는다.
 
 ### 1.2 프로세스 모델
 
@@ -187,8 +196,13 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 - phase 전환은 패턴별로 제어한다: echo는 client가 phase를 제어하고 server는 relay/echo 대기, one-way는 sender/receiver가 동일 순서의 phase를 수행한다. throughput/latency는 모두 active phase 한 구간에서 계산한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
 - 여기서 `READY,<endpoint>`는 어디까지나 프로세스 orchestration 용도다.
-  benchmark start gate를 대체하지 않으며, 실제 측정 시작 조건은 각 바이너리
-  내부의 low-cost ready event gate가 담당한다.
+  benchmark start gate를 대체하지 않는다.
+- raw pattern 의 실제 측정 시작 조건은 각 바이너리 내부의 `CONNECTION_READY`
+  gate가 담당한다.
+- SPOT 의 실제 측정 시작 조건은 client/server spot 사이의 explicit
+  `READY/START` barrier 가 담당한다. multi SPOT 에서는 각 client 가 local
+  connect setup 완료 후 stabilization window(기본 1초)를 거쳐 `READY` 를
+  보내고, server 가 all-ready 뒤 `START` 를 보내는 순서를 따른다.
 
 #### 소스 파일 구조
 
@@ -825,7 +839,7 @@ server 프로세스:
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| ready | event-based | pattern별 low-cost ready event + settle 1초 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` |
+| ready | event-based | raw=`CONNECTION_READY`, SPOT=`READY/START` barrier | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` |
 | warmup | time-based | 2s | `PERF_MULTI_WARMUP_SECONDS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
@@ -1213,30 +1227,31 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 ### 13.3 연결 준비 확인: MONITOR low-cost event 전용
 
 client 프로세스가 server에 대한 benchmark start gate를 확인할 때는 반드시
-**MONITOR low-cost ready event**를 사용한다. Sleep, handshake barrier
-(첫 메시지 전송 성공 대기), monitor snapshot polling 등 우회적 방법을 연결
-확인 수단으로 사용하지 않는다.
+pattern별 공식 start contract 를 사용한다. monitor snapshot polling, 첫 메시지
+전송 성공 대기, ad-hoc sleep/retry 같은 우회 방식은 사용하지 않는다.
 
 | 항목 | 규칙 |
 |------|------|
-| 연결 확인 API | `zlink_socket_monitor_open(...)` 또는 `zlink_service_monitor_open(...)` 뒤에 low-cost ready event 직접 대기 helper 사용 |
-| 감시 이벤트 | raw는 `CONNECTION_READY_CHANGED`, SPOT은 `PEER_UP`, 기준 표는 [`../guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md) §11을 따른다 |
-| 대기 방식 | app thread에서 타임아웃 기반으로 ready event를 직접 기다린다 — busy-wait/sleep 금지 |
+| raw 연결 확인 API | `zlink_socket_monitor_open(...)` 뒤에 `CONNECTION_READY` 직접 대기 helper 사용 |
+| SPOT 연결 확인 API | service monitor 사용 금지. spot control topic 위의 explicit `READY/START` barrier 사용 |
+| 대기 방식 | app thread에서 타임아웃 기반 bounded wait — busy-wait/sleep 금지 |
 | 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
-| Monitor HWM | `PERF_MULTI_MONITOR_HWM` (기본 1,000) — monitor event queue 상한 |
+| Monitor HWM | raw monitor 사용 시 `PERF_MULTI_MONITOR_HWM` (기본 1,000) |
 
-- **이유**: perf start gate는 저비용 edge를 기준으로 하고, 실제 benchmark 시작은
-  고정 settle 1초 뒤에 맞춘다. Sleep은 환경에 따라 불충분하거나 과다하고,
-  handshake barrier와 snapshot polling은 측정 인프라 오버헤드를 늘리거나
-  잘못된 ready 판정을 만들 수 있다.
-- monitor handle은 pattern 파일 안에서 직접 열고 닫되, ready gate는 이벤트 1개
-  직접 대기로 끝내지 않고 expected client 수 event counting 뒤 settle 1초로
-  끝낸다. ready bool/count를 보관하기 위한 callback-state wrapper는 두지 않는다.
+- **이유**: raw는 저비용 edge 기반으로 충분히 판정할 수 있고, SPOT은 service
+  monitor 대신 benchmark protocol 자체로 정확한 all-clients-ready 를 정의하는 편이
+  더 단순하고 오용 여지가 적다.
+- raw monitor handle은 pattern 파일 안에서 직접 열고 닫되, ready gate는
+  expected client 수 `CONNECTION_READY` counting 으로 끝낸다.
+- SPOT 은 각 client 의 `READY` 와 server 의 `START` control message 만으로
+  gate 를 닫는다. ready bool/count 를 보관하기 위한 callback-state wrapper 는
+  두지 않는다.
 - `READY,<endpoint>` / `CLIENT_READY,<msg_size>` 같은 stdout 제어 메시지는
   runner와 프로세스 순서를 맞추기 위한 외부 orchestration 신호일 뿐이다.
-  이 신호만으로 low-cost ready를 판정하거나 측정을 시작해서는 안 된다.
+  이 신호만으로 raw ready 를 판정하거나 측정을 시작해서는 안 된다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 용도로만 사용한다. perf 시작 gate로 승격하지 않는다.
-- server 측에서도 동일하게 guide §11에 정의된 low-cost event를 기준으로 준비를 판정한다.
+- server 측에서도 raw는 동일하게 `CONNECTION_READY` 를 기준으로 준비를 판정하고,
+  SPOT 은 `READY` 집계 후 `START` broadcast 로 준비를 판정한다.
 
 ---
 

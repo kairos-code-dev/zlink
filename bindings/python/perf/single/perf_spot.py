@@ -18,25 +18,16 @@ from perf_common import (
 def _wait_spot_ready(monitor, timeout_s):
     deadline = time.perf_counter() + timeout_s
     filter_ready = False
-    pub_ready = False
-    sub_ready = False
+    peer_ready = False
     while time.perf_counter() < deadline:
         event = monitor.recv()
         if event.event_type == zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED:
             filter_ready = True
-        elif (
-            event.event_type == zlink.ServiceMonitorMask.SPOT_FIRST_DELIVERY_READY_CHANGED
-            and event.value > 0
-        ):
-            pub_ready = True
-        elif (
-            event.event_type == zlink.ServiceMonitorMask.SPOT_SUB_DELIVERY_READY_CHANGED
-            and event.value > 0
-        ):
-            sub_ready = True
-        if filter_ready and pub_ready and sub_ready:
+        elif event.event_type == zlink.ServiceMonitorMask.PEER_UP:
+            peer_ready = True
+        if filter_ready and peer_ready:
             return
-    raise RuntimeError("timed out waiting for spot delivery-ready events")
+    raise RuntimeError("timed out waiting for spot peer/filter readiness")
 
 
 def main(argv=None):
@@ -51,8 +42,7 @@ def main(argv=None):
             with zlink.Spot(node) as spot:
                 with spot.open_monitor(
                     zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
-                    | zlink.ServiceMonitorMask.SPOT_FIRST_DELIVERY_READY_CHANGED
-                    | zlink.ServiceMonitorMask.SPOT_SUB_DELIVERY_READY_CHANGED
+                    | zlink.ServiceMonitorMask.PEER_UP
                 ) as monitor:
                     spot.on_send_ready(lambda _: None)
                     spot.set_subscription(topic)

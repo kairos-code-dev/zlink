@@ -16,6 +16,7 @@
 namespace zlink
 {
 class socket_base_t;
+class socket_poller_t;
 class spot_node_t;
 struct spot_runtime_t;
 
@@ -50,10 +51,10 @@ inline bool sync_monitor_ready_endpoint (
 {
     if (!endpoints_ || raw_.remote_addr[0] == '\0')
         return false;
-    if (raw_.event != ZLINK_EVENT_CONNECTION_READY_CHANGED)
+    if (raw_.event == ZLINK_EVENT_DISCONNECTED)
         return endpoints_->erase (raw_.remote_addr) != 0;
-    if (raw_.value <= 0)
-        return endpoints_->erase (raw_.remote_addr) != 0;
+    if (raw_.event != ZLINK_EVENT_CONNECTION_READY)
+        return false;
     return endpoints_->insert (raw_.remote_addr).second;
 }
 
@@ -64,22 +65,18 @@ inline bool sync_monitor_connected_endpoint (
         return false;
     if (raw_.event == ZLINK_EVENT_DISCONNECTED)
         return endpoints_->erase (raw_.remote_addr) != 0;
-    if (raw_.event == ZLINK_EVENT_CONNECTED)
-        return endpoints_->insert (raw_.remote_addr).second;
-    if (raw_.event == ZLINK_EVENT_CONNECTION_READY_CHANGED && raw_.value > 0)
+    if (raw_.event == ZLINK_EVENT_CONNECTION_READY)
         return endpoints_->insert (raw_.remote_addr).second;
     return false;
 }
 
 inline bool apply_monitor_ready_peer_count (uint32_t *ready_peer_count_out_,
-                                            const zlink_monitor_event_t &raw_)
+                                            size_t endpoint_count_)
 {
-    if (!ready_peer_count_out_
-        || raw_.event != ZLINK_EVENT_CONNECTION_READY_CHANGED)
+    if (!ready_peer_count_out_)
         return false;
-
     const uint32_t next_ready_count =
-      raw_.value > 0 ? static_cast<uint32_t> (raw_.value) : 0u;
+      static_cast<uint32_t> (endpoint_count_);
     if (*ready_peer_count_out_ == next_ready_count)
         return false;
     *ready_peer_count_out_ = next_ready_count;
@@ -128,7 +125,8 @@ inline bool sync_mesh_peer_monitor_state (
 
     uint32_t ready_peer_count =
       state_->connected_ready_peer_count.load (std::memory_order_acquire);
-    if (apply_monitor_ready_peer_count (&ready_peer_count, raw_)) {
+    if (apply_monitor_ready_peer_count (&ready_peer_count,
+                                        state_->connected_endpoints.size ())) {
         state_->connected_ready_peer_count.store (ready_peer_count,
                                                   std::memory_order_release);
         changed = true;
@@ -228,6 +226,7 @@ struct spot_data_plane_runtime_state_t
     int current_mesh_pub_sndhwm;
     uint64_t last_mesh_pub_budget_version;
     std::string last_mesh_pub_bound_endpoint;
+    socket_poller_t *poller;
 };
 
 struct spot_data_plane_protocol_t

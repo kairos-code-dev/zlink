@@ -91,8 +91,8 @@ void spot_sub_monitor_handler (const zlink_service_event_t *event_, void *userda
         std::lock_guard<std::mutex> lock (probe->mutex);
         if (event_->event_type == ZLINK_SPOT_SUB_FILTER_APPLIED)
             probe->sub_filter_applied = true;
-        else if (event_->event_type == ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED)
-            probe->sub_delivery_ready = event_->value > 0;
+        else if (event_->event_type == ZLINK_MONITOR_EVENT_PEER_UP)
+            probe->sub_delivery_ready = true;
         else if (event_->event_type == ZLINK_MONITOR_EVENT_ERROR
                  && probe->error_code == 0)
             probe->error_code = event_->error_code != 0 ? event_->error_code : EIO;
@@ -110,8 +110,8 @@ void spot_pub_monitor_handler (const zlink_service_event_t *event_, void *userda
 
     {
         std::lock_guard<std::mutex> lock (probe->mutex);
-        if (event_->event_type == ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED)
-            probe->pub_first_ready = event_->value > 0;
+        if (event_->event_type == ZLINK_MONITOR_EVENT_PEER_UP)
+            probe->pub_first_ready = true;
         else if (event_->event_type == ZLINK_MONITOR_EVENT_ERROR
                  && probe->error_code == 0)
             probe->error_code = event_->error_code != 0 ? event_->error_code : EIO;

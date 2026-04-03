@@ -241,18 +241,16 @@ inline bool wait_spot_ready (zlink::service_monitor_handle_t &sub_monitor_,
                              const std::string &endpoint_,
                              int timeout_ms_ = 10000)
 {
+    (void) endpoint_;
     return wait_for_service_monitor_event (
              sub_monitor_,
              static_cast<uint32_t> (
                zlink::service_monitor_event::spot_filter_applied),
              timeout_ms_)
-           && wait_for_service_monitor_event_endpoint (
-             sub_monitor_,
-             static_cast<uint32_t> (
-               zlink::service_monitor_event::spot_subscription_ready_changed),
-             endpoint_, timeout_ms_)
-           && wait_for_service_monitor_state (
-             pub_monitor_, ZLINK_MONITOR_STATE_SEND_READY, timeout_ms_);
+           && wait_for_service_monitor_event (
+             pub_monitor_,
+             static_cast<uint32_t> (zlink::service_monitor_event::peer_up),
+             timeout_ms_);
 }
 
 template<typename T>

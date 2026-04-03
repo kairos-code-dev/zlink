@@ -433,7 +433,28 @@ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
     if (!runtime_ || raw_.remote_addr[0] == '\0')
         return;
 
-    if (!sync_mesh_peer_monitor_state (&runtime_->mesh_peer_state, raw_))
+    if (std::getenv ("ZLINK_DEBUG_SPOT_CONTROL")) {
+        std::fprintf (stderr,
+                      "[spot-control] mesh-monitor node=%p event=%llu remote=%s\n",
+                      runtime_->owner,
+                      static_cast<unsigned long long> (raw_.event),
+                      raw_.remote_addr);
+        std::fflush (stderr);
+    }
+
+    const bool changed =
+      sync_mesh_peer_monitor_state (&runtime_->mesh_peer_state, raw_);
+    if (std::getenv ("ZLINK_DEBUG_SPOT_CONTROL")) {
+        std::fprintf (
+          stderr,
+          "[spot-control] mesh-monitor node=%p changed=%d version=%llu\n",
+          runtime_->owner,
+          changed ? 1 : 0,
+          static_cast<unsigned long long> (
+            mesh_peer_version (&runtime_->mesh_peer_state)));
+        std::fflush (stderr);
+    }
+    if (!changed)
         return;
     if (runtime_->owner)
         spot_node_access_t::wake_control_task (runtime_->owner);

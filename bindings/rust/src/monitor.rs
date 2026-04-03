@@ -6,12 +6,8 @@ use std::mem::MaybeUninit;
 pub const MONITOR_EVENT_ALL: u32 = ffi::ZLINK_SOCKET_MONITOR_EVENT_ALL;
 
 /// Bitmask for connection-ready-changed monitor events.
-pub const MONITOR_EVENT_CONNECTION_READY_CHANGED: u32 =
-    ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED;
-
-/// Bitmask for discovery ready-changed service monitor events.
-pub const SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED: u32 =
-    ffi::ZLINK_DISCOVERY_MONITOR_EVENT_READY_CHANGED;
+pub const MONITOR_EVENT_CONNECTION_READY: u32 =
+    ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY;
 
 /// Bitmask for discovery error service monitor events.
 pub const SERVICE_MONITOR_EVENT_DISCOVERY_ERROR: u32 = ffi::ZLINK_DISCOVERY_MONITOR_EVENT_ERROR;
@@ -31,10 +27,6 @@ pub const SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED: u32 =
 /// Bitmask for discovery closed monitor events.
 pub const SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED: u32 = ffi::ZLINK_DISCOVERY_MONITOR_EVENT_CLOSED;
 
-/// Bitmask for SPOT ready-changed service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED;
-
 /// Bitmask for SPOT peer-up service monitor events.
 pub const SERVICE_MONITOR_EVENT_SPOT_PEER_UP: u32 = ffi::ZLINK_SPOT_MONITOR_EVENT_PEER_UP;
 
@@ -44,13 +36,13 @@ pub const SERVICE_MONITOR_EVENT_SPOT_PEER_DOWN: u32 = ffi::ZLINK_SPOT_MONITOR_EV
 /// Bitmask for SPOT error service monitor events.
 pub const SERVICE_MONITOR_EVENT_SPOT_ERROR: u32 = ffi::ZLINK_SPOT_MONITOR_EVENT_ERROR;
 
+/// Bitmask for SPOT connection-ready service monitor events.
+pub const SERVICE_MONITOR_EVENT_CONNECTION_READY: u32 =
+    ffi::ZLINK_SPOT_MONITOR_EVENT_CONNECTION_READY;
+
 /// Bitmask for SPOT filter-applied service monitor events.
 pub const SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED: u32 =
     ffi::ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED;
-
-/// Bitmask for SPOT first-delivery-ready service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED;
 
 /// Bitmask for SPOT queue-full service monitor events.
 pub const SERVICE_MONITOR_EVENT_SPOT_PUB_QUEUE_FULL: u32 =
@@ -62,18 +54,6 @@ pub const SERVICE_MONITOR_EVENT_SPOT_PUB_QUEUE_DRAINED: u32 =
 
 /// Bitmask for SPOT closed service monitor events.
 pub const SERVICE_MONITOR_EVENT_SPOT_CLOSED: u32 = ffi::ZLINK_SPOT_MONITOR_EVENT_CLOSED;
-
-/// Bitmask for SPOT publisher-delivery-ready service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED;
-
-/// Bitmask for SPOT subscriber-delivery-ready service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED;
-
-/// Bitmask for SPOT subscription-ready-changed service monitor events.
-pub const SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED: u32 =
-    ffi::ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED;
 
 use crate::error::{ZlinkError, check_rc};
 use crate::ffi;
@@ -200,8 +180,8 @@ impl MonitorEvent {
         self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_CLOSED as u64 != 0
     }
 
-    pub fn is_connection_ready_changed(&self) -> bool {
-        self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED as u64 != 0
+    pub fn is_connection_ready(&self) -> bool {
+        self.event & ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY as u64 != 0
     }
 }
 
@@ -214,7 +194,6 @@ impl MonitorEvent {
 pub struct MonitorSnapshot {
     pub state_flags: u32,
     pub detail_flags: u32,
-    pub ready_count: u32,
     pub snd_pending_msgs: u64,
     pub rcv_pending_msgs: u64,
 }
@@ -224,7 +203,6 @@ impl MonitorSnapshot {
         Self {
             state_flags: raw.state_flags,
             detail_flags: raw.detail_flags,
-            ready_count: raw.ready_count,
             snd_pending_msgs: raw.snd_pending_msgs,
             rcv_pending_msgs: raw.rcv_pending_msgs,
         }
@@ -232,10 +210,6 @@ impl MonitorSnapshot {
 
     pub fn is_ready(&self) -> bool {
         self.state_flags & ffi::ZLINK_MONITOR_STATE_READY != 0
-    }
-
-    pub fn is_send_ready(&self) -> bool {
-        self.state_flags & ffi::ZLINK_MONITOR_STATE_SEND_READY != 0
     }
 
     pub fn is_closed(&self) -> bool {
@@ -394,10 +368,6 @@ impl ServiceEventType {
         self.0 & mask != 0
     }
 
-    pub fn is_discovery_ready_changed(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED)
-    }
-
     pub fn is_discovery_error(self) -> bool {
         self.contains(SERVICE_MONITOR_EVENT_DISCOVERY_ERROR)
     }
@@ -418,8 +388,8 @@ impl ServiceEventType {
         self.contains(SERVICE_MONITOR_EVENT_DISCOVERY_CLOSED)
     }
 
-    pub fn is_spot_ready_changed(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED)
+    pub fn is_connection_ready(self) -> bool {
+        self.contains(SERVICE_MONITOR_EVENT_CONNECTION_READY)
     }
 
     pub fn is_spot_peer_up(self) -> bool {
@@ -438,10 +408,6 @@ impl ServiceEventType {
         self.contains(SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED)
     }
 
-    pub fn is_spot_first_delivery_ready_changed(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED)
-    }
-
     pub fn is_spot_pub_queue_full(self) -> bool {
         self.contains(SERVICE_MONITOR_EVENT_SPOT_PUB_QUEUE_FULL)
     }
@@ -454,17 +420,6 @@ impl ServiceEventType {
         self.contains(SERVICE_MONITOR_EVENT_SPOT_CLOSED)
     }
 
-    pub fn is_spot_pub_delivery_ready_changed(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED)
-    }
-
-    pub fn is_spot_sub_delivery_ready_changed(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED)
-    }
-
-    pub fn is_spot_subscription_ready_changed(self) -> bool {
-        self.contains(SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED)
-    }
 }
 
 impl ServiceEvent {
@@ -488,12 +443,8 @@ impl ServiceEvent {
         self.event_type.is_spot_filter_applied()
     }
 
-    pub fn is_spot_subscription_ready_changed(&self) -> bool {
-        self.event_type.is_spot_subscription_ready_changed()
-    }
-
-    pub fn is_spot_first_delivery_ready_changed(&self) -> bool {
-        self.event_type.is_spot_first_delivery_ready_changed()
+    pub fn is_connection_ready(&self) -> bool {
+        self.event_type.is_connection_ready()
     }
 }
 

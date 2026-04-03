@@ -163,7 +163,7 @@ test('spot service monitor reports remote sub delivery ready after direct peer c
   const serverSpot = new zlink.Spot(serverNode);
   const clientSpot = new zlink.Spot(clientNode);
   const monitor = clientSpot.monitorOpen(
-    zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED
+    zlink.ServiceMonitorEvent.CONNECTION_READY
       | zlink.ServiceMonitorEvent.ERROR
   );
 
@@ -177,11 +177,7 @@ test('spot service monitor reports remote sub delivery ready after direct peer c
       const event = monitor.tryRecv();
       if (event) {
         assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.ERROR);
-        if (
-          event.eventType === zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED
-          && event.value > 0
-        ) {
-          assert.equal(event.value, 1);
+        if (event.eventType === zlink.ServiceMonitorEvent.CONNECTION_READY) {
           assert.equal(clientNode.statusSnapshot().connectedPeerCount, 1);
           assert.equal(clientNode.statusSnapshot().readySubjectCount, 1);
           return;
@@ -214,7 +210,7 @@ test('spot service monitor does not report sub delivery ready before peer connec
   const node = new zlink.SpotNode(ctx);
   const spot = new zlink.Spot(node);
   const monitor = spot.monitorOpen(
-    zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED
+    zlink.ServiceMonitorEvent.CONNECTION_READY
       | zlink.ServiceMonitorEvent.ERROR
   );
 
@@ -229,7 +225,7 @@ test('spot service monitor does not report sub delivery ready before peer connec
         continue;
       }
       assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.ERROR);
-      assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED);
+      assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.CONNECTION_READY);
     }
   } finally {
     monitor.close();
@@ -248,8 +244,7 @@ test('spot service monitor does not report remote pub delivery ready before peer
   const serverSpot = new zlink.Spot(serverNode);
   const clientSpot = new zlink.Spot(clientNode);
   const monitor = serverSpot.monitorOpen(
-    zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-      | zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED
+    zlink.ServiceMonitorEvent.CONNECTION_READY
       | zlink.ServiceMonitorEvent.ERROR
   );
 
@@ -264,8 +259,7 @@ test('spot service monitor does not report remote pub delivery ready before peer
         continue;
       }
       assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.ERROR);
-      assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED);
-      assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED);
+      assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.CONNECTION_READY);
     }
 
     clientNode.connectPeer(endpoint);
@@ -276,12 +270,7 @@ test('spot service monitor does not report remote pub delivery ready before peer
       const event = monitor.tryRecv();
       if (event) {
         assert.notEqual(event.eventType, zlink.ServiceMonitorEvent.ERROR);
-        if (
-          (event.eventType === zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-            || event.eventType === zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED)
-          && event.value > 0
-        ) {
-          assert.equal(event.value, 1);
+        if (event.eventType === zlink.ServiceMonitorEvent.CONNECTION_READY) {
           assert.equal(clientNode.statusSnapshot().connectedPeerCount, 1);
           assert.equal(clientNode.statusSnapshot().readySubjectCount, 1);
           return;

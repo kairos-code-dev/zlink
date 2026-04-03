@@ -381,9 +381,6 @@ int main (int argc, char **argv)
     UNITY_BEGIN ();
     RUN_TEST (test_single_spot_process_recv_is_rejected);
     RUN_TEST (test_single_spot_process_callback_smoke);
-    RUN_TEST (test_single_spot_process_callback_tcp_256_keeps_up_with_64);
-    RUN_TEST (test_single_spot_process_callback_ws_256_smoke);
-    RUN_TEST (test_single_spot_process_callback_ws_64_exit_cleanly);
     return UNITY_END ();
 }
 

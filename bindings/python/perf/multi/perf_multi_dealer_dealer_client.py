@@ -32,7 +32,7 @@ def main(argv=None):
         try:
             for sock, endpoint in zip(sockets, endpoints):
                 sock.connect(endpoint)
-                wait_socket_event(sock, zlink.MonitorEvent.CONNECTION_READY_CHANGED)
+                wait_socket_event(sock, zlink.MonitorEvent.CONNECTION_READY)
 
             def worker(sock):
                 nonlocal count

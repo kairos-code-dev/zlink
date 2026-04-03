@@ -440,9 +440,9 @@ class socket_base_t : public own_t,
                 uint64_t type_);
 
     // Socket event data dispatch
-    static void monitor_thread_main (void *arg_);
+    static void monitor_task_main (void *arg_);
     static void monitor_delivery_ready_pump (void *arg_);
-    void monitor_loop ();
+    void pump_monitor_events ();
     void enqueue_monitor_event (const monitor_event_record_t &record_);
     bool build_monitor_event_record (
       monitor_event_record_t *out_,

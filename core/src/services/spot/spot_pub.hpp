@@ -5,7 +5,6 @@
 
 #include "core/msg.hpp"
 #include "utils/macros.hpp"
-#include "core/thread.hpp"
 #include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
@@ -47,14 +46,6 @@ class spot_pub_t
     socket_base_t *poller_socket () const { return socket (); }
     bool owns_socket (const socket_base_t *socket_) const;
     void invoke_send_ready_for_testing ();
-    void emit_delivery_ready_changed_event (const char *subject_,
-                                            bool include_subject_kind_,
-                                            uint32_t subject_kind_,
-                                            uint32_t ready_count_);
-    void emit_first_delivery_ready_changed_event (const char *subject_,
-                                                  bool include_subject_kind_,
-                                                  uint32_t subject_kind_,
-                                                  uint32_t ready_count_);
     spot_node_t *node () const { return _node; }
 
     void emit_ready_event ();
@@ -64,8 +55,8 @@ class spot_pub_t
     int abort_create ();
 
   private:
-    static void monitor_thread_main (void *arg_);
-    void monitor_loop ();
+    static void monitor_task_main (void *arg_);
+    void pump_monitor_events ();
     int destroy_internal (bool allow_embedded_default_, bool notify_node_);
     void submit_error_summary (int error_code_);
     int ensure_monitor_bridge_started ();
@@ -94,9 +85,7 @@ class spot_pub_t
     std::atomic<bool> _monitor_event_draining;
     std::atomic<uint32_t> _monitor_event_pending;
     void *_raw_monitor_socket;
-    thread_t _monitor_thread;
-    atomic_counter_t _monitor_stop;
-    bool _monitor_thread_started;
+    uint64_t _monitor_task_id;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_pub_t)
 };

@@ -41,7 +41,7 @@ func TestMonitorRecvAndTryRecv(t *testing.T) {
 	}
 
 	event := waitForMonitorEvent(t, serverMon, 5*time.Second)
-	if !event.IsListening() && !event.IsConnectionReadyChanged() && !event.IsAccepted() {
+	if !event.IsListening() && !event.IsConnectionReady() && !event.IsAccepted() {
 		t.Fatalf("unexpected monitor event: %+v", event)
 	}
 
@@ -91,7 +91,7 @@ func TestMonitorOnEventReceivesStateChange(t *testing.T) {
 		t.Fatalf("monitor callback did not receive an event within 5s")
 	}
 
-	if !event.IsListening() && !event.IsAccepted() && !event.IsConnectionReadyChanged() {
+	if !event.IsListening() && !event.IsAccepted() && !event.IsConnectionReady() {
 		t.Fatalf("unexpected monitor callback event: %+v", event)
 	}
 }

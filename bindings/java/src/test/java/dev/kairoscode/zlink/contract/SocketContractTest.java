@@ -71,10 +71,8 @@ public class SocketContractTest {
     public void publishAndSubscribeUseCanonicalTopicAwareSurface() {
         TestSupport.assumeNative();
 
-        int readyEvents = dev.kairoscode.zlink.MonitorEventType.SUB_DELIVERY_READY_CHANGED
-            .getValue()
-            | dev.kairoscode.zlink.MonitorEventType.PUB_DELIVERY_READY_CHANGED
-                .getValue();
+        int readyEvents = dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY
+            .getValue();
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
@@ -84,10 +82,10 @@ public class SocketContractTest {
             pub.bind(endpoint);
             sub.setSubscription("socket-topic");
             sub.connect(endpoint);
-            TestSupport.awaitDeliveryReady(subMonitor,
-                dev.kairoscode.zlink.MonitorEventType.SUB_DELIVERY_READY_CHANGED);
-            TestSupport.awaitDeliveryReady(pubMonitor,
-                dev.kairoscode.zlink.MonitorEventType.PUB_DELIVERY_READY_CHANGED);
+            TestSupport.awaitMonitorEvent(subMonitor,
+                dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
+            TestSupport.awaitMonitorEvent(pubMonitor,
+                dev.kairoscode.zlink.MonitorEventType.CONNECTION_READY);
 
             try (Message payload = Message.copyOfUtf8("socket-payload")) {
                 pub.publish("socket-topic", payload);

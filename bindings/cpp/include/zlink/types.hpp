@@ -588,16 +588,12 @@ enum class monitor_event : uint32_t
     monitor_stopped = ZLINK_SOCKET_MONITOR_EVENT_MONITOR_STOPPED,
     handshake_failed_no_detail =
       ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_NO_DETAIL,
-    connection_ready = ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED,
+    connection_ready = ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
     connection_ready_changed =
-      ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED,
+      ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
     handshake_failed_protocol =
       ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_PROTOCOL,
     handshake_failed_auth = ZLINK_SOCKET_MONITOR_EVENT_HANDSHAKE_FAILED_AUTH,
-    sub_delivery_ready_changed =
-      ZLINK_SOCKET_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED,
-    pub_delivery_ready_changed =
-      ZLINK_SOCKET_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED,
     all = ZLINK_SOCKET_MONITOR_EVENT_ALL
 };
 
@@ -618,7 +614,7 @@ enum class monitor_state : uint32_t
 {
     ready = ZLINK_MONITOR_STATE_READY,
     bound_ready = ZLINK_MONITOR_STATE_BOUND_READY,
-    send_ready = ZLINK_MONITOR_STATE_SEND_READY,
+    send_ready = ZLINK_MONITOR_STATE_READY,
     closed = ZLINK_MONITOR_STATE_CLOSED
 };
 
@@ -630,7 +626,6 @@ inline monitor_state operator| (monitor_state a, monitor_state b)
 
 enum class monitor_snapshot_detail : uint32_t
 {
-    ready_count = ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT,
     snd_pending_msgs = ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS,
     rcv_pending_msgs = ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS
 };
@@ -707,23 +702,14 @@ enum class service_monitor_event : uint32_t
 {
     error = ZLINK_SERVICE_MONITOR_EVENT_ERROR,
     closed = ZLINK_SERVICE_MONITOR_EVENT_CLOSED,
-    discovery_ready_changed =
-      ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED,
     discovery_service_up = ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP,
     discovery_service_down =
       ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN,
     discovery_providers_changed =
       ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED,
-    spot_ready_changed = ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED,
+    peer_up = ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_UP,
+    peer_down = ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_DOWN,
     spot_filter_applied = ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED,
-    spot_subscription_ready_changed =
-      ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED,
-    spot_pub_delivery_ready_changed =
-      ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED,
-    spot_sub_delivery_ready_changed =
-      ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED,
-    spot_first_delivery_ready_changed =
-      ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED,
     all = ZLINK_SERVICE_MONITOR_EVENT_ALL
 };
 

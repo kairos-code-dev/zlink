@@ -139,7 +139,7 @@ class pubsub_client_bench_t
                 return false;
             if (!perf::multi::open_socket_monitor (
                   sock,
-                  zlink::monitor_event::sub_delivery_ready_changed,
+                  zlink::monitor_event::connection_ready_changed,
                   _monitors.back ())) {
                 _failure_stage = "monitor_open";
                 return false;
@@ -155,10 +155,10 @@ class pubsub_client_bench_t
             if (!perf::multi::wait_socket_monitor_event (
                   *_monitors[i].monitor,
                   static_cast<uint64_t> (
-                    zlink::monitor_event::sub_delivery_ready_changed),
-                  1,
+                    zlink::monitor_event::connection_ready_changed),
+                  -1,
                   _settings.connect_ready_timeout_ms)) {
-                _failure_stage = "sub_delivery_ready";
+                _failure_stage = "connection_ready";
                 close_monitors ();
                 return false;
             }

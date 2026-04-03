@@ -10,8 +10,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as router:
             with zlink.DealerSocket(ctx) as dealer:
-                with router.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as rtr_mon:
-                    with dealer.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as dlr_mon:
+                with router.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as rtr_mon:
+                    with dealer.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as dlr_mon:
                         dealer.set_routing_id(b"CLIENT")
                         router.bind(endpoint)
                         dealer.connect(endpoint)

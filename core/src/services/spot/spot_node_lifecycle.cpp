@@ -193,30 +193,15 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
         }
         if (had_active_peers && !has_active_peers) {
             std::vector<spot_sub_t *> subs;
-            std::vector<spot_pub_t *> pubs;
-            std::vector<std::pair<std::string, uint32_t> > pub_ready_updates;
             {
                 scoped_lock_t lock (_sync);
                 _summary_last_changed_ms = zlink::clock_t ().now_ms ();
                 subs.assign (_subs.begin (), _subs.end ());
-                pubs.assign (_pubs.begin (), _pubs.end ());
-                clear_peer_readiness_locked (&pub_ready_updates);
+                clear_peer_readiness_locked (NULL);
             }
             refresh_sub_peer_summaries (false, true);
             for (size_t i = 0; i < subs.size (); ++i)
                 subs[i]->mark_all_subjects_lost (NULL);
-            for (size_t i = 0; i < pubs.size (); ++i) {
-                for (size_t j = 0; j < pub_ready_updates.size (); ++j) {
-                    pubs[i]->emit_delivery_ready_changed_event (
-                      pub_ready_updates[j].first.c_str (), false,
-                      ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-                      pub_ready_updates[j].second);
-                    pubs[i]->emit_first_delivery_ready_changed_event (
-                      pub_ready_updates[j].first.c_str (), false,
-                      ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-                      pub_ready_updates[j].second);
-                }
-            }
         }
     }
     return 0;

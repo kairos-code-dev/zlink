@@ -6,9 +6,8 @@
 #include <zlink.h>
 
 #include "core/ctx.hpp"
-#include "core/thread.hpp"
+#include "utils/stdint.hpp"
 #include "sockets/socket_base.hpp"
-#include "utils/condition_variable.hpp"
 #include "utils/macros.hpp"
 #include "utils/mutex.hpp"
 
@@ -44,11 +43,11 @@ class service_monitor_hub_t
     };
 
     static uint32_t event_delivery_mask (const zlink_service_event_t &event_);
-    static void dispatch_thread_main (void *arg_);
-    void dispatch_loop ();
+    static void dispatch_task_main (void *arg_);
+    void dispatch_pending ();
     void dispatch_event (const zlink_service_event_t &event_);
-    void ensure_dispatch_thread_started ();
-    void stop_dispatch_thread ();
+    void ensure_dispatch_task_started ();
+    void stop_dispatch_task ();
 
     ctx_t *_ctx;
     mutex_t _sync;
@@ -56,11 +55,9 @@ class service_monitor_hub_t
     std::atomic<size_t> _watcher_count;
     uint32_t _next_id;
     mutex_t _dispatch_sync;
-    condition_variable_t _dispatch_cv;
     std::deque<zlink_service_event_t> _dispatch_queue;
-    bool _dispatch_stop;
-    thread_t _dispatch_thread;
-    bool _dispatch_thread_started;
+    uint64_t _dispatch_task_id;
+    bool _dispatch_task_running;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (service_monitor_hub_t)
 };

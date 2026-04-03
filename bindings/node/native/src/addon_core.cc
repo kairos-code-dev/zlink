@@ -2350,12 +2350,11 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_value obj;
     napi_create_object(env, &obj);
     napi_value source_kind, state_flags, detail_flags;
-    napi_value ready_count, snd_pending, rcv_pending;
+    napi_value snd_pending, rcv_pending;
     napi_create_uint32(env, static_cast<uint32_t>(snapshot.source_kind),
                        &source_kind);
     napi_create_uint32(env, snapshot.state_flags, &state_flags);
     napi_create_uint32(env, snapshot.detail_flags, &detail_flags);
-    napi_create_uint32(env, snapshot.ready_count, &ready_count);
     napi_create_int64(env, static_cast<int64_t>(snapshot.snd_pending_msgs),
                       &snd_pending);
     napi_create_int64(env, static_cast<int64_t>(snapshot.rcv_pending_msgs),
@@ -2363,7 +2362,6 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_set_named_property(env, obj, "sourceKind", source_kind);
     napi_set_named_property(env, obj, "stateFlags", state_flags);
     napi_set_named_property(env, obj, "detailFlags", detail_flags);
-    napi_set_named_property(env, obj, "readyCount", ready_count);
     napi_set_named_property(env, obj, "sndPendingMsgs", snd_pending);
     napi_set_named_property(env, obj, "rcvPendingMsgs", rcv_pending);
     return obj;

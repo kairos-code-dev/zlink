@@ -13,9 +13,7 @@ public enum MonitorEventType {
     CONNECTION_READY(0x1000),
     HANDSHAKE_FAILED_PROTOCOL(0x2000),
     HANDSHAKE_FAILED_AUTH(0x4000),
-    SUB_DELIVERY_READY_CHANGED(0x8000),
-    PUB_DELIVERY_READY_CHANGED(0x10000),
-    ALL(0x1FFFF);
+    ALL(0x7FFF);
 
     private final int value;
     MonitorEventType(int v) { this.value = v; }

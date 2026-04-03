@@ -217,7 +217,7 @@ void test_unified_spot_self_delivery_recv_contract ()
     assert (sub_monitor.valid ());
     zlink::service_monitor_handle_t pub_monitor =
       spot.monitor_open (
-        zlink::service_monitor_event::spot_first_delivery_ready_changed
+        zlink::service_monitor_event::peer_up
         | zlink::service_monitor_event::error);
     assert (pub_monitor.valid ());
 
@@ -227,8 +227,10 @@ void test_unified_spot_self_delivery_recv_contract ()
       static_cast<uint32_t> (
         zlink::service_monitor_event::spot_filter_applied),
       10000));
-    assert (zlink_cpp_contract::wait_for_service_monitor_state (
-      pub_monitor, ZLINK_MONITOR_STATE_SEND_READY, 10000));
+    assert (zlink_cpp_contract::wait_for_service_monitor_event (
+      pub_monitor,
+      static_cast<uint32_t> (zlink::service_monitor_event::peer_up),
+      10000));
 
     zlink::message_t outbound =
       zlink_cpp_contract::make_message ("service-self");

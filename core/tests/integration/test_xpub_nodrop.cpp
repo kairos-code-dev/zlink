@@ -60,10 +60,8 @@ void delivery_ready_monitor_handler (const zlink_monitor_event_t *event_,
 
     std::unique_lock<std::mutex> lock (state->sync);
     switch (event_->event) {
-        case ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED:
-        case ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED:
-            if (event_->value == 1)
-                state->ready = true;
+        case ZLINK_EVENT_CONNECTION_READY:
+            state->ready = true;
             break;
         case ZLINK_EVENT_BIND_FAILED:
         case ZLINK_EVENT_ACCEPT_FAILED:
@@ -306,9 +304,9 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
     delivery_ready_monitor_t pub_monitor;
     delivery_ready_monitor_t sub_monitor;
     TEST_ASSERT_TRUE (open_delivery_ready_monitor (
-      pub, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, &pub_monitor));
+      pub, ZLINK_EVENT_CONNECTION_READY, &pub_monitor));
     TEST_ASSERT_TRUE (open_delivery_ready_monitor (
-      sub, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &sub_monitor));
+      sub, ZLINK_EVENT_CONNECTION_READY, &sub_monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
     TEST_ASSERT_TRUE (wait_delivery_ready (&pub_monitor, 5000));

@@ -21,6 +21,20 @@ namespace zlink
 {
 namespace
 {
+static void spot_control_diagf (const char *fmt_, ...)
+{
+    if (!std::getenv ("ZLINK_DEBUG_SPOT_CONTROL"))
+        return;
+
+    va_list args;
+    va_start (args, fmt_);
+    std::fprintf (stderr, "[spot-control] ");
+    std::vfprintf (stderr, fmt_, args);
+    std::fprintf (stderr, "\n");
+    std::fflush (stderr);
+    va_end (args);
+}
+
 static uint32_t resolve_effective_ready_count (uint32_t ready_count_,
                                                uint32_t active_peer_count_,
                                                uint32_t connected_ready_count_)
@@ -210,6 +224,9 @@ int spot_node_t::ensure_control_task_running ()
     if (task_id == 0)
         return -1;
 
+    spot_control_diagf ("ensure-control-task node=%p scheduled=%llu", this,
+                        static_cast<unsigned long long> (task_id));
+
     if (!_runtime->try_set_control_task_id (task_id))
         (void) runtime->remove_task (task_id);
     return 0;
@@ -251,6 +268,7 @@ void spot_node_t::control_tick ()
 {
     if (!_runtime || _runtime->stop.get () != 0)
         return;
+    spot_control_diagf ("control-tick node=%p", this);
     if (ensure_healthy () != 0)
         return;
 
@@ -475,6 +493,8 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         return;
     snapshot_connected_mesh_peer_endpoints (&runtime->mesh_peer_state,
                                             &connected);
+    spot_control_diagf ("refresh-connected node=%p observed=%zu", this,
+                        connected.size ());
 
     bool changed = false;
     std::vector<spot_sub_t *> subs;
@@ -507,6 +527,10 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         previous_connected_count = _peer_state.connected_endpoints.size ();
         _peer_state.connected_endpoints.swap (connected);
         changed = true;
+        spot_control_diagf ("refresh-connected node=%p applied=%zu previous=%zu",
+                            this,
+                            _peer_state.connected_endpoints.size (),
+                            previous_connected_count);
         _summary_last_changed_ms = now_ms;
         if (_peer_state.connected_endpoints.empty ()) {
             subs.assign (_subs.begin (), _subs.end ());
@@ -534,18 +558,8 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         }
     }
 
-    for (size_t i = 0; i < pubs.size (); ++i) {
-        for (size_t j = 0; j < pub_ready_updates.size (); ++j) {
-            pubs[i]->emit_delivery_ready_changed_event (
-              pub_ready_updates[j].first.c_str (), false,
-              ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-              pub_ready_updates[j].second);
-            pubs[i]->emit_first_delivery_ready_changed_event (
-              pub_ready_updates[j].first.c_str (), false,
-              ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-              pub_ready_updates[j].second);
-        }
-    }
+    LIBZLINK_UNUSED (pubs);
+    LIBZLINK_UNUSED (pub_ready_updates);
 
     if (became_empty) {
         for (size_t i = 0; i < subs.size (); ++i)
@@ -748,6 +762,12 @@ void spot_node_t::emit_pending_subscription_ready_events ()
         _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
     }
 
+    spot_control_diagf ("emit-sub-ready node=%p filters=%zu endpoint=%s subs=%zu",
+                        this,
+                        raw_filters.size (),
+                        ready_endpoint.empty () ? "-" : ready_endpoint.c_str (),
+                        subs.size ());
+
     for (std::set<std::string>::const_iterator filter_it =
            raw_filters.begin ();
          filter_it != raw_filters.end (); ++filter_it) {
@@ -797,15 +817,8 @@ void spot_node_t::emit_pending_pub_delivery_ready_events ()
         _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
     }
 
-    for (size_t i = 0; i < pubs.size (); ++i) {
-        for (size_t j = 0; j < updates.size (); ++j) {
-            pubs[i]->emit_first_delivery_ready_changed_event (
-              updates[j].first.c_str (), false,
-              ZLINK_SERVICE_EVENT_SUBJECT_NONE, updates[j].second);
-            if (updates[j].second > 0)
-                pubs[i]->dispatch_send_ready ();
-        }
-    }
+    LIBZLINK_UNUSED (pubs);
+    LIBZLINK_UNUSED (updates);
 }
 
 void spot_node_t::notify_subscription_forwarded (const std::string &raw_filter_)
@@ -839,7 +852,6 @@ void spot_node_t::notify_pub_delivery_ready_ack (
                            subject_.c_str (), ack_source_id_.c_str (),
                            subscribe_ ? 1 : 0);
 
-    std::vector<spot_pub_t *> pubs;
     uint32_t ready_count = 0;
     {
         scoped_lock_t lock (_sync);
@@ -865,7 +877,6 @@ void spot_node_t::notify_pub_delivery_ready_ack (
           static_cast<uint32_t> (ready_sources.size ()), active_peer_count,
           connected_ready_count);
 
-        pubs.assign (_pubs.begin (), _pubs.end ());
         publish_mesh_pub_budget_hint_locked ();
         if (!subscribe_) {
             _peer_state.pending_pub_delivery_ready_counts.erase (subject_);
@@ -874,14 +885,8 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         }
     }
 
-    for (size_t i = 0; i < pubs.size (); ++i) {
-        pubs[i]->emit_delivery_ready_changed_event (
-          subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-          ready_count);
-        pubs[i]->emit_first_delivery_ready_changed_event (
-          subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-          ready_count);
-    }
+    LIBZLINK_UNUSED (subject_);
+    LIBZLINK_UNUSED (ready_count);
 }
 
 void spot_node_t::notify_pub_first_delivery_ready_settled (
@@ -891,19 +896,7 @@ void spot_node_t::notify_pub_first_delivery_ready_settled (
     if (subject_.empty ())
         return;
 
-    std::vector<spot_pub_t *> pubs;
-    {
-        scoped_lock_t lock (_sync);
-        pubs.assign (_pubs.begin (), _pubs.end ());
-    }
-
-    for (size_t i = 0; i < pubs.size (); ++i) {
-        pubs[i]->emit_first_delivery_ready_changed_event (
-          subject_.c_str (), false, ZLINK_SERVICE_EVENT_SUBJECT_NONE,
-          ready_count_);
-        if (ready_count_ > 0)
-            pubs[i]->dispatch_send_ready ();
-    }
+    LIBZLINK_UNUSED (ready_count_);
 }
 
 int spot_node_t::send_subscription_update (const std::string &raw_filter_,

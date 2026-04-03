@@ -46,9 +46,9 @@ int main (void)
     assert (subscriber != NULL);
 
     void *pub_monitor = open_socket_monitor (
-      publisher, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+      publisher, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
     void *sub_monitor = open_socket_monitor (
-      subscriber, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+      subscriber, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     int rc = zlink_bind (publisher, "tcp://127.0.0.1:0");
     assert (rc == 0);

@@ -10,7 +10,7 @@ const {
 } = require('../common/perf_metrics');
 
 const TOPIC = 'perf.topic';
-const SPOT_READY_EVENTS = zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED
+const SPOT_READY_EVENTS = zlink.ServiceMonitorEvent.CONNECTION_READY
   | zlink.ServiceMonitorEvent.ERROR;
 
 function parseArgs(argv) {
@@ -93,7 +93,7 @@ async function main() {
       if (event.eventType === zlink.ServiceMonitorEvent.ERROR) {
         throw new Error(`spot client ready monitor error: ${JSON.stringify(event)}`);
       }
-      if (event.eventType === zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED && event.value > 0) {
+      if (event.eventType === zlink.ServiceMonitorEvent.CONNECTION_READY) {
         return;
       }
     }

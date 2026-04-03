@@ -266,7 +266,7 @@ ctest --test-dir core/build -L sample-smoke --output-on-failure -j1
 - `service` contract runtime은 통과한다.
 - `spot_recv`, `spot_callback` 샘플 소스와 CMake 타깃은 추가됐다.
 - unified `spot_t` self-delivery는 sub monitor의 `spot_filter_applied`와
-  pub monitor snapshot의 `ZLINK_MONITOR_STATE_SEND_READY`를 함께 확인한 뒤
+  pub monitor snapshot의 `ZLINK_MONITOR_STATE_READY`를 함께 확인한 뒤
   `recv`/`callback` 경로를 진행하도록 정리했다.
 - `spot_recv`, `spot_callback`, service/callback contract는 모두 같은 준비
   조건으로 수렴했고 반복 실행까지 통과했다.
@@ -367,7 +367,7 @@ ctest --test-dir core/build -L sample-smoke --output-on-failure -j1
   `test_spot_unified_spot_callback_self_delivery` 회귀를 추가했고, 이 C API
   회귀는 20회 반복 실행을 통과했다.
 - unified `spot_t` self-delivery는 sub monitor와 pub monitor를 분리해
-  `spot_filter_applied`와 `ZLINK_MONITOR_STATE_SEND_READY` 준비 조건을 함께
+  `spot_filter_applied`와 `ZLINK_MONITOR_STATE_READY` 준비 조건을 함께
   확인한 뒤 `recv`/`callback` 경로를 진행하도록 정리했다.
 - `test_cpp_contract_service`에 unified `spot_t` self-delivery recv 계약을
   추가해 샘플 smoke만이 아니라 contract에서도 같은 준비 조건을 검증한다.

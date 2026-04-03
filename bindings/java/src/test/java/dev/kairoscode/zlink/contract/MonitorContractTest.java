@@ -16,7 +16,7 @@ public class MonitorContractTest {
         try (Context ctx = new Context();
              PairSocket socket = new PairSocket(ctx);
              var monitor = socket.monitorOpen(MonitorEventType.ALL.getValue())) {
-            assertTrue(monitor.snapshot().readyCount() >= 0);
+            assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
         }
     }
 }

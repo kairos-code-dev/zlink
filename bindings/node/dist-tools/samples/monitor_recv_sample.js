@@ -19,8 +19,8 @@ async function main() {
     const ctx = new zlink.Context();
     const server = new zlink.PairSocket(ctx);
     const client = new zlink.PairSocket(ctx);
-    const serverMonitor = server.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
-    const clientMonitor = client.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+    const serverMonitor = server.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+    const clientMonitor = client.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
     try {
         assert.equal(serverMonitor.tryRecv(), null);
         assert.equal(clientMonitor.tryRecv(), null);
@@ -28,8 +28,8 @@ async function main() {
         client.connect(endpoint);
         const serverEvent = serverMonitor.recv();
         const clientEvent = clientMonitor.recv();
-        assert.equal(serverEvent.event, zlink.MonitorEvent.CONNECTION_READY_CHANGED);
-        assert.equal(clientEvent.event, zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+        assert.equal(serverEvent.event, zlink.MonitorEvent.CONNECTION_READY);
+        assert.equal(clientEvent.event, zlink.MonitorEvent.CONNECTION_READY);
         console.log('[monitor/recv] recv: "connection-ready" → tryRecv: empty');
     }
     finally {

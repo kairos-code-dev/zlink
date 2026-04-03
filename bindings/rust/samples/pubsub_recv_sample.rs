@@ -1,6 +1,6 @@
 //! PUB/SUB direct recv sample – demonstrates topic publish/subscribe.
 
-use zlink::{Context, MONITOR_EVENT_CONNECTION_READY_CHANGED, Message, SocketMonitor};
+use zlink::{Context, MONITOR_EVENT_CONNECTION_READY, Message, SocketMonitor};
 
 pub fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -52,9 +52,9 @@ fn main() {
         .set_subscription("prices")
         .expect("set_subscription failed");
 
-    let pub_mon = SocketMonitor::open(&pub_sock, MONITOR_EVENT_CONNECTION_READY_CHANGED)
+    let pub_mon = SocketMonitor::open(&pub_sock, MONITOR_EVENT_CONNECTION_READY)
         .expect("pub monitor open failed");
-    let sub_mon = SocketMonitor::open(&sub_sock, MONITOR_EVENT_CONNECTION_READY_CHANGED)
+    let sub_mon = SocketMonitor::open(&sub_sock, MONITOR_EVENT_CONNECTION_READY)
         .expect("sub monitor open failed");
 
     pub_sock.bind(&endpoint).expect("bind failed");

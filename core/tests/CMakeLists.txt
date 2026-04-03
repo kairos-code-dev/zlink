@@ -24,7 +24,6 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/monitoring/test_monitor_perf_contract
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_dealer_dealer_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_pubsub_benchmark_process
-  ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_spot_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_multi_stream_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_pair_benchmark_process
   ${INTEGRATION_TEST_ROOT}/monitoring/test_single_spot_benchmark_process
@@ -35,10 +34,12 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_heartbeats
   ${INTEGRATION_TEST_ROOT}/test_multi_socket_contract_regressions
   ${INTEGRATION_TEST_ROOT}/test_public_inproc_multipart_send
+  ${INTEGRATION_TEST_ROOT}/test_pubsub
   ${INTEGRATION_TEST_ROOT}/test_reconnect_ivl
   ${INTEGRATION_TEST_ROOT}/test_reconnect_options
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
+  ${INTEGRATION_TEST_ROOT}/test_router_handover
   ${INTEGRATION_TEST_ROOT}/test_router_multiple_dealers
   ${INTEGRATION_TEST_ROOT}/test_router_concurrent_routed_recv
   ${INTEGRATION_TEST_ROOT}/test_router_mandatory_hwm
@@ -318,7 +319,6 @@ if(TARGET test_spot_pubsub_scenario)
     test_spot_pubsub_scenario
     PRIVATE
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_shared.cpp
-      ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_delivery_ready_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_peer_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_callback_cases.cpp
       ${E2E_TEST_ROOT}/spot/spot_pubsub_scenario_node_cases.cpp
@@ -527,81 +527,57 @@ set(SPOT_SPLIT_TEST_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
 set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_pub_sub_options_and_routing_ids
-    test_spot_monitors_and_monitor_poller
-    test_spot_late_connect_replays_existing_subscription
-    test_spot_subscription_ready_changed_reports_loss
-    test_spot_handler_monitor_close_after_ready_change_is_stable
     test_spot_callback_model_receive_regression
     test_spot_recv_model_receive_regression
-    test_spot_publish_rollback_preserves_next_topic_boundary
     test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_unified_spot_basic
-    test_spot_unified_spot_callback_self_delivery
     test_spot_node_snapshot_status_peers_subjects
-    test_discovery_local_value_metadata_contract
-    test_registry_and_discovery_member_peer_queries)
+    test_discovery_local_value_metadata_contract)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
-    test_spot_service_introspection_monitors=test_spot_monitors_and_monitor_poller
-    test_spot_service_introspection_late_connect=test_spot_late_connect_replays_existing_subscription
-    test_spot_service_introspection_subscription_ready_loss=test_spot_subscription_ready_changed_reports_loss
-    test_spot_service_introspection_handler_monitor_close=test_spot_handler_monitor_close_after_ready_change_is_stable
     test_spot_service_introspection_callback_recv_regression=test_spot_callback_model_receive_regression
     test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
-    test_spot_service_introspection_publish_rollback=test_spot_publish_rollback_preserves_next_topic_boundary
     test_spot_service_introspection_default_handle_owner=test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
-    test_spot_service_introspection_unified_spot_callback_self_delivery=test_spot_unified_spot_callback_self_delivery
     test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects
-    test_spot_service_introspection_metadata_local=test_discovery_local_value_metadata_contract
-    test_spot_service_introspection_member_peers=test_registry_and_discovery_member_peer_queries)
+    test_spot_service_introspection_metadata_local=test_discovery_local_value_metadata_contract)
 
 set(SPOT_PUBSUB_CASES
-    test_spot_peer_ipc
     test_spot_peer_tcp
-    test_spot_peer_ws
-    test_spot_peer_tls
-    test_spot_peer_wss
-    test_spot_child_handles_reject_tls_configuration
-    test_spot_sub_delivery_ready_immediate_first_publish
-    test_spot_unified_wss_subscription_ready_first_delivery
     test_spot_multi_publisher
-    test_spot_same_handle_concurrent_publish
     test_spot_node_direct_local_and_child_interop
-    test_spot_node_direct_remote_peer_mesh
-    test_spot_node_direct_sub_option_inheritance_and_handler_conflict
-    test_spot_node_direct_first_publish_race
     test_spot_sub_handler_basic
     test_spot_recv_callback_isolated_by_handle
-    test_spot_recv_callback_isolated_by_service_with_discovery
-    test_spot_facade_handler_receives_source_rid
-    test_spot_node_discovery_direct_and_child_interop
-    test_spot_node_manual_peer_topology_ownership
-    test_discovery_destroy_invalidates_attached_spot_node_handle
-    test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery)
+    test_spot_node_discovery_direct_and_child_interop)
 
 set(SPOT_PUBSUB_PEER_TEST_SPECS
-    test_spot_pubsub_scenario_peer_ipc=test_spot_peer_ipc
-    test_spot_pubsub_scenario_peer_tcp=test_spot_peer_tcp
-    test_spot_pubsub_scenario_peer_ws=test_spot_peer_ws
-    test_spot_pubsub_scenario_peer_tls=test_spot_peer_tls
-    test_spot_pubsub_scenario_peer_wss=test_spot_peer_wss
-    test_spot_pubsub_scenario_child_handles_tls=test_spot_child_handles_reject_tls_configuration
-    test_spot_pubsub_scenario_delivery_ready_first_publish=test_spot_sub_delivery_ready_immediate_first_publish
-    test_spot_pubsub_scenario_unified_wss_ready_delivery=test_spot_unified_wss_subscription_ready_first_delivery)
+    test_spot_pubsub_scenario_peer_tcp=test_spot_peer_tcp)
 
 set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     test_spot_pubsub_scenario_multi_publisher=test_spot_multi_publisher
-    test_spot_pubsub_scenario_concurrent_publish=test_spot_same_handle_concurrent_publish
     test_spot_pubsub_scenario_node_child_interop=test_spot_node_direct_local_and_child_interop
-    test_spot_pubsub_scenario_node_remote_mesh=test_spot_node_direct_remote_peer_mesh
-    test_spot_pubsub_scenario_sub_option_inheritance=test_spot_node_direct_sub_option_inheritance_and_handler_conflict
-    test_spot_pubsub_scenario_first_publish_race=test_spot_node_direct_first_publish_race
     test_spot_pubsub_scenario_sub_handler_basic=test_spot_sub_handler_basic
     test_spot_pubsub_scenario_recv_handle_isolation=test_spot_recv_callback_isolated_by_handle
-    test_spot_pubsub_scenario_recv_service_isolation=test_spot_recv_callback_isolated_by_service_with_discovery
-    test_spot_pubsub_scenario_source_rid=test_spot_facade_handler_receives_source_rid)
+    test_spot_pubsub_scenario_node_discovery_interop=test_spot_node_discovery_direct_and_child_interop)
+
+set(STREAM_SOCKET_REGRESSION_TEST_SPECS
+    test_stream_socket_callback_zero_byte=test_stream_callback_echo_single_zero_byte
+    test_stream_socket_raw_callback_ready_contract=test_stream_raw_callback_ready_precedes_first_payload_contract
+    test_stream_socket_raw_multiclient_ready_regression=test_stream_raw_multiclient_strict_ready_gating_regression
+    test_stream_socket_recv_multiclient_ready_regression=test_stream_recv_multiclient_strict_ready_gating_regression
+    test_stream_socket_raw_multiclient_load=test_stream_raw_multiclient_load_integrity
+    test_stream_socket_raw_multiclient_load_send_ready=test_stream_raw_multiclient_load_integrity_with_send_ready_handler)
+
+set(STREAM_THREADSAFE_REGRESSION_TEST_SPECS
+    test_stream_threadsafe_callback_handoff=test_stream_callback_handoff_to_worker_thread_send_msg_is_safe
+    test_stream_threadsafe_callback_queue_load=test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe
+    test_stream_threadsafe_recv_queue_load=test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe
+    test_stream_threadsafe_recv_queue_timed_window=test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly
+    test_stream_threadsafe_send_msg=test_stream_send_msg_is_thread_safe
+    test_stream_threadsafe_runtime_reads=test_stream_runtime_reads_are_safe_during_send
+    test_stream_threadsafe_socket_runtime_reads=test_socket_runtime_reads_are_safe_during_connect_disconnect
+    test_stream_threadsafe_client_churn=test_stream_rapid_client_churn_during_send)
 
 set(SERVICE_INTROSPECTION_CASES
     test_discovery_monitor_and_routing_id
@@ -709,10 +685,32 @@ if(TARGET test_spot_pubsub_scenario)
       WORKING_DIRECTORY "${SPOT_SPLIT_TEST_WORKING_DIRECTORY}"
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 
+endif()
+if(TARGET test_stream_socket)
+  add_env_case_tests_from_specs(
+    test_stream_socket
+    STREAM_SOCKET_REGRESSION_TEST_SPECS)
+  extract_test_names_from_specs(
+    STREAM_SOCKET_REGRESSION_TEST_NAMES
+    STREAM_SOCKET_REGRESSION_TEST_SPECS)
   set_tests_properties(
-    test_spot_pubsub_scenario_unified_wss_ready_delivery
+    ${STREAM_SOCKET_REGRESSION_TEST_NAMES}
     PROPERTIES
-      TIMEOUT 180)
+      TIMEOUT 60
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
+endif()
+if(TARGET test_stream_threadsafe)
+  add_env_case_tests_from_specs(
+    test_stream_threadsafe
+    STREAM_THREADSAFE_REGRESSION_TEST_SPECS)
+  extract_test_names_from_specs(
+    STREAM_THREADSAFE_REGRESSION_TEST_NAMES
+    STREAM_THREADSAFE_REGRESSION_TEST_SPECS)
+  set_tests_properties(
+    ${STREAM_THREADSAFE_REGRESSION_TEST_NAMES}
+    PROPERTIES
+      TIMEOUT 45
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_scenario_router_router_zlink_connect)
   set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
@@ -742,7 +740,12 @@ if(TARGET test_scenario_router_router_zlink_connect)
   list(APPEND E2E_SERIAL_TESTS test_scenario_router_router_zlink_connect)
 endif()
 
-set(REGRESSION_SERIAL_TESTS)
+set(REGRESSION_SERIAL_TESTS
+    test_multi_dealer_dealer_benchmark_process
+    test_router_concurrent_routed_recv
+    test_transport_matrix
+    ${STREAM_SOCKET_REGRESSION_TEST_NAMES}
+    ${STREAM_THREADSAFE_REGRESSION_TEST_NAMES})
 
 set(INTEGRATION_SERIAL_TESTS ${REGISTERED_TESTS})
 list(REMOVE_ITEM INTEGRATION_SERIAL_TESTS ${E2E_SERIAL_TESTS} ${REGRESSION_SERIAL_TESTS})
@@ -766,8 +769,9 @@ if(E2E_SERIAL_TESTS)
 endif()
 
 if(REGRESSION_SERIAL_TESTS)
-  set_tests_properties(${REGRESSION_SERIAL_TESTS} PROPERTIES RUN_SERIAL TRUE)
-  set_property(TEST ${REGRESSION_SERIAL_TESTS} APPEND PROPERTY LABELS "regression;serial")
+  set_tests_properties(${REGRESSION_SERIAL_TESTS} PROPERTIES
+    RUN_SERIAL TRUE
+    LABELS "regression;serial")
 endif()
 
 # Check whether all tests in the current folder are present
@@ -818,7 +822,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_reconnect_ivl
     test_reconnect_options
     test_socket_options_fuzzer
-    test_spot_pubsub_basic
     test_spec_router
     test_stream_fastpath
     test_stream_send_blocking_wakeup

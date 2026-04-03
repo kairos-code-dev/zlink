@@ -1,9 +1,8 @@
 //! SPOT recv sample – demonstrates direct subscribe on a spot facade.
 
 use zlink::{
-    Context, Message, SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED,
-    SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED,
-    SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED, Spot, SpotNode,
+    Context, Message, SERVICE_MONITOR_EVENT_CONNECTION_READY,
+    SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED, Spot, SpotNode,
 };
 
 fn main() {
@@ -15,12 +14,12 @@ fn main() {
     let subscriber = Spot::new(&subscriber_node).expect("subscriber spot failed");
 
     let publisher_monitor = publisher
-        .monitor_open(SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED)
+        .monitor_open(SERVICE_MONITOR_EVENT_CONNECTION_READY)
         .expect("publisher monitor open failed");
     let subscriber_monitor = subscriber
         .monitor_open(
             SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED
-                | SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED,
+                | SERVICE_MONITOR_EVENT_CONNECTION_READY,
         )
         .expect("subscriber monitor open failed");
 
@@ -45,19 +44,12 @@ fn main() {
     assert_eq!(filter_event.subject, "room:lobby");
 
     let ready_event = subscriber_monitor.recv().expect("ready event recv failed");
-    assert!(
-        ready_event.is_spot_subscription_ready_changed(),
-        "unexpected subscription-ready event"
-    );
-    assert_eq!(ready_event.endpoint, endpoint);
+    assert!(ready_event.is_connection_ready(), "unexpected connection-ready event");
 
     let pub_snapshot = publisher_monitor
         .snapshot()
         .expect("publisher snapshot failed");
-    assert!(
-        pub_snapshot.is_send_ready(),
-        "publisher spot monitor is not send-ready"
-    );
+    assert!(pub_snapshot.is_ready(), "publisher spot monitor is not ready");
 
     publisher
         .publish(

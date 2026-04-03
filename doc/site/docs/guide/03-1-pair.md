@@ -313,7 +313,7 @@ send a message, receive it, and clean up.
     }
     ```
 
-??? example "Full Sample Code"
+??? example "Full Sample Code -- Recv"
 
     | Language | Source |
     |----------|--------|
@@ -325,6 +325,293 @@ send a message, receive it, and clean up.
     | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairRecv/Program.cs) |
     | Rust | [pair_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_recv_sample/main.go) |
+
+### Callback Mode
+
+Install the callback with `zlink_recv_handler()` to make a one-way
+transition from recv mode to callback mode. Incoming messages are then
+dispatched automatically through that callback.
+
+=== "C"
+
+    ```c
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    void on_message(const zlink_routing_id_t *source_rid,
+                    zlink_msg_t *parts, size_t part_count,
+                    void *userdata)
+    {
+        printf("Callback received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        for (size_t i = 0; i < part_count; i++)
+            zlink_msg_close(&parts[i]);
+    }
+
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+
+        void *server = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(server, "tcp://*:5555");
+
+        void *client = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(client, "tcp://127.0.0.1:5555");
+
+        /* Transition server to callback mode */
+        zlink_recv_handler(server, on_message, NULL);
+
+        /* Send from client to server */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 10);
+        memcpy(zlink_msg_data(&msg), "hello-pair", 10);
+        zlink_send(client, &msg, 1, 0);
+
+        zlink_msleep(200);  /* let callback fire */
+
+        zlink_close(client);
+        zlink_close(server);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
+    #include <thread>
+    #include <chrono>
+
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::pair_socket_t server(ctx);
+        server.bind("tcp://*:5555");
+
+        zlink::pair_socket_t client(ctx);
+        client.connect("tcp://127.0.0.1:5555");
+
+        // Transition server to callback mode
+        server.recv_handler([](const zlink::routing_id_t& source_rid,
+                               std::span<zlink::msg> parts) {
+            std::cout << "Callback received: " << parts[0].str() << std::endl;
+        });
+
+        // Send from client to server
+        client.send("hello-pair");
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        return 0;
+    }
+    ```
+
+=== "Java"
+
+    ```java
+    import dev.kairoscode.zlink.*;
+
+    public class PairCallbackExample {
+        public static void main(String[] args) throws Exception {
+            Context ctx = new Context();
+
+            PairSocket server = new PairSocket(ctx);
+            server.bind("tcp://*:5555");
+
+            PairSocket client = new PairSocket(ctx);
+            client.connect("tcp://127.0.0.1:5555");
+
+            // Transition server to callback mode
+            server.onReceive((sourceRid, parts) -> {
+                System.out.println("Callback received: "
+                    + parts[0].dataAsString());
+            });
+
+            // Send from client to server
+            client.send("hello-pair");
+
+            Thread.sleep(200);
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
+    ```
+
+=== "Python"
+
+    ```python
+    import zlink
+    import time
+
+    ctx = zlink.Context()
+
+    server = zlink.PairSocket(ctx)
+    server.bind("tcp://*:5555")
+
+    client = zlink.PairSocket(ctx)
+    client.connect("tcp://127.0.0.1:5555")
+
+    # Transition server to callback mode
+    def on_message(source_rid, parts):
+        print(f"Callback received: {parts[0].decode()}")
+
+    server.on_receive(on_message)
+
+    # Send from client to server
+    client.send(b"hello-pair")
+
+    time.sleep(0.2)
+
+    client.close()
+    server.close()
+    ctx.term()
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const server = new zlink.PairSocket(ctx);
+    server.bind('tcp://*:5555');
+
+    const client = new zlink.PairSocket(ctx);
+    client.connect('tcp://127.0.0.1:5555');
+
+    // Transition server to callback mode
+    server.recvHandler((sourceRid, parts) => {
+        console.log(`Callback received: ${parts[0].toString()}`);
+    });
+
+    // Send from client to server
+    client.send(Buffer.from('hello-pair'));
+
+    await new Promise(r => setTimeout(r, 200));
+
+    client.close();
+    server.close();
+    ctx.term();
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
+    var server = new PairSocket(ctx);
+    server.Bind("tcp://*:5555");
+
+    var client = new PairSocket(ctx);
+    client.Connect("tcp://127.0.0.1:5555");
+
+    // Transition server to callback mode
+    server.RecvHandler((sourceRid, parts) => {
+        Console.WriteLine($"Callback received: {parts[0].GetString()}");
+    });
+
+    // Send from client to server
+    client.Send("hello-pair");
+
+    Thread.Sleep(200);
+
+    client.Close();
+    server.Close();
+    ctx.Term();
+    ```
+
+=== "Rust"
+
+    ```rust
+    use zlink::Context;
+    use std::thread;
+    use std::time::Duration;
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let server = ctx.pair_socket();
+        server.bind("tcp://*:5555")?;
+
+        let client = ctx.pair_socket();
+        client.connect("tcp://127.0.0.1:5555")?;
+
+        // Transition server to callback mode
+        server.on_receive(|source_rid, parts| {
+            println!("Callback received: {}",
+                     String::from_utf8_lossy(parts[0].data()));
+        });
+
+        // Send from client to server
+        client.send(b"hello-pair")?;
+
+        thread::sleep(Duration::from_millis(200));
+
+        Ok(())
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "time"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("tcp://*:5555")
+
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect("tcp://127.0.0.1:5555")
+
+        // Transition server to callback mode
+        server.OnMessage(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
+            fmt.Printf("Callback received: %s\n", parts[0].Data())
+        })
+
+        // Send from client to server
+        client.Send(zlink.NewMessage([]byte("hello-pair")))
+
+        time.Sleep(200 * time.Millisecond)
+    }
+    ```
+
+??? example "Full Sample Code -- Callback"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pair_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_callback_sample.c) |
+    | C++ | [pair_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_callback_sample.cpp) |
+    | Java | [PairCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairCallbackSample.java) |
+    | Python | [pair_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_callback.py) |
+    | Node | [pair_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_callback_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairCallback/Program.cs) |
+    | Rust | [pair_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_callback_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_callback_sample/main.go) |
 
 ### Sending Multipart Data
 

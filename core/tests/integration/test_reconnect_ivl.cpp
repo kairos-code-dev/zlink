@@ -163,7 +163,7 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
 
     const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,
                                        ZLINK_EVENT_CONNECTED,
-                                       ZLINK_EVENT_CONNECTION_READY_CHANGED};
+                                       ZLINK_EVENT_CONNECTION_READY};
     expect_monitor_sequence (&probe, initial_events,
                              sizeof (initial_events) / sizeof (initial_events[0]),
                              3000);
@@ -181,7 +181,7 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
 
     bool saw_ready_reset = false;
     for (int i = disconnected_index + 1; i < retried_index; ++i) {
-        if (monitor_event_at (&probe, i) == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+        if (monitor_event_at (&probe, i) == ZLINK_EVENT_CONNECTION_READY) {
             saw_ready_reset = true;
             break;
         }
@@ -204,7 +204,7 @@ void run_reconnect_ivl_case (const char *bind_endpoint_,
 
     int reconnect_ready_index = -1;
     TEST_ASSERT_TRUE (wait_for_monitor_event_after (
-      &probe, ZLINK_EVENT_CONNECTION_READY_CHANGED,
+      &probe, ZLINK_EVENT_CONNECTION_READY,
       reconnect_connected_index + 1, 5000, &reconnect_ready_index));
 
     // Ignore teardown events from the completed case before the next case

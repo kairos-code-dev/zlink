@@ -14,10 +14,9 @@ import java.util.concurrent.CountDownLatch;
 
 final class PerfPubSub {
     private static final int READY_EVENTS =
-        MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
-            | MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue();
+        MonitorEventType.CONNECTION_READY.getValue();
     private static final int SUB_READY_EVENT =
-        MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue();
+        MonitorEventType.CONNECTION_READY.getValue();
 
     private PerfPubSub() {
     }

@@ -131,11 +131,11 @@ inline bool setup_router_router_session (void *router1,
         return false;
 
     void *bind_monitor =
-      open_configured_socket_monitor (router1, ZLINK_EVENT_CONNECTION_READY_CHANGED);
+      open_configured_socket_monitor (router1, ZLINK_EVENT_CONNECTION_READY);
     if (!bind_monitor)
         return false;
     void *connect_monitor =
-      open_configured_socket_monitor (router2, ZLINK_EVENT_CONNECTION_READY_CHANGED);
+      open_configured_socket_monitor (router2, ZLINK_EVENT_CONNECTION_READY);
     if (!connect_monitor) {
         zlink_monitor_close (&bind_monitor);
         return false;
@@ -155,12 +155,12 @@ inline bool setup_router_router_session (void *router1,
                                                3000);
     const bool bind_ready = wait_for_socket_monitor_event (
       bind_monitor,
-      ZLINK_EVENT_CONNECTION_READY_CHANGED,
+      ZLINK_EVENT_CONNECTION_READY,
       timeout_ms);
     const bool connect_ready =
       wait_for_socket_monitor_event (
         connect_monitor,
-        ZLINK_EVENT_CONNECTION_READY_CHANGED,
+        ZLINK_EVENT_CONNECTION_READY,
         timeout_ms);
     zlink_monitor_close (&connect_monitor);
     zlink_monitor_close (&bind_monitor);

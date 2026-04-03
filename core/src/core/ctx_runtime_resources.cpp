@@ -20,7 +20,8 @@ const int term_and_reaper_threads_count = 2;
 
 zlink::ctx_runtime_resources_t::ctx_runtime_resources_t () :
     _reaper (NULL),
-    _service_control_runtime (NULL)
+    _service_control_runtime (NULL),
+    _service_data_runtime (NULL)
 {
 }
 
@@ -41,6 +42,7 @@ bool zlink::ctx_runtime_resources_t::start_locked (
 
     if (!start_reaper_locked (ctx_, socket_registry_)
         || !start_service_runtime_locked (ctx_)
+        || !start_service_data_runtime_locked (ctx_)
         || !start_io_threads_locked (ctx_, socket_registry_, io_thread_count_)) {
         cleanup_failed_start_locked (ctx_, socket_registry_);
         return false;
@@ -60,6 +62,11 @@ void zlink::ctx_runtime_resources_t::teardown (
         delete _service_control_runtime;
         _service_control_runtime = NULL;
     }
+    if (_service_data_runtime) {
+        _service_data_runtime->stop ();
+        delete _service_data_runtime;
+        _service_data_runtime = NULL;
+    }
 
     _io_thread_registry.stop_all ();
     _io_thread_registry.destroy_all ();
@@ -73,6 +80,12 @@ zlink::service_control_runtime_t *
 zlink::ctx_runtime_resources_t::service_control_runtime () const
 {
     return _service_control_runtime;
+}
+
+zlink::service_control_runtime_t *
+zlink::ctx_runtime_resources_t::service_data_runtime () const
+{
+    return _service_data_runtime;
 }
 
 zlink::object_t *zlink::ctx_runtime_resources_t::reaper_object () const
@@ -125,13 +138,26 @@ bool zlink::ctx_runtime_resources_t::start_reaper_locked (
 bool zlink::ctx_runtime_resources_t::start_service_runtime_locked (ctx_t &ctx_)
 {
     _service_control_runtime =
-      new (std::nothrow) service_control_runtime_t (&ctx_);
+      new (std::nothrow) service_control_runtime_t (&ctx_, "service-ctrl");
     if (!_service_control_runtime) {
         errno = ENOMEM;
         return false;
     }
 
     return _service_control_runtime->start ();
+}
+
+bool zlink::ctx_runtime_resources_t::start_service_data_runtime_locked (
+  ctx_t &ctx_)
+{
+    _service_data_runtime =
+      new (std::nothrow) service_control_runtime_t (&ctx_, "service-data");
+    if (!_service_data_runtime) {
+        errno = ENOMEM;
+        return false;
+    }
+
+    return _service_data_runtime->start ();
 }
 
 bool zlink::ctx_runtime_resources_t::start_io_threads_locked (

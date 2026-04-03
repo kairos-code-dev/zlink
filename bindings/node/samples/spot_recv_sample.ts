@@ -8,8 +8,7 @@ const net = require('node:net');
 const zlink = require('../dist');
 
 const FILTER_APPLIED = zlink.ServiceMonitorEvent.SPOT_FILTER_APPLIED;
-const PUB_READY = zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-  | zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED;
+const PUB_READY = zlink.ServiceMonitorEvent.SPOT_PEER_UP;
 
 async function reservePort() {
   const server = net.createServer();
@@ -58,9 +57,7 @@ async function main() {
         continue;
       }
       if (
-        (event.eventType === zlink.ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-          || event.eventType === zlink.ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED)
-        && event.value > 0
+        event.eventType === zlink.ServiceMonitorEvent.SPOT_PEER_UP
       ) {
         pubReady = true;
         break;

@@ -92,18 +92,7 @@ int spot_sub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
     if (socket->monitor_snapshot (out_) != 0)
         return -1;
     out_->source_kind = ZLINK_MONITOR_SOURCE_SPOT_SUB;
-    {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        const uint32_t ready_count =
-          static_cast<uint32_t> (_ready_peer_endpoints.size ());
-        if (out_->ready_count < ready_count)
-            out_->ready_count = ready_count;
-    }
-    out_->detail_flags |= ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT;
-    if (out_->ready_count > 0)
-        out_->state_flags |= ZLINK_MONITOR_STATE_READY;
-    else
-        out_->state_flags &= ~ZLINK_MONITOR_STATE_READY;
+    out_->state_flags &= ~ZLINK_MONITOR_STATE_READY;
     return 0;
 }
 

@@ -15,14 +15,14 @@ def tcp_endpoint():
 
 
 def wait_connected(*monitors, timeout_ms=5000):
-    """Wait for CONNECTION_READY_CHANGED on all monitors.
+    """Wait for CONNECTION_READY on all monitors.
 
-    Each monitor should be opened with MonitorEvent.CONNECTION_READY_CHANGED.
+    Each monitor should be opened with MonitorEvent.CONNECTION_READY.
     Blocks until every monitor reports the event or timeout expires.
     """
     import time
 
-    event_mask = int(zlink.MonitorEvent.CONNECTION_READY_CHANGED)
+    event_mask = int(zlink.MonitorEvent.CONNECTION_READY)
     remaining = set(range(len(monitors)))
     deadline = time.monotonic() + timeout_ms / 1000.0
 

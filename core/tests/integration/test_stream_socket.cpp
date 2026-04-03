@@ -29,6 +29,31 @@
 SETUP_TEARDOWN_TESTCONTEXT
 
 static const size_t stream_routing_id_size = 4;
+static const char *const stream_socket_smoke_cases[] = {
+  "test_stream_callback_lifecycle",
+  "test_stream_recv_api_dispatch_conflict",
+  "test_stream_notify_option_remains_available_with_dispatch",
+  "test_stream_callback_echo_raw",
+  "test_stream_recv_ready_precedes_first_payload_contract",
+  "test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames",
+  "test_stream_connect_rejected",
+};
+
+static bool should_run_stream_socket_test (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    if (selected && *selected)
+        return strcmp (selected, name_) == 0;
+
+    for (size_t i = 0;
+         i < sizeof (stream_socket_smoke_cases)
+               / sizeof (stream_socket_smoke_cases[0]);
+         ++i) {
+        if (strcmp (stream_socket_smoke_cases[i], name_) == 0)
+            return true;
+    }
+    return false;
+}
 
 static bool wait_monitor_event (void *monitor_,
                                 void *activity_socket_,
@@ -497,7 +522,7 @@ static void record_stream_monitor_event (stream_monitor_probe_t *probe_,
         case ZLINK_EVENT_ACCEPTED:
             ++probe_->accepted;
             break;
-        case ZLINK_EVENT_CONNECTION_READY_CHANGED:
+        case ZLINK_EVENT_CONNECTION_READY:
             ++probe_->connection_ready;
             if (event_->routing_id.size != stream_routing_id_size) {
                 ++probe_->bad_ready_routing_id;
@@ -650,7 +675,7 @@ static void collect_stream_ordering_monitor_events (
         const std::string key =
           make_routing_id_key (event.routing_id.data, event.routing_id.size);
         std::lock_guard<std::mutex> lk (probe_->mu);
-        if (event.event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+        if (event.event == ZLINK_EVENT_CONNECTION_READY) {
             probe_->ready_routing_ids.insert (key);
             probe_->ready_events.fetch_add (1, std::memory_order_release);
         } else if (event.event == ZLINK_EVENT_DISCONNECTED) {
@@ -1276,7 +1301,7 @@ void test_stream_recv_ready_precedes_first_payload_contract ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
@@ -1351,7 +1376,7 @@ void test_stream_raw_callback_ready_precedes_first_payload_contract ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
@@ -1545,7 +1570,7 @@ void test_stream_raw_multiclient_strict_ready_gating_regression ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
@@ -1619,7 +1644,7 @@ void test_stream_recv_multiclient_strict_ready_gating_regression ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     const int monitor_linger = 0;
@@ -1796,7 +1821,7 @@ void test_stream_tcp_basic ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1821,7 +1846,7 @@ void test_stream_tcp_basic ()
 
     unsigned char server_id[stream_routing_id_size];
     TEST_ASSERT_TRUE (wait_monitor_event (
-      monitor, server, ZLINK_EVENT_CONNECTION_READY_CHANGED, server_id, 2000));
+      monitor, server, ZLINK_EVENT_CONNECTION_READY, server_id, 2000));
     TEST_ASSERT_EQUAL_UINT8_ARRAY (
       server_id, probe.routing_id, stream_routing_id_size);
 
@@ -1864,7 +1889,7 @@ void test_stream_maxmsgsize ()
     zlink_socket_monitor_open_options_t monitor_opts;
     memset (&monitor_opts, 0, sizeof (monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED;
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
     void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1891,7 +1916,7 @@ void test_stream_maxmsgsize ()
 
     unsigned char connect_id[stream_routing_id_size];
     TEST_ASSERT_TRUE (wait_monitor_event (
-      monitor, server, ZLINK_EVENT_CONNECTION_READY_CHANGED, connect_id, 2000));
+      monitor, server, ZLINK_EVENT_CONNECTION_READY, connect_id, 2000));
     TEST_ASSERT_EQUAL_UINT8_ARRAY (
       connect_id, probe.routing_id, stream_routing_id_size);
 
@@ -1936,50 +1961,47 @@ void test_stream_connect_rejected ()
     test_context_socket_close_zero_linger (stream);
 }
 
-#if defined ZLINK_HAVE_WS
-void test_stream_ws_basic ()
-{
-    TEST_IGNORE_MESSAGE ("STREAM client path removed; raw websocket client not in this unit test");
-}
-
-#if defined ZLINK_HAVE_WSS
-void test_stream_wss_basic ()
-{
-    TEST_IGNORE_MESSAGE ("STREAM client path removed; raw websocket client not in this unit test");
-}
-#endif  // ZLINK_HAVE_WSS
-#endif  // ZLINK_HAVE_WS
-
 int main (void)
 {
     UNITY_BEGIN ();
 
     setup_test_environment ();
 
-    RUN_TEST (test_stream_callback_lifecycle);
-    RUN_TEST (test_stream_recv_api_dispatch_conflict);
-    RUN_TEST (test_stream_notify_option_remains_available_with_dispatch);
-    RUN_TEST (test_stream_callback_echo_raw);
-    RUN_TEST (test_stream_callback_echo_single_zero_byte);
-    RUN_TEST (test_stream_recv_ready_precedes_first_payload_contract);
-    RUN_TEST (test_stream_raw_callback_ready_precedes_first_payload_contract);
-    RUN_TEST (test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames);
+    if (should_run_stream_socket_test ("test_stream_callback_lifecycle"))
+        RUN_TEST (test_stream_callback_lifecycle);
+    if (should_run_stream_socket_test ("test_stream_recv_api_dispatch_conflict"))
+        RUN_TEST (test_stream_recv_api_dispatch_conflict);
+    if (should_run_stream_socket_test (
+          "test_stream_notify_option_remains_available_with_dispatch"))
+        RUN_TEST (test_stream_notify_option_remains_available_with_dispatch);
+    if (should_run_stream_socket_test ("test_stream_callback_echo_raw"))
+        RUN_TEST (test_stream_callback_echo_raw);
+    if (should_run_stream_socket_test ("test_stream_callback_echo_single_zero_byte"))
+        RUN_TEST (test_stream_callback_echo_single_zero_byte);
+    if (should_run_stream_socket_test (
+          "test_stream_recv_ready_precedes_first_payload_contract"))
+        RUN_TEST (test_stream_recv_ready_precedes_first_payload_contract);
+    if (should_run_stream_socket_test (
+          "test_stream_raw_callback_ready_precedes_first_payload_contract"))
+        RUN_TEST (test_stream_raw_callback_ready_precedes_first_payload_contract);
+    if (should_run_stream_socket_test (
+          "test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames"))
+        RUN_TEST (test_stream_recv_handler_delivers_raw_chunks_not_len32be_frames);
 #if !defined(ZLINK_HAVE_WINDOWS)
-    RUN_TEST (test_stream_raw_multiclient_strict_ready_gating_regression);
-    RUN_TEST (test_stream_recv_multiclient_strict_ready_gating_regression);
-    RUN_TEST (test_stream_raw_multiclient_load_integrity);
-    RUN_TEST (test_stream_raw_multiclient_load_integrity_with_send_ready_handler);
+    if (should_run_stream_socket_test (
+          "test_stream_raw_multiclient_strict_ready_gating_regression"))
+        RUN_TEST (test_stream_raw_multiclient_strict_ready_gating_regression);
+    if (should_run_stream_socket_test (
+          "test_stream_recv_multiclient_strict_ready_gating_regression"))
+        RUN_TEST (test_stream_recv_multiclient_strict_ready_gating_regression);
+    if (should_run_stream_socket_test ("test_stream_raw_multiclient_load_integrity"))
+        RUN_TEST (test_stream_raw_multiclient_load_integrity);
+    if (should_run_stream_socket_test (
+          "test_stream_raw_multiclient_load_integrity_with_send_ready_handler"))
+        RUN_TEST (test_stream_raw_multiclient_load_integrity_with_send_ready_handler);
 #endif
-    RUN_TEST (test_stream_connect_rejected);
-
-#if defined ZLINK_HAVE_WS
-    RUN_TEST (test_stream_ws_basic);
-#if defined ZLINK_HAVE_WSS
-    RUN_TEST (test_stream_wss_basic);
-#endif
-#else
-    TEST_IGNORE_MESSAGE ("WebSocket support not enabled");
-#endif
+    if (should_run_stream_socket_test ("test_stream_connect_rejected"))
+        RUN_TEST (test_stream_connect_rejected);
 
     return UNITY_END ();
 }

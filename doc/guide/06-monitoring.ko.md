@@ -75,7 +75,7 @@ raw 소켓의 transport/session 상태를 알려준다.
 
 | 상수 | 값 | 설명 | `value` | 발생 측 |
 |---|---|---|---|---|
-| `CONNECTION_READY_CHANGED` | `0x1000` | 핸드셰이크 완료, 메시징 가능 | reserved | 양쪽 |
+| `CONNECTION_READY` | `0x1000` | 핸드셰이크 이후 ready edge | reserved | 양쪽 |
 | `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | 클라이언트 |
 | `ACCEPTED` | `0x0020` | 수신 연결 accept | fd | 서버 |
 | `DISCONNECTED` | `0x0200` | 세션 종료 | reason 코드 | 양쪽 |
@@ -91,17 +91,17 @@ raw 소켓의 transport/session 상태를 알려준다.
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | 양쪽 |
 | `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | 양쪽 |
 
-- `CONNECTION_READY_CHANGED`: 모든 소켓에서 `routing_id`에 peer id 포함
+- `CONNECTION_READY`: 모든 소켓에서 `routing_id`에 peer id 포함
 
 ### 연결 흐름
 
 ```
-클라이언트: CONNECT_DELAYED(선택) → CONNECTED → CONNECTION_READY_CHANGED → send/recv 시작
-서버:       LISTENING → ACCEPTED → CONNECTION_READY_CHANGED → send/recv 시작
-종료:       CONNECTION_READY_CHANGED → DISCONNECTED → CONNECT_DELAYED → 재연결...
+클라이언트: CONNECT_DELAYED(선택) → CONNECTED → CONNECTION_READY → send/recv 시작
+서버:       LISTENING → ACCEPTED → CONNECTION_READY → send/recv 시작
+종료:       CONNECTION_READY → DISCONNECTED → CONNECT_DELAYED → 재연결...
 ```
 
-### CONNECTION_READY_CHANGED 상세
+### CONNECTION_READY 상세
 
 핸드셰이크 완료 후 발생한다. 이 이벤트를 받으면 즉시 메시지를 보내고 받을 수 있다.
 `*_READY_CHANGED` 이벤트의 `value` 필드는 aggregate ready count 계약이 아니다.
@@ -135,7 +135,7 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
   클라이언트 측:
 
   ┌─────────────────┐       ┌───────────┐       ┌──────────────────────────┐
-  │ CONNECT_DELAYED │──────►│ CONNECTED │──────►│ CONNECTION_READY_CHANGED │
+  │ CONNECT_DELAYED │──────►│ CONNECTED │──────►│ CONNECTION_READY         │
   │    (선택)       │       └───────────┘       └──────────────────────────┘
   └─────────────────┘
 
@@ -143,7 +143,7 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
   서버 측:
 
   ┌──────────┐       ┌──────────────────────────┐
-  │ ACCEPTED │──────►│ CONNECTION_READY_CHANGED │
+  │ ACCEPTED │──────►│ CONNECTION_READY         │
   └──────────┘       └──────────────────────────┘
 ```
 
@@ -168,7 +168,7 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
 
 ```
   ┌──────────────────────────┐       ┌──────────────┐
-  │ CONNECTION_READY_CHANGED │──────►│ DISCONNECTED │
+  │ CONNECTION_READY         │──────►│ DISCONNECTED │
   └──────────────────────────┘       └──────────────┘
 ```
 
@@ -176,7 +176,7 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
 
 ```
   ┌───────────┐       ┌──────────────────────────┐       ┌──────────────┐
-  │ CONNECTED │──────►│ CONNECTION_READY_CHANGED │──────►│ DISCONNECTED │
+  │ CONNECTED │──────►│ CONNECTION_READY         │──────►│ DISCONNECTED │
   └───────────┘       └──────────────────────────┘       └──────┬───────┘
                                                                 │
                       ┌─────────────────┐                       │
@@ -188,7 +188,7 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
                       └────────┬─────────┘
                                │
                       ┌────────▼────┐       ┌──────────────────────────┐
-                      │  CONNECTED  │──────►│ CONNECTION_READY_CHANGED │
+                      │  CONNECTED  │──────►│ CONNECTION_READY         │
                       └─────────────┘       └──────────────────────────┘
 ```
 
@@ -237,7 +237,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 ```c
 /* 연결/해제 이벤트만 */
 zlink_socket_monitor_open_options_t opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED,
+    .events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
 };
 void *mon = zlink_socket_monitor_open(server, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
@@ -247,7 +247,7 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 | 프리셋 | 이벤트 마스크 | 용도 |
 |--------|-------------|------|
-| 기본 | `CONNECTION_READY_CHANGED \| DISCONNECTED` | 연결 상태 추적 |
+| 기본 | `CONNECTION_READY \| DISCONNECTED` | 연결 상태 추적 |
 | 디버깅 | 기본 + `CONNECTED \| ACCEPTED \| CONNECT_DELAYED \| CONNECT_RETRIED` | 연결 과정 상세 |
 | 보안 | 기본 + `HANDSHAKE_FAILED_*` | 인증 실패 감지 |
 | 전체 | `ZLINK_EVENT_ALL` | 모든 이벤트 |
@@ -257,7 +257,7 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```c
 /* 기본 프리셋 */
 #define MONITOR_PRESET_BASIC \
-    (ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED)
+    (ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED)
 
 /* 디버깅 프리셋 */
 #define MONITOR_PRESET_DEBUG \
@@ -320,7 +320,7 @@ event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
 ```c
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
-    if (ev->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+    if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
         zlink_monitor_snapshot_t snapshot;
         zlink_monitor_snapshot(g_monitor, &snapshot);
         printf("monitor snapshot updated\n");
@@ -330,8 +330,9 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 
 ## 8.1 서비스 모니터
 
-서비스 모니터는 SPOT, Discovery 같은 서비스 핸들의
-상태 변화를 관찰한다. socket monitor와는 별도 API다.
+서비스 모니터는 공개 service-monitor surface를 유지하는 서비스 핸들의
+상태 변화를 관찰한다. 대표 대상은 Discovery이며, socket monitor와는
+별도 API다.
 
 - **이벤트 타입**: `zlink_service_event_t` (socket monitor의 `zlink_monitor_event_t`와 다름)
 - **콜백 타입**: `zlink_service_monitor_handler_fn`
@@ -341,30 +342,32 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 ### 서비스 모니터 열기
 
 ```c
-/* SPOT 서비스 모니터 */
+/* Discovery 서비스 모니터 */
 zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_SERVICE_MONITOR_EVENT_ALL
+    .events = ZLINK_SERVICE_MONITOR_EVENT_ERROR
+              | ZLINK_SERVICE_MONITOR_EVENT_CLOSED
+              | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED
 };
-void *mon = zlink_service_monitor_open(spot_node, &opts);
+void *mon = zlink_service_monitor_open(discovery, &opts);
 ```
 
-대상 handle(discovery, spot, spot_node)을 넘기면 된다.
-handle 종류는 런타임에 자동 판별된다.
+공개 service monitor를 제공하는 handle을 넘기면 된다.
+SPOT과 SpotNode는 더 이상 공개 service-monitor surface를 제공하지 않는다.
 
 ### 콜백 모드
 
 ```c
-void on_spot_event(const zlink_service_event_t *ev, void *userdata)
+void on_service_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_MONITOR_EVENT_PEER_UP) {
-        printf("peer connected\n");
+    if (ev->event_type & ZLINK_DISCOVERY_PROVIDERS_CHANGED) {
+        printf("provider set changed\n");
     }
-    if (ev->event_type & ZLINK_SPOT_SUB_FILTER_APPLIED) {
-        printf("subscription filter applied\n");
+    if (ev->event_type & ZLINK_MONITOR_EVENT_ERROR) {
+        printf("service error: %d\n", ev->error_code);
     }
 }
 
-zlink_service_monitor_handler(mon, on_spot_event, NULL);
+zlink_service_monitor_handler(mon, on_service_event, NULL);
 ```
 
 ### Recv 모드
@@ -381,16 +384,6 @@ if (rc == 0) {
 
 `zlink_service_monitor_open()`으로 관찰하는 이벤트다.
 서비스별로 발생하는 이벤트가 다르다.
-
-#### SPOT 이벤트
-
-| 상수 | 설명 | `value` | 이후 가능한 동작 |
-|---|---|---|---|
-| `PEER_UP` | 피어 연결 | — | topology edge 관찰 |
-| `PEER_DOWN` | 피어 연결 해제 | — | topology loss 관찰 |
-| `SPOT_SUB_FILTER_APPLIED` | 구독 필터가 peer에 전파됨 | — | — |
-| `PUB_QUEUE_FULL` | publisher 큐 압력 발생 | — | backpressure 처리 |
-| `PUB_QUEUE_DRAINED` | publisher 큐 배출 완료 | — | 정상 흐름 재개 |
 
 #### Discovery 이벤트
 
@@ -522,22 +515,22 @@ zlink_monitor_close(&mon);
 - `sleep`/고정 지연으로 ready를 추정하지 않는다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 이벤트일 뿐,
   메시징 시작 기준으로 쓰지 않는다.
-- perf에서는 low-cost event를 expected peer 수만큼 센 뒤 고정 settle 1초 후 시작한다.
+- perf는 문서에 명시된 deterministic gate만 사용한다.
 
 ### 11.1 Raw 소켓 — PAIR, DEALER, ROUTER
 
-`CONNECTION_READY_CHANGED` 이벤트를 받으면 즉시 send/recv가 가능하다.
+`CONNECTION_READY` 이벤트를 받으면 즉시 send/recv가 가능하다.
 
 ```c
 /* DEALER/ROUTER 예시 */
 zlink_socket_monitor_open_options_t opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *mon = zlink_socket_monitor_open(router, &opts);
 
 /* monitor callback에서 ready 확인 */
 void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
-    if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+    if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
         /* ROUTER: ev->routing_id에 peer identity가 들어있다 */
         /* 바로 routed send 가능 */
     }
@@ -547,32 +540,32 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| PAIR | 양쪽 `CONNECTION_READY_CHANGED` | 양방향 send/recv |
-| DEALER | `CONNECTION_READY_CHANGED` | send/recv |
-| ROUTER | `CONNECTION_READY_CHANGED` | `ev->routing_id`로 routed send/recv |
+| PAIR | 양쪽 `CONNECTION_READY` | 양방향 send/recv |
+| DEALER | `CONNECTION_READY` | send/recv |
+| ROUTER | `CONNECTION_READY` | `ev->routing_id`로 routed send/recv |
 
 ### 11.2 Raw 소켓 — STREAM
 
 STREAM은 ROUTER와 동일하게 동작한다 — routing_id는 TCP 연결이 수립되는
-시점에 할당되며, 첫 payload 도착과 무관하다. `CONNECTION_READY_CHANGED`
+시점에 할당되며, 첫 payload 도착과 무관하다. `CONNECTION_READY`
 이벤트가 routing_id와 함께 payload보다 먼저 발생한다. 순서:
 
 1. 클라이언트가 raw TCP로 연결한다
-2. 서버에서 `CONNECTION_READY_CHANGED` 이벤트를 받으며 `ev->routing_id` 확보
+2. 서버에서 `CONNECTION_READY` 이벤트를 받으며 `ev->routing_id` 확보
 3. 해당 routing_id로 즉시 send 가능
 4. 클라이언트의 payload(있는 경우)는 ready 이벤트 이후에 도착
 
 ```c
-/* STREAM server: CONNECTION_READY_CHANGED → routing_id 확보 → send/recv */
+/* STREAM server: CONNECTION_READY → routing_id 확보 → send/recv */
 void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
-    if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+    if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
         /* ev->routing_id에 peer의 routing_id가 들어있다 */
         /* 즉시 send 가능, 또는 inbound payload 대기 */
     }
 }
 
 zlink_socket_monitor_open_options_t opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *mon = zlink_socket_monitor_open(stream_server, &opts);
 zlink_socket_monitor_handler(mon, on_ready, NULL);
@@ -580,32 +573,31 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| STREAM | `CONNECTION_READY_CHANGED` | `ev->routing_id`로 send/recv |
+| STREAM | `CONNECTION_READY` | `ev->routing_id`로 send/recv |
 
 STREAM도 다른 raw 소켓과 동일하게
-`CONNECTION_READY_CHANGED` 이벤트만으로 ready를 판정한다.
+`CONNECTION_READY` 이벤트만으로 ready를 판정한다.
 
 ### 11.3 Raw 소켓 — PUB/SUB
 
-raw PUB/SUB perf는 `CONNECTION_READY_CHANGED`를 expected client 수만큼 받은 뒤
-고정 settle 1초를 대기하고 메시징을 시작한다. perf는 delivery-ready exactness를
-gate로 사용하지 않는다.
+raw PUB/SUB perf는 `CONNECTION_READY`를 expected client 수만큼 받은 뒤
+메시징을 시작한다. perf는 delivery-ready exactness를 gate로 사용하지 않는다.
 
 ```c
 zlink_set_subscription(sub, "topic");
 
 /* SUB/PUB perf gate: connection-ready 대기 */
 zlink_socket_monitor_open_options_t sub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
 
 zlink_socket_monitor_open_options_t pub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-/* expected client 수만큼 connection-ready 수신 후 settle 1초 */
+/* expected client 수만큼 connection-ready 수신 후 시작 */
 zlink_publish(pub, "topic", &part, 1, 0);
 zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
 
@@ -615,38 +607,28 @@ zlink_monitor_close(&sub_mon);
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| PUB | `CONNECTION_READY_CHANGED` + expected client counting + 1초 settle | `zlink_publish()` delivery |
-| SUB | `CONNECTION_READY_CHANGED` + expected client counting + 1초 settle | `zlink_subscribe()` 수신 |
+| PUB | `CONNECTION_READY` + expected client counting | `zlink_publish()` delivery |
+| SUB | `CONNECTION_READY` + expected client counting | `zlink_subscribe()` 수신 |
 
 ### 11.4 서비스 — SPOT
 
-SPOT perf는 `PEER_UP`를 expected client 수만큼 받은 뒤 고정 settle 1초를
-대기하고 메시징을 시작한다.
+SPOT은 더 이상 공개 service-monitor surface를 제공하지 않는다.
+SPOT perf는 monitor event 대신 명시적 benchmark control barrier를 사용한다.
 
 ```c
-/* SPOT perf gate: PEER_UP 구독 */
-zlink_service_monitor_open_options_t sub_opts = {
-    .events = ZLINK_MONITOR_EVENT_PEER_UP
-              | ZLINK_MONITOR_EVENT_ERROR
-};
-void *sub_mon = zlink_service_monitor_open(sub_node, &sub_opts);
-
-zlink_service_monitor_open_options_t pub_opts = {
-    .events = ZLINK_MONITOR_EVENT_PEER_UP
-              | ZLINK_MONITOR_EVENT_ERROR
-};
-void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
-
-/* expected client 수만큼 PEER_UP 수신 후 settle 1초 뒤 시작 */
+/* SPOT perf gate: explicit READY/START barrier */
+send_control_ready(client_id);
+wait_ready_count(expected_clients);
+broadcast_control_start();
 ```
 
-| 서비스 | 기다릴 이벤트 | 이후 가능한 동작 |
+| 서비스 | 기다릴 조건 | 이후 가능한 동작 |
 |---|---|---|
-| SPOT sub | `PEER_UP` + expected client counting + 1초 settle | `zlink_subscribe()` 수신 시작 |
-| SPOT pub | `PEER_UP` + expected client counting + 1초 settle | `zlink_publish()` delivery 시작 |
+| SPOT sub | explicit `READY/START` barrier | `zlink_subscribe()` 수신 시작 |
+| SPOT pub | explicit `READY/START` barrier | `zlink_publish()` delivery 시작 |
 
 snapshot/status 조회는 운영 관찰/디버깅용이며, aggregate ready count는
-제공하지 않는다. perf 메시징 시작 판정에는 위 low-cost event와 settle 정책을 사용한다.
+제공하지 않는다. perf 메시징 시작 판정에는 위 explicit barrier를 사용한다.
 
 ### 11.5 Snapshot
 

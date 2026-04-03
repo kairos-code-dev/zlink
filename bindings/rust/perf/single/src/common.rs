@@ -131,7 +131,7 @@ pub fn print_result(
 
 // -- Ready gate / callback handler -------------------------------------------
 
-/// Wait for a monitor CONNECTION_READY_CHANGED event (ready gate).
+/// Wait for a monitor CONNECTION_READY event (ready gate).
 pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {

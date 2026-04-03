@@ -290,7 +290,7 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
     if (ready_changed) {
         uint64_t values[1] = {ready_count};
         event (endpoint_pair, routing_id_data, routing_id_size, values, 1,
-               ZLINK_EVENT_CONNECTION_READY_CHANGED);
+               ZLINK_EVENT_CONNECTION_READY);
     }
 
     const std::string &identifier = pipe_->get_endpoint_pair ().identifier ();

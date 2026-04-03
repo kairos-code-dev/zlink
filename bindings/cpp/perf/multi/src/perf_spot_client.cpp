@@ -134,17 +134,10 @@ bool wait_for_sub_delivery_ready (zlink::service_monitor_handle_t &monitor_,
 
             if (event->event_type
                 != static_cast<uint32_t> (
-                  zlink::service_monitor_event::spot_sub_delivery_ready_changed)) {
+                  zlink::service_monitor_event::peer_up)) {
                 continue;
             }
-
-            if ((event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-                && std::strcmp (event->subject, k_topic) != 0) {
-                continue;
-            }
-
-            if (event->value > 0)
-                return true;
+            return true;
         }
     }
 
@@ -473,7 +466,7 @@ class spot_client_bench_t
 
             slot->monitor.reset (new zlink::service_monitor_handle_t (
               slot->spot->monitor_open (
-                zlink::service_monitor_event::spot_sub_delivery_ready_changed
+                zlink::service_monitor_event::peer_up
                 | zlink::service_monitor_event::error)));
             if (!slot->monitor->valid ())
             {

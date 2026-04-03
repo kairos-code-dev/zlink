@@ -19,7 +19,7 @@ void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
     runtime.mesh_peer_state.connected_ready_peer_count.store (1);
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
-    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 0;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9000", sizeof (raw.remote_addr) - 1);
 
@@ -28,8 +28,8 @@ void test_mesh_xsub_monitor_ready_zero_clears_connected_peer ()
     TEST_ASSERT_EQUAL_UINT (
       1, runtime.mesh_peer_state.connected_endpoints.size ());
     TEST_ASSERT_EQUAL_UINT (
-      0, runtime.mesh_peer_state.connected_ready_peer_count.load ());
-    TEST_ASSERT_EQUAL_UINT64 (1, runtime.mesh_peer_state.version.load ());
+      1, runtime.mesh_peer_state.connected_ready_peer_count.load ());
+    TEST_ASSERT_EQUAL_UINT64 (0, runtime.mesh_peer_state.version.load ());
 }
 
 void test_mesh_xsub_monitor_ready_count_growth_marks_connected ()
@@ -37,7 +37,7 @@ void test_mesh_xsub_monitor_ready_count_growth_marks_connected ()
     zlink::spot_runtime_t runtime (NULL);
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
-    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 1;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9000", sizeof (raw.remote_addr) - 1);
 
@@ -57,7 +57,7 @@ void test_mesh_xsub_monitor_disconnect_clears_connected_peer ()
     memset (&raw, 0, sizeof (raw));
     strncpy (raw.remote_addr, "wss://127.0.0.1:9000", sizeof (raw.remote_addr) - 1);
 
-    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 1;
     zlink::spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
       &runtime, raw);
@@ -81,19 +81,19 @@ void test_mesh_xsub_monitor_ready_count_changes_without_rewriting_membership ()
 
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
-    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 1;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9001", sizeof (raw.remote_addr) - 1);
 
     bool endpoint_membership_changed = true;
-    TEST_ASSERT_TRUE (zlink::sync_mesh_peer_monitor_state (
+    TEST_ASSERT_FALSE (zlink::sync_mesh_peer_monitor_state (
       &runtime.mesh_peer_state, raw, &endpoint_membership_changed));
     TEST_ASSERT_EQUAL_UINT (
       2, runtime.mesh_peer_state.connected_endpoints.size ());
     TEST_ASSERT_EQUAL_UINT (
-      1, runtime.mesh_peer_state.connected_ready_peer_count.load ());
+      2, runtime.mesh_peer_state.connected_ready_peer_count.load ());
     TEST_ASSERT_FALSE (endpoint_membership_changed);
-    TEST_ASSERT_EQUAL_UINT64 (1, runtime.mesh_peer_state.version.load ());
+    TEST_ASSERT_EQUAL_UINT64 (0, runtime.mesh_peer_state.version.load ());
 }
 
 void test_mesh_xsub_monitor_ready_growth_reports_endpoint_membership_change ()
@@ -102,7 +102,7 @@ void test_mesh_xsub_monitor_ready_growth_reports_endpoint_membership_change ()
 
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
-    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 1;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9000",
              sizeof (raw.remote_addr) - 1);
@@ -124,7 +124,7 @@ void test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present ()
 
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
-    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 1;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9001",
              sizeof (raw.remote_addr) - 1);
@@ -137,7 +137,7 @@ void test_mesh_xsub_monitor_ready_positive_keeps_endpoint_present ()
                         "wss://127.0.0.1:9001")
                       == 1);
     TEST_ASSERT_EQUAL_UINT (
-      1, runtime.mesh_peer_state.connected_ready_peer_count.load ());
+      2, runtime.mesh_peer_state.connected_ready_peer_count.load ());
     TEST_ASSERT_EQUAL_UINT64 (1, runtime.mesh_peer_state.version.load ());
 }
 
@@ -149,7 +149,7 @@ void test_mesh_xsub_monitor_same_ready_count_does_not_bump_version ()
 
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
-    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 2;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9002",
              sizeof (raw.remote_addr) - 1);
@@ -159,7 +159,7 @@ void test_mesh_xsub_monitor_same_ready_count_does_not_bump_version ()
     TEST_ASSERT_EQUAL_UINT (
       3, runtime.mesh_peer_state.connected_endpoints.size ());
     TEST_ASSERT_EQUAL_UINT (
-      2, runtime.mesh_peer_state.connected_ready_peer_count.load ());
+      3, runtime.mesh_peer_state.connected_ready_peer_count.load ());
     TEST_ASSERT_EQUAL_UINT64 (1, runtime.mesh_peer_state.version.load ());
 }
 
@@ -192,7 +192,7 @@ void test_ready_endpoint_helper_tracks_endpoint_local_readiness ()
     zlink_monitor_event_t raw;
     memset (&raw, 0, sizeof (raw));
 
-    raw.event = ZLINK_EVENT_CONNECTION_READY_CHANGED;
+    raw.event = ZLINK_EVENT_CONNECTION_READY;
     raw.value = 1;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9001",
              sizeof (raw.remote_addr) - 1);
@@ -204,18 +204,20 @@ void test_ready_endpoint_helper_tracks_endpoint_local_readiness ()
     raw.value = 0;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9000",
              sizeof (raw.remote_addr) - 1);
-    TEST_ASSERT_TRUE (
+    TEST_ASSERT_FALSE (
       zlink::sync_monitor_ready_endpoint (&endpoints, raw));
-    TEST_ASSERT_EQUAL_UINT (1, endpoints.size ());
+    TEST_ASSERT_EQUAL_UINT (2, endpoints.size ());
     TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9001") == 1);
+    TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9000") == 1);
 
     raw.value = 2;
     strncpy (raw.remote_addr, "wss://127.0.0.1:9002",
              sizeof (raw.remote_addr) - 1);
     TEST_ASSERT_TRUE (
       zlink::sync_monitor_ready_endpoint (&endpoints, raw));
-    TEST_ASSERT_EQUAL_UINT (2, endpoints.size ());
+    TEST_ASSERT_EQUAL_UINT (3, endpoints.size ());
     TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9001") == 1);
+    TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9000") == 1);
     TEST_ASSERT_TRUE (endpoints.count ("wss://127.0.0.1:9002") == 1);
 }
 

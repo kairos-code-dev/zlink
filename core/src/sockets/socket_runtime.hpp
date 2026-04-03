@@ -135,7 +135,8 @@ struct socket_monitor_runtime_t
         events_atomic (0),
         lossy (true),
         queue_stop (false),
-        thread_started (false)
+        task_id (0),
+        task_running (false)
     {
     }
 
@@ -150,16 +151,13 @@ struct socket_monitor_runtime_t
       size_t routing_id_size_,
       uint32_t *ready_count_out_);
     void reset_worker_state ();
-    void start_worker (thread_fn *thread_fn_, void *arg_, const char *name_);
-    bool dequeue_worker_event (socket_monitor_event_record_t *out_,
-                               bool pump_delivery_ready_,
-                               socket_monitor_worker_idle_fn *idle_fn_,
-                               void *idle_arg_);
+    void start_task (uint64_t task_id_);
+    bool dequeue_worker_event_nowait (socket_monitor_event_record_t *out_);
     void requeue_worker_event_front (
       const socket_monitor_event_record_t &record_);
     void enqueue_worker_event (const socket_monitor_event_record_t &record_,
                                size_t hwm_);
-    void stop_worker ();
+    void stop_task ();
 
     void *socket;
     int64_t events;
@@ -170,8 +168,8 @@ struct socket_monitor_runtime_t
     condition_variable_t queue_cv;
     std::deque<socket_monitor_event_record_t> queue;
     bool queue_stop;
-    thread_t thread;
-    bool thread_started;
+    uint64_t task_id;
+    bool task_running;
     std::set<std::string> ready_connections;
 };
 

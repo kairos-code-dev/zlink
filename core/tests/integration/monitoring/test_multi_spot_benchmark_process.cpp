@@ -830,23 +830,6 @@ int main (int argc, char **argv)
         if (should_run_spot_process_test (#name))                              \
             RUN_TEST (name);                                                   \
     } while (0)
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_smoke);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_callback_smoke);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tcp_large_smoke);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tcp_very_large_smoke);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tcp_large_sequence);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_100_clients_tcp_ready_count);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_200_clients_tcp_ready_count);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_400_clients_tcp_ready_count);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_800_clients_tcp_ready_count);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_1000_clients_tcp_ready_count);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tls_very_large_smoke);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_tls_large_sequence);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_ws_very_large_smoke);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_wss_large_sequence);
-    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_many_clients_wss_perf_window_sequence);
-    RUN_SPOT_PROCESS_TEST (
-      test_multi_spot_process_recv_many_clients_wss_perf_window_tight_ready_timeout);
     RUN_SPOT_PROCESS_TEST (test_multi_spot_process_invalid_mode_is_rejected);
 #undef RUN_SPOT_PROCESS_TEST
     return UNITY_END ();

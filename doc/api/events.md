@@ -2,8 +2,8 @@
 
 # Event Catalog
 
-This document is the canonical catalog for raw socket monitor events and
-service monitor events.
+This document is the canonical catalog for raw socket monitor events and the
+remaining service monitor events.
 
 Use:
 - [monitoring.md](monitoring.md) for monitor APIs and peer-inspection APIs
@@ -29,13 +29,14 @@ typedef struct zlink_service_event_t
 ```
 
 Field notes:
-- `value` is event-specific. For `*_READY_CHANGED` events it is reserved and
-  must not be interpreted as an aggregate readiness count.
+- `value` is event-specific and must not be interpreted as an aggregate
+  readiness count.
 - `subject` is populated when `detail_flags` contains
   `ZLINK_EVENT_DETAIL_SUBJECT`.
 - `subject_kind` is valid only when `detail_flags` contains
   `ZLINK_EVENT_DETAIL_SUBJECT_KIND`.
-- `routing_id` is valid only when `SUBJECT_RID` or `PEER_RID` is present.
+- string/id fields are always initialized, but their contract meaning is valid
+  only when the matching `detail_flags` bit is set.
 
 Subject kind constants:
 - `ZLINK_SERVICE_EVENT_SUBJECT_NONE`
@@ -52,16 +53,15 @@ Detail flags:
 
 ## Semantic Levels
 
-- `CONNECTION_READY_CHANGED`: low-cost transport-ready edge
-- `PEER_UP` / `PEER_DOWN`: low-cost peer topology edge
-- `SUB_FILTER_APPLIED`: local subscriber filter installed
+- `CONNECTION_READY`: low-cost ready edge for raw sockets only
+  - raw socket: send/recv ready edge
 - queue events: local backpressure observation only
 
 Recommended perf gates:
-- raw socket perf: count `ZLINK_EVENT_CONNECTION_READY_CHANGED` until the
-  expected client count, then wait a fixed 1-second settle window
-- SPOT perf: count `ZLINK_MONITOR_EVENT_PEER_UP` until the expected client
-  count, then wait a fixed 1-second settle window
+- raw socket perf: count `ZLINK_EVENT_CONNECTION_READY` until the
+  expected client count
+- SPOT perf: do not use service monitor events; use an explicit
+  `READY/START` barrier protocol
 - do not use delivery-ready or aggregate-ready monitor events as perf gates
 
 ## Raw Socket Monitor Events
@@ -80,7 +80,7 @@ Recommended perf gates:
 | `ZLINK_EVENT_DISCONNECTED` | Session disconnected |
 | `ZLINK_EVENT_MONITOR_STOPPED` | Socket monitor stopped |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | Handshake failed without detail |
-| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | Transport handshake readiness changed |
+| `ZLINK_EVENT_CONNECTION_READY` | Ready edge after transport handshake / first usable send path |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | Protocol handshake error |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | Auth handshake error |
 
@@ -96,8 +96,6 @@ Disconnect reasons:
 
 | Constant | Meaning |
 |---|---|
-| `ZLINK_MONITOR_EVENT_PEER_UP` | Peer connected |
-| `ZLINK_MONITOR_EVENT_PEER_DOWN` | Peer disconnected |
 | `ZLINK_MONITOR_EVENT_ERROR` | Error occurred |
 | `ZLINK_MONITOR_EVENT_CLOSED` | Monitor terminal event |
 
@@ -109,27 +107,12 @@ Disconnect reasons:
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | A service provider disappeared |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | Provider set changed |
 
-### SPOT
-
-| Constant | Producer | Meaning |
-|---|---|---|
-| `ZLINK_SPOT_SUB_FILTER_APPLIED` | Spot sub / node-sub monitor | Local filter installed |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | Spot pub / node-pub monitor | PUB queue is full |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | Spot pub / node-pub monitor | PUB queue has been drained |
-
-SPOT subject rules:
-- sub-side `subject_kind` is populated for exact topic and pattern subscriptions
-- pub-side `subject` is populated, but `subject_kind` can be absent because
-  remote subscription frames do not always preserve exact-vs-pattern origin
-- pattern subscriptions are exposed to sub-side monitors using the original
-  public pattern string, including the trailing `*`
-
 ## Examples
 
 Raw perf gate:
 
 ```c
-if (event->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+if (event->event == ZLINK_EVENT_CONNECTION_READY) {
     ++ready_clients;
 }
 ```
@@ -137,7 +120,7 @@ if (event->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
 SPOT perf gate:
 
 ```c
-if (event->event_type == ZLINK_MONITOR_EVENT_PEER_UP) {
-    ++ready_clients;
-}
+/* client sends READY over the control topic */
+/* server waits until READY == expected_clients */
+/* server broadcasts START */
 ```

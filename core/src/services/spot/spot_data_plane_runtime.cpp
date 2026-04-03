@@ -10,6 +10,7 @@
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 
+#include "core/socket_poller.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
 #include "sockets/socket_base.hpp"
 
@@ -37,6 +38,8 @@ static void close_runtime_sockets (spot_node_t *node_,
     if (!state_)
         return;
 
+    LIBZLINK_DELETE (state_->poller);
+    state_->poller = NULL;
     spot_data_plane_t::close_socket_ptr (node_, state_->fanout);
     spot_data_plane_t::close_socket_ptr (node_, state_->ingress);
     spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_sub);
@@ -131,7 +134,8 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     ingress (NULL),
     fanout (NULL),
     current_mesh_pub_sndhwm (0),
-    last_mesh_pub_budget_version (UINT64_MAX)
+    last_mesh_pub_budget_version (UINT64_MAX),
+    poller (NULL)
 {
 }
 
@@ -226,11 +230,41 @@ int spot_data_plane_t::initialize_runtime (
     state_out_->mesh_xsub_monitor =
       static_cast<socket_base_t *> (open_socket_monitor_bridge (
         state_out_->mesh_xsub,
-        ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED));
+        ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED));
     if (!state_out_->mesh_xsub_monitor) {
         const int err = errno != 0 ? errno : EIO;
         (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
                                                              err);
+        close_runtime_sockets (node_, state_out_);
+        {
+            scoped_lock_t lock (node_->_sync);
+            clear_runtime_socket_refs (runtime_);
+            runtime_->mark_fault (err);
+        }
+        spot_data_plane_protocol_t::clear_mesh_xsub_connected_endpoints (
+          runtime_);
+        errno = err;
+        return -1;
+    }
+
+    state_out_->poller = new (std::nothrow) socket_poller_t ();
+    if (!state_out_->poller
+        || state_out_->poller->add (state_out_->ctrl, NULL, ZLINK_POLLIN) != 0
+        || state_out_->poller->add (state_out_->ingress, NULL, ZLINK_POLLIN)
+             != 0
+        || state_out_->poller->add (state_out_->mesh_xsub, NULL, ZLINK_POLLIN)
+             != 0
+        || state_out_->poller->add (state_out_->peer_ctrl_sub, NULL,
+                                    ZLINK_POLLIN)
+             != 0
+        || state_out_->poller->add (state_out_->mesh_xsub_monitor, NULL,
+                                    ZLINK_POLLIN)
+             != 0) {
+        const int err = errno != 0 ? errno : ENOMEM;
+        (void) spot_data_plane_protocol_t::send_errno_reply (state_out_->ctrl,
+                                                             err);
+        (void) state_out_->mesh_xsub->monitor (NULL, 0, 3,
+                                               ZLINK_CORE_SOCKET_PAIR);
         close_runtime_sockets (node_, state_out_);
         {
             scoped_lock_t lock (node_->_sync);

@@ -1021,7 +1021,7 @@ wrapper의 형태를 자연스럽게 만들 수 있기 때문이다.
 - `samples/` 10종, `tests/contract/` 최소 세트, `sample-smoke`/`contract`
   라벨 구조는 반영됐다.
 - unified `spot_t` self-delivery는 sub monitor의 `spot_filter_applied`와
-  pub monitor snapshot의 `ZLINK_MONITOR_STATE_SEND_READY`를 함께 확인한 뒤
+  pub monitor snapshot의 `ZLINK_MONITOR_STATE_READY`를 함께 확인한 뒤
   `recv`/`callback` 경로를 진행하도록 정리했다.
 - 대응 확인용으로 `core/tests/e2e/spot/test_spot_service_introspection.cpp`에
   `test_spot_unified_spot_callback_self_delivery` 회귀를 추가했고, 이 C API

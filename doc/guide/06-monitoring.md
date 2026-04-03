@@ -74,9 +74,9 @@ These report transport/session state for raw sockets.
 
 | Constant | Value | Description | `value` | `routing_id` | Side | After this event |
 |---|---|---|---|---|---|---|
-| `CONNECTION_READY_CHANGED` | `0x1000` | Handshake complete, messaging ready | reserved | peer id (all sockets) | Both | **start send/recv** |
-| `CONNECTED` | `0x0001` | TCP connection established (pre-handshake) | fd | — | Client | wait for `CONNECTION_READY_CHANGED` |
-| `ACCEPTED` | `0x0020` | Incoming connection accepted (pre-handshake) | fd | — | Server | wait for `CONNECTION_READY_CHANGED` |
+| `CONNECTION_READY` | `0x1000` | Ready edge after handshake | reserved | peer id | Both | **start send/recv** |
+| `CONNECTED` | `0x0001` | TCP connection established (pre-handshake) | provider-specific | peer id or sentinel | Client | wait for `CONNECTION_READY` |
+| `ACCEPTED` | `0x0020` | Incoming connection accepted (pre-handshake) | provider-specific | peer id or sentinel | Server | wait for `CONNECTION_READY` |
 | `DISCONNECTED` | `0x0200` | Session terminated | reason code | Possible | Both | trigger reconnection |
 | `LISTENING` | `0x0008` | Bind succeeded, listening | fd | — | Server | — |
 | `CLOSED` | `0x0080` | Intentional close completed | — | — | Both | — |
@@ -93,15 +93,15 @@ These report transport/session state for raw sockets.
 ### Connection flow
 
 ```
-Client: CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY_CHANGED → start send/recv
-Server: LISTENING → ACCEPTED → CONNECTION_READY_CHANGED → start send/recv
-Close:  CONNECTION_READY_CHANGED → DISCONNECTED → CONNECT_DELAYED → reconnect...
+Client: CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY → start send/recv
+Server: LISTENING → ACCEPTED → CONNECTION_READY → start send/recv
+Close:  CONNECTION_READY → DISCONNECTED → CONNECT_DELAYED → reconnect...
 ```
 
-### CONNECTION_READY_CHANGED details
+### CONNECTION_READY details
 
 Fired after a successful handshake. Once received, messaging can start immediately.
-The `value` field of `*_READY_CHANGED` events is reserved and must not be used
+The `value` field of `CONNECTION_READY` is reserved and must not be used
 as an aggregate ready-count contract.
 
 - `ev->routing_id` contains the peer identity on all socket types.
@@ -129,10 +129,10 @@ When `HANDSHAKE_FAILED_PROTOCOL` fires, the `value` field contains one of these 
 
 ```
 Client side:
-  CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY_CHANGED
+  CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY
 
 Server side:
-  ACCEPTED → CONNECTION_READY_CHANGED
+  ACCEPTED → CONNECTION_READY
 ```
 
 ### Handshake Failure
@@ -148,14 +148,14 @@ Server side:
 ### Normal Disconnection
 
 ```
-CONNECTION_READY_CHANGED → DISCONNECTED
+CONNECTION_READY → DISCONNECTED
 ```
 
 ### Reconnection
 
 ```
-CONNECTED → CONNECTION_READY_CHANGED → DISCONNECTED →
-CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY_CHANGED
+CONNECTED → CONNECTION_READY → DISCONNECTED →
+CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY
 ```
 
 ## 6. DISCONNECTED Reason Codes
@@ -203,7 +203,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 ```c
 /* Connection/disconnection events only */
 zlink_socket_monitor_open_options_t opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED,
+    .events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
 };
 void *mon = zlink_socket_monitor_open(server, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
@@ -213,7 +213,7 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 | Preset | Event Mask | Purpose |
 |--------|-----------|---------|
-| Basic | `CONNECTION_READY_CHANGED \| DISCONNECTED` | Connection state tracking |
+| Basic | `CONNECTION_READY \| DISCONNECTED` | Connection state tracking |
 | Debug | Basic + `CONNECTED \| ACCEPTED \| CONNECT_DELAYED \| CONNECT_RETRIED` | Detailed connection process |
 | Security | Basic + `HANDSHAKE_FAILED_*` | Authentication failure detection |
 | Full | `ZLINK_EVENT_ALL` | All events |
@@ -223,7 +223,7 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```c
 /* Basic preset */
 #define MONITOR_PRESET_BASIC \
-    (ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED)
+    (ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED)
 
 /* Debug preset */
 #define MONITOR_PRESET_DEBUG \
@@ -289,7 +289,7 @@ You can also combine snapshot queries inside event callbacks.
 ```c
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
-    if (ev->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+    if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
         zlink_monitor_snapshot_t snapshot;
         zlink_monitor_snapshot(g_monitor, &snapshot);
         printf("Monitor snapshot updated\n");
@@ -299,8 +299,9 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 
 ## 8.1 Service Monitor
 
-The service monitor observes state changes on service handles such as
-SPOT and Discovery. It is a separate API from the socket monitor.
+The service monitor observes state changes on service handles that still
+expose a public service-monitor surface, such as Discovery. It is a
+separate API from the socket monitor.
 
 - **Event type**: `zlink_service_event_t` (different from socket monitor's `zlink_monitor_event_t`)
 - **Callback type**: `zlink_service_monitor_handler_fn`
@@ -310,30 +311,32 @@ SPOT and Discovery. It is a separate API from the socket monitor.
 ### Opening a service monitor
 
 ```c
-/* SPOT service monitor */
+/* Discovery service monitor */
 zlink_service_monitor_open_options_t opts = {
-    .events = ZLINK_SERVICE_MONITOR_EVENT_ALL
+    .events = ZLINK_SERVICE_MONITOR_EVENT_ERROR
+              | ZLINK_SERVICE_MONITOR_EVENT_CLOSED
+              | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED
 };
-void *mon = zlink_service_monitor_open(spot_node, &opts);
+void *mon = zlink_service_monitor_open(discovery, &opts);
 ```
 
-Pass any service handle (discovery, spot, spot_node).
-The handle kind is determined automatically at runtime.
+Pass a service handle that supports public service monitoring.
+SPOT and SpotNode no longer expose a public service-monitor surface.
 
 ### Callback mode
 
 ```c
-void on_spot_event(const zlink_service_event_t *ev, void *userdata)
+void on_service_event(const zlink_service_event_t *ev, void *userdata)
 {
-    if (ev->event_type & ZLINK_MONITOR_EVENT_PEER_UP) {
-        printf("peer connected\n");
+    if (ev->event_type & ZLINK_DISCOVERY_PROVIDERS_CHANGED) {
+        printf("provider set changed\n");
     }
-    if (ev->event_type & ZLINK_SPOT_SUB_FILTER_APPLIED) {
-        printf("subscription filter applied\n");
+    if (ev->event_type & ZLINK_MONITOR_EVENT_ERROR) {
+        printf("service error: %d\n", ev->error_code);
     }
 }
 
-zlink_service_monitor_handler(mon, on_spot_event, NULL);
+zlink_service_monitor_handler(mon, on_service_event, NULL);
 ```
 
 ### Recv mode
@@ -350,16 +353,6 @@ if (rc == 0) {
 
 Events observed via `zlink_service_monitor_open()`.
 Different services emit different events.
-
-#### SPOT events
-
-| Constant | Description | `value` | After this event |
-|---|---|---|---|
-| `PEER_UP` | peer connected | — | topology edge observed |
-| `PEER_DOWN` | peer disconnected | — | topology loss observed |
-| `SPOT_SUB_FILTER_APPLIED` | subscription filter propagated to peer | — | — |
-| `PUB_QUEUE_FULL` | publisher queue reached pressure | — | apply backpressure handling |
-| `PUB_QUEUE_DRAINED` | publisher queue drained | — | resume normal flow |
 
 #### Discovery events
 
@@ -451,17 +444,17 @@ receive, wait for the right event.
 
 ### 11.1 Raw sockets — PAIR, DEALER, ROUTER
 
-Ready to send/recv immediately after `CONNECTION_READY_CHANGED`.
+Ready to send/recv immediately after `CONNECTION_READY`.
 
 ```c
 /* DEALER/ROUTER example */
 zlink_socket_monitor_open_options_t opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *mon = zlink_socket_monitor_open(router, &opts);
 
 void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
-    if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+    if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
         /* ROUTER: ev->routing_id contains the peer identity */
         /* routed send is possible now */
     }
@@ -471,33 +464,33 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| PAIR | `CONNECTION_READY_CHANGED` on both sides | bidirectional send/recv |
-| DEALER | `CONNECTION_READY_CHANGED` | send/recv |
-| ROUTER | `CONNECTION_READY_CHANGED` | routed send/recv using `ev->routing_id` |
+| PAIR | `CONNECTION_READY` on both sides | bidirectional send/recv |
+| DEALER | `CONNECTION_READY` | send/recv |
+| ROUTER | `CONNECTION_READY` | routed send/recv using `ev->routing_id` |
 
 ### 11.2 Raw sockets — STREAM
 
 STREAM works like ROUTER — the routing_id is assigned when the TCP
 connection is established, not when the first payload arrives.
-`CONNECTION_READY_CHANGED` fires with the routing_id before any payload
+`CONNECTION_READY` fires with the routing_id before any payload
 is delivered to the application. Sequence:
 
 1. Client connects via raw TCP
-2. Server receives `CONNECTION_READY_CHANGED` with `ev->routing_id`
+2. Server receives `CONNECTION_READY` with `ev->routing_id`
 3. Server can now send to the client using the routing_id
 4. Client payload (if any) arrives after the ready event
 
 ```c
-/* STREAM server: CONNECTION_READY_CHANGED → routing_id available → send/recv */
+/* STREAM server: CONNECTION_READY → routing_id available → send/recv */
 void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
-    if (ev->event & ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+    if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
         /* ev->routing_id contains the peer's routing_id */
         /* send to this peer immediately, or wait for inbound payload */
     }
 }
 
 zlink_socket_monitor_open_options_t opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *mon = zlink_socket_monitor_open(stream_server, &opts);
 zlink_socket_monitor_handler(mon, on_ready, NULL);
@@ -505,29 +498,29 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| STREAM | `CONNECTION_READY_CHANGED` | send/recv using `ev->routing_id` |
+| STREAM | `CONNECTION_READY` | send/recv using `ev->routing_id` |
 
 ### 11.3 Raw sockets — PUB/SUB
 
-For internal perf on raw PUB/SUB, use `CONNECTION_READY_CHANGED` for each
-expected client and then wait a fixed 1-second settle window before messaging.
-Perf does not use delivery-ready monitor events.
+For internal perf on raw PUB/SUB, use `CONNECTION_READY` for each
+expected client before messaging. Perf does not use delivery-ready
+monitor events.
 
 ```c
 zlink_set_subscription(sub, "topic");
 
 /* SUB/PUB perf gate: wait for connection-ready */
 zlink_socket_monitor_open_options_t sub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
 
 zlink_socket_monitor_open_options_t pub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY_CHANGED
+    .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-/* Start after expected clients are connection-ready, then settle 1 second */
+/* Start after expected clients are connection-ready */
 zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
 zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
 
@@ -537,36 +530,26 @@ zlink_monitor_close(&sub_mon);
 
 | Family | Wait for | Then you can |
 |---|---|---|
-| PUB | `CONNECTION_READY_CHANGED` + expected client counting + 1s settle | `zlink_publish()` delivery |
-| SUB | `CONNECTION_READY_CHANGED` + expected client counting + 1s settle | `zlink_subscribe()` recv |
+| PUB | `CONNECTION_READY` + expected client counting | `zlink_publish()` delivery |
+| SUB | `CONNECTION_READY` + expected client counting | `zlink_subscribe()` recv |
 
 ### 11.4 Services — SPOT
 
-For internal perf on SPOT, use `PEER_UP` for the expected client count and then
-wait a fixed 1-second settle window before messaging. Perf does not use
-delivery-ready or first-delivery monitor events.
+SPOT no longer exposes a public service-monitor surface. For internal
+perf on SPOT, use an explicit benchmark control barrier instead of
+monitor events.
 
 ```c
-/* SPOT perf gate: subscribe to PEER_UP */
-zlink_service_monitor_open_options_t sub_opts = {
-    .events = ZLINK_MONITOR_EVENT_PEER_UP
-              | ZLINK_MONITOR_EVENT_ERROR
-};
-void *sub_mon = zlink_service_monitor_open(sub_node, &sub_opts);
-
-zlink_service_monitor_open_options_t pub_opts = {
-    .events = ZLINK_MONITOR_EVENT_PEER_UP
-              | ZLINK_MONITOR_EVENT_ERROR
-};
-void *pub_mon = zlink_service_monitor_open(pub_node, &pub_opts);
-
-/* Start after expected clients reached PEER_UP, then settle 1 second */
+/* SPOT perf gate: explicit READY/START barrier */
+send_control_ready(client_id);
+wait_ready_count(expected_clients);
+broadcast_control_start();
 ```
 
 | Service | Wait for | Then you can |
 |---|---|---|
-| SPOT sub | `PEER_UP` + expected client counting + 1s settle | start receiving via `zlink_subscribe()` |
-| SPOT pub | `PEER_UP` + expected client counting + 1s settle | start delivering via `zlink_publish()` |
+| SPOT sub | explicit `READY/START` barrier | start receiving via `zlink_subscribe()` |
+| SPOT pub | explicit `READY/START` barrier | start delivering via `zlink_publish()` |
 
 ### 11.5 Snapshots
 

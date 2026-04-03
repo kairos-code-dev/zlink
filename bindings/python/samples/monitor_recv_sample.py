@@ -42,8 +42,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.PairSocket(ctx) as server:
             with zlink.PairSocket(ctx) as client:
-                with server.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as server_monitor:
-                    with client.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as client_monitor:
+                with server.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as server_monitor:
+                    with client.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as client_monitor:
                         if server_monitor.try_recv() is not None:
                             raise AssertionError("monitor sample expected empty server try_recv")
                         if client_monitor.try_recv() is not None:
@@ -52,16 +52,16 @@ def main():
                         client.connect(endpoint)
                         server_event = _wait_socket_monitor_event(
                             server_monitor,
-                            zlink.MonitorEvent.CONNECTION_READY_CHANGED,
+                            zlink.MonitorEvent.CONNECTION_READY,
                         )
                         client_event = _wait_socket_monitor_event(
                             client_monitor,
-                            zlink.MonitorEvent.CONNECTION_READY_CHANGED,
+                            zlink.MonitorEvent.CONNECTION_READY,
                         )
-                        if not (int(server_event.event) & int(zlink.MonitorEvent.CONNECTION_READY_CHANGED)):
-                            raise AssertionError("monitor sample expected server CONNECTION_READY_CHANGED")
-                        if not (int(client_event.event) & int(zlink.MonitorEvent.CONNECTION_READY_CHANGED)):
-                            raise AssertionError("monitor sample expected client CONNECTION_READY_CHANGED")
+                        if not (int(server_event.event) & int(zlink.MonitorEvent.CONNECTION_READY)):
+                            raise AssertionError("monitor sample expected server CONNECTION_READY")
+                        if not (int(client_event.event) & int(zlink.MonitorEvent.CONNECTION_READY)):
+                            raise AssertionError("monitor sample expected client CONNECTION_READY")
                 print('[monitor/recv] recv: "connection-ready" → tryRecv: empty')
 
 

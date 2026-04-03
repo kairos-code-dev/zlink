@@ -35,7 +35,7 @@ def _wait_connected(*monitors, timeout_ms=5000):
             if event is None:
                 next_pending.append(monitor)
                 continue
-            if not (int(event.event) & int(zlink.MonitorEvent.CONNECTION_READY_CHANGED)):
+            if not (int(event.event) & int(zlink.MonitorEvent.CONNECTION_READY)):
                 next_pending.append(monitor)
         pending = next_pending
 
@@ -47,8 +47,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.XPubSocket(ctx) as publisher:
             with zlink.SubSocket(ctx) as subscriber:
-                with publisher.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as publisher_monitor:
-                    with subscriber.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as subscriber_monitor:
+                with publisher.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as publisher_monitor:
+                    with subscriber.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as subscriber_monitor:
                         publisher.bind(endpoint)
                         subscriber.connect(endpoint)
                         subscriber.set_subscription(b"prices")

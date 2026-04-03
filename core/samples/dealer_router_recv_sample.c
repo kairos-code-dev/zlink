@@ -12,9 +12,9 @@ int main (void)
     assert (dealer != NULL);
 
     void *router_monitor = open_socket_monitor (
-      router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+      router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
     void *dealer_monitor = open_socket_monitor (
-      dealer, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+      dealer, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     int rc = zlink_bind (router, "tcp://127.0.0.1:0");
     assert (rc == 0);

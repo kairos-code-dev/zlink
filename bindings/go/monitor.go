@@ -25,22 +25,19 @@ import (
 )
 
 const (
-	MonitorEventAll                    = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
-	MonitorEventConnectionReadyChanged = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED)
+	MonitorEventAll              = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_ALL)
+	MonitorEventConnectionReady = uint32(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY)
 
-	ServiceMonitorEventAll                           = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_ALL)
-	ServiceMonitorEventError                         = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_ERROR)
-	ServiceMonitorEventClosed                        = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_CLOSED)
-	ServiceMonitorEventDiscoveryReadyChanged         = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED)
-	ServiceMonitorEventDiscoveryServiceUp            = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
-	ServiceMonitorEventDiscoveryServiceDown          = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN)
-	ServiceMonitorEventDiscoveryProvidersChanged     = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED)
-	ServiceMonitorEventSpotReadyChanged              = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_READY_CHANGED)
-	ServiceMonitorEventSpotFilterApplied             = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED)
-	ServiceMonitorEventSpotSubscriptionReadyChanged  = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED)
-	ServiceMonitorEventSpotPubDeliveryReadyChanged   = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_PUB_DELIVERY_READY_CHANGED)
-	ServiceMonitorEventSpotSubDeliveryReadyChanged   = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUB_DELIVERY_READY_CHANGED)
-	ServiceMonitorEventSpotFirstDeliveryReadyChanged = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED)
+	ServiceMonitorEventAll                       = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_ALL)
+	ServiceMonitorEventError                     = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_ERROR)
+	ServiceMonitorEventClosed                    = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_CLOSED)
+	ServiceMonitorEventDiscoveryServiceUp        = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
+	ServiceMonitorEventDiscoveryServiceDown      = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_DOWN)
+	ServiceMonitorEventDiscoveryProvidersChanged = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED)
+	ServiceMonitorEventConnectionReady           = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_CONNECTION_READY)
+	ServiceMonitorEventSpotPeerUp                = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_UP)
+	ServiceMonitorEventSpotPeerDown              = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_DOWN)
+	ServiceMonitorEventSpotFilterApplied         = uint32(C.ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED)
 )
 
 type MonitorEvent struct {
@@ -67,24 +64,19 @@ func (e *MonitorEvent) IsAccepted() bool {
 	return e != nil && e.Event&uint64(C.ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED) != 0
 }
 
-func (e *MonitorEvent) IsConnectionReadyChanged() bool {
-	return e != nil && e.Event&uint64(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED) != 0
+func (e *MonitorEvent) IsConnectionReady() bool {
+	return e != nil && e.Event&uint64(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY) != 0
 }
 
 type MonitorSnapshot struct {
 	StateFlags     uint32
 	DetailFlags    uint32
-	ReadyCount     uint32
 	SendPendingMsg uint64
 	RecvPendingMsg uint64
 }
 
 func (s *MonitorSnapshot) IsReady() bool {
 	return s != nil && s.StateFlags&uint32(C.ZLINK_MONITOR_STATE_READY) != 0
-}
-
-func (s *MonitorSnapshot) IsSendReady() bool {
-	return s != nil && s.StateFlags&uint32(C.ZLINK_MONITOR_STATE_SEND_READY) != 0
 }
 
 type ServiceMonitorEvent struct {
@@ -209,7 +201,6 @@ func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error) {
 	return &MonitorSnapshot{
 		StateFlags:     uint32(raw.state_flags),
 		DetailFlags:    uint32(raw.detail_flags),
-		ReadyCount:     uint32(raw.ready_count),
 		SendPendingMsg: uint64(raw.snd_pending_msgs),
 		RecvPendingMsg: uint64(raw.rcv_pending_msgs),
 	}, nil
@@ -275,7 +266,6 @@ func (m *ServiceMonitor) Snapshot() (*MonitorSnapshot, error) {
 	return &MonitorSnapshot{
 		StateFlags:     uint32(raw.state_flags),
 		DetailFlags:    uint32(raw.detail_flags),
-		ReadyCount:     uint32(raw.ready_count),
 		SendPendingMsg: uint64(raw.snd_pending_msgs),
 		RecvPendingMsg: uint64(raw.rcv_pending_msgs),
 	}, nil

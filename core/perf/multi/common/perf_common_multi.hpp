@@ -16,7 +16,6 @@ struct bench_settings_t
     int warmup_seconds;
     int active_warmup;
     int duration_seconds;
-    int settle_ms;
     int connect_ready_timeout_ms;
 };
 
@@ -153,8 +152,6 @@ inline bench_settings_t resolve_bench_settings ()
     settings.duration_seconds =
       resolve_multi_int_env_with_fallback (
         "PERF_MULTI_DURATION_SECONDS", "PERF_DURATION_SECONDS", 5, 1);
-    settings.settle_ms = resolve_multi_int_env_with_fallback (
-      "PERF_MULTI_SETTLE_MS", "PERF_SETTLE_MS", 500, 0);
     settings.connect_ready_timeout_ms =
       resolve_multi_int_env_with_fallback (
         "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",

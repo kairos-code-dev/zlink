@@ -481,10 +481,9 @@ export const MonitorEvent = Object.freeze({
   ACCEPT_FAILED: 0x0040, CLOSED: 0x0080, CLOSE_FAILED: 0x0100,
   DISCONNECTED: 0x0200, MONITOR_STOPPED: 0x0400,
   HANDSHAKE_FAILED_NO_DETAIL: 0x0800,
-  CONNECTION_READY_CHANGED: 0x1000, HANDSHAKE_FAILED_PROTOCOL: 0x2000,
+  CONNECTION_READY: 0x1000, HANDSHAKE_FAILED_PROTOCOL: 0x2000,
   HANDSHAKE_FAILED_AUTH: 0x4000,
-  SUB_DELIVERY_READY_CHANGED: 0x8000, PUB_DELIVERY_READY_CHANGED: 0x10000,
-  ALL: 0xFFFF
+  ALL: 0x7FFF
 } as const);
 
 export const DisconnectReason = Object.freeze({
@@ -516,24 +515,21 @@ export const SpotNodeSocketRole = Object.freeze({ NODE: 0, PUB: 1, SUB: 2, DEALE
 export const SpotSocketRole = Object.freeze({ PUB: 1, SUB: 2 } as const);
 export const MonitorSourceKind = Object.freeze({ SOCKET: 1, SPOT_PUB: 3, SPOT_SUB: 4 } as const);
 export const MonitorState = Object.freeze({
-  READY: 1 << 0, BOUND_READY: 1 << 1, SEND_READY: 1 << 2, CLOSED: 1 << 3
+  READY: 1 << 0, BOUND_READY: 1 << 1, CLOSED: 1 << 3
 } as const);
 export const MonitorSnapshotDetail = Object.freeze({
-  READY_COUNT: 1 << 0, SND_PENDING_MSGS: 1 << 1, RCV_PENDING_MSGS: 1 << 2
+  SND_PENDING_MSGS: 1 << 1, RCV_PENDING_MSGS: 1 << 2
 } as const);
 export const ServiceMonitorEvent = Object.freeze({
   ERROR: 1 << 4,
   CLOSED: 1 << 17,
-  DISCOVERY_READY_CHANGED: 1 << 0,
   DISCOVERY_SERVICE_UP: 1 << 5,
   DISCOVERY_SERVICE_DOWN: 1 << 6,
   DISCOVERY_PROVIDERS_CHANGED: 1 << 7,
-  SPOT_READY_CHANGED: 1 << 0,
+  CONNECTION_READY: 1 << 14,
+  SPOT_PEER_UP: 1 << 2,
+  SPOT_PEER_DOWN: 1 << 3,
   SPOT_FILTER_APPLIED: 1 << 13,
-  SPOT_SUBSCRIPTION_READY_CHANGED: 1 << 14,
-  SPOT_PUB_DELIVERY_READY_CHANGED: 1 << 18,
-  SPOT_SUB_DELIVERY_READY_CHANGED: 1 << 19,
-  SPOT_FIRST_DELIVERY_READY_CHANGED: 1 << 20
 } as const);
 export const SpotNodeState = Object.freeze({
   IDLE: 1, CONNECTING: 2, PARTIAL_READY: 3, READY: 4, ERROR: 5
@@ -556,7 +552,6 @@ export interface MonitorSnapshot {
   sourceKind: number;
   stateFlags: number;
   detailFlags: number;
-  readyCount: number;
   sndPendingMsgs: number;
   rcvPendingMsgs: number;
 }
@@ -948,11 +943,11 @@ export abstract class MessageSocketBase extends ConnectableSendSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY_CHANGED);
+    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY);
     startEventPollingLoop(
       () => this.nativeHandle() != null,
       () => monitor.tryRecv(),
-      (event) => event.event === MonitorEvent.CONNECTION_READY_CHANGED && event.value > 0,
+      (event) => event.event === MonitorEvent.CONNECTION_READY,
       () => handler()
     );
   }
@@ -1035,11 +1030,11 @@ export abstract class RoutedMessageSocketBase extends BaseSocket {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY_CHANGED);
+    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY);
     startEventPollingLoop(
       () => this.nativeHandle() != null,
       () => monitor.tryRecv(),
-      (event) => event.event === MonitorEvent.CONNECTION_READY_CHANGED && event.value > 0,
+      (event) => event.event === MonitorEvent.CONNECTION_READY,
       () => handler()
     );
   }
@@ -1119,11 +1114,11 @@ export class PubSocket extends PublisherSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(MonitorEvent.PUB_DELIVERY_READY_CHANGED);
+    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY);
     startEventPollingLoop(
       () => this.nativeHandle() != null,
       () => monitor.tryRecv(),
-      (event) => event.event === MonitorEvent.PUB_DELIVERY_READY_CHANGED && event.value > 0,
+      (event) => event.event === MonitorEvent.CONNECTION_READY,
       () => handler()
     );
   }
@@ -1162,11 +1157,11 @@ export class XPubSocket extends PublisherSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
-    const monitor = this.monitorOpen(MonitorEvent.PUB_DELIVERY_READY_CHANGED);
+    const monitor = this.monitorOpen(MonitorEvent.CONNECTION_READY);
     startEventPollingLoop(
       () => this.nativeHandle() != null,
       () => monitor.tryRecv(),
-      (event) => event.event === MonitorEvent.PUB_DELIVERY_READY_CHANGED && event.value > 0,
+      (event) => event.event === MonitorEvent.CONNECTION_READY,
       () => handler()
     );
   }
@@ -1602,7 +1597,7 @@ export class SpotNode {
   monitorOpen(
     events = ServiceMonitorEvent.ERROR
       | ServiceMonitorEvent.CLOSED
-      | ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED
+      | ServiceMonitorEvent.SPOT_PEER_UP
   ): ServiceMonitor {
     return new ServiceMonitor(requireNative().spotNodeOpenMonitor(this._native, events | 0));
   }
@@ -1744,17 +1739,12 @@ export class Spot {
       throw new TypeError('handler must be a function');
     }
     const monitor = this.monitorOpen(
-      ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-        | ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED
+      ServiceMonitorEvent.SPOT_PEER_UP
     );
     startEventPollingLoop(
       () => this._native != null,
       () => monitor.tryRecv(),
-      (event) => (
-        (event.eventType === ServiceMonitorEvent.SPOT_PUB_DELIVERY_READY_CHANGED
-          || event.eventType === ServiceMonitorEvent.SPOT_FIRST_DELIVERY_READY_CHANGED)
-        && event.value > 0
-      ),
+      (event) => event.eventType === ServiceMonitorEvent.SPOT_PEER_UP,
       () => handler()
     );
   }

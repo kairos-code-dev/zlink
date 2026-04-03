@@ -21,7 +21,7 @@ def main():
 
                         monitor_mask = (
                             zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED
-                            | zlink.ServiceMonitorMask.SPOT_SUBSCRIPTION_READY_CHANGED
+                            | zlink.ServiceMonitorMask.PEER_UP
                         )
                         with sub_spot.open_monitor(monitor_mask) as monitor:
                             # bind + connect BEFORE installing handlers to
@@ -39,10 +39,10 @@ def main():
                                 event = monitor.recv()
                                 if event.event_type == zlink.ServiceMonitorMask.SPOT_FILTER_APPLIED:
                                     break
-                            # wait for subscription ready (remote peer acknowledged)
+                            # wait for peer connectivity after local filter install
                             while True:
                                 event = monitor.recv()
-                                if event.event_type == zlink.ServiceMonitorMask.SPOT_SUBSCRIPTION_READY_CHANGED:
+                                if event.event_type == zlink.ServiceMonitorMask.PEER_UP:
                                     break
 
                         pub_spot.publish(b"room:lobby", [b"hello-spot"])

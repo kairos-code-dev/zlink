@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [5.0.27] - 2026-04-03
+
+### Changed
+
+**Monitor And Perf Contract Simplification**
+- Simplified the monitor contract around lower-cost readiness surfaces, removed the SPOT service-monitor dependency from perf policy, and aligned the repository docs and tests around the new ready/barrier model.
+- Reduced duplicated and stale `core/tests` scenarios so the default test lanes keep representative coverage while running substantially faster and with less maintenance overhead.
+
+### Fixed
+
+**Perf And Bindings Alignment Baseline**
+- Removed deprecated multi-perf settle surfaces, tightened the SPOT perf barrier implementation toward the documented `READY/START` policy, and synchronized the release metadata needed for bindings to consume the current native core package version.
+
 ## [5.0.26] - 2026-04-02
 
 ### Fixed

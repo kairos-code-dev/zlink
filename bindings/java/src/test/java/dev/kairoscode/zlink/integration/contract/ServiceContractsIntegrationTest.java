@@ -68,7 +68,7 @@ class ServiceContractsIntegrationTest {
         try (Context ctx = new Context();
              PairSocket socket = new PairSocket(ctx);
              var monitor = socket.monitorOpen(MonitorEventType.ALL.getValue())) {
-            assertTrue(monitor.snapshot().readyCount() >= 0);
+            assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
         }
 
         try (Context ctx = new Context();
@@ -89,7 +89,7 @@ class ServiceContractsIntegrationTest {
             ServiceEvent event = eventRef.get();
             assertEquals(SPOT_FILTER_APPLIED, event.eventType() & SPOT_FILTER_APPLIED);
             assertEquals("svc-topic", event.subject());
-            assertTrue(monitor.snapshot().readyCount() >= 0);
+            assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
         }
     }
 

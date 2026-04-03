@@ -177,8 +177,8 @@ fn dealer_router_send_from_callback() {
 
     // Establish connection before installing callback -- required for the
     // router's internal routing-id handshake to complete in recv mode.
-    let router_mon = SocketMonitor::open(&router, MONITOR_EVENT_CONNECTION_READY_CHANGED).unwrap();
-    let dealer_mon = SocketMonitor::open(&dealer, MONITOR_EVENT_CONNECTION_READY_CHANGED).unwrap();
+    let router_mon = SocketMonitor::open(&router, MONITOR_EVENT_CONNECTION_READY).unwrap();
+    let dealer_mon = SocketMonitor::open(&dealer, MONITOR_EVENT_CONNECTION_READY).unwrap();
     router.bind(&endpoint).unwrap();
     dealer.connect(&endpoint).unwrap();
     router_mon.recv().unwrap();
@@ -227,8 +227,8 @@ fn pair_send_from_callback() {
     let mut server = ctx.pair_socket().unwrap();
     let client = ctx.pair_socket().unwrap();
 
-    let server_mon = SocketMonitor::open(&server, MONITOR_EVENT_CONNECTION_READY_CHANGED).unwrap();
-    let client_mon = SocketMonitor::open(&client, MONITOR_EVENT_CONNECTION_READY_CHANGED).unwrap();
+    let server_mon = SocketMonitor::open(&server, MONITOR_EVENT_CONNECTION_READY).unwrap();
+    let client_mon = SocketMonitor::open(&client, MONITOR_EVENT_CONNECTION_READY).unwrap();
     server.bind(&endpoint).unwrap();
     client.connect(&endpoint).unwrap();
     server_mon.recv().unwrap();

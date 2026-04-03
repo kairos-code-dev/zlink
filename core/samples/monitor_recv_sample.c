@@ -12,9 +12,9 @@ int main (void)
     assert (client != NULL);
 
     void *server_monitor = open_socket_monitor (
-      server, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+      server, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
     void *client_monitor = open_socket_monitor (
-      client, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+      client, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     /* try_recv before any connection: should return no event */
     zlink_socket_monitor_event_t try_event;
@@ -32,19 +32,19 @@ int main (void)
     rc = zlink_connect (client, endpoint);
     assert (rc == 0);
 
-    /* blocking recv: expect CONNECTION_READY_CHANGED with value=1 */
+    /* blocking recv: expect CONNECTION_READY with value=1 */
     zlink_socket_monitor_event_t server_event;
     rc = zlink_socket_monitor_recv (server_monitor, &server_event, 0);
     assert (rc == 0);
     assert (server_event.event
-            == ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+            == ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
     assert (server_event.value == 1);
 
     zlink_socket_monitor_event_t client_event;
     rc = zlink_socket_monitor_recv (client_monitor, &client_event, 0);
     assert (rc == 0);
     assert (client_event.event
-            == ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED);
+            == ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
     assert (client_event.value == 1);
 
     /* try_recv after consuming the event: should return no event */
@@ -56,7 +56,7 @@ int main (void)
     assert (rc != 0);
 
     printf (
-      "[monitor] event: \"CONNECTION_READY_CHANGED\" -> tryRecv: empty\n");
+      "[monitor] event: \"CONNECTION_READY\" -> tryRecv: empty\n");
 
     zlink_monitor_close (&client_monitor);
     zlink_monitor_close (&server_monitor);

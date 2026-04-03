@@ -869,7 +869,7 @@ inline bool socket_monitor_event_ready(const zlink_socket_monitor_event_t &event
 {
     if (event_.event != success_event_)
         return false;
-    if (success_event_ == ZLINK_EVENT_CONNECTION_READY_CHANGED)
+    if (success_event_ == ZLINK_EVENT_CONNECTION_READY)
         return true;
     return event_.value > 0;
 }
@@ -960,7 +960,7 @@ inline bool wait_for_service_monitor_event(void *monitor_,
                     break;
                 return false;
             }
-            if (event.event_type == success_event_ && event.value > 0) {
+            if (event.event_type == success_event_) {
                 ready = true;
                 break;
             }
@@ -1650,11 +1650,11 @@ inline bool setup_connected_pair(void *bind_socket_,
         return false;
 
     void *bind_monitor =
-      open_configured_socket_monitor(bind_socket_, ZLINK_EVENT_CONNECTION_READY_CHANGED);
+      open_configured_socket_monitor(bind_socket_, ZLINK_EVENT_CONNECTION_READY);
     if (!bind_monitor)
         return false;
     void *connect_monitor = open_configured_socket_monitor(
-      connect_socket_, ZLINK_EVENT_CONNECTION_READY_CHANGED);
+      connect_socket_, ZLINK_EVENT_CONNECTION_READY);
     if (!connect_monitor) {
         zlink_monitor_close(&bind_monitor);
         return false;
@@ -1673,11 +1673,11 @@ inline bool setup_connected_pair(void *bind_socket_,
     const int timeout_ms = parse_positive_env("PERF_CONNECT_READY_TIMEOUT_MS",
                                               3000);
     const bool bind_ready =
-      wait_for_socket_monitor_event(bind_monitor, ZLINK_EVENT_CONNECTION_READY_CHANGED,
+      wait_for_socket_monitor_event(bind_monitor, ZLINK_EVENT_CONNECTION_READY,
                                     timeout_ms);
     const bool connect_ready =
       wait_for_socket_monitor_event(connect_monitor,
-                                    ZLINK_EVENT_CONNECTION_READY_CHANGED,
+                                    ZLINK_EVENT_CONNECTION_READY,
                                     timeout_ms);
     zlink_monitor_close(&connect_monitor);
     zlink_monitor_close(&bind_monitor);

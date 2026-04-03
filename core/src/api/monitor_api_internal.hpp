@@ -6,7 +6,6 @@
 #include "zlink.h"
 
 #include <atomic>
-#include <thread>
 
 #include "sockets/socket_base.hpp"
 #include "utils/mutex.hpp"
@@ -35,7 +34,8 @@ struct monitor_handler_state_t
         stop (false),
         callback_depth (0),
         close_requested (false),
-        service (service_)
+        service (service_),
+        dispatch_task_id (0)
     {
     }
 
@@ -51,7 +51,7 @@ struct monitor_handler_state_t
     std::atomic<bool> close_requested;
     zlink::mutex_t dispatch_sync;
     bool service;
-    std::thread worker;
+    uint64_t dispatch_task_id;
 };
 
 extern thread_local monitor_handler_state_t *g_current_monitor_handler_state;

@@ -18,7 +18,9 @@ struct spot_data_plane_runtime_state_t;
 class spot_data_plane_t
 {
   public:
+    static void task_entry (void *arg_);
     static void thread_entry (void *arg_);
+    static int run_tick (spot_node_t *node_, spot_runtime_t *runtime_);
     static void close_socket_ptr (spot_node_t *node_, socket_base_t *&socket_);
     static void clear_runtime_socket_refs (spot_runtime_t *runtime_);
     static int initialize_runtime (spot_node_t *node_,

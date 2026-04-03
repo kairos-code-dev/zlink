@@ -6,7 +6,9 @@
 
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
+#include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_monitor_internal.hpp"
 #include "services/spot/spot_node.hpp"
 
 #include "sockets/socket_base.hpp"
@@ -88,14 +90,16 @@ static void fill_socket_monitor_event (zlink_service_event_t *event_,
 }
 }
 
-void spot_sub_t::monitor_thread_main (void *arg_)
+void spot_sub_t::monitor_task_main (void *arg_)
 {
-    static_cast<spot_sub_t *> (arg_)->monitor_loop ();
+    static_cast<spot_sub_t *> (arg_)->pump_monitor_events ();
 }
 
 int spot_sub_t::ensure_monitor_bridge_started ()
 {
     socket_base_t *socket = this->socket ();
+    if (getenv ("ZLINK_MONITOR_TASK_DIAG"))
+        fprintf (stderr, "spot-sub-bridge source-socket=%p\n", socket);
     scoped_lock_t lock (_sync);
     if (_raw_monitor_socket)
         return 0;
@@ -110,7 +114,7 @@ int spot_sub_t::ensure_monitor_bridge_started ()
 
     void *monitor_socket = open_socket_monitor_bridge (
       socket, ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
-                 | ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_DISCONNECTED
+                 | ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED
                  | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
                  | ZLINK_EVENT_CLOSE_FAILED
                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
@@ -119,34 +123,49 @@ int spot_sub_t::ensure_monitor_bridge_started ()
     if (!monitor_socket)
         return -1;
 
+    service_control_runtime_t *runtime =
+      _node && _node->ctx () ? _node->ctx ()->service_control_runtime () : NULL;
+    if (!runtime) {
+        static_cast<socket_base_t *> (monitor_socket)->close ();
+        errno = ETERM;
+        return -1;
+    }
+
+    const uint64_t task_id =
+      runtime->add_periodic_task (&spot_sub_t::monitor_task_main, this, 10, true);
+    if (task_id == 0) {
+        static_cast<socket_base_t *> (monitor_socket)->close ();
+        return -1;
+    }
+
     _raw_monitor_socket = monitor_socket;
-    _monitor_stop.set (0);
-    _monitor_thread.start (monitor_thread_main, this, "spot-sub-mon");
-    _monitor_thread_started = true;
+    _monitor_task_id = task_id;
     return 0;
 }
 
 int spot_sub_t::stop_monitor_bridge ()
 {
     void *raw_monitor_socket = NULL;
+    uint64_t monitor_task_id = 0;
     ctx_t *ctx = _node ? _node->ctx () : NULL;
     socket_base_t *socket = this->socket ();
     int first_error = 0;
     {
         scoped_lock_t lock (_sync);
-        _monitor_stop.set (1);
         raw_monitor_socket = _raw_monitor_socket;
         _raw_monitor_socket = NULL;
+        monitor_task_id = _monitor_task_id;
+        _monitor_task_id = 0;
     }
 
     if (socket)
         preserve_first_error (socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR),
                               &first_error);
 
-    if (_monitor_thread_started) {
-        _monitor_thread.stop ();
-        _monitor_thread_started = false;
-    }
+    service_control_runtime_t *runtime =
+      ctx ? ctx->service_control_runtime () : NULL;
+    if (runtime && monitor_task_id != 0)
+        preserve_first_error (runtime->remove_task (monitor_task_id), &first_error);
     if (raw_monitor_socket) {
         socket_base_t *monitor_socket =
           static_cast<socket_base_t *> (raw_monitor_socket);
@@ -167,55 +186,46 @@ int spot_sub_t::stop_monitor_bridge ()
     return 0;
 }
 
-void spot_sub_t::monitor_loop ()
+void spot_sub_t::pump_monitor_events ()
 {
-    while (_monitor_stop.get () == 0) {
-        void *raw_monitor_socket = NULL;
-        {
-            scoped_lock_t lock (_sync);
-            raw_monitor_socket = _raw_monitor_socket;
-        }
-        if (!raw_monitor_socket)
-            return;
+    void *raw_monitor_socket = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        raw_monitor_socket = _raw_monitor_socket;
+    }
+    if (!raw_monitor_socket)
+        return;
 
-        if (zlink::wait_socket_events_internal (raw_monitor_socket,
-                                                ZLINK_POLLIN, 50)
-            <= 0)
-            continue;
+    zlink_pollitem_t item = {raw_monitor_socket, 0, ZLINK_POLLIN, 0};
+    const int poll_rc = zlink_poll (&item, 1, 0);
+    if (poll_rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
+        return;
 
+    while (true) {
         zlink_monitor_event_t raw;
-        if (recv_socket_monitor_event (raw_monitor_socket, &raw,
-                                       ZLINK_DONTWAIT)
+        if (recv_socket_monitor_event (raw_monitor_socket, &raw, ZLINK_DONTWAIT)
             != 0) {
-            if (errno == EAGAIN)
-                continue;
-            if (_monitor_stop.get () != 0)
+            if (errno == EAGAIN || errno == EINTR)
                 return;
-            continue;
+            return;
         }
 
         zlink_service_event_t event;
-        zlink_service_event_t batch[2];
         switch (raw.event) {
             case ZLINK_EVENT_CONNECTED:
             case ZLINK_EVENT_ACCEPTED:
-                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_UP,
+                fill_socket_monitor_event (&event, zlink_spot_monitor_event_peer_up,
                                            raw);
                 emit_monitor_event (event);
                 break;
 
-            case ZLINK_EVENT_CONNECTION_READY_CHANGED: {
+            case ZLINK_EVENT_CONNECTION_READY:
                 {
                     scoped_lock_t lock (_sync);
                     (void) sync_monitor_ready_endpoint (
                       &_ready_peer_endpoints, raw);
                 }
-                fill_socket_monitor_event (
-                  &batch[0], ZLINK_SPOT_MONITOR_EVENT_READY_CHANGED, raw);
-                batch[0].value = raw.value > 0 ? 1u : 0u;
-                emit_monitor_event (batch[0]);
                 break;
-            }
 
             case ZLINK_EVENT_DISCONNECTED:
                 {
@@ -223,7 +233,7 @@ void spot_sub_t::monitor_loop ()
                     if (raw.remote_addr[0] != '\0')
                         _ready_peer_endpoints.erase (raw.remote_addr);
                 }
-                fill_socket_monitor_event (&event, ZLINK_MONITOR_EVENT_PEER_DOWN,
+                fill_socket_monitor_event (&event, zlink_spot_monitor_event_peer_down,
                                            raw);
                 emit_monitor_event (event);
                 break;

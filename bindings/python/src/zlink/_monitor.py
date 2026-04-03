@@ -32,14 +32,12 @@ class MonitorSnapshot:
         source_kind,
         state_flags,
         detail_flags,
-        ready_count,
         snd_pending_msgs,
         rcv_pending_msgs,
     ):
         self.source_kind = source_kind
         self.state_flags = state_flags
         self.detail_flags = detail_flags
-        self.ready_count = ready_count
         self.snd_pending_msgs = snd_pending_msgs
         self.rcv_pending_msgs = rcv_pending_msgs
 
@@ -125,7 +123,6 @@ class _BaseMonitor:
             source_kind=int(snapshot.source_kind),
             state_flags=int(snapshot.state_flags),
             detail_flags=int(snapshot.detail_flags),
-            ready_count=int(snapshot.ready_count),
             snd_pending_msgs=int(snapshot.snd_pending_msgs),
             rcv_pending_msgs=int(snapshot.rcv_pending_msgs),
         )

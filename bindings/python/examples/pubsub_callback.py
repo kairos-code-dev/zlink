@@ -11,8 +11,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.PubSocket(ctx) as pub:
             with zlink.SubSocket(ctx) as sub:
-                with pub.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as pub_mon:
-                    with sub.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as sub_mon:
+                with pub.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as pub_mon:
+                    with sub.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as sub_mon:
                         pub.bind(endpoint)
                         sub.connect(endpoint)
                         sub.set_subscription(b"prices")

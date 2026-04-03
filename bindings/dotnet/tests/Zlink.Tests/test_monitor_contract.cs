@@ -51,7 +51,7 @@ public sealed class test_monitor_contract
 
         MonitorSnapshot snapshot = monitor.Snapshot();
         Assert.Equal(MonitorSourceKind.Socket, snapshot.SourceKind);
-        Assert.True(snapshot.ReadyCount >= 0);
+        Assert.True(snapshot.SendPendingMessages >= 0);
 
         monitor.Close();
         Assert.Throws<ObjectDisposedException>(() => monitor.Snapshot());

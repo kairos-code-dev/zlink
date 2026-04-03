@@ -4,7 +4,6 @@
 #define __ZLINK_SPOT_SUB_HPP_INCLUDED__
 
 #include "core/msg.hpp"
-#include "core/thread.hpp"
 #include "services/common/service_monitor.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
@@ -86,16 +85,8 @@ class spot_sub_t
       std::vector<subject_descriptor_t> *out_) const;
     void emit_filter_applied_event (const char *subject_,
                                     uint32_t subject_kind_);
-    void emit_subscription_ready_event (const char *endpoint_,
-                                        const char *subject_,
-                                        uint32_t subject_kind_,
-                                        uint32_t ready_count_);
     void mark_subject_subscription_ready (const subject_descriptor_t &subject_,
                                           const char *endpoint_);
-    void emit_delivery_ready_changed_event (const char *subject_,
-                                            uint32_t subject_kind_,
-                                            uint32_t ready_,
-                                            const char *endpoint_);
     void mark_subject_ready (const subject_descriptor_t &subject_,
                              const char *endpoint_);
     void backfill_subject_ready_endpoint (const subject_descriptor_t &subject_,
@@ -131,8 +122,8 @@ class spot_sub_t
                                   zlink_msg_t *parts_,
                                   size_t part_count_,
                                   void *userdata_);
-    static void monitor_thread_main (void *arg_);
-    void monitor_loop ();
+    static void monitor_task_main (void *arg_);
+    void pump_monitor_events ();
     int destroy_internal (bool allow_embedded_default_, bool notify_node_);
     int ensure_monitor_bridge_started ();
     int stop_monitor_bridge ();
@@ -177,9 +168,7 @@ class spot_sub_t
     std::atomic<bool> _monitor_event_draining;
     std::atomic<uint32_t> _monitor_event_pending;
     void *_raw_monitor_socket;
-    thread_t _monitor_thread;
-    atomic_counter_t _monitor_stop;
-    bool _monitor_thread_started;
+    uint64_t _monitor_task_id;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_sub_t)
 };

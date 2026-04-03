@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "services/spot/spot_subject_access.hpp"
+#include "services/spot/spot_monitor_internal.hpp"
 
 #include "api/service_api_internal.hpp"
 #include "services/spot/spot_internal_receiver.hpp"
@@ -82,15 +83,12 @@ zlink::socket_base_t *resolve_spot_sub_subject_poller_socket (
 
 int infer_spot_monitor_role (void *target_, uint32_t events_)
 {
-    const bool want_pub = (events_ & (ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_FULL
-                                      | ZLINK_SPOT_MONITOR_EVENT_PUB_QUEUE_DRAINED
-                                      | ZLINK_SPOT_MONITOR_EVENT_PUB_DELIVERY_READY_CHANGED
-                                      | ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED))
+    const bool want_pub =
+      (events_ & (zlink_spot_monitor_event_pub_queue_full
+                  | zlink_spot_monitor_event_pub_queue_drained))
                            != 0;
     const bool want_sub =
-      (events_ & (ZLINK_SPOT_MONITOR_EVENT_SUB_FILTER_APPLIED
-                  | ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED
-                  | ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED))
+      (events_ & zlink_spot_monitor_event_sub_filter_applied)
       != 0;
     if (want_pub && want_sub) {
         errno = EINVAL;
@@ -116,7 +114,7 @@ int infer_spot_monitor_role (void *target_, uint32_t events_)
     if (spot->sub && !spot->pub)
         return ZLINK_SPOT_ROLE_SUB;
 
-    return ZLINK_SPOT_ROLE_SUB;
+    return ZLINK_SPOT_ROLE_PUB;
 }
 
 void *spot_pub_monitor_open (void *spot_pub_, int events_)

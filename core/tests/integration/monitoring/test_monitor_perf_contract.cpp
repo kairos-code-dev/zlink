@@ -225,9 +225,8 @@ void perf_pubsub_delivery_ready_monitor_handler (
     {
         std::lock_guard<std::mutex> lock (state->sync);
         switch (event_->event) {
-            case ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED:
-            case ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED:
-                state->ready = event_->value > 0;
+            case ZLINK_EVENT_CONNECTION_READY:
+                state->ready = true;
                 break;
 
             case ZLINK_EVENT_BIND_FAILED:
@@ -435,7 +434,7 @@ void perf_like_connect_monitor_handler (const zlink_monitor_event_t *event_,
     {
         std::lock_guard<std::mutex> lock (state->sync);
         switch (event_->event) {
-            case ZLINK_EVENT_CONNECTION_READY_CHANGED:
+            case ZLINK_EVENT_CONNECTION_READY:
                 ++state->connection_ready_count;
                 break;
 
@@ -487,7 +486,7 @@ bool open_perf_like_connect_monitor (void *socket_, connect_monitor_t *out_)
 
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_CONNECTED
+    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED
                   | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
                   | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
                   | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
@@ -954,9 +953,9 @@ void test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv ()
     delivery_ready_monitor_t server_monitor;
     delivery_ready_monitor_t client_monitor;
     TEST_ASSERT_TRUE (open_perf_like_delivery_ready_monitor (
-      server, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, &server_monitor));
+      server, ZLINK_EVENT_CONNECTION_READY, &server_monitor));
     TEST_ASSERT_TRUE (open_perf_like_delivery_ready_monitor (
-      client, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, &client_monitor));
+      client, ZLINK_EVENT_CONNECTION_READY, &client_monitor));
 
     char endpoint[kPerfMonitorEndpointSize];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);

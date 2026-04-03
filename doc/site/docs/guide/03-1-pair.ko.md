@@ -316,7 +316,293 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
     server.Send(zlink.NewMessage([]byte("World")))
     ```
 
-??? example "Full Sample Code"
+??? example "Full Sample Code -- Recv"
+
+    | Language | Source |
+    |----------|--------|
+    | C | [pair_recv_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/core/samples/pair_recv_sample.c) |
+    | C++ | [pair_recv_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_recv_sample.cpp) |
+    | Java | [PairRecvSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairRecvSample.java) |
+    | Python | [pair_recv.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_recv.py) |
+    | Node | [pair_recv_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_recv_sample.ts) |
+    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairRecv/Program.cs) |
+    | Rust | [pair_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_recv_sample.rs) |
+    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_recv_sample/main.go) |
+
+### Callback 모드
+
+`zlink_recv_handler()`로 콜백을 등록하면 recv 모드에서 callback 모드로
+단방향 전환된다. 이후 도착하는 메시지는 콜백을 통해 자동 dispatch된다.
+
+=== "C"
+
+    ```c
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    void on_message(const zlink_routing_id_t *source_rid,
+                    zlink_msg_t *parts, size_t part_count,
+                    void *userdata)
+    {
+        printf("Callback received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        for (size_t i = 0; i < part_count; i++)
+            zlink_msg_close(&parts[i]);
+    }
+
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+
+        void *server = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(server, "tcp://*:5555");
+
+        void *client = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(client, "tcp://127.0.0.1:5555");
+
+        /* callback 모드로 전환 */
+        zlink_recv_handler(server, on_message, NULL);
+
+        /* 클라이언트 → 서버 */
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 10);
+        memcpy(zlink_msg_data(&msg), "hello-pair", 10);
+        zlink_send(client, &msg, 1, 0);
+
+        zlink_msleep(200);  /* 콜백 실행 대기 */
+
+        zlink_close(client);
+        zlink_close(server);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
+    #include <thread>
+    #include <chrono>
+
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::pair_socket_t server(ctx);
+        server.bind("tcp://*:5555");
+
+        zlink::pair_socket_t client(ctx);
+        client.connect("tcp://127.0.0.1:5555");
+
+        // callback 모드로 전환
+        server.recv_handler([](const zlink::routing_id_t& source_rid,
+                               std::span<zlink::msg> parts) {
+            std::cout << "Callback received: " << parts[0].str() << std::endl;
+        });
+
+        // 클라이언트 → 서버
+        client.send("hello-pair");
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        return 0;
+    }
+    ```
+
+=== "Java"
+
+    ```java
+    import dev.kairoscode.zlink.*;
+
+    public class PairCallbackExample {
+        public static void main(String[] args) throws Exception {
+            Context ctx = new Context();
+
+            PairSocket server = new PairSocket(ctx);
+            server.bind("tcp://*:5555");
+
+            PairSocket client = new PairSocket(ctx);
+            client.connect("tcp://127.0.0.1:5555");
+
+            // callback 모드로 전환
+            server.onReceive((sourceRid, parts) -> {
+                System.out.println("Callback received: "
+                    + parts[0].dataAsString());
+            });
+
+            // 클라이언트 → 서버
+            client.send("hello-pair");
+
+            Thread.sleep(200);
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
+    ```
+
+=== "Python"
+
+    ```python
+    import zlink
+    import time
+
+    ctx = zlink.Context()
+
+    server = zlink.PairSocket(ctx)
+    server.bind("tcp://*:5555")
+
+    client = zlink.PairSocket(ctx)
+    client.connect("tcp://127.0.0.1:5555")
+
+    # callback 모드로 전환
+    def on_message(source_rid, parts):
+        print(f"Callback received: {parts[0].decode()}")
+
+    server.on_receive(on_message)
+
+    # 클라이언트 → 서버
+    client.send(b"hello-pair")
+
+    time.sleep(0.2)
+
+    client.close()
+    server.close()
+    ctx.term()
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const server = new zlink.PairSocket(ctx);
+    server.bind('tcp://*:5555');
+
+    const client = new zlink.PairSocket(ctx);
+    client.connect('tcp://127.0.0.1:5555');
+
+    // callback 모드로 전환
+    server.recvHandler((sourceRid, parts) => {
+        console.log(`Callback received: ${parts[0].toString()}`);
+    });
+
+    // 클라이언트 → 서버
+    client.send(Buffer.from('hello-pair'));
+
+    await new Promise(r => setTimeout(r, 200));
+
+    client.close();
+    server.close();
+    ctx.term();
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    using Zlink;
+
+    var ctx = new Context();
+
+    var server = new PairSocket(ctx);
+    server.Bind("tcp://*:5555");
+
+    var client = new PairSocket(ctx);
+    client.Connect("tcp://127.0.0.1:5555");
+
+    // callback 모드로 전환
+    server.RecvHandler((sourceRid, parts) => {
+        Console.WriteLine($"Callback received: {parts[0].GetString()}");
+    });
+
+    // 클라이언트 → 서버
+    client.Send("hello-pair");
+
+    Thread.Sleep(200);
+
+    client.Close();
+    server.Close();
+    ctx.Term();
+    ```
+
+=== "Rust"
+
+    ```rust
+    use zlink::Context;
+    use std::thread;
+    use std::time::Duration;
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let server = ctx.pair_socket();
+        server.bind("tcp://*:5555")?;
+
+        let client = ctx.pair_socket();
+        client.connect("tcp://127.0.0.1:5555")?;
+
+        // callback 모드로 전환
+        server.on_receive(|source_rid, parts| {
+            println!("Callback received: {}",
+                     String::from_utf8_lossy(parts[0].data()));
+        });
+
+        // 클라이언트 → 서버
+        client.send(b"hello-pair")?;
+
+        thread::sleep(Duration::from_millis(200));
+
+        Ok(())
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "time"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("tcp://*:5555")
+
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect("tcp://127.0.0.1:5555")
+
+        // callback 모드로 전환
+        server.OnMessage(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
+            fmt.Printf("Callback received: %s\n", parts[0].Data())
+        })
+
+        // 클라이언트 → 서버
+        client.Send(zlink.NewMessage([]byte("hello-pair")))
+
+        time.Sleep(200 * time.Millisecond)
+    }
+    ```
+
+??? example "Full Sample Code -- Callback"
 
     | Language | Source |
     |----------|--------|

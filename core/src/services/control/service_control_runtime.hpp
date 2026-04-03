@@ -19,7 +19,9 @@ typedef void (service_control_task_fn) (void *);
 class service_control_runtime_t
 {
   public:
-    explicit service_control_runtime_t (ctx_t *ctx_);
+    explicit service_control_runtime_t (ctx_t *ctx_,
+                                        const char *thread_name_ =
+                                          "service-ctrl");
     ~service_control_runtime_t ();
 
     bool start ();
@@ -56,6 +58,7 @@ class service_control_runtime_t
     void loop ();
 
     ctx_t *_ctx;
+    const char *_thread_name;
     thread_t _thread;
     mutex_t _sync;
     condition_variable_t _cv;

@@ -26,7 +26,7 @@ fn spot_open_monitor_exposes_public_service_monitor_surface() {
 }
 
 #[test]
-fn service_monitor_recv_blocks_until_subscription_ready_event() {
+fn service_monitor_recv_blocks_until_connection_ready_event() {
     let ctx = Context::new().unwrap();
     let port = reserve_tcp_port();
     let endpoint = format!("tcp://127.0.0.1:{port}");
@@ -37,13 +37,10 @@ fn service_monitor_recv_blocks_until_subscription_ready_event() {
     let subscriber = Spot::new(&subscriber_node).unwrap();
 
     let publisher_monitor = publisher
-        .monitor_open(SERVICE_MONITOR_EVENT_SPOT_FIRST_DELIVERY_READY_CHANGED)
+        .monitor_open(SERVICE_MONITOR_EVENT_CONNECTION_READY)
         .unwrap();
     let subscriber_monitor = subscriber
-        .monitor_open(
-            SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED
-                | SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED,
-        )
+        .monitor_open(SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED | SERVICE_MONITOR_EVENT_CONNECTION_READY)
         .unwrap();
 
     publisher_node.bind(&endpoint).unwrap();
@@ -58,13 +55,12 @@ fn service_monitor_recv_blocks_until_subscription_ready_event() {
     let ready_event = subscriber_monitor.recv().unwrap();
     assert!(
         started.elapsed() < Duration::from_secs(5),
-        "subscription-ready recv timed out"
+        "connection-ready recv timed out"
     );
-    assert!(ready_event.is_spot_subscription_ready_changed());
-    assert_eq!(ready_event.endpoint, endpoint);
+    assert!(ready_event.is_connection_ready());
 
     let pub_snapshot = publisher_monitor.snapshot().unwrap();
-    assert!(pub_snapshot.is_send_ready());
+    assert!(pub_snapshot.is_ready());
 }
 
 #[test]

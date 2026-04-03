@@ -194,7 +194,6 @@ public enum MonitorState
     None = 0,
     Ready = 1 << 0,
     BoundReady = 1 << 1,
-    SendReady = 1 << 2,
     Closed = 1 << 3
 }
 
@@ -202,7 +201,6 @@ public enum MonitorState
 public enum MonitorSnapshotDetail
 {
     None = 0,
-    ReadyCount = 1 << 0,
     SendPendingMessages = 1 << 1,
     ReceivePendingMessages = 1 << 2
 }
@@ -211,29 +209,24 @@ public enum MonitorSnapshotDetail
 public enum ServiceMonitorEvents : uint
 {
     None = 0,
-    DiscoveryReadyChanged = 1u << 0,
-    SpotReadyChanged = 1u << 0,
     Error = 1u << 4,
     DiscoveryServiceUp = 1u << 5,
     DiscoveryServiceDown = 1u << 6,
     DiscoveryProvidersChanged = 1u << 7,
+    ConnectionReady = 1u << 14,
+    SpotPeerUp = 1u << 2,
+    SpotPeerDown = 1u << 3,
     SpotFilterApplied = 1u << 13,
-    SpotSubscriptionReadyChanged = 1u << 14,
-    SpotPubDeliveryReadyChanged = 1u << 18,
-    SpotSubDeliveryReadyChanged = 1u << 19,
-    SpotFirstDeliveryReadyChanged = 1u << 20,
     Closed = 1u << 17,
     All = Error
         | Closed
-        | DiscoveryReadyChanged
         | DiscoveryServiceUp
         | DiscoveryServiceDown
         | DiscoveryProvidersChanged
+        | ConnectionReady
+        | SpotPeerUp
+        | SpotPeerDown
         | SpotFilterApplied
-        | SpotSubscriptionReadyChanged
-        | SpotPubDeliveryReadyChanged
-        | SpotSubDeliveryReadyChanged
-        | SpotFirstDeliveryReadyChanged
 }
 
 [Flags]

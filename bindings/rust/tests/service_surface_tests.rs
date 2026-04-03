@@ -14,7 +14,7 @@ fn discovery_service_monitor_and_member_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc").unwrap();
     let _ = discovery
-        .monitor_open(SERVICE_MONITOR_EVENT_DISCOVERY_READY_CHANGED)
+        .monitor_open(SERVICE_MONITOR_EVENT_DISCOVERY_SERVICE_UP)
         .unwrap();
     let _ = discovery.member_peers().unwrap();
 }

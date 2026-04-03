@@ -120,6 +120,13 @@ zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
     return ctx_bootstrap_t::ensure_service_runtime (*this);
 }
 
+zlink::service_control_runtime_t *zlink::ctx_t::service_data_runtime ()
+{
+    if (!ctx_bootstrap_t::ensure_service_runtime (*this))
+        return NULL;
+    return _runtime_resources.service_data_runtime ();
+}
+
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
 {
     if (!std::getenv ("ZLINK_CTX_DEBUG_SOCKETS"))

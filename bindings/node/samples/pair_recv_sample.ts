@@ -24,8 +24,8 @@ async function main() {
   const client = new zlink.PairSocket(ctx);
 
   try {
-    const serverMonitor = server.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
-    const clientMonitor = client.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+    const serverMonitor = server.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+    const clientMonitor = client.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
     try {
       server.bind(endpoint);
       client.connect(endpoint);

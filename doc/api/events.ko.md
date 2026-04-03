@@ -2,8 +2,8 @@
 
 # 이벤트 카탈로그
 
-이 문서는 raw socket monitor 이벤트와 service monitor 이벤트의 canonical
-catalog입니다.
+이 문서는 raw socket monitor 이벤트와 남아 있는 service monitor 이벤트의
+canonical catalog입니다.
 
 사용 기준:
 - [monitoring.ko.md](monitoring.ko.md): monitor API와 peer inspection API
@@ -31,13 +31,14 @@ typedef struct zlink_service_event_t
 ```
 
 필드 의미:
-- `value`는 이벤트별 숫자 값입니다. `*_READY_CHANGED` 이벤트에서는 예약된
-  필드이며 aggregate readiness 카운트로 해석하지 않습니다.
+- `value`는 이벤트별 숫자 값이며 aggregate readiness 카운트로 해석하지
+  않습니다.
 - `subject`는 `detail_flags`에 `ZLINK_EVENT_DETAIL_SUBJECT`가 있을 때만
   유효합니다.
 - `subject_kind`는 `detail_flags`에
   `ZLINK_EVENT_DETAIL_SUBJECT_KIND`가 있을 때만 유효합니다.
-- `routing_id`는 `SUBJECT_RID` 또는 `PEER_RID`가 있을 때만 유효합니다.
+- 문자열/식별자 필드는 항상 초기화되지만, 계약상 의미는 대응하는
+  `detail_flags` 비트가 있을 때만 유효합니다.
 
 subject kind 상수:
 - `ZLINK_SERVICE_EVENT_SUBJECT_NONE`
@@ -54,16 +55,15 @@ detail flag:
 
 ## semantic level
 
-- `CONNECTION_READY_CHANGED`: 저비용 transport-ready edge
-- `PEER_UP` / `PEER_DOWN`: 저비용 peer topology edge
-- `SUB_FILTER_APPLIED`: local subscriber filter 설치 완료
+- `CONNECTION_READY`: raw socket 전용 저비용 ready edge
+  - raw socket: send/recv ready edge
 - queue 이벤트: 로컬 backpressure 관찰
 
 권장 perf gate:
-- raw socket perf: `ZLINK_EVENT_CONNECTION_READY_CHANGED`를 expected client 수만큼
-  세고 고정 settle 1초 뒤 시작
-- SPOT perf: `ZLINK_MONITOR_EVENT_PEER_UP`를 expected client 수만큼 세고
-  고정 settle 1초 뒤 시작
+- raw socket perf: `ZLINK_EVENT_CONNECTION_READY`를 expected client 수만큼
+  센다
+- SPOT perf: service monitor를 사용하지 않고 explicit `READY/START`
+  barrier protocol을 사용한다
 - delivery-ready 또는 aggregate-ready monitor event를 perf gate로 사용하지 않음
 
 ## Raw Socket Monitor 이벤트
@@ -82,7 +82,7 @@ detail flag:
 | `ZLINK_EVENT_DISCONNECTED` | 세션 연결 해제 |
 | `ZLINK_EVENT_MONITOR_STOPPED` | socket monitor 종료 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | 상세 정보 없는 handshake 실패 |
-| `ZLINK_EVENT_CONNECTION_READY_CHANGED` | transport handshake readiness 변화 |
+| `ZLINK_EVENT_CONNECTION_READY` | transport handshake 이후 ready edge / first usable send path |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | protocol handshake 오류 |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | auth handshake 오류 |
 
@@ -98,8 +98,6 @@ disconnect reason:
 
 | 상수 | 의미 |
 |---|---|
-| `ZLINK_MONITOR_EVENT_PEER_UP` | 피어 연결 |
-| `ZLINK_MONITOR_EVENT_PEER_DOWN` | 피어 연결 해제 |
 | `ZLINK_MONITOR_EVENT_ERROR` | 오류 발생 |
 | `ZLINK_MONITOR_EVENT_CLOSED` | monitor terminal 이벤트 |
 
@@ -111,27 +109,12 @@ disconnect reason:
 | `ZLINK_DISCOVERY_SERVICE_DOWN` | provider 소실 |
 | `ZLINK_DISCOVERY_PROVIDERS_CHANGED` | provider 집합 변경 |
 
-### SPOT
-
-| 상수 | 발생 주체 | 의미 |
-|---|---|---|
-| `ZLINK_SPOT_SUB_FILTER_APPLIED` | sub monitor | local filter 설치 완료 |
-| `ZLINK_SPOT_PUB_QUEUE_FULL` | pub monitor | PUB 큐가 가득 참 |
-| `ZLINK_SPOT_PUB_QUEUE_DRAINED` | pub monitor | PUB 큐가 비워짐 |
-
-SPOT subject 규칙:
-- sub 쪽은 exact topic / pattern에 대해 `subject_kind`가 채워집니다.
-- pub 쪽은 `subject`는 채우지만, remote subscription frame만으로는 exact와
-  pattern origin을 항상 복원할 수 없어 `subject_kind`가 비어 있을 수 있습니다.
-- pattern subscription은 sub-side monitor에서 public API와 동일하게 trailing
-  `*`를 포함한 문자열로 노출됩니다.
-
 ## 예시
 
 raw perf gate:
 
 ```c
-if (event->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
+if (event->event == ZLINK_EVENT_CONNECTION_READY) {
     ++ready_clients;
 }
 ```
@@ -139,7 +122,7 @@ if (event->event == ZLINK_EVENT_CONNECTION_READY_CHANGED) {
 SPOT perf gate:
 
 ```c
-if (event->event_type == ZLINK_MONITOR_EVENT_PEER_UP) {
-    ++ready_clients;
-}
+/* client가 control topic으로 READY 송신 */
+/* server가 READY == expected_clients를 기다림 */
+/* server가 START broadcast */
 ```

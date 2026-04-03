@@ -14,7 +14,6 @@ internal struct ZlinkMonitorSnapshot
     public int SourceKind;
     public uint StateFlags;
     public uint DetailFlags;
-    public uint ReadyCount;
     public ulong SndPendingMsgs;
     public ulong RcvPendingMsgs;
 }

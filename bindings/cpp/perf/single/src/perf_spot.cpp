@@ -165,11 +165,10 @@ void run_pattern_spot (const std::string &transport,
     zlink::service_monitor_handle_t sub_monitor (
       sub_spot,
       zlink::service_monitor_event::spot_filter_applied
-        | zlink::service_monitor_event::spot_subscription_ready_changed
         | zlink::service_monitor_event::error);
     zlink::service_monitor_handle_t pub_monitor (
       pub_spot.handle (),
-      zlink::service_monitor_event::spot_first_delivery_ready_changed
+      zlink::service_monitor_event::peer_up
         | zlink::service_monitor_event::error);
     if (!sub_monitor.valid () || !pub_monitor.valid ()) {
         if (perf_debug_enabled ())
@@ -196,23 +195,17 @@ void run_pattern_spot (const std::string &transport,
             zlink::service_monitor_event::spot_filter_applied),
           -1,
           10000)
-        || !wait_for_service_monitor_event_endpoint (
-          sub_monitor,
-          static_cast<uint32_t> (
-            zlink::service_monitor_event::spot_subscription_ready_changed),
-          endpoint,
-          10000)
         || !perf::single::wait_service_monitor_event (
           pub_monitor,
-          static_cast<uint32_t> (
-            zlink::service_monitor_event::spot_first_delivery_ready_changed),
-          1,
+          static_cast<uint32_t> (zlink::service_monitor_event::peer_up),
+          -1,
           10000)) {
         if (perf_debug_enabled ())
             std::cerr << "spot: ready gate failed" << std::endl;
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return;
     }
+    perf::single::settle ();
 
     zlink::socket_t pub_socket = zlink::socket_t::wrap (pub_spot.handle ());
     zlink::socket_t sub_socket = zlink::socket_t::wrap (sub_spot.handle ());

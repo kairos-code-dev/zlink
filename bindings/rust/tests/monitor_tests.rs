@@ -82,9 +82,7 @@ fn socket_monitor_snapshot() {
     let snap = mon.snapshot().unwrap();
     // Verify snapshot fields are accessible
     let _ = snap.is_ready();
-    let _ = snap.is_send_ready();
     let _ = snap.is_closed();
-    let _ = snap.ready_count;
 }
 
 #[test]

@@ -28,6 +28,29 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
+const char *const stream_threadsafe_smoke_cases[] = {
+  "test_stream_callback_rejects_detach_and_close",
+  "test_stream_send_is_thread_safe_across_app_threads",
+  "test_stream_send_and_close_race_is_safe",
+  "test_stream_send_to_stale_rid_after_disconnect",
+};
+
+bool should_run_stream_threadsafe_test (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    if (selected && *selected)
+        return strcmp (selected, name_) == 0;
+
+    for (size_t i = 0;
+         i < sizeof (stream_threadsafe_smoke_cases)
+               / sizeof (stream_threadsafe_smoke_cases[0]);
+         ++i) {
+        if (strcmp (stream_threadsafe_smoke_cases[i], name_) == 0)
+            return true;
+    }
+    return false;
+}
+
 const int kRouteIdSize = 4;
 const int kLingerMs = 0;
 const int kTimeoutMs = 1000;
@@ -1043,11 +1066,6 @@ void test_stream_send_is_thread_safe_across_app_threads ()
 #endif
 }
 
-void test_stream_send_and_detach_race_is_safe ()
-{
-    TEST_IGNORE_MESSAGE ("stream detach removed; close race covers lifecycle safety");
-}
-
 void test_stream_send_and_close_race_is_safe ()
 {
 #if defined(ZLINK_HAVE_WINDOWS)
@@ -1372,15 +1390,6 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Regression: reattach after detach must work
-///////////////////////////////////////////////////////////////////////////////
-
-void test_stream_reattach_after_detach ()
-{
-    TEST_IGNORE_MESSAGE ("stream detach removed; reattach is no longer supported");
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // Regression: send_msg from multiple app threads is thread-safe
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1630,15 +1639,6 @@ void test_stream_rapid_client_churn_during_send ()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Regression: double detach returns error, does not crash
-///////////////////////////////////////////////////////////////////////////////
-
-void test_stream_double_detach_returns_error ()
-{
-    TEST_IGNORE_MESSAGE ("stream detach removed; double-detach contract removed");
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // Regression: send to stale routing_id after client disconnects
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1688,20 +1688,39 @@ int main ()
     setup_test_environment ();
 
     UNITY_BEGIN ();
-    RUN_TEST (test_stream_callback_rejects_detach_and_close);
-    RUN_TEST (test_stream_send_is_thread_safe_across_app_threads);
-    RUN_TEST (test_stream_send_and_detach_race_is_safe);
-    RUN_TEST (test_stream_send_and_close_race_is_safe);
-    RUN_TEST (test_stream_callback_handoff_to_worker_thread_send_msg_is_safe);
-    RUN_TEST (test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe);
-    RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe);
-    RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly);
-    RUN_TEST (test_stream_reattach_after_detach);
-    RUN_TEST (test_stream_send_msg_is_thread_safe);
-    RUN_TEST (test_stream_runtime_reads_are_safe_during_send);
-    RUN_TEST (test_socket_runtime_reads_are_safe_during_connect_disconnect);
-    RUN_TEST (test_stream_rapid_client_churn_during_send);
-    RUN_TEST (test_stream_double_detach_returns_error);
-    RUN_TEST (test_stream_send_to_stale_rid_after_disconnect);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_callback_rejects_detach_and_close"))
+        RUN_TEST (test_stream_callback_rejects_detach_and_close);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_send_is_thread_safe_across_app_threads"))
+        RUN_TEST (test_stream_send_is_thread_safe_across_app_threads);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_send_and_close_race_is_safe"))
+        RUN_TEST (test_stream_send_and_close_race_is_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_callback_handoff_to_worker_thread_send_msg_is_safe"))
+        RUN_TEST (test_stream_callback_handoff_to_worker_thread_send_msg_is_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe"))
+        RUN_TEST (test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe"))
+        RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly"))
+        RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly);
+    if (should_run_stream_threadsafe_test ("test_stream_send_msg_is_thread_safe"))
+        RUN_TEST (test_stream_send_msg_is_thread_safe);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_runtime_reads_are_safe_during_send"))
+        RUN_TEST (test_stream_runtime_reads_are_safe_during_send);
+    if (should_run_stream_threadsafe_test (
+          "test_socket_runtime_reads_are_safe_during_connect_disconnect"))
+        RUN_TEST (test_socket_runtime_reads_are_safe_during_connect_disconnect);
+    if (should_run_stream_threadsafe_test ("test_stream_rapid_client_churn_during_send"))
+        RUN_TEST (test_stream_rapid_client_churn_during_send);
+    if (should_run_stream_threadsafe_test (
+          "test_stream_send_to_stale_rid_after_disconnect"))
+        RUN_TEST (test_stream_send_to_stale_rid_after_disconnect);
     return UNITY_END ();
 }

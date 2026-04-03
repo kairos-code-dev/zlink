@@ -180,13 +180,12 @@ public readonly struct SocketMonitorEvent
 public readonly struct MonitorSnapshot
 {
     public MonitorSnapshot(MonitorSourceKind sourceKind, MonitorState stateFlags,
-        MonitorSnapshotDetail detailFlags, uint readyCount,
+        MonitorSnapshotDetail detailFlags,
         ulong sendPendingMessages, ulong receivePendingMessages)
     {
         SourceKind = sourceKind;
         StateFlags = stateFlags;
         DetailFlags = detailFlags;
-        ReadyCount = readyCount;
         SendPendingMessages = sendPendingMessages;
         ReceivePendingMessages = receivePendingMessages;
     }
@@ -194,7 +193,6 @@ public readonly struct MonitorSnapshot
     public MonitorSourceKind SourceKind { get; }
     public MonitorState StateFlags { get; }
     public MonitorSnapshotDetail DetailFlags { get; }
-    public uint ReadyCount { get; }
     public ulong SendPendingMessages { get; }
     public ulong ReceivePendingMessages { get; }
 
@@ -202,7 +200,7 @@ public readonly struct MonitorSnapshot
     {
         return new MonitorSnapshot((MonitorSourceKind)native.SourceKind,
             (MonitorState)native.StateFlags,
-            (MonitorSnapshotDetail)native.DetailFlags, native.ReadyCount,
+            (MonitorSnapshotDetail)native.DetailFlags,
             native.SndPendingMsgs, native.RcvPendingMsgs);
     }
 }

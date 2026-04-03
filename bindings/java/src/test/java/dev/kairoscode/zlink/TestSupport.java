@@ -28,11 +28,11 @@ public final class TestSupport {
         return "tcp://127.0.0.1:" + randomPort();
     }
 
-    public static MonitorEvent awaitDeliveryReady(MonitorSocket monitor,
-                                                  MonitorEventType eventType) {
+    public static MonitorEvent awaitMonitorEvent(MonitorSocket monitor,
+                                                 MonitorEventType eventType) {
         while (true) {
             MonitorEvent event = monitor.recv();
-            if (event.event() == eventType.getValue() && event.value() > 0) {
+            if (event.event() == eventType.getValue()) {
                 return event;
             }
         }

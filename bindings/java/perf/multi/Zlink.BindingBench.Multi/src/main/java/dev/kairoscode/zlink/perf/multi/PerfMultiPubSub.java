@@ -15,10 +15,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 final class PerfMultiPubSub {
     private static final int READY_EVENTS =
-        MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
-            | MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue();
+        MonitorEventType.CONNECTION_READY.getValue();
     private static final int SUB_READY_EVENT =
-        MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue();
+        MonitorEventType.CONNECTION_READY.getValue();
     private static final String TOPIC = "perf.topic";
 
     private PerfMultiPubSub() {

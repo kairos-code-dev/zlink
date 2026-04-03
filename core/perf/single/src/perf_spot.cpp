@@ -159,17 +159,42 @@ void spot_client_handler (const zlink_routing_id_t *,
     (void) single_enqueue_metric_event (state, header);
 }
 
-void cleanup_spot_case (service_event_probe_t *sub_monitor_,
-                        service_event_probe_t *pub_monitor_,
-                        void **sub_handle_,
+bool wait_for_spot_nodes_ready (void *sub_node_,
+                                void *pub_node_,
+                                int timeout_ms_)
+{
+    if (!sub_node_) {
+        (void) pub_node_;
+        return false;
+    }
+
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_spot_node_status_t sub_status;
+        const bool sub_ok =
+          zlink_spot_node_status_snapshot (sub_node_, &sub_status) == 0
+          && sub_status.connected_peer_count > 0
+          && sub_status.ready_subject_count > 0;
+        if (sub_ok)
+            return true;
+
+        zlink_pollitem_t item = {NULL, 0, 0, 0};
+        if (zlink_poll (&item, 0, 5) < 0 && zlink_errno () != EINTR)
+            return false;
+    }
+
+    errno = ETIMEDOUT;
+    return false;
+}
+
+void cleanup_spot_case (void **sub_handle_,
                         void **pub_handle_,
                         void **sub_node_,
                         void **pub_node_)
 {
-    if (sub_monitor_)
-        close_service_event_probe (*sub_monitor_);
-    if (pub_monitor_)
-        close_service_event_probe (*pub_monitor_);
     if (sub_handle_ && *sub_handle_)
         perf_destroy_default_spot_handle (sub_handle_);
     if (pub_handle_ && *pub_handle_)
@@ -424,31 +449,8 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    service_event_probe_t sub_monitor;
-    service_event_probe_t pub_monitor;
     single_callback_metric_queue_t metric_queue (k_metric_queue_capacity);
     single_metric_worker_t<spot_client_state_t> metric_worker;
-    if (!open_service_event_probe (
-          sub,
-          ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED
-            | ZLINK_MONITOR_EVENT_ERROR,
-          ZLINK_MONITOR_EVENT_ERROR,
-          sub_monitor)
-        || !open_service_event_probe (
-          pub,
-          ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED
-            | ZLINK_MONITOR_EVENT_ERROR,
-          ZLINK_MONITOR_EVENT_ERROR,
-          pub_monitor)) {
-        if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] monitor open failed sub="
-                      << (sub_monitor.monitor != NULL) << " pub="
-                      << (pub_monitor.monitor != NULL) << " err="
-                      << zlink_errno () << std::endl;
-        cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
-        return 1;
-    }
 
     const int base_port = 35000 + (current_process_id () % 1000) * 8;
     const std::string endpoint = bind_node (pub_node, transport_, base_port);
@@ -456,8 +458,7 @@ int run_case (const std::string &lib_name_,
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] bind failed err=" << zlink_errno ()
                       << std::endl;
-        cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -465,8 +466,7 @@ int run_case (const std::string &lib_name_,
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] connect peer failed err=" << zlink_errno ()
                       << std::endl;
-        cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -474,8 +474,7 @@ int run_case (const std::string &lib_name_,
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] subscribe failed err=" << zlink_errno ()
                       << std::endl;
-        cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -489,30 +488,17 @@ int run_case (const std::string &lib_name_,
     metric_worker.state = &client_state;
     metric_worker.queue = &metric_queue;
 
-    if (!wait_for_service_event (sub_monitor,
-                                    ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED,
-                                    NULL,
-                                    k_topic,
-                                    1,
-                                    resolve_spot_subscription_ready_timeout_ms (
-                                      transport_))
-        || !wait_for_service_event (pub_monitor,
-                                    ZLINK_SPOT_MONITOR_EVENT_PUB_FIRST_DELIVERY_READY_CHANGED,
-                                    NULL,
-                                    k_topic,
-                                    1,
-                                    resolve_spot_subscription_ready_timeout_ms (
-                                      transport_))) {
+    if (!wait_for_spot_nodes_ready (
+          sub_node, pub_node,
+          resolve_spot_subscription_ready_timeout_ms (transport_))) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready wait failed" << std::endl;
-        cleanup_spot_case (
-          &sub_monitor, &pub_monitor, &sub, &pub, &sub_node, &pub_node);
+        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
     if (!start_single_metric_worker (&metric_worker)) {
-        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
-                           &pub_node);
+        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -532,8 +518,7 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       0.0,
                       queue_stats);
-        cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
-                           &pub_node);
+        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }
 
@@ -555,8 +540,7 @@ int run_case (const std::string &lib_name_,
                   active_ok ? latency.p99_us : 0.0,
                   queue_stats);
 
-    cleanup_spot_case (&sub_monitor, &pub_monitor, &sub, &pub, &sub_node,
-                       &pub_node);
+    cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
     return active_ok ? 0 : 1;
 }
 } // namespace

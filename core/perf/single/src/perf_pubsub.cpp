@@ -288,11 +288,11 @@ inline bool setup_connected_pubsub_pair (void *pub_socket_,
         return false;
 
     void *sub_monitor = open_configured_socket_monitor (
-      sub_socket_, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED);
+      sub_socket_, ZLINK_EVENT_CONNECTION_READY);
     if (!sub_monitor)
         return false;
     void *pub_monitor = open_configured_socket_monitor (
-      pub_socket_, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED);
+      pub_socket_, ZLINK_EVENT_CONNECTION_READY);
     if (!pub_monitor) {
         zlink_monitor_close (&sub_monitor);
         return false;
@@ -312,20 +312,22 @@ inline bool setup_connected_pubsub_pair (void *pub_socket_,
                                                3000);
     const bool sub_ready = wait_for_socket_monitor_event (
       sub_monitor,
-      ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED,
+      ZLINK_EVENT_CONNECTION_READY,
       timeout_ms);
     const bool pub_ready = wait_for_socket_monitor_event (
       pub_monitor,
-      ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED,
+      ZLINK_EVENT_CONNECTION_READY,
       timeout_ms);
     zlink_monitor_close (&pub_monitor);
     zlink_monitor_close (&sub_monitor);
 
     if (bench_debug_enabled () && !(sub_ready && pub_ready)) {
-        std::cerr << "[perf-pubsub] delivery-ready gate failed"
+        std::cerr << "[perf-pubsub] connection-ready gate failed"
                   << " sub_ready=" << (sub_ready ? 1 : 0)
                   << " pub_ready=" << (pub_ready ? 1 : 0) << std::endl;
     }
+    if (sub_ready && pub_ready)
+        std::this_thread::sleep_for (std::chrono::seconds (1));
     return sub_ready && pub_ready;
 }
 

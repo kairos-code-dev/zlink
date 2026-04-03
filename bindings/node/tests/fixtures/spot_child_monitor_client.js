@@ -20,7 +20,7 @@ async function main() {
   const node = new zlink.SpotNode(ctx);
   const spot = new zlink.Spot(node);
   const monitor = spot.monitorOpen(
-    zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED
+    zlink.ServiceMonitorEvent.CONNECTION_READY
       | zlink.ServiceMonitorEvent.ERROR
   );
 
@@ -39,7 +39,7 @@ async function main() {
       if (event.eventType === zlink.ServiceMonitorEvent.ERROR) {
         throw new Error(`monitor error: ${JSON.stringify(event)}`);
       }
-      if (event.eventType === zlink.ServiceMonitorEvent.SPOT_SUB_DELIVERY_READY_CHANGED && event.value > 0) {
+      if (event.eventType === zlink.ServiceMonitorEvent.CONNECTION_READY) {
         const status = node.statusSnapshot();
         const subjects = node.subjectsSnapshot();
         if (status.connectedPeerCount <= 0 || status.readySubjectCount <= 0) {
@@ -50,7 +50,7 @@ async function main() {
             subjects
           })}`);
         }
-        console.log(`EVENT_READY,${event.value}`);
+        console.log('EVENT_READY');
         return;
       }
     }

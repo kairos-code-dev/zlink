@@ -193,13 +193,13 @@ func TestCallbackModeConflictsWithDirectRecv(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	serverMon, err := zlink.OpenSocketMonitor(server, zlink.MonitorEventConnectionReadyChanged)
+	serverMon, err := zlink.OpenSocketMonitor(server, zlink.MonitorEventConnectionReady)
 	if err != nil {
 		t.Fatalf("OpenSocketMonitor(server) error = %v", err)
 	}
 	defer serverMon.Close()
 
-	clientMon, err := zlink.OpenSocketMonitor(client, zlink.MonitorEventConnectionReadyChanged)
+	clientMon, err := zlink.OpenSocketMonitor(client, zlink.MonitorEventConnectionReady)
 	if err != nil {
 		t.Fatalf("OpenSocketMonitor(client) error = %v", err)
 	}

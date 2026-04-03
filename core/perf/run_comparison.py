@@ -119,7 +119,6 @@ MULTI_ENV_ALIAS_MAP = {
     "PERF_TRANSPORT_TRANSITION_MS": "PERF_MULTI_TRANSPORT_TRANSITION_MS",
     "PERF_PATTERN_TRANSITION_MS": "PERF_MULTI_PATTERN_TRANSITION_MS",
     "PERF_ACTIVE_WARMUP": "PERF_MULTI_ACTIVE_WARMUP",
-    "PERF_SETTLE_MS": "PERF_MULTI_SETTLE_MS",
     "PERF_SERVICE_CLIENTS": "PERF_MULTI_SERVICE_CLIENTS",
     "PERF_LATENCY_SAMPLE_CAP": "PERF_MULTI_LATENCY_SAMPLE_CAP",
     "PERF_SNDHWM": "PERF_MULTI_SNDHWM",
@@ -4023,7 +4022,6 @@ def build_effective_option_items(args, selected_patterns):
                 ("sndtimeo_ms", str(parse_env_int("PERF_SNDTIMEO_MS", 200))),
                 ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),
-                ("settle_ms", str(parse_env_int("PERF_SETTLE_MS", 500))),
                 (
                     "connect_ready_timeout_ms",
                     str(parse_env_int("PERF_CONNECT_READY_TIMEOUT_MS", 5000)),

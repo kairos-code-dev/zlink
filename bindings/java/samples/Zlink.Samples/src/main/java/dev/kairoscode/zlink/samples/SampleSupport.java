@@ -66,8 +66,7 @@ final class SampleSupport {
         MonitorEventType.ACCEPTED.getValue()
             | MonitorEventType.CONNECTION_READY.getValue();
     static final int PUBSUB_READY_EVENTS =
-        MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue()
-            | MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue();
+        MonitorEventType.CONNECTION_READY.getValue();
 
     static void waitConnected(MonitorSocket... monitors) {
         for (MonitorSocket monitor : monitors) {
@@ -88,9 +87,9 @@ final class SampleSupport {
     static void waitPubSubReady(MonitorSocket pubMonitor,
                                 MonitorSocket subMonitor) {
         waitMonitorEvent(subMonitor,
-            MonitorEventType.SUB_DELIVERY_READY_CHANGED.getValue());
+            MonitorEventType.CONNECTION_READY.getValue());
         waitMonitorEvent(pubMonitor,
-            MonitorEventType.PUB_DELIVERY_READY_CHANGED.getValue());
+            MonitorEventType.CONNECTION_READY.getValue());
     }
 
     static ServiceEvent awaitSpotFilterApplied(Spot spot, String topic) {

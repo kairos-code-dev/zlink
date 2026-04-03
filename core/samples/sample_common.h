@@ -108,12 +108,12 @@ static inline int wait_connected (void *server_monitor, void *client_monitor,
 {
     if (!wait_for_socket_monitor_event (
           server_monitor,
-          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED, 1,
+          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, 1,
           timeout_ms))
         return 0;
     if (!wait_for_socket_monitor_event (
           client_monitor,
-          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY_CHANGED, 1,
+          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, 1,
           timeout_ms))
         return 0;
     return 1;
@@ -273,18 +273,15 @@ wait_for_service_monitor_state (void *monitor, zlink_monitor_state_mask_t state,
 static inline int wait_spot_ready (void *sub_monitor, void *pub_monitor,
                                    const char *endpoint, int timeout_ms)
 {
+    (void) endpoint;
     if (!wait_for_service_monitor_event (
           sub_monitor,
           ZLINK_SERVICE_MONITOR_EVENT_SPOT_FILTER_APPLIED, -1,
           timeout_ms))
         return 0;
-    if (!wait_for_service_monitor_event_endpoint (
-          sub_monitor,
-          ZLINK_SERVICE_MONITOR_EVENT_SPOT_SUBSCRIPTION_READY_CHANGED,
-          endpoint, timeout_ms))
-        return 0;
-    if (!wait_for_service_monitor_state (
-          pub_monitor, ZLINK_MONITOR_STATE_SEND_READY, timeout_ms))
+    if (!wait_for_service_monitor_event (
+          pub_monitor,
+          ZLINK_SERVICE_MONITOR_EVENT_SPOT_PEER_UP, -1, timeout_ms))
         return 0;
     return 1;
 }

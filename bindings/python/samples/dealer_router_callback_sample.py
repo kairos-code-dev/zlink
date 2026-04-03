@@ -35,7 +35,7 @@ def _wait_connected(*monitors, timeout_ms=5000):
             if event is None:
                 next_pending.append(monitor)
                 continue
-            if not (int(event.event) & int(zlink.MonitorEvent.CONNECTION_READY_CHANGED)):
+            if not (int(event.event) & int(zlink.MonitorEvent.CONNECTION_READY)):
                 next_pending.append(monitor)
         pending = next_pending
 
@@ -47,8 +47,8 @@ def main():
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as router:
             with zlink.DealerSocket(ctx) as dealer:
-                with router.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as router_monitor:
-                    with dealer.open_monitor(zlink.MonitorEvent.CONNECTION_READY_CHANGED) as dealer_monitor:
+                with router.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as router_monitor:
+                    with dealer.open_monitor(zlink.MonitorEvent.CONNECTION_READY) as dealer_monitor:
                         dealer.set_routing_id(b"CLIENT")
                         router.bind(endpoint)
                         dealer.connect(endpoint)

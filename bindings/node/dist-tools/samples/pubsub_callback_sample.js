@@ -20,8 +20,8 @@ async function main() {
     const pub = new zlink.PubSocket(ctx);
     const sub = new zlink.SubSocket(ctx);
     try {
-        const pubMonitor = pub.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
-        const subMonitor = sub.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+        const pubMonitor = pub.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+        const subMonitor = sub.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
         try {
             pub.bind(endpoint);
             sub.connect(endpoint);

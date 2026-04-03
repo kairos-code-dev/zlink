@@ -16,13 +16,7 @@ namespace detail
 inline service_monitor_event
 normalize_spot_service_monitor_events (service_monitor_event events_) noexcept
 {
-    if (events_ != service_monitor_event::all)
-        return events_;
-
-    return service_monitor_event::error
-           | service_monitor_event::spot_filter_applied
-           | service_monitor_event::spot_subscription_ready_changed
-           | service_monitor_event::spot_sub_delivery_ready_changed;
+    return events_;
 }
 
 } // namespace detail

@@ -30,7 +30,7 @@ def main(argv=None):
             for index, sock in enumerate(sockets):
                 sock.set_routing_id(f"CLIENT-{index}".encode("ascii"))
                 sock.connect(args.endpoint)
-                wait_socket_event(sock, zlink.MonitorEvent.CONNECTION_READY_CHANGED)
+                wait_socket_event(sock, zlink.MonitorEvent.CONNECTION_READY)
 
             def worker(sock):
                 nonlocal count

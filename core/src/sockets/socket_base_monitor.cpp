@@ -2,7 +2,9 @@
 
 #include "utils/precompiled.hpp"
 
+#include "core/ctx.hpp"
 #include "core/send_internal.hpp"
+#include "services/control/service_control_runtime.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/sleep.hpp"
 #include "zlink.h"
@@ -18,13 +20,11 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     memset (out_, 0, sizeof (*out_));
     out_->source_kind = ZLINK_MONITOR_SOURCE_SOCKET;
     out_->detail_flags =
-      ZLINK_MONITOR_SNAPSHOT_DETAIL_READY_COUNT
-      | ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
+      ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
       | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
-        out_->ready_count = monitor_ready_count ();
-        if (out_->ready_count > 0)
+        if (monitor_ready_count () > 0)
             out_->state_flags |= ZLINK_MONITOR_STATE_READY;
 
         for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
@@ -141,8 +141,16 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
         stop_monitor (false);
     else {
         monitor.reset_worker_state ();
-        monitor.start_worker (&socket_base_t::monitor_thread_main, this,
-                              "sock-monitor");
+        service_control_runtime_t *runtime = get_ctx ()->service_control_runtime ();
+        const uint64_t task_id =
+          runtime ? runtime->add_periodic_task (&socket_base_t::monitor_task_main,
+                                                this, 10, true)
+                  : 0;
+        if (task_id == 0) {
+            stop_monitor (false);
+            return -1;
+        }
+        monitor.start_task (task_id);
         monitor.events_atomic.store (monitor.events, std::memory_order_release);
     }
     return rc;
@@ -229,9 +237,9 @@ void zlink::socket_base_t::event_disconnected (
           endpoint_uri_pair_, routing_id_, routing_id_size_, &ready_count);
     }
     if (changed) {
-        uint64_t ready_values[1] = {ready_count};
+        uint64_t ready_values[1] = {0};
         event (endpoint_uri_pair_, routing_id_, routing_id_size_, ready_values,
-               1, ZLINK_EVENT_CONNECTION_READY_CHANGED);
+               1, ZLINK_EVENT_CONNECTION_READY);
     }
 }
 
@@ -274,9 +282,9 @@ void zlink::socket_base_t::event_connection_ready_changed (
     if (!changed)
         return;
 
-    uint64_t values[1] = {ready_count};
+    uint64_t values[1] = {0};
     event (endpoint_uri_pair_, routing_id_, routing_id_size_, values, 1,
-           ZLINK_EVENT_CONNECTION_READY_CHANGED);
+           ZLINK_EVENT_CONNECTION_READY);
 }
 
 void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
@@ -324,41 +332,25 @@ void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,
     }
 }
 
-void zlink::socket_base_t::monitor_thread_main (void *arg_)
+void zlink::socket_base_t::monitor_task_main (void *arg_)
 {
-    static_cast<socket_base_t *> (arg_)->monitor_loop ();
+    static_cast<socket_base_t *> (arg_)->pump_monitor_events ();
 }
 
-void zlink::socket_base_t::monitor_delivery_ready_pump (void *arg_)
-{
-    static_cast<socket_base_t *> (arg_)->process_commands (0, false);
-}
-
-void zlink::socket_base_t::monitor_loop ()
+void zlink::socket_base_t::pump_monitor_events ()
 {
     monitor_runtime_t &monitor = monitor_runtime ();
     void *monitor_socket = monitor.socket;
-    const bool supports_sub_delivery_ready =
-      options.type == ZLINK_CORE_SOCKET_SUB
-      || options.type == ZLINK_CORE_SOCKET_XSUB;
-    const bool supports_pub_delivery_ready =
-      options.type == ZLINK_CORE_SOCKET_PUB
-      || options.type == ZLINK_CORE_SOCKET_XPUB;
-    const bool pump_delivery_ready =
-      (supports_sub_delivery_ready
-       && (monitor.events & ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED) != 0)
-      || (supports_pub_delivery_ready
-          && (monitor.events & ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED) != 0);
     monitor_event_record_t record;
-    while (monitor.dequeue_worker_event (&record, pump_delivery_ready,
-                                         &socket_base_t::monitor_delivery_ready_pump,
-                                         this)) {
+    if (getenv ("ZLINK_MONITOR_TASK_DIAG"))
+        fprintf (stderr, "raw-monitor-task source-socket=%p\n", this);
+    while (monitor.dequeue_worker_event_nowait (&record)) {
         bool delivered = true;
         if (monitor_socket)
             delivered = dispatch_monitor_event (monitor_socket, record);
         if (!delivered && !monitor.lossy) {
             monitor.requeue_worker_event_front (record);
-            zlink::sleep_ms (1);
+            break;
         }
     }
 }
@@ -435,6 +427,12 @@ bool zlink::socket_base_t::dispatch_monitor_event (
     zlink_msg_init_size (&msg, sizeof (wire_event));
     memcpy (zlink_msg_data (&msg), &wire_event, sizeof (wire_event));
     const int send_flags = monitor_runtime ().lossy ? ZLINK_DONTWAIT : 0;
+    if (getenv ("ZLINK_MONITOR_TASK_DIAG")
+        && record_.event == ZLINK_EVENT_CONNECTION_READY) {
+        fprintf (stderr,
+                 "raw-monitor-dispatch source-socket=%p local=%s remote=%s\n",
+                 this, wire_event.local_addr, wire_event.remote_addr);
+    }
     if (zlink::send_msg_internal (monitor_socket_, &msg, send_flags) == -1) {
         zlink_msg_close (&msg);
         return false;
@@ -463,7 +461,13 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
               monitor_socket->endpoint_runtime ().has_attached_pipes ();
         }
 
-        monitor.stop_worker ();
+        if (monitor.task_id != 0) {
+            service_control_runtime_t *runtime =
+              get_ctx ()->service_control_runtime ();
+            if (runtime)
+                (void) runtime->remove_task (monitor.task_id);
+        }
+        monitor.stop_task ();
 
         if (can_emit_monitor_stopped) {
             uint64_t values[1] = {0};

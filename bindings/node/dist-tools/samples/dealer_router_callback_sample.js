@@ -20,8 +20,8 @@ async function main() {
     const router = new zlink.RouterSocket(ctx);
     const dealer = new zlink.DealerSocket(ctx);
     try {
-        const routerMonitor = router.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
-        const dealerMonitor = dealer.monitorOpen(zlink.MonitorEvent.CONNECTION_READY_CHANGED);
+        const routerMonitor = router.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+        const dealerMonitor = dealer.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
         try {
             router.bind(endpoint);
             dealer.connect(endpoint);

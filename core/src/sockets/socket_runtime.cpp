@@ -77,53 +77,34 @@ void zlink::socket_monitor_runtime_t::reset_worker_state ()
     queue_sync.lock ();
     queue.clear ();
     queue_stop = false;
+    task_running = false;
     queue_sync.unlock ();
 }
 
-void zlink::socket_monitor_runtime_t::start_worker (
-  thread_fn *thread_fn_, void *arg_, const char *name_)
+void zlink::socket_monitor_runtime_t::start_task (uint64_t task_id_)
 {
-    thread.start (thread_fn_, arg_, name_);
-    thread_started = true;
+    queue_sync.lock ();
+    task_id = task_id_;
+    task_running = task_id_ != 0;
+    queue_sync.unlock ();
 }
 
-bool zlink::socket_monitor_runtime_t::dequeue_worker_event (
-  socket_monitor_event_record_t *out_,
-  bool pump_delivery_ready_,
-  socket_monitor_worker_idle_fn *idle_fn_,
-  void *idle_arg_)
+bool zlink::socket_monitor_runtime_t::dequeue_worker_event_nowait (
+  socket_monitor_event_record_t *out_)
 {
     if (!out_)
         return false;
 
     queue_sync.lock ();
-    while (true) {
-        if (queue_stop) {
-            queue_sync.unlock ();
-            return false;
-        }
-
-        if (!queue.empty ()) {
-            *out_ = queue.front ();
-            queue.pop_front ();
-            queue_sync.unlock ();
-            return true;
-        }
-
-        if (pump_delivery_ready_ && idle_fn_) {
-            queue_sync.unlock ();
-            idle_fn_ (idle_arg_);
-            queue_sync.lock ();
-            if (queue_stop) {
-                queue_sync.unlock ();
-                return false;
-            }
-            if (queue.empty ())
-                (void) queue_cv.wait (&queue_sync, 10);
-        } else {
-            (void) queue_cv.wait (&queue_sync, -1);
-        }
+    if (queue_stop || queue.empty ()) {
+        queue_sync.unlock ();
+        return false;
     }
+
+    *out_ = queue.front ();
+    queue.pop_front ();
+    queue_sync.unlock ();
+    return true;
 }
 
 void zlink::socket_monitor_runtime_t::requeue_worker_event_front (
@@ -148,18 +129,15 @@ void zlink::socket_monitor_runtime_t::enqueue_worker_event (
     queue_sync.unlock ();
 }
 
-void zlink::socket_monitor_runtime_t::stop_worker ()
+void zlink::socket_monitor_runtime_t::stop_task ()
 {
     queue_sync.lock ();
     queue_stop = true;
     queue.clear ();
     queue_cv.broadcast ();
+    task_running = false;
+    task_id = 0;
     queue_sync.unlock ();
-
-    if (thread_started) {
-        thread.stop ();
-        thread_started = false;
-    }
 }
 
 void zlink::socket_endpoint_runtime_t::attach_pipe (pipe_t *pipe_)

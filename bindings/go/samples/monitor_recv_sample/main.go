@@ -35,8 +35,8 @@ func main() {
 
 	serverEvent := samplecommon.WaitMonitorEvent(serverMon)
 	clientEvent := samplecommon.WaitMonitorEvent(clientMon)
-	if !serverEvent.IsConnectionReadyChanged() || !clientEvent.IsConnectionReadyChanged() {
-		samplecommon.Must(fmt.Errorf("monitor sample expected CONNECTION_READY_CHANGED"))
+	if !serverEvent.IsConnectionReady() || !clientEvent.IsConnectionReady() {
+		samplecommon.Must(fmt.Errorf("monitor sample expected CONNECTION_READY"))
 	}
 	fmt.Println("[monitor/recv] recv: \"connection-ready\" -> tryRecv: empty")
 }

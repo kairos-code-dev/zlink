@@ -120,6 +120,213 @@ STREAM-specific behavior:
 | `0x00` (1 byte) | disconnect event |
 | otherwise | regular data |
 
+### Recv Mode
+
+A complete recv-mode echo server: bind a STREAM socket, receive data
+from a raw client, print it, and echo back.
+
+=== "C"
+
+    ```c
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
+
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+        void *stream = zlink_socket(ctx, ZLINK_STREAM);
+        int notify = 0;
+        zlink_set_option(stream, ZLINK_OPT_STREAM_NOTIFY, &notify, sizeof(notify));
+        zlink_bind(stream, "tcp://*:8080");
+
+        /* Receive from raw client */
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts;
+        size_t count;
+        zlink_recv(stream, &rid, &parts, &count, 0);
+        printf("Received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+
+        /* Echo back */
+        size_t sz = zlink_msg_size(&parts[0]);
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, sz);
+        memcpy(zlink_msg_data(&reply), zlink_msg_data(&parts[0]), sz);
+        zlink_send_rid(stream, &rid, &reply, 1, 0);
+
+        zlink_multipart_close(parts, count);
+        zlink_close(stream);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
+    ```
+
+=== "C++"
+
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
+
+    int main()
+    {
+        zlink::context_t ctx;
+        zlink::stream_socket_t stream(ctx);
+        stream.set_option(zlink::opt::stream_notify, 0);
+        stream.bind("tcp://*:8080");
+
+        // Receive from raw client
+        auto [rid, parts] = stream.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        // Echo back
+        stream.send_rid(rid, parts[0]);
+
+        return 0;
+    }
+    ```
+
+=== "Java"
+
+    ```java
+    import dev.kairoscode.zlink.*;
+
+    public class StreamRecvExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+            StreamSocket stream = new StreamSocket(ctx);
+            stream.setStreamNotify(0);
+            stream.bind("tcp://*:8080");
+
+            // Receive from raw client
+            RecvResult result = stream.recv();
+            System.out.println("Received: "
+                + new String(result.parts()[0].data()));
+
+            // Echo back
+            stream.sendRid(result.routingId(), result.parts()[0]);
+
+            stream.close();
+            ctx.close();
+        }
+    }
+    ```
+
+=== "Python"
+
+    ```python
+    import zlink
+
+    ctx = zlink.Context()
+    stream = zlink.StreamSocket(ctx)
+    stream.set_option(zlink.OPT_STREAM_NOTIFY, 0)
+    stream.bind("tcp://*:8080")
+
+    # Receive from raw client
+    rid, parts = stream.recv()
+    print(f"Received: {parts[0].decode()}")
+
+    # Echo back
+    stream.send_rid(rid, parts[0])
+
+    stream.close()
+    ctx.term()
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+    const stream = new zlink.StreamSocket(ctx);
+    stream.setOption(zlink.OPT_STREAM_NOTIFY, 0);
+    stream.bind('tcp://*:8080');
+
+    // Receive from raw client
+    const { sourceRid, parts } = stream.recv();
+    console.log(`Received: ${parts[0].toString()}`);
+
+    // Echo back
+    stream.sendRid(sourceRid, parts[0]);
+
+    stream.close();
+    ctx.term();
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    using Zlink;
+
+    using var ctx = new Context();
+    using var stream = new StreamSocket(ctx);
+    stream.StreamNotify = 0;
+    stream.Bind("tcp://*:8080");
+
+    // Receive from raw client
+    var (rid, parts) = stream.Recv();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
+
+    // Echo back
+    stream.SendRid(rid, parts[0]);
+    ```
+
+=== "Rust"
+
+    ```rust
+    use zlink::Context;
+
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+        let stream = ctx.stream_socket()?;
+        stream.set_stream_notify(0)?;
+        stream.bind("tcp://*:8080")?;
+
+        // Receive from raw client
+        let (rid, parts) = stream.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].as_bytes()));
+
+        // Echo back
+        stream.send_rid(&rid, &parts[0])?;
+
+        Ok(())
+    }
+    ```
+
+=== "Go"
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        stream, err := ctx.StreamSocket()
+        if err != nil { log.Fatal(err) }
+        defer stream.Close()
+        stream.SetOption(zlink.OptionStreamNotify, 0)
+        stream.Bind("tcp://*:8080")
+
+        // Receive from raw client
+        rid, parts, err := stream.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", string(parts[0].Data()))
+
+        // Echo back
+        stream.SendTo(rid, parts[0])
+    }
+    ```
+
 ??? example "Full Sample Code -- Recv"
 
     | Language | Source |

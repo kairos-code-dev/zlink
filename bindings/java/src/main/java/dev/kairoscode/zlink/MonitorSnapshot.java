@@ -7,8 +7,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
 public record MonitorSnapshot(int sourceKind, int stateFlags, int detailFlags,
-                              int readyCount, long sndPendingMsgs,
-                              long rcvPendingMsgs) {
+                              long sndPendingMsgs, long rcvPendingMsgs) {
     public static MonitorSnapshot fromNative(MemorySegment segment) {
         return new MonitorSnapshot(
           segment.get(ValueLayout.JAVA_INT,
@@ -17,8 +16,6 @@ public record MonitorSnapshot(int sourceKind, int stateFlags, int detailFlags,
             NativeLayouts.MONITOR_SNAPSHOT_STATE_FLAGS_OFFSET),
           segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MONITOR_SNAPSHOT_DETAIL_FLAGS_OFFSET),
-          segment.get(ValueLayout.JAVA_INT,
-            NativeLayouts.MONITOR_SNAPSHOT_READY_COUNT_OFFSET),
           segment.get(ValueLayout.JAVA_LONG,
             NativeLayouts.MONITOR_SNAPSHOT_SND_PENDING_MSGS_OFFSET),
           segment.get(ValueLayout.JAVA_LONG,

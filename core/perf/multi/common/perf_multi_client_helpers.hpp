@@ -202,7 +202,7 @@ inline bool wait_all_client_connect_ready (std::vector<ready_monitor_t> &monitor
             deadline - now)
             .count ());
         if (!wait_for_socket_monitor_event (
-              monitors[i], ZLINK_EVENT_CONNECTION_READY_CHANGED, remaining_ms))
+              monitors[i], ZLINK_EVENT_CONNECTION_READY, remaining_ms))
             return false;
     }
 
@@ -306,7 +306,7 @@ inline bool create_client_sockets (
             const bool monitor_opened =
               open_configured_socket_monitor (
                 sock,
-                ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_BIND_FAILED
+                ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED
                   | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
                   | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
                   | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL

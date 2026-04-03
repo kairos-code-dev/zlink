@@ -36,6 +36,6 @@ int main ()
     assert (!client_monitor.try_recv ());
 
     std::printf (
-      "[monitor] event: \"CONNECTION_READY_CHANGED\" -> tryRecv: empty\n");
+      "[monitor] event: \"CONNECTION_READY\" -> tryRecv: empty\n");
     return 0;
 }

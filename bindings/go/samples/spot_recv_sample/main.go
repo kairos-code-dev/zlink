@@ -26,10 +26,10 @@ func main() {
 	samplecommon.MustStep("subscriber", err)
 	defer func() { samplecommon.MustStep("subscriber.Close", subscriber.Close()) }()
 
-	pubMon, err := publisher.MonitorOpen(zlink.ServiceMonitorEventSpotFirstDeliveryReadyChanged)
+	pubMon, err := publisher.MonitorOpen(zlink.ServiceMonitorEventConnectionReady)
 	samplecommon.MustStep("pubMon", err)
 	defer func() { samplecommon.MustStep("pubMon.Close", pubMon.Close()) }()
-	subMon, err := subscriber.MonitorOpen(zlink.ServiceMonitorEventSpotFilterApplied | zlink.ServiceMonitorEventSpotSubscriptionReadyChanged)
+	subMon, err := subscriber.MonitorOpen(zlink.ServiceMonitorEventSpotFilterApplied | zlink.ServiceMonitorEventConnectionReady)
 	samplecommon.MustStep("subMon", err)
 	defer func() { samplecommon.MustStep("subMon.Close", subMon.Close()) }()
 
@@ -44,14 +44,12 @@ func main() {
 	if filterEvent.Subject != topic {
 		samplecommon.Must(fmt.Errorf("unexpected filter subject %q", filterEvent.Subject))
 	}
-	readyEvent := samplecommon.WaitServiceEvent(subMon, zlink.ServiceMonitorEventSpotSubscriptionReadyChanged)
-	if readyEvent.Endpoint != endpoint {
-		samplecommon.Must(fmt.Errorf("unexpected subscription-ready endpoint %q", readyEvent.Endpoint))
-	}
+	readyEvent := samplecommon.WaitServiceEvent(subMon, zlink.ServiceMonitorEventConnectionReady)
+	_ = readyEvent
 	pubSnapshot, err := pubMon.Snapshot()
 	samplecommon.MustStep("pubMon.Snapshot", err)
-	if !pubSnapshot.IsSendReady() {
-		samplecommon.Must(fmt.Errorf("publisher spot monitor is not send-ready"))
+	if !pubSnapshot.IsReady() {
+		samplecommon.Must(fmt.Errorf("publisher spot monitor is not ready"))
 	}
 
 	samplecommon.MustStep("publisher.Publish", publisher.Publish(topic, samplecommon.Message(payload)))

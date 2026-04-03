@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/common/service_monitor.hpp"
+#include "services/control/service_control_runtime.hpp"
 
 #include "utils/random.hpp"
 
@@ -54,14 +55,14 @@ service_monitor_hub_t::service_monitor_hub_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _watcher_count (0),
     _next_id (generate_random ()),
-    _dispatch_stop (false),
-    _dispatch_thread_started (false)
+    _dispatch_task_id (0),
+    _dispatch_task_running (false)
 {
 }
 
 service_monitor_hub_t::~service_monitor_hub_t ()
 {
-    stop_dispatch_thread ();
+    stop_dispatch_task ();
     close_all ();
 }
 
@@ -178,7 +179,7 @@ void *service_monitor_hub_t::open (int events_)
     watcher.events = static_cast<uint32_t> (events_);
     watcher.endpoint = endpoint;
 
-    ensure_dispatch_thread_started ();
+    ensure_dispatch_task_started ();
 
     scoped_lock_t lock (_sync);
     _watchers.push_back (watcher);
@@ -205,19 +206,22 @@ void service_monitor_hub_t::emit_batch (const zlink_service_event_t *events_,
     if (_watcher_count.load (std::memory_order_acquire) == 0)
         return;
 
-    ensure_dispatch_thread_started ();
+    ensure_dispatch_task_started ();
 
     scoped_lock_t lock (_dispatch_sync);
-    if (_dispatch_stop)
-        return;
     for (size_t i = 0; i < count_; ++i)
         _dispatch_queue.push_back (events_[i]);
-    _dispatch_cv.broadcast ();
+
+    service_control_runtime_t *runtime =
+      _ctx ? _ctx->service_control_runtime () : NULL;
+    const uint64_t task_id = _dispatch_task_id;
+    if (runtime && task_id != 0)
+        runtime->wakeup_task (task_id);
 }
 
 void service_monitor_hub_t::close_all (const zlink_service_event_t *terminal_event_)
 {
-    stop_dispatch_thread ();
+    stop_dispatch_task ();
     std::vector<socket_base_t *> servers;
     {
         scoped_lock_t lock (_sync);
@@ -273,7 +277,7 @@ void service_monitor_hub_t::prune_closed_watchers ()
             zlink_monitor_snapshot_t snapshot;
             memset (&snapshot, 0, sizeof (snapshot));
             if (it->server->monitor_snapshot (&snapshot) == 0
-                && snapshot.ready_count == 0) {
+                && (snapshot.state_flags & ZLINK_MONITOR_STATE_READY) == 0) {
                 stale_servers.push_back (it->server);
                 it = _watchers.erase (it);
                 continue;
@@ -287,40 +291,56 @@ void service_monitor_hub_t::prune_closed_watchers ()
     close_monitor_servers (NULL, stale_servers, 0);
 }
 
-void service_monitor_hub_t::dispatch_thread_main (void *arg_)
+void service_monitor_hub_t::dispatch_task_main (void *arg_)
 {
-    static_cast<service_monitor_hub_t *> (arg_)->dispatch_loop ();
+    static_cast<service_monitor_hub_t *> (arg_)->dispatch_pending ();
 }
 
-void service_monitor_hub_t::ensure_dispatch_thread_started ()
+void service_monitor_hub_t::ensure_dispatch_task_started ()
 {
     scoped_lock_t lock (_dispatch_sync);
-    if (_dispatch_thread_started)
+    if (_dispatch_task_id != 0)
         return;
-    _dispatch_stop = false;
-    _dispatch_thread.start (&service_monitor_hub_t::dispatch_thread_main, this,
-                            "svc-monitor");
-    _dispatch_thread_started = true;
+
+    service_control_runtime_t *runtime =
+      _ctx ? _ctx->service_control_runtime () : NULL;
+    if (!runtime)
+        return;
+
+    const uint64_t task_id =
+      runtime->add_periodic_task (&service_monitor_hub_t::dispatch_task_main,
+                                  this, 10, false);
+    if (task_id == 0)
+        return;
+    _dispatch_task_id = task_id;
 }
 
-void service_monitor_hub_t::dispatch_loop ()
+void service_monitor_hub_t::dispatch_pending ()
 {
-    _dispatch_sync.lock ();
     while (true) {
-        if (_dispatch_stop)
-            break;
-        if (_dispatch_queue.empty ()) {
-            (void) _dispatch_cv.wait (&_dispatch_sync, -1);
-            continue;
+        zlink_service_event_t event;
+        {
+            scoped_lock_t lock (_dispatch_sync);
+            if (_dispatch_task_running)
+                return;
+            _dispatch_task_running = true;
+            if (_dispatch_queue.empty ()) {
+                _dispatch_task_running = false;
+                return;
+            }
+            event = _dispatch_queue.front ();
+            _dispatch_queue.pop_front ();
         }
 
-        zlink_service_event_t event = _dispatch_queue.front ();
-        _dispatch_queue.pop_front ();
-        _dispatch_sync.unlock ();
         dispatch_event (event);
-        _dispatch_sync.lock ();
+
+        {
+            scoped_lock_t lock (_dispatch_sync);
+            _dispatch_task_running = false;
+            if (_dispatch_queue.empty ())
+                return;
+        }
     }
-    _dispatch_sync.unlock ();
 }
 
 void service_monitor_hub_t::dispatch_event (const zlink_service_event_t &event_)
@@ -368,19 +388,21 @@ void service_monitor_hub_t::dispatch_event (const zlink_service_event_t &event_)
         payload.close ();
 }
 
-void service_monitor_hub_t::stop_dispatch_thread ()
+void service_monitor_hub_t::stop_dispatch_task ()
 {
+    uint64_t task_id = 0;
     {
         scoped_lock_t lock (_dispatch_sync);
-        _dispatch_stop = true;
         _dispatch_queue.clear ();
-        _dispatch_cv.broadcast ();
+        task_id = _dispatch_task_id;
+        _dispatch_task_id = 0;
+        _dispatch_task_running = false;
     }
 
-    if (_dispatch_thread_started) {
-        _dispatch_thread.stop ();
-        _dispatch_thread_started = false;
-    }
+    service_control_runtime_t *runtime =
+      _ctx ? _ctx->service_control_runtime () : NULL;
+    if (runtime && task_id != 0)
+        (void) runtime->remove_task (task_id);
 }
 
 bool service_monitor_hub_t::has_watchers () const

@@ -33,7 +33,6 @@ class ZlinkMonitorSnapshot(ctypes.Structure):
         ("source_kind", ctypes.c_uint32),
         ("state_flags", ctypes.c_uint32),
         ("detail_flags", ctypes.c_uint32),
-        ("ready_count", ctypes.c_uint32),
         ("snd_pending_msgs", ctypes.c_uint64),
         ("rcv_pending_msgs", ctypes.c_uint64),
     ]

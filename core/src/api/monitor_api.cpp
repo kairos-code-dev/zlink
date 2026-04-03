@@ -5,9 +5,10 @@
 #include "api/monitor_api_internal.hpp"
 
 #include <map>
-#include <thread>
 
 #include "api/socket_api_internal.hpp"
+#include "core/ctx.hpp"
+#include "services/control/service_control_runtime.hpp"
 #include "utils/mutex.hpp"
 
 namespace
@@ -30,8 +31,12 @@ void stop_monitor_handler_state (monitor_handler_state_t *state_)
         return;
 
     state_->stop.store (true, std::memory_order_release);
-    if (state_->worker.joinable ())
-        state_->worker.join ();
+    if (state_->socket) {
+        zlink::service_control_runtime_t *runtime =
+          state_->socket->get_ctx ()->service_control_runtime ();
+        if (runtime && state_->dispatch_task_id != 0)
+            (void) runtime->remove_task (state_->dispatch_task_id);
+    }
     delete state_;
 }
 
@@ -43,8 +48,12 @@ void stop_monitor_handler_worker (monitor_handler_state_t *state_)
     state_->stop.store (true, std::memory_order_release);
     if (state_->socket)
         state_->socket->stop ();
-    if (state_->worker.joinable ())
-        state_->worker.join ();
+    if (state_->socket) {
+        zlink::service_control_runtime_t *runtime =
+          state_->socket->get_ctx ()->service_control_runtime ();
+        if (runtime && state_->dispatch_task_id != 0)
+            (void) runtime->remove_task (state_->dispatch_task_id);
+    }
 }
 
 void erase_monitor_handler_state (zlink::socket_base_t *socket_,
@@ -74,113 +83,102 @@ void finalize_monitor_handler_self_close (monitor_handler_state_t *state_)
         socket->stop ();
         socket->close ();
     }
-    if (state_->worker.joinable ())
-        state_->worker.detach ();
     delete state_;
 }
 
-void monitor_handler_worker (monitor_handler_state_t *state_)
+void monitor_handler_task (void *arg_)
 {
+    monitor_handler_state_t *state_ =
+      static_cast<monitor_handler_state_t *> (arg_);
     if (!state_ || !state_->socket)
         return;
 
     void *monitor_socket = static_cast<void *> (state_->socket);
     while (!state_->stop.load (std::memory_order_acquire)) {
-        bool drained = false;
-        while (!state_->stop.load (std::memory_order_acquire)) {
-            if (!state_->service) {
-                zlink_monitor_event_t event;
-                const int rc = recv_socket_monitor_event_unchecked (
-                  monitor_socket, &event, ZLINK_DONTWAIT);
-                if (rc != 0)
+        if (!state_->service) {
+            zlink_monitor_event_t event;
+            const int rc = recv_socket_monitor_event_unchecked (
+              monitor_socket, &event, ZLINK_DONTWAIT);
+            if (rc != 0)
+                break;
+
+            zlink_monitor_handler_fn handler = NULL;
+            void *handler_userdata = NULL;
+            {
+                zlink::scoped_lock_t lock (state_->dispatch_sync);
+                if (state_->stop.load (std::memory_order_acquire)
+                    || state_->close_requested.load (
+                         std::memory_order_acquire)) {
                     break;
-                drained = true;
-
-                zlink_monitor_handler_fn handler = NULL;
-                void *handler_userdata = NULL;
-                {
-                    zlink::scoped_lock_t lock (state_->dispatch_sync);
-                    if (state_->stop.load (std::memory_order_acquire)
-                        || state_->close_requested.load (
-                             std::memory_order_acquire)) {
-                        break;
-                    }
-
-                    handler =
-                      state_->socket_handler.load (std::memory_order_acquire);
-                    if (!handler)
-                        break;
-
-                    handler_userdata = state_->socket_handler_userdata.load (
-                      std::memory_order_acquire);
-                    state_->callback_depth.fetch_add (
-                      1, std::memory_order_acq_rel);
                 }
-                if (handler) {
-                    monitor_handler_state_t *previous =
-                      g_current_monitor_handler_state;
-                    g_current_monitor_handler_state = state_;
-                    handler (&event, handler_userdata);
-                    const int depth_after =
-                      state_->callback_depth.fetch_sub (
-                        1, std::memory_order_acq_rel)
-                      - 1;
-                    g_current_monitor_handler_state = previous;
-                    if (state_->close_requested.load (std::memory_order_acquire)
-                        && depth_after == 0) {
-                        finalize_monitor_handler_self_close (state_);
-                        return;
-                    }
-                }
-            } else {
-                zlink_service_event_t event;
-                const int rc = recv_service_monitor_event_unchecked (
-                  monitor_socket, &event, ZLINK_DONTWAIT);
-                if (rc != 0)
+
+                handler =
+                  state_->socket_handler.load (std::memory_order_acquire);
+                if (!handler)
                     break;
-                drained = true;
 
-                zlink_service_monitor_handler_fn handler = NULL;
-                void *handler_userdata = NULL;
-                {
-                    zlink::scoped_lock_t lock (state_->dispatch_sync);
-                    if (state_->stop.load (std::memory_order_acquire)
-                        || state_->close_requested.load (
-                             std::memory_order_acquire)) {
-                        break;
-                    }
+                handler_userdata = state_->socket_handler_userdata.load (
+                  std::memory_order_acquire);
+                state_->callback_depth.fetch_add (
+                  1, std::memory_order_acq_rel);
+            }
+            monitor_handler_state_t *previous =
+              g_current_monitor_handler_state;
+            g_current_monitor_handler_state = state_;
+            handler (&event, handler_userdata);
+            const int depth_after =
+              state_->callback_depth.fetch_sub (
+                1, std::memory_order_acq_rel)
+              - 1;
+            g_current_monitor_handler_state = previous;
+            if (state_->close_requested.load (std::memory_order_acquire)
+                && depth_after == 0) {
+                finalize_monitor_handler_self_close (state_);
+                return;
+            }
+        } else {
+            zlink_service_event_t event;
+            const int rc = recv_service_monitor_event_unchecked (
+              monitor_socket, &event, ZLINK_DONTWAIT);
+            if (rc != 0)
+                break;
 
-                    handler =
-                      state_->service_handler.load (std::memory_order_acquire);
-                    if (!handler)
-                        break;
-
-                    handler_userdata =
-                      state_->service_handler_userdata.load (
-                        std::memory_order_acquire);
-                    state_->callback_depth.fetch_add (
-                      1, std::memory_order_acq_rel);
+            zlink_service_monitor_handler_fn handler = NULL;
+            void *handler_userdata = NULL;
+            {
+                zlink::scoped_lock_t lock (state_->dispatch_sync);
+                if (state_->stop.load (std::memory_order_acquire)
+                    || state_->close_requested.load (
+                         std::memory_order_acquire)) {
+                    break;
                 }
-                if (handler) {
-                    monitor_handler_state_t *previous =
-                      g_current_monitor_handler_state;
-                    g_current_monitor_handler_state = state_;
-                    handler (&event, handler_userdata);
-                    const int depth_after =
-                      state_->callback_depth.fetch_sub (
-                        1, std::memory_order_acq_rel)
-                      - 1;
-                    g_current_monitor_handler_state = previous;
-                    if (state_->close_requested.load (std::memory_order_acquire)
-                        && depth_after == 0) {
-                        finalize_monitor_handler_self_close (state_);
-                        return;
-                    }
-                }
+
+                handler =
+                  state_->service_handler.load (std::memory_order_acquire);
+                if (!handler)
+                    break;
+
+                handler_userdata =
+                  state_->service_handler_userdata.load (
+                    std::memory_order_acquire);
+                state_->callback_depth.fetch_add (
+                  1, std::memory_order_acq_rel);
+            }
+            monitor_handler_state_t *previous =
+              g_current_monitor_handler_state;
+            g_current_monitor_handler_state = state_;
+            handler (&event, handler_userdata);
+            const int depth_after =
+              state_->callback_depth.fetch_sub (
+                1, std::memory_order_acq_rel)
+              - 1;
+            g_current_monitor_handler_state = previous;
+            if (state_->close_requested.load (std::memory_order_acquire)
+                && depth_after == 0) {
+                finalize_monitor_handler_self_close (state_);
+                return;
             }
         }
-        if (!drained)
-            std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
 }
 }
@@ -356,8 +354,18 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
     state->snapshot_provider.store (snapshot_provider_,
                                     std::memory_order_release);
     state->snapshot_subject.store (snapshot_subject_, std::memory_order_release);
-    if ((socket_handler_ || service_handler_) && !state->worker.joinable ())
-        state->worker = std::thread (&monitor_handler_worker, state);
+    if ((socket_handler_ || service_handler_) && state->dispatch_task_id == 0) {
+        zlink::service_control_runtime_t *runtime =
+          socket_->get_ctx ()->service_control_runtime ();
+        if (!runtime) {
+            errno = ETERM;
+            return -1;
+        }
+        state->dispatch_task_id =
+          runtime->add_periodic_task (&monitor_handler_task, state, 10, true);
+        if (state->dispatch_task_id == 0)
+            return -1;
+    }
     return 0;
 }
 

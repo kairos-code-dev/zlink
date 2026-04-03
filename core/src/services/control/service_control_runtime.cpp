@@ -12,8 +12,10 @@
 
 namespace zlink
 {
-service_control_runtime_t::service_control_runtime_t (ctx_t *ctx_) :
+service_control_runtime_t::service_control_runtime_t (ctx_t *ctx_,
+                                                      const char *thread_name_) :
     _ctx (ctx_),
+    _thread_name (thread_name_ ? thread_name_ : "service-ctrl"),
     _next_task_id (1),
     _active_task_id (0),
     _running (false),
@@ -35,7 +37,7 @@ bool service_control_runtime_t::start ()
 
     _stopping = false;
     _active_task_id = 0;
-    _ctx->start_thread (_thread, run, this, "service-ctrl");
+    _ctx->start_thread (_thread, run, this, _thread_name);
     _running = true;
     return true;
 }

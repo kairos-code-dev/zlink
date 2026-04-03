@@ -41,8 +41,7 @@ spot_sub_t::spot_sub_t (spot_node_t *node_,
     _monitor_event_draining (false),
     _monitor_event_pending (0),
     _raw_monitor_socket (NULL),
-    _monitor_stop (0),
-    _monitor_thread_started (false)
+    _monitor_task_id (0)
 {
     memset (&_routing_id, 0, sizeof (_routing_id));
     initialize_routing_id (&_routing_id);

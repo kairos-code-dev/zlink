@@ -136,8 +136,7 @@ bool open_spot_pub_ready_probe (zlink::service_monitor_handle_t *monitor_out_,
 
     zlink::service_monitor_handle_t monitor (
       node_.handle (),
-      zlink::service_monitor_event::spot_pub_delivery_ready_changed
-        | zlink::service_monitor_event::spot_first_delivery_ready_changed
+      zlink::service_monitor_event::peer_up
         | zlink::service_monitor_event::error);
     if (!monitor.valid ())
         return false;
@@ -196,28 +195,15 @@ bool wait_for_spot_pub_ready (zlink::service_monitor_handle_t &monitor_,
             }
 
             if (event->event_type
-                    != static_cast<uint32_t> (
-                      zlink::service_monitor_event::spot_pub_delivery_ready_changed)
-                && event->event_type
-                     != static_cast<uint32_t> (
-                       zlink::service_monitor_event::spot_first_delivery_ready_changed)) {
+                != static_cast<uint32_t> (
+                  zlink::service_monitor_event::peer_up)) {
                 continue;
             }
-
-            if ((event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-                && std::strcmp (event->subject, k_topic) != 0) {
-                continue;
-            }
-
-            ready_count = event->value;
+            ++ready_count;
             if (perf_debug_enabled ()) {
-                const std::string subject =
-                  (event->detail_flags & ZLINK_EVENT_DETAIL_SUBJECT) != 0
-                    ? std::string (event->subject)
-                    : std::string ("<none>");
                 std::cerr << "spot server: ready event type="
-                          << event->event_type << " value=" << event->value
-                          << " subject=" << subject << std::endl;
+                          << event->event_type << " count=" << ready_count
+                          << std::endl;
             }
             if (ready_count >= min_value_)
                 return true;

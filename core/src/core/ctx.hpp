@@ -139,6 +139,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
     bool valid () const;
     service_control_runtime_t *service_control_runtime ();
+    service_control_runtime_t *service_data_runtime ();
 
   private:
     friend class ctx_bootstrap_t;

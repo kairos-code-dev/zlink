@@ -61,9 +61,9 @@ void run_pattern_pubsub (const std::string &transport,
     (void) publisher_socket.set (zlink::pub_options::nodrop, 1);
 
     zlink::monitor_handle_t pub_monitor (
-      publisher, zlink::monitor_event::pub_delivery_ready_changed);
+      publisher, zlink::monitor_event::connection_ready_changed);
     zlink::monitor_handle_t sub_monitor (
-      subscriber, zlink::monitor_event::sub_delivery_ready_changed);
+      subscriber, zlink::monitor_event::connection_ready_changed);
     if (!pub_monitor.valid () || !sub_monitor.valid ()) {
         perf::single::print_fail_result (lib_name, "PUBSUB", transport, msg_size);
         return;
@@ -83,18 +83,19 @@ void run_pattern_pubsub (const std::string &transport,
 
     if (!perf::single::wait_socket_monitor_event (
           sub_monitor,
-          static_cast<uint64_t> (zlink::monitor_event::sub_delivery_ready_changed),
-          1,
+          static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
+          -1,
           10000)
         || !perf::single::wait_socket_monitor_event (
           pub_monitor,
-          static_cast<uint64_t> (zlink::monitor_event::pub_delivery_ready_changed),
-          1,
+          static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed),
+          -1,
           10000)) {
         perf::single::print_fail_result (
           lib_name, "PUBSUB", transport, msg_size);
         return;
     }
+    perf::single::settle ();
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());

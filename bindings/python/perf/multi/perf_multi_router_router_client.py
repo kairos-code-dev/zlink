@@ -31,7 +31,7 @@ def main(argv=None):
                 sock.set_routing_id(f"CLIENT-{index}".encode("ascii"))
                 sock.router_options.connect_routing_id = b"SERVER"
                 sock.connect(args.endpoint)
-                wait_socket_event(sock, zlink.MonitorEvent.CONNECTION_READY_CHANGED)
+                wait_socket_event(sock, zlink.MonitorEvent.CONNECTION_READY)
 
             def worker(sock):
                 nonlocal count

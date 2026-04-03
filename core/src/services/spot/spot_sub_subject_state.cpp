@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_sub.hpp"
+#include "services/spot/spot_monitor_internal.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
@@ -348,41 +349,10 @@ void spot_sub_t::emit_filter_applied_event (const char *subject_,
     zlink_service_event_t event;
     {
         scoped_lock_t lock (_sync);
-        fill_subject_monitor_event (&event, ZLINK_SPOT_SUB_FILTER_APPLIED,
+        fill_subject_monitor_event (&event,
+                                    zlink_spot_monitor_event_sub_filter_applied,
                                     _routing_id, NULL, subject_,
                                     subject_kind_, 0);
-    }
-    emit_monitor_event (event);
-}
-
-void spot_sub_t::emit_subscription_ready_event (const char *endpoint_,
-                                                const char *subject_,
-                                                uint32_t subject_kind_,
-                                                uint32_t ready_count_)
-{
-    zlink_service_event_t event;
-    {
-        scoped_lock_t lock (_sync);
-        fill_subject_monitor_event (&event,
-                                    ZLINK_SPOT_MONITOR_EVENT_SUBSCRIPTION_READY_CHANGED,
-                                    _routing_id, endpoint_, subject_,
-                                    subject_kind_, ready_count_);
-    }
-    emit_monitor_event (event);
-}
-
-void spot_sub_t::emit_delivery_ready_changed_event (const char *subject_,
-                                                    uint32_t subject_kind_,
-                                                    uint32_t ready_,
-                                                    const char *endpoint_)
-{
-    zlink_service_event_t event;
-    {
-        scoped_lock_t lock (_sync);
-        fill_subject_monitor_event (&event,
-                                    ZLINK_SPOT_MONITOR_EVENT_SUB_DELIVERY_READY_CHANGED,
-                                    _routing_id, endpoint_, subject_,
-                                    subject_kind_, ready_);
     }
     emit_monitor_event (event);
 }
@@ -397,8 +367,6 @@ void spot_sub_t::mark_subject_subscription_ready (
 
     if (!endpoint_ || endpoint_[0] == '\0' || !_node) {
         mark_subject_ready (subject_, endpoint_);
-        emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
-                                       subject_.subject_kind, 1);
         return;
     }
 
@@ -422,8 +390,6 @@ void spot_sub_t::mark_subject_subscription_ready (
     }
     if (already_acked) {
         mark_subject_ready (subject_, endpoint_);
-        emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
-                                       subject_.subject_kind, 1);
         return;
     }
 
@@ -438,8 +404,6 @@ void spot_sub_t::mark_subject_subscription_ready (
     }
 
     mark_subject_ready (subject_, endpoint_);
-    emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
-                                   subject_.subject_kind, 1);
 }
 
 std::string spot_sub_t::first_ready_peer_endpoint () const
@@ -518,11 +482,7 @@ void spot_sub_t::mark_subject_ready (const subject_descriptor_t &subject_,
         _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
 
-    emit_delivery_ready_changed_event (subject_.subject.c_str (),
-                                       subject_.subject_kind, 1,
-                                       endpoint_value.empty ()
-                                         ? NULL
-                                         : endpoint_value.c_str ());
+    LIBZLINK_UNUSED (endpoint_value);
 }
 
 void spot_sub_t::backfill_subject_ready_endpoint (
@@ -562,8 +522,7 @@ void spot_sub_t::backfill_subject_ready_endpoint (
     if (!emit)
         return;
 
-    emit_delivery_ready_changed_event (subject_.subject.c_str (),
-                                       subject_.subject_kind, 1, endpoint_);
+    LIBZLINK_UNUSED (endpoint_);
 }
 
 void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
@@ -591,10 +550,7 @@ void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
         _node->_summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
 
-    emit_subscription_ready_event (endpoint_, subject_.subject.c_str (),
-                                   subject_.subject_kind, 0);
-    emit_delivery_ready_changed_event (subject_.subject.c_str (),
-                                       subject_.subject_kind, 0, endpoint_);
+    LIBZLINK_UNUSED (endpoint_);
 }
 
 void spot_sub_t::mark_all_subjects_lost (const char *endpoint_)

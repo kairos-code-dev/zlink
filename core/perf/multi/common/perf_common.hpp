@@ -134,8 +134,6 @@ inline long remaining_milliseconds (const steady_clock_t::time_point &deadline,
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
 static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
 static const std::vector<std::string> STREAM_TRANSPORTS = {"tcp", "tls", "ws", "wss"};
-static const int SETTLE_TIME_MS = 300;
-
 inline const char *resolve_multi_named_env_value (const char *name_)
 {
     if (!name_ || !*name_)
@@ -513,7 +511,7 @@ inline void connect_monitor_handler(const zlink_monitor_event_t *event_,
     {
         std::lock_guard<std::mutex> lock(state->sync);
         switch (event_->event) {
-            case ZLINK_EVENT_CONNECTION_READY_CHANGED:
+            case ZLINK_EVENT_CONNECTION_READY:
                 ++state->connection_ready_count;
                 break;
 
@@ -557,7 +555,7 @@ inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
     zlink_socket_monitor_open_options_t monitor_opts;
     memset(&monitor_opts, 0, sizeof(monitor_opts));
     monitor_opts.events =
-      ZLINK_EVENT_CONNECTION_READY_CHANGED | ZLINK_EVENT_BIND_FAILED
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED
       | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
       | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
       | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
@@ -689,11 +687,7 @@ inline bool socket_monitor_event_ready(
   const zlink_socket_monitor_event_t &event_,
   uint64_t success_event_)
 {
-    if (event_.event != success_event_)
-        return false;
-    if (success_event_ == ZLINK_EVENT_CONNECTION_READY_CHANGED)
-        return true;
-    return event_.value > 0;
+    return event_.event == success_event_;
 }
 
 inline bool wait_for_socket_monitor_event(ready_monitor_t &monitor_,
@@ -783,7 +777,7 @@ inline bool wait_for_service_monitor_event(ready_monitor_t &monitor_,
                     break;
                 return false;
             }
-            if (event.event_type == success_event_ && event.value > 0)
+            if (event.event_type == success_event_)
                 return true;
             if (error_event_ != 0 && event.event_type == error_event_) {
                 errno = event.error_code != 0 ? event.error_code : EIO;
@@ -1147,10 +1141,6 @@ inline bool transport_available(const std::string& transport) {
     return true;
 }
 
-inline void settle() {
-    std::this_thread::sleep_for(milliseconds_t(SETTLE_TIME_MS));
-}
-
 inline bool connect_checked(void *socket_,
                            const std::string& endpoint,
                            const std::string& transport = std::string()) {
@@ -1164,25 +1154,6 @@ inline bool connect_checked(void *socket_,
     if (bench_debug_enabled()) {
         std::cerr << "Connected to " << endpoint << std::endl;
     }
-    return true;
-}
-
-inline bool setup_connected_pair(void *bind_socket_,
-                                 void *connect_socket_,
-                                 const std::string &transport_,
-                                 const std::string &id_) {
-    if (!setup_tls_server(bind_socket_, transport_)
-        || !setup_tls_client(connect_socket_, transport_))
-        return false;
-
-    std::string endpoint =
-      bind_and_resolve_endpoint(bind_socket_, transport_, id_);
-    if (endpoint.empty())
-        return false;
-    if (!connect_checked(connect_socket_, endpoint))
-        return false;
-
-    settle();
     return true;
 }
 

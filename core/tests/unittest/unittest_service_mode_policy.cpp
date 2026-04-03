@@ -6,10 +6,7 @@
 #include "services/discovery/discovery_protocol.hpp"
 
 #include <cerrno>
-#include <chrono>
-#include <condition_variable>
 #include <cstring>
-#include <mutex>
 #include <sstream>
 #include <string>
 
@@ -60,83 +57,6 @@ int current_process_id ()
 #else
     return static_cast<int> (_getpid ());
 #endif
-}
-
-struct spot_ready_probe_t
-{
-    spot_ready_probe_t () :
-        sub_filter_applied (false),
-        sub_delivery_ready (false),
-        pub_first_ready (false),
-        error_code (0)
-    {
-    }
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool sub_filter_applied;
-    bool sub_delivery_ready;
-    bool pub_first_ready;
-    int error_code;
-};
-
-void spot_sub_monitor_handler (const zlink_service_event_t *event_, void *userdata_)
-{
-    spot_ready_probe_t *probe =
-      static_cast<spot_ready_probe_t *> (userdata_);
-    if (!probe || !event_)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock (probe->mutex);
-        if (event_->event_type == ZLINK_SPOT_SUB_FILTER_APPLIED)
-            probe->sub_filter_applied = true;
-        else if (event_->event_type == ZLINK_MONITOR_EVENT_PEER_UP)
-            probe->sub_delivery_ready = true;
-        else if (event_->event_type == ZLINK_MONITOR_EVENT_ERROR
-                 && probe->error_code == 0)
-            probe->error_code = event_->error_code != 0 ? event_->error_code : EIO;
-    }
-
-    probe->cv.notify_all ();
-}
-
-void spot_pub_monitor_handler (const zlink_service_event_t *event_, void *userdata_)
-{
-    spot_ready_probe_t *probe =
-      static_cast<spot_ready_probe_t *> (userdata_);
-    if (!probe || !event_)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock (probe->mutex);
-        if (event_->event_type == ZLINK_MONITOR_EVENT_PEER_UP)
-            probe->pub_first_ready = true;
-        else if (event_->event_type == ZLINK_MONITOR_EVENT_ERROR
-                 && probe->error_code == 0)
-            probe->error_code = event_->error_code != 0 ? event_->error_code : EIO;
-    }
-
-    probe->cv.notify_all ();
-}
-
-bool wait_for_spot_ready_flag (spot_ready_probe_t *probe_,
-                               bool spot_ready_probe_t::*member_,
-                               int timeout_ms_)
-{
-    std::unique_lock<std::mutex> lock (probe_->mutex);
-    if (probe_->error_code != 0)
-        return false;
-    if (probe_->*member_)
-        return true;
-
-    return probe_->cv.wait_for (
-      lock,
-      std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
-      [probe_, member_] () {
-          return probe_->error_code != 0 || probe_->*member_;
-      })
-           && probe_->error_code == 0 && probe_->*member_;
 }
 
 std::string bind_spot_test_endpoint (void *node_)

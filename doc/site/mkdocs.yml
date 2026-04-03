@@ -68,11 +68,19 @@ plugins:
             Thread Safety: 스레드 안전성
             Socket Options: 소켓 옵션
             API Reference: API 레퍼런스
-            C API: C API
-            Binding API: 바인딩 API
+            Context: 컨텍스트
+            Message: 메시지
+            Events: 이벤트
+            Polling: 폴링
+            Errors: 에러
+            Utilities: 유틸리티
+            Discovery: 디스커버리
             Internals: 내부 구조
             Architecture: 아키텍처
             Threading Model: 스레딩 모델
+            Design Decisions: 설계 결정
+            POSD Module Structure: POSD 모듈 구조
+            Services Internals: 서비스 내부
             Stream Socket: 스트림 소켓
             Protocol ZMP: ZMP 프로토콜
             Protocol Raw: Raw 프로토콜
@@ -104,15 +112,24 @@ nav:
     - Thread Safety: guide/11-thread-safety.md
     - Socket Options: guide/12-socket-options.md
   - API Reference:
+    - Context: api/context.md
     - Socket: api/socket.md
+    - Message: api/message.md
     - Events: api/events.md
     - Monitoring: api/monitoring.md
+    - Polling: api/polling.md
+    - Errors: api/errors.md
+    - Utilities: api/utilities.md
+    - Discovery: api/discovery.md
     - SPOT: api/spot.md
     - Registry: api/registry.md
   - Internals:
     - Architecture: internals/architecture.md
     - Threading Model: internals/threading-model.md
     - Thread Safety: internals/thread-safety.md
+    - Design Decisions: internals/design-decisions.md
+    - POSD Module Structure: internals/posd-module-structure.md
+    - Services Internals: internals/services-internals.md
     - Stream Socket: internals/stream-socket.md
     - Socket Options: internals/socket-option-defaults.md
     - Protocol ZMP: internals/protocol-zmp.md

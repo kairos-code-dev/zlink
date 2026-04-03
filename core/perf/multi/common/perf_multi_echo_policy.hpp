@@ -10,6 +10,15 @@
 
 namespace perf_multi_echo_policy {
 
+inline int echo_poll_slice_ms ()
+{
+    return resolve_multi_int_env_with_fallback (
+      "PERF_MULTI_ECHO_POLL_SLICE_MS",
+      "PERF_ECHO_POLL_SLICE_MS",
+      10,
+      1);
+}
+
 // Structural contract:
 // - state: fatal, fatal_errno, collect_active, active_run_id,
 //          active_msg_size, active_received
@@ -170,7 +179,10 @@ inline bool echo_start_phase_requests (State *state,
             break;
 
         bool progressed = false;
-        if (!service_fn (state, remaining_ms, &progressed))
+        if (!service_fn (
+              state,
+              std::min (remaining_ms, echo_poll_slice_ms ()),
+              &progressed))
             return false;
     }
 
@@ -200,7 +212,10 @@ inline bool echo_wait_phase_duration (State *state,
             break;
 
         bool progressed = false;
-        if (!service_fn (state, remaining_ms, &progressed))
+        if (!service_fn (
+              state,
+              std::min (remaining_ms, echo_poll_slice_ms ()),
+              &progressed))
             return false;
     }
 

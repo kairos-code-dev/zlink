@@ -167,7 +167,7 @@ bool run_recv_duration (const std::vector<void *> &sockets,
         const int poll_rc =
           zlink_poller_wait_all (poller, events.empty () ? NULL : &events[0],
                                  static_cast<int> (events.size ()),
-                                 std::max (1, timeout_ms));
+                                 timeout_ms > 5 ? 5 : std::max (1, timeout_ms));
         if (poll_rc < 0) {
             const int err = zlink_errno ();
             if (err == EINTR || err == EAGAIN)
@@ -222,8 +222,7 @@ bool run_recv_duration (const std::vector<void *> &sockets,
             }
         }
 
-        if (!progressed
-            && perf_socket_poll (NULL, 0, perf_aux_poll_wait_ms ()) < 0
+        if (!progressed && perf_socket_poll (NULL, 0, 1) < 0
             && zlink_errno () != EINTR) {
             return false;
         }

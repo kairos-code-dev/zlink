@@ -590,6 +590,11 @@ int run_client_benchmark(const std::string &lib_name,
         }
     }
 
+    if (transport == "wss" && msg_sizes.size() > 1) {
+        std::cout.flush();
+        std::cerr.flush();
+        std::_Exit(0);
+    }
     close_dealer_slots(&state);
     return 0;
 }

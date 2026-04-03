@@ -2791,6 +2791,17 @@ def run_sizes_test(
     result_line_callback=None,
 ):
     size_list = list(sizes) if sizes else [64]
+    split_size_transition_ms = max(
+        0,
+        parse_env_int(
+            "PERF_MULTI_SIZE_TRANSITION_MS",
+            3000
+            if transport.lower() == "wss"
+            and normalize_multi_pattern_name(pattern_name)
+            in ("DEALER_ROUTER", "ROUTER_ROUTER")
+            else 0,
+        ),
+    )
 
     if pattern_name in STREAM_VARIANT_PATTERNS:
         server_binary = resolve_stream_server_binary(pattern_name)
@@ -2865,7 +2876,7 @@ def run_sizes_test(
         "reason": "",
         "warnings": [],
     }
-    for size in size_list:
+    for size_index, size in enumerate(size_list):
         isolated = run_one_size_case(size)
         merged["warnings"].extend(isolated.get("warnings", []))
         merged["parsed"].update(isolated.get("parsed", {}))
@@ -2891,6 +2902,12 @@ def run_sizes_test(
             reason = isolated.get("reason", "size_case_failed")
             merged["reason"] = f"{reason}_size_{size}"
             return merged
+
+        if (
+            split_size_transition_ms > 0
+            and (size_index + 1) < len(size_list)
+        ):
+            time.sleep(split_size_transition_ms / 1000.0)
 
     return merged
 

@@ -361,7 +361,6 @@ RegistryQueryClient (원격 토폴로지 조회)
 | `peersSnapshot` | Y |
 | `peersQuery` | Y |
 | `subjectsSnapshot` | Y |
-| `monitorOpen` | Y (ServiceMonitor 반환) |
 | `close` | Y |
 
 - SpotNode는 data plane API(`send`/`recv`/`publish`/`subscribe`)를 직접
@@ -378,7 +377,6 @@ RegistryQueryClient (원격 토폴로지 조회)
 | `setSubscription` / `unsetSubscription` | Y |
 | `onSubscribe` | Y |
 | `onSendReady` | Y |
-| `monitorOpen` | Y (ServiceMonitor 반환) |
 | `close` | Y |
 
 - Spot은 소켓 타입이 아니라 SpotNode 위에 올라가는 pub/sub facade다.
@@ -440,7 +438,9 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Discovery와 별개로 사용할 수 있다.
 
 ### Service Monitor Policy
-- SpotNode, Spot, Discovery는 ServiceMonitor를 열 수 있다.
+- Discovery만 ServiceMonitor를 열 수 있다.
+- SPOT(SpotNode, Spot)은 ServiceMonitor를 노출하지 않는다.
+  SPOT 관찰은 `statusSnapshot`, `peersSnapshot`, `subjectsSnapshot` API를 사용한다.
 - ServiceMonitor는 소켓의 SocketMonitor와 별도 타입이다.
 - ServiceMonitor API:
   - `recv()` / `tryRecv()`: blocking/non-blocking event 수신
@@ -455,14 +455,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 - SocketMonitor callback 해제 정책도 동일하다.
   - SocketMonitor는 callback 등록 API가 없으면 해당 없음
   - callback 등록 API가 있는 경우 `close()`로만 해제한다
-- ServiceMonitor event 종류:
-  - Discovery 계열: `readyChanged`, `error`, `serviceUp`, `serviceDown`,
-    `providersChanged`, `closed`
-  - Spot 계열: `readyChanged`, `peerUp`, `peerDown`, `error`,
-    `subFilterApplied`, `subscriptionReadyChanged`,
-    `pubQueueFull`, `pubQueueDrained`, `closed`,
-    `pubDeliveryReadyChanged`, `subDeliveryReadyChanged`,
-    `pubFirstDeliveryReadyChanged`
+- ServiceMonitor event 종류 (Discovery 전용):
+  - `error`, `serviceUp`, `serviceDown`, `providersChanged`, `closed`
 
 ### Service Layer Domain Objects
 - 서비스 계층도 domain object를 사용해야 한다.
@@ -511,14 +505,12 @@ RegistryQueryClient (원격 토폴로지 조회)
 | SpotNode | `peersSnapshot` | peer 목록 스냅샷 |
 | SpotNode | `peersQuery` | peer 필터 조회 |
 | SpotNode | `subjectsSnapshot` | subject 목록 스냅샷 |
-| SpotNode | `monitorOpen` | ServiceMonitor 열기 |
 | SpotNode | `close` | 노드 종료 |
 | Spot | `publish` / `tryPublish` | 토픽 발행 |
 | Spot | `subscribe` / `trySubscribe` | 토픽 구독 수신 |
 | Spot | `setSubscription` / `unsetSubscription` | 구독 필터 관리 |
 | Spot | `onSubscribe` | 구독 수신 callback |
 | Spot | `onSendReady` | send ready callback |
-| Spot | `monitorOpen` | ServiceMonitor 열기 |
 | Spot | `close` | facade 종료 |
 | Discovery | `connectRegistry` | Registry에 연결 |
 | Discovery | `setValue` / `getValue` | 서비스 값 설정/조회 |
@@ -558,8 +550,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Discovery capability matrix 정렬 확인
 - Registry capability matrix 정렬 확인 (구현된 경우)
 - RegistryQueryClient capability matrix 정렬 확인 (구현된 경우)
-- ServiceMonitor canonical surface 존재 확인 (`recv`, `tryRecv`, `onEvent`,
-  `snapshot`)
+- ServiceMonitor canonical surface 존재 확인 — Discovery 전용 (`recv`,
+  `tryRecv`, `onEvent`, `snapshot`)
 - typed domain object 존재 확인 (ServiceEvent, SpotNodeStatus,
   MemberPeerEntry 등)
 - typed enum 존재 확인 (ServiceType, ServiceRole, SpotNodeState 등)
@@ -571,7 +563,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Discovery close 시 연결된 participant(SpotNode 등) 종료 확인
 - Registry: create/bind/close lifecycle 누수 없음 (구현된 경우)
 - RegistryQueryClient: create/connect/close lifecycle (구현된 경우)
-- ServiceMonitor: open/close lifecycle 누수 없음
+- ServiceMonitor: open/close lifecycle 누수 없음 (Discovery 전용)
 - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
 
 #### Service Layer Behavior Tests
@@ -595,12 +587,10 @@ RegistryQueryClient (원격 토폴로지 조회)
   (Discovery 지원 시)
 
 #### Service Layer Monitor Tests
-- ServiceMonitor blocking recv 성공 경로
-- ServiceMonitor non-blocking tryRecv empty 경로
-- ServiceMonitor onEvent callback 호출 확인
-- ServiceMonitor snapshot 상태 반환 확인
-- SpotNode monitor: peerUp/peerDown event 수신 확인
-- Spot monitor: readyChanged event 수신 확인
+- ServiceMonitor blocking recv 성공 경로 (Discovery 전용)
+- ServiceMonitor non-blocking tryRecv empty 경로 (Discovery 전용)
+- ServiceMonitor onEvent callback 호출 확인 (Discovery 전용)
+- ServiceMonitor snapshot 상태 반환 확인 (Discovery 전용)
 - Discovery monitor: serviceUp/serviceDown event 수신 확인 (Discovery
   지원 시)
 
@@ -646,7 +636,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Discovery | 해당 바인딩에 discovery 지원이 있으면 Required |
 | Registry | Target (서버 측 컴포넌트, 전체 바인딩 필수 아님) |
 | RegistryQueryClient | Target (조회 전용 클라이언트) |
-| ServiceMonitor | SpotNode/Spot/Discovery 지원 시 Required |
+| ServiceMonitor | Discovery 지원 시 Required (SPOT은 ServiceMonitor 미사용) |
 
 ### Callback API Policy
 - callback 등록 API는 각 소켓 타입의 capability에 따라 노출한다.

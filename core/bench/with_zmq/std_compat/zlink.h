@@ -786,10 +786,12 @@ inline void *zlink_service_monitor_open (
 }
 
 inline int zlink_service_monitor_recv (void *monitor_,
-                                       zlink_service_monitor_event_t *out_)
+                                       zlink_service_monitor_event_t *out_,
+                                       zlink_send_flags_t flags_)
 {
     (void) monitor_;
     (void) out_;
+    (void) flags_;
     errno = ENOTSUP;
     return -1;
 }
@@ -1000,8 +1002,10 @@ inline int zlink_socket_monitor_handler (
 }
 
 inline int zlink_socket_monitor_recv (void *monitor_,
-                                      zlink_socket_monitor_event_t *out_)
+                                      zlink_socket_monitor_event_t *out_,
+                                      zlink_send_flags_t flags_)
 {
+    (void) flags_;
     return zlink_recv_monitor_event_raw (
       static_cast<zlink_monitor_handle_t *> (monitor_), out_);
 }

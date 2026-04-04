@@ -444,7 +444,8 @@ int main (int argc, char **argv)
           | (pending_stream_send_count () > 0 ? ZLINK_POLLOUT : 0));
         item.revents = 0;
 
-        const int poll_rc = perf_socket_poll (&item, 1, 5);
+        const int poll_rc =
+          perf_socket_poll (&item, 1, perf_aux_poll_wait_ms ());
         if (poll_rc < 0) {
             if (zlink_errno () == EINTR || zlink_errno () == EAGAIN)
                 continue;

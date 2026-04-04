@@ -36,7 +36,6 @@ using perf_multi_client::close_client_sockets;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::resolve_case_msg_sizes;
-using perf_multi_client::wait_all_client_connect_ready;
 
 inline void on_signal (int)
 {

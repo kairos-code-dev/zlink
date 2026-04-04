@@ -104,62 +104,6 @@ bool wait_for_start_signal (size_t msg_size, int timeout_ms)
     return true;
 }
 
-inline bool wait_for_pub_delivery_ready_count (ready_monitor_t &monitor,
-                                               size_t expected_count,
-                                               int timeout_ms)
-{
-    if (!monitor.monitor)
-        return false;
-    if (expected_count == 0)
-        return true;
-
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (std::max (1, timeout_ms));
-
-    while (std::chrono::steady_clock::now () < deadline
-           && !perf_stop_requested ().load (std::memory_order_acquire)) {
-        zlink_pollitem_t item = {monitor.monitor, 0, ZLINK_POLLIN, 0};
-        const long timeout_left_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            deadline - std::chrono::steady_clock::now ())
-            .count ();
-        const int poll_rc = perf_socket_poll (
-          &item, 1, timeout_left_ms > 0 ? timeout_left_ms : 1);
-        if (poll_rc < 0) {
-            if (zlink_errno () == EINTR)
-                continue;
-            return false;
-        }
-        if (poll_rc == 0 || (item.revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        for (;;) {
-            zlink_socket_monitor_event_t event;
-            if (zlink_socket_monitor_recv (monitor.monitor, &event) != 0) {
-                const int err = zlink_errno ();
-                if (err == EAGAIN || err == EINTR)
-                    break;
-                return false;
-            }
-            if (event.event == ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED
-                && event.value >= expected_count) {
-                return true;
-            }
-            if (is_socket_monitor_error_event (event.event)) {
-                errno = event.value > 0 ? static_cast<int> (event.value) : EIO;
-                return false;
-            }
-        }
-    }
-
-    if (bench_debug_enabled ()) {
-        std::cerr << "[multi-pubsub-server] pub delivery ready timeout expected="
-                  << expected_count << std::endl;
-    }
-    return false;
-}
-
 inline bool publish_once (void *server,
                           std::vector<char> &payload,
                           size_t current_msg_size,
@@ -457,25 +401,11 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    ready_monitor_t server_monitor;
-    if (!open_configured_socket_monitor (
-          server,
-          ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED | ZLINK_EVENT_BIND_FAILED
-            | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
-            | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-            | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-            | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
-          &server_monitor)) {
-        zlink_close (server);
-        return 1;
-    }
-
     const std::string endpoint = bind_server_endpoint (
       server,
       transport,
       lib_name + std::string ("_") + k_token + "_server");
     if (endpoint.empty ()) {
-        close_ready_monitor (server_monitor);
         zlink_close (server);
         return 1;
     }
@@ -530,7 +460,6 @@ inline int run_server_benchmark (const std::string &lib_name,
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     std::cout << "READY," << endpoint << std::endl;
-    close_ready_monitor (server_monitor);
 
     const bool loop_ok = run_server_loop (
       server,

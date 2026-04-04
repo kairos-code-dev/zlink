@@ -849,7 +849,7 @@ def build_effective_option_items(
     hwm = parse_env_int_any(["PERF_SINGLE_HWM"], 1000)
     sndhwm = parse_env_int_any(["PERF_SINGLE_SNDHWM"], hwm)
     rcvhwm = parse_env_int_any(["PERF_SINGLE_RCVHWM"], hwm)
-    io_threads = parse_env_int_any(["PERF_IO_THREADS", "BENCH_IO_THREADS"], 0)
+    io_threads = parse_env_int_any(["PERF_IO_THREADS", "BENCH_IO_THREADS"], 1)
     xpub_nodrop = parse_env_int_any(["PERF_SINGLE_PUBSUB_XPUB_NODROP"], 1)
 
     items: List[Tuple[str, str]] = [

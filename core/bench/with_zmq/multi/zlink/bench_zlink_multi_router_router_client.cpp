@@ -33,7 +33,6 @@ using perf_multi_client::send_blocked;
 using perf_multi_client::send_error;
 using perf_multi_client::send_ok;
 using perf_multi_client::send_status_t;
-using perf_multi_client::wait_all_client_connect_ready;
 
 struct router_client_slot_t
 {

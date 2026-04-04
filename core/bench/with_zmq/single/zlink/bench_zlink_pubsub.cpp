@@ -37,12 +37,30 @@ inline void *open_pubsub_monitor (void *socket_, uint64_t events_)
     return monitor;
 }
 
+inline bool is_pubsub_monitor_error_event (uint64_t event_)
+{
+    switch (event_) {
+        case ZLINK_EVENT_BIND_FAILED:
+        case ZLINK_EVENT_ACCEPT_FAILED:
+        case ZLINK_EVENT_CLOSE_FAILED:
+        case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
+        case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
+        case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 inline bool pubsub_monitor_ready (
   const zlink_socket_monitor_event_t &event_,
   uint64_t success_event_)
 {
     if (event_.event != success_event_)
         return false;
+    if (success_event_ == ZLINK_EVENT_CONNECTION_READY)
+        return true;
     return event_.value > 0;
 }
 
@@ -75,13 +93,19 @@ inline bool wait_for_pubsub_monitor_event (void *monitor_,
 
         for (;;) {
             zlink_socket_monitor_event_t event;
-            if (zlink_socket_monitor_recv (monitor_, &event) != 0) {
+            if (zlink_socket_monitor_recv (
+                  monitor_, &event, ZLINK_DONTWAIT)
+                != 0) {
                 if (errno == EAGAIN || errno == EINTR)
                     break;
                 return false;
             }
             if (pubsub_monitor_ready (event, success_event_))
                 return true;
+            if (is_pubsub_monitor_error_event (event.event)) {
+                errno = event.value > 0 ? static_cast<int> (event.value) : EIO;
+                return false;
+            }
         }
     }
 
@@ -96,6 +120,11 @@ inline bool setup_connected_pubsub_pair (void *pub_socket_,
     if (!pub_socket_ || !sub_socket_)
         return false;
 
+    if (!setup_tls_server (pub_socket_, transport_)
+        || !setup_tls_client (sub_socket_, transport_)) {
+        return false;
+    }
+
     apply_single_hwm (pub_socket_);
     apply_single_hwm (sub_socket_);
 
@@ -108,11 +137,11 @@ inline bool setup_connected_pubsub_pair (void *pub_socket_,
         return false;
 
     void *sub_monitor = open_pubsub_monitor (
-      sub_socket_, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED);
+      sub_socket_, ZLINK_EVENT_CONNECTION_READY);
     if (!sub_monitor)
         return false;
     void *pub_monitor = open_pubsub_monitor (
-      pub_socket_, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED);
+      pub_socket_, ZLINK_EVENT_CONNECTION_READY);
     if (!pub_monitor) {
         zlink_monitor_close (&sub_monitor);
         return false;
@@ -130,11 +159,13 @@ inline bool setup_connected_pubsub_pair (void *pub_socket_,
     const int timeout_ms =
       parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000);
     const bool sub_ready = wait_for_pubsub_monitor_event (
-      sub_monitor, ZLINK_EVENT_SUB_DELIVERY_READY_CHANGED, timeout_ms);
+      sub_monitor, ZLINK_EVENT_CONNECTION_READY, timeout_ms);
     const bool pub_ready = wait_for_pubsub_monitor_event (
-      pub_monitor, ZLINK_EVENT_PUB_DELIVERY_READY_CHANGED, timeout_ms);
+      pub_monitor, ZLINK_EVENT_CONNECTION_READY, timeout_ms);
     zlink_monitor_close (&pub_monitor);
     zlink_monitor_close (&sub_monitor);
+    if (sub_ready && pub_ready)
+        std::this_thread::sleep_for (std::chrono::seconds (1));
     return sub_ready && pub_ready;
 }
 

@@ -128,6 +128,41 @@ multi 벤치는 실제 비교에 사용하는 split client/server 경로만 공�
 - 공식 비교에 쓰이지 않는 standalone multi 실험 코드는 `with_zmq` 공식 비교
   표면에 두지 않는다.
 
+## Multi 측정 계약
+
+`with_zmq` multi 측정 계약은 `core/perf` 의 공식 split-process 측정 방식과
+같은 단계로 본다.
+
+- 측정은 항상 split server/client 프로세스로 수행한다.
+- size sweep 는 size-isolated 실행으로 처리한다.
+  각 size 는 독립 프로세스 수명에서 측정하고 다음 size 로 넘어간다.
+- warmup 과 active duration 은 `core/perf` 와 같은 의미를 유지한다.
+  warmup 구간은 throughput 집계에서 제외하고 active 구간만 결과로 쓴다.
+- runner 는 server `READY,<endpoint>` 이후 client 를 붙이고,
+  client `CLIENT_READY,<size>` 이후 `START,<size>` 를 보내는 explicit
+  start gate 를 사용한다.
+- 즉 연결 준비와 측정 시작은 구분한다.
+  connect 완료를 확인하는 보조 절차는 있을 수 있지만, 최종 집계 기준은
+  explicit size start gate 다.
+- one-way 패턴은 phase-aware payload (`warmup -> active`) 기준으로 집계한다.
+- echo 패턴은 active window 동안의 request/reply completion 만 집계한다.
+- `with_zmq` multi 는 recv 기반 비교 surface 이다.
+  callback 기반 stream/spot 변형은 공식 비교 surface 가 아니다.
+- 따라서 `with_zmq` 결과를 `core/perf` 와 비교할 때는
+  split-process, size-isolated, recv-only 계약이 동일하다고 가정한다.
+
+## perf 정합성
+
+`core/perf` 에서 측정 절차가 바뀌면 `core/bench/with_zmq/` 도 같은 benchmark
+계약을 따라야 한다.
+
+- zlink 쪽만 바꾸고 zmq 쪽을 그대로 두면 안 된다.
+- zmq 쪽만 바꾸고 zlink 쪽을 그대로 두면 안 된다.
+- `with_zmq` 는 두 라이브러리 사이 대칭성과 `core/perf` 와의 측정 정합성을
+  동시에 유지해야 한다.
+- 그래서 `with_zmq` 쪽 변경은 "누가 더 빠른가" 이전에
+  "같은 절차를 측정하고 있는가"를 먼저 만족해야 한다.
+
 ## Multi 구조 원칙
 
 `multi/` 는 `single/` 과 같은 방향으로 유지한다.

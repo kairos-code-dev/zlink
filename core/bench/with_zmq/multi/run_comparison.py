@@ -1653,6 +1653,7 @@ def main():
                         msg_sizes=[sz],
                         announce=False,
                         show_progress=False,
+                        allow_no_data=(p_name == "MULTI_STREAM"),
                     )
                     std_data.update(std_partial)
                     std_fail.extend(std_partial_fail)

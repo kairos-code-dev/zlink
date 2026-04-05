@@ -35,6 +35,64 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 
 **Per-socket-type:** Applies identically to all sockets. Services (SPOT) fan-out to their internal sockets.
 
+=== "C"
+
+    ```c
+    int sndhwm = 5000;
+    zlink_set_option(socket, ZLINK_OPT_SNDHWM, &sndhwm, sizeof(sndhwm));
+    int rcvhwm = 5000;
+    zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+    ```
+
+=== "C++"
+
+    ```cpp
+    socket.set_option(zlink::sndhwm, 5000);
+    socket.set_option(zlink::rcvhwm, 5000);
+    ```
+
+=== "Java"
+
+    ```java
+    socket.setOption(SocketOptions.SNDHWM, 5000);
+    socket.setOption(SocketOptions.RCVHWM, 5000);
+    ```
+
+=== "Python"
+
+    ```python
+    socket.options.send_high_water_mark = 5000
+    socket.options.receive_high_water_mark = 5000
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    socket.options.sendHwm = 5000;
+    socket.options.recvHwm = 5000;
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    socket.CommonOptions.SendHighWaterMark = 5000;
+    socket.CommonOptions.ReceiveHighWaterMark = 5000;
+    ```
+
+=== "Rust"
+
+    ```rust
+    socket.set_send_hwm(5000)?;
+    socket.set_recv_hwm(5000)?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetSendHWM(5000)
+    socket.SetRecvHWM(5000)
+    ```
+
 ---
 
 ## 2. Shutdown Delay — LINGER
@@ -53,6 +111,56 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 **Per-socket-type:**
 - `XSUB`, `SUB`: Linger is forced to `0` at creation (subscription sockets have nothing to drain on close)
 
+=== "C"
+
+    ```c
+    /* Wait up to 1 second for pending messages on close */
+    int linger = 1000;
+    zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
+    ```
+
+=== "C++"
+
+    ```cpp
+    socket.set_option(zlink::linger, 1000);
+    ```
+
+=== "Java"
+
+    ```java
+    socket.setOption(SocketOptions.LINGER, 1000);
+    ```
+
+=== "Python"
+
+    ```python
+    socket.options.linger_ms = 1000
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    socket.options.linger = 1000;
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    socket.CommonOptions.Linger = TimeSpan.FromMilliseconds(1000);
+    ```
+
+=== "Rust"
+
+    ```rust
+    socket.set_linger(Duration::from_millis(1000))?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetLinger(1000 * time.Millisecond)
+    ```
+
 ---
 
 ## 3. Timeouts — SNDTIMEO / RCVTIMEO
@@ -67,6 +175,65 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 
 **Service application:** Propagated to SPOT pub/sub internal sockets.
 
+=== "C"
+
+    ```c
+    /* Give up send/recv after 500 ms */
+    int sndtimeo = 500;
+    zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
+    int rcvtimeo = 500;
+    zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
+    ```
+
+=== "C++"
+
+    ```cpp
+    socket.set_option(zlink::sndtimeo, 500);
+    socket.set_option(zlink::rcvtimeo, 500);
+    ```
+
+=== "Java"
+
+    ```java
+    socket.setOption(SocketOptions.SNDTIMEO, 500);
+    socket.setOption(SocketOptions.RCVTIMEO, 500);
+    ```
+
+=== "Python"
+
+    ```python
+    socket.options.send_timeout_ms = 500
+    socket.options.receive_timeout_ms = 500
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    socket.options.sendTimeout = 500;
+    socket.options.recvTimeout = 500;
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    socket.CommonOptions.SendTimeout = TimeSpan.FromMilliseconds(500);
+    socket.CommonOptions.ReceiveTimeout = TimeSpan.FromMilliseconds(500);
+    ```
+
+=== "Rust"
+
+    ```rust
+    socket.set_send_timeout(Duration::from_millis(500))?;
+    socket.set_recv_timeout(Duration::from_millis(500))?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetSendTimeout(500 * time.Millisecond)
+    socket.SetRecvTimeout(500 * time.Millisecond)
+    ```
+
 ---
 
 ## 4. Connection Timeout — CONNECT_TIMEOUT
@@ -79,6 +246,56 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 | **>0** | If connection not established within specified time (ms), close socket and trigger reconnect |
 
 **Relation to OS timeout:** The TCP stack's own SYN retransmission timeout (typically ~2 min) is usually much longer. Setting CONNECT_TIMEOUT shorter enables faster failover.
+
+=== "C"
+
+    ```c
+    /* Fail connect attempts after 3 seconds */
+    int timeout = 3000;
+    zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+    ```
+
+=== "C++"
+
+    ```cpp
+    socket.set_option(zlink::connect_timeout, 3000);
+    ```
+
+=== "Java"
+
+    ```java
+    socket.setOption(SocketOptions.CONNECT_TIMEOUT, 3000);
+    ```
+
+=== "Python"
+
+    ```python
+    socket.set_option(zlink.SocketOption.CONNECT_TIMEOUT, 3000)
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    socket.options.connectTimeout = 3000;
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    socket.CommonOptions.ConnectTimeout = TimeSpan.FromMilliseconds(3000);
+    ```
+
+=== "Rust"
+
+    ```rust
+    socket.set_connect_timeout(Duration::from_millis(3000))?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetConnectTimeout(3000 * time.Millisecond)
+    ```
 
 ---
 
@@ -96,6 +313,65 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 - `RECONNECT_IVL_MAX > 0`: **Exponential backoff** — doubles interval each failure, capped at `RECONNECT_IVL_MAX`. (e.g., 100→200→400→...→max)
 
 **Negative:** `RECONNECT_IVL < 0` disables automatic reconnection entirely.
+
+=== "C"
+
+    ```c
+    /* Exponential backoff: 200ms initial, cap at 30s */
+    int ivl = 200;
+    zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL, &ivl, sizeof(ivl));
+    int ivl_max = 30000;
+    zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max));
+    ```
+
+=== "C++"
+
+    ```cpp
+    socket.set_option(zlink::reconnect_ivl, 200);
+    socket.set_option(zlink::reconnect_ivl_max, 30000);
+    ```
+
+=== "Java"
+
+    ```java
+    socket.setOption(SocketOptions.RECONNECT_IVL, 200);
+    socket.setOption(SocketOptions.RECONNECT_IVL_MAX, 30000);
+    ```
+
+=== "Python"
+
+    ```python
+    socket.set_option(zlink.SocketOption.RECONNECT_IVL, 200)
+    socket.set_option(zlink.SocketOption.RECONNECT_IVL_MAX, 30000)
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    socket.options.reconnectInterval = 200;
+    socket.options.reconnectIntervalMax = 30000;
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    socket.SetOption(SocketOptions.ReconnectIvl, 200);
+    socket.SetOption(SocketOptions.ReconnectIvlMax, 30000);
+    ```
+
+=== "Rust"
+
+    ```rust
+    socket.set_reconnect_interval(Duration::from_millis(200))?;
+    socket.set_reconnect_interval_max(Duration::from_secs(30))?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetOption(zlink.OptionReconnectIvl, 200)
+    socket.SetOption(zlink.OptionReconnectIvlMax, 30000)
+    ```
 
 ---
 
@@ -240,6 +516,74 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 3. Locally, disconnection detected if no PONG within TIMEOUT
 
 **vs. TCP Keepalive:** TCP keepalive is OS-level probing; ZMP heartbeat is application-protocol-level. If both are configured, the faster one detects failure first.
+
+=== "C"
+
+    ```c
+    /* PING every 5s, remote TTL 15s, local PONG timeout 10s */
+    int hb_ivl = 5000;
+    zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
+    int hb_ttl = 150;  /* 0.1s units → 15s */
+    zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
+    int hb_timeout = 10000;
+    zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
+    ```
+
+=== "C++"
+
+    ```cpp
+    socket.set_option(zlink::heartbeat_ivl, 5000);
+    socket.set_option(zlink::heartbeat_ttl, 150);      // 0.1s units → 15s
+    socket.set_option(zlink::heartbeat_timeout, 10000);
+    ```
+
+=== "Java"
+
+    ```java
+    socket.setOption(SocketOptions.HEARTBEAT_IVL, 5000);
+    socket.setOption(SocketOptions.HEARTBEAT_TTL, 150);      // 0.1s units → 15s
+    socket.setOption(SocketOptions.HEARTBEAT_TIMEOUT, 10000);
+    ```
+
+=== "Python"
+
+    ```python
+    socket.set_option(zlink.SocketOption.HEARTBEAT_IVL, 5000)
+    socket.set_option(zlink.SocketOption.HEARTBEAT_TTL, 150)      # 0.1s units → 15s
+    socket.set_option(zlink.SocketOption.HEARTBEAT_TIMEOUT, 10000)
+    ```
+
+=== "Node/TypeScript"
+
+    ```typescript
+    socket.options.heartbeatInterval = 5000;
+    socket.options.heartbeatTtl = 150;      // 0.1s units → 15s
+    socket.options.heartbeatTimeout = 10000;
+    ```
+
+=== "C#/.NET"
+
+    ```csharp
+    socket.SetOption(SocketOptions.HeartbeatIvl, 5000);
+    socket.SetOption(SocketOptions.HeartbeatTtl, 150);      // 0.1s units → 15s
+    socket.SetOption(SocketOptions.HeartbeatTimeout, 10000);
+    ```
+
+=== "Rust"
+
+    ```rust
+    socket.set_heartbeat_interval(Duration::from_secs(5))?;
+    socket.set_heartbeat_ttl(Duration::from_secs(15))?;
+    socket.set_heartbeat_timeout(Duration::from_secs(10))?;
+    ```
+
+=== "Go"
+
+    ```go
+    socket.SetOption(zlink.OptionHeartbeatIvl, 5000)
+    socket.SetOption(zlink.OptionHeartbeatTtl, 150)      // 0.1s units → 15s
+    socket.SetOption(zlink.OptionHeartbeatTimeout, 10000)
+    ```
 
 ---
 

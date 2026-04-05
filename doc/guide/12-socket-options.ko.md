@@ -37,6 +37,13 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 **소켓 타입별 차이:** 모든 소켓에 동일하게 적용. 서비스(SPOT)도
 내부 소켓에 fan-out으로 적용.
 
+```c
+int sndhwm = 5000;
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &sndhwm, sizeof(sndhwm));
+int rcvhwm = 5000;
+zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+```
+
 ---
 
 ## 2. 종료 대기 — LINGER
@@ -57,6 +64,12 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 - `XSUB`, `SUB`: 생성 시 linger를 강제로 `0`으로 override (구독 소켓은
   종료 시 대기할 필요 없음)
 
+```c
+/* 종료 시 미전송 메시지를 최대 1초 대기 */
+int linger = 1000;
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
+```
+
 ---
 
 ## 3. 타임아웃 — SNDTIMEO / RCVTIMEO
@@ -71,6 +84,14 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 
 **서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파.
 
+```c
+/* send/recv를 500ms 후 포기 */
+int sndtimeo = 500;
+zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
+int rcvtimeo = 500;
+zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
+```
+
 ---
 
 ## 4. 연결 타임아웃 — CONNECT_TIMEOUT
@@ -84,6 +105,12 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 
 **OS 타임아웃과의 관계:** TCP 스택 자체의 SYN 재전송 타임아웃(보통 ~2분)보다
 짧게 설정하여 빠른 failover를 구현할 때 유용하다.
+
+```c
+/* 3초 이내 미연결 시 재시도 */
+int timeout = 3000;
+zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+```
 
 ---
 
@@ -102,6 +129,14 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
   (예: 100 -> 200 -> 400 -> ... -> max)
 
 **음수:** `RECONNECT_IVL < 0`이면 자동 재연결을 비활성화한다.
+
+```c
+/* 지수 백오프: 초기 200ms, 상한 30s */
+int ivl = 200;
+zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL, &ivl, sizeof(ivl));
+int ivl_max = 30000;
+zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max));
+```
 
 ---
 
@@ -176,6 +211,16 @@ Keepalive보다 빠른 dead peer 감지가 필요할 때 사용.
 **TCP Keepalive와의 차이:** TCP keepalive는 OS 수준 프로브이고,
 ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정하면 더 빠른 쪽이
 먼저 감지한다.
+
+```c
+/* 5초마다 PING, 원격 TTL 15초, 로컬 PONG 타임아웃 10초 */
+int hb_ivl = 5000;
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
+int hb_ttl = 150;  /* 0.1초 단위 → 15초 */
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
+int hb_timeout = 10000;
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
+```
 
 ---
 

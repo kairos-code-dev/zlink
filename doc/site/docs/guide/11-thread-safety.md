@@ -94,43 +94,202 @@ These functions allow fully concurrent calls on the same handle:
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    #include <zlink/context.hpp>
+    #include <zlink/socket_types.hpp>
+    #include <thread>
+    #include <cstdio>
+
+    void worker(zlink::dealer_socket_t &socket, int id)
+    {
+        char buf[64];
+        for (int i = 0; i < 10000; i++) {
+            int len = std::snprintf(buf, sizeof(buf), "worker-%d msg-%d", id, i);
+            zlink::message_t msg(static_cast<size_t>(len));
+            std::memcpy(msg.data(), buf, len);
+            socket.send(msg);  // no mutex needed
+        }
+    }
+
+    int main()
+    {
+        zlink::context_t ctx;
+        zlink::dealer_socket_t socket(ctx);
+        socket.connect("tcp://127.0.0.1:5555");
+
+        std::thread threads[4];
+        for (int i = 0; i < 4; i++)
+            threads[i] = std::thread(worker, std::ref(socket), i);
+        for (auto &t : threads)
+            t.join();
+
+        socket.close();
+        return 0;
+    }
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    import dev.kairoscode.zlink.*;
+
+    public class WorkerPool {
+        public static void main(String[] args) throws Exception {
+            try (Context ctx = new Context()) {
+                DealerSocket socket = new DealerSocket(ctx);
+                socket.connect("tcp://127.0.0.1:5555");
+
+                Thread[] threads = new Thread[4];
+                for (int i = 0; i < 4; i++) {
+                    final int id = i;
+                    threads[i] = new Thread(() -> {
+                        for (int j = 0; j < 10000; j++) {
+                            byte[] data = String.format("worker-%d msg-%d", id, j).getBytes();
+                            socket.send(Message.copyOf(data));  // no mutex needed
+                        }
+                    });
+                    threads[i].start();
+                }
+                for (Thread t : threads) t.join();
+                socket.close();
+            }
+        }
+    }
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    import threading
+    import zlink
+
+    def worker(socket, worker_id):
+        for i in range(10000):
+            socket.send(f"worker-{worker_id} msg-{i}".encode())  # no lock needed
+
+    ctx = zlink.Context()
+    socket = zlink.DealerSocket(ctx)
+    socket.connect("tcp://127.0.0.1:5555")
+
+    threads = [threading.Thread(target=worker, args=(socket, i)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    socket.close()
+    ctx.close()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node.js runs on a single-threaded event loop, so concurrent
+    // send() calls from the main thread are naturally serialized.
+    // For true parallelism, use worker_threads — each worker gets
+    // its own socket (handles cannot cross thread boundaries in V8).
+    import { Context, DealerSocket, Message } from 'zlink';
+
+    const ctx = new Context();
+    const socket = new DealerSocket(ctx);
+    socket.connect('tcp://127.0.0.1:5555');
+
+    for (let id = 0; id < 4; id++) {
+        for (let i = 0; i < 10000; i++) {
+            socket.send(Buffer.from(`worker-${id} msg-${i}`));
+        }
+    }
+
+    socket.close();
+    ctx.close();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    using Zlink;
+
+    using var ctx = new Context();
+    var socket = new DealerSocket(ctx);
+    socket.Connect("tcp://127.0.0.1:5555");
+
+    var tasks = new Task[4];
+    for (int i = 0; i < 4; i++)
+    {
+        int id = i;
+        tasks[i] = Task.Run(() =>
+        {
+            for (int j = 0; j < 10000; j++)
+            {
+                var msg = new Message($"worker-{id} msg-{j}"u8.ToArray());
+                socket.Send(msg);  // no lock needed
+            }
+        });
+    }
+    Task.WaitAll(tasks);
+
+    socket.Close();
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    use zlink::{Context, DealerSocket, Message};
+    use std::thread;
+
+    fn main() -> Result<(), zlink::ZlinkError> {
+        let ctx = Context::new()?;
+        let socket = DealerSocket::new(&ctx)?;
+        socket.connect("tcp://127.0.0.1:5555")?;
+
+        let handle = socket.send_handle();  // cloneable, lightweight
+        let threads: Vec<_> = (0..4).map(|id| {
+            let h = handle.clone();
+            thread::spawn(move || {
+                for i in 0..10000 {
+                    let data = format!("worker-{id} msg-{i}");
+                    h.send(Message::from(data.as_bytes())).unwrap();
+                }
+            })
+        }).collect();
+
+        for t in threads { t.join().unwrap(); }
+        socket.close()?;
+        Ok(())
+    }
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    package main
+
+    import (
+        "fmt"
+        "sync"
+        "github.com/kairoscode/zlink"
+    )
+
+    func main() {
+        ctx, _ := zlink.NewContext()
+        socket, _ := ctx.DealerSocket()
+        socket.Connect("tcp://127.0.0.1:5555")
+
+        var wg sync.WaitGroup
+        for id := 0; id < 4; id++ {
+            wg.Add(1)
+            go func(id int) {
+                defer wg.Done()
+                for i := 0; i < 10000; i++ {
+                    msg := zlink.NewMessageFromBytes([]byte(fmt.Sprintf("worker-%d msg-%d", id, i)))
+                    socket.Send(msg)  // no lock needed
+                }
+            }(id)
+        }
+        wg.Wait()
+
+        socket.Close()
+        ctx.Close()
+    }
     ```
 
 ### 2.2 Configuration (Setup and Runtime Changes)
@@ -185,43 +344,119 @@ can send messages while another thread connects additional endpoints:
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    void send_thread(zlink::dealer_socket_t &socket)
+    {
+        for (int i = 0; i < 100000; i++) {
+            zlink::message_t part(4);
+            std::memcpy(part.data(), "data", 4);
+            socket.send(part);  // hot path
+        }
+    }
+
+    void setup_thread(zlink::dealer_socket_t &socket)
+    {
+        // Safe to call while send_thread is running
+        socket.connect("tcp://10.0.0.2:5555");
+        socket.connect("tcp://10.0.0.3:5555");
+
+        int hwm = 5000;
+        socket.set_option(zlink::socket_option_key::sndhwm, hwm);
+    }
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    Thread sender = new Thread(() -> {
+        for (int i = 0; i < 100000; i++)
+            socket.send(Message.copyOf("data".getBytes()));  // hot path
+    });
+
+    Thread setup = new Thread(() -> {
+        // Safe to call while sender is running
+        socket.connect("tcp://10.0.0.2:5555");
+        socket.connect("tcp://10.0.0.3:5555");
+        socket.options().sendHwm(5000);
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    def send_thread(socket):
+        for _ in range(100000):
+            socket.send(b"data")  # hot path
+
+    def setup_thread(socket):
+        # Safe to call while send_thread is running
+        socket.connect("tcp://10.0.0.2:5555")
+        socket.connect("tcp://10.0.0.3:5555")
+        socket.options.send_hwm = 5000
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // In Node.js, the single-threaded event loop means send()
+    // and connect() calls are already serialized. No concurrency
+    // conflict can occur within one thread.
+    socket.connect('tcp://10.0.0.2:5555');
+    socket.connect('tcp://10.0.0.3:5555');
+    socket.options.sendHwm = 5000;
+
+    for (let i = 0; i < 100000; i++) {
+        socket.send(Buffer.from('data'));
+    }
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    var sender = Task.Run(() =>
+    {
+        for (int i = 0; i < 100000; i++)
+            socket.Send(new Message("data"u8));  // hot path
+    });
+
+    var setup = Task.Run(() =>
+    {
+        // Safe to call while sender is running
+        socket.Connect("tcp://10.0.0.2:5555");
+        socket.Connect("tcp://10.0.0.3:5555");
+        socket.CommonOptions.SendHwm = 5000;
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    let handle = socket.send_handle();
+    let sender = std::thread::spawn(move || {
+        for _ in 0..100_000 {
+            handle.send(Message::from(b"data".as_slice())).unwrap();
+        }
+    });
+
+    // Safe to call while sender is running
+    socket.connect("tcp://10.0.0.2:5555")?;
+    socket.connect("tcp://10.0.0.3:5555")?;
+    socket.common_options().set_send_hwm(5000)?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    go func() {
+        for i := 0; i < 100000; i++ {
+            msg := zlink.NewMessageFromBytes([]byte("data"))
+            socket.Send(msg)  // hot path
+        }
+    }()
+
+    // Safe to call while goroutine is sending
+    socket.Connect("tcp://10.0.0.2:5555")
+    socket.Connect("tcp://10.0.0.3:5555")
+    socket.SetSendHWM(5000)
     ```
 
 Lightweight reads like `ZLINK_OPT_EVENTS` and `ZLINK_OPT_LAST_ENDPOINT` are also
@@ -234,8 +469,8 @@ Every handle type follows the same three-category model:
 | Handle | Sending (concurrent) | Configuration (serialized) | Cleanup |
 |---|---|---|---|
 | Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
-| SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option, monitor_open | `zlink_spot_destroy` |
-| SPOT Node | `zlink_publish` | bind, connect_peer, disconnect_peer, attach_discovery, subscribe, unsubscribe, monitor_open | `zlink_spot_node_destroy` |
+| SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option | `zlink_spot_destroy` |
+| SPOT Node | `zlink_publish` | bind, connect_peer, disconnect_peer, attach_discovery, subscribe, unsubscribe | `zlink_spot_node_destroy` |
 | Discovery | *(no sending — config only)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
 | Registry | *(no sending — config only)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology_query | `zlink_registry_destroy` |
 
@@ -292,43 +527,170 @@ can keep using it or try closing again later.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    #include <zlink/socket_types.hpp>
+    #include <atomic>
+    #include <thread>
+    #include <cerrno>
+
+    std::atomic<bool> g_running{true};
+
+    void sender(zlink::dealer_socket_t &socket)
+    {
+        while (g_running.load()) {
+            zlink::message_t part(32);
+            try {
+                socket.send(part);
+            } catch (const zlink::error_t &e) {
+                if (e.num() == ESHUTDOWN)
+                    break;  // handle is shutting down
+                throw;
+            }
+        }
+    }
+
+    void shutdown_socket(zlink::dealer_socket_t &socket)
+    {
+        g_running.store(false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        socket.close();
+    }
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    import java.util.concurrent.atomic.AtomicBoolean;
+
+    AtomicBoolean running = new AtomicBoolean(true);
+
+    Thread sender = new Thread(() -> {
+        while (running.get()) {
+            try {
+                socket.send(new Message(32));
+            } catch (ZlinkException e) {
+                if (e.errorCode() == ErrorCode.ESHUTDOWN)
+                    break;  // handle is shutting down
+                throw e;
+            }
+        }
+    });
+
+    // Shutdown
+    running.set(false);
+    Thread.sleep(50);
+    socket.close();
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    import threading
+
+    running = threading.Event()
+    running.set()
+
+    def sender(socket):
+        while running.is_set():
+            try:
+                socket.send(bytes(32))
+            except zlink.ZlinkError as e:
+                if e.errno == errno.ESHUTDOWN:
+                    break  # handle is shutting down
+                raise
+
+    # Shutdown
+    running.clear()
+    time.sleep(0.05)
+    socket.close()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node.js is single-threaded — shutdown is straightforward.
+    // Just stop sending and close the socket.
+    let running = true;
+
+    function sendLoop() {
+        if (!running) return;
+        socket.send(Buffer.alloc(32));
+        setImmediate(sendLoop);
+    }
+
+    // Shutdown
+    running = false;
+    socket.close();
+    ctx.close();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    using var cts = new CancellationTokenSource();
+
+    var sender = Task.Run(() =>
+    {
+        while (!cts.Token.IsCancellationRequested)
+        {
+            try {
+                socket.Send(new Message(32));
+            } catch (ZlinkException e) when (e.ErrorCode == ErrorCode.Shutdown) {
+                break;  // handle is shutting down
+            }
+        }
+    });
+
+    // Shutdown
+    cts.Cancel();
+    await Task.Delay(50);
+    socket.Close();
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let running = Arc::new(AtomicBool::new(true));
+
+    let flag = running.clone();
+    let handle = socket.send_handle();
+    let sender = std::thread::spawn(move || {
+        while flag.load(Ordering::Relaxed) {
+            if let Err(e) = handle.send(Message::new(32)) {
+                if e.is_shutdown() { break; }
+            }
+        }
+    });
+
+    // Shutdown
+    running.store(false, Ordering::Relaxed);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    socket.close()?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    import "sync/atomic"
+
+    var running int32 = 1
+
+    go func() {
+        for atomic.LoadInt32(&running) == 1 {
+            msg := zlink.NewMessage(32)
+            err := socket.Send(msg)
+            if err != nil && zlink.IsShutdown(err) {
+                break  // handle is shutting down
+            }
+        }
+    }()
+
+    // Shutdown
+    atomic.StoreInt32(&running, 0)
+    time.Sleep(50 * time.Millisecond)
+    socket.Close()
     ```
 
 **Self-close from callbacks:** If a send-ready or monitor callback calls
@@ -356,43 +718,75 @@ in each thread:
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* WRONG — two threads sharing the same message_t */
+    zlink::message_t msg(100);
+    // Thread A:
+    socket.send(msg);
+    // Thread B:
+    socket.send(msg);  // data race!
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* WRONG — two threads sharing the same Message */
+    Message msg = new Message(100);
+    // Thread A:
+    socket.send(msg);
+    // Thread B:
+    socket.send(msg);  // data race!
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # WRONG — two threads sharing the same Message
+    msg = zlink.Message(100)
+    # Thread A:
+    socket.send(msg)
+    # Thread B:
+    socket.send(msg)  # data race!
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node.js is single-threaded, so this scenario does not
+    // arise in practice. If using worker_threads, each worker
+    // must create its own Message — Message objects cannot be
+    // shared across V8 isolates.
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    /* WRONG — two threads sharing the same Message */
+    var msg = new Message(100);
+    // Thread A:
+    socket.Send(msg);
+    // Thread B:
+    socket.Send(msg);  // data race!
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Rust prevents this at compile time — Message does not
+    // implement Clone or Copy, and send() consumes the message.
+    // let msg = Message::new(100);
+    // socket.send(msg)?;      // msg moved here
+    // socket.send(msg)?;      // compile error: use of moved value
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    /* WRONG — two goroutines sharing the same Message */
+    msg := zlink.NewMessage(100)
+    // Goroutine A:
+    socket.Send(msg)
+    // Goroutine B:
+    socket.Send(msg)  // data race!
     ```
 
 === "C"
@@ -409,43 +803,67 @@ in each thread:
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* RIGHT — each thread makes its own message_t */
+    // Thread A                          // Thread B
+    zlink::message_t msg_a(100);         zlink::message_t msg_b(100);
+    std::memcpy(msg_a.data(), ...);      std::memcpy(msg_b.data(), ...);
+    socket.send(msg_a);                  socket.send(msg_b);  // safe
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* RIGHT — each thread makes its own Message */
+    // Thread A                           // Thread B
+    Message msgA = new Message(100);      Message msgB = new Message(100);
+    // ... fill msgA ...                  // ... fill msgB ...
+    socket.send(msgA);                    socket.send(msgB);  // safe
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # RIGHT — each thread makes its own message
+    # Thread A                            # Thread B
+    msg_a = zlink.Message(100)            msg_b = zlink.Message(100)
+    socket.send(msg_a)                    socket.send(msg_b)  # safe
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // In Node.js each Buffer is its own allocation — just create
+    // separate buffers and send them. No sharing issue arises.
+    socket.send(Buffer.alloc(100));  // each call owns its buffer
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    /* RIGHT — each thread makes its own Message */
+    // Thread A                           // Thread B
+    var msgA = new Message(100);          var msgB = new Message(100);
+    socket.Send(msgA);                    socket.Send(msgB);  // safe
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // RIGHT — each thread creates its own Message.
+    // Rust enforces this: send() consumes the message, so you
+    // must create a fresh one for each send call.
+    // Thread A                           // Thread B
+    let msg_a = Message::new(100);        let msg_b = Message::new(100);
+    socket.send(msg_a)?;                  socket.send(msg_b)?;  // safe
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    /* RIGHT — each goroutine makes its own Message */
+    // Goroutine A                        // Goroutine B
+    msgA := zlink.NewMessage(100)         msgB := zlink.NewMessage(100)
+    socket.Send(msgA)                     socket.Send(msgB)  // safe
     ```
 
 **Callback ownership:** When your callback receives `zlink_msg_t *parts`,
@@ -491,43 +909,113 @@ thread. Here's what you need to know:
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // Assuming app_queue is a thread-safe queue (e.g., from your application)
+    socket.on_receive([](const zlink::routing_id_t &source_rid,
+                         std::vector<zlink::message_t> &parts) {
+        for (auto &part : parts) {
+            // Copy data and push to your own thread-safe queue
+            app_queue.push(std::string(
+                static_cast<const char *>(part.data()), part.size()));
+        }
+        // Return quickly — a worker thread processes the queue
+    });
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    BlockingQueue<byte[]> queue = new LinkedBlockingQueue<>();
+
+    socket.onReceive((routingId, parts) -> {
+        for (Message part : parts) {
+            // Copy data and push to your own thread-safe queue
+            queue.offer(part.toByteArray());
+            part.close();
+        }
+        // Return quickly — a worker thread processes the queue
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    import queue
+
+    work_queue = queue.Queue()
+
+    def on_message(received):
+        for part in received.parts:
+            # Copy data and push to your own thread-safe queue
+            work_queue.put(bytes(part))
+            part.close()
+        # Return quickly — a worker thread processes the queue
+
+    socket.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node callbacks run on the event loop — avoid blocking.
+    const workQueue: Buffer[] = [];
+
+    socket.onReceive((routingId, parts) => {
+        for (const part of parts) {
+            // Copy data to your own queue
+            workQueue.push(Buffer.from(part.data));
+        }
+        // Return quickly — process the queue asynchronously
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    var queue = new ConcurrentQueue<byte[]>();
+
+    socket.OnReceive((routingId, parts) =>
+    {
+        foreach (var part in parts)
+        {
+            // Copy data and push to your own thread-safe queue
+            queue.Enqueue(part.ToArray());
+            part.Dispose();
+        }
+        // Return quickly — a worker thread processes the queue
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    use std::sync::mpsc;
+
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+
+    socket.on_receive(move |received| {
+        for part in &received.parts {
+            // Copy data and push to channel
+            let _ = tx.send(part.as_slice().to_vec());
+        }
+        // Return quickly — a worker thread receives from rx
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    workCh := make(chan []byte, 1024)
+
+    socket.OnReceive(func(received *zlink.Received) {
+        for _, part := range received.Parts {
+            // Copy data and push to channel
+            data := make([]byte, part.Size())
+            copy(data, part.Data())
+            workCh <- data
+            part.Close()
+        }
+        // Return quickly — a goroutine processes the channel
+    })
     ```
 
 ## 7. Practical Patterns
@@ -600,43 +1088,115 @@ One thread publishes, another manages subscriptions at runtime:
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    void publisher(zlink::service::spot_t &spot)
+    {
+        for (int i = 0; i < 100000; i++) {
+            zlink::message_t part(16);
+            spot.publish("prices", part);
+        }
+    }
+
+    void control(zlink::service::spot_t &spot)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        spot.set_subscription("audit.*");      // safe while publishing
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        spot.unset_subscription("audit.*");    // also safe
+    }
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    Thread publisher = new Thread(() -> {
+        for (int i = 0; i < 100000; i++)
+            spot.publish("prices", new Message(16));
+    });
+
+    Thread control = new Thread(() -> {
+        Thread.sleep(100);
+        spot.setSubscription("audit.*");      // safe while publishing
+        Thread.sleep(200);
+        spot.unsetSubscription("audit.*");    // also safe
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    def publisher(spot):
+        for _ in range(100000):
+            spot.publish("prices", bytes(16))
+
+    def control(spot):
+        time.sleep(0.1)
+        spot.set_subscription("audit.*")      # safe while publishing
+        time.sleep(0.2)
+        spot.unset_subscription("audit.*")    # also safe
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Single-threaded — publish and subscription changes are
+    // naturally serialized. Both are safe to interleave.
+    spot.setSubscription('audit.*');
+
+    for (let i = 0; i < 100000; i++) {
+        spot.publish('prices', Buffer.alloc(16));
+    }
+
+    spot.unsetSubscription('audit.*');
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    var publisher = Task.Run(() =>
+    {
+        for (int i = 0; i < 100000; i++)
+            spot.Publish("prices", new Message(16));
+    });
+
+    var control = Task.Run(async () =>
+    {
+        await Task.Delay(100);
+        spot.SetSubscription("audit.*");      // safe while publishing
+        await Task.Delay(200);
+        spot.UnsetSubscription("audit.*");    // also safe
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    let handle = spot.send_handle();
+    let publisher = std::thread::spawn(move || {
+        for _ in 0..100_000 {
+            handle.publish("prices", Message::new(16)).unwrap();
+        }
+    });
+
+    std::thread::sleep(Duration::from_millis(100));
+    spot.set_subscription("audit.*")?;      // safe while publishing
+    std::thread::sleep(Duration::from_millis(200));
+    spot.unset_subscription("audit.*")?;    // also safe
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    go func() {
+        for i := 0; i < 100000; i++ {
+            msg := zlink.NewMessage(16)
+            spot.Publish("prices", msg)
+        }
+    }()
+
+    time.Sleep(100 * time.Millisecond)
+    spot.SetSubscription("audit.*")      // safe while publishing
+    time.Sleep(200 * time.Millisecond)
+    spot.UnsetSubscription("audit.*")    // also safe
     ```
 
 ## 8. Common Mistakes

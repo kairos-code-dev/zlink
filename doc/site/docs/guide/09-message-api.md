@@ -34,43 +34,45 @@ Used for receiving messages or initialization purposes. Creates a message withou
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    zlink::message_t msg;  // RAII — empty message, automatically closed on destruction
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    Message msg = new Message();  // AutoCloseable — empty message for receiving
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    msg = zlink.Message()  # Empty message, supports context manager (with statement)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    const msg = Message.empty();  // Empty zero-length message
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    using var msg = new Message();  // IDisposable — empty message
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    let msg = Message::new()?;  // RAII — empty message, dropped automatically
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    msg, err := zlink.NewMessage([]byte{})  // Empty message
+    if err != nil { log.Fatal(err) }
+    defer msg.Close()
     ```
 
 #### zlink_msg_init_size — Size-Specified (Requires Copy)
@@ -89,43 +91,50 @@ Allocates a buffer of the specified size, then fills it directly via `zlink_msg_
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    auto msg = zlink::message_t::from_bytes(source_data, 1024);
+    socket.send(msg);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    Message msg = Message.copyOf(sourceData, 0, 1024);
+    socket.send(msg);
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    msg = zlink.Message.from_bytes(source_data[:1024])
+    socket.send(msg)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    const msg = Message.copyOf(sourceData.subarray(0, 1024));
+    socket.send(msg);
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    var msg = new Message(sourceData.AsSpan(0, 1024));
+    socket.Send(msg);
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    let msg = Message::from_bytes(&source_data[..1024])?;
+    socket.send(msg)?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    msg, _ := zlink.NewMessage(sourceData[:1024])
+    socket.Send(msg)
     ```
 
 **When to use:** When creating a message from data in your own buffer. Safe to free the original buffer immediately.
@@ -154,43 +163,66 @@ Transfers ownership of an external buffer to the message. Sends without copying.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    void *buf = malloc(4096);
+    std::memcpy(buf, source_data, 4096);
+
+    auto msg = zlink::message_t::from_external(buf, 4096, my_free, nullptr);
+    /* buf is now owned by the message */
+    socket.send(msg);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // Java: wrapDirect borrows a direct ByteBuffer without copying
+    ByteBuffer buf = ByteBuffer.allocateDirect(4096);
+    buf.put(sourceData, 0, 4096).flip();
+
+    Message msg = Message.wrapDirect(buf);
+    /* buf must remain valid while msg is in use */
+    socket.send(msg);
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Python: wrap_buffer borrows without copying (caller keeps reference)
+    buf = bytearray(source_data[:4096])
+    msg = zlink.Message.wrap_buffer(buf)
+    socket.send(msg)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node: wrap borrows an existing Buffer without copying
+    const buf = Buffer.from(sourceData.buffer, 0, 4096);
+    const msg = Message.wrap(buf);
+    socket.send(msg);
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // C#: no direct zero-copy factory; use copy-based constructor
+    var msg = new Message(sourceData.AsSpan(0, 4096));
+    socket.Send(msg);
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Rust: from_bytes copies; zero-copy requires unsafe FFI
+    let msg = Message::from_bytes(&source_data[..4096])?;
+    socket.send(msg)?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Go: NewMessage copies data; zero-copy requires direct C FFI
+    msg, _ := zlink.NewMessage(sourceData[:4096])
+    socket.Send(msg)
     ```
 
 **When to use:** When you want to avoid copying large data. Delegates buffer deallocation timing to the library.
@@ -209,43 +241,50 @@ Transfers ownership of an external buffer to the message. Sends without copying.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    void *data = msg.data();
+    size_t size = msg.size();
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    byte[] data = msg.data();
+    int size = msg.size();
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    data = msg.data()   # returns bytes
+    size = msg.size()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    const buf: Buffer = msg.toBuffer();
+    const size: number = msg.byteLength();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    ReadOnlySpan<byte> data = msg.AsReadOnlySpan();
+    int size = msg.Size;
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    let data: &[u8] = msg.data();
+    let size: usize = msg.len();
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    data := msg.Data()   // []byte
+    size := msg.Size()
     ```
 
 > **Removed:** `zlink_msg_more()` and `ZLINK_MORE` have been removed from the header.
@@ -275,43 +314,68 @@ Transfers ownership of an external buffer to the message. Sends without copying.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    std::vector<zlink::message_t> parts;
+    parts.push_back(zlink::message_t::from_string("header"));
+    parts.push_back(zlink::message_t::from_string("body"));
+    socket.send(parts);
+    /* On failure, send() throws; parts remain valid for retry */
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    List<Message> parts = List.of(
+        Message.copyOfUtf8("header"),
+        Message.copyOfUtf8("body")
+    );
+    socket.send(parts);
+    /* On failure, ZlinkException is thrown; caller must close parts */
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    socket.send([b"header", b"body"])
+    # On failure, ZlinkError is raised
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    socket.send([
+        Message.copyOf('header'),
+        Message.copyOf('body')
+    ]);
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    var parts = new List<Message> {
+        Message.FromString("header"),
+        Message.FromString("body")
+    };
+    socket.Send(parts);
+    /* On failure, ZlinkException is thrown */
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    let parts = vec![
+        Message::from_bytes(b"header")?,
+        Message::from_bytes(b"body")?,
+    ];
+    socket.send(parts)?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    header, _ := zlink.NewMessage([]byte("header"))
+    body, _ := zlink.NewMessage([]byte("body"))
+    err := socket.Send(header, body)
+    /* On failure, caller still owns messages */
     ```
 
 > **Legacy:** `zlink_msg_send()` is still present in the header but planned for
@@ -340,43 +404,75 @@ Messages are received via handler callbacks registered at socket creation time. 
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // Callback mode: register handler, library delivers received_t
+    socket.on_receive(
+        [](const zlink_routing_id_t *, zlink_msg_t *parts, size_t count, void *) {
+            std::cout << "Received: " << std::string(
+                (const char *)zlink_msg_data(&parts[0]),
+                zlink_msg_size(&parts[0])) << std::endl;
+            for (size_t i = 0; i < count; i++)
+                zlink_msg_close(&parts[i]);
+        });
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // Callback mode
+    socket.onReceive(received -> {
+        System.out.println("Received: " + received.part(0).toUtf8String());
+        received.close();
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Callback mode
+    def on_message(received):
+        source_rid, parts = received.routing_id, received.parts
+        print(f"Received: {parts[0].decode()}")
+        received.close()
+    socket.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Callback mode
+    socket.onReceive((routingId: Buffer | null, parts: Message[]) => {
+        console.log(`Received: ${parts[0].toBuffer().toString()}`);
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Callback mode
+    socket.OnReceive(received => {
+        Console.WriteLine($"Received: {received.Parts[0].GetString()}");
+        received.Dispose();
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Callback mode
+    socket.on_receive(|received| {
+        let data = received.parts()[0].data();
+        println!("Received: {}", String::from_utf8_lossy(data));
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Callback mode
+    socket.OnReceive(func(received *zlink.Received) {
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+    })
     ```
 
 ### 3.5 Deallocation
@@ -390,43 +486,44 @@ Messages are received via handler callbacks registered at socket creation time. 
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    msg.close();     // Explicit close
+    // Or let destructor handle it — RAII cleans up automatically
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    msg.close();     // AutoCloseable — or use try-with-resources
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    msg.close()      # Or use context manager: with zlink.Message() as msg: ...
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // No explicit close needed — GC handles Buffer lifecycle
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    msg.Dispose();   // IDisposable — or use 'using' statement
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    drop(msg);       // Explicit drop, or let scope handle it — RAII
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    msg.Close()      // Explicit close required
     ```
 
 ## 4. Ownership Rules
@@ -470,43 +567,89 @@ Messages are received via handler callbacks registered at socket creation time. 
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // Pattern 1: send() transfers ownership; msg is empty after success
+    auto msg = zlink::message_t::from_string("Hello");
+    socket.send(msg);
+    // msg is now empty — do not access data
+
+    // Pattern 2: try_send() returns result; msg still valid on backpressure
+    auto msg2 = zlink::message_t::from_string("Hello");
+    auto result = socket.try_send(msg2);
+    // If result != sent, msg2 is still valid for retry
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // Pattern 1: send() transfers ownership; throws on failure
+    try (Message msg = Message.copyOfUtf8("Hello")) {
+        socket.send(msg);
+        // msg is consumed — do not access data
+    }
+
+    // Pattern 2: try_send() preserves msg on backpressure
+    Message msg2 = Message.copyOfUtf8("Hello");
+    SendResult result = socket.trySend(msg2);
+    if (!result.sent()) msg2.close();
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Pattern 1: send() transfers ownership
+    socket.send(b"Hello")
+
+    # Pattern 2: try_send() returns SendResult
+    result = socket.try_send(b"Hello")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Pattern 1: send() transfers ownership
+    socket.send(Message.copyOf('Hello'));
+
+    // Pattern 2: trySend() returns SendResult
+    const result = socket.trySend(Message.copyOf('Hello'));
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Pattern 1: Send() transfers ownership; throws on failure
+    using var msg = Message.FromString("Hello");
+    socket.Send(msg);
+
+    // Pattern 2: TrySend() preserves msg on backpressure
+    using var msg2 = Message.FromString("Hello");
+    var result = socket.TrySend(msg2);
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Pattern 1: send() moves ownership; msg is consumed
+    let msg = Message::from_bytes(b"Hello")?;
+    socket.send(msg)?;
+    // msg is moved — cannot be used
+
+    // Pattern 2: try_send() returns result
+    let msg2 = Message::from_bytes(b"Hello")?;
+    let result = socket.try_send(msg2)?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Pattern 1: Send() transfers ownership on success
+    msg, _ := zlink.NewMessage([]byte("Hello"))
+    err := socket.Send(msg)
+    // On success, msg is consumed
+
+    // Pattern 2: TrySend() preserves msg on backpressure
+    msg2, _ := zlink.NewMessage([]byte("Hello"))
+    result, err := socket.TrySend(msg2)
+    if !result.Sent() { msg2.Close() }
     ```
 
 ## 5. Zero-Copy Pattern Details
@@ -538,43 +681,64 @@ Messages are received via handler callbacks registered at socket creation time. 
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // C++ uses the same C callbacks with from_external()
+    void simple_free(void *data, void *hint) { free(data); }
+
+    void *buf = malloc(4096);
+    auto msg = zlink::message_t::from_external(buf, 4096, simple_free);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // Java: zero-copy via wrapDirect; JVM GC handles lifecycle
+    // No explicit free callback — use wrapDirect(ByteBuffer) to borrow
+    ByteBuffer direct = ByteBuffer.allocateDirect(4096);
+    Message msg = Message.wrapDirect(direct);
+    // direct must remain valid while msg is in use
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Python: wrap_buffer borrows without copying; caller manages lifetime
+    buf = bytearray(4096)
+    msg = zlink.Message.wrap_buffer(buf)
+    # buf must remain valid while msg is in use
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node: wrap borrows an existing Buffer; GC manages lifecycle
+    const buf = Buffer.alloc(4096);
+    const msg = Message.wrap(buf);
+    // buf must remain referenced while msg is in use
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // C#: no direct free-callback API; use copy-based constructor
+    // For zero-copy patterns, pin memory and use native interop
+    var msg = new Message(data);
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Rust: from_bytes copies; zero-copy requires unsafe FFI
+    // RAII Drop handles deallocation automatically
+    let msg = Message::from_bytes(&data)?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Go: NewMessage copies; zero-copy requires direct C FFI
+    // Close() handles deallocation
+    msg, _ := zlink.NewMessage(data)
+    defer msg.Close()
     ```
 
 > Reference: `core/tests/test_msg_ffn.cpp` — `ffn()` callback writes "freed" to hint
@@ -605,43 +769,78 @@ Messages are received via handler callbacks registered at socket creation time. 
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // 1. Called on close (destructor or explicit)
+    {
+        auto msg = zlink::message_t::from_external(buf, size, my_free);
+    }  // destructor calls close → my_free(buf, nullptr)
+
+    // 2. Called after send completes
+    auto msg = zlink::message_t::from_external(buf, size, my_free);
+    socket.send(msg);  // my_free called when send completes
+
+    // 3. Copy shares refcount; freed when last handle closes
+    auto original = zlink::message_t::from_external(buf, size, my_free);
+    auto copy = original;  // refcount incremented
+    original.close();
+    copy.close();  // my_free called here
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // Java: lifecycle managed by GC + close()
+    // wrapDirect keeps the anchor reference; no explicit free callback
+    try (Message msg = Message.wrapDirect(directBuf)) {
+        socket.send(msg);
+    }
+    // directBuf can be reused after msg is closed
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Python: lifecycle managed by close() / context manager
+    with zlink.Message.wrap_buffer(buf) as msg:
+        socket.send(msg)
+    # buf can be reused after context exit
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node: GC handles Buffer lifecycle
+    const msg = Message.wrap(buf);
+    socket.send(msg);
+    // buf can be reused after send
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // C#: IDisposable handles lifecycle
+    using (var msg = new Message(data)) {
+        socket.Send(msg);
+    }
+    // Native memory freed on Dispose
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Rust: Drop trait handles deallocation
+    {
+        let msg = Message::from_bytes(&data)?;
+        socket.send(msg)?;
+    }  // msg dropped, native storage freed
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Go: explicit Close() required
+    msg, _ := zlink.NewMessage(data)
+    socket.Send(msg)
+    // On success, msg is consumed; on failure, msg.Close() needed
     ```
 
 > Reference: `core/tests/test_msg_ffn.cpp` — close/send/copy scenarios
@@ -669,43 +868,87 @@ Constant (literal, static) data can be sent without copying by using
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // Single frame — from_string copies the literal
+    auto msg = zlink::message_t::from_string("Hello");
+    socket.send(msg);
+
+    // Multipart
+    std::vector<zlink::message_t> parts;
+    parts.push_back(zlink::message_t::from_string("foo"));
+    parts.push_back(zlink::message_t::from_string("foobar"));
+    socket.send(parts);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // Single frame
+    socket.send(Message.copyOfUtf8("Hello"));
+
+    // Multipart
+    socket.send(List.of(
+        Message.copyOfUtf8("foo"),
+        Message.copyOfUtf8("foobar")
+    ));
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Single frame
+    socket.send(b"Hello")
+
+    # Multipart
+    socket.send([b"foo", b"foobar"])
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Single frame
+    socket.send('Hello');
+
+    // Multipart
+    socket.send([Message.copyOf('foo'), Message.copyOf('foobar')]);
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Single frame
+    socket.Send(Message.FromString("Hello"));
+
+    // Multipart
+    socket.Send(new List<Message> {
+        Message.FromString("foo"),
+        Message.FromString("foobar")
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Single frame
+    socket.send(Message::from_bytes(b"Hello")?)?;
+
+    // Multipart
+    socket.send(vec![
+        Message::from_bytes(b"foo")?,
+        Message::from_bytes(b"foobar")?,
+    ])?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Single frame
+    msg, _ := zlink.NewMessage([]byte("Hello"))
+    socket.Send(msg)
+
+    // Multipart
+    p1, _ := zlink.NewMessage([]byte("foo"))
+    p2, _ := zlink.NewMessage([]byte("foobar"))
+    socket.Send(p1, p2)
     ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
@@ -746,43 +989,104 @@ Multipart messages are sent as a parts array in a single `zlink_send()` call.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // DEALER → ROUTER: send single frame
+    auto req = zlink::message_t::from_string("request");
+    dealer.send(req);
+
+    // ROUTER handler callback receives: source_rid + parts
+    router.on_receive(
+        [&](const zlink_routing_id_t *source_rid,
+            zlink_msg_t *parts, size_t count, void *) {
+            // Reply to sender
+            auto reply = zlink::message_t::from_string("reply");
+            router.send(zlink::routing_id_t(*source_rid), reply);
+            for (size_t i = 0; i < count; i++)
+                zlink_msg_close(&parts[i]);
+        });
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // DEALER → ROUTER: send single frame
+    dealer.send(Message.copyOfUtf8("request"));
+
+    // ROUTER callback receives routing id + parts
+    router.onReceive(received -> {
+        RoutingId source = received.routingId();
+        router.send(source, Message.copyOfUtf8("reply"));
+        received.close();
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # DEALER -> ROUTER: send single frame
+    dealer.send(b"request")
+
+    # ROUTER callback receives routing id + parts
+    def on_request(received):
+        source_rid = received.routing_id
+        router.send(b"reply", routing_id=source_rid)
+        received.close()
+    router.on_receive(on_request)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // DEALER -> ROUTER: send single frame
+    dealer.send('request');
+
+    // ROUTER callback receives routing id + parts
+    router.onReceive((routingId, parts) => {
+        router.send(routingId!, Message.copyOf('reply'));
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // DEALER -> ROUTER: send single frame
+    dealer.Send(Message.FromString("request"));
+
+    // ROUTER callback receives routing id + parts
+    router.OnReceive(received => {
+        var source = received.RoutingId;
+        router.Send(source, Message.FromString("reply"));
+        received.Dispose();
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // DEALER -> ROUTER: send single frame
+    dealer.send(Message::from_bytes(b"request")?)?;
+
+    // ROUTER callback receives routing id + parts
+    router.on_receive(|received| {
+        let source = received.routing_id().unwrap();
+        let reply = Message::from_bytes(b"reply").unwrap();
+        router.send(&source, reply).unwrap();
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // DEALER -> ROUTER: send single frame
+    req, _ := zlink.NewMessage([]byte("request"))
+    dealer.Send(req)
+
+    // ROUTER callback receives routing id + parts
+    router.OnReceive(func(received *zlink.Received) {
+        source := received.RoutingID
+        reply, _ := zlink.NewMessage([]byte("reply"))
+        router.SendTo(source, reply)
+        received.Close()
+    })
     ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
@@ -815,43 +1119,98 @@ Multipart messages are sent as a parts array in a single `zlink_send()` call.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // PUB: publish topic + payload
+    auto payload = zlink::message_t::from_string("sunny");
+    pub.publish("weather", payload);
+
+    // SUB: on_subscribe callback receives topic + parts
+    sub.on_subscribe(
+        [](const zlink_routing_id_t *, const char *topic, size_t topic_len,
+           zlink_msg_t *parts, size_t count, void *) {
+            // topic = "weather", parts[0] = "sunny"
+            for (size_t i = 0; i < count; i++)
+                zlink_msg_close(&parts[i]);
+        });
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // PUB: publish topic + payload
+    pub.publish("weather", Message.copyOfUtf8("sunny"));
+
+    // SUB: callback receives topic + parts
+    sub.onSubscribe(subscribed -> {
+        // subscribed.topic() = "weather"
+        // subscribed.part(0) = "sunny"
+        subscribed.close();
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # PUB: publish topic + payload
+    pub.publish("weather", b"sunny")
+
+    # SUB: callback receives topic + parts
+    def on_topic(subscribed):
+        # subscribed.topic = "weather", subscribed.parts[0] = b"sunny"
+        subscribed.close()
+    sub.on_subscribe(on_topic)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // PUB: publish topic + payload
+    pub.publish('weather', Message.copyOf('sunny'));
+
+    // SUB: callback receives topic + parts
+    sub.onSubscribe((routingId, topic, parts) => {
+        // topic = "weather", parts[0] = "sunny"
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // PUB: publish topic + payload
+    pub.Publish("weather", Message.FromString("sunny"));
+
+    // SUB: callback receives topic + parts
+    sub.OnSubscribe(subscribed => {
+        // subscribed.Topic = "weather", subscribed.Parts[0] = "sunny"
+        subscribed.Dispose();
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // PUB: publish topic + payload
+    pub_socket.publish("weather", Message::from_bytes(b"sunny")?)?;
+
+    // SUB: callback receives topic + parts
+    sub_socket.on_subscribe(|subscribed| {
+        // subscribed.topic() = "weather"
+        // subscribed.parts()[0].data() = b"sunny"
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // PUB: publish topic + payload
+    payload, _ := zlink.NewMessage([]byte("sunny"))
+    pub.Publish("weather", payload)
+
+    // SUB: callback receives topic + parts
+    sub.OnSubscribe(func(subscribed *zlink.Subscribed) {
+        // subscribed.Topic = "weather"
+        // subscribed.Parts[0].Data() = "sunny"
+        subscribed.Close()
+    })
     ```
 
 ### Pattern 3: Multipart Processing in Handler Callback
@@ -877,43 +1236,81 @@ Multipart messages are sent as a parts array in a single `zlink_send()` call.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    socket.on_receive(
+        [](const zlink_routing_id_t *, zlink_msg_t *parts, size_t count, void *) {
+            for (size_t i = 0; i < count; i++) {
+                std::cout << "Frame[" << zlink_msg_size(&parts[i]) << " bytes]: "
+                          << std::string((const char *)zlink_msg_data(&parts[i]),
+                                         zlink_msg_size(&parts[i])) << std::endl;
+                zlink_msg_close(&parts[i]);
+            }
+        });
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    socket.onReceive(received -> {
+        for (int i = 0; i < received.partCount(); i++) {
+            Message part = received.part(i);
+            System.out.printf("Frame[%d bytes]: %s%n", part.size(), part.toUtf8String());
+        }
+        received.close();
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    def on_message(received):
+        for part in received.parts:
+            print(f"Frame[{len(part)} bytes]: {part.decode()}")
+        received.close()
+    socket.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    socket.onReceive((routingId, parts) => {
+        for (const part of parts) {
+            const buf = part.toBuffer();
+            console.log(`Frame[${buf.length} bytes]: ${buf.toString()}`);
+        }
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    socket.OnReceive(received => {
+        foreach (var part in received.Parts) {
+            Console.WriteLine($"Frame[{part.Size} bytes]: {part.GetString()}");
+        }
+        received.Dispose();
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    socket.on_receive(|received| {
+        for part in received.parts() {
+            println!("Frame[{} bytes]: {}", part.len(),
+                     String::from_utf8_lossy(part.data()));
+        }
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    socket.OnReceive(func(received *zlink.Received) {
+        for _, part := range received.Parts {
+            fmt.Printf("Frame[%d bytes]: %s\n", part.Size(), part.Data())
+        }
+        received.Close()
+    })
     ```
 
 ## 7. Message Copying
@@ -944,43 +1341,65 @@ Increments the reference count instead of copying the data. Efficient for large 
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    auto original = zlink::message_t::from_bytes(data, 1024);
+    auto copy = original;  // Copy constructor: refcount incremented
+    int refcnt = copy.refcnt();  // 2
+
+    original.close();
+    copy.close();  // Memory freed when last reference released
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // Java Message does not expose copy; use copyOf for a new frame
+    Message original = Message.copyOf(data);
+    // To share: pass the original reference or create a new copy
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Python: copy creates a new independent message
+    original = zlink.Message.from_bytes(data)
+    # For sharing, pass the original reference
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node: Buffer.from() creates a copy of the underlying data
+    const original = Message.copyOf(data);
+    const copy = Message.copyOf(original.toBuffer());
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    var original = new Message(data);
+    var copy = original.Copy();  // Reference-counted copy
+    int refcnt = copy.RefCount;  // 2
+
+    original.Dispose();
+    copy.Dispose();  // Memory freed when last reference released
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Rust Message does not expose copy; use from_bytes for a new frame
+    let original = Message::from_bytes(&data)?;
+    // Ownership is exclusive; clone via from_bytes if needed
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    original, _ := zlink.NewMessage(data)
+    // Go: clone creates a reference-counted copy
+    // copy, _ := original.clone()  // internal API
+    // For sharing, pass the original pointer
+    defer original.Close()
     ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying shared property after copy
@@ -1016,43 +1435,56 @@ threads.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    zlink::message_t msg(1024);
+    int refcnt = msg.refcnt();  // 1: single owner
+
+    auto copy = msg;  // copy constructor increments refcount
+    refcnt = copy.refcnt();  // 2: shared by msg and copy
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    Message msg = new Message(1024);
+    int refcnt = msg.refCount();  // 1: single owner
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Python: refcount is not directly exposed in the binding
+    # Use the C API for diagnostics if needed
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Node: refcount is not exposed; Buffer uses JS GC
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    var msg = new Message(1024);
+    int refcnt = msg.RefCount;  // 1: single owner
+
+    var copy = msg.Copy();
+    refcnt = copy.RefCount;  // 2: shared
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Rust: refcount is not directly exposed; ownership is exclusive
+    let msg = Message::with_size(1024)?;
+    // Single owner — no shared references
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    msg, _ := zlink.NewMessage(make([]byte, 1024))
+    refcnt := msg.RefCount()  // 1: single owner
     ```
 
 > Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages
@@ -1085,43 +1517,76 @@ threads.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    auto msg = zlink::message_t::from_bytes(data, 100);
+    auto result = socket.try_send(msg);
+    // result is sent, backpressured, or not_ready
+    // On backpressure, msg is still valid for retry
+    // On error, send() throws zlink::error_t
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    Message msg = Message.copyOf(data, 0, 100);
+    try {
+        SendResult result = socket.trySend(msg);
+        if (!result.sent()) {
+            // Backpressured — retry later; msg still valid
+        }
+    } catch (ZlinkException e) {
+        msg.close();  // On failure, manual cleanup required
+    }
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    try:
+        result = socket.try_send(data[:100])
+    except zlink.ZlinkError as e:
+        pass  # Handle error (EAGAIN, ENOTSUP, ETERM)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    try {
+        const result = socket.trySend(Message.copyOf(data.subarray(0, 100)));
+    } catch (e) {
+        // Handle error
+    }
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    using var msg = new Message(data.AsSpan(0, 100));
+    try {
+        var result = socket.TrySend(msg);
+        // result: Sent, Backpressured, or NotReady
+    } catch (ZlinkException e) {
+        // Handle error
+    }
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    let msg = Message::from_bytes(&data[..100])?;
+    match socket.try_send(msg) {
+        Ok(result) => { /* result: Sent, Backpressured, NotReady */ }
+        Err(e) => { /* Handle ZlinkError */ }
+    }
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    msg, _ := zlink.NewMessage(data[:100])
+    result, err := socket.TrySend(msg)
+    if err != nil {
+        msg.Close()  // On failure, manual cleanup required
+    }
     ```
 
 ## 9. zlink_send (Multipart Msg-Based)
@@ -1160,43 +1625,91 @@ threads.
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    // Single-part send
+    auto part = zlink::message_t::from_string("Hello");
+    socket.send(part);
+
+    // Zero-copy send
+    auto zcmsg = zlink::message_t::from_external(large_buf, large_size, my_free);
+    socket.send(zcmsg);
+
+    // Multipart send
+    std::vector<zlink::message_t> parts;
+    parts.push_back(zlink::message_t::from_string("header"));
+    parts.push_back(zlink::message_t::from_string("body"));
+    socket.send(parts);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    // Single-part send
+    socket.send(Message.copyOfUtf8("Hello"));
+
+    // Multipart send
+    socket.send(List.of(
+        Message.copyOfUtf8("header"),
+        Message.copyOfUtf8("body")
+    ));
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Single-part send
+    socket.send(b"Hello")
+
+    # Multipart send
+    socket.send([b"header", b"body"])
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Single-part send
+    socket.send('Hello');
+
+    // Multipart send
+    socket.send([Message.copyOf('header'), Message.copyOf('body')]);
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Single-part send
+    socket.Send(Message.FromString("Hello"));
+
+    // Multipart send
+    socket.Send(new List<Message> {
+        Message.FromString("header"),
+        Message.FromString("body")
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Single-part send
+    socket.send(Message::from_bytes(b"Hello")?)?;
+
+    // Multipart send
+    socket.send(vec![
+        Message::from_bytes(b"header")?,
+        Message::from_bytes(b"body")?,
+    ])?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Single-part send
+    msg, _ := zlink.NewMessage([]byte("Hello"))
+    socket.Send(msg)
+
+    // Multipart send
+    header, _ := zlink.NewMessage([]byte("header"))
+    body, _ := zlink.NewMessage([]byte("body"))
+    socket.Send(header, body)
     ```
 
 For ROUTER directed sends, use `zlink_send_rid()`:
@@ -1210,43 +1723,43 @@ For ROUTER directed sends, use `zlink_send_rid()`:
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    router.send(target_rid, parts);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    router.send(targetRid, parts);
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    router.send(parts, routing_id=target_rid)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    router.send(targetRid, parts);
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    router.Send(targetRid, parts);
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    router.send(&target_rid, parts)?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    router.SendTo(targetRID, parts...)
     ```
 
 > **Legacy:** `zlink_msg_send()` is still present in the header but planned for

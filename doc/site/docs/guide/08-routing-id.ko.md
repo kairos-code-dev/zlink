@@ -53,43 +53,54 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* Set before bind/connect */
+    zlink::routing_id_t rid("router-A");
+    dealer.set_routing_id(rid);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* Set before bind/connect */
+    var rid = RoutingId.copyOf("router-A".getBytes());
+    dealer.setRoutingId(rid);
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Set before bind/connect
+    socket.set_routing_id(b"router-A")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Set before bind/connect
+    socket.setRoutingId(Buffer.from("router-A"));
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Set before bind/connect
+    dealer.DealerOptions.RoutingId = new RoutingId("router-A");
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Set before bind/connect
+    let rid = RoutingId::new(b"router-A")?;
+    dealer.set_routing_id(&rid)?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Set before bind/connect
+    rid, _ := zlink.NewRoutingID([]byte("router-A"))
+    dealer.SetRoutingID(rid)
     ```
 
 주의사항:
@@ -114,43 +125,80 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* Good example: meaningful identifiers */
+    dealer.set_routing_id(zlink::routing_id_t("worker-01"));
+    dealer.set_routing_id(zlink::routing_id_t("D1"));
+
+    /* Caution: potential collision with auto-generated routing_ids */
+    /* Avoid UUID format (16B binary) */
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* Good example: meaningful identifiers */
+    dealer.setRoutingId(RoutingId.copyOf("worker-01".getBytes()));
+    dealer.setRoutingId(RoutingId.copyOf("D1".getBytes()));
+
+    /* Caution: potential collision with auto-generated routing_ids */
+    /* Avoid UUID format (16B binary) */
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Good example: meaningful identifiers
+    dealer.set_routing_id(b"worker-01")
+    dealer.set_routing_id(b"D1")
+
+    # Caution: potential collision with auto-generated routing_ids
+    # Avoid UUID format (16B binary)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Good example: meaningful identifiers
+    dealer.setRoutingId(Buffer.from("worker-01"));
+    dealer.setRoutingId(Buffer.from("D1"));
+
+    // Caution: potential collision with auto-generated routing_ids
+    // Avoid UUID format (16B binary)
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Good example: meaningful identifiers
+    dealer.DealerOptions.RoutingId = new RoutingId("worker-01");
+    dealer.DealerOptions.RoutingId = new RoutingId("D1");
+
+    // Caution: potential collision with auto-generated routing_ids
+    // Avoid UUID format (16B binary)
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Good example: meaningful identifiers
+    dealer.set_routing_id(&RoutingId::new(b"worker-01")?)?;
+    dealer.set_routing_id(&RoutingId::new(b"D1")?)?;
+
+    // Caution: potential collision with auto-generated routing_ids
+    // Avoid UUID format (16B binary)
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Good example: meaningful identifiers
+    rid, _ := zlink.NewRoutingID([]byte("worker-01"))
+    dealer.SetRoutingID(rid)
+    rid2, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer.SetRoutingID(rid2)
+
+    // Caution: potential collision with auto-generated routing_ids
+    // Avoid UUID format (16B binary)
     ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
@@ -172,43 +220,71 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    zlink::routing_id_t rid;
+    dealer.get_routing_id(rid);
+
+    auto bytes = rid.to_bytes();
+    std::print("routing_id ({} bytes): ", bytes.size());
+    for (auto b : bytes)
+        std::print("{:02x}", b);
+    std::println();
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    RoutingId rid = RoutingId.copyOf(dealer.getOption(
+        SocketOptions.ROUTING_ID_BYTES));
+
+    byte[] bytes = rid.toByteArray();
+    System.out.printf("routing_id (%d bytes): ", bytes.length);
+    for (byte b : bytes)
+        System.out.printf("%02x", b);
+    System.out.println();
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    rid = socket.get_routing_id()
+
+    print(f"routing_id ({len(rid)} bytes): {rid.hex()}")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    const rid = socket.getRoutingId();
+
+    console.log(`routing_id (${rid.length} bytes): ${rid.toString("hex")}`);
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    var rid = dealer.DealerOptions.RoutingId;
+
+    Console.WriteLine($"routing_id: {rid.Value}");
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    let rid = dealer.routing_id()?;
+
+    print!("routing_id ({} bytes): ", rid.len());
+    for b in rid.data() {
+        print!("{:02x}", b);
+    }
+    println!();
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    rid, _ := dealer.RoutingID()
+
+    fmt.Printf("routing_id (%d bytes): %x\n", len(rid.Bytes()), rid.Bytes())
     ```
 
 ## 5. Connection Alias 설정
@@ -235,43 +311,93 @@ ROUTER에서 특정 연결을 의미 있는 이름으로 참조할 때 사용한
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* Apply alias to the next connect */
+    router.set_option(zlink::router_option::connect_routing_id,
+                      std::string("edge-1"));
+    router.connect("tcp://server:5555");
+
+    /* Different alias for another connection */
+    router.set_option(zlink::router_option::connect_routing_id,
+                      std::string("edge-2"));
+    router.connect("tcp://server2:5556");
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* Apply alias to the next connect */
+    router.routerOptions().connectRoutingId(
+        RoutingId.copyOf("edge-1".getBytes()));
+    router.connect("tcp://server:5555");
+
+    /* Different alias for another connection */
+    router.routerOptions().connectRoutingId(
+        RoutingId.copyOf("edge-2".getBytes()));
+    router.connect("tcp://server2:5556");
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Apply alias to the next connect
+    router.router_options.connect_routing_id = b"edge-1"
+    router.connect("tcp://server:5555")
+
+    # Different alias for another connection
+    router.router_options.connect_routing_id = b"edge-2"
+    router.connect("tcp://server2:5556")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Apply alias to the next connect
+    router.options.connectRoutingId = Buffer.from("edge-1");
+    router.connect("tcp://server:5555");
+
+    // Different alias for another connection
+    router.options.connectRoutingId = Buffer.from("edge-2");
+    router.connect("tcp://server2:5556");
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Apply alias to the next connect
+    router.RouterOptions.ConnectRoutingId = new RoutingId("edge-1");
+    router.Connect("tcp://server:5555");
+
+    // Different alias for another connection
+    router.RouterOptions.ConnectRoutingId = new RoutingId("edge-2");
+    router.Connect("tcp://server2:5556");
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Apply alias to the next connect
+    let alias1 = RoutingId::new(b"edge-1")?;
+    router.set_connect_routing_id(&alias1)?;
+    router.connect("tcp://server:5555")?;
+
+    // Different alias for another connection
+    let alias2 = RoutingId::new(b"edge-2")?;
+    router.set_connect_routing_id(&alias2)?;
+    router.connect("tcp://server2:5556")?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Apply alias to the next connect
+    alias1, _ := zlink.NewRoutingID([]byte("edge-1"))
+    router.SetConnectRoutingID(alias1)
+    router.Connect("tcp://server:5555")
+
+    // Different alias for another connection
+    alias2, _ := zlink.NewRoutingID([]byte("edge-2"))
+    router.SetConnectRoutingID(alias2)
+    router.Connect("tcp://server2:5556")
     ```
 
 - `zlink_set_routing_id()`는 소켓 전체에 적용
@@ -337,43 +463,164 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* ROUTER server (with handler) */
+    zlink::router_socket_t router(ctx);
+    router.bind("tcp://127.0.0.1:*");
+    std::string endpoint;
+    router.get_option(zlink::socket_option::last_endpoint, endpoint);
+
+    auto sender = router.send_handle();
+    router.on_receive([sender](const zlink_routing_id_t *source_rid,
+                               zlink_msg_t *parts, size_t part_count,
+                               void *) {
+        /* source_rid = "D1", parts[0] = "Hello" */
+        zlink::routing_id_t rid(*source_rid);
+        auto reply = zlink::message_t::from_string("World");
+        sender.send(rid, reply);
+        zlink::detail::close_message_array(parts, part_count);
+    }, nullptr);
+
+    /* DEALER client (explicit routing_id) */
+    zlink::dealer_socket_t dealer(ctx);
+    dealer.set_routing_id(zlink::routing_id_t("D1"));
+    dealer.connect(endpoint);
+
+    auto req = zlink::message_t::from_string("Hello");
+    dealer.send(req);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* ROUTER server */
+    var router = ctx.socket(SocketType.ROUTER);
+    router.bind("tcp://127.0.0.1:*");
+    String endpoint = router.getOption(SocketOptions.LAST_ENDPOINT);
+
+    router.onReceive((received) -> {
+        /* received.routingId() = "D1", received.parts() = ["Hello"] */
+        var reply = Message.copyOf("World".getBytes());
+        router.send(received.routingId(), reply);
+    });
+
+    /* DEALER client (explicit routing_id) */
+    var dealer = ctx.socket(SocketType.DEALER);
+    dealer.setRoutingId(RoutingId.copyOf("D1".getBytes()));
+    dealer.connect(endpoint);
+
+    dealer.send(Message.copyOf("Hello".getBytes()));
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # ROUTER server (with handler)
+    router = ctx.socket(zlink.ROUTER)
+    router.bind("tcp://127.0.0.1:*")
+    endpoint = router.get_option(zlink.LAST_ENDPOINT)
+
+    def on_request(received):
+        # received.routing_id = b"D1", received.parts[0] = b"Hello"
+        reply = zlink.Message(b"World")
+        router.send(reply, routing_id=received.routing_id)
+
+    router.on_receive(on_request)
+
+    # DEALER client (explicit routing_id)
+    dealer = ctx.socket(zlink.DEALER)
+    dealer.set_routing_id(b"D1")
+    dealer.connect(endpoint)
+
+    dealer.send(zlink.Message(b"Hello"))
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // ROUTER server (with handler)
+    const router = new zlink.RouterSocket(ctx);
+    router.bind("tcp://127.0.0.1:*");
+    const endpoint = router.options.lastEndpoint;
+
+    router.onReceive((routingId, parts) => {
+        // routingId = <Buffer "D1">, parts[0] = "Hello"
+        router.send(routingId!, Buffer.from("World"));
+    });
+
+    // DEALER client (explicit routing_id)
+    const dealer = new zlink.DealerSocket(ctx);
+    dealer.setRoutingId(Buffer.from("D1"));
+    dealer.connect(endpoint);
+
+    dealer.send(Buffer.from("Hello"));
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // ROUTER server (with handler)
+    using var router = new RouterSocket(ctx);
+    router.Bind("tcp://127.0.0.1:*");
+    var endpoint = router.Options.LastEndpoint;
+
+    router.OnReceive((received) => {
+        // received.RoutingId = "D1", received.Parts[0] = "Hello"
+        router.Send(received.RoutingId, Message.CopyFrom("World"u8));
+    });
+
+    // DEALER client (explicit routing_id)
+    using var dealer = new DealerSocket(ctx);
+    dealer.DealerOptions.RoutingId = new RoutingId("D1");
+    dealer.Connect(endpoint);
+
+    dealer.Send(Message.CopyFrom("Hello"u8));
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // ROUTER server (with handler)
+    let mut router = ctx.router_socket()?;
+    router.bind("tcp://127.0.0.1:*")?;
+    let endpoint = router.last_endpoint()?;
+
+    let sender = router.send_handle();
+    router.on_receive(move |received| {
+        // received.routing_id() = "D1", received.parts() = ["Hello"]
+        let reply = Message::from(b"World" as &[u8]);
+        sender.send(received.routing_id(), reply).unwrap();
+    })?;
+
+    // DEALER client (explicit routing_id)
+    let dealer = ctx.dealer_socket()?;
+    dealer.set_routing_id(&RoutingId::new(b"D1")?)?;
+    dealer.connect(&endpoint)?;
+
+    dealer.send(Message::from(b"Hello" as &[u8]))?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // ROUTER server (with handler)
+    router, _ := ctx.RouterSocket()
+    router.Bind("tcp://127.0.0.1:*")
+    endpoint, _ := router.LastEndpoint()
+
+    router.OnReceive(func(received *zlink.Received) {
+        // received.RoutingID() = "D1", received.Parts() = ["Hello"]
+        reply, _ := zlink.NewMessage([]byte("World"))
+        router.SendTo(received.RoutingID(), reply)
+    })
+
+    // DEALER client (explicit routing_id)
+    dealer, _ := ctx.DealerSocket()
+    rid, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer.SetRoutingID(rid)
+    dealer.Connect(endpoint)
+
+    msg, _ := zlink.NewMessage([]byte("Hello"))
+    dealer.Send(msg)
     ```
 
 ### 다중 클라이언트 구분
@@ -408,43 +655,141 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* DEALER 1: routing_id = "D1" */
+    dealer1.set_routing_id(zlink::routing_id_t("D1"));
+    dealer1.connect(endpoint);
+
+    /* DEALER 2: routing_id = "D2" */
+    dealer2.set_routing_id(zlink::routing_id_t("D2"));
+    dealer2.connect(endpoint);
+
+    /* ROUTER handler distinguishes clients by source_rid */
+    auto sender = router.send_handle();
+    router.on_receive([sender](const zlink_routing_id_t *source_rid,
+                               zlink_msg_t *parts, size_t part_count,
+                               void *) {
+        /* source_rid contains "D1" or "D2" */
+        zlink::routing_id_t rid(*source_rid);
+        auto reply = zlink::message_t::from_string("reply");
+        sender.send(rid, reply);
+        zlink::detail::close_message_array(parts, part_count);
+    }, nullptr);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* DEALER 1: routing_id = "D1" */
+    dealer1.setRoutingId(RoutingId.copyOf("D1".getBytes()));
+    dealer1.connect(endpoint);
+
+    /* DEALER 2: routing_id = "D2" */
+    dealer2.setRoutingId(RoutingId.copyOf("D2".getBytes()));
+    dealer2.connect(endpoint);
+
+    /* ROUTER handler distinguishes clients by routing_id */
+    router.onReceive((received) -> {
+        /* received.routingId() contains "D1" or "D2" */
+        router.send(received.routingId(),
+            Message.copyOf("reply".getBytes()));
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # DEALER 1: routing_id = "D1"
+    dealer1.set_routing_id(b"D1")
+    dealer1.connect(endpoint)
+
+    # DEALER 2: routing_id = "D2"
+    dealer2.set_routing_id(b"D2")
+    dealer2.connect(endpoint)
+
+    # ROUTER handler distinguishes clients by routing_id
+    def on_message(received):
+        # received.routing_id contains b"D1" or b"D2"
+        reply = zlink.Message(b"reply")
+        router.send(reply, routing_id=received.routing_id)
+
+    router.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // DEALER 1: routing_id = "D1"
+    dealer1.setRoutingId(Buffer.from("D1"));
+    dealer1.connect(endpoint);
+
+    // DEALER 2: routing_id = "D2"
+    dealer2.setRoutingId(Buffer.from("D2"));
+    dealer2.connect(endpoint);
+
+    // ROUTER handler distinguishes clients by routingId
+    router.onReceive((routingId, parts) => {
+        // routingId contains "D1" or "D2"
+        router.send(routingId!, Buffer.from("reply"));
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // DEALER 1: routing_id = "D1"
+    dealer1.DealerOptions.RoutingId = new RoutingId("D1");
+    dealer1.Connect(endpoint);
+
+    // DEALER 2: routing_id = "D2"
+    dealer2.DealerOptions.RoutingId = new RoutingId("D2");
+    dealer2.Connect(endpoint);
+
+    // ROUTER handler distinguishes clients by RoutingId
+    router.OnReceive((received) => {
+        // received.RoutingId contains "D1" or "D2"
+        router.Send(received.RoutingId, Message.CopyFrom("reply"u8));
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // DEALER 1: routing_id = "D1"
+    dealer1.set_routing_id(&RoutingId::new(b"D1")?)?;
+    dealer1.connect(endpoint)?;
+
+    // DEALER 2: routing_id = "D2"
+    dealer2.set_routing_id(&RoutingId::new(b"D2")?)?;
+    dealer2.connect(endpoint)?;
+
+    // ROUTER handler distinguishes clients by routing_id
+    let sender = router.send_handle();
+    router.on_receive(move |received| {
+        // received.routing_id() contains "D1" or "D2"
+        let reply = Message::from(b"reply" as &[u8]);
+        sender.send(received.routing_id(), reply).unwrap();
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // DEALER 1: routing_id = "D1"
+    rid1, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer1.SetRoutingID(rid1)
+    dealer1.Connect(endpoint)
+
+    // DEALER 2: routing_id = "D2"
+    rid2, _ := zlink.NewRoutingID([]byte("D2"))
+    dealer2.SetRoutingID(rid2)
+    dealer2.Connect(endpoint)
+
+    // ROUTER handler distinguishes clients by RoutingID
+    router.OnReceive(func(received *zlink.Received) {
+        // received.RoutingID() contains "D1" or "D2"
+        reply, _ := zlink.NewMessage([]byte("reply"))
+        router.SendTo(received.RoutingID(), reply)
+    })
     ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — 다중 DEALER 예제
@@ -476,43 +821,106 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* Handler callback provides routing_id and data directly */
+    auto sender = router.send_handle();
+    router.on_receive([sender](const zlink_routing_id_t *source_rid,
+                               zlink_msg_t *parts, size_t part_count,
+                               void *) {
+        /* Check routing_id size and content */
+        std::println("routing_id: {} bytes", source_rid->size);
+
+        /* Reply: use source_rid */
+        zlink::routing_id_t rid(*source_rid);
+        auto reply = zlink::message_t::from_string("reply");
+        sender.send(rid, reply);
+        zlink::detail::close_message_array(parts, part_count);
+    }, nullptr);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* Handler callback provides routing_id and data directly */
+    router.onReceive((received) -> {
+        /* Check routing_id size and content */
+        System.out.printf("routing_id: %d bytes%n",
+            received.routingId().size());
+
+        /* Reply: use routing_id from received */
+        router.send(received.routingId(),
+            Message.copyOf("reply".getBytes()));
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Handler callback provides routing_id and data directly
+    def on_message(received):
+        # Check routing_id size and content
+        print(f"routing_id: {len(received.routing_id)} bytes")
+
+        # Reply: use routing_id from received
+        reply = zlink.Message(b"reply")
+        router.send(reply, routing_id=received.routing_id)
+
+    router.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Handler callback provides routingId and data directly
+    router.onReceive((routingId, parts) => {
+        // Check routing_id size and content
+        console.log(`routing_id: ${routingId!.length} bytes`);
+
+        // Reply: use routingId
+        router.send(routingId!, Buffer.from("reply"));
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Handler callback provides RoutingId and data directly
+    router.OnReceive((received) => {
+        // Check routing_id size and content
+        Console.WriteLine($"routing_id: {received.RoutingId.Length} bytes");
+
+        // Reply: use RoutingId from received
+        router.Send(received.RoutingId, Message.CopyFrom("reply"u8));
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Handler callback provides routing_id and data directly
+    let sender = router.send_handle();
+    router.on_receive(move |received| {
+        // Check routing_id size and content
+        println!("routing_id: {} bytes", received.routing_id().len());
+
+        // Reply: use routing_id from received
+        let reply = Message::from(b"reply" as &[u8]);
+        sender.send(received.routing_id(), reply).unwrap();
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Handler callback provides RoutingID and data directly
+    router.OnReceive(func(received *zlink.Received) {
+        // Check routing_id size and content
+        rid := received.RoutingID()
+        fmt.Printf("routing_id: %d bytes\n", len(rid.Bytes()))
+
+        // Reply: use RoutingID from received
+        reply, _ := zlink.NewMessage([]byte("reply"))
+        router.SendTo(rid, reply)
+    })
     ```
 
 ## 7. STREAM 소켓에서 routing_id 사용법
@@ -548,43 +956,92 @@ STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별�
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* Callback dispatch */
+    auto sender = stream.send_handle();
+    stream.on_receive([sender](const zlink_routing_id_t *source_rid,
+                               zlink_msg_t *parts, size_t part_count,
+                               void *) {
+        zlink::routing_id_t rid(*source_rid);
+        for (size_t i = 0; i < part_count; ++i) {
+            auto reply = zlink::message_t(zlink_msg_data(&parts[i]),
+                                          zlink_msg_size(&parts[i]));
+            sender.send(rid, reply);
+            zlink_msg_close(&parts[i]);
+        }
+    }, nullptr);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* Callback dispatch */
+    stream.onReceive((received) -> {
+        for (var part : received.parts()) {
+            stream.send(received.routingId(),
+                Message.copyOf(part.toByteArray()));
+        }
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Callback dispatch
+    def on_message(received):
+        for part in received.parts:
+            reply = zlink.Message(part.to_bytes())
+            stream.send(reply, routing_id=received.routing_id)
+
+    stream.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Callback dispatch
+    stream.onReceive((routingId, parts) => {
+        for (const part of parts) {
+            stream.send(routingId!, Buffer.from(part.data));
+        }
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Callback dispatch
+    stream.OnReceive((received) => {
+        foreach (var part in received.Parts)
+        {
+            stream.Send(received.RoutingId,
+                Message.CopyFrom(part.ToArray()));
+        }
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Callback dispatch
+    let sender = stream.send_handle();
+    stream.on_receive(move |received| {
+        for part in received.parts() {
+            let reply = Message::from(part.data());
+            sender.send(received.routing_id(), reply).unwrap();
+        }
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Callback dispatch
+    stream.OnReceive(func(received *zlink.Received) {
+        for _, part := range received.Parts() {
+            reply, _ := zlink.NewMessage(part.Data())
+            stream.SendTo(received.RoutingID(), reply)
+        }
+    })
     ```
 
 ### 연결/해제 이벤트의 routing_id
@@ -618,43 +1075,144 @@ STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별�
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    stream.on_receive([](const zlink_routing_id_t *source_rid,
+                         zlink_msg_t *parts, size_t part_count,
+                         void *) {
+        for (size_t i = 0; i < part_count; ++i) {
+            auto *data = static_cast<uint8_t *>(zlink_msg_data(&parts[i]));
+            size_t size = zlink_msg_size(&parts[i]);
+
+            if (size == 1 && data[0] == 0x01) {
+                /* New client connected */
+                auto bytes = zlink::routing_id_t(*source_rid).to_bytes();
+                std::print("Connected: ");
+                for (auto b : bytes) std::print("{:02x}", b);
+                std::println();
+            } else if (size == 1 && data[0] == 0x00) {
+                /* Client disconnected */
+                std::println("Disconnected");
+            }
+            zlink_msg_close(&parts[i]);
+        }
+    }, nullptr);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    stream.onReceive((received) -> {
+        for (var part : received.parts()) {
+            byte[] data = part.toByteArray();
+
+            if (data.length == 1 && data[0] == 0x01) {
+                /* New client connected */
+                System.out.printf("Connected: %s%n",
+                    HexFormat.of().formatHex(
+                        received.routingId().toByteArray()));
+            } else if (data.length == 1 && data[0] == 0x00) {
+                /* Client disconnected */
+                System.out.println("Disconnected");
+            }
+        }
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    def on_message(received):
+        for part in received.parts:
+            data = part.to_bytes()
+
+            if data == b"\x01":
+                # New client connected
+                print(f"Connected: {received.routing_id.hex()}")
+            elif data == b"\x00":
+                # Client disconnected
+                print("Disconnected")
+
+    stream.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    stream.onReceive((routingId, parts) => {
+        for (const part of parts) {
+            const data = part.data;
+
+            if (data.length === 1 && data[0] === 0x01) {
+                // New client connected
+                console.log(`Connected: ${routingId!.toString("hex")}`);
+            } else if (data.length === 1 && data[0] === 0x00) {
+                // Client disconnected
+                console.log("Disconnected");
+            }
+        }
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    stream.OnReceive((received) => {
+        foreach (var part in received.Parts)
+        {
+            var data = part.ToArray();
+
+            if (data.Length == 1 && data[0] == 0x01)
+            {
+                // New client connected
+                Console.WriteLine($"Connected: {received.RoutingId}");
+            }
+            else if (data.Length == 1 && data[0] == 0x00)
+            {
+                // Client disconnected
+                Console.WriteLine("Disconnected");
+            }
+        }
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    stream.on_receive(|received| {
+        for part in received.parts() {
+            let data = part.data();
+
+            if data == [0x01] {
+                // New client connected
+                print!("Connected: ");
+                for b in received.routing_id().data() {
+                    print!("{:02x}", b);
+                }
+                println!();
+            } else if data == [0x00] {
+                // Client disconnected
+                println!("Disconnected");
+            }
+        }
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    stream.OnReceive(func(received *zlink.Received) {
+        for _, part := range received.Parts() {
+            data := part.Data()
+
+            if len(data) == 1 && data[0] == 0x01 {
+                // New client connected
+                fmt.Printf("Connected: %x\n",
+                    received.RoutingID().Bytes())
+            } else if len(data) == 1 && data[0] == 0x00 {
+                // Client disconnected
+                fmt.Println("Disconnected")
+            }
+        }
+    })
     ```
 
 > 참고: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
@@ -699,43 +1257,110 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    void print_routing_id(const zlink::routing_id_t &rid) {
+        auto bytes = rid.to_bytes();
+        std::print("routing_id[{}]: ", bytes.size());
+        for (auto b : bytes)
+            std::print("{:02x}", b);
+        std::println();
+    }
+
+    /* In handler callback */
+    auto sender = router.send_handle();
+    router.on_receive([](const zlink_routing_id_t *source_rid,
+                         zlink_msg_t *parts, size_t part_count,
+                         void *) {
+        print_routing_id(zlink::routing_id_t(*source_rid));
+        zlink::detail::close_message_array(parts, part_count);
+    }, nullptr);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    static void printRoutingId(RoutingId rid) {
+        byte[] bytes = rid.toByteArray();
+        System.out.printf("routing_id[%d]: ", bytes.length);
+        for (byte b : bytes)
+            System.out.printf("%02x", b);
+        System.out.println();
+    }
+
+    /* In handler callback */
+    router.onReceive((received) -> {
+        printRoutingId(received.routingId());
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    def print_routing_id(rid: bytes):
+        print(f"routing_id[{len(rid)}]: {rid.hex()}")
+
+    # In handler callback
+    def on_message(received):
+        print_routing_id(received.routing_id)
+
+    router.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    function printRoutingId(rid: Buffer) {
+        console.log(`routing_id[${rid.length}]: ${rid.toString("hex")}`);
+    }
+
+    // In handler callback
+    router.onReceive((routingId, parts) => {
+        printRoutingId(routingId!);
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    static void PrintRoutingId(string rid)
+    {
+        Console.WriteLine($"routing_id: {rid}");
+    }
+
+    // In handler callback
+    router.OnReceive((received) => {
+        PrintRoutingId(received.RoutingId);
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    fn print_routing_id(rid: &RoutingId) {
+        print!("routing_id[{}]: ", rid.len());
+        for b in rid.data() {
+            print!("{:02x}", b);
+        }
+        println!();
+    }
+
+    // In handler callback
+    router.on_receive(|received| {
+        print_routing_id(received.routing_id());
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    func printRoutingID(rid zlink.RoutingID) {
+        data := rid.Bytes()
+        fmt.Printf("routing_id[%d]: %x\n", len(data), data)
+    }
+
+    // In handler callback
+    router.OnReceive(func(received *zlink.Received) {
+        printRoutingID(received.RoutingID())
+    })
     ```
 
 ### 문자열 routing_id
@@ -764,43 +1389,90 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    dealer.set_routing_id(zlink::routing_id_t("D1"));
+
+    /* In ROUTER handler callback */
+    router.on_receive([](const zlink_routing_id_t *source_rid,
+                         zlink_msg_t *parts, size_t part_count,
+                         void *) {
+        auto rid_str = zlink::routing_id_t(*source_rid).to_string();
+        std::println("routing_id: {}", rid_str);  /* "D1" */
+        zlink::detail::close_message_array(parts, part_count);
+    }, nullptr);
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    dealer.setRoutingId(RoutingId.copyOf("D1".getBytes()));
+
+    /* In ROUTER handler callback */
+    router.onReceive((received) -> {
+        String rid = new String(received.routingId().toByteArray());
+        System.out.printf("routing_id: %s%n", rid);  /* "D1" */
+    });
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    dealer.set_routing_id(b"D1")
+
+    # In ROUTER handler callback
+    def on_message(received):
+        rid = received.routing_id.decode()
+        print(f"routing_id: {rid}")  # "D1"
+
+    router.on_receive(on_message)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    dealer.setRoutingId(Buffer.from("D1"));
+
+    // In ROUTER handler callback
+    router.onReceive((routingId, parts) => {
+        const rid = routingId!.toString("utf-8");
+        console.log(`routing_id: ${rid}`);  // "D1"
+    });
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    dealer.DealerOptions.RoutingId = new RoutingId("D1");
+
+    // In ROUTER handler callback
+    router.OnReceive((received) => {
+        Console.WriteLine($"routing_id: {received.RoutingId}");  // "D1"
+    });
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    dealer.set_routing_id(&RoutingId::new(b"D1")?)?;
+
+    // In ROUTER handler callback
+    router.on_receive(|received| {
+        let rid = std::str::from_utf8(received.routing_id().data())
+            .unwrap_or("<binary>");
+        println!("routing_id: {}", rid);  // "D1"
+    })?;
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    rid, _ := zlink.NewRoutingID([]byte("D1"))
+    dealer.SetRoutingID(rid)
+
+    // In ROUTER handler callback
+    router.OnReceive(func(received *zlink.Received) {
+        ridStr := string(received.RoutingID().Bytes())
+        fmt.Printf("routing_id: %s\n", ridStr)  // "D1"
+    })
     ```
 
 ### 자동 생성 routing_id 확인
@@ -817,43 +1489,58 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* Query the auto-assigned routing_id after socket creation */
+    zlink::routing_id_t rid;
+    dealer.get_routing_id(rid);
+    std::println("Auto-generated routing_id: {} bytes", rid.size());  /* 16 bytes (UUID) */
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* Query the auto-assigned routing_id after socket creation */
+    byte[] rid = dealer.getOption(SocketOptions.ROUTING_ID_BYTES);
+    System.out.printf("Auto-generated routing_id: %d bytes%n", rid.length);  /* 16 bytes (UUID) */
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # Query the auto-assigned routing_id after socket creation
+    rid = socket.get_routing_id()
+    print(f"Auto-generated routing_id: {len(rid)} bytes")  # 16 bytes (UUID)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // Query the auto-assigned routing_id after socket creation
+    const rid = socket.getRoutingId();
+    console.log(`Auto-generated routing_id: ${rid.length} bytes`);  // 16 bytes (UUID)
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // Query the auto-assigned routing_id after socket creation
+    var rid = dealer.DealerOptions.RoutingId;
+    Console.WriteLine($"Auto-generated routing_id: {rid.Value.Length} bytes");  // 16 bytes (UUID)
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // Query the auto-assigned routing_id after socket creation
+    let rid = dealer.routing_id()?;
+    println!("Auto-generated routing_id: {} bytes", rid.len());  // 16 bytes (UUID)
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // Query the auto-assigned routing_id after socket creation
+    rid, _ := dealer.RoutingID()
+    fmt.Printf("Auto-generated routing_id: %d bytes\n", len(rid.Bytes()))  // 16 bytes (UUID)
     ```
 
 ## 9. 바이너리 처리 원칙
@@ -876,43 +1563,68 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
 === "C++"
 
     ```cpp
-    // C++ equivalent -- see C tab for full logic
+    /* routing_id comparison */
+    auto rid = zlink::routing_id_t(*source_rid);
+    if (rid.to_string() == "D1") {
+        /* Message from client D1 */
+    }
     ```
 
 === "Java"
 
     ```java
-    // Java equivalent -- see C tab for full logic
+    /* routing_id comparison */
+    if (received.routingId().equals(
+            RoutingId.copyOf("D1".getBytes()))) {
+        /* Message from client D1 */
+    }
     ```
 
 === "Python"
 
     ```python
-    # Python equivalent -- see C tab for full logic
+    # routing_id comparison
+    if received.routing_id == b"D1":
+        # Message from client D1
+        pass
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // TypeScript equivalent -- see C tab for full logic
+    // routing_id comparison
+    if (routingId && routingId.equals(Buffer.from("D1"))) {
+        // Message from client D1
+    }
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // C# equivalent -- see C tab for full logic
+    // routing_id comparison
+    if (received.RoutingId == "D1")
+    {
+        // Message from client D1
+    }
     ```
 
 === "Rust"
 
     ```rust
-    // Rust equivalent -- see C tab for full logic
+    // routing_id comparison
+    if received.routing_id().data() == b"D1" {
+        // Message from client D1
+    }
     ```
 
 === "Go"
 
     ```go
-    // Go equivalent -- see C tab for full logic
+    // routing_id comparison
+    expected, _ := zlink.NewRoutingID([]byte("D1"))
+    if received.RoutingID().Equal(expected) {
+        // Message from client D1
+    }
     ```
 
 ---

@@ -819,11 +819,13 @@ event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
 === "C"
 
     ```c
-    /* SPOT service monitor */
+    /* Discovery service monitor */
     zlink_service_monitor_open_options_t opts = {
-        .events = ZLINK_SERVICE_MONITOR_EVENT_ALL
+        .events = ZLINK_SERVICE_MONITOR_EVENT_ERROR
+                  | ZLINK_SERVICE_MONITOR_EVENT_CLOSED
+                  | ZLINK_SERVICE_MONITOR_EVENT_DISCOVERY_PROVIDERS_CHANGED
     };
-    void *mon = zlink_service_monitor_open(spot_node, &opts);
+    void *mon = zlink_service_monitor_open(discovery, &opts);
     ```
 
 === "C++"
@@ -831,49 +833,49 @@ event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
     ```cpp
     zlink::service_monitor_options opts;
     opts.events = zlink::service_monitor_event::all;
-    auto mon = spot_node.service_monitor_open(opts);
+    auto mon = discovery.service_monitor_open(opts);
     ```
 
 === "Java"
 
     ```java
     var opts = new ServiceMonitorOptions(ServiceMonitorEvent.ALL);
-    var mon = spotNode.serviceMonitorOpen(opts);
+    var mon = discovery.serviceMonitorOpen(opts);
     ```
 
 === "Python"
 
     ```python
     opts = zlink.ServiceMonitorOptions(events=zlink.SERVICE_MONITOR_EVENT_ALL)
-    mon = spot_node.service_monitor_open(opts)
+    mon = discovery.service_monitor_open(opts)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
     const opts = { events: zlink.SERVICE_MONITOR_EVENT_ALL };
-    const mon = spotNode.serviceMonitorOpen(opts);
+    const mon = discovery.serviceMonitorOpen(opts);
     ```
 
 === "C#/.NET"
 
     ```csharp
     var opts = new ServiceMonitorOptions { Events = ServiceMonitorEvent.All };
-    using var mon = spotNode.ServiceMonitorOpen(opts);
+    using var mon = discovery.ServiceMonitorOpen(opts);
     ```
 
 === "Rust"
 
     ```rust
     let opts = zlink::ServiceMonitorOptions::new(zlink::SERVICE_MONITOR_EVENT_ALL);
-    let mon = spot_node.service_monitor_open(&opts)?;
+    let mon = discovery.service_monitor_open(&opts)?;
     ```
 
 === "Go"
 
     ```go
     opts := zlink.ServiceMonitorOptions{Events: zlink.ServiceMonitorEventAll}
-    mon, err := spotNode.ServiceMonitorOpen(opts)
+    mon, err := discovery.ServiceMonitorOpen(opts)
     if err != nil { log.Fatal(err) }
     ```
 
@@ -903,7 +905,7 @@ SPOT과 SpotNode는 더 이상 공개 service-monitor surface를 제공하지 �
     ```go
     mon.SetHandler(func(ev zlink.ServiceEvent) {
         if ev.EventType()&zlink.DiscoveryProvidersChanged != 0 {
-            fmt.Println("pub first delivery ready")
+            fmt.Println("provider set changed")
         }
     })
     ```
@@ -1434,7 +1436,7 @@ SPOT과 SpotNode는 더 이상 공개 service-monitor surface를 제공하지 �
 - `sleep`/고정 지연으로 ready를 추정하지 않는다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 이벤트일 뿐,
   메시징 시작 기준으로 쓰지 않는다.
-- delivery-ready event를 받은 뒤에 메시징을 시작한다.
+- perf는 문서에 명시된 deterministic gate만 사용한다.
 
 ### 11.1 Raw 소켓 — PAIR, DEALER, ROUTER
 

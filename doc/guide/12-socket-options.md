@@ -37,6 +37,13 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 
 **Per-socket-type:** Applies identically to all sockets. Services (SPOT) fan-out to their internal sockets.
 
+```c
+int sndhwm = 5000;
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &sndhwm, sizeof(sndhwm));
+int rcvhwm = 5000;
+zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+```
+
 ---
 
 ## 2. Shutdown Delay — LINGER
@@ -55,6 +62,12 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 **Per-socket-type:**
 - `XSUB`, `SUB`: Linger is forced to `0` at creation (subscription sockets have nothing to drain on close)
 
+```c
+/* Wait up to 1 second for pending messages on close */
+int linger = 1000;
+zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
+```
+
 ---
 
 ## 3. Timeouts — SNDTIMEO / RCVTIMEO
@@ -69,6 +82,14 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 
 **Service application:** Propagated to SPOT pub/sub internal sockets.
 
+```c
+/* Give up send/recv after 500 ms */
+int sndtimeo = 500;
+zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
+int rcvtimeo = 500;
+zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
+```
+
 ---
 
 ## 4. Connection Timeout — CONNECT_TIMEOUT
@@ -81,6 +102,12 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 | **>0** | If connection not established within specified time (ms), close socket and trigger reconnect |
 
 **Relation to OS timeout:** The TCP stack's own SYN retransmission timeout (typically ~2 min) is usually much longer. Setting CONNECT_TIMEOUT shorter enables faster failover.
+
+```c
+/* Fail connect attempts after 3 seconds */
+int timeout = 3000;
+zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+```
 
 ---
 
@@ -98,6 +125,14 @@ This gap is the hysteresis that prevents writable/non-writable oscillation.
 - `RECONNECT_IVL_MAX > 0`: **Exponential backoff** — doubles interval each failure, capped at `RECONNECT_IVL_MAX`. (e.g., 100→200→400→...→max)
 
 **Negative:** `RECONNECT_IVL < 0` disables automatic reconnection entirely.
+
+```c
+/* Exponential backoff: 200ms initial, cap at 30s */
+int ivl = 200;
+zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL, &ivl, sizeof(ivl));
+int ivl_max = 30000;
+zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max));
+```
 
 ---
 
@@ -169,6 +204,16 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 3. Locally, disconnection detected if no PONG within TIMEOUT
 
 **vs. TCP Keepalive:** TCP keepalive is OS-level probing; ZMP heartbeat is application-protocol-level. If both are configured, the faster one detects failure first.
+
+```c
+/* PING every 5s, remote TTL 15s, local PONG timeout 10s */
+int hb_ivl = 5000;
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
+int hb_ttl = 150;  /* 0.1s units → 15s */
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
+int hb_timeout = 10000;
+zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
+```
 
 ---
 

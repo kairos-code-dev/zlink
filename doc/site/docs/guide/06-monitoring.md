@@ -805,49 +805,49 @@ SPOT and SpotNode no longer expose a public service-monitor surface.
     ```cpp
     zlink::service_monitor_options opts;
     opts.events = zlink::service_monitor_event::all;
-    auto mon = spot_node.service_monitor_open(opts);
+    auto mon = discovery.service_monitor_open(opts);
     ```
 
 === "Java"
 
     ```java
     var opts = new ServiceMonitorOptions(ServiceMonitorEvent.ALL);
-    var mon = spotNode.serviceMonitorOpen(opts);
+    var mon = discovery.serviceMonitorOpen(opts);
     ```
 
 === "Python"
 
     ```python
     opts = zlink.ServiceMonitorOptions(events=zlink.SERVICE_MONITOR_EVENT_ALL)
-    mon = spot_node.service_monitor_open(opts)
+    mon = discovery.service_monitor_open(opts)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
     const opts = { events: zlink.SERVICE_MONITOR_EVENT_ALL };
-    const mon = spotNode.serviceMonitorOpen(opts);
+    const mon = discovery.serviceMonitorOpen(opts);
     ```
 
 === "C#/.NET"
 
     ```csharp
     var opts = new ServiceMonitorOptions { Events = ServiceMonitorEvent.All };
-    using var mon = spotNode.ServiceMonitorOpen(opts);
+    using var mon = discovery.ServiceMonitorOpen(opts);
     ```
 
 === "Rust"
 
     ```rust
     let opts = zlink::ServiceMonitorOptions::new(zlink::SERVICE_MONITOR_EVENT_ALL);
-    let mon = spot_node.service_monitor_open(&opts)?;
+    let mon = discovery.service_monitor_open(&opts)?;
     ```
 
 === "Go"
 
     ```go
     opts := zlink.ServiceMonitorOptions{Events: zlink.ServiceMonitorEventAll}
-    mon, err := spotNode.ServiceMonitorOpen(opts)
+    mon, err := discovery.ServiceMonitorOpen(opts)
     if err != nil { log.Fatal(err) }
     ```
 
@@ -957,13 +957,6 @@ Different services emit different events.
 | `DISCOVERY_SERVICE_UP` | discovered service came up | — | — |
 | `DISCOVERY_SERVICE_DOWN` | discovered service went down | — | — |
 | `DISCOVERY_PROVIDERS_CHANGED` | provider set changed | — | — |
-
-#### Common events (all services)
-
-| Constant | Description |
-|---|---|
-| `MONITOR_EVENT_ERROR` | error occurred |
-| `MONITOR_EVENT_CLOSED` | monitor closed |
 
 #### Common events (all services)
 

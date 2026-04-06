@@ -225,8 +225,8 @@ Options:
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
                          (default: 4).
   --msg-sizes LIST       Comma-separated message sizes
-                         (default: 256,1024,65536,131072,262144;
-                         STREAM: 256,1024,65536).
+                         (default: 64,256,1024,65536,131072,262144;
+                         STREAM: 64,256,1024,65536).
   --transports LIST      Comma-separated transports.
   --warmup N             Optional override for multi warmup seconds (default 2).
   --duration N           Optional override for multi duration seconds (default 5).

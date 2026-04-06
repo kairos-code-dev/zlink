@@ -900,7 +900,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
 | `PERF_IO_THREADS` | context I/O threads | 0 |
-| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행). single 기본값은 `64,256,1024,65536,131072,262144`, multi 기본값은 `256,1024,65536,131072,262144` | suite/패턴별 기본값 |
+| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행). single/multi 기본값은 `64,256,1024,65536,131072,262144` 이고, multi STREAM 기본값은 `64,256,1024,65536` | suite/패턴별 기본값 |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | suite/패턴별 기본값 |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 | 0 |

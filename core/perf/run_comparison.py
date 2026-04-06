@@ -909,7 +909,7 @@ _env_sizes = parse_env_list("PERF_MSG_SIZES", int)
 if _env_sizes:
     MSG_SIZES = _env_sizes
 else:
-    MSG_SIZES = [256, 1024, 65536, 131072, 262144]
+    MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 
 _env_stream_sizes = parse_env_list(
     "PERF_STREAM_MSG_SIZES",
@@ -922,7 +922,7 @@ elif _env_sizes:
     # unless a stream-specific override is explicitly provided.
     STREAM_MSG_SIZES = _env_sizes
 else:
-    STREAM_MSG_SIZES = [256, 1024, 65536]
+    STREAM_MSG_SIZES = [64, 256, 1024, 65536]
 
 DEFAULT_RUN_COOLDOWN_MS = max(
     0,

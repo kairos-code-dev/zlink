@@ -26,14 +26,14 @@ def multi_args():
 
 
 class MultiRunComparisonPolicyTests(unittest.TestCase):
-    def test_multi_default_msg_sizes_exclude_64b(self):
+    def test_multi_default_msg_sizes_include_64b(self):
         self.assertEqual(
             RC.MSG_SIZES,
-            [256, 1024, 65536, 131072, 262144],
+            [64, 256, 1024, 65536, 131072, 262144],
         )
         self.assertEqual(
             RC.STREAM_MSG_SIZES,
-            [256, 1024, 65536],
+            [64, 256, 1024, 65536],
         )
 
     def test_result_filename_includes_recv_mode(self):

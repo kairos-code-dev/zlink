@@ -81,13 +81,25 @@ class pubsub_client_bench_t
         std::cout << "CLIENT_READY," << _msg_size << std::endl;
         perf::multi::settle ();
 
-        if (!run_warmup ())
+        if (!run_phase (perf_metric::phase_warmup,
+                        std::chrono::seconds (_phase_cfg.warmup_seconds),
+                        &_result.warmup_count,
+                        NULL))
             return false;
-        if (!run_settle ())
+        if (!run_phase (perf_metric::phase_drain,
+                        std::chrono::milliseconds (_phase_cfg.settle_ms),
+                        &_result.drain_count,
+                        NULL))
             return false;
-        if (!run_active ())
+        _resource_probe_start = perf::multi::start_resource_probe ();
+        if (!run_phase (perf_metric::phase_active,
+                        std::chrono::seconds (_phase_cfg.active_seconds),
+                        &_result.active_count,
+                        &_result.latency))
             return false;
 
+        _resource_metrics =
+          perf::multi::finish_resource_probe (_resource_probe_start);
         if (_result.active_count == 0) {
             _failure_stage = "no_active_data";
             return false;
@@ -165,26 +177,26 @@ class pubsub_client_bench_t
         }
 
         close_monitors ();
-
         return !_sockets.empty ();
     }
 
-    bool run_recv_phase (perf_metric::phase_t phase,
-                         std::chrono::milliseconds duration,
-                         unsigned long long *count_out,
-                         perf::multi::bench_latency_sampler_t *lat_out)
+    bool run_phase (perf_metric::phase_t phase,
+                    std::chrono::milliseconds duration,
+                    unsigned long long *count_out,
+                    perf::multi::bench_latency_stats_t *lat_out)
     {
-        if (!count_out)
-            return false;
-
         if (duration.count () <= 0) {
-            *count_out = 0;
+            if (count_out)
+                *count_out = 0;
+            if (lat_out)
+                *lat_out = perf::multi::bench_latency_stats_t ();
             return true;
         }
 
         if (_sockets.empty ())
             return false;
 
+        perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
         const bool active_phase = phase == perf_metric::phase_active;
         auto deadline = std::chrono::steady_clock::now () + duration;
@@ -226,18 +238,9 @@ class pubsub_client_bench_t
                     continue;
 
                 for (;;) {
-                    size_t topic_len = 0;
-                    zlink_msg_t *parts = NULL;
-                    size_t part_count = 0;
-                    zlink_routing_id_t source_rid;
-                    std::memset (&source_rid, 0, sizeof (source_rid));
-                    const int recv_rc = zlink_subscribe (sock->handle (),
-                                                         &source_rid,
-                                                         &parts,
-                                                         &part_count,
-                                                         NULL,
-                                                         &topic_len,
-                                                         ZLINK_DONTWAIT);
+                    zlink::subscribed_t subscribed;
+                    const int recv_rc =
+                      sock->subscribe (subscribed, zlink::recv_flag::dontwait);
                     if (recv_rc != 0) {
                         const int err = errno;
                         if (err == EAGAIN)
@@ -247,24 +250,19 @@ class pubsub_client_bench_t
                         return false;
                     }
 
-                    if (topic_len != std::strlen (k_topic) || !parts
-                        || part_count == 0) {
-                        if (parts)
-                            zlink_multipart_close (parts, part_count);
+                    if (subscribed.topic != k_topic || subscribed.parts.empty ()) {
                         continue;
                     }
 
-                    const size_t recv_size = zlink_msg_size (&parts[0]);
+                    const size_t recv_size = subscribed.parts[0].size ();
                     if (recv_size > _recv_buffer.size ()) {
-                        zlink_multipart_close (parts, part_count);
                         continue;
                     }
                     if (recv_size > 0) {
                         std::memcpy (_recv_buffer.data (),
-                                     zlink_msg_data (&parts[0]),
+                                     subscribed.parts[0].data (),
                                      recv_size);
                     }
-                    zlink_multipart_close (parts, part_count);
 
                     if (!active_phase) {
                         ++count;
@@ -303,61 +301,30 @@ class pubsub_client_bench_t
                                                     ? static_cast<double> (
                                                         now_us - header.sent_ts_us)
                                                     : 0.0;
-                        lat_out->add (latency_us);
+                        latency.add (latency_us);
                     }
                 }
             }
         }
 
-        *count_out = count;
-        return true;
-    }
-
-    bool run_warmup ()
-    {
-        return run_recv_phase (perf_metric::phase_warmup,
-                               std::chrono::seconds (_phase_cfg.warmup_seconds),
-                               &_result.warmup_count,
-                               NULL);
-    }
-
-    bool run_settle ()
-    {
-        return run_recv_phase (perf_metric::phase_drain,
-                               std::chrono::milliseconds (_phase_cfg.settle_ms),
-                               &_result.drain_count,
-                               NULL);
-    }
-
-    bool run_active ()
-    {
-        perf::multi::bench_latency_sampler_t latency;
-        if (!run_recv_phase (perf_metric::phase_active,
-                             std::chrono::seconds (_phase_cfg.active_seconds),
-                             &_result.active_count,
-                             &latency)) {
-            return false;
-        }
-
-        _result.latency = latency.snapshot ();
+        if (count_out)
+            *count_out = count;
+        if (lat_out)
+            *lat_out = latency.snapshot ();
         return true;
     }
 
     void print_result () const
     {
-        const double throughput = static_cast<double> (_result.active_count)
-                                  / static_cast<double> (_phase_cfg.active_seconds);
-        const double bandwidth = throughput * static_cast<double> (_msg_size) / 1000000.0;
-
-        perf::multi::print_result ("current",
-                                   k_pattern_result,
-                                   _transport,
-                                   _msg_size,
-                                   throughput,
-                                   bandwidth,
-                                   _result.latency.mean_us,
-                                   _result.latency.p95_us,
-                                   _result.latency.p99_us);
+        perf::multi::print_client_result_lines (
+          k_pattern_result,
+          _transport,
+          _msg_size,
+          _result.active_count,
+          _phase_cfg.active_seconds,
+          1.0,
+          _result.latency,
+          _resource_metrics);
     }
 
   private:
@@ -377,6 +344,8 @@ class pubsub_client_bench_t
     phase_config_t _phase_cfg;
     bench_result_t _result;
     const char *_failure_stage;
+    bench_multi_cpu_sample_t _resource_probe_start;
+    bench_multi_resource_metrics_t _resource_metrics;
 };
 
 } // namespace

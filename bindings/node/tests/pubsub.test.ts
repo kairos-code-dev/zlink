@@ -309,3 +309,15 @@ test('onSubscribe delivers topic-aware multipart payloads', async () => {
   pub.close();
   ctx.close();
 });
+
+test('onSubscribe blocks direct subscribe on the same socket', () => {
+  const ctx = new zlink.Context();
+  const sub = new zlink.SubSocket(ctx);
+
+  sub.onSubscribe(() => {});
+
+  assert.throws(() => sub.subscribe(), /busy|callback|state|subscribe/i);
+
+  sub.close();
+  ctx.close();
+});

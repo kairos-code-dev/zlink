@@ -15,6 +15,7 @@ from perf_multi_common import (
 
 ROOT = Path(__file__).resolve().parent
 RUNNER_LIB = ROOT.parent.parent.parent.parent / "core" / "build" / "lib" / "libzlink.so"
+STREAM_CLIENT = ROOT.parent.parent.parent.parent / "core" / "build" / "bin" / "perf_stream_client"
 DEFAULT_PATTERNS = (
     "DEALER_DEALER",
     "DEALER_ROUTER",
@@ -110,6 +111,32 @@ def _server_popen_kwargs():
     return kwargs
 
 
+def _wait_for_tcp_endpoint(endpoint, timeout_s=10.0):
+    import socket
+    import time
+
+    host_port = endpoint.split("://", 1)[1]
+    host, port_text = host_port.rsplit(":", 1)
+    deadline = time.perf_counter() + timeout_s
+    while time.perf_counter() < deadline:
+        with socket.socket() as sock:
+            sock.settimeout(0.2)
+            if sock.connect_ex((host, int(port_text))) == 0:
+                return
+        time.sleep(0.05)
+    raise SystemExit(f"tcp endpoint did not become ready: {endpoint}")
+
+
+def _normalize_stream_result_lines(output):
+    normalized = []
+    for line in output.splitlines():
+        if line.startswith("RESULT,current,STREAM,"):
+            normalized.append(line.replace(",STREAM,", ",MULTI_STREAM,", 1))
+        else:
+            normalized.append(line)
+    return "\n".join(normalized)
+
+
 def _terminate_process(proc, *, grace_seconds):
     if proc.poll() is not None:
         return
@@ -152,7 +179,12 @@ def _terminate_process(proc, *, grace_seconds):
 def _run_pattern(args, env, pattern, msg_size, clients):
     server_path = ROOT / f"perf_multi_{pattern.lower()}_server.py"
     client_path = ROOT / f"perf_multi_{pattern.lower()}_client.py"
-    if not server_path.exists() or not client_path.exists():
+    if pattern == "STREAM":
+        if not server_path.exists():
+            raise SystemExit(f"unsupported pattern: {pattern}")
+        if not STREAM_CLIENT.exists():
+            raise SystemExit(f"shared stream client not found: {STREAM_CLIENT}")
+    elif not server_path.exists() or not client_path.exists():
         raise SystemExit(f"unsupported pattern: {pattern}")
 
     server = subprocess.Popen(
@@ -185,6 +217,45 @@ def _run_pattern(args, env, pattern, msg_size, clients):
         if not ready.startswith("READY,"):
             raise SystemExit(f"server did not become ready: {ready}")
         endpoint = ready.split(",", 1)[1]
+
+        if pattern == "STREAM":
+            _wait_for_tcp_endpoint(endpoint)
+            client = subprocess.run(
+                [
+                    str(STREAM_CLIENT),
+                    "--transport",
+                    "tcp",
+                    "--pattern",
+                    "STREAM",
+                    "--sizes",
+                    msg_size,
+                    "--runs",
+                    "1",
+                    "--warmup",
+                    str(args.warmup),
+                    "--duration",
+                    str(args.duration),
+                    "--ccu",
+                    clients,
+                    "--print-perf-result",
+                    "2",
+                    "--send-stop-token",
+                    "1",
+                    "--endpoint",
+                    endpoint,
+                ],
+                cwd=str(ROOT.parent.parent.parent.parent),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=90,
+                check=True,
+            )
+            if client.stdout:
+                stdout_chunks.append(_normalize_stream_result_lines(client.stdout.strip()))
+            if client.stderr:
+                stderr_chunks.append(client.stderr.strip())
+            return "\n".join(chunk for chunk in stdout_chunks if chunk)
 
         client = subprocess.run(
             [

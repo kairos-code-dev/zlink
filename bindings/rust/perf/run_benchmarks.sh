@@ -17,9 +17,31 @@ RUNS="${PERF_RUNS:-1}"
 RESULTS_DIR="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results/single/report}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 
+print_help() {
+    cat <<'EOF'
+Usage: bindings/rust/perf/run_benchmarks.sh [options]
+
+Options:
+  -h, --help
+  --pattern NAME
+  --recv MODE
+  --duration N
+  --warmup N
+  --msg-sizes LIST
+  --transports LIST
+  --runs N
+  --results-dir PATH
+  --results-tag NAME
+EOF
+}
+
 # -- Parse CLI options -------------------------------------------------------
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -h|--help)
+            print_help
+            exit 0
+            ;;
         --pattern)   PATTERN="$2";   shift 2 ;;
         --recv)      RECV_MODE="$2"; shift 2 ;;
         --duration)  DURATION="$2";  shift 2 ;;

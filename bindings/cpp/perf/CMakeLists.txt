@@ -86,8 +86,7 @@ add_cpp_multi_server_bench(cpp_comp_src_spot_server
   "${PERF_ROOT_DIR}/multi/src/perf_spot_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_stream_server
   "${PERF_ROOT_DIR}/multi/src/perf_stream_server.cpp")
-add_cpp_multi_server_bench(cpp_comp_src_stream_callback_server
-  "${PERF_ROOT_DIR}/multi/src/perf_stream_callback_server.cpp")
+configure_perf_target(cpp_comp_src_stream_server "multi")
 
 # Multi client suite (6 binaries)
 add_cpp_multi_client_bench(cpp_comp_src_dealer_dealer_client

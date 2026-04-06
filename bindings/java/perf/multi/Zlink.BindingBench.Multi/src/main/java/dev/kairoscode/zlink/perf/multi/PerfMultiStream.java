@@ -78,7 +78,7 @@ final class PerfMultiStream {
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        return PerfUtil.Result.unsupported("external_stream_client", config);
+        return PerfUtil.Result.unsupported("shared_core_stream_client", config);
     }
 
     private static Thread startControlWatcher(AtomicBoolean stopRequested,

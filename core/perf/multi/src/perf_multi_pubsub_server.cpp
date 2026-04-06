@@ -1,5 +1,6 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_handshake.hpp"
 #include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
@@ -29,9 +30,7 @@ static const char *k_pubsub_topic = "bench";
 static std::atomic<bool> g_queue_probe_pending (false);
 static std::atomic<size_t> g_queue_probe_size (0);
 static std::atomic<int> g_debug_pub_logs (0);
-std::mutex g_start_sync;
-std::condition_variable g_start_cv;
-size_t g_start_requested_size = 0;
+perf_multi_handshake::start_signal_state_t g_start_gate;
 
 inline void request_queue_probe (size_t msg_size)
 {
@@ -59,48 +58,16 @@ inline void emit_requested_queue_probe (const std::string &lib_name,
       lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
-bool parse_start_command (const std::string &line, size_t *msg_size_out)
-{
-    static const char prefix[] = "START,";
-    if (!msg_size_out
-        || line.compare (0, sizeof (prefix) - 1, prefix) != 0) {
-        return false;
-    }
-
-    const char *value = line.c_str () + (sizeof (prefix) - 1);
-    char *end = NULL;
-    const unsigned long long parsed = std::strtoull (value, &end, 10);
-    if (!end || *end != '\0' || parsed == 0)
-        return false;
-
-    *msg_size_out = static_cast<size_t> (parsed);
-    return true;
-}
-
 bool wait_for_start_signal (size_t msg_size, int timeout_ms)
 {
-    std::unique_lock<std::mutex> lock (g_start_sync);
-    if (g_start_requested_size == msg_size) {
-        g_start_requested_size = 0;
-        return true;
-    }
-
-    const bool signaled = g_start_cv.wait_for (
-      lock,
-      std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1),
-      [msg_size] () {
-          return perf_stop_requested ().load (std::memory_order_acquire)
-                 || g_start_requested_size == msg_size;
-      });
-    if (!signaled || g_start_requested_size != msg_size) {
+    if (!perf_multi_handshake::wait_for_start (
+          &g_start_gate, msg_size, timeout_ms)) {
         if (bench_debug_enabled ()) {
             std::cerr << "[multi-pubsub-server] start gate timeout size="
                       << msg_size << std::endl;
         }
         return false;
     }
-
-    g_start_requested_size = 0;
     return true;
 }
 
@@ -242,26 +209,8 @@ inline void print_server_metrics (
   const bench_multi_resource_metrics_t &metrics,
   const server_queue_stats_t &queue_stats)
 {
-    for (size_t i = 0; i < sizes.size (); ++i) {
-        if (metrics.has_cpu_pct) {
-            std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                      << transport << "," << sizes[i]
-                      << ",server_cpu_pct," << std::fixed
-                      << std::setprecision (2) << metrics.cpu_pct << std::endl;
-        }
-        if (metrics.has_mem_mb) {
-            std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                      << transport << "," << sizes[i]
-                      << ",server_mem_mb," << std::fixed
-                      << std::setprecision (2) << metrics.mem_mb << std::endl;
-        }
-        print_server_queue_metrics (
-          lib_name,
-          k_pattern,
-          transport,
-          sizes[i],
-          queue_stats);
-    }
+    print_server_metrics_for_sizes (
+      lib_name, k_pattern, transport, sizes, metrics, &queue_stats);
 }
 
 inline bool run_server_loop (void *server,
@@ -413,10 +362,7 @@ inline int run_server_benchmark (const std::string &lib_name,
     perf_stop_requested ().store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
     g_queue_probe_size.store (0, std::memory_order_release);
-    {
-        std::lock_guard<std::mutex> lock (g_start_sync);
-        g_start_requested_size = 0;
-    }
+    perf_multi_handshake::reset_start_signal_state (&g_start_gate);
     install_perf_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
@@ -428,22 +374,21 @@ inline int run_server_benchmark (const std::string &lib_name,
                 request_queue_probe (queue_size);
                 continue;
             }
-            if (parse_start_command (line, &start_size)) {
-                std::lock_guard<std::mutex> lock (g_start_sync);
-                g_start_requested_size = start_size;
-                g_start_cv.notify_all ();
+            if (perf_multi_handshake::parse_size_command_line (
+                  line, "START,", &start_size)) {
+                perf_multi_handshake::signal_start (&g_start_gate, start_size);
                 continue;
             }
             if (line == "STOP" || line == "QUIT") {
                 perf_stop_requested ().store (true, std::memory_order_release);
-                g_start_cv.notify_all ();
+                perf_multi_handshake::signal_stop (&g_start_gate);
                 return;
             }
         }
         if (bench_debug_enabled ())
             std::cerr << "[multi-pubsub-server] stdin watcher eof" << std::endl;
         perf_stop_requested ().store (true, std::memory_order_release);
-        g_start_cv.notify_all ();
+        perf_multi_handshake::signal_stop (&g_start_gate);
     });
 
     std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
@@ -470,7 +415,7 @@ inline int run_server_benchmark (const std::string &lib_name,
       transport);
 
     perf_stop_requested ().store (true, std::memory_order_release);
-    g_start_cv.notify_all ();
+    perf_multi_handshake::signal_stop (&g_start_gate);
     if (stdin_watcher.joinable ()) {
         stdin_watcher.join ();
     }

@@ -18,24 +18,7 @@ static const char *k_topic = "bench";
 
 bool wait_for_start_signal (size_t msg_size)
 {
-    std::string line;
-    while (std::getline (std::cin, line)) {
-        if (line == "STOP" || line == "QUIT")
-            return false;
-
-        static const char prefix[] = "START,";
-        if (line.compare (0, sizeof (prefix) - 1, prefix) != 0)
-            continue;
-
-        const char *value = line.c_str () + (sizeof (prefix) - 1);
-        char *end = NULL;
-        const unsigned long long parsed = std::strtoull (value, &end, 10);
-        if (!end || *end != '\0')
-            continue;
-        return static_cast<size_t> (parsed) == msg_size;
-    }
-
-    return false;
+    return perf::multi::wait_for_start_from_stdin (msg_size);
 }
 
 long compute_wait_ms (const perf::multi::multi_bench_settings_t &settings,
@@ -88,16 +71,16 @@ bool run_phase (zlink::socket_t &publisher,
             }
         }
 
-        zlink_msg_t payload_part;
-        if (zlink_msg_init_size (&payload_part, payload.size ()) != 0)
+        zlink::message_t payload_part (payload.size ());
+        if (!payload_part.valid ())
             return false;
         if (!payload.empty ()) {
             std::memcpy (
-              zlink_msg_data (&payload_part), payload.data (), payload.size ());
+              payload_part.data (), payload.data (), payload.size ());
         }
 
-        const int sent =
-          zlink_publish (publisher.handle (), k_topic, &payload_part, 1, ZLINK_DONTWAIT);
+        const int sent = publisher.publish (
+          k_topic, payload_part, zlink::send_flag::dontwait);
         if (sent == 0) {
             pending = false;
             if (poller.modify (publisher, static_cast<zlink::poll_event> (0)) != 0)
@@ -105,7 +88,6 @@ bool run_phase (zlink::socket_t &publisher,
             continue;
         }
 
-        (void) zlink_msg_close (&payload_part);
         if (errno == EAGAIN) {
             pending = true;
             if (poller.modify (publisher, zlink::poll_event::pollout) != 0)
@@ -157,6 +139,8 @@ bool perf_pubsub_server (const std::string &transport, size_t msg_size)
     if (endpoint.empty ())
         return false;
 
+    const bench_multi_cpu_sample_t resource_probe_start =
+      perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
     if (!wait_for_start_signal (msg_size)) {
@@ -212,6 +196,14 @@ bool perf_pubsub_server (const std::string &transport, size_t msg_size)
                     settings))
         return false;
 
+    const bench_multi_resource_metrics_t resource_metrics =
+      perf::multi::finish_resource_probe (resource_probe_start);
+    perf::multi::print_server_resource_metrics (
+      "current",
+      "MULTI_PUBSUB",
+      transport,
+      msg_size,
+      resource_metrics);
     perf::multi::print_server_queue_metrics (
       "current",
       "MULTI_PUBSUB",

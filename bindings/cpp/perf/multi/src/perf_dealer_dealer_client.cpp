@@ -101,16 +101,28 @@ class dealer_dealer_client_bench_t
 
         perf::multi::settle ();
 
-        if (!run_warmup ())
+        if (!run_phase (perf_metric::phase_warmup,
+                        std::chrono::seconds (_phase_cfg.warmup_seconds),
+                        &_result.warmup_count,
+                        NULL))
             return false;
 
-        if (!run_settle ())
+        if (!run_phase (perf_metric::phase_drain,
+                        std::chrono::milliseconds (_phase_cfg.settle_ms),
+                        NULL,
+                        NULL))
             return false;
 
-        if (!run_active ())
+        _resource_probe_start = perf::multi::start_resource_probe ();
+        if (!run_phase (perf_metric::phase_active,
+                        std::chrono::seconds (_phase_cfg.active_seconds),
+                        &_result.active_count,
+                        &_result.latency))
             return false;
 
         send_stop_token_once ();
+        _resource_metrics =
+          perf::multi::finish_resource_probe (_resource_probe_start);
 
         if (_result.active_count == 0) {
             debug_log ("active_count remained zero");
@@ -207,9 +219,16 @@ class dealer_dealer_client_bench_t
         }
 
         const auto t0 = std::chrono::steady_clock::now ();
-        const int sent = state.sock->send (
-          _payload.data (), _payload.size (), zlink::send_flag::dontwait);
-        if (sent == static_cast<int> (_payload.size ())) {
+        zlink::message_t request (_payload.size ());
+        if (!request.valid ()) {
+            debug_log ("request wrap failed");
+            return false;
+        }
+        if (!_payload.empty ())
+            std::memcpy (request.data (), &_payload[0], _payload.size ());
+
+        const int sent = state.sock->send (request, zlink::send_flag::dontwait);
+        if (sent == 0) {
             state.pending = false;
             if (!set_pollout (state, false))
                 return false;
@@ -234,22 +253,23 @@ class dealer_dealer_client_bench_t
         return false;
     }
 
-    bool run_phase_for (perf_metric::phase_t phase,
-                        std::chrono::steady_clock::duration duration,
-                        unsigned long long *count_out,
-                        perf::multi::bench_latency_sampler_t *lat_out)
+    bool run_phase (perf_metric::phase_t phase,
+                    std::chrono::steady_clock::duration duration,
+                    unsigned long long *count_out,
+                    perf::multi::bench_latency_stats_t *lat_out)
     {
-        if (!count_out)
-            return false;
-
         if (duration <= std::chrono::steady_clock::duration::zero ()) {
-            *count_out = 0;
+            if (count_out)
+                *count_out = 0;
+            if (lat_out)
+                *lat_out = perf::multi::bench_latency_stats_t ();
             return true;
         }
 
         if (_socket_states.empty ())
             return false;
 
+        perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
         size_t index = 0;
         const auto deadline = std::chrono::steady_clock::now () + duration;
@@ -261,7 +281,7 @@ class dealer_dealer_client_bench_t
                   _socket_states[(index + i) % _socket_states.size ()];
                 if (state.pending || !state.sock)
                     continue;
-                if (!try_send_once (state, phase, &count, lat_out))
+                if (!try_send_once (state, phase, &count, &latency))
                     return false;
                 progress = true;
             }
@@ -308,45 +328,15 @@ class dealer_dealer_client_bench_t
                          & static_cast<short> (zlink::poll_event::pollout))) {
                     continue;
                 }
-                if (!try_send_once (*state, phase, &count, lat_out))
+                if (!try_send_once (*state, phase, &count, &latency))
                     return false;
             }
         }
 
-        *count_out = count;
-        return true;
-    }
-
-    bool run_warmup ()
-    {
-        return run_phase_for (perf_metric::phase_warmup,
-                              std::chrono::seconds (_phase_cfg.warmup_seconds),
-                              &_result.warmup_count,
-                              NULL);
-    }
-
-    bool run_settle ()
-    {
-        if (_phase_cfg.settle_ms <= 0)
-            return true;
-
-        unsigned long long ignored = 0;
-        return run_phase_for (perf_metric::phase_drain,
-                              std::chrono::milliseconds (_phase_cfg.settle_ms),
-                              &ignored,
-                              NULL);
-    }
-
-    bool run_active ()
-    {
-        perf::multi::bench_latency_sampler_t latency;
-        if (!run_phase_for (perf_metric::phase_active,
-                            std::chrono::seconds (_phase_cfg.active_seconds),
-                            &_result.active_count,
-                            &latency)) {
-            return false;
-        }
-        _result.latency = latency.snapshot ();
+        if (count_out)
+            *count_out = count;
+        if (lat_out)
+            *lat_out = latency.snapshot ();
         return true;
     }
 
@@ -357,25 +347,24 @@ class dealer_dealer_client_bench_t
 
         const char *stop = perf::multi::k_stop_token;
         const size_t stop_len = std::strlen (stop);
-        (void) _socket_states[0].sock->send (
-          stop, stop_len, zlink::send_flag::dontwait);
+        zlink::message_t stop_part = zlink::message_t::from_bytes (stop, stop_len);
+        if (!stop_part.valid ())
+            return;
+        (void) _socket_states[0].sock->send (stop_part,
+                                             zlink::send_flag::dontwait);
     }
 
     void print_result () const
     {
-        const double throughput = static_cast<double> (_result.active_count)
-                                  / static_cast<double> (_phase_cfg.active_seconds);
-        const double bandwidth = throughput * static_cast<double> (_msg_size) / 1000000.0;
-
-        perf::multi::print_result ("current",
-                                   k_pattern_result,
-                                   _transport,
-                                   _msg_size,
-                                   throughput,
-                                   bandwidth,
-                                   _result.latency.mean_us,
-                                   _result.latency.p95_us,
-                                   _result.latency.p99_us);
+        perf::multi::print_client_result_lines (
+          k_pattern_result,
+          _transport,
+          _msg_size,
+          _result.active_count,
+          _phase_cfg.active_seconds,
+          1.0,
+          _result.latency,
+          _resource_metrics);
     }
 
   private:
@@ -397,6 +386,8 @@ class dealer_dealer_client_bench_t
 
     phase_config_t _phase_cfg;
     bench_result_t _result;
+    bench_multi_cpu_sample_t _resource_probe_start;
+    bench_multi_resource_metrics_t _resource_metrics;
 };
 
 } // namespace

@@ -554,12 +554,17 @@ bool run_single_size_case(router_client_state_t *state,
     if (!have_latency)
         return false;
 
-    const double throughput =
-      static_cast<double>(active_received)
-      / static_cast<double>(std::max(1, settings.duration_seconds));
-    print_client_result_lines(k_pattern, lib_name, transport, msg_size,
-                              throughput, latency, metrics);
-    return true;
+    return perf_multi_echo::echo_emit_client_results(
+      k_pattern,
+      lib_name,
+      transport,
+      msg_size,
+      std::max(1, settings.duration_seconds),
+      state->fatal.load(std::memory_order_acquire),
+      active_received,
+      latency_count,
+      latency,
+      metrics);
 }
 
 int run_client_benchmark(const std::string &lib_name,

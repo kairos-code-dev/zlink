@@ -4,6 +4,7 @@
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_entry.hpp"
 #include "../common/perf_metric_header.hpp"
+#include "../common/perf_spot_phase.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -17,8 +18,11 @@
 #include <vector>
 
 #if defined(_WIN32)
+#include <winsock2.h>
 #include <process.h>
 #else
+#include <climits>
+#include <poll.h>
 #include <unistd.h>
 #endif
 
@@ -26,11 +30,37 @@ namespace {
 
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_topic = "bench";
+static const char *k_control_topic = "bench_ctl";
 static const uint32_t k_run_id = 1U;
 
 bool perf_debug_enabled ()
 {
     return std::getenv ("PERF_DEBUG") != NULL;
+}
+
+int perf_idle_wait_ms (long timeout_ms_)
+{
+#if defined(_WIN32)
+    const DWORD wait_ms = timeout_ms_ <= 0
+                            ? 0
+                            : static_cast<DWORD> (timeout_ms_);
+    ::Sleep (wait_ms);
+    return 0;
+#else
+    const int wait_ms =
+      timeout_ms_ > static_cast<long> (INT_MAX) ? INT_MAX
+                                                : static_cast<int> (timeout_ms_);
+    int rc = 0;
+    do {
+        rc = ::poll (NULL, 0, wait_ms);
+    } while (rc < 0 && errno == EINTR);
+    return rc < 0 ? -1 : 0;
+#endif
+}
+
+bool wait_for_spot_send_progress (bool send_enabled_)
+{
+    return perf_idle_wait_ms (send_enabled_ ? 2 : 1) >= 0;
 }
 
 void debug_log (const std::string &message_)
@@ -40,17 +70,9 @@ void debug_log (const std::string &message_)
     std::cerr << "spot server: " << message_ << std::endl;
 }
 
-struct start_gate_t
-{
-    start_gate_t () : requested (false), msg_size (0) {}
+perf::multi::start_signal_state_t g_start_gate;
 
-    bool requested;
-    size_t msg_size;
-    std::mutex mutex;
-    std::condition_variable cv;
-};
-
-start_gate_t g_start_gate;
+perf::multi::control_connect_gate_t g_control_connect_gate;
 
 void fast_exit_process (int exit_code_)
 {
@@ -81,152 +103,35 @@ void ensure_multi_spot_mesh_pub_budget_default ()
 #endif
 }
 
-std::string make_transport_endpoint (const std::string &transport_, int port_)
+std::vector<size_t> resolve_msg_sizes (size_t fallback_size_)
 {
-    const std::string suffix = std::to_string (port_);
-    if (transport_ == "ws")
-        return std::string ("ws://127.0.0.1:") + suffix;
-    if (transport_ == "wss")
-        return std::string ("wss://127.0.0.1:") + suffix;
-    if (transport_ == "tls")
-        return std::string ("tls://127.0.0.1:") + suffix;
-    return std::string ("tcp://127.0.0.1:") + suffix;
-}
-
-std::string bind_spot_endpoint (zlink::service::spot_node_t &node_,
-                                const std::string &transport_,
-                                int base_port_)
-{
-    for (int i = 0; i < 64; ++i) {
-        const std::string requested_endpoint =
-          make_transport_endpoint (transport_, base_port_ + i);
-        if (node_.bind (requested_endpoint) != 0)
-            continue;
-
-        std::string resolved_endpoint = node_.last_endpoint ();
-        if (!resolved_endpoint.empty ()) {
-            return perf::multi::normalize_endpoint_host (resolved_endpoint);
-        }
-
-        return requested_endpoint;
-    }
-    return std::string ();
-}
-
-bool configure_spot_server_tls (zlink::service::spot_node_t &node_,
-                                const std::string &transport_)
-{
-    if (transport_ != "tls" && transport_ != "wss")
-        return true;
-
-    std::string cert;
-    std::string key;
-    std::string ca;
-    if (!perf::multi::try_resolve_perf_tls_paths (cert, key, ca))
-        return false;
-
-    return node_.set_tls_server (cert, key) == 0;
-}
-
-bool wait_for_spot_pub_ready (zlink::service::spot_node_t &node_,
-                              uint64_t min_value_,
-                              int timeout_ms_)
-{
-    if (min_value_ == 0)
-        return true;
-
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (timeout_ms_, 1));
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink_spot_node_status_t status;
-        std::memset (&status, 0, sizeof (status));
-        if (node_.status_snapshot (status) == 0
-            && static_cast<uint64_t> (status.connected_peer_count) >= min_value_) {
-            return true;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    std::vector<size_t> out;
+    const char *raw = std::getenv ("PERF_MSG_SIZES");
+    if (!raw || !*raw) {
+        out.push_back (fallback_size_);
+        return out;
     }
 
-    errno = ETIMEDOUT;
-    return false;
-}
-
-void debug_dump_spot_node_state (zlink::service::spot_node_t &node_)
-{
-    if (!perf_debug_enabled ())
-        return;
-
-    zlink_spot_node_status_t status;
-    std::memset (&status, 0, sizeof (status));
-    if (node_.status_snapshot (status) == 0) {
-        std::cerr << "spot server: node status"
-                  << " state=" << status.state
-                  << " configured=" << status.configured_peer_count
-                  << " active=" << status.active_peer_count
-                  << " connected=" << status.connected_peer_count
-                  << " subjects=" << status.subject_count
-                  << " ready_subjects=" << status.ready_subject_count
-                  << " last_error=" << status.last_error
-                  << " endpoint=" << status.local_endpoint
-                  << std::endl;
-    } else {
-        std::cerr << "spot server: node status snapshot failed errno="
-                  << errno << std::endl;
+    const std::string csv (raw);
+    size_t start = 0;
+    while (start < csv.size ()) {
+        const size_t end = csv.find (',', start);
+        const std::string token =
+          csv.substr (start, end == std::string::npos ? std::string::npos
+                                                      : end - start);
+        char *parse_end = NULL;
+        const unsigned long long parsed =
+          std::strtoull (token.c_str (), &parse_end, 10);
+        if (parse_end && *parse_end == '\0' && parsed > 0)
+            out.push_back (static_cast<size_t> (parsed));
+        if (end == std::string::npos)
+            break;
+        start = end + 1;
     }
 
-    std::vector<zlink_spot_node_peer_entry_t> peers (16);
-    size_t peer_count = peers.size ();
-    if (node_.peers_snapshot (peers.data (), &peer_count) == 0) {
-        peers.resize (peer_count);
-        std::cerr << "spot server: peer count=" << peers.size () << std::endl;
-        for (size_t i = 0; i < peers.size (); ++i) {
-            std::cerr << "spot server: peer[" << i << "] state="
-                      << peers[i].state
-                      << " source=" << peers[i].source
-                      << " endpoint=" << peers[i].peer_endpoint
-                      << std::endl;
-        }
-    } else {
-        std::cerr << "spot server: peers snapshot failed errno=" << errno
-                  << std::endl;
-    }
-
-    std::vector<zlink_spot_node_subject_entry_t> subjects (16);
-    size_t subject_count = subjects.size ();
-    if (node_.subjects_snapshot (subjects.data (), &subject_count) == 0) {
-        subjects.resize (subject_count);
-        std::cerr << "spot server: subject count=" << subjects.size ()
-                  << std::endl;
-        for (size_t i = 0; i < subjects.size (); ++i) {
-            std::cerr << "spot server: subject[" << i << "] role="
-                      << subjects[i].role
-                      << " ready_peers=" << subjects[i].ready_peer_count
-                      << " active_peers=" << subjects[i].active_peer_count
-                      << " subject=" << subjects[i].subject << std::endl;
-        }
-    } else {
-        std::cerr << "spot server: subjects snapshot failed errno=" << errno
-                  << std::endl;
-    }
-}
-
-bool parse_start_command (const std::string &line_, size_t *msg_size_out_)
-{
-    static const char prefix[] = "START,";
-    if (!msg_size_out_
-        || line_.compare (0, sizeof (prefix) - 1, prefix) != 0) {
-        return false;
-    }
-
-    const char *value = line_.c_str () + (sizeof (prefix) - 1);
-    char *end = NULL;
-    const unsigned long long parsed = std::strtoull (value, &end, 10);
-    if (!end || *end != '\0' || parsed == 0)
-        return false;
-
-    *msg_size_out_ = static_cast<size_t> (parsed);
-    return true;
+    if (out.empty ())
+        out.push_back (fallback_size_);
+    return out;
 }
 
 int resolve_spot_start_timeout_ms (const perf::multi::multi_bench_settings_t &settings_)
@@ -235,8 +140,9 @@ int resolve_spot_start_timeout_ms (const perf::multi::multi_bench_settings_t &se
                      std::max (1000, settings_.connect_ready_timeout_ms * 6));
 }
 
-int resolve_spot_pub_ready_timeout_ms (const perf::multi::multi_bench_settings_t &settings_,
-                                       const std::string &transport_)
+int resolve_spot_barrier_timeout_ms (
+  const perf::multi::multi_bench_settings_t &settings_,
+  const std::string &transport_)
 {
     int timeout_ms = resolve_spot_start_timeout_ms (settings_);
     if (transport_ == "wss")
@@ -248,49 +154,74 @@ int resolve_spot_pub_ready_timeout_ms (const perf::multi::multi_bench_settings_t
 
 bool wait_for_start_signal (size_t msg_size_, int timeout_ms_)
 {
-    std::unique_lock<std::mutex> lock (g_start_gate.mutex);
-    if (g_start_gate.requested && g_start_gate.msg_size == msg_size_) {
-        g_start_gate.requested = false;
-        g_start_gate.msg_size = 0;
-        return true;
-    }
+    return perf::multi::wait_for_start (&g_start_gate, msg_size_, timeout_ms_);
+}
 
-    const bool signaled = g_start_gate.cv.wait_for (
-      lock,
-      std::chrono::milliseconds (std::max (1, timeout_ms_)),
-      [msg_size_]() {
-          return g_start_gate.requested
-                 && g_start_gate.msg_size == msg_size_;
-      });
-    if (!signaled) {
-        errno = ETIMEDOUT;
+bool wait_for_control_connect (zlink::service::spot_node_t &control_node_,
+                               int timeout_ms_)
+{
+    std::string endpoint;
+    if (!perf::multi::wait_for_control_connect (
+          &g_control_connect_gate, control_node_, timeout_ms_, &endpoint)) {
         return false;
     }
-
-    g_start_gate.requested = false;
-    g_start_gate.msg_size = 0;
+    std::cout << "CONTROL_CONNECTED," << endpoint << std::endl;
     return true;
 }
 
-size_t resolve_spot_ready_quorum (size_t client_count_)
+bool parse_ready_count_command (const std::string &line_,
+                                size_t *msg_size_out_,
+                                size_t *ready_count_out_)
 {
-    if (client_count_ == 0)
-        return 1;
+    return perf::multi::parse_size_count_command_line (
+      line_, "READY_COUNT,", msg_size_out_, ready_count_out_);
+}
 
-    const int percent = std::max (
-      1,
-      perf::multi::parse_positive_env (
-        "PERF_MULTI_SPOT_PUB_READY_QUORUM_PERCENT", 90));
-    const size_t bounded_percent =
-      static_cast<size_t> (std::min (percent, 100));
-    const size_t quorum = static_cast<size_t> (
-      (static_cast<unsigned long long> (client_count_) * bounded_percent + 99ULL)
-      / 100ULL);
-    return std::max<size_t> (1, quorum);
+bool publish_control_message (zlink::service::spot_t &spot_,
+                              const std::string &payload_,
+                              int timeout_ms_)
+{
+    return perf::multi::publish_control_message (
+      spot_,
+      k_control_topic,
+      payload_,
+      timeout_ms_,
+      []() { return wait_for_spot_send_progress (false); });
+}
+
+bool publish_control_start (zlink::service::spot_t &spot_,
+                            size_t msg_size_,
+                            int timeout_ms_)
+{
+    return publish_control_message (
+      spot_,
+      perf::multi::make_start_command (msg_size_),
+      timeout_ms_);
+}
+
+bool wait_for_ready_counts (zlink::service::spot_t &spot_,
+                            size_t msg_size_,
+                            size_t expected_ready_count_,
+                            int timeout_ms_)
+{
+    return perf::multi::wait_for_ready_counts (
+      spot_,
+      k_control_topic,
+      msg_size_,
+      expected_ready_count_,
+      timeout_ms_,
+      [&](const std::string &payload_, size_t *ready_size_, size_t *increment_) {
+          debug_log ("control recv payload=" + payload_);
+          return parse_ready_count_command (
+            payload_, ready_size_, increment_);
+      },
+      [&]() {
+          std::this_thread::yield ();
+          return true;
+      });
 }
 
 bool run_phase (zlink::service::spot_t &spot_,
-                std::vector<char> &payload_,
                 size_t msg_size_,
                 uint64_t &seq_,
                 perf_metric::phase_t phase_,
@@ -300,22 +231,22 @@ bool run_phase (zlink::service::spot_t &spot_,
         return true;
 
     const auto deadline = std::chrono::steady_clock::now () + duration_;
+    const size_t payload_size =
+      std::max<size_t> (msg_size_, perf_metric::header_size ());
+    zlink::message_t outbound (payload_size);
+    if (!outbound.valid ()) {
+        errno = EINVAL;
+        return false;
+    }
 
     while (std::chrono::steady_clock::now () < deadline) {
-        if (!perf_metric::stamp_payload (payload_.data (),
-                                         payload_.size (),
+        if (!perf_metric::stamp_payload (outbound.data (),
+                                         outbound.size (),
                                          k_run_id,
                                          phase_,
                                          msg_size_,
-                                         seq_++,
+                                         seq_,
                                          perf_metric::now_us ())) {
-            errno = EINVAL;
-            return false;
-        }
-
-        zlink::message_t outbound =
-          zlink::message_t::from_bytes (payload_.data (), payload_.size ());
-        if (!outbound.valid ()) {
             errno = EINVAL;
             return false;
         }
@@ -323,6 +254,9 @@ bool run_phase (zlink::service::spot_t &spot_,
         const zlink::send_result_t result =
           spot_.try_publish (k_topic, outbound);
         if (result == zlink::send_result_t::sent) {
+            ++seq_;
+            if (outbound.init (payload_size) != 0)
+                return false;
             continue;
         }
 
@@ -331,7 +265,8 @@ bool run_phase (zlink::service::spot_t &spot_,
             errno = EFAULT;
             return false;
         }
-        std::this_thread::yield ();
+        if (!wait_for_spot_send_progress (true))
+            return false;
     }
 
     return true;
@@ -364,14 +299,29 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
     if (!spot.valid ())
         return false;
 
-    if (!configure_spot_server_tls (node, transport_))
+    zlink::service::spot_node_t control_node (ctx.ctx ());
+    if (!control_node.valid ())
+        return false;
+
+    zlink::service::spot_t control_spot (control_node);
+    if (!control_spot.valid ())
+        return false;
+
+    if (!perf::multi::configure_spot_server_tls (node, transport_))
+        return false;
+    if (!perf::multi::configure_spot_control_tls (control_node, transport_))
         return false;
 
     const int base_port = settings.server_bind_port > 0
                             ? settings.server_bind_port
                             : 39500 + (bench_pid () % 1000) * 8;
-    const std::string endpoint = bind_spot_endpoint (node, transport_, base_port);
+    const std::string endpoint =
+      perf::multi::bind_spot_endpoint (node, transport_, base_port);
     if (endpoint.empty ())
+        return false;
+    const std::string control_endpoint =
+      perf::multi::bind_spot_endpoint (control_node, transport_, base_port + 256);
+    if (control_endpoint.empty ())
         return false;
 
     (void) spot.set (zlink::socket_options::sndhwm, settings.sndhwm);
@@ -382,52 +332,82 @@ bool perf_spot_server (const std::string &transport_, size_t msg_size_)
                        > 0
                        ? 1
                        : 0);
+    (void) control_spot.set (zlink::socket_options::sndhwm, settings.sndhwm);
+    (void) control_spot.set (zlink::socket_options::rcvhwm, settings.rcvhwm);
+    (void) control_spot.set (zlink::socket_options::sndtimeo,
+                             settings.sndtimeo_ms);
+    (void) control_spot.set (zlink::socket_options::rcvtimeo,
+                             settings.rcvtimeo_ms);
+    if (control_spot.set_subscription (k_control_topic) != 0)
+        return false;
+
+    const std::vector<size_t> msg_sizes = resolve_msg_sizes (msg_size_);
 
     perf::multi::print_ready (endpoint);
+    std::cout << "CONTROL_READY," << control_endpoint << std::endl;
 
-    {
-        std::lock_guard<std::mutex> lock (g_start_gate.mutex);
-        g_start_gate.requested = false;
-        g_start_gate.msg_size = 0;
-    }
+    perf::multi::reset_start_signal_state (&g_start_gate);
+    perf::multi::reset_control_connect_gate (&g_control_connect_gate);
 
     const int start_timeout_ms = resolve_spot_start_timeout_ms (settings);
-    if (!wait_for_start_signal (msg_size_, start_timeout_ms))
+    debug_log ("waiting control reverse connect");
+    if (!wait_for_control_connect (control_node, start_timeout_ms))
         return false;
 
-    const size_t ready_quorum = resolve_spot_ready_quorum (settings.clients);
-    const int ready_timeout_ms =
-      resolve_spot_pub_ready_timeout_ms (settings, transport_);
-    if (!wait_for_spot_pub_ready (
-          node, static_cast<uint64_t> (ready_quorum), ready_timeout_ms)) {
-        debug_log ("pub ready gate timed out errno=" + std::to_string (errno));
-        debug_dump_spot_node_state (node);
-        return false;
-    }
-
-    std::vector<char> payload (
-      std::max<size_t> (msg_size_, perf_metric::header_size ()), 's');
     uint64_t seq = 1;
-
-    if (!run_phase (spot,
-                    payload,
-                    msg_size_,
-                    seq,
-                    perf_metric::phase_warmup,
-                    std::chrono::seconds (std::max (0, settings.warmup_seconds)))) {
+    if (!perf::multi::run_spot_server_cases(
+          settings,
+          msg_sizes,
+          [&](size_t current_size, int timeout_ms) {
+              debug_log("waiting stdin START size=" + std::to_string(current_size));
+              const bool ok = wait_for_start_signal(current_size, timeout_ms);
+              if (ok)
+                  debug_log("stdin START received size=" + std::to_string(current_size));
+              return ok;
+          },
+          [&](size_t current_size) {
+              const int barrier_timeout_ms =
+                resolve_spot_barrier_timeout_ms(settings, transport_);
+              debug_log("waiting ready count barrier size="
+                        + std::to_string(current_size) + " expected="
+                        + std::to_string(settings.clients));
+              return wait_for_ready_counts(
+                control_spot,
+                current_size,
+                std::max<size_t>(1, settings.clients),
+                barrier_timeout_ms);
+          },
+          [&](size_t current_size) {
+              const int barrier_timeout_ms =
+                resolve_spot_barrier_timeout_ms(settings, transport_);
+              return publish_control_start(control_spot,
+                                           current_size,
+                                           barrier_timeout_ms);
+          },
+          [&](size_t current_size,
+              perf_metric::phase_t phase,
+              std::chrono::steady_clock::duration duration) {
+              const bench_multi_cpu_sample_t resource_probe_start =
+                phase == perf_metric::phase_warmup
+                  ? bench_multi_cpu_sample_t()
+                  : perf::multi::start_resource_probe();
+              const bool ok = run_phase(spot, current_size, seq, phase, duration);
+              if (ok && phase == perf_metric::phase_active) {
+                  const bench_multi_resource_metrics_t resource_metrics =
+                    perf::multi::finish_resource_probe(resource_probe_start);
+                  perf::multi::print_server_resource_metrics(
+                    "current", k_pattern, transport_, current_size, resource_metrics);
+                  perf::multi::print_server_queue_metrics(
+                    "current",
+                    k_pattern,
+                    transport_,
+                    current_size,
+                    perf::multi::server_queue_stats_t());
+              }
+              return ok;
+          })) {
         return false;
     }
-    if (!run_phase (spot,
-                    payload,
-                    msg_size_,
-                    seq,
-                    perf_metric::phase_active,
-                    std::chrono::seconds (std::max (1, settings.duration_seconds)))) {
-        return false;
-    }
-
-    perf::multi::print_server_queue_metrics (
-      "current", k_pattern, transport_, msg_size_, perf::multi::server_queue_stats_t ());
     fast_exit_process (0);
     return false;
 }
@@ -444,33 +424,10 @@ int main (int argc, char **argv)
     if (size == 0)
         return 1;
 
-    {
-        std::lock_guard<std::mutex> lock (g_start_gate.mutex);
-        g_start_gate.requested = false;
-        g_start_gate.msg_size = 0;
-    }
-
-    std::thread stdin_watcher ([]() {
-        std::string line;
-        while (std::getline (std::cin, line)) {
-            size_t start_size = 0;
-            if (parse_start_command (line, &start_size)) {
-                std::lock_guard<std::mutex> lock (g_start_gate.mutex);
-                g_start_gate.requested = true;
-                g_start_gate.msg_size = start_size;
-                g_start_gate.cv.notify_all ();
-                continue;
-            }
-            if (line == "STOP" || line == "QUIT") {
-                std::lock_guard<std::mutex> lock (g_start_gate.mutex);
-                g_start_gate.requested = false;
-                g_start_gate.msg_size = 0;
-                g_start_gate.cv.notify_all ();
-                return;
-            }
-        }
-    });
-    stdin_watcher.detach ();
+    perf::multi::reset_start_signal_state (&g_start_gate);
+    perf::multi::reset_control_connect_gate (&g_control_connect_gate);
+    perf::multi::start_server_control_watcher (&g_control_connect_gate,
+                                               &g_start_gate);
 
     return perf_spot_server (transport, size) ? 0 : 1;
 }

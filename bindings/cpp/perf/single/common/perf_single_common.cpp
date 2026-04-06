@@ -888,7 +888,7 @@ void callback_receiver_t::recv_handler (const zlink_routing_id_t *,
       static_cast<callback_receiver_t *> (userdata_);
     if (!self || !parts_ || part_count_ == 0) {
         if (parts_)
-            zlink_multipart_close (parts_, part_count_);
+            zlink::detail::close_message_array (parts_, part_count_);
         return;
     }
 
@@ -901,8 +901,11 @@ void callback_receiver_t::recv_handler (const zlink_routing_id_t *,
     event.active = self->_current_active.load (std::memory_order_acquire);
 
     if (part_count_ == 1) {
-        event.header_ok = perf_single_metric::decode_payload_header (
-          zlink_msg_data (&parts_[0]), zlink_msg_size (&parts_[0]), &event.header);
+        zlink::message_t part;
+        if (part.adopt (&parts_[0]) == 0) {
+            event.header_ok = perf_single_metric::decode_payload_header (
+              part.data (), part.size (), &event.header);
+        }
     }
 
     if (event.active && self->_queue_probe)
@@ -911,7 +914,7 @@ void callback_receiver_t::recv_handler (const zlink_routing_id_t *,
     if (!self->push_event (event))
         self->_failed.store (true, std::memory_order_release);
 
-    zlink_multipart_close (parts_, part_count_);
+    zlink::detail::close_message_array (parts_, part_count_);
 }
 
 bool callback_receiver_t::push_event (const event_t &event_)
@@ -1205,7 +1208,7 @@ void subscribe_callback_receiver_t::subscribe_handler (
       static_cast<subscribe_callback_receiver_t *> (userdata_);
     if (!self || !parts_ || part_count_ == 0) {
         if (parts_)
-            zlink_multipart_close (parts_, part_count_);
+            zlink::detail::close_message_array (parts_, part_count_);
         return;
     }
 
@@ -1220,8 +1223,11 @@ void subscribe_callback_receiver_t::subscribe_handler (
         event.topic.assign (topic_, topic_len_);
 
     if (part_count_ == 1) {
-        event.header_ok = perf_single_metric::decode_payload_header (
-          zlink_msg_data (&parts_[0]), zlink_msg_size (&parts_[0]), &event.header);
+        zlink::message_t part;
+        if (part.adopt (&parts_[0]) == 0) {
+            event.header_ok = perf_single_metric::decode_payload_header (
+              part.data (), part.size (), &event.header);
+        }
     }
 
     if (event.active && self->_queue_probe)
@@ -1230,7 +1236,7 @@ void subscribe_callback_receiver_t::subscribe_handler (
     if (!self->push_event (event))
         self->_failed.store (true, std::memory_order_release);
 
-    zlink_multipart_close (parts_, part_count_);
+    zlink::detail::close_message_array (parts_, part_count_);
 }
 
 bool subscribe_callback_receiver_t::push_event (const event_t &event_)

@@ -1,5 +1,14 @@
 # DotNet Perf Benchmark Implementation Plan
 
+> 주의: 이 문서는 초기 포팅 계획 기록을 포함한 역사 문서다.
+> 현재 구현/실행 authority 는 `bindings/dotnet/perf/README.md`,
+> `doc/perf/*`, `core/tools/bindings-perf/bindings-perf-execution-guide.ko.md`
+> 이다.
+> 현재 코드 기준으로 multi STREAM 은 `MULTI_STREAM` 단일 public surface만
+> 가지며, `STREAM_CALLBACK` 별도 public pattern 은 사용하지 않는다.
+> 아래 본문에 남아 있는 `STREAM_CALLBACK` 또는 공용 core stream client 관련
+> 기술은 초기 설계 기록으로만 해석해야 한다.
+
 > core/perf 벤치마크를 bindings/dotnet/perf 로 1:1 포팅한다.
 > (core/perf 는 C++ 소스이나 내부적으로 C API — `zlink_ctx_new()`, `ZLINK_PAIR` 등 — 를 사용한다.)
 > **C# binding API (`Zlink.*`, `Zlink.Service.*`) 만 사용하며, Native P/Invoke 직접 호출은 절대 금지.**

@@ -334,6 +334,7 @@ expand_and_add_explicit_pattern() {
 }
 
 HAS_EXPLICIT_TRANSPORT=0
+HAS_EXPLICIT_TRANSPORT_TRANSITION=0
 HAS_EXPLICIT_MSG_SIZES=0
 HAS_EXPLICIT_RESULTS_TAG=0
 HAS_EXPLICIT_RUNS=0
@@ -621,6 +622,7 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
+      HAS_EXPLICIT_TRANSPORT_TRANSITION=1
       TRANSPORT_TRANSITION_MS="${2}"
       shift 2
       ;;
@@ -977,6 +979,26 @@ if [[ "${RECV_MODE}" == "callback" && "${#RUN_PATTERNS[@]}" -gt 1 ]]; then
   done
   RUN_PATTERNS=("${reordered_patterns[@]}")
 fi
+
+if [[ "${HAS_EXPLICIT_TRANSPORT_TRANSITION}" -eq 0 \
+   && "${RECV_MODE}" == "callback" ]]; then
+  EFFECTIVE_TRANSPORTS="${PERF_TRANSPORTS:-${TRANSPORTS}}"
+  has_spot_pattern=0
+  for pattern in "${RUN_PATTERNS[@]}"; do
+    if [[ "${pattern}" == "SPOT" || "${pattern}" == "MULTI_SPOT" ]]; then
+      has_spot_pattern=1
+      break
+    fi
+  done
+  if [[ "${has_spot_pattern}" -eq 1 \
+     && "${EFFECTIVE_TRANSPORTS}" == *,* \
+     && ( "${EFFECTIVE_TRANSPORTS}" == *"tls"* \
+          || "${EFFECTIVE_TRANSPORTS}" == *"wss"* ) ]]; then
+    TRANSPORT_TRANSITION_MS=5000
+  fi
+fi
+
+RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")
 
 if [[ -n "${CONNECT_CONCURRENCY}" ]]; then
   RUN_ENV+=(PERF_MULTI_CONNECT_CONCURRENCY="${CONNECT_CONCURRENCY}")

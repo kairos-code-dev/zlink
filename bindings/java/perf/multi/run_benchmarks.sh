@@ -176,6 +176,7 @@ prune_reports() {
 }
 
 mkdir -p "${RESULTS_ROOT}/multi/tmp" "${RESULTS_ROOT}/multi/report"
+cd "${ROOT_DIR}"
 "${ROOT_DIR}/gradlew" :perf-multi:installDist >/dev/null
 
 platform="$(detect_platform)"

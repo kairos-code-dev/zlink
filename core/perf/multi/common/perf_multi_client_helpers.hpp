@@ -1178,19 +1178,8 @@ inline void print_client_resource_result_lines (
   size_t msg_size,
   const bench_multi_resource_metrics_t &metrics)
 {
-    if (metrics.has_cpu_pct) {
-        std::cout << "RESULT," << lib_name << "," << pattern << ","
-                  << transport << "," << msg_size << ",client_cpu_pct,"
-                  << std::fixed << std::setprecision (2) << metrics.cpu_pct
-                  << std::endl;
-    }
-
-    if (metrics.has_mem_mb) {
-        std::cout << "RESULT," << lib_name << "," << pattern << ","
-                  << transport << "," << msg_size << ",client_mem_mb,"
-                  << std::fixed << std::setprecision (2) << metrics.mem_mb
-                  << std::endl;
-    }
+    print_client_resource_result_lines_common (
+      lib_name, pattern, transport, msg_size, metrics);
 }
 
 inline void print_client_result_lines (

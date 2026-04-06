@@ -64,17 +64,16 @@ inline int assign_parts_from_native (zlink_msg_t *parts_native_,
                                      size_t part_count_,
                                      std::vector<message_t> &parts_)
 {
-    std::vector<message_t> tmp;
-    tmp.resize (part_count_);
-
+    parts_.clear ();
+    parts_.resize (part_count_);
     for (size_t i = 0; i < part_count_; ++i) {
-        if (zlink_msg_move (tmp[i].handle (), &parts_native_[i]) != 0) {
+        if (zlink_msg_move (parts_[i].handle (), &parts_native_[i]) != 0) {
+            parts_.clear ();
             close_message_array (parts_native_, part_count_);
             return -1;
         }
     }
-
-    parts_.swap (tmp);
+    close_message_array (parts_native_, part_count_);
     return 0;
 }
 
@@ -399,13 +398,33 @@ class spot_t
     void publish (const std::string &topic_, std::vector<message_t> &parts_)
     {
         validate_no_embedded_null (topic_, "topic");
-        const int rc = publish_impl (topic_, parts_, send_flag::none);
+        const int rc = publish_impl (topic_.c_str (), parts_, send_flag::none);
         throw_on_error (rc);
     }
 
     void publish (const std::string &topic_, message_t &part_)
     {
         validate_no_embedded_null (topic_, "topic");
+        const int rc = publish_impl (topic_.c_str (), part_, send_flag::none);
+        throw_on_error (rc);
+    }
+
+    void publish (const char *topic_, std::vector<message_t> &parts_)
+    {
+        if (!topic_) {
+            errno = EINVAL;
+            throw_on_error (-1);
+        }
+        const int rc = publish_impl (topic_, parts_, send_flag::none);
+        throw_on_error (rc);
+    }
+
+    void publish (const char *topic_, message_t &part_)
+    {
+        if (!topic_) {
+            errno = EINVAL;
+            throw_on_error (-1);
+        }
         const int rc = publish_impl (topic_, part_, send_flag::none);
         throw_on_error (rc);
     }
@@ -415,7 +434,7 @@ class spot_t
     {
         validate_no_embedded_null (topic_, "topic");
         send_result_t result = send_result_t::sent;
-        const int rc = try_publish_impl (result, topic_, parts_);
+        const int rc = try_publish_impl (result, topic_.c_str (), parts_);
         throw_on_error (rc);
         return result;
     }
@@ -424,6 +443,32 @@ class spot_t
     try_publish (const std::string &topic_, message_t &part_)
     {
         validate_no_embedded_null (topic_, "topic");
+        send_result_t result = send_result_t::sent;
+        const int rc = try_publish_impl (result, topic_.c_str (), part_);
+        throw_on_error (rc);
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t
+    try_publish (const char *topic_, std::vector<message_t> &parts_)
+    {
+        if (!topic_) {
+            errno = EINVAL;
+            throw_on_error (-1);
+        }
+        send_result_t result = send_result_t::sent;
+        const int rc = try_publish_impl (result, topic_, parts_);
+        throw_on_error (rc);
+        return result;
+    }
+
+    ZLINK_CPP_NODISCARD send_result_t
+    try_publish (const char *topic_, message_t &part_)
+    {
+        if (!topic_) {
+            errno = EINVAL;
+            throw_on_error (-1);
+        }
         send_result_t result = send_result_t::sent;
         const int rc = try_publish_impl (result, topic_, part_);
         throw_on_error (rc);
@@ -522,7 +567,7 @@ class spot_t
 
   private:
     ZLINK_CPP_NODISCARD int
-    publish_impl (const std::string &topic_,
+    publish_impl (const char *topic_,
                   std::vector<message_t> &parts_,
                   send_flag flags_)
     {
@@ -541,7 +586,7 @@ class spot_t
             return -1;
 
         const int rc = zlink_publish (
-          _spot, topic_.c_str (), native.data (), native.size (),
+          _spot, topic_, native.data (), native.size (),
           static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0) {
             const int err = errno;
@@ -553,7 +598,7 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
-    publish_impl (const std::string &topic_,
+    publish_impl (const char *topic_,
                   message_t &part_,
                   send_flag flags_)
     {
@@ -562,17 +607,22 @@ class spot_t
             return -1;
         }
 
-        zlink_msg_t native;
-        if (zlink_msg_init_size (&native, part_.size ()) != 0)
+        if (!part_.valid ()) {
+            errno = EINVAL;
             return -1;
-        if (part_.size () > 0 && part_.data ())
-            std::memcpy (zlink_msg_data (&native), part_.data (), part_.size ());
+        }
+
+        zlink_msg_t native;
+        if (part_.move_to (&native) != 0)
+            return -1;
 
         const int rc = zlink_publish (
-          _spot, topic_.c_str (), &native, 1,
+          _spot, topic_, &native, 1,
           static_cast<zlink_send_flags_t> (flags_));
         if (rc != 0) {
             const int err = errno;
+            if (part_.init () == 0)
+                (void) zlink_msg_move (part_.handle (), &native);
             (void) zlink_msg_close (&native);
             errno = err;
         }
@@ -581,7 +631,7 @@ class spot_t
 
     ZLINK_CPP_NODISCARD int
     try_publish_impl (send_result_t &result_out_,
-                      const std::string &topic_,
+                      const char *topic_,
                       std::vector<message_t> &parts_)
     {
         if (!_spot) {
@@ -600,7 +650,7 @@ class spot_t
 
         zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
         const int rc = zlink_try_publish (
-          _spot, topic_.c_str (), native.data (), native.size (),
+          _spot, topic_, native.data (), native.size (),
           &native_result);
         if (rc == 0) {
             result_out_ = detail::to_send_result (native_result);
@@ -623,7 +673,7 @@ class spot_t
 
     ZLINK_CPP_NODISCARD int
     try_publish_impl (send_result_t &result_out_,
-                      const std::string &topic_,
+                      const char *topic_,
                       message_t &part_)
     {
         if (!_spot) {
@@ -631,15 +681,18 @@ class spot_t
             return -1;
         }
 
-        zlink_msg_t native;
-        if (zlink_msg_init_size (&native, part_.size ()) != 0)
+        if (!part_.valid ()) {
+            errno = EINVAL;
             return -1;
-        if (part_.size () > 0 && part_.data ())
-            std::memcpy (zlink_msg_data (&native), part_.data (), part_.size ());
+        }
+
+        zlink_msg_t native;
+        if (part_.move_to (&native) != 0)
+            return -1;
 
         zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
         const int rc =
-          zlink_try_publish (_spot, topic_.c_str (), &native, 1, &native_result);
+          zlink_try_publish (_spot, topic_, &native, 1, &native_result);
         if (rc == 0) {
             result_out_ = detail::to_send_result (native_result);
             if (native_result != ZLINK_SEND_RESULT_SENT) {
@@ -651,6 +704,8 @@ class spot_t
         }
 
         const int err = errno;
+        if (part_.init () == 0)
+            (void) zlink_msg_move (part_.handle (), &native);
         (void) zlink_msg_close (&native);
         errno = err;
         return -1;
@@ -702,22 +757,53 @@ class spot_t
                     std::string &topic_,
                     recv_flag flags_ = recv_flag::none,
                     routing_id_t *source_rid_out_ = NULL,
-               size_t *topic_len_out_ = NULL,
-               bool *truncated_out_ = NULL)
+                    size_t *topic_len_out_ = NULL,
+                    bool *truncated_out_ = NULL)
     {
-        std::vector<message_t> parts;
-        if (subscribe_impl (
-              parts, topic_, flags_, source_rid_out_, topic_len_out_,
-              truncated_out_)
-            != 0)
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
             return -1;
+        }
 
-        if (parts.size () != 1) {
+        zlink_msg_t *parts_native = NULL;
+        size_t part_count = 0;
+        char topic_buffer[256];
+        size_t topic_length = sizeof (topic_buffer);
+        routing_id_t source_rid;
+        zlink_routing_id_t *rid_ptr =
+          source_rid_out_ ? routing_id_native (*source_rid_out_)
+                          : routing_id_native (source_rid);
+
+        const int rc = zlink_subscribe (
+          _spot, rid_ptr, &parts_native, &part_count, topic_buffer, &topic_length,
+          static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0)
+            return rc;
+
+        if (part_count != 1 || !parts_native) {
+            detail::close_message_array (parts_native, part_count);
             errno = EMSGSIZE;
             return -1;
         }
 
-        part_ = std::move (parts[0]);
+        const bool truncated = topic_length > (sizeof (topic_buffer) - 1u);
+        if (topic_len_out_)
+            *topic_len_out_ = topic_length;
+        if (truncated_out_)
+            *truncated_out_ = truncated;
+
+        const size_t topic_size =
+          topic_length < sizeof (topic_buffer) ? topic_length
+                                               : sizeof (topic_buffer) - 1u;
+        topic_.assign (topic_buffer, topic_size);
+
+        message_t tmp;
+        if (zlink_msg_move (tmp.handle (), &parts_native[0]) != 0) {
+            detail::close_message_array (parts_native, part_count);
+            return -1;
+        }
+        detail::close_message_array (parts_native, part_count);
+        part_ = std::move (tmp);
         return 0;
     }
 

@@ -125,16 +125,16 @@ inline int assign_parts_from_native (zlink_msg_t *parts_native_,
                                      size_t part_count_,
                                      std::vector<message_t> &parts_)
 {
-    std::vector<message_t> tmp;
-    tmp.resize (part_count_);
+    parts_.clear ();
+    parts_.resize (part_count_);
     for (size_t i = 0; i < part_count_; ++i) {
-        if (zlink_msg_move (tmp[i].handle (), &parts_native_[i]) != 0) {
+        if (zlink_msg_move (parts_[i].handle (), &parts_native_[i]) != 0) {
+            parts_.clear ();
             close_message_array (parts_native_, part_count_);
             return -1;
         }
     }
-
-    parts_.swap (tmp);
+    close_message_array (parts_native_, part_count_);
     return 0;
 }
 
@@ -159,16 +159,27 @@ inline int recv_single_part (void *socket_,
                              recv_flag flags_,
                              message_t &part_)
 {
-    std::vector<message_t> parts;
-    if (recv_parts (socket_, source_rid_out_, flags_, parts) != 0)
-        return -1;
+    zlink_msg_t *native_parts = NULL;
+    size_t native_part_count = 0;
+    const int rc = zlink_recv (
+      socket_, source_rid_out_, &native_parts, &native_part_count,
+      static_cast<zlink_send_flags_t> (flags_));
+    if (rc != 0)
+        return rc;
 
-    if (parts.size () != 1) {
+    if (native_part_count != 1 || !native_parts) {
+        close_message_array (native_parts, native_part_count);
         errno = EMSGSIZE;
         return -1;
     }
 
-    part_ = std::move (parts[0]);
+    message_t tmp;
+    if (zlink_msg_move (tmp.handle (), &native_parts[0]) != 0) {
+        close_message_array (native_parts, native_part_count);
+        return -1;
+    }
+    close_message_array (native_parts, native_part_count);
+    part_ = std::move (tmp);
     return 0;
 }
 
@@ -298,11 +309,22 @@ class base_socket_t : public socket_handle_t
     ZLINK_CPP_NODISCARD int send (message_t &part_,
                                   send_flag flags_ = send_flag::none)
     {
-        std::vector<message_t> parts (1);
-        parts[0] = std::move (part_);
-        const int rc = send (parts, flags_);
-        if (rc != 0)
-            part_ = std::move (parts[0]);
+        if (!part_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t native_part;
+        if (part_.move_to (&native_part) != 0)
+            return -1;
+
+        const int rc = zlink_send (
+          handle (), &native_part, 1, static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0) {
+            if (part_.init () == 0)
+                (void) zlink_msg_move (part_.handle (), &native_part);
+            (void) zlink_msg_close (&native_part);
+        }
         return rc;
     }
 
@@ -325,11 +347,26 @@ class base_socket_t : public socket_handle_t
                                   message_t &part_,
                                   send_flag flags_ = send_flag::none)
     {
-        std::vector<message_t> parts (1);
-        parts[0] = std::move (part_);
-        const int rc = send (target_rid_, parts, flags_);
-        if (rc != 0)
-            part_ = std::move (parts[0]);
+        if (!part_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t native_part;
+        if (part_.move_to (&native_part) != 0)
+            return -1;
+
+        const int rc = zlink_send_rid (
+          handle (),
+          routing_id_native (target_rid_),
+          &native_part,
+          1,
+          static_cast<zlink_send_flags_t> (flags_));
+        if (rc != 0) {
+            if (part_.init () == 0)
+                (void) zlink_msg_move (part_.handle (), &native_part);
+            (void) zlink_msg_close (&native_part);
+        }
         return rc;
     }
 
@@ -354,12 +391,32 @@ class base_socket_t : public socket_handle_t
     ZLINK_CPP_NODISCARD int try_send (send_result_t &result_,
                                       message_t &part_)
     {
-        std::vector<message_t> parts (1);
-        parts[0] = std::move (part_);
-        const int rc = try_send (result_, parts);
-        if (rc != 0 || result_ != send_result_t::sent)
-            part_ = std::move (parts[0]);
-        return rc;
+        if (!part_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t native_part;
+        if (part_.move_to (&native_part) != 0)
+            return -1;
+
+        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
+        const int rc = zlink_try_send (
+          handle (), &native_part, 1, &native_result);
+        if (rc == 0) {
+            result_ = detail::to_send_result (native_result);
+            if (native_result != ZLINK_SEND_RESULT_SENT) {
+                if (part_.init () == 0)
+                    (void) zlink_msg_move (part_.handle (), &native_part);
+                (void) zlink_msg_close (&native_part);
+            }
+            return 0;
+        }
+
+        if (part_.init () == 0)
+            (void) zlink_msg_move (part_.handle (), &native_part);
+        (void) zlink_msg_close (&native_part);
+        return -1;
     }
 
     ZLINK_CPP_NODISCARD int
@@ -389,12 +446,32 @@ class base_socket_t : public socket_handle_t
               const routing_id_t &target_rid_,
               message_t &part_)
     {
-        std::vector<message_t> parts (1);
-        parts[0] = std::move (part_);
-        const int rc = try_send (result_, target_rid_, parts);
-        if (rc != 0 || result_ != send_result_t::sent)
-            part_ = std::move (parts[0]);
-        return rc;
+        if (!part_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t native_part;
+        if (part_.move_to (&native_part) != 0)
+            return -1;
+
+        zlink_send_result_t native_result = ZLINK_SEND_RESULT_SENT;
+        const int rc = zlink_try_send_rid (
+          handle (), routing_id_native (target_rid_), &native_part, 1, &native_result);
+        if (rc == 0) {
+            result_ = detail::to_send_result (native_result);
+            if (native_result != ZLINK_SEND_RESULT_SENT) {
+                if (part_.init () == 0)
+                    (void) zlink_msg_move (part_.handle (), &native_part);
+                (void) zlink_msg_close (&native_part);
+            }
+            return 0;
+        }
+
+        if (part_.init () == 0)
+            (void) zlink_msg_move (part_.handle (), &native_part);
+        (void) zlink_msg_close (&native_part);
+        return -1;
     }
 
     ZLINK_CPP_NODISCARD int

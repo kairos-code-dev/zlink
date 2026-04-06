@@ -3,6 +3,9 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs');
+const { once } = require('node:events');
+const { spawn } = require('node:child_process');
 const {
   buildEffectiveOptions,
   defaultMultiClients,
@@ -13,7 +16,23 @@ const {
   resolveMultiPatternNames,
   writeReport
 } = require('../common/perf_metrics');
-const { spawnMultiPair } = require('./perf_multi_common');
+const {
+  attachProcessCapture,
+  reservePort,
+  spawnMultiPair,
+  stopServer,
+  waitForLine
+} = require('./perf_multi_common');
+
+const STREAM_CLIENT = path.join(
+  process.cwd(),
+  '..',
+  '..',
+  'core',
+  'build',
+  'bin',
+  'perf_stream_client'
+);
 
 function usage() {
   console.log(`Usage: bindings/node/perf/run_benchmarks_multi.sh [options]
@@ -27,7 +46,6 @@ Options:
   --results-tag NAME    Optional tag in saved result filename.
   --runs N              Iterations per configuration (default: 1).
   --recv MODE           Receive model: recv|callback (default: recv).
-  --callback            Alias of --recv callback.
   --duration N          Override multi duration seconds (default: 5).
   --warmup N            Override multi warmup seconds (default: 2).
   --msg-sizes LIST      Comma-separated sizes.
@@ -37,6 +55,80 @@ Options:
 Notes:
   - result is saved under perf/results/multi/report/ as
     perf_<platform>_<recv_mode>_YYYYMMDD_HHMMSS[_<tag>].txt.`);
+}
+
+function attachStreamClientCapture(child, resultLines) {
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => {
+    for (const rawLine of chunk.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+      if (line.startsWith('RESULT,current,STREAM,')) {
+        resultLines.push(line.replace(',STREAM,', ',MULTI_STREAM,'));
+        continue;
+      }
+      console.log(line);
+    }
+  });
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk) => {
+    const text = String(chunk).trim();
+    if (text) {
+      console.error(text);
+    }
+  });
+}
+
+async function spawnSharedStreamPair(args) {
+  if (!fs.existsSync(STREAM_CLIENT)) {
+    throw new Error(`shared stream client not found: ${STREAM_CLIENT}`);
+  }
+
+  const serverPath = path.join(__dirname, 'perf_multi_stream_server.js');
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const resultLines = [];
+  const serverArgs = [
+    '--endpoint', endpoint,
+    '--msg-size', String(args.msgSize),
+    '--warmup', String(args.warmup),
+    '--duration', String(args.duration),
+    '--clients', String(args.clients),
+    '--recv', args.recv
+  ];
+  const server = spawn(process.execPath, [serverPath, ...serverArgs], {
+    cwd: process.cwd(),
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: true
+  });
+  attachProcessCapture(server, resultLines);
+  await waitForLine(server, `READY,${endpoint}`, 'perf_multi_stream_server.js', 5000);
+
+  const clientArgs = [
+    '--transport', 'tcp',
+    '--pattern', 'STREAM',
+    '--sizes', String(args.msgSize),
+    '--runs', '1',
+    '--warmup', String(args.warmup),
+    '--duration', String(args.duration),
+    '--ccu', String(args.clients),
+    '--print-perf-result', '2',
+    '--send-stop-token', '1',
+    '--endpoint', endpoint
+  ];
+  const client = spawn(STREAM_CLIENT, clientArgs, {
+    cwd: process.cwd(),
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  attachStreamClientCapture(client, resultLines);
+  const [code] = await once(client, 'exit');
+  if (code !== 0) {
+    throw new Error(`shared stream client failed: ${code}`);
+  }
+
+  await stopServer(server, 'perf_multi_stream_server.js');
+  return resultLines;
 }
 
 function primaryMetricsFromResultLines(pattern, msgSize, lines) {
@@ -194,9 +286,7 @@ async function main() {
       }
 
       if (patternName === 'MULTI_STREAM') {
-        const lines = await spawnMultiPair(
-          'perf_multi_stream_server.js',
-          'perf_multi_stream_client.js',
+        const lines = await spawnSharedStreamPair(
           { ...options, pattern: patternName, msgSize, clients: options.clients }
         );
         patternRows.push({

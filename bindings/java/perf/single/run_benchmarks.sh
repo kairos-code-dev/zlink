@@ -106,6 +106,7 @@ prune_reports() {
 }
 
 mkdir -p "${RESULTS_ROOT}/single/report"
+cd "${ROOT_DIR}"
 "${ROOT_DIR}/gradlew" :perf-single:installDist >/dev/null
 
 platform="$(detect_platform)"

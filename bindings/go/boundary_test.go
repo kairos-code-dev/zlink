@@ -32,6 +32,19 @@ func TestDurationOverflowFailsFast(t *testing.T) {
 	}
 }
 
+func TestDurationMaxInt32MillisAccepted(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	socket, _ := ctx.PairSocket()
+	defer socket.Close()
+
+	maxDuration := time.Duration((1<<31)-1) * time.Millisecond
+	if err := socket.SetRecvTimeout(maxDuration); err != nil {
+		t.Fatalf("SetRecvTimeout(max int32 millis) error = %v", err)
+	}
+}
+
 func TestNullByteValidation(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
@@ -57,6 +70,11 @@ func TestNullByteValidation(t *testing.T) {
 	}
 	if _, err := ctx.Discovery(zlink.ServiceTypeSocket, strings.Repeat("s", 256)); err == nil {
 		t.Fatalf("Discovery() with oversized service name should fail")
+	}
+	if discovery, err := ctx.Discovery(zlink.ServiceTypeSocket, strings.Repeat("s", 255)); err != nil {
+		t.Fatalf("Discovery() with max-sized service name error = %v", err)
+	} else {
+		discovery.Close()
 	}
 }
 

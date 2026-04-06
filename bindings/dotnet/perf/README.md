@@ -50,7 +50,7 @@ from `bindings/README.md` for CLI names, defaults, result file naming, and the
   - default sizes: `64,256,1024,65536,131072,262144`
   - stream default sizes: `64,256,1024,65536`
   - runner behavior: the client is pointed at the server's emitted `READY,<endpoint>` value so the measured path matches the actual bind endpoint
-  - `MULTI_STREAM` still requires the shared core stream client from `core/build/`
+  - `MULTI_STREAM` keeps a single canonical pattern surface in the runner and report output
 
 ## Design Constraints
 
@@ -61,8 +61,10 @@ from `bindings/README.md` for CLI names, defaults, result file naming, and the
   compared with the core perf shape.
 - Multi reports normalize pattern names to `MULTI_*` in the saved report even
   when the underlying process emits the base pattern token.
-- Multi STREAM uses the shared native stream client from `core/build/`.
-  The .NET suite owns the server role and does not ship a separate managed STREAM client benchmark.
+- Multi STREAM keeps a single canonical `MULTI_STREAM` public surface.
+- Callback mode is selected only through `--recv callback`; there is no
+  separate callback-only STREAM pattern or binary surface.
+- Multi STREAM uses the shared core stream client path required by policy.
 
 ## Execution
 

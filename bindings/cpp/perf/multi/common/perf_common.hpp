@@ -2,9 +2,13 @@
 #define PERF_MULTI_COMMON_HPP
 
 #include "perf_common_multi.hpp"
+#include "perf_handshake.hpp"
 #include "perf_metric_header.hpp"
+#include "perf_spot_control.hpp"
+#include "perf_spot_handshake.hpp"
 #include "perf_tls.hpp"
 #include "../../common/perf_socket_compat.hpp"
+#include "../../../../../core/bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -33,16 +37,60 @@ inline bool is_supported_transport (const std::string &transport)
            || transport == "wss";
 }
 
+inline void noop_free (void *, void *)
+{
+}
+
+inline zlink::message_t message_from_external_buffer (std::vector<char> &buffer,
+                                                      size_t size)
+{
+    return zlink::message_t::from_external (
+      size > 0 ? static_cast<void *> (&buffer[0]) : NULL,
+      size,
+      &noop_free,
+      NULL);
+}
+
+inline int bench_io_threads ()
+{
+    return parse_positive_env ("PERF_IO_THREADS", 4);
+}
+
+inline int bench_max_sockets ()
+{
+    const int explicit_max = parse_positive_env ("PERF_MAX_SOCKETS", 0);
+    if (explicit_max > 0)
+        return explicit_max;
+
+    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
+    if (settings.clients == 0)
+        return 0;
+
+    const char *pattern_env = std::getenv ("PERF_PATTERN");
+    const std::string pattern = pattern_env ? pattern_env : "";
+
+    long required = 0;
+    if (pattern == "SPOT" || pattern == "MULTI_SPOT") {
+        required = static_cast<long> (settings.clients) * 16L + 64L;
+    } else {
+        required = static_cast<long> (settings.clients) * 3L + 4096L;
+    }
+
+    if (required > INT_MAX)
+        return INT_MAX;
+    return static_cast<int> (required);
+}
+
 class ctx_guard_t
 {
   public:
     ctx_guard_t () : _ctx (), _skip_term (false)
     {
-        const int io_threads = parse_positive_env ("PERF_IO_THREADS", 0);
+        const int io_threads = bench_io_threads ();
         if (io_threads > 0)
             (void) _ctx.set (zlink::context_option::io_threads, io_threads);
 
-        const int max_sockets = parse_positive_env ("PERF_MAX_SOCKETS", 0);
+        const int max_sockets = bench_max_sockets ();
         if (max_sockets > 0)
             (void) _ctx.set (zlink::context_option::max_sockets, max_sockets);
 
@@ -257,20 +305,16 @@ inline void configure_perf_monitor_socket (void *monitor_handle)
     if (!monitor_handle)
         return;
 
+    zlink::socket_t monitor = zlink::socket_t::wrap (monitor_handle);
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const int linger = 0;
-    (void) zlink_set_option (
-      monitor_handle, ZLINK_OPT_LINGER, &linger, sizeof (linger));
+    (void) monitor.set_option (zlink::socket_options::linger, linger);
 
     if (settings.monitor_hwm > 0) {
-        (void) zlink_set_option (monitor_handle,
-                                 ZLINK_OPT_SNDHWM,
-                                 &settings.monitor_hwm,
-                                 sizeof (settings.monitor_hwm));
-        (void) zlink_set_option (monitor_handle,
-                                 ZLINK_OPT_RCVHWM,
-                                 &settings.monitor_hwm,
-                                 sizeof (settings.monitor_hwm));
+        (void) monitor.set_option (zlink::socket_options::sndhwm,
+                                   settings.monitor_hwm);
+        (void) monitor.set_option (zlink::socket_options::rcvhwm,
+                                   settings.monitor_hwm);
     }
 }
 
@@ -696,14 +740,96 @@ inline void print_server_queue_metrics (const std::string &lib,
               << stats.rcv_pending_end << std::endl;
 }
 
-inline void print_cpu_mem_metrics (const std::string &,
-                                   const std::string &,
-                                   const std::string &,
-                                   size_t,
-                                   const std::string &,
-                                   double)
+inline bench_multi_cpu_sample_t start_resource_probe ()
 {
-    // run_policy_bench.py samples cpu/mem externally for cpp.
+    return bench_multi_capture_cpu_sample ();
+}
+
+inline bench_multi_resource_metrics_t finish_resource_probe (
+  const bench_multi_cpu_sample_t &sample_start)
+{
+    return bench_multi_finish_resource_probe (sample_start);
+}
+
+inline void print_server_resource_metrics (
+  const std::string &lib,
+  const std::string &pattern,
+  const std::string &transport,
+  size_t size,
+  const bench_multi_resource_metrics_t &metrics)
+{
+    if (metrics.has_cpu_pct) {
+        std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+                  << size << ",server_cpu_pct," << std::fixed
+                  << std::setprecision (2) << metrics.cpu_pct << std::endl;
+    }
+    if (metrics.has_mem_mb) {
+        std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+                  << size << ",server_mem_mb," << std::fixed
+                  << std::setprecision (2) << metrics.mem_mb << std::endl;
+    }
+}
+
+inline void print_client_resource_metrics (
+  const std::string &lib,
+  const std::string &pattern,
+  const std::string &transport,
+  size_t size,
+  const bench_multi_resource_metrics_t &metrics)
+{
+    if (metrics.has_cpu_pct) {
+        std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+                  << size << ",client_cpu_pct," << std::fixed
+                  << std::setprecision (2) << metrics.cpu_pct << std::endl;
+    }
+    if (metrics.has_mem_mb) {
+        std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+                  << size << ",client_mem_mb," << std::fixed
+                  << std::setprecision (2) << metrics.mem_mb << std::endl;
+    }
+}
+
+inline void print_client_result_lines (
+  const std::string &pattern,
+  const std::string &transport,
+  size_t size,
+  unsigned long long active_count,
+  int active_seconds,
+  double bandwidth_multiplier,
+  const bench_latency_stats_t &latency,
+  const bench_multi_resource_metrics_t &metrics)
+{
+    const double throughput =
+      static_cast<double> (active_count)
+      / static_cast<double> (std::max (1, active_seconds));
+    const double bandwidth =
+      throughput * static_cast<double> (size) * bandwidth_multiplier / 1000000.0;
+
+    print_result ("current",
+                  pattern,
+                  transport,
+                  size,
+                  throughput,
+                  bandwidth,
+                  latency.mean_us,
+                  latency.p95_us,
+                  latency.p99_us);
+    print_client_resource_metrics ("current", pattern, transport, size, metrics);
+}
+
+inline void print_cpu_mem_metrics (const std::string &lib,
+                                   const std::string &pattern,
+                                   const std::string &transport,
+                                   size_t size,
+                                   const std::string &role,
+                                   const bench_multi_resource_metrics_t &metrics)
+{
+    if (role == "server") {
+        print_server_resource_metrics (lib, pattern, transport, size, metrics);
+        return;
+    }
+    if (role == "client")
+        print_client_resource_metrics (lib, pattern, transport, size, metrics);
 }
 
 inline void print_ready (const std::string &endpoint)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -9,6 +10,10 @@ import (
 )
 
 func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
+	if cfg.recvMode != "recv" {
+		perfcommon.Must(fmt.Errorf("multi dealer/dealer supports only recv mode, got %q", cfg.recvMode))
+	}
+
 	serverCtx, err := zlink.NewContext()
 	perfcommon.Must(err)
 	defer serverCtx.Close()
@@ -16,18 +21,22 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	server, err := serverCtx.DealerSocket()
 	perfcommon.Must(err)
 	defer server.Close()
+	serverMon := perfcommon.OpenMonitor(server)
+	defer serverMon.Close()
 
 	endpoint := perfcommon.UniqueTCPEndpoint("perf-multi-dealer-dealer")
 	perfcommon.Must(server.Bind(endpoint))
-	startMultiDealerEchoServer(server)
+	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 
 	stats := perfcommon.NewStats()
 	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
 	activeAt := time.Now().Add(cfg.warmup)
+	recvStopAt := stopAt.Add(500 * time.Millisecond)
 
 	type dealerClient struct {
 		ctx    *zlink.Context
 		socket *zlink.DealerSocket
+		mon    *zlink.SocketMonitor
 	}
 	clients := make([]dealerClient, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {
@@ -35,16 +44,43 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 		perfcommon.Must(err)
 		client, err := clientCtx.DealerSocket()
 		perfcommon.Must(err)
+		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(client.Connect(endpoint))
-		perfcommon.Must(client.SetRecvTimeout(500 * time.Millisecond))
 		perfcommon.Must(client.SetSendTimeout(500 * time.Millisecond))
-		waitForDealerReady(client)
-		clients = append(clients, dealerClient{ctx: clientCtx, socket: client})
+		perfcommon.WaitConnected(serverMon, clientMon)
+		clients = append(clients, dealerClient{ctx: clientCtx, socket: client, mon: clientMon})
 	}
 	defer func() {
 		for _, client := range clients {
+			_ = client.mon.Close()
 			_ = client.socket.Close()
 			_ = client.ctx.Close()
+		}
+	}()
+
+	recvDone := make(chan struct{})
+	go func() {
+		defer close(recvDone)
+		for time.Now().Before(recvStopAt) {
+			received, ok, err := server.TryRecv()
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					continue
+				}
+				perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv: %w", err))
+			}
+			if !ok || received == nil {
+				time.Sleep(50 * time.Microsecond)
+				continue
+			}
+			part, err := received.SinglePartOrError()
+			if err == nil {
+				now := time.Now()
+				if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && now.After(activeAt) && now.Before(recvStopAt) {
+					stats.Add(sentAt)
+				}
+			}
+			perfcommon.Must(received.Close())
 		}
 	}()
 
@@ -62,46 +98,13 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 					if perfcommon.IsTransient(err) {
 						continue
 					}
-					perfcommon.Must(err)
+					perfcommon.Must(fmt.Errorf("multi dealer/dealer send: %w", err))
 				}
-				reply, ok, err := socket.TryRecv()
-				if err != nil {
-					perfcommon.Must(err)
-				}
-				if !ok || reply == nil {
-					continue
-				}
-				part, err := reply.SinglePartOrError()
-				if err == nil {
-					if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-						stats.Add(sentAt)
-					}
-				}
-				_ = reply.Close()
 			}
 		}(client.socket)
 	}
 
 	wg.Wait()
+	<-recvDone
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
-}
-
-func startMultiDealerEchoServer(server *zlink.DealerSocket) {
-	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
-	go func() {
-		for {
-			received, ok, err := server.TryRecv()
-			if err != nil {
-				perfcommon.Must(err)
-			}
-			if !ok || received == nil {
-				continue
-			}
-			err = server.Send(perfcommon.CloneMessages(received.Parts())...)
-			if err != nil && !perfcommon.IsTransient(err) {
-				perfcommon.Must(err)
-			}
-			perfcommon.Must(received.Close())
-		}
-	}()
 }

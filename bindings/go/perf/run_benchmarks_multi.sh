@@ -24,7 +24,6 @@ Usage: bindings/go/perf/run_benchmarks_multi.sh [options]
 Options:
   --pattern NAME
   --recv MODE
-  --callback
   --duration N
   --warmup N
   --msg-sizes LIST
@@ -71,7 +70,6 @@ while [[ $# -gt 0 ]]; do
     -h|--help) usage; exit 0 ;;
     --pattern) PATTERN="$2"; shift 2 ;;
     --recv) RECV_MODE="$2"; shift 2 ;;
-    --callback) RECV_MODE="callback"; shift ;;
     --duration) DURATION="$2"; shift 2 ;;
     --warmup) WARMUP="$2"; shift 2 ;;
     --msg-sizes) MSG_SIZES="$2"; shift 2 ;;

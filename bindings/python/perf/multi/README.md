@@ -38,15 +38,15 @@ Result line names emitted by the suite are:
 - `MULTI_STREAM`
 - `MULTI_SPOT`
 
-Each pattern owns its own `perf_multi_<pattern>_server.py` and
-`perf_multi_<pattern>_client.py` file so pattern-specific hot paths stay
-explicit.
+Each pattern keeps its own server entrypoint. Client entrypoints stay explicit
+except for `STREAM`, which uses the shared core `perf_stream_client` contract
+required by the perf policy and execution guide.
 
 ## Transport And Receive Modes
 
 - transport: `tcp`
 - `recv` mode: all patterns
-- `callback` mode: `SPOT`, `STREAM`
+- `callback` mode: `MULTI_SPOT`, `MULTI_STREAM`
 
 The allowed callback subset is intentionally narrow because the suite should
 reflect the real public cost model, not force callback support where the public

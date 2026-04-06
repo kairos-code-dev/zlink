@@ -590,7 +590,6 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
     cpp_comp_src_spot_server
     cpp_comp_src_spot_client
     cpp_comp_src_stream_server
-    cpp_comp_src_stream_callback_server
     perf_stream_client
   )
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then

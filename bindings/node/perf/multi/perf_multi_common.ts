@@ -301,6 +301,9 @@ async function spawnMultiPair(serverScript, clientScript, args) {
 }
 
 module.exports = {
+  attachProcessCapture,
   reservePort,
-  spawnMultiPair
+  stopServer,
+  spawnMultiPair,
+  waitForLine
 };

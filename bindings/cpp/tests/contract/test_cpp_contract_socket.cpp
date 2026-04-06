@@ -132,12 +132,10 @@ void test_pair_send_recv_single_part ()
     assert (right.connect (endpoint) == 0);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       left_monitor,
-      static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed), 2000,
-      1));
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       right_monitor,
-      static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed), 2000,
-      1));
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("ping");
     right.send (outbound);
@@ -161,12 +159,10 @@ void test_pair_send_recv_multipart ()
     assert (right.connect (endpoint) == 0);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       left_monitor,
-      static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed), 2000,
-      1));
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       right_monitor,
-      static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed), 2000,
-      1));
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
 
     std::vector<zlink::message_t> outbound;
     outbound.push_back (zlink_cpp_contract::make_message ("one"));
@@ -192,12 +188,10 @@ void test_pair_try_send_success ()
     assert (right.connect (endpoint) == 0);
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       left_monitor,
-      static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed), 2000,
-      1));
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
     assert (zlink_cpp_contract::wait_for_socket_monitor_event (
       right_monitor,
-      static_cast<uint64_t> (zlink::monitor_event::connection_ready_changed), 2000,
-      1));
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
 
     zlink::message_t outbound = zlink_cpp_contract::make_message ("try-send");
     const zlink::send_result_t result = right.try_send (outbound);

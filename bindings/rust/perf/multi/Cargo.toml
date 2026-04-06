@@ -51,7 +51,3 @@ path = "src/perf_multi_spot_client.rs"
 [[bin]]
 name = "perf_multi_stream_server"
 path = "src/perf_multi_stream_server.rs"
-
-[[bin]]
-name = "perf_multi_stream_client"
-path = "src/perf_multi_stream_client.rs"

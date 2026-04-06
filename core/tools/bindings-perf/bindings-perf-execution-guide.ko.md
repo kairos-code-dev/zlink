@@ -13,6 +13,10 @@
 핵심 원칙:
 
 - `perf` benchmark 의미와 core C API baseline 의미가 다르면 그 정합성은 수정한다.
+- `STREAM` client shared path는 구조 취향이나 binding-local 구현 선호보다
+  우선하는 상위 계약이다.
+  `doc/perf`, `core/perf`, 이 guide가 shared stream client 사용을 규정한 경우,
+  개별 binding perf는 그 계약을 임의로 binding-local client로 치환하면 안 된다.
 - `perf` 수정은 `/home/hep7/project/kairos/zlink/doc/perf/PERF_POLICY.md`,
   `/home/hep7/project/kairos/zlink/doc/perf/PERF_SINGLE_TEST_POLICY.md`,
   `/home/hep7/project/kairos/zlink/doc/perf/PERF_MULTI_TEST_POLICY.md`
@@ -37,6 +41,22 @@
 - `core` 계약 실패나 core 버그면 우회하지 말고 재현 근거와 함께
   `/home/hep7/project/kairos/zlink/core/doc/bug/` 아래에 `.md` bug report를 작성하고 대기한다.
 - 효과 없는 실험, 의미 왜곡, 정책 위반 수정은 남기지 않는다.
+- POSD, 언어 스타일, 공통화 축소 같은 구조 원칙은 상위 policy authority를
+  덮어쓸 수 없다.
+  즉 "더 언어답다", "더 깊은 모듈이다", "더 자연스러운 구조다" 같은 이유만으로
+  이미 고정된 perf policy contract를 바꾸면 안 된다.
+
+policy authority 해석 순서:
+
+1. `/home/hep7/project/kairos/zlink/doc/perf/*.md`
+2. `/home/hep7/project/kairos/zlink/core/perf/` 의 현재 canonical 구현 의미
+3. 이 execution guide
+4. 각 binding의 `perf/README.md`, porting plan, implementation plan
+5. POSD / 언어 스타일 / 리팩토링 선호
+
+상위 authority와 하위 문서가 충돌하면 상위 authority를 따른다.
+하위 문서나 구현이 더 자연스럽게 보이더라도, 상위 authority에 없는 policy 변경은
+사용자 승인 없이 수행하면 안 된다.
 
 ## 2. 대상 범위
 
@@ -119,6 +139,8 @@ override 규칙:
    `doc/perf/PERF_SINGLE_TEST_POLICY.md` 기준으로 현재 surface가
    `core/perf` 와 같은 recv/send/poller/callback 의미를 유지하는지 확인한다.
    위반이 보이면 성능 최적화보다 먼저 정책 준수 상태로 수정한다.
+   특히 `STREAM` shared client 같은 explicit shared component 계약은
+   "binding-local 구현 누락"으로 오판하면 안 된다.
 3. core baseline과 비교 가능한 transport/pattern/size 조합을 식별한다.
 4. perf 의미가 어긋난 부분이 있으면 먼저 그 정합성을 고친다.
 5. 먼저 전체 패턴/전체 사이즈 범위에서 perf가 정상 동작하는지 확인하고,
@@ -149,6 +171,9 @@ override 규칙:
 - 즉 `completed` 언어라도 현재 workspace, baseline, perf runner, report가 바뀌었을 수 있으므로 skip 하면 안 된다.
 - skip 이 허용되는 경우는 이번 실행에서 방금 같은 조건으로 재측정했고 목표 충족이 다시 확인된 직후뿐이다.
 - perf 수정 후보가 나와도 그것이 정책 정합성 수정인지, benchmark bug 수정인지, 숫자 부스팅용 편법인지 먼저 구분해야 한다.
+- perf 수정 후보가 shared component 제거, canonical surface 교체, policy contract
+  재해석을 포함하면 먼저 "상위 authority가 실제로 그 변경을 허용하는가"를
+  문서로 다시 확인해야 한다.
 - 편법이면 수정하지 않고 바인딩 라이브러리 비효율 제거 쪽으로 다시 돌아간다.
 - 전체 패턴/전체 사이즈에서 정상 동작하지 않는 상태에서는 성능 수치 개선보다
   정상 동작 복구가 우선이다.
@@ -163,6 +188,34 @@ override 규칙:
 - 이 문자열들을 delivery-ready 근거, benchmark start gate, 정상 동작 판정 근거로
   서술하거나 사용하면 정책 위반이다.
 - 이런 표현이 session 파일이나 handoff에 남아 있으면 다음 작업 전에 먼저 수정한다.
+- monitor ready 계약은 `bindings/README.md`, `doc/perf/PERF_POLICY.md`,
+  `doc/perf/PERF_SINGLE_TEST_POLICY.md`, `doc/perf/PERF_MULTI_TEST_POLICY.md`
+  의 최신 정의를 그대로 따른다.
+- `*_READY_CHANGED` monitor event 의 `value` 를 aggregate ready count 나
+  expected peer count 계약으로 취급하면 안 된다.
+- binding public API 나 perf helper 가 monitor snapshot 에 stable ready-count
+  surface 가 있다고 가정하면 안 된다.
+- raw perf/pattern 의 실제 ready gate 는 low-cost edge 인
+  `CONNECTION_READY` event counting 이다.
+- raw perf 에서 service monitor, snapshot polling, delivery-ready/count 계열
+  event 를 새 ready gate contract 로 승격하면 정책 위반이다.
+- SPOT perf 의 실제 ready/start gate 는 explicit `READY/START` barrier 이다.
+- SPOT perf 에서는 service monitor gate, snapshot polling, ready-count wrapper 를
+  사용하면 안 된다.
+- session 파일과 handoff 에 `READY,...`, `CLIENT_READY,...`, `START,...` 표현이
+  남아 있어도 그것이 외부 orchestration 의미로만 기록된 경우는 허용된다.
+- 반대로 그 표현을 raw ready 판정, SPOT start 판정, 정상 동작 근거로 서술한
+  경우만 정책 위반으로 보고 수정한다.
+
+재발 방지 절차:
+
+- perf 구조를 바꾸기 전에 아래 질문을 먼저 체크한다.
+  - 이 변경이 policy authority의 명시 contract를 바꾸는가?
+  - 이 변경이 shared component를 binding-local 구현으로 치환하는가?
+  - 이 변경이 canonical public surface를 늘리거나 바꾸는가?
+  - 이 변경 사유가 policy 정합성/bug 수정이 아니라 구조 선호인가?
+- 위 질문 중 하나라도 `예` 이면 코드를 수정하기 전에 상위 authority 근거를
+  다시 적고, 사용자 승인 없이 policy 변경으로 진행하면 안 된다.
 
 ## 6. 성능 비교 기준
 
@@ -182,23 +235,33 @@ override 규칙:
   drain 방식으로 얻은 숫자는 비교 근거나 원인 판단 근거로 쓰면 안 된다.
 - 이런 차이가 확인되면 멈추는 것이 아니라, 먼저 perf surface를 `core/perf` 와
   동일한 측정 방식으로 고친 뒤에만 다음 판단과 성능 개선을 진행한다.
-- 정상 동작 판정에는 throughput만이 아니라 해당 surface에서 기대되는 필수 지표가
-  모두 채워져 있어야 한다.
-- 특히 latency, CPU, memory, queue 관련 컬럼이 `core/perf` 와 같은 방식으로
-  채워져야 하며, 전부 또는 일부가 `N/A` 로 비면 정상 동작으로 보면 안 된다.
+- 정상 동작 판정에는 throughput만이 아니라 해당 surface에서 `doc/perf` 가
+  MUST 로 요구하는 지표가 모두 채워져 있어야 한다.
+- CPU/memory/queue 관련 산출물은 `core/perf` 와 같은 결과 shape 를 목표로 맞추되,
+  필수/선택 여부와 `N/A` 허용 범위는 `doc/perf` 의 최신 정의를 그대로 따른다.
+- 즉 `doc/perf` 가 수집 실패나 미지원 transport 에 대해 `N/A` 를 허용하는
+  리소스 컬럼은 그 허용 범위를 넘겨서 실패 판정에 사용하면 안 된다.
+- 반대로 `doc/perf` 가 informational 로 분류한 queue metric 을 이 가이드가
+  임의로 완료/정상 동작의 필수 조건으로 승격하면 안 된다.
 - 이 기준은 전체 패턴/전체 사이즈에 적용한다.
-- surface별 필수 컬럼은 아래를 따른다.
+- surface별 기대 산출물은 아래를 따른다.
 
-| surface | 필수 컬럼 |
+| surface | 기대 산출물 |
 |---|---|
-| `single` | `Throughput`, `Bandwidth`, `Lat.Mean`, `Lat.P95`, `Lat.P99`, `S.CPU%`, `S.Mem MB` |
+| `single` | `Throughput`, `Bandwidth`, `Lat.Mean`, `Lat.P95`, `Lat.P99`, `CPU%`, `Mem MB` |
 | `multi recv` | `Throughput`, `Bandwidth`, `Lat.Mean`, `Lat.P95`, `Lat.P99`, `S.CPU%`, `S.Mem MB`, `Q.Snd.Max`, `Q.Rcv.Max`, `Q.Rcv.End` |
 | `multi callback` | `Throughput`, `Bandwidth`, `Lat.Mean`, `Lat.P95`, `Lat.P99`, `S.CPU%`, `S.Mem MB`, `Q.Snd.Max`, `Q.Rcv.Max`, `Q.Rcv.End` |
 
-- 위 필수 컬럼 중 하나라도 `core/perf` 기준으로 채워져야 할 위치에서 `N/A` 이면
-  정상 동작 아님으로 판정한다.
+- throughput/latency 계열 MUST metric 이 비거나 깨지면 정상 동작 아님으로 판정한다.
+- 리소스 컬럼은 `doc/perf` 가 허용하는 범위의 `N/A` 를 인정한다.
+- queue metric 은 `core/perf` 와 동일한 산출물 정합성 대상으로 추적하되,
+  `doc/perf` 의 informational 분류를 넘겨 단독 blocker 로 승격하지 않는다.
 - probe나 smoke report라도 baseline과 다른 client count, warmup/duration,
   recv mode면 comparable report로 취급하지 않는다.
+- comparable report 는 baseline이 요구하는 pattern/transport/msg-size coverage 와
+  같은 범위를 가져야 하며, partial repro/probe report 는 comparable 로 취급하지 않는다.
+- report 의 effective options 에 coverage 정보가 비어 있거나, throughput result key
+  집합이 baseline 기대 범위를 덜 덮으면 non-comparable 로 처리한다.
 - primary 판정 지표는 throughput ratio 이다.
 - latency는 진단 보조 지표로만 사용한다.
 - report가 여러 개면 가장 최근의 comparable report를 기준으로 삼되, 회귀가 보이면 더 넓은 full run으로 재확인한다.
@@ -220,10 +283,12 @@ override 규칙:
 
 필수 최종 비교 surface:
 
-- `single`
 - `multi recv`
 - `multi callback`
 - `multi callback` 필수 패턴: `STREAM`, `SPOT`
+
+`single` 은 최종 ratio 비교 surface 가 아니라 build/test/probe 정합성 확인용
+validation surface 로 유지한다.
 
 bug 처리 규칙:
 
@@ -303,7 +368,10 @@ bug 처리 규칙:
 
 - perf가 `doc/perf` 정책을 만족하는 의미로 동작한다.
 - 대상 언어의 perf surface가 전체 패턴/전체 사이즈 범위에서 정상 동작한다.
-- 대상 surface에서 기대되는 latency, CPU, memory, queue 지표가 전체 패턴/전체 사이즈에서 빠짐없이 채워진다.
+- 대상 surface에서 `doc/perf` 가 MUST 로 요구하는 지표가 전체 패턴/전체
+  사이즈에서 채워진다.
+- 리소스/queue 산출물은 `core/perf` 와 같은 shape 로 관리하되, `doc/perf` 가
+  허용한 `N/A` 와 informational 분류를 그대로 따른다.
 - `single` build/test/probe 가 현재 코드 기준으로 유효하고 정책 위반이 없다.
 - `multi recv`, `multi callback` comparable perf 주요 조합이 언어별 목표 비율 이상이다.
 - `multi callback` 에서는 최소 `STREAM`, `SPOT` 패턴이 목표 비율 이상이다.
@@ -397,7 +465,8 @@ bug 처리 규칙:
 - [ ] session 파일/로그 해석에 `doc/perf` 금지 handshake 또는 start gate 표현이 없는지 확인
 - [ ] `core/perf` 와 동일한 측정 방식인지 확인
 - [ ] 전체 패턴/전체 사이즈 정상 동작 확인
-- [ ] 필수 지표(throughput, latency, CPU, memory, queue) 채워짐 확인
+- [ ] `doc/perf` MUST 지표 채워짐 확인
+- [ ] 리소스/queue 산출물의 `N/A` 허용 여부와 informational 분류 확인
 - [ ] baseline comparable surface 확인
 - [ ] perf 의미 정합성 점검
 - [ ] binding hot path 병목 식별
@@ -416,7 +485,9 @@ bug 처리 규칙:
 1. 현재 session dir 의 `00_handoff.md`, `00_run_state.md`, `00_checklist.md`, `00_notes.md` 위치를 확인한다.
 2. 직전 session dir 가 있으면 그 안의 `00_handoff.md`, `00_run_state.md`, `00_checklist.md`, `00_notes.md`, 최신 `*_codex.log` 를 먼저 확인한다.
 3. 직전 session 의 미완료 항목과 blocker를 현재 session 파일로 이어받는다.
-4. 직전 session 파일에 `READY,...`, `CLIENT_READY,...`, `START,...` 같은 금지 표현이나 그와 동등한 정책 위반 서술이 남아 있으면 먼저 수정한다.
+4. 직전 session 파일에 `READY,...`, `CLIENT_READY,...`, `START,...` 를 raw ready
+   판정이나 benchmark start gate 로 오해하게 만드는 서술, 또는 그와 동등한
+   monitor 정책 위반 서술이 남아 있으면 먼저 수정한다.
 5. 선택 언어 목록과 target ratio를 요약한다.
 6. 각 언어의 perf runner 존재 여부를 확인한다.
 7. 각 선택 언어에 대해 먼저 `doc/perf` 정책 준수 여부와 전체 패턴/전체 사이즈 정상 동작 여부를 확인하는 초기 상태표를 만든다.

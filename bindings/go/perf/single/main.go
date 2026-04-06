@@ -49,8 +49,6 @@ func main() {
 		result = runDealerDealer(cfg)
 	case "DEALER_ROUTER":
 		result = runDealerRouter(cfg)
-	case "STREAM":
-		result = runStream(cfg)
 	case "ROUTER_ROUTER":
 		result = runRouterRouter(cfg)
 	case "SPOT":

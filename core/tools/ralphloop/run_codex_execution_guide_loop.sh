@@ -614,29 +614,29 @@ EOF
 )
   fi
 
-  cat > "${prompt_file}" <<EOF
+  cat > "${prompt_file}" <<'EOF'
 /home/hep7/project/kairos/zlink/AGENTS.md 지침과 저장소 규칙을 따른다.
 
 작업 목표:
-- ${GUIDE_PATH}
+- __GUIDE_PATH__
   이 문서의 남은 작업과 실제 구현 내용을 중단 없이 끝까지 진행한다.
 
 작업 규칙:
 - 현재 실행의 유일한 기준 문서는 실행 가이드다.
 - 이 실행은 단일 문서 체계로 운영한다. 명시 요청이 없으면 main/master/gap/spec/residual/보조 계획 문서를 새로 만들지 않는다.
 - 실행 가이드는 정책과 완료 기준의 source of truth다.
-- 현재 session dir은 ${session_dir} 이다.
+- 현재 session dir은 __SESSION_DIR__ 이다.
 - session dir 아래 실행 상태 파일을 기본 산출물로 사용한다.
-  - run state: ${run_state_file}
-  - checklist: ${checklist_file}
-  - notes: ${notes_file}
-  - handoff: ${handoff_file}
+  - run state: __RUN_STATE_FILE__
+  - checklist: __CHECKLIST_FILE__
+  - notes: __NOTES_FILE__
+  - handoff: __HANDOFF_FILE__
 - 이 session dir 산출물은 실행 로그/상태 기록용이며, 별도 계획 문서 체계로 취급하지 않는다.
-- 이전 session dir은 ${previous_session_dir:-none} 이다.
+- 이전 session dir은 __PREVIOUS_SESSION_DIR__ 이다.
 - substantive work를 시작하기 전에 이전 session dir의 미완료 사항과 handoff를 먼저 확인하고, unresolved work가 있으면 현재 session dir 파일에 이어받는다.
 - 실행 가이드와 별도 계획 문서로 분산돼 있던 내용이 보이면 실행 가이드로 먼저 합친다.
 - 별도 보조 계획서를 유지하거나 참조 체인을 늘리는 방식으로 작업을 진행하지 않는다.
-${legacy_plan_rules}
+__LEGACY_PLAN_RULES__
 - 각 작업 묶음을 끝낼 때마다 실행 가이드 전체를 다시 훑고 아직 코드에 반영되지 않은 구현 항목이 남아 있는지 확인한다.
 - 각 작업 묶음을 시작할 때와 끝낼 때마다 관련 상위 정책 문서(예: doc/perf, spec policy)를 다시 확인하고 현재 변경이 그 규칙을 계속 준수하는지 검토한다.
 - 매 턴 시작 시와 종료 직전에도 현재 변경이 상위 정책 문서를 계속 준수하는지 다시 확인한다.
@@ -664,8 +664,8 @@ ${legacy_plan_rules}
 - session 상태 파일에 명시 우선순위가 없으면 그때 실행 가이드의 첫 미완료 정책 항목부터 진행한다.
 - core 버그 수정 요청 범위는 core/ 와 core/tests/ 로 제한한다.
 - core/build/ 만 사용한다.
-- 장시간 gate가 필요하면 ./core/tools/ralphloop/run_execution_gate_loop.sh --logs-dir ${gate_dir} --label ${GATE_LABEL} --count ${STRESS_COUNT} 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
-- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 ${STRESS_COUNT}보다 더 크게 올릴 수 있다.
+- 장시간 gate가 필요하면 ./core/tools/ralphloop/run_execution_gate_loop.sh --logs-dir __GATE_DIR__ --label __GATE_LABEL__ --count __STRESS_COUNT__ 를 최소 기준으로 사용해 같은 셸 프로세스에서 끝까지 추적한다.
+- flake 재현, 신뢰도 보강, 추가 확인이 필요하다고 판단하면 thread-safe stress count를 __STRESS_COUNT__보다 더 크게 올릴 수 있다.
 - 장시간 gate 실패 시 문서 규칙대로 단일 재현, core 수정, 재빌드, 원래 gate 재실행까지 처리한다.
 - 실행 상태표, 체크리스트, 실행 메모는 session dir 파일에 갱신한다.
 - 실행 가이드는 정책, 범위, 완료 기준이 바뀔 때만 수정한다.
@@ -687,6 +687,41 @@ ${legacy_plan_rules}
 - 그 외에는 이번 iteration 안에서 할 수 있는 작업을 최대한 수행한 뒤 정확히 아래 한 줄만 출력한다.
 계속 진행 필요
 EOF
+  GUIDE_PATH_ENV="${GUIDE_PATH}" \
+  SESSION_DIR_ENV="${session_dir}" \
+  RUN_STATE_FILE_ENV="${run_state_file}" \
+  CHECKLIST_FILE_ENV="${checklist_file}" \
+  NOTES_FILE_ENV="${notes_file}" \
+  HANDOFF_FILE_ENV="${handoff_file}" \
+  PREVIOUS_SESSION_DIR_ENV="${previous_session_dir:-none}" \
+  LEGACY_PLAN_RULES_ENV="${legacy_plan_rules}" \
+  GATE_DIR_ENV="${gate_dir}" \
+  GATE_LABEL_ENV="${GATE_LABEL}" \
+  STRESS_COUNT_ENV="${STRESS_COUNT}" \
+  python3 - "${prompt_file}" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+replacements = {
+    "__GUIDE_PATH__": os.environ["GUIDE_PATH_ENV"],
+    "__SESSION_DIR__": os.environ["SESSION_DIR_ENV"],
+    "__RUN_STATE_FILE__": os.environ["RUN_STATE_FILE_ENV"],
+    "__CHECKLIST_FILE__": os.environ["CHECKLIST_FILE_ENV"],
+    "__NOTES_FILE__": os.environ["NOTES_FILE_ENV"],
+    "__HANDOFF_FILE__": os.environ["HANDOFF_FILE_ENV"],
+    "__PREVIOUS_SESSION_DIR__": os.environ["PREVIOUS_SESSION_DIR_ENV"],
+    "__LEGACY_PLAN_RULES__": os.environ["LEGACY_PLAN_RULES_ENV"],
+    "__GATE_DIR__": os.environ["GATE_DIR_ENV"],
+    "__GATE_LABEL__": os.environ["GATE_LABEL_ENV"],
+    "__STRESS_COUNT__": os.environ["STRESS_COUNT_ENV"],
+}
+for key, value in replacements.items():
+    text = text.replace(key, value)
+path.write_text(text, encoding="utf-8")
+PY
   if [[ "${MAX_ITERATIONS}" == "0" ]]; then
     iteration_label="${iteration}/unlimited"
   else

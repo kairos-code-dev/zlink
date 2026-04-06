@@ -39,7 +39,7 @@
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "prepare": "npm run build",
     "pretest": "npm run build && npm run typecheck && npm run rebuild-native",
-    "test": "./run_tests.sh",
+    "test": "./tests/run_tests.sh",
     "presamples": "npm run build && npm run rebuild-native",
     "samples": "./samples/run_samples.sh"
   },

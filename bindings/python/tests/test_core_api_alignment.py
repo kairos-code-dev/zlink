@@ -677,6 +677,17 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 with self.assertRaises(OverflowError):
                     registry.set_heartbeat(-1, 1000)
 
+    def test_int32_max_boundary_is_accepted(self):
+        try:
+            ctx = zlink.Context()
+        except OSError:
+            self.skipTest("zlink native library not found")
+
+        with ctx:
+            with zlink.PairSocket(ctx) as pair:
+                pair.options.linger_ms = (1 << 31) - 1
+                self.assertEqual(pair.options.linger_ms, (1 << 31) - 1)
+
     def test_c_string_inputs_reject_embedded_nul(self):
         try:
             ctx = zlink.Context()
@@ -711,9 +722,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
         except OSError:
             self.skipTest("zlink native library not found")
 
+        max_length = "a" * 255
         too_long = "a" * 256
 
         with ctx:
+            with zlink.Discovery(ctx, zlink.ServiceType.SOCKET, max_length):
+                pass
+
             with self.assertRaises(ValueError):
                 zlink.Discovery(ctx, zlink.ServiceType.SOCKET, too_long)
 

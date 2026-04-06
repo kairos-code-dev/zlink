@@ -49,7 +49,7 @@ Options:
 
 Notes:
   - Go perf currently supports tcp transport only.
-  - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT,STREAM
+  - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT
 USAGE
 }
 
@@ -93,7 +93,7 @@ mkdir -p "${RESULTS_DIR}"
 IFS=',' read -r -a SIZES <<< "${MSG_SIZES}"
 IFS=',' read -r -a XPORTS <<< "${TRANSPORTS}"
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT" "STREAM")
+  PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT")
 else
   IFS=',' read -r -a PATTERNS <<< "${PATTERN}"
 fi

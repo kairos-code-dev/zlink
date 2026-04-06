@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
+STREAM_CLIENT="${REPO_DIR}/core/build/bin/perf_stream_client"
 
 source "$HOME/.cargo/env" 2>/dev/null || true
 
@@ -17,8 +19,34 @@ CLIENTS="${PERF_MULTI_CLIENTS:-100}"
 RESULTS_DIR="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results/multi/report}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 
+print_help() {
+    cat <<'EOF'
+Usage: bindings/rust/perf/run_benchmarks_multi.sh [options]
+
+Options:
+  -h, --help
+  --pattern NAME
+  --recv MODE
+  --duration N
+  --warmup N
+  --msg-sizes LIST
+  --transports LIST
+  --runs N
+  --clients N
+  --results-dir PATH
+  --results-tag NAME
+
+Notes:
+  - MULTI_STREAM uses the shared core perf_stream_client required by policy.
+EOF
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -h|--help)
+            print_help
+            exit 0
+            ;;
         --pattern)     PATTERN="$2";     shift 2 ;;
         --recv)        RECV_MODE="$2";   shift 2 ;;
         --duration)    DURATION="$2";    shift 2 ;;
@@ -97,7 +125,7 @@ for run in $(seq 1 "${RUNS}"); do
                 CLIENT_BIN="${BIN_DIR}/perf_multi_spot_client" ;;
             MULTI_STREAM)
                 SERVER_BIN="${BIN_DIR}/perf_multi_stream_server"
-                CLIENT_BIN="${BIN_DIR}/perf_multi_stream_client" ;;
+                CLIENT_BIN="" ;;
             *)
                 echo "UNSUPPORTED,rust,${pat},unknown,pattern not implemented"
                 continue ;;
@@ -132,8 +160,22 @@ for run in $(seq 1 "${RUNS}"); do
                     continue
                 fi
 
-                "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1 || \
-                    echo "FAIL,rust,${pat},${transport},${size},client_error"
+                if [[ "${pat}" == "MULTI_STREAM" ]]; then
+                    if [[ ! -x "${STREAM_CLIENT}" ]]; then
+                        echo "FAIL,rust,${pat},${transport},${size},missing_shared_stream_client"
+                    else
+                        "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
+                            --sizes "${size}" --runs 1 --warmup "${WARMUP}" \
+                            --duration "${DURATION}" --ccu "${CLIENTS}" \
+                            --print-perf-result 2 --send-stop-token 1 \
+                            --endpoint "${ENDPOINT}" 2>&1 \
+                            | sed 's/^RESULT,current,STREAM,/RESULT,current,MULTI_STREAM,/' || \
+                            echo "FAIL,rust,${pat},${transport},${size},client_error"
+                    fi
+                else
+                    "${CLIENT_BIN}" "${transport}" "${size}" "${ENDPOINT}" 2>&1 || \
+                        echo "FAIL,rust,${pat},${transport},${size},client_error"
+                fi
 
                 kill "${SERVER_PID}" 2>/dev/null || true
                 wait "${SERVER_PID}" 2>/dev/null || true

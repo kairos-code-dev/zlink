@@ -50,3 +50,11 @@ test('recvHandler delivers multipart Message instances', async () => {
     sender.close();
     ctx.close();
 });
+test('onReceive blocks direct recv on the same socket', () => {
+    const ctx = new zlink.Context();
+    const receiver = new zlink.PairSocket(ctx);
+    receiver.onReceive(() => { });
+    assert.throws(() => receiver.recv(), /busy|callback|state|recv/i);
+    receiver.close();
+    ctx.close();
+});

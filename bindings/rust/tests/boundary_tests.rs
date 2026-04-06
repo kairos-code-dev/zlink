@@ -107,6 +107,14 @@ fn discovery_service_name_over_255_rejected() {
 }
 
 #[test]
+fn discovery_service_name_255_accepted() {
+    let ctx = Context::new().unwrap();
+    let max_len = "s".repeat(255);
+    let result = Discovery::new(&ctx, ServiceType::Spot, &max_len);
+    assert!(result.is_ok(), "255-byte service_name must be accepted");
+}
+
+#[test]
 fn spot_node_endpoint_over_255_rejected() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();

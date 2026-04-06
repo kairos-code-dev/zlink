@@ -182,8 +182,7 @@ internal static partial class PerfRunner
         string normalized = NormalizePerfPattern(pattern);
         return normalized == "DEALER_ROUTER"
             || normalized == "ROUTER_ROUTER"
-            || normalized == "STREAM"
-            || normalized == "STREAM_CALLBACK";
+            || normalized == "STREAM";
     }
 
     internal static void PrintResult(string pattern, string transport, int size,

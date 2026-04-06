@@ -2,14 +2,14 @@
 
 #include "../../samples/sample_common.hpp"
 
+#include <chrono>
+#include <future>
+#include <thread>
 
 namespace {
 
-struct callback_state_t
+struct callback_result_t
 {
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool ready;
     std::string topic;
     std::string payload;
 };
@@ -21,21 +21,45 @@ void subscribe_callback (const zlink_routing_id_t *,
                          size_t part_count_,
                          void *userdata_)
 {
-    callback_state_t *state = static_cast<callback_state_t *> (userdata_);
-    assert (state != NULL);
+    std::promise<callback_result_t> *result_promise =
+      static_cast<std::promise<callback_result_t> *> (userdata_);
+    assert (result_promise != NULL);
     assert (part_count_ == 1);
 
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        state->topic.assign (topic_, topic_len_);
-        state->payload.assign (
-          static_cast<const char *> (zlink_msg_data (&parts_[0])),
-          zlink_msg_size (&parts_[0]));
-        state->ready = true;
+    callback_result_t result;
+    result.topic.assign (topic_, topic_len_);
+    result.payload.assign (
+      static_cast<const char *> (zlink_msg_data (&parts_[0])),
+      zlink_msg_size (&parts_[0]));
+
+    zlink_multipart_close (parts_, part_count_);
+    result_promise->set_value (result);
+}
+
+bool wait_for_spot_ready (zlink::service::spot_node_t &node_,
+                          bool require_subject_,
+                          uint32_t min_active_peer_count_,
+                          int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_spot_node_status_t status;
+        if (node_.status_snapshot (status) != 0) {
+            std::this_thread::yield ();
+            continue;
+        }
+
+        const bool pub_ready = status.local_endpoint[0] != '\0';
+        const bool sub_ready = status.active_peer_count >= min_active_peer_count_
+                               && (!require_subject_ || status.subject_count > 0);
+        if (require_subject_ ? sub_ready : pub_ready)
+            return true;
+        std::this_thread::yield ();
     }
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
-    state->cv.notify_one ();
+
+    return false;
 }
 
 } // namespace
@@ -53,24 +77,25 @@ int main ()
     assert (pub_spot.valid ());
     assert (sub_spot.valid ());
 
-    const std::string endpoint = detail::unique_tcp ("spot-callback");
-    assert (pub_node.bind (endpoint) == 0);
-    assert (sub_node.connect_peer (endpoint) == 0);
-
-    callback_state_t state;
-    state.ready = false;
-    assert (sub_spot.on_subscribe (&subscribe_callback, &state) == 0);
+    std::promise<callback_result_t> result_promise;
+    std::future<callback_result_t> result_future = result_promise.get_future ();
+    assert (sub_spot.on_subscribe (&subscribe_callback, &result_promise) == 0);
     assert (sub_spot.set_subscription ("topic:alpha") == 0);
+
+    assert (pub_node.bind ("tcp://127.0.0.1:0") == 0);
+    const std::string endpoint = pub_node.last_endpoint ();
+    assert (!endpoint.empty ());
+    assert (sub_node.connect_peer (endpoint) == 0);
+    assert (wait_for_spot_ready (pub_node, false, 1u, 10000));
+    assert (wait_for_spot_ready (sub_node, true, 1u, 10000));
 
     zlink::message_t outbound =
       detail::make_message ("spot-callback");
     pub_spot.publish ("topic:alpha", outbound);
 
-    std::unique_lock<std::mutex> lock (state.mutex);
-    assert (detail::wait_until (state.cv, lock, state.ready, 10000));
-    assert (state.topic == "topic:alpha");
-    assert (state.payload == "spot-callback");
-    lock.unlock ();
+    const callback_result_t result = detail::wait_future (result_future, 10000);
+    assert (result.topic == "topic:alpha");
+    assert (result.payload == "spot-callback");
     assert (sub_spot.close () == 0);
     assert (pub_spot.close () == 0);
     assert (sub_node.close () == 0);

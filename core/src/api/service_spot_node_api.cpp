@@ -56,6 +56,12 @@ void *zlink_spot_new (void *node_)
     }
 
     spot->node = node;
+    if (!ensure_spot_pub (spot)) {
+        const int err = errno;
+        delete spot;
+        errno = err;
+        return NULL;
+    }
     return static_cast<void *> (spot);
 }
 

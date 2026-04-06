@@ -37,6 +37,8 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
     if (endpoint.empty ())
         return false;
 
+    const bench_multi_cpu_sample_t resource_probe_start =
+      perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
     const int warmup_seconds = settings.warmup_seconds > 0 ? settings.warmup_seconds : 0;
@@ -104,11 +106,19 @@ bool perf_dealer_dealer_server (const std::string &transport, size_t msg_size)
         }
     }
 
+    const bench_multi_resource_metrics_t resource_metrics =
+      perf::multi::finish_resource_probe (resource_probe_start);
+    perf::multi::print_server_resource_metrics (
+      "current",
+      "MULTI_DEALER_DEALER",
+      transport,
+      msg_size,
+      resource_metrics);
     perf::multi::print_server_queue_metrics (
       "current",
       "MULTI_DEALER_DEALER",
       transport,
-      0,
+      msg_size,
       perf::multi::server_queue_stats_t ());
     return !failed;
 }

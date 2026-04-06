@@ -38,8 +38,6 @@ internal static partial class PerfRunner
                     PerfSpotClient.Run(transport, size, normalizedEndpoint),
                 "STREAM" => PrintStreamClientUnsupported(outputPattern,
                     transport, size),
-                "STREAM_CALLBACK" => PrintStreamClientUnsupported(
-                    outputPattern, transport, size),
                 _ => 1,
             };
 

@@ -120,22 +120,8 @@ inline void print_server_metrics (
   const bench_multi_resource_metrics_t &metrics,
   const server_queue_stats_t &queue_stats)
 {
-    for (size_t i = 0; i < sizes.size (); ++i) {
-        if (metrics.has_cpu_pct) {
-            std::cout << "RESULT," << lib_name << "," << config.pattern_name
-                      << "," << transport << "," << sizes[i]
-                      << ",server_cpu_pct," << std::fixed
-                      << std::setprecision (2) << metrics.cpu_pct << std::endl;
-        }
-        if (metrics.has_mem_mb) {
-            std::cout << "RESULT," << lib_name << "," << config.pattern_name
-                      << "," << transport << "," << sizes[i]
-                      << ",server_mem_mb," << std::fixed
-                      << std::setprecision (2) << metrics.mem_mb << std::endl;
-        }
-        print_server_queue_metrics (
-          lib_name, config.pattern_name, transport, sizes[i], queue_stats);
-    }
+    print_server_metrics_for_sizes (
+      lib_name, config.pattern_name, transport, sizes, metrics, &queue_stats);
 }
 
 inline bool run_server_loop (const relay_server_config_t &config,

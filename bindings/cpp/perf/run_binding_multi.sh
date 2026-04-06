@@ -212,8 +212,6 @@ Options:
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
   --recv MODE            Receive model: recv|callback (default: recv).
-  --callback             Alias of --recv callback. If --pattern is omitted,
-                         defaults to SPOT,STREAM.
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias: set PERF_IO_THREADS for both roles.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS
@@ -374,7 +372,7 @@ DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
-EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}"
+EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-}}"
 COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
 SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_SERVER_IO_THREADS:-}}"
 CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_CLIENT_IO_THREADS:-}}"
@@ -476,11 +474,6 @@ while [[ $# -gt 0 ]]; do
       RECV_MODE="${2}"
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
-      ;;
-    --callback)
-      RECV_MODE="callback"
-      SCRIPT_ARGS+=( "--recv" "callback" )
-      shift
       ;;
     --warmup)
       if [[ $# -lt 2 ]]; then

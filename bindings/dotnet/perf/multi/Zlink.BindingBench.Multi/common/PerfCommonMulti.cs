@@ -29,8 +29,7 @@ internal static partial class PerfRunner
     internal static bool IsMultiStreamPattern(string pattern)
     {
         string normalized = NormalizePerfPattern(pattern);
-        return normalized == "STREAM"
-            || normalized == "STREAM_CALLBACK";
+        return normalized == "STREAM";
     }
 
     internal static PerfRecvMode ResolveMultiRecvMode(string pattern)

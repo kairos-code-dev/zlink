@@ -916,6 +916,79 @@ inline void print_server_queue_metrics(const std::string &lib_type,
               << std::endl;
 }
 
+inline void emit_result_metric_line(const std::string &lib_type,
+                                    const std::string &pattern,
+                                    const std::string &transport,
+                                    size_t size,
+                                    const char *metric_name,
+                                    double value,
+                                    int precision)
+{
+    std::cout << "RESULT," << lib_type << "," << pattern << ","
+              << transport << "," << size << "," << metric_name << ","
+              << std::fixed << std::setprecision(precision) << value
+              << std::endl;
+}
+
+template<typename MetricsT>
+inline void print_server_resource_result_lines(
+  const std::string &lib_type,
+  const std::string &pattern,
+  const std::string &transport,
+  size_t size,
+  const MetricsT &metrics)
+{
+    if (metrics.has_cpu_pct) {
+        emit_result_metric_line(
+          lib_type, pattern, transport, size, "server_cpu_pct",
+          metrics.cpu_pct, 2);
+    }
+    if (metrics.has_mem_mb) {
+        emit_result_metric_line(
+          lib_type, pattern, transport, size, "server_mem_mb",
+          metrics.mem_mb, 2);
+    }
+}
+
+template<typename MetricsT>
+inline void print_server_metrics_for_sizes(
+  const std::string &lib_type,
+  const std::string &pattern,
+  const std::string &transport,
+  const std::vector<size_t> &sizes,
+  const MetricsT &metrics,
+  const server_queue_stats_t *queue_stats = NULL)
+{
+    for (size_t i = 0; i < sizes.size(); ++i) {
+        print_server_resource_result_lines(
+          lib_type, pattern, transport, sizes[i], metrics);
+        if (queue_stats) {
+            print_server_queue_metrics(
+              lib_type, pattern, transport, sizes[i], *queue_stats);
+        }
+    }
+}
+
+template<typename MetricsT>
+inline void print_client_resource_result_lines_common(
+  const std::string &lib_type,
+  const std::string &pattern,
+  const std::string &transport,
+  size_t size,
+  const MetricsT &metrics)
+{
+    if (metrics.has_cpu_pct) {
+        emit_result_metric_line(
+          lib_type, pattern, transport, size, "client_cpu_pct",
+          metrics.cpu_pct, 2);
+    }
+    if (metrics.has_mem_mb) {
+        emit_result_metric_line(
+          lib_type, pattern, transport, size, "client_mem_mb",
+          metrics.mem_mb, 2);
+    }
+}
+
 inline server_queue_stats_t sample_server_queue_stats(void *send_socket_,
                                                       void *recv_socket_)
 {

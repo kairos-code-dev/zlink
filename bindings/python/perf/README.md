@@ -83,6 +83,11 @@ Receive modes:
 - `recv`: all multi patterns
 - `callback`: `MULTI_SPOT`, `MULTI_STREAM`
 
+Shared component contract:
+
+- `MULTI_STREAM` client uses the shared core `perf_stream_client` path required
+  by the perf policy and execution guide.
+
 ## Cost Model Rules
 
 Python perf must measure the canonical binding path, so hot paths should avoid:

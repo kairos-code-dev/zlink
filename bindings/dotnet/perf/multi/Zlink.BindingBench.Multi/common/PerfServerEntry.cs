@@ -25,8 +25,6 @@ internal static partial class PerfRunner
                 "PUBSUB" => PerfPubSubServer.Run(transport, size),
                 "SPOT" => PerfSpotServer.Run(transport, size),
                 "STREAM" => PerfStreamServer.Run(transport, size),
-                "STREAM_CALLBACK" =>
-                    PerfStreamCallbackServer.Run(transport, size),
                 _ => 1,
             };
 

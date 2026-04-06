@@ -1,5 +1,16 @@
 # C++ Binding Perf Benchmark Implementation Plan
 
+> 주의: 이 문서는 초기 포팅 계획 기록을 포함한 역사 문서다.
+> 현재 구현/실행 authority 는 `bindings/cpp/perf/README.md`,
+> `doc/perf/*`,
+> `doc/plan/perf-refactor/bindings-cpp-perf-posd-refactor-plan.ko.md`,
+> `core/tools/bindings-perf/bindings-perf-execution-guide.ko.md` 이다.
+> 현재 코드 기준으로 multi STREAM 은 `MULTI_STREAM` 단일 public surface만
+> 가지며, `STREAM_CALLBACK`, `STREAM_LEN32BE` 같은 별도 public pattern 은
+> 사용하지 않는다.
+> 아래 본문에 남아 있는 공용 core stream client 또는 옛 stream callback pattern
+> 관련 기술은 초기 설계 기록으로만 해석해야 한다.
+
 > core/perf (C API) 벤치마크를 bindings/cpp/perf 로 1:1 포팅한다.
 > **C++ binding API (`zlink::context_t`, `zlink::socket_t`, `zlink::service::*`) 만 사용하며, zlink C API (`zlink_*()`) 직접 호출은 절대 금지.**
 > STREAM 클라이언트는 공통 바이너리 `core/perf/common/streamclient` 를 재사용한다.

@@ -108,9 +108,6 @@ function parseCommonArgs(argv, defaults) {
         else if (arg === '--help' || arg === '-h') {
             options.helpRequested = true;
         }
-        else if (arg === '--callback') {
-            options.recv = 'callback';
-        }
         else {
             throw new Error(`unsupported argument: ${arg}`);
         }

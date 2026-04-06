@@ -190,7 +190,9 @@ public final class PerfUtil {
             long[] sorted = Arrays.copyOf(latencies, size);
             Arrays.sort(sorted);
             double throughput = count / (double) config.durationSeconds();
-            double bandwidth = throughput * config.size() / 1_000_000.0d;
+            double bandwidth = throughput * config.size()
+                * (isEchoPattern(config.pattern()) ? 2.0d : 1.0d)
+                / 1_000_000.0d;
             double mean = (sum / (double) count) / latencyDivisor;
             double p95 = sorted[index(sorted.length, 0.95d)] / latencyDivisor;
             double p99 = sorted[index(sorted.length, 0.99d)] / latencyDivisor;
@@ -222,6 +224,12 @@ public final class PerfUtil {
             size = compacted;
             sampleStride *= 2L;
         }
+    }
+
+    public static boolean isEchoPattern(String pattern) {
+        return "DEALER_ROUTER".equals(pattern)
+            || "ROUTER_ROUTER".equals(pattern)
+            || "STREAM".equals(pattern);
     }
 
     public static final class LatencyCollector implements AutoCloseable {

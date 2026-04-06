@@ -38,18 +38,6 @@ std::string make_spot_endpoint (const std::string &transport_)
     return perf::single::make_fixed_endpoint (transport_, static_cast<int> (port));
 }
 
-bool wait_for_monitor_readable (void *monitor_handle_, int timeout_ms_)
-{
-    zlink_pollitem_t item;
-    item.socket = monitor_handle_;
-    item.fd = 0;
-    item.events = ZLINK_POLLIN;
-    item.revents = 0;
-
-    const int rc = zlink_poll (&item, 1, timeout_ms_);
-    return rc > 0 && (item.revents & ZLINK_POLLIN) != 0;
-}
-
 bool perf_debug_enabled ()
 {
     return std::getenv ("PERF_DEBUG") != NULL;
@@ -61,58 +49,15 @@ bool send_spot_payload (void *userdata_, const void *data_, size_t size_)
     if (!spot)
         return false;
 
-    zlink_msg_t part;
-    if (zlink_msg_init_size (&part, size_) != 0)
+    zlink::message_t part = zlink::message_t::from_bytes (data_, size_);
+    if (!part.valid ())
         return false;
-    if (size_ > 0 && data_)
-        std::memcpy (zlink_msg_data (&part), data_, size_);
-
-    const int rc = zlink_publish (
-      spot->handle (), k_topic, &part, 1, static_cast<zlink_send_flags_t> (0));
-    if (rc != 0) {
-        const int err = errno;
-        (void) zlink_msg_close (&part);
-        errno = err;
-        return false;
-    }
-    return true;
-}
-
-bool wait_for_service_monitor_event_endpoint (
-  zlink::service_monitor_handle_t &monitor_,
-  uint32_t event_type_,
-  const std::string &endpoint_,
-  int timeout_ms_)
-{
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        const std::chrono::steady_clock::duration remaining =
-          deadline - std::chrono::steady_clock::now ();
-        const int remaining_ms = static_cast<int> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
-            .count ());
-        if (remaining_ms <= 0)
-            break;
-
-        if (!wait_for_monitor_readable (monitor_.handle (), remaining_ms))
-            continue;
-
-        const zlink::maybe_t<zlink_service_monitor_event_t> event =
-          monitor_.try_recv();
-        if (!event)
-            continue;
-        if (event->event_type != event_type_)
-            continue;
-        if ((event->detail_flags & ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT) == 0)
-            continue;
-        if (endpoint_ != event->endpoint)
-            continue;
+    try {
+        spot->publish (k_topic, part);
         return true;
+    } catch (const std::exception &) {
+        return false;
     }
-
-    return false;
 }
 
 } // namespace

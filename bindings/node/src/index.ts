@@ -127,6 +127,13 @@ function normalizeRoutingId(routingId: BufferLike): Buffer {
   return normalized;
 }
 
+function callbackModeError(kind: 'recv' | 'subscribe'): Error {
+  if (kind === 'recv') {
+    return new Error('socket is in callback mode; direct recv is not allowed');
+  }
+  return new Error('socket is in callback mode; direct subscribe is not allowed');
+}
+
 export class CommonSocketOptions {
   protected readonly _socket: BaseSocket;
 
@@ -904,11 +911,16 @@ export abstract class PublisherSocketBase extends ConnectableSocketBase {
 }
 
 export abstract class MessageSocketBase extends ConnectableSendSocketBase {
+  private _receiveCallbackInstalled = false;
+
   protected constructor(ctx: Context, type: number) {
     super(ctx, type);
   }
 
   recv(): Received {
+    if (this._receiveCallbackInstalled) {
+      throw callbackModeError('recv');
+    }
     return materializeReceived(
       requireNative().socketRecvMessage(this.nativeHandle(), 0) as {
         parts: Buffer[];
@@ -918,6 +930,13 @@ export abstract class MessageSocketBase extends ConnectableSendSocketBase {
   }
 
   tryRecv(): Received | null {
+    if (this._receiveCallbackInstalled) {
+      throw callbackModeError('recv');
+    }
+    return this.tryRecvForCallback();
+  }
+
+  private tryRecvForCallback(): Received | null {
     const raw = requireNative().socketTryRecvMessage(this.nativeHandle()) as
       | { parts: Buffer[]; routingId?: Buffer | null }
       | null;
@@ -928,9 +947,10 @@ export abstract class MessageSocketBase extends ConnectableSendSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
+    this._receiveCallbackInstalled = true;
     startPollingLoop(
       () => this.nativeHandle() != null,
-      () => this.tryRecv(),
+      () => this.tryRecvForCallback(),
       (received) => handler(received.routingId, [...received.parts])
     );
   }
@@ -950,6 +970,8 @@ export abstract class MessageSocketBase extends ConnectableSendSocketBase {
 }
 
 export abstract class RoutedMessageSocketBase extends BaseSocket {
+  private _receiveCallbackInstalled = false;
+
   protected constructor(ctx: Context, type: number) {
     super(ctx, type);
   }
@@ -996,6 +1018,9 @@ export abstract class RoutedMessageSocketBase extends BaseSocket {
   }
 
   recv(): Received {
+    if (this._receiveCallbackInstalled) {
+      throw callbackModeError('recv');
+    }
     return materializeReceived(
       requireNative().socketRecvMessage(this.nativeHandle(), 0) as {
         parts: Buffer[];
@@ -1005,6 +1030,13 @@ export abstract class RoutedMessageSocketBase extends BaseSocket {
   }
 
   tryRecv(): Received | null {
+    if (this._receiveCallbackInstalled) {
+      throw callbackModeError('recv');
+    }
+    return this.tryRecvForCallback();
+  }
+
+  private tryRecvForCallback(): Received | null {
     const raw = requireNative().socketTryRecvMessage(this.nativeHandle()) as
       | { parts: Buffer[]; routingId?: Buffer | null }
       | null;
@@ -1015,9 +1047,10 @@ export abstract class RoutedMessageSocketBase extends BaseSocket {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
+    this._receiveCallbackInstalled = true;
     startPollingLoop(
       () => this.nativeHandle() != null,
-      () => this.tryRecv(),
+      () => this.tryRecvForCallback(),
       (received) => handler(received.routingId, [...received.parts])
     );
   }
@@ -1051,6 +1084,8 @@ export abstract class ConnectableRoutedMessageSocketBase extends RoutedMessageSo
 }
 
 export abstract class SubscriberSocketBase extends ConnectableSocketBase {
+  private _subscribeCallbackInstalled = false;
+
   protected constructor(ctx: Context, type: number) {
     super(ctx, type);
   }
@@ -1070,6 +1105,9 @@ export abstract class SubscriberSocketBase extends ConnectableSocketBase {
   }
 
   subscribe(): Subscribed {
+    if (this._subscribeCallbackInstalled) {
+      throw callbackModeError('subscribe');
+    }
     return materializeSubscribed(
       requireNative().socketSubscribeMessage(this.nativeHandle()) as {
         parts: Buffer[];
@@ -1080,6 +1118,13 @@ export abstract class SubscriberSocketBase extends ConnectableSocketBase {
   }
 
   trySubscribe(): Subscribed | null {
+    if (this._subscribeCallbackInstalled) {
+      throw callbackModeError('subscribe');
+    }
+    return this.trySubscribeForCallback();
+  }
+
+  private trySubscribeForCallback(): Subscribed | null {
     const raw = requireNative().socketTrySubscribeMessage(this.nativeHandle()) as
       | { parts: Buffer[]; routingId?: Buffer | null; topic: string }
       | null;
@@ -1090,9 +1135,10 @@ export abstract class SubscriberSocketBase extends ConnectableSocketBase {
     if (typeof handler !== 'function') {
       throw new TypeError('handler must be a function');
     }
+    this._subscribeCallbackInstalled = true;
     startPollingLoop(
       () => this.nativeHandle() != null,
-      () => this.trySubscribe(),
+      () => this.trySubscribeForCallback(),
       (received) => handler(received.routingId, received.topic, [...received.parts])
     );
   }

@@ -81,6 +81,7 @@ policy-supported modes and save the measured output in the documented format.
 
 - Single: callback receive path only
 - Multi: `recv` by default, `callback` only for `MULTI_SPOT` and `MULTI_STREAM`
+- Multi STREAM uses the shared core stream client path required by policy.
 - Both suites print the same report body to stdout and to the saved report file.
 
 ## Smoke

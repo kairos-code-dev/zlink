@@ -17,6 +17,14 @@ public sealed class test_validation_contract
     }
 
     [Fact]
+    public void routing_id_rejects_256_byte_boundary()
+    {
+        string value = new string('r', 256);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new RoutingId(value));
+    }
+
+    [Fact]
     public void monitor_open_rejects_unknown_event_flags()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -99,5 +107,17 @@ public sealed class test_validation_contract
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             registry.Bind(overlong, "tcp://127.0.0.1:5555"));
         Assert.Throws<ArgumentOutOfRangeException>(() => query.Connect(overlong));
+    }
+
+    [Fact]
+    public void service_surface_accepts_255_byte_fixed_utf8_inputs()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        string maxLength = new string('a', 255);
+
+        using var ctx = new Context();
+        using var discovery = new Discovery(ctx, ServiceType.Spot, maxLength);
     }
 }

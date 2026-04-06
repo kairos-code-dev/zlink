@@ -13,10 +13,9 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
 
 **Valid socket combinations:** PAIR ↔ PAIR
 
-```
-┌────────┐              ┌────────┐
-│ PAIR A │◄────────────►│ PAIR B │
-└────────┘   양방향     └────────┘
+```mermaid
+flowchart LR
+    A[PAIR A] <-->|Bidirectional| B[PAIR B]
 ```
 
 ## 2. Basic Usage
@@ -119,7 +118,6 @@ int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
 if (rc == 0) {
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 

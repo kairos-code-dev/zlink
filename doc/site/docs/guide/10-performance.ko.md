@@ -191,11 +191,24 @@ LWM 공식: **`(HWM + 1) / 2`**
 이 히스테리시스(hysteresis -- 상한과 하한을 다르게 두어 상태 전환에
 간격을 만드는 기법)는 writable/non-writable 상태 간의 빠른 진동을 방지한다.
 
-```
-예: HWM = 100
-    → LWM = (100 + 1) / 2 = 50
-    → 큐가 100에 도달하면 블로킹
-    → 수신 측이 소비하여 큐가 50 이하가 되면 재개
+```mermaid
+sequenceDiagram
+    participant 송신자 as Sender
+    participant 큐 as Queue
+    participant 수신자 as Receiver
+
+    Note over 큐: HWM = 100, LWM = 50
+
+    송신자->>큐: 메시지 전송
+    Note over 큐: 큐가 100을 향해 채워짐
+    송신자->>큐: 큐가 100에 도달 (HWM)
+    큐-->>송신자: 블로킹 / EAGAIN (non-writable)
+
+    수신자->>큐: 메시지 소비
+    Note over 큐: 큐가 50을 향해 감소
+    수신자->>큐: 큐가 50 이하로 감소 (LWM)
+    큐-->>송신자: activate_write (writable)
+    송신자->>큐: 전송 재개
 ```
 
 ### 실전 HWM 권장값
@@ -1376,7 +1389,7 @@ zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스�
 
     /* Handler callback receives "pong" reply and records end time */
     void on_pong(const zlink_routing_id_t *source_rid,
-                 zlink_msg_t *parts, size_t part_count)
+                 zlink_msg_t *parts, size_t part_count, void *userdata)
     {
         clock_gettime(CLOCK_MONOTONIC, &end);
         double rtt_us = ((end.tv_sec - start.tv_sec) * 1e6 +

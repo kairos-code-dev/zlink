@@ -12,6 +12,8 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다.
 Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여,
 클러스터 전체에서 토픽 메시지를 발행/구독할 수 있다.
 
+SPOT이 없다면, 여러 노드에 걸친 토픽 기반 메시징을 사용하는 애플리케이션은 어떤 노드에 구독자가 있는지 직접 추적하고, PUB/SUB mesh 연결을 관리하고, 구독 포워딩을 처리해야 한다. SPOT은 이를 자동화한다 -- 어떤 노드에서든 토픽에 publish하면, 클러스터 전체의 모든 구독자가 메시지를 수신한다.
+
 > **명칭에 대하여**: SPOT은 "위치(spot)"에서 유래한 이름이다. 각 객체(노드)가 자신의 위치에서 토픽을 발행하고, 다른 위치의 토픽을 구독하는 객체 단위의 위치투명한(location-transparent) pub/sub 메시 시스템이다.
 
 ### 핵심 용어
@@ -29,13 +31,14 @@ Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여,
 
 ### 로컬 publish — 같은 노드 안에서 전달
 
-```
-  SpotPub           SPOT Node            SpotSub
-    │               (worker)               │
-    │  ── publish ──►  │                   │
-    │    (inproc)      │                   │
-    │                  │ ── deliver ──────► │
-    │                  │    (inproc)        │
+```mermaid
+sequenceDiagram
+    participant SpotPub as SpotPub
+    participant Worker as SPOT 노드 (worker)
+    participant SpotSub as SpotSub
+
+    SpotPub->>Worker: publish (inproc)
+    Worker->>SpotSub: 전달 (inproc)
 ```
 
 SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 SpotSub에게
@@ -44,16 +47,16 @@ SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 S
 
 ### 원격 전파 — 클러스터 노드 간 전달
 
-```
-  SpotPub          Node 1              Node 2           SpotSub
-  (Node 1)        (worker)            (worker)          (Node 2)
-    │                │                   │                  │
-    │ ── publish ──► │                   │                  │
-    │   (inproc)     │                   │                  │
-    │                │ ── PUB ─────────► │                  │
-    │                │   (tcp mesh)      │                  │
-    │                │                   │ ── deliver ────► │
-    │                │                   │    (inproc)      │
+```mermaid
+sequenceDiagram
+    participant SpotPub as SpotPub (노드 1)
+    participant W1 as 노드 1 Worker
+    participant W2 as 노드 2 Worker
+    participant SpotSub as SpotSub (노드 2)
+
+    SpotPub->>W1: publish (inproc)
+    W1->>W2: PUB (tcp mesh)
+    W2->>SpotSub: 전달 (inproc)
 ```
 
 로컬 publish는 worker가 두 갈래로 분기한다:
@@ -65,23 +68,29 @@ SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 S
 
 ### 전체 구조 요약
 
-```
-┌─────────── Node 1 ───────────┐     ┌─────────── Node 2 ───────────┐
-│                               │     │                               │
-│  SpotPub ──► worker ──► SpotSub │     │  SpotPub ──► worker ──► SpotSub │
-│                 │             │     │                 ▲             │
-│                 │ PUB         │     │            SUB  │             │
-│                 └──── tcp ────┼────►┼─────────────────┘             │
-│                 ▲             │     │                 │             │
-│            SUB  │             │     │                 │ PUB         │
-│                 └──── tcp ────┼◄────┼─────────────────┘             │
-│                               │     │                               │
-└───────────────────────────────┘     └───────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph 노드1["노드 1"]
+        P1[SpotPub] --> W1[Worker] --> S1[SpotSub]
+    end
+    subgraph 노드2["노드 2"]
+        P2[SpotPub] --> W2[Worker] --> S2[SpotSub]
+    end
+    W1 -- "PUB (tcp)" --> W2
+    W2 -- "PUB (tcp)" --> W1
 ```
 
 - 각 Node의 worker는 **PUB 소켓**으로 송출하고, 다른 노드의 **SUB 소켓**으로 수신한다
 - 로컬 publish만 mesh로 나가고, 원격 수신은 재발행하지 않는다 (루프 방지)
 - Discovery 연결 시 이 mesh 토폴로지가 자동 구성된다
+
+**예시:** 노드 1이 토픽 `price.USD.JPY`를 publish한다. 노드 2에는 `price.*` 구독자가 있다.
+
+1. 노드 1의 SpotPub이 로컬 SPOT worker에게 메시지를 전송한다.
+2. Worker가 `price.*`에 매칭되는 로컬 SpotSub에게 전달한다 (로컬 경로).
+3. Worker가 PUB 소켓을 통해 tcp로 노드 2에 송출한다.
+4. 노드 2의 worker가 SUB로 수신하여, `price.*`에 매칭한 뒤 SpotSub에게 전달한다.
+5. 노드 2에서 mesh로 재발행하지 않는다 (루프 방지).
 
 ## 3. SPOT Node 설정
 

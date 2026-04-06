@@ -35,16 +35,12 @@ zlink는 libzmq를 기반으로 한 고성능 메시징 라이브러리입니다
 
 ### 1.2 설계 원칙
 
-```
-┌──────────────────────┬──────────────────────────────────────────────────────┐
-│       원칙           │                       설명                           │
-├──────────────────────┼──────────────────────────────────────────────────────┤
-│  Zero-Copy           │  메시지 복사 최소화를 통한 메모리 대역폭 절약        │
-│  Lock-Free           │  스레드 간 통신에 Lock-free 자료구조(YPipe) 사용     │
-│  True Async          │  Proactor 패턴 기반의 진정한 비동기 I/O              │
-│  Protocol Agnostic   │  트랜스포트와 프로토콜의 명확한 분리                  │
-└──────────────────────┴──────────────────────────────────────────────────────┘
-```
+| 원칙 | 설명 |
+|---|---|
+| Zero-Copy | 메시지 복사 최소화를 통한 메모리 대역폭 절약 |
+| Lock-Free | 스레드 간 통신에 Lock-free 자료구조(YPipe) 사용 |
+| True Async | Proactor 패턴 기반의 진정한 비동기 I/O |
+| Protocol Agnostic | 트랜스포트와 프로토콜의 명확한 분리 |
 
 ### 1.3 지원 소켓 및 트랜스포트
 
@@ -83,29 +79,27 @@ libzmq는 전형적인 **Reactor 패턴**을 사용합니다.
 중앙의 폴러(`poller_t`)가 fd의 readiness(읽기/쓰기 가능 상태)를 감시하고,
 준비된 fd에 대해 엔진의 핸들러를 호출하는 구조입니다.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    libzmq Reactor 모델                            │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │                  poller_t (중앙 이벤트 루프)              │   │
-│   │                                                          │   │
-│   │   epoll_wait() / kqueue() / select() / IOCP              │   │
-│   │              │                                           │   │
-│   │              v                                           │   │
-│   │   ┌──────────────────────┐                               │   │
-│   │   │  fd 준비됨(readable) │──→ engine->in_event()        │   │
-│   │   │  fd 준비됨(writable) │──→ engine->out_event()       │   │
-│   │   │  fd 에러(error)      │──→ engine->in_event()        │   │
-│   │   └──────────────────────┘                               │   │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   흐름: fd 등록 → readiness 대기 → 통지 → 핸들러에서 read/write  │
-│   특징: 폴러가 "읽을 수 있다"고 알려주면, 엔진이 직접 read() 호출 │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Reactor["libzmq Reactor 모델"]
+        poller["poller_t\n(중앙 이벤트 루프)\nepoll_wait() / kqueue() / select() / IOCP"]
+        readable["fd 준비됨 (readable)"]
+        writable["fd 준비됨 (writable)"]
+        fderror["fd 에러 (error)"]
+        in_event["engine->in_event()"]
+        out_event["engine->out_event()"]
+
+        poller --> readable
+        poller --> writable
+        poller --> fderror
+        readable --> in_event
+        writable --> out_event
+        fderror --> in_event
+    end
+
+    note["흐름: fd 등록 -> readiness 대기 -> 통지 -> 핸들러에서 read/write\n특징: 폴러가 '읽을 수 있다'고 알려주면, 엔진이 직접 read() 호출"]
+
+    Reactor ~~~ note
 ```
 
 **핵심 특성:**
@@ -119,37 +113,29 @@ libzmq는 전형적인 **Reactor 패턴**을 사용합니다.
 zlink는 Boost.Asio의 **Proactor 패턴**을 사용합니다.
 엔진이 OS에 비동기 I/O 연산을 요청하고, OS가 완료 후 콜백을 호출하는 구조입니다.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    zlink Proactor 모델                            │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │              asio_engine_t (비동기 엔진)                  │   │
-│   │                                                          │   │
-│   │   (1) async_read_some(buffer, handler)                   │   │
-│   │       │  OS에 읽기 요청을 위임                           │   │
-│   │       └──→ [OS 커널이 I/O 수행] ──→ on_read_complete()  │   │
-│   │                                                          │   │
-│   │   (2) async_write_some(buffer, handler)                  │   │
-│   │       │  OS에 쓰기 요청을 위임                           │   │
-│   │       └──→ [OS 커널이 I/O 수행] ──→ on_write_complete() │   │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │              io_context (Boost.Asio)                      │   │
-│   │                                                          │   │
-│   │   io_context::run()                                      │   │
-│   │   - 완료된 비동기 연산의 핸들러를 디스패치               │   │
-│   │   - 하나의 I/O 스레드에서 단일 io_context 실행           │   │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   흐름: 비동기 연산 요청 → OS가 I/O 완료 → 완료 콜백 호출       │
-│   특징: 엔진은 I/O를 직접 수행하지 않고 완료 결과만 처리         │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Proactor["zlink Proactor 모델"]
+        subgraph Engine["asio_engine_t (비동기 엔진)"]
+            async_read["async_read_some\n(buffer, handler)"]
+            os_read["OS 커널이\n읽기 수행"]
+            on_read["on_read_complete()"]
+            async_write["async_write_some\n(buffer, handler)"]
+            os_write["OS 커널이\n쓰기 수행"]
+            on_write["on_write_complete()"]
+
+            async_read -->|"OS에 위임"| os_read --> on_read
+            async_write -->|"OS에 위임"| os_write --> on_write
+        end
+
+        subgraph IoCtx["io_context (Boost.Asio)"]
+            run["io_context::run()\n- 완료된 비동기 연산의 핸들러 디스패치\n- 하나의 I/O 스레드에서 단일 실행"]
+        end
+    end
+
+    note["흐름: 비동기 연산 요청 -> OS가 I/O 완료 -> 완료 콜백 호출\n특징: 엔진은 I/O를 직접 수행하지 않고 완료 결과만 처리"]
+
+    Proactor ~~~ note
 ```
 
 **핵심 특성:**
@@ -160,96 +146,43 @@ zlink는 Boost.Asio의 **Proactor 패턴**을 사용합니다.
 
 ### 2.3 Reactor vs. Proactor 비교
 
-```
-┌──────────────────┬──────────────────────────┬──────────────────────────────┐
-│       항목        │   libzmq (Reactor)       │   zlink (Proactor)           │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  I/O 모델         │ Readiness 기반           │ Completion 기반              │
-│                   │ "읽을 수 있다" → read()  │ "읽기 완료됨" → 콜백 호출    │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  메인 루프        │ poller_t::loop()          │ io_context::run()            │
-│                   │ (자체 이벤트 루프)        │ (Boost.Asio 이벤트 루프)     │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  I/O 스레드       │ 스레드당 poller_t         │ 스레드당 io_context          │
-│                   │ + fd_table 관리           │ + 독립 실행                   │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  엔진 콜백       │ in_event() / out_event() │ on_read_complete()           │
-│                   │                          │ on_write_complete()          │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  프로토콜         │ ZMTP 3.x                 │ ZMP v1.0 (8B 고정 헤더)     │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  트랜스포트       │ fd 직접 관리              │ i_asio_transport 추상화      │
-│  추가 비용        │ 폴러에 fd 등록 필요       │ 인터페이스 구현만으로 확장    │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  플랫폼 폴러      │ 6종 직접 구현             │ Boost.Asio에 위임            │
-│                   │ (epoll,kqueue,IOCP 등)   │ (단일 코드베이스)            │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  최적화           │ Reactor 이벤트 배칭      │ Speculative I/O              │
-│                   │                          │ Gather Write                 │
-│                   │                          │ Backpressure (pending buf)   │
-└──────────────────┴──────────────────────────┴──────────────────────────────┘
-```
+| 항목 | libzmq (Reactor) | zlink (Proactor) |
+|---|---|---|
+| I/O 모델 | Readiness 기반: "읽을 수 있다" -> read() | Completion 기반: "읽기 완료됨" -> 콜백 호출 |
+| 메인 루프 | poller_t::loop() (자체 이벤트 루프) | io_context::run() (Boost.Asio 이벤트 루프) |
+| I/O 스레드 | 스레드당 poller_t + fd_table 관리 | 스레드당 io_context + 독립 실행 |
+| 엔진 콜백 | in_event() / out_event() | on_read_complete() / on_write_complete() |
+| 프로토콜 | ZMTP 3.x | ZMP v1.0 (8B 고정 헤더) |
+| 트랜스포트 추가 비용 | fd 직접 관리; 폴러에 fd 등록 필요 | i_asio_transport 추상화; 인터페이스 구현만으로 확장 |
+| 플랫폼 폴러 | 6종 직접 구현 (epoll, kqueue, IOCP 등) | Boost.Asio에 위임 (단일 코드베이스) |
+| 최적화 | Reactor 이벤트 배칭 | Speculative I/O, Gather Write, Backpressure (pending buf) |
 
 ### 2.4 마이그레이션 전략
 
 libzmq에서 zlink로의 이식은 "전면 교체"가 아닌 **계층별 선택적 교체**로 진행했습니다.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     계층별 보존 / 교체 / 추가                        │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ■ 보존 (libzmq에서 그대로 유지)                                    │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │  Socket Logic Layer                                           │ │
-│  │  - socket_base_t, pair_t, dealer_t, router_t, pub_t, sub_t   │ │
-│  │  - 라우팅 전략: lb_t, fq_t, dist_t                            │ │
-│  │  - 구독 관리: mtrie_t, radix_tree_t                           │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Inter-Thread 인프라                                          │ │
-│  │  - YPipe (Lock-free 큐, CAS 기반)                             │ │
-│  │  - pipe_t (양방향 메시지 파이프)                               │ │
-│  │  - mailbox_t + signaler_t (스레드 간 커맨드 전달)             │ │
-│  │  - command_t (20종 내부 커맨드)                                │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  메시지 시스템                                                 │ │
-│  │  - msg_t (64바이트 고정, VSM/LMSG/CMSG/ZCLMSG)               │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│  ■ 교체 (libzmq 구현을 새로운 구현으로 대체)                       │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │  poller_t (epoll/kqueue/select)  →  asio_poller_t            │ │
-│  │  - mailbox 모니터링용 Reactor 래퍼 (최소한의 호환 레이어)     │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  zmtp_engine_t (ZMTP 3.x)  →  asio_engine_t (Proactor)      │ │
-│  │  - 핵심 I/O 엔진을 completion 기반으로 완전 재설계            │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  직접 fd 관리  →  i_asio_transport 인터페이스                 │ │
-│  │  - TCP/IPC를 Boost.Asio 소켓으로 래핑                        │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  ZMTP 3.x  →  ZMP v1.0                                       │ │
-│  │  - 8바이트 고정 헤더로 단순화, HELLO/READY 핸드셰이크        │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│  ■ 추가 (zlink에서 새로 도입)                                      │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │  Speculative I/O                                              │ │
-│  │  - 비동기 요청 전에 동기 시도 → 성공 시 콜백 오버헤드 제거    │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Backpressure (pending_buffers)                               │ │
-│  │  - HWM 도달 시 수신 데이터를 10MB 한도로 임시 버퍼링         │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Gather Write                                                 │ │
-│  │  - scatter/gather I/O로 헤더+페이로드 단일 시스템콜 전송     │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  네이티브 WS/WSS/TLS 트랜스포트                               │ │
-│  │  - Beast WebSocket + OpenSSL을 i_asio_transport으로 통합     │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  서비스 레이어 (Registry, Discovery, SPOT)                    │ │
-│  │  - libzmq에 없는 상위 서비스 추상화                           │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Preserved["보존 (libzmq에서 그대로 유지)"]
+        SL["Socket Logic Layer\nsocket_base_t, pair_t, dealer_t, router_t, pub_t, sub_t\n라우팅: lb_t, fq_t, dist_t\n구독: mtrie_t, radix_tree_t"]
+        IT["Inter-Thread 인프라\nYPipe (Lock-free 큐, CAS 기반)\npipe_t (양방향 메시지 파이프)\nmailbox_t + signaler_t\ncommand_t (20종 내부 커맨드)"]
+        MS["메시지 시스템\nmsg_t (64바이트 고정, VSM/LMSG/CMSG/ZCLMSG)"]
+    end
+
+    subgraph Replaced["교체 (libzmq -> 새 구현)"]
+        R1["poller_t -> asio_poller_t\nmailbox 모니터링용 최소 Reactor 래퍼"]
+        R2["zmtp_engine_t -> asio_engine_t\n핵심 I/O 엔진을 completion 기반으로 재설계"]
+        R3["직접 fd 관리 -> i_asio_transport\nTCP/IPC를 Boost.Asio 소켓으로 래핑"]
+        R4["ZMTP 3.x -> ZMP v1.0\n8바이트 고정 헤더, HELLO/READY 핸드셰이크"]
+    end
+
+    subgraph Added["추가 (zlink에서 새로 도입)"]
+        A1["Speculative I/O\n비동기 전 동기 시도 -> 콜백 오버헤드 제거"]
+        A2["Backpressure (pending_buffers)\nHWM 도달 시 10MB 한도로 임시 버퍼링"]
+        A3["Gather Write\nscatter/gather I/O: 헤더+페이로드 단일 시스템콜"]
+        A4["네이티브 WS/WSS/TLS 트랜스포트\nBeast WebSocket + OpenSSL을 i_asio_transport으로 통합"]
+        A5["서비스 레이어\nRegistry, Discovery, SPOT"]
+    end
 ```
 
 **왜 Reactor를 완전히 제거하지 않았는가?**
@@ -266,61 +199,38 @@ libzmq에서 zlink로의 이식은 "전면 교체"가 아닌 **계층별 선택�
 zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 각 계층은 단일 책임을 가지며, 아래로 갈수록 물리적 네트워크에 가까워집니다.
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          APPLICATION LAYER                              │
-│                                                                         │
-│   사용자 코드:                                                          │
-│   zlink_ctx_new() -> zlink_socket() -> zlink_bind/connect()             │
-│   -> zlink_send() / zlink_recv() -> zlink_close()                       │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                           PUBLIC API LAYER                              │
-│                                                                         │
-│   src/api/zlink.cpp                                                     │
-│   - C API 진입점 (zlink_socket, zlink_send, zlink_recv 등)              │
-│   - 에러 핸들링 및 파라미터 검증                                        │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                          SOCKET LOGIC LAYER                             │
-│                                                                         │
-│   src/sockets/                                                          │
-│   - socket_base_t: 모든 소켓의 기반 클래스                              │
-│   - pair_t, dealer_t, router_t, pub_t, sub_t, xpub_t, xsub_t, stream_t │
-│   - 라우팅 전략: lb_t(RR), fq_t(Fair Queue), dist_t(Fan-out)           │
-│   - 구독 관리: mtrie_t(XPUB), radix_tree_t / trie_with_size_t(XSUB)   │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                          ENGINE LAYER (ASIO)                            │
-│                                                                         │
-│   src/engine/asio/                                                      │
-│   - asio_engine_t      : Proactor 패턴 기반 비동기 I/O 엔진 (기반)     │
-│   - asio_zmp_engine_t  : ZMP 프로토콜 (8B 고정 헤더 + 핸드셰이크)      │
-│   - asio_raw_engine_t  : RAW 프로토콜 (4B Length-Prefix, STREAM 전용)  │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                          PROTOCOL LAYER                                 │
-│                                                                         │
-│   ┌───────────────────────────┐    ┌───────────────────────────┐       │
-│   │    ZMP v1.0 Protocol      │    │     RAW Protocol          │       │
-│   │    src/protocol/zmp_*     │    │     src/protocol/raw_*    │       │
-│   │    - 8바이트 고정 헤더     │    │     - 4바이트 길이 접두사  │       │
-│   │    - 핸드셰이크 지원       │    │     - 핸드셰이크 없음      │       │
-│   └───────────────────────────┘    └───────────────────────────┘       │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                          TRANSPORT LAYER                                │
-│                                                                         │
-│   src/transports/                                                       │
-│   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌──────────┐                 │
-│   │   TCP   │  │   IPC   │  │   WS    │  │ TLS/WSS  │                 │
-│   │  tcp_   │  │  ipc_   │  │  ws_    │  │  ssl_    │                 │
-│   │transport│  │transport│  │transport│  │transport │                 │
-│   └─────────┘  └─────────┘  └─────────┘  └──────────┘                 │
-│                                                                         │
-│   i_asio_transport: 모든 트랜스포트의 통합 비동기 인터페이스            │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph L1["APPLICATION LAYER"]
+        App["사용자 코드:\nzlink_ctx_new() -> zlink_socket() -> zlink_bind/connect()\n-> zlink_send() / zlink_recv() -> zlink_close()"]
+    end
+
+    subgraph L2["PUBLIC API LAYER"]
+        API["src/api/zlink.cpp\nC API 진입점 (zlink_socket, zlink_send, zlink_recv 등)\n에러 핸들링 및 파라미터 검증"]
+    end
+
+    subgraph L3["SOCKET LOGIC LAYER"]
+        Sockets["src/sockets/\nsocket_base_t: 모든 소켓의 기반 클래스\npair_t, dealer_t, router_t, pub_t, sub_t, xpub_t, xsub_t, stream_t\n라우팅: lb_t(RR), fq_t(Fair Queue), dist_t(Fan-out)\n구독: mtrie_t(XPUB), radix_tree_t / trie_with_size_t(XSUB)"]
+    end
+
+    subgraph L4["ENGINE LAYER (ASIO)"]
+        Engines["src/engine/asio/\nasio_engine_t: Proactor 패턴 기반 비동기 I/O 엔진 (기반)\nasio_zmp_engine_t: ZMP 프로토콜 (8B 고정 헤더 + 핸드셰이크)\nasio_raw_engine_t: RAW 프로토콜 (4B Length-Prefix, STREAM 전용)"]
+    end
+
+    subgraph L5A["PROTOCOL LAYER"]
+        ZMP["ZMP v1.0 Protocol\nsrc/protocol/zmp_*\n8바이트 고정 헤더\n핸드셰이크 지원"]
+        RAW["RAW Protocol\nsrc/protocol/raw_*\n4바이트 길이 접두사\n핸드셰이크 없음"]
+    end
+
+    subgraph L5B["TRANSPORT LAYER"]
+        TCP["TCP\ntcp_transport"]
+        IPC["IPC\nipc_transport"]
+        WS["WS\nws_transport"]
+        TLSWSS["TLS/WSS\nssl_transport"]
+        iface["i_asio_transport: 모든 트랜스포트의 통합 비동기 인터페이스"]
+    end
+
+    L1 --> L2 --> L3 --> L4 --> L5A --> L5B
 ```
 
 **계층 간 메시지 전달 경로**:
@@ -333,40 +243,21 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 
 아래 다이어그램은 zlink 내부 객체들의 소유 관계와 상호작용을 보여줍니다.
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                              ctx_t                                   │
-│  (전역 컨텍스트: I/O 스레드풀, 소켓 관리, inproc 엔드포인트)         │
-└────────────────────────────────┬─────────────────────────────────────┘
-                                 │ owns
-            ┌────────────────────┼────────────────────┐
-            │                    │                    │
-            v                    v                    v
-    ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-    │  socket_base_t│   │  io_thread_t  │   │   reaper_t    │
-    │  (소켓 인스턴스)│   │ (I/O 워커)    │   │ (자원 정리)   │
-    └───────┬───────┘   └───────┬───────┘   └───────────────┘
-            │                   │
-            │ owns              │ runs
-            v                   v
-    ┌───────────────┐   ┌───────────────┐
-    │ session_base_t│   │  io_context   │
-    │  (세션 관리)   │   │ (Asio 리액터) │
-    └───────┬───────┘   └───────────────┘
-            │
-     ┌──────┴──────┐
-     │             │
-     v             v
-┌─────────┐  ┌─────────────┐
-│ pipe_t  │  │asio_engine_t│
-│(메시지큐)│  │ (I/O 엔진)  │
-└─────────┘  └──────┬──────┘
-                    │
-                    v
-            ┌───────────────┐
-            │i_asio_transport│
-            │  (트랜스포트)  │
-            └───────────────┘
+```mermaid
+flowchart TB
+    ctx["ctx_t\n(전역 컨텍스트: I/O 스레드풀,\n소켓 관리, inproc 엔드포인트)"]
+
+    ctx -->|"owns"| socket["socket_base_t\n(소켓 인스턴스)"]
+    ctx -->|"owns"| iothread["io_thread_t\n(I/O 워커)"]
+    ctx -->|"owns"| reaper["reaper_t\n(자원 정리)"]
+
+    socket -->|"owns"| session["session_base_t\n(세션 관리)"]
+    iothread -->|"runs"| ioctx["io_context\n(Asio 리액터)"]
+
+    session -->|"owns"| pipe["pipe_t\n(메시지 큐)"]
+    session -->|"owns"| engine["asio_engine_t\n(I/O 엔진)"]
+
+    engine --> transport["i_asio_transport\n(트랜스포트)"]
 ```
 
 **주요 소유 관계 설명**:
@@ -384,16 +275,24 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 
 ### 5.1 클래스 계층 구조
 
-```
-socket_base_t (기반 클래스)
-├── pair_t              # PAIR 소켓: 1:1 양방향 통신
-├── dealer_t            # DEALER 소켓: 비동기 요청, 라운드로빈
-├── router_t            # ROUTER 소켓: ID 기반 라우팅 (routing_socket_base_t 상속)
-├── xpub_t              # XPUB 소켓: 구독 메시지 수신 가능
-│   └── pub_t           # PUB 소켓: XPUB 단순화 (구독 노출 없음)
-├── xsub_t              # XSUB 소켓: 로컬 필터 없이 전체 수신 (프록시용)
-│   └── sub_t           # SUB 소켓: 로컬 토픽 필터링 활성 (filter=true)
-└── stream_t            # STREAM 소켓: RAW TCP, 외부 클라이언트 연동
+```mermaid
+flowchart TB
+    base["socket_base_t\n(기반 클래스)"]
+    pair["pair_t\nPAIR: 1:1 양방향 통신"]
+    dealer["dealer_t\nDEALER: 비동기 요청, 라운드로빈"]
+    router["router_t\nROUTER: ID 기반 라우팅"]
+    xpub["xpub_t\nXPUB: 구독 메시지 수신 가능"]
+    pub["pub_t\nPUB: XPUB 단순화"]
+    xsub["xsub_t\nXSUB: 로컬 필터 없이 전체 수신"]
+    sub["sub_t\nSUB: 로컬 토픽 필터링"]
+    stream["stream_t\nSTREAM: RAW TCP"]
+
+    base --> pair
+    base --> dealer
+    base --> router
+    base --> xpub --> pub
+    base --> xsub --> sub
+    base --> stream
 ```
 
 `socket_base_t`는 모든 소켓의 공통 기능을 제공합니다:
@@ -406,43 +305,33 @@ socket_base_t (기반 클래스)
 
 소켓 타입별로 메시지 분배와 수집에 사용되는 전략 클래스가 분리되어 있습니다:
 
+```mermaid
+flowchart LR
+    subgraph LB["lb_t (Load Balancer) - 송신측 라운드로빈"]
+        direction LR
+        msg1["msg1"] --> PA1["Pipe A"]
+        msg2["msg2"] --> PB1["Pipe B"]
+        msg3["msg3"] --> PC1["Pipe C"]
+    end
+
+    subgraph FQ["fq_t (Fair Queue) - 수신측 공정 큐"]
+        direction LR
+        PA2["Pipe A"] --> recv1["msg"]
+        PB2["Pipe B"] --> recv2["msg"]
+        PC2["Pipe C"] --> recv3["msg"]
+    end
+
+    subgraph DIST["dist_t (Distributor) - 브로드캐스트 Fan-out"]
+        direction LR
+        src["msg"] --> PA3["Pipe A"]
+        src --> PB3["Pipe B"]
+        src --> PC3["Pipe C"]
+    end
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                     라우팅 전략 (Routing Strategies)                   │
-├──────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  lb_t (Load Balancer) - 송신측 라운드로빈                     │    │
-│  │                                                               │    │
-│  │  Pipe A ──→ [ msg1 ]                                         │    │
-│  │  Pipe B ──→ [ msg2 ]    ← 순서대로 돌아가며 분배             │    │
-│  │  Pipe C ──→ [ msg3 ]                                         │    │
-│  │                                                               │    │
-│  │  사용 소켓: DEALER (송신)                                     │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  fq_t (Fair Queue) - 수신측 공정 큐                           │    │
-│  │                                                               │    │
-│  │  Pipe A ←── [ msg ]                                          │    │
-│  │  Pipe B ←── [ msg ]    ← 각 파이프에서 공정하게 수신         │    │
-│  │  Pipe C ←── [ msg ]                                          │    │
-│  │                                                               │    │
-│  │  사용 소켓: DEALER (수신), SUB (수신)                         │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  dist_t (Distributor) - 브로드캐스트 Fan-out                  │    │
-│  │                                                               │    │
-│  │  [ msg ] ──→ Pipe A                                          │    │
-│  │          ──→ Pipe B    ← 동일 메시지를 모든 파이프에 전송     │    │
-│  │          ──→ Pipe C                                          │    │
-│  │                                                               │    │
-│  │  사용 소켓: PUB, XPUB (송신)                                  │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
-```
+
+- **lb_t**: DEALER (송신) 사용 -- 순서대로 돌아가며 분배
+- **fq_t**: DEALER (수신), SUB (수신) 사용 -- 각 파이프에서 공정하게 수신
+- **dist_t**: PUB, XPUB (송신) 사용 -- 동일 메시지를 모든 파이프에 전송
 
 ### 5.3 소켓별 라우팅 전략 매핑
 
@@ -498,79 +387,48 @@ Engine Layer는 Boost.Asio 기반의 비동기 I/O 처리를 담당합니다.
 
 ### 6.2 Proactor 패턴 구조
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        asio_engine_t                             │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌─────────────────┐         ┌──────────────────────────────┐  │
-│  │ async_read_some │--------→│      on_read_complete        │  │
-│  │   (비동기 읽기)  │         │  - 데이터 수신 완료 콜백       │  │
-│  └─────────────────┘         │  - 디코더로 메시지 파싱        │  │
-│                              │  - 세션으로 메시지 전달        │  │
-│                              └──────────────────────────────┘  │
-│                                                                  │
-│  ┌─────────────────┐         ┌──────────────────────────────┐  │
-│  │async_write_some │--------→│     on_write_complete        │  │
-│  │   (비동기 쓰기)  │         │  - 데이터 송신 완료 콜백       │  │
-│  └─────────────────┘         │  - 다음 메시지 인코딩          │  │
-│                              │  - 더 보낼 데이터 있으면 반복   │  │
-│                              └──────────────────────────────┘  │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                  Speculative I/O (최적화)                │   │
-│  │                                                          │   │
-│  │  speculative_read():                                     │   │
-│  │    즉시 읽을 수 있는 데이터를 동기 방식으로 먼저 시도      │   │
-│  │    -> 비동기 오버헤드 없이 처리량 향상                     │   │
-│  │                                                          │   │
-│  │  speculative_write():                                    │   │
-│  │    즉시 쓸 수 있으면 동기 방식으로 쓰기                    │   │
-│  │    -> 성공 시 콜백 없이 즉시 완료                         │   │
-│  │    -> EAGAIN 시 async_write_some()으로 폴백              │   │
-│  │                                                          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                   Backpressure (배압)                    │   │
-│  │                                                          │   │
-│  │  _pending_buffers: 처리 못한 데이터 임시 저장             │   │
-│  │  max_pending_buffer_size: 10MB 제한                      │   │
-│  │  제한 초과 시 읽기 중단 -> 이후 여유 생기면 재개          │   │
-│  │                                                          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph asio_engine["asio_engine_t"]
+        subgraph ReadPath["읽기 경로"]
+            ar["async_read_some\n(비동기 읽기)"] -->|"완료"| orc["on_read_complete\n- 데이터 수신 완료 콜백\n- 디코더로 메시지 파싱\n- 세션으로 메시지 전달"]
+        end
+
+        subgraph WritePath["쓰기 경로"]
+            aw["async_write_some\n(비동기 쓰기)"] -->|"완료"| owc["on_write_complete\n- 데이터 송신 완료 콜백\n- 다음 메시지 인코딩\n- 더 보낼 데이터 있으면 반복"]
+        end
+
+        subgraph Speculative["Speculative I/O (최적화)"]
+            sr["speculative_read():\n즉시 읽을 수 있는 데이터를 동기 방식으로 먼저 시도\n-> 비동기 오버헤드 없이 처리량 향상"]
+            sw["speculative_write():\n즉시 쓸 수 있으면 동기 방식으로 쓰기\n-> 성공 시 콜백 없이 즉시 완료\n-> EAGAIN 시 async_write_some()으로 폴백"]
+        end
+
+        subgraph BP["Backpressure (배압)"]
+            bp["_pending_buffers: 처리 못한 데이터 임시 저장\nmax_pending_buffer_size: 10MB 제한\n제한 초과 시 읽기 중단 -> 이후 여유 생기면 재개"]
+        end
+    end
 ```
 
 ### 6.3 엔진 상태 머신
 
-```
-          ┌─────────────────────┐
-          │    생성 (Created)    │
-          └──────────┬──────────┘
-                     │ plug()
-                     v
-          ┌─────────────────────┐
-          │   핸드셰이크 중      │  TLS/WebSocket: 트랜스포트 핸드셰이크
-          │  (_handshaking)     │  ZMP: 프로토콜 핸드셰이크
-          └──────────┬──────────┘
-                     │ handshake 완료
-                     v
-          ┌─────────────────────┐
-          │    활성 (Active)    │ <-----------------┐
-          │   데이터 송수신      │                   │
-          └──────────┬──────────┘                   │
-                     │ I/O 에러                      │ restart
-                     v                              │
-          ┌─────────────────────┐                   │
-          │    에러 (Error)      │ -----------------┘
-          └──────────┬──────────┘
-                     │ terminate()
-                     v
-          ┌─────────────────────┐
-          │   종료 (Terminated)  │
-          └─────────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> 생성_Created
+    생성_Created --> 핸드셰이크_Handshaking : plug()
+    핸드셰이크_Handshaking --> 활성_Active : handshake 완료
+    활성_Active --> 에러_Error : I/O 에러
+    에러_Error --> 활성_Active : restart
+    에러_Error --> 종료_Terminated : terminate()
+    종료_Terminated --> [*]
+
+    note right of 핸드셰이크_Handshaking
+        TLS/WebSocket: 트랜스포트 핸드셰이크
+        ZMP: 프로토콜 핸드셰이크
+    end note
+
+    note right of 활성_Active
+        데이터 송수신
+    end note
 ```
 
 ### 6.4 ZMP v1.0 프레임 구조
@@ -618,21 +476,17 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 
 ### 6.6 ZMP 핸드셰이크 시퀀스
 
-```
-    Client                              Server
-       │                                   │
-       │─────── HELLO (greeting) ─────────→│
-       │                                   │
-       │←────── HELLO (greeting) ──────────│
-       │                                   │
-       │                                   │  (소켓 타입 호환성 검사)
-       │                                   │
-       │─────── READY (metadata) ─────────→│
-       │                                   │
-       │←────── READY (metadata) ──────────│
-       │                                   │
-       │←─────── Data Exchange ───────────→│
-       │                                   │
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: HELLO (greeting)
+    S->>C: HELLO (greeting)
+    Note over S: 소켓 타입 호환성 검사
+    C->>S: READY (metadata)
+    S->>C: READY (metadata)
+    Note over C,S: Data Exchange
 ```
 
 - **HELLO**: 소켓 타입(1B) + Identity 길이(1B) + Identity 값(0-255B)
@@ -642,18 +496,13 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 
 소켓 타입에 따라 엔진이 자동 선택됩니다:
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        엔진 선택 규칙                                │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  소켓 타입 == STREAM ?                                              │
-│      ├─ YES → asio_raw_engine_t  (RAW 프로토콜, 핸드셰이크 없음)   │
-│      └─ NO  → asio_zmp_engine_t  (ZMP 프로토콜, HELLO/READY)       │
-│                                                                     │
-│  이 규칙은 모든 트랜스포트(TCP/TLS/IPC/WS/WSS)에서 동일합니다.     │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    Q{"소켓 타입\n== STREAM?"}
+    Q -->|YES| RAW["asio_raw_engine_t\n(RAW 프로토콜, 핸드셰이크 없음)"]
+    Q -->|NO| ZMP["asio_zmp_engine_t\n(ZMP 프로토콜, HELLO/READY)"]
+    Note["이 규칙은 모든 트랜스포트에서 동일\n(TCP/TLS/IPC/WS/WSS)"]
+    Q ~~~ Note
 ```
 
 **전체 매핑 매트릭스**:
@@ -668,48 +517,37 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 
 ### 6.8 핸드셰이크 단계 비교
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        핸드셰이크 단계 비교                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  TCP + PAIR/DEALER/ROUTER/PUB/SUB                                      │
-│  ┌─────────┐    ┌─────────────┐                                       │
-│  │  TCP    │───→│  ZMP        │───→ 데이터 전송                        │
-│  │ Connect │    │  Handshake  │                                       │
-│  └─────────┘    └─────────────┘                                       │
-│                                                                         │
-│  TCP + STREAM                                                          │
-│  ┌─────────┐                                                           │
-│  │  TCP    │───────────────────────→ 데이터 전송 (즉시)                 │
-│  │ Connect │                                                           │
-│  └─────────┘                                                           │
-│                                                                         │
-│  TLS + PAIR/DEALER/ROUTER/PUB/SUB                                      │
-│  ┌─────────┐    ┌─────────┐    ┌─────────────┐                        │
-│  │  TCP    │───→│  SSL    │───→│  ZMP        │───→ 데이터 전송         │
-│  │ Connect │    │Handshake│    │  Handshake  │                        │
-│  └─────────┘    └─────────┘    └─────────────┘                        │
-│                                                                         │
-│  WS + PAIR/DEALER/ROUTER/PUB/SUB                                       │
-│  ┌─────────┐    ┌─────────┐    ┌─────────────┐                        │
-│  │  TCP    │───→│   WS    │───→│  ZMP        │───→ 데이터 전송         │
-│  │ Connect │    │ Upgrade │    │  Handshake  │                        │
-│  └─────────┘    └─────────┘    └─────────────┘                        │
-│                                                                         │
-│  WSS + PAIR/DEALER/ROUTER/PUB/SUB                                      │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────────┐        │
-│  │  TCP    │───→│  SSL    │───→│   WS    │───→│  ZMP        │───→ 전송│
-│  │ Connect │    │Handshake│    │ Upgrade │    │  Handshake  │        │
-│  └─────────┘    └─────────┘    └─────────┘    └─────────────┘        │
-│                                                                         │
-│  WSS + STREAM                                                          │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐                            │
-│  │  TCP    │───→│  SSL    │───→│   WS    │───────────────→ 데이터 전송 │
-│  │ Connect │    │Handshake│    │ Upgrade │                            │
-│  └─────────┘    └─────────┘    └─────────┘                            │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph tcp_zmp["TCP + PAIR/DEALER/ROUTER/PUB/SUB"]
+        direction LR
+        t1["TCP Connect"] --> z1["ZMP Handshake"] --> d1["데이터 전송"]
+    end
+
+    subgraph tcp_stream["TCP + STREAM"]
+        direction LR
+        t2["TCP Connect"] --> d2["데이터 전송 (즉시)"]
+    end
+
+    subgraph tls_zmp["TLS + PAIR/DEALER/ROUTER/PUB/SUB"]
+        direction LR
+        t3["TCP Connect"] --> s3["SSL Handshake"] --> z3["ZMP Handshake"] --> d3["데이터 전송"]
+    end
+
+    subgraph ws_zmp["WS + PAIR/DEALER/ROUTER/PUB/SUB"]
+        direction LR
+        t4["TCP Connect"] --> w4["WS Upgrade"] --> z4["ZMP Handshake"] --> d4["데이터 전송"]
+    end
+
+    subgraph wss_zmp["WSS + PAIR/DEALER/ROUTER/PUB/SUB"]
+        direction LR
+        t5["TCP Connect"] --> s5["SSL Handshake"] --> w5["WS Upgrade"] --> z5["ZMP Handshake"] --> d5["데이터 전송"]
+    end
+
+    subgraph wss_stream["WSS + STREAM"]
+        direction LR
+        t6["TCP Connect"] --> s6["SSL Handshake"] --> w6["WS Upgrade"] --> d6["데이터 전송"]
+    end
 ```
 
 ### 6.9 트랜스포트 특성 비교
@@ -796,28 +634,20 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 스레드 간 메시지 전달을 위한 양방향 파이프입니다.
 Application 스레드와 I/O 스레드 사이에서 `msg_t`를 Lock-free로 교환합니다.
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                          pipe_t                               │
-├───────────────────────────────────────────────────────────────┤
-│                                                               │
-│  Thread A (Socket)              Thread B (I/O)                │
-│       │                              │                        │
-│       │    ┌──────────────────┐     │                        │
-│       ├───→│   _out_pipe      │────→│  (송신: Socket -> I/O) │
-│       │    │   (YPipe<msg_t>) │     │                        │
-│       │    └──────────────────┘     │                        │
-│       │                              │                        │
-│       │    ┌──────────────────┐     │                        │
-│       │←───│   _in_pipe       │←────┤  (수신: I/O -> Socket) │
-│       │    │   (YPipe<msg_t>) │     │                        │
-│       │    └──────────────────┘     │                        │
-│                                                               │
-│  High Water Mark (HWM): 메시지 큐 크기 제한                   │
-│  - _hwm: 아웃바운드 HWM (큐 초과 시 송신 차단)               │
-│  - _lwm: 인바운드 Low Water Mark (HWM의 절반, 재개 기준)     │
-│                                                               │
-└───────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph pipe_t
+        TA["Thread A\n(Socket)"]
+        TB["Thread B\n(I/O)"]
+        out["_out_pipe\n(YPipe&lt;msg_t&gt;)"]
+        in["_in_pipe\n(YPipe&lt;msg_t&gt;)"]
+
+        TA -->|"송신: Socket -> I/O"| out --> TB
+        TB -->|"수신: I/O -> Socket"| in --> TA
+    end
+
+    hwm["HWM: 메시지 큐 크기 제한\n_hwm: 아웃바운드 HWM (큐 초과 시 송신 차단)\n_lwm: 인바운드 Low Water Mark (HWM의 절반, 재개 기준)"]
+    pipe_t ~~~ hwm
 ```
 
 **YPipe 특성**:
@@ -827,25 +657,16 @@ Application 스레드와 I/O 스레드 사이에서 `msg_t`를 Lock-free로 교�
 
 **파이프 상태 머신**:
 
-```
-                    ┌────────────┐
-                    │   active   │ <────────────────┐
-                    └─────┬──────┘                  │
-                          │ receive delimiter       │ connect
-                          v                         │
-              ┌───────────────────────┐             │
-              │ delimiter_received    │             │
-              └───────────┬───────────┘             │
-                          │ send term_ack           │
-                          v                         │
-              ┌───────────────────────┐             │
-              │    term_ack_sent      │             │
-              └───────────┬───────────┘             │
-                          │ receive term_ack        │
-                          v                         │
-                    ┌───────────┐                   │
-                    │ terminated│ ──────────────────┘
-                    └───────────┘     (재연결 시)
+```mermaid
+stateDiagram-v2
+    [*] --> active
+    active --> delimiter_received : receive delimiter
+    active --> waiting_for_delimiter : send term_req
+    waiting_for_delimiter --> term_req_sent1 : receive delimiter
+    delimiter_received --> term_ack_sent : send term_ack
+    term_req_sent1 --> term_req_sent2 : send term_ack
+    term_ack_sent --> [*] : receive term_ack
+    term_req_sent2 --> [*] : receive term_ack
 ```
 
 ### 7.3 ctx_t - 컨텍스트
@@ -888,84 +709,63 @@ ctx_t 내부 구조:
 
 소켓과 엔진 사이의 브리지 역할을 합니다.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     session_base_t                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐    ┌─────────┐    ┌─────────────────┐   │
-│  │ socket_base_t│←──→│ pipe_t  │←──→│ asio_engine_t   │   │
-│  │              │    │         │    │                 │   │
-│  │  zlink_send() │    │ YPipe   │    │ async_read/     │   │
-│  │  zlink_recv() │    │         │    │ async_write     │   │
-│  └──────────────┘    └─────────┘    └─────────────────┘   │
-│                                                             │
-│  push_msg(): 엔진 -> 세션 -> 파이프 -> 소켓                │
-│  pull_msg(): 소켓 -> 파이프 -> 세션 -> 엔진                │
-│                                                             │
-│  추가 역할:                                                 │
-│  - 연결 상태 관리                                           │
-│  - 재연결 로직 (지수 백오프)                                │
-│  - Connecter 선택 (URL 스킴에 따라)                        │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph session["session_base_t"]
+        socket["socket_base_t\nzlink_send()\nzlink_recv()"]
+        pipe["pipe_t\nYPipe"]
+        engine["asio_engine_t\nasync_read / async_write"]
+
+        socket --> pipe --> engine
+        engine --> pipe --> socket
+    end
+
+    push["push_msg(): 엔진 -> 세션 -> 파이프 -> 소켓"]
+    pull["pull_msg(): 소켓 -> 파이프 -> 세션 -> 엔진"]
+    roles["추가 역할:\n- 연결 상태 관리\n- 재연결 로직 (지수 백오프)\n- Connecter 선택 (URL 스킴에 따라)"]
+
+    session ~~~ push
+    session ~~~ pull
+    session ~~~ roles
 ```
 
 ### 7.5 스레딩 모델
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    zlink Threading Model                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                 Application Threads                      │   │
-│  │  - zlink_send() / zlink_recv() 호출                      │   │
-│  │  - 소켓별로 하나의 스레드에서만 접근 권장                │   │
-│  │  - 여러 소켓은 여러 스레드에서 사용 가능                 │   │
-│  └──────────────────────────┬──────────────────────────────┘   │
-│                              │                                  │
-│                   Lock-free Pipes (YPipe)                       │
-│                              │                                  │
-│  ┌──────────────────────────v──────────────────────────────┐   │
-│  │                    I/O Threads                           │   │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐                │   │
-│  │  │ Thread 0 │ │ Thread 1 │ │ Thread N │  (설정 가능)    │   │
-│  │  │io_context│ │io_context│ │io_context│                │   │
-│  │  └──────────┘ └──────────┘ └──────────┘                │   │
-│  │                                                          │   │
-│  │  - 비동기 I/O 처리 (Proactor 패턴)                      │   │
-│  │  - 인코더/디코더 실행                                    │   │
-│  │  - 네트워크 송수신                                       │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                    Reaper Thread                         │   │
-│  │  - 종료된 소켓/세션 자원 정리                             │   │
-│  │  - 지연된 삭제 처리                                      │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph AppThreads["Application Threads"]
+        app["zlink_send() / zlink_recv() 호출\n소켓별로 하나의 스레드에서만 접근 권장\n여러 소켓은 여러 스레드에서 사용 가능"]
+    end
+
+    pipes["Lock-free Pipes (YPipe)"]
+
+    subgraph IOThreads["I/O Threads"]
+        t0["Thread 0\nio_context"]
+        t1["Thread 1\nio_context"]
+        tN["Thread N\nio_context"]
+        io_desc["비동기 I/O 처리 (Proactor 패턴)\n인코더/디코더 실행\n네트워크 송수신"]
+    end
+
+    subgraph Reaper["Reaper Thread"]
+        reaper["종료된 소켓/세션 자원 정리\n지연된 삭제 처리"]
+    end
+
+    AppThreads --> pipes --> IOThreads
 ```
 
 **스레드 간 통신 (Mailbox 시스템)**:
 
-```
-Application Thread              I/O Thread
-      │                              │
-      │  zlink_send()                 │
-      │      │                       │
-      │      v                       │
-      │  [msg_t를 YPipe에 push]      │
-      │      │                       │
-      │  mailbox.send(activate_write)│
-      │─────────────────────────────→│
-      │                              │  (신호 수신)
-      │                              │
-      │                              v
-      │                         [YPipe에서 msg_t pop]
-      │                              │
-      │                         [인코딩 및 전송]
+```mermaid
+sequenceDiagram
+    participant App as Application Thread
+    participant IO as I/O Thread
+
+    App->>App: zlink_send()
+    App->>App: msg_t를 YPipe에 push
+    App->>IO: mailbox.send(activate_write)
+    Note over IO: 신호 수신
+    IO->>IO: YPipe에서 msg_t pop
+    IO->>IO: 인코딩 및 전송
 ```
 
 - 각 스레드는 자신만의 `mailbox_t`를 보유합니다.
@@ -978,153 +778,83 @@ Application Thread              I/O Thread
 
 ### 8.1 메시지 송신 (Outbound / Tx)
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                    APPLICATION THREAD                             │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  (1) zlink_send(socket, data, size, flags)                        │
-│       │                                                           │
-│       v                                                           │
-│  (2) socket_base_t::send()                                       │
-│       │  - msg_t 생성 (VSM 또는 LMSG)                             │
-│       │  - 소켓 타입별 라우팅 전략 선택                            │
-│       │    . DEALER: lb_t (Round-robin)                          │
-│       │    . ROUTER: ID 기반 직접 라우팅                          │
-│       │    . PUB: dist_t (모든 구독자에게 전송)                   │
-│       v                                                           │
-│  (3) pipe_t::write()                                             │
-│       │  - YPipe에 메시지 푸시 (Lock-free)                        │
-│       │  - HWM 체크 (초과 시 차단 또는 드롭)                     │
-│       v                                                           │
-│  (4) mailbox signal to I/O thread                                │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-                              │
-                              v
-┌───────────────────────────────────────────────────────────────────┐
-│                      I/O THREAD                                   │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  (5) asio_engine_t: activate_write 이벤트 수신                    │
-│       │                                                           │
-│       v                                                           │
-│  (6) pull_msg_from_session()                                     │
-│       │  - 파이프에서 메시지 읽기                                  │
-│       v                                                           │
-│  (7) encoder: 메시지 -> 바이트 스트림                              │
-│       │  - ZMP: 8바이트 헤더 + 페이로드                           │
-│       │  - RAW: 4바이트 길이 + 페이로드                           │
-│       v                                                           │
-│  (8) speculative_write() 시도                                    │
-│       │  - 성공: 즉시 동기 쓰기 완료                               │
-│       │  - 실패 (EAGAIN): async_write_some() 스케줄              │
-│       v                                                           │
-│  (9) transport: 네트워크 전송                                     │
-│       - TCP: 직접 전송                                            │
-│       - TLS: SSL 암호화 후 전송                                   │
-│       - WS: Beast WebSocket 프레이밍 후 전송                      │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant App as Application Thread
+    participant Socket as socket_base_t
+    participant Pipe as pipe_t (YPipe)
+    participant Engine as asio_engine_t
+    participant Encoder as Encoder
+    participant Transport as Transport
+
+    App->>Socket: (1) zlink_send(socket, data, size, flags)
+    Socket->>Socket: (2) msg_t 생성 (VSM 또는 LMSG)
+    Note over Socket: 소켓 타입별 라우팅 전략 선택<br/>DEALER: lb_t / ROUTER: ID 기반 / PUB: dist_t
+    Socket->>Pipe: (3) pipe_t::write() [Lock-free, HWM 체크]
+    Pipe->>Engine: (4) mailbox signal (activate_write)
+    Engine->>Engine: (5) activate_write 이벤트 수신
+    Engine->>Pipe: (6) pull_msg_from_session()
+    Engine->>Encoder: (7) 메시지 -> 바이트 스트림
+    Note over Encoder: ZMP: 8B 헤더 + 페이로드<br/>RAW: 4B 길이 + 페이로드
+    Engine->>Transport: (8) speculative_write() 시도
+    Note over Engine: 성공: 즉시 동기 쓰기 완료<br/>EAGAIN: async_write_some() 스케줄
+    Transport->>Transport: (9) 네트워크 전송
+    Note over Transport: TCP: 직접 전송<br/>TLS: SSL 암호화 후 전송<br/>WS: Beast 프레이밍 후 전송
 ```
 
 ### 8.2 메시지 수신 (Inbound / Rx)
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                      I/O THREAD                                   │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  (1) async_read_some() 완료 콜백                                  │
-│       │  - 네트워크에서 바이트 수신                                │
-│       v                                                           │
-│  (2) on_read_complete()                                          │
-│       │                                                           │
-│       v                                                           │
-│  (3) decoder: 바이트 스트림 -> 메시지                              │
-│       │  - 헤더 파싱 (ZMP 8B / RAW 4B)                            │
-│       │  - 페이로드 크기 확인                                      │
-│       │  - msg_t 생성                                             │
-│       v                                                           │
-│  (4) push_msg_to_session()                                       │
-│       │                                                           │
-│       v                                                           │
-│  (5) session_base_t::push_msg()                                  │
-│       │  - 메시지 검증                                            │
-│       │  - 인바운드 파이프로 전달                                  │
-│       v                                                           │
-│  (6) pipe_t::write() (인바운드 파이프)                            │
-│       │  - YPipe에 메시지 푸시                                    │
-│       v                                                           │
-│  (7) 소켓에 읽기 가능 신호 (activate_read)                        │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-                              │
-                              v
-┌───────────────────────────────────────────────────────────────────┐
-│                    APPLICATION THREAD                             │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  (8) zlink_recv(socket, buffer, size, flags)                      │
-│       │                                                           │
-│       v                                                           │
-│  (9) socket_base_t::recv()                                       │
-│       │  - 소켓 타입별 수신 전략                                   │
-│       │    . DEALER/SUB: fq_t (Fair Queueing)                    │
-│       │    . ROUTER: Routing ID 추출 후 메시지 전달              │
-│       │  - 토픽 필터링 (SUB)                                      │
-│       v                                                           │
-│  (10) pipe_t::read()                                             │
-│        │  - YPipe에서 메시지 팝 (Lock-free)                      │
-│        v                                                          │
-│  (11) 사용자 버퍼로 데이터 복사                                   │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant Transport as Transport
+    participant Engine as asio_engine_t
+    participant Decoder as Decoder
+    participant Session as session_base_t
+    participant Pipe as pipe_t (YPipe)
+    participant Socket as socket_base_t
+    participant App as Application Thread
+
+    Transport->>Engine: (1) async_read_some() 완료 콜백
+    Engine->>Engine: (2) on_read_complete()
+    Engine->>Decoder: (3) 바이트 스트림 -> 메시지
+    Note over Decoder: 헤더 파싱 (ZMP 8B / RAW 4B)<br/>페이로드 크기 확인, msg_t 생성
+    Decoder->>Session: (4) push_msg_to_session()
+    Session->>Session: (5) 메시지 검증
+    Session->>Pipe: (6) pipe_t::write() [인바운드 파이프]
+    Pipe->>Socket: (7) 읽기 가능 신호 (activate_read)
+    App->>Socket: (8) zlink_recv(socket, buffer, size, flags)
+    Socket->>Socket: (9) 소켓 타입별 수신 전략
+    Note over Socket: DEALER/SUB: fq_t / ROUTER: Routing ID 추출<br/>토픽 필터링 (SUB)
+    Socket->>Pipe: (10) pipe_t::read() [Lock-free pop]
+    Pipe->>App: (11) 사용자 버퍼로 데이터 복사
 ```
 
 ### 8.3 연결 수립 흐름 (Connection Establishment)
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                     연결 수립 단계                                 │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  zlink_connect("tcp://host:port")                                 │
-│       │                                                           │
-│       v                                                           │
-│  (1) address_t 파싱                                               │
-│       │  - 프로토콜 식별 (tcp, tls, ws, wss, ipc)                │
-│       │  - 주소/포트 추출                                         │
-│       v                                                           │
-│  (2) session_base_t 생성                                         │
-│       │  - 재연결 정책 설정                                       │
-│       v                                                           │
-│  (3) connecter 생성 및 시작                                       │
-│       │  - URL 스킴에 따라 connecter 클래스 선택                 │
-│       │  - async_connect() 호출                                   │
-│       v                                                           │
-│  (4) TCP 연결 완료 (3-way handshake)                              │
-│       │                                                           │
-│       v                                                           │
-│  (5) [TLS/WSS] 트랜스포트 핸드셰이크                              │
-│       │  - TLS: SSL_do_handshake()                               │
-│       │  - WS: HTTP Upgrade 요청/응답                            │
-│       v                                                           │
-│  (6) Engine 생성 및 plug()                                       │
-│       │  - 소켓 타입에 따라 asio_zmp_engine_t 또는               │
-│       │    asio_raw_engine_t 선택                                 │
-│       v                                                           │
-│  (7) [ZMP] 프로토콜 핸드셰이크                                    │
-│       │  - HELLO 교환 (소켓 타입, Identity)                      │
-│       │  - 소켓 타입 호환성 검사                                   │
-│       │  - READY 교환 (메타데이터)                                │
-│       v                                                           │
-│  (8) engine_ready()                                              │
-│       - pipe 생성 및 연결                                         │
-│       - start_input() / start_output()                            │
-│       -> 데이터 송수신 가능                                       │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Addr as address_t
+    participant Session as session_base_t
+    participant Conn as Connecter
+    participant TP as Transport
+    participant Eng as Engine
+
+    App->>Addr: (1) zlink_connect("tcp://host:port")
+    Note over Addr: 프로토콜 식별 (tcp, tls, ws, wss, ipc)<br/>주소/포트 추출
+    Addr->>Session: (2) session_base_t 생성
+    Note over Session: 재연결 정책 설정
+    Session->>Conn: (3) connecter 생성 및 시작
+    Note over Conn: URL 스킴에 따라 connecter 클래스 선택<br/>async_connect() 호출
+    Conn->>Conn: (4) TCP 연결 완료 (3-way handshake)
+    Conn->>TP: (5) [TLS/WSS] 트랜스포트 핸드셰이크
+    Note over TP: TLS: SSL_do_handshake()<br/>WS: HTTP Upgrade 요청/응답
+    TP->>Eng: (6) Engine 생성 및 plug()
+    Note over Eng: 소켓 타입에 따라<br/>asio_zmp_engine_t 또는 asio_raw_engine_t 선택
+    Eng->>Eng: (7) [ZMP] 프로토콜 핸드셰이크
+    Note over Eng: HELLO 교환 (소켓 타입, Identity)<br/>소켓 타입 호환성 검사<br/>READY 교환 (메타데이터)
+    Eng->>Session: (8) engine_ready()
+    Note over Session: pipe 생성 및 연결<br/>start_input() / start_output()<br/>데이터 송수신 가능
 ```
 
 ---

@@ -11,10 +11,9 @@ The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one
 
 **Valid socket combinations:** PAIR ↔ PAIR
 
-```
-┌────────┐              ┌────────┐
-│ PAIR A │◄────────────►│ PAIR B │
-└────────┘   양방향     └────────┘
+```mermaid
+flowchart LR
+    A[PAIR A] <-->|Bidirectional| B[PAIR B]
 ```
 
 ## 2. Basic Usage

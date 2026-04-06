@@ -523,7 +523,6 @@ directly. Sockets start in pull mode by default.
                    (char *)zlink_msg_data(&parts[i]));
             zlink_msg_close(&parts[i]);
         }
-        free(parts);
     }
 
     /* Non-blocking recv */

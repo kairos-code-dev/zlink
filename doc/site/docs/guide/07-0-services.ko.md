@@ -2,35 +2,42 @@
 
 ## 1. 서비스 계층이란
 
-zlink의 서비스 계층은 7종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM)
+서비스 계층이 없으면 애플리케이션은 소켓 연결을 직접 관리하고, 피어 주소를 추적하며, 서비스 수명주기를 처리해야 한다. 서비스 계층은 이러한 작업을 자동화한다.
+
+zlink의 서비스 계층은 8종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM)
 위에 구축된 **고수준 분산 서비스 기능**이다.
 소켓 수준의 연결/라우팅을 직접 다루지 않고도
 서비스 등록, 발견, 위치투명 통신을 수행할 수 있다.
 
 ## 2. 아키텍처
 
-```
-┌───────────────────────────────────────────────────────────┐
-│                    Application                            │
-│              SPOT (발행/구독)  ·  소켓 패밀리             │
-├───────────────────────────────────────────────────────────┤
-│  Public API Facade  (service_api · service_*_api)         │
-│  validate + delegate → service-local access seam          │
-├───────────────────────────────────────────────────────────┤
-│  Service Access Layer                                     │
-│  discovery_access · registry_access                       │
-│  spot_node_access · spot_subject_access                   │
-│  service_public_api_guard (admission/close guard)         │
-├───────────────────────────────────────────────────────────┤
-│  Service Runtime                                          │
-│  Discovery: bootstrap·state·update·uplink·registry_client │
-│  SPOT: node·data_plane(forwarding·protocol)·pub·sub       │
-├───────────────────────────────────────────────────────────┤
-│  Discovery (서비스 발견) · Registry (서비스 등록소)       │
-│  subscribe · heartbeat · broadcast SERVICE_LIST           │
-├───────────────────────────────────────────────────────────┤
-│              zlink Core (8종 소켓 + 6종 Transport)        │
-└───────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph app["애플리케이션"]
+        A1["SPOT (발행/구독) · 소켓 패밀리"]
+    end
+
+    subgraph facade["Public API Facade"]
+        F1["service_api · service_*_api<br/>validate + delegate → service-local access seam"]
+    end
+
+    subgraph access["Service Access Layer"]
+        AC1["discovery_access · registry_access<br/>spot_node_access · spot_subject_access<br/>service_public_api_guard (admission/close guard)"]
+    end
+
+    subgraph runtime["서비스 런타임"]
+        RT1["Discovery: bootstrap · state · update · uplink · registry_client<br/>SPOT: node · data_plane (forwarding · protocol) · pub · sub"]
+    end
+
+    subgraph infra["Discovery (서비스 발견) · Registry (서비스 등록소)"]
+        IN1["subscribe · heartbeat · broadcast SERVICE_LIST"]
+    end
+
+    subgraph core["zlink Core"]
+        C1["8종 소켓 + 6종 Transport"]
+    end
+
+    app --> facade --> access --> runtime --> infra --> core
 ```
 
 - **Public API Facade**는 C API 진입점으로, handle validation 후 service-local access seam으로 위임한다. concrete service 세부를 직접 알지 않는다.
@@ -108,11 +115,11 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(서비스 타입
 
 모든 서비스는 공통된 access layer 패턴을 따른다.
 
-```
-C API (zlink_spot_publish 등)
-    → service_api.cpp (validate + delegate)
-    → *_access.hpp (service-local seam)
-    → service runtime (concrete 구현)
+```mermaid
+flowchart LR
+    A["C API<br/>(zlink_spot_publish 등)"] --> B["service_api.cpp<br/>(validate + delegate)"]
+    B --> C["*_access.hpp<br/>(service-local seam)"]
+    C --> D["서비스 런타임<br/>(concrete 구현)"]
 ```
 
 | 서비스 | Access Seam | 역할 |
@@ -132,26 +139,13 @@ service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
 
 ## 5. 서비스 간 관계
 
-```
-                    ┌──────────┐
-                    │ Registry │
-                    │ (PUB+    │
-                    │  ROUTER) │
-                    └────┬─────┘
-                         │ SERVICE_LIST 브로드캐스트
-                ┌────────┴────────┐
-                │                 │
-                v                 v
-          ┌──────────┐     ┌──────────┐
-          │Discovery │     │Discovery │
-          │(SPOT 용) │     │(Socket용)│
-          └────┬─────┘     └────┬─────┘
-               │                │
-               v                v
-          ┌──────────┐     ┌──────────┐
-          │   SPOT   │     │  Socket  │
-          │(PUB+SUB) │     │(R/D/P/S) │
-          └──────────┘     └──────────┘
+```mermaid
+flowchart TB
+    R["Registry<br/>(PUB + ROUTER)"]
+    R -- "SERVICE_LIST 브로드캐스트" --> D1["Discovery<br/>(SPOT 용)"]
+    R -- "SERVICE_LIST 브로드캐스트" --> D2["Discovery<br/>(소켓 용)"]
+    D1 --> S1["SPOT<br/>(PUB + SUB)"]
+    D2 --> S2["소켓 패밀리<br/>(R/D/P/S)"]
 ```
 
 - **Discovery가 기반 인프라**: SPOT, 소켓 패밀리 모두 Discovery를 통해 대상을 발견한다.

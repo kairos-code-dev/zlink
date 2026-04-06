@@ -4,6 +4,8 @@
 
 ## 1. 개요
 
+모니터링은 소켓 연결 상태를 실시간으로 관찰하는 기능으로, 연결 문제 진단, 피어 장애 감지, 애플리케이션 수준 복구 트리거에 필수적이다.
+
 zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다.
 다른 소켓과 동일하게 recv 모드(pull)와 callback 모드를 지원한다.
 
@@ -95,10 +97,17 @@ raw 소켓의 transport/session 상태를 알려준다.
 
 ### 연결 흐름
 
-```
-클라이언트: CONNECT_DELAYED(선택) → CONNECTED → CONNECTION_READY → send/recv 시작
-서버:       LISTENING → ACCEPTED → CONNECTION_READY → send/recv 시작
-종료:       CONNECTION_READY → DISCONNECTED → CONNECT_DELAYED → 재연결...
+```mermaid
+flowchart LR
+    subgraph 클라이언트
+        CD1["CONNECT_DELAYED\n(선택)"] --> CO1[CONNECTED] --> CR1[CONNECTION_READY] --> SR1["send/recv 시작"]
+    end
+    subgraph 서버
+        L1[LISTENING] --> A1[ACCEPTED] --> CR2[CONNECTION_READY] --> SR2["send/recv 시작"]
+    end
+    subgraph 종료
+        CR3[CONNECTION_READY] --> D1[DISCONNECTED] --> CD2[CONNECT_DELAYED] --> RE1["재연결..."]
+    end
 ```
 
 ### CONNECTION_READY 상세
@@ -131,65 +140,42 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
 
 ### 연결 성공
 
-```
-  클라이언트 측:
-
-  ┌─────────────────┐       ┌───────────┐       ┌──────────────────────────┐
-  │ CONNECT_DELAYED │──────►│ CONNECTED │──────►│ CONNECTION_READY         │
-  │    (선택)       │       └───────────┘       └──────────────────────────┘
-  └─────────────────┘
-
-
-  서버 측:
-
-  ┌──────────┐       ┌──────────────────────────┐
-  │ ACCEPTED │──────►│ CONNECTION_READY         │
-  └──────────┘       └──────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph 클라이언트 측
+        CD["CONNECT_DELAYED\n(선택)"] --> CO[CONNECTED] --> CR1[CONNECTION_READY]
+    end
+    subgraph 서버 측
+        A[ACCEPTED] --> CR2[CONNECTION_READY]
+    end
 ```
 
 ### 핸드셰이크 실패
 
-```
-  클라이언트 측:
-
-  ┌───────────┐       ┌─────────────────────┐       ┌──────────────┐
-  │ CONNECTED │──────►│ HANDSHAKE_FAILED_*  │──────►│ DISCONNECTED │
-  └───────────┘       └─────────────────────┘       └──────────────┘
-
-
-  서버 측:
-
-  ┌──────────┐       ┌─────────────────────┐       ┌──────────────┐
-  │ ACCEPTED │──────►│ HANDSHAKE_FAILED_*  │──────►│ DISCONNECTED │
-  └──────────┘       └─────────────────────┘       └──────────────┘
+```mermaid
+flowchart LR
+    subgraph 클라이언트 측
+        CO[CONNECTED] --> HF1[HANDSHAKE_FAILED_*] --> D1[DISCONNECTED]
+    end
+    subgraph 서버 측
+        A[ACCEPTED] --> HF2[HANDSHAKE_FAILED_*] --> D2[DISCONNECTED]
+    end
 ```
 
 ### 정상 해제
 
-```
-  ┌──────────────────────────┐       ┌──────────────┐
-  │ CONNECTION_READY         │──────►│ DISCONNECTED │
-  └──────────────────────────┘       └──────────────┘
+```mermaid
+flowchart LR
+    CR[CONNECTION_READY] --> D[DISCONNECTED]
 ```
 
 ### 재연결
 
-```
-  ┌───────────┐       ┌──────────────────────────┐       ┌──────────────┐
-  │ CONNECTED │──────►│ CONNECTION_READY         │──────►│ DISCONNECTED │
-  └───────────┘       └──────────────────────────┘       └──────┬───────┘
-                                                                │
-                      ┌─────────────────┐                       │
-                      │ CONNECT_DELAYED │◄──────────────────────┘
-                      └────────┬────────┘
-                               │
-                      ┌────────▼─────────┐
-                      │ CONNECT_RETRIED  │
-                      └────────┬─────────┘
-                               │
-                      ┌────────▼────┐       ┌──────────────────────────┐
-                      │  CONNECTED  │──────►│ CONNECTION_READY         │
-                      └─────────────┘       └──────────────────────────┘
+```mermaid
+flowchart LR
+    CO1[CONNECTED] --> CR1[CONNECTION_READY] --> D[DISCONNECTED]
+    D --> CD[CONNECT_DELAYED] --> RT[CONNECT_RETRIED]
+    RT --> CO2[CONNECTED] --> CR2[CONNECTION_READY]
 ```
 
 ## 6. DISCONNECTED reason 코드
@@ -467,11 +453,9 @@ zlink_monitor_snapshot(mon, &snapshot);
 모니터 API는 **inproc 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
 원격 모니터링이 필요하면 콜백에서 이벤트를 수신하고 PUB 소켓으로 중계한다.
 
-```
-  ┌──────────┐   inproc (PAIR)   ┌─────────────────┐   tcp/wss (PUB)   ┌─────────────┐
-  │ 대상소켓  │─────────────────►│ monitor 콜백    │──────────────────►│  원격 SUB   │
-  │          │    이벤트 수집     │ → PUB 중계      │    이벤트 발행    │ (모니터링)   │
-  └──────────┘                   └─────────────────┘                   └─────────────┘
+```mermaid
+flowchart LR
+    S["대상 소켓"] -- "inproc (PAIR)\n이벤트 수집" --> M["monitor 콜백\n→ PUB 중계"] -- "tcp/wss (PUB)\n이벤트 발행" --> R["원격 SUB\n(모니터링)"]
 ```
 
 ```c

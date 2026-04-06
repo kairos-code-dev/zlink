@@ -36,8 +36,12 @@ struct registry_state_t {
 
 ### 2.2 Registry 상태 머신
 
-```
-[INIT] → start() → [RUNNING] → stop() → [STOPPED]
+```mermaid
+stateDiagram-v2
+    [*] --> INIT
+    INIT --> RUNNING : start()
+    RUNNING --> STOPPED : stop()
+    STOPPED --> [*]
 ```
 
 ### 2.3 SERVICE_LIST 브로드캐스트 트리거
@@ -56,9 +60,13 @@ struct registry_state_t {
 ## 3. Discovery 내부 구현
 
 ### 3.1 상태 머신 (서비스별)
-```
-[EMPTY] → SERVICE_LIST(count>0) → [AVAILABLE]
-[AVAILABLE] → SERVICE_LIST(count==0) → [UNAVAILABLE]
+
+```mermaid
+stateDiagram-v2
+    [*] --> EMPTY : 초기
+    EMPTY --> AVAILABLE : SERVICE_LIST (count > 0)
+    AVAILABLE --> UNAVAILABLE : SERVICE_LIST (count == 0)
+    UNAVAILABLE --> AVAILABLE : SERVICE_LIST (count > 0)
 ```
 
 ### 3.2 서비스 타입과 역할
@@ -159,6 +167,27 @@ Frame 1~N: Payload (가변)
 | 0x000B | TOPOLOGY_QUERY | Client → Registry |
 | 0x000C | TOPOLOGY_REPLY | Registry → Client |
 | 0x000D | UNREGISTER_ACK | Registry → Service |
+
+#### 등록 및 하트비트 흐름
+
+```mermaid
+sequenceDiagram
+    participant S as 서비스
+    participant R as Registry
+    participant D as Discovery
+
+    S->>R: REGISTER
+    R->>S: REGISTER_ACK
+    loop 하트비트 주기마다
+        S->>R: HEARTBEAT
+    end
+    R->>D: SERVICE_LIST (브로드캐스트)
+    Note over R,D: 등록, 해제, 또는<br/>주기적 타이머에 의해 트리거
+
+    S->>R: UNREGISTER
+    R->>S: UNREGISTER_ACK
+    R->>D: SERVICE_LIST (갱신)
+```
 
 ### 4.3 SERVICE_LIST 포맷
 ```

@@ -13,10 +13,9 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
 
 **유효한 소켓 조합:** PAIR ↔ PAIR
 
-```
-┌────────┐              ┌────────┐
-│ PAIR A │◄────────────►│ PAIR B │
-└────────┘   양방향     └────────┘
+```mermaid
+flowchart LR
+    A[PAIR A] <-->|양방향| B[PAIR B]
 ```
 
 ## 2. 기본 사용법
@@ -119,7 +118,6 @@ int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
 if (rc == 0) {
     /* parts[0..part_count-1] 처리 */
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 

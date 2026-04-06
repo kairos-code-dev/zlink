@@ -15,58 +15,31 @@ ROUTER 소켓은 **routing_id 기반 라우팅** 소켓이다.
 
 **유효한 소켓 조합:** ROUTER ↔ DEALER, ROUTER ↔ ROUTER
 
-```
-ROUTER ↔ ROUTER: N개 노드가 routing_id로 상대를 지정 (메시/클러스터)
-
-  ┌──────────┐            ┌──────────┐
-  │ ROUTER A │◄──────────►│ ROUTER B │
-  │   (RA)   │            │   (RB)   │
-  └────┬──▲──┘            └──▲──┬────┘
-       │  │                  │  │
-       │  │  ┌──────────┐   │  │
-       │  └──┤ ROUTER C ├───┘  │
-       └────►│   (RC)   │◄────┘
-             └──────────┘
-
-  A→RC, B→RA, C→RB … routing_id로 대상 지정
+```mermaid
+flowchart LR
+    subgraph mesh ["ROUTER ↔ ROUTER 메시"]
+        RA["ROUTER A (RA)"] <--> RB["ROUTER B (RB)"]
+        RB <--> RC["ROUTER C (RC)"]
+        RC <--> RA
+    end
 ```
 
+> A->RC, B->RA, C->RB ... routing_id로 대상 지정
+
+```mermaid
+flowchart LR
+    D1["DEALER 1 (D1)"] -->|send| RA[ROUTER A]
+    D1 -->|send| RBB[ROUTER B]
+    D1 -->|send| RCC[ROUTER C]
+    D2["DEALER 2 (D2)"] -.->|"A, B, C에 round-robin"| RA
 ```
-DEALER → ROUTER: round-robin 부하분산 + routing_id 응답 라우팅
 
-  각 DEALER가 연결된 ROUTER에 round-robin 분배:
-
-                                    ┌──────────┐
-                        ┌── send ──►│ ROUTER A │
-                        │           └──────────┘
-                        │
-  ┌──────────┐          │           ┌──────────┐
-  │ DEALER 1 │──────────┼── send ──►│ ROUTER B │
-  │   (D1)   │          │           └──────────┘
-  └──────────┘          │
-                        │           ┌──────────┐
-                        └── send ──►│ ROUTER C │
-                                    └──────────┘
-
-  ┌──────────┐
-  │ DEALER 2 │──────── (동일하게 A, B, C에 round-robin)
-  │   (D2)   │
-  └──────────┘
-
-
-  ROUTER는 source_rid로 요청한 DEALER를 식별하여 응답:
-
-  ┌──────────┐    ① send         ┌──────────┐
-  │ DEALER 1 │──────────────────►│ ROUTER A │
-  │   (D1)   │◄──────────────────┤          │
-  └──────────┘    ② send_rid     └──────────┘
-                   source_rid="D1"
-
-  ┌──────────┐    ① send         ┌──────────┐
-  │ DEALER 2 │──────────────────►│ ROUTER B │
-  │   (D2)   │◄──────────────────┤          │
-  └──────────┘    ② send_rid     └──────────┘
-                   source_rid="D2"
+```mermaid
+flowchart LR
+    D1x["DEALER 1 (D1)"] -- "① send" --> RAx[ROUTER A]
+    RAx -- "② send_rid\nsource_rid=D1" --> D1x
+    D2x["DEALER 2 (D2)"] -- "① send" --> RBx[ROUTER B]
+    RBx -- "② send_rid\nsource_rid=D2" --> D2x
 ```
 
 ## 2. 기본 사용법
@@ -125,7 +98,6 @@ if (rc == 0) {
     /* source_rid로 송신자 식별 */
     /* parts[0..part_count-1] 처리 */
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 
@@ -175,7 +147,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
 | `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | 미도달 시 `EHOSTUNREACH` 반환 |
-| `ZLINK_ROUTER_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
+| `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 HWM |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 HWM |

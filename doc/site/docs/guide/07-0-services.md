@@ -2,32 +2,39 @@
 
 ## 1. What is the Service Layer
 
-The zlink service layer is a set of **high-level distributed service features** built on top of the 7 socket types (PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM). It enables service registration, discovery, and location-transparent communication without directly managing socket-level connections and routing.
+Without the service layer, applications would need to manually manage socket connections, track peer addresses, and handle service lifecycle. The service layer automates these tasks.
+
+The zlink service layer is a set of **high-level distributed service features** built on top of the 8 socket types (PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM). It enables service registration, discovery, and location-transparent communication without directly managing socket-level connections and routing.
 
 ## 2. Architecture
 
-```
-┌───────────────────────────────────────────────────────────┐
-│                    Application                            │
-│              SPOT (pub/sub)  ·  Socket Family             │
-├───────────────────────────────────────────────────────────┤
-│  Public API Facade  (service_api · service_*_api)         │
-│  validate + delegate → service-local access seam          │
-├───────────────────────────────────────────────────────────┤
-│  Service Access Layer                                     │
-│  discovery_access · registry_access                       │
-│  spot_node_access · spot_subject_access                   │
-│  service_public_api_guard (admission/close guard)         │
-├───────────────────────────────────────────────────────────┤
-│  Service Runtime                                          │
-│  Discovery: bootstrap·state·update·uplink·registry_client │
-│  SPOT: node·data_plane(forwarding·protocol)·pub·sub       │
-├───────────────────────────────────────────────────────────┤
-│  Discovery (service discovery) · Registry (service reg.)  │
-│  subscribe · heartbeat · broadcast SERVICE_LIST           │
-├───────────────────────────────────────────────────────────┤
-│              zlink Core (8 socket types + 6 transports)   │
-└───────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph app["Application"]
+        A1["SPOT (pub/sub) · Socket Family"]
+    end
+
+    subgraph facade["Public API Facade"]
+        F1["service_api · service_*_api<br/>validate + delegate → service-local access seam"]
+    end
+
+    subgraph access["Service Access Layer"]
+        AC1["discovery_access · registry_access<br/>spot_node_access · spot_subject_access<br/>service_public_api_guard (admission/close guard)"]
+    end
+
+    subgraph runtime["Service Runtime"]
+        RT1["Discovery: bootstrap · state · update · uplink · registry_client<br/>SPOT: node · data_plane (forwarding · protocol) · pub · sub"]
+    end
+
+    subgraph infra["Discovery (service discovery) · Registry (service reg.)"]
+        IN1["subscribe · heartbeat · broadcast SERVICE_LIST"]
+    end
+
+    subgraph core["zlink Core"]
+        C1["8 socket types + 6 transports"]
+    end
+
+    app --> facade --> access --> runtime --> infra --> core
 ```
 
 - **Public API Facade** is the C API entry point that validates handles and delegates to service-local access seams. It does not know concrete service details.
@@ -96,11 +103,11 @@ See the [Registry Guide](07-4-registry.md) for details.
 
 All services follow a common access layer pattern:
 
-```
-C API (zlink_spot_publish, etc.)
-    → service_api.cpp (validate + delegate)
-    → *_access.hpp (service-local seam)
-    → service runtime (concrete implementation)
+```mermaid
+flowchart LR
+    A["C API<br/>(zlink_spot_publish, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
+    B --> C["*_access.hpp<br/>(service-local seam)"]
+    C --> D["Service Runtime<br/>(concrete implementation)"]
 ```
 
 | Service | Access Seam | Role |
@@ -121,26 +128,13 @@ service implementation files.
 
 ## 5. Relationships Between Services
 
-```
-                    ┌──────────┐
-                    │ Registry │
-                    │ (PUB+    │
-                    │  ROUTER) │
-                    └────┬─────┘
-                         │ SERVICE_LIST broadcast
-                ┌────────┴────────┐
-                │                 │
-                v                 v
-          ┌──────────┐     ┌──────────┐
-          │Discovery │     │Discovery │
-          │ (SPOT)   │     │ (Socket) │
-          └────┬─────┘     └────┬─────┘
-               │                │
-               v                v
-          ┌──────────┐     ┌──────────┐
-          │   SPOT   │     │  Socket  │
-          │(PUB+SUB) │     │(R/D/P/S) │
-          └──────────┘     └──────────┘
+```mermaid
+flowchart TB
+    R["Registry<br/>(PUB + ROUTER)"]
+    R -- "SERVICE_LIST broadcast" --> D1["Discovery<br/>(SPOT)"]
+    R -- "SERVICE_LIST broadcast" --> D2["Discovery<br/>(Socket)"]
+    D1 --> S1["SPOT<br/>(PUB + SUB)"]
+    D2 --> S2["Socket Family<br/>(R/D/P/S)"]
 ```
 
 - **Discovery is the foundation infrastructure**: SPOT and Socket Family discover targets through Discovery.

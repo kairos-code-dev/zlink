@@ -10,6 +10,8 @@
 
 SPOT is a location-transparent, topic-based publish/subscribe system. It automatically constructs a PUB/SUB Mesh based on Discovery, enabling topic message publishing and subscribing across the entire cluster.
 
+Without SPOT, applications using topic-based messaging across multiple nodes would need to manually track which nodes have subscribers, manage PUB/SUB mesh connections, and handle subscription forwarding. SPOT automates this -- publish to a topic on any node, and all subscribers across the cluster receive the message.
+
 > **About the name**: SPOT derives its name from "spot" (location). Each object (node) publishes topics from its own location and subscribes to topics from other locations, forming an object-level, location-transparent pub/sub mesh system.
 
 ### Core Terminology
@@ -27,30 +29,31 @@ SPOT is a location-transparent, topic-based publish/subscribe system. It automat
 
 ### Local publish — delivery within the same node
 
-```
-  SpotPub           SPOT Node            SpotSub
-    |               (worker)               |
-    |  -- publish -->  |                   |
-    |    (inproc)      |                   |
-    |                  | -- callback -----> |
-    |                  |    (inproc)        |
+```mermaid
+sequenceDiagram
+    participant SpotPub
+    participant Worker as SPOT Node (worker)
+    participant SpotSub
+
+    SpotPub->>Worker: publish (inproc)
+    Worker->>SpotSub: deliver (inproc)
 ```
 
 When SpotPub publishes, the SPOT Node's internal worker receives it and
-delivers directly to SpotSub on the same node via callback.
+delivers directly to SpotSub on the same node (via recv or callback, depending on the configured mode).
 
 ### Remote propagation — delivery across cluster nodes
 
-```
-  SpotPub          Node 1              Node 2           SpotSub
-  (Node 1)        (worker)            (worker)          (Node 2)
-    |                |                   |                  |
-    | -- publish --> |                   |                  |
-    |   (inproc)     |                   |                  |
-    |                | -- PUB ---------> |                  |
-    |                |   (tcp mesh)      |                  |
-    |                |                   | -- callback ---> |
-    |                |                   |    (inproc)      |
+```mermaid
+sequenceDiagram
+    participant SpotPub as SpotPub (Node 1)
+    participant W1 as Node 1 Worker
+    participant W2 as Node 2 Worker
+    participant SpotSub as SpotSub (Node 2)
+
+    SpotPub->>W1: publish (inproc)
+    W1->>W2: PUB (tcp mesh)
+    W2->>SpotSub: deliver (inproc)
 ```
 
 The worker forks a local publish into two paths:
@@ -62,23 +65,29 @@ it **never re-publishes to the mesh** (loop prevention).
 
 ### Full topology overview
 
-```
-+------------- Node 1 -------------+     +------------- Node 2 -------------+
-|                                   |     |                                   |
-|  SpotPub --> worker --> SpotSub   |     |  SpotPub --> worker --> SpotSub   |
-|                 |                 |     |                 ^                 |
-|                 | PUB             |     |            SUB  |                 |
-|                 +---- tcp --------+---->+------------------                 |
-|                 ^                 |     |                 |                 |
-|            SUB  |                 |     |                 | PUB             |
-|                 +---- tcp --------+<----+------------------                 |
-|                                   |     |                                   |
-+-----------------------------------+     +-----------------------------------+
+```mermaid
+flowchart LR
+    subgraph Node1["Node 1"]
+        P1[SpotPub] --> W1[Worker] --> S1[SpotSub]
+    end
+    subgraph Node2["Node 2"]
+        P2[SpotPub] --> W2[Worker] --> S2[SpotSub]
+    end
+    W1 -- "PUB (tcp)" --> W2
+    W2 -- "PUB (tcp)" --> W1
 ```
 
 - Each node's worker sends via **PUB socket** and receives from other nodes via **SUB socket**
 - Only local publishes enter the mesh; remote receives are never re-published (loop prevention)
 - When Discovery is attached, this mesh topology is configured automatically
+
+**Example:** Node 1 publishes topic `price.USD.JPY`. Node 2 has a subscriber for `price.*`.
+
+1. SpotPub on Node 1 sends the message to the local SPOT worker.
+2. The worker delivers to any local SpotSub matching `price.*` (local path).
+3. The worker also sends via the PUB socket over tcp to Node 2.
+4. Node 2's worker receives via SUB, matches against `price.*`, and delivers to its SpotSub.
+5. The message is NOT re-published to the mesh from Node 2 (loop prevention).
 
 ## 3. SPOT Node Setup
 

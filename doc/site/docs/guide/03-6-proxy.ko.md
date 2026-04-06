@@ -76,9 +76,14 @@ Proxy는 두 소켓 사이에서 메시지를 중계하는 패턴이다.
 
 가장 일반적인 proxy 패턴이다.
 
-```
-데이터 흐름:       PUB ──► XSUB ══ proxy ══► XPUB ──► SUB
-구독 전파 (반대):  PUB ◄── XSUB ◄── proxy ◄── XPUB ◄── SUB
+```mermaid
+flowchart LR
+    PUB -->|데이터| XSUB
+    XSUB ==>|프록시| XPUB
+    XPUB -->|데이터| SUB
+    SUB -.->|구독| XPUB
+    XPUB -.->|프록시| XSUB
+    XSUB -.->|구독| PUB
 ```
 
 ### 3.1 내장 proxy 사용
@@ -580,22 +585,32 @@ ROUTER/DEALER proxy는 구독 전파가 없으므로 `zlink_proxy()`만으로 �
 
 ## 5. Proxy가 필요한 이유
 
-```
-직접 연결 (proxy 없음)               proxy 사용
-─────────────────────               ──────────────
+**직접 연결 (proxy 없음) -- N x M 연결:**
 
-┌─────┐     ┌─────┐                 ┌─────┐     ┌───────────┐     ┌─────┐
-│PUB 1│────►│SUB 1│                 │PUB 1│──►  │           │  ──►│SUB 1│
-└─────┘     └─────┘                 └─────┘     │   XSUB    │     └─────┘
-┌─────┐     ┌─────┐                 ┌─────┐     │     │     │     ┌─────┐
-│PUB 2│────►│SUB 2│                 │PUB 2│──►  │     ▼     │  ──►│SUB 2│
-└─────┘     └─────┘                 └─────┘     │   XPUB    │     └─────┘
-                                                │  (Proxy)  │
- N PUB × M SUB = N×M 연결                       └───────────┘
- PUB/SUB가 서로의 주소를 알아야 함
-                                                 N + M 연결
-                                                 PUB/SUB는 proxy 주소만 알면 됨
+```mermaid
+flowchart LR
+    P1[PUB 1] --> S1[SUB 1]
+    P1 --> S2[SUB 2]
+    P2[PUB 2] --> S1
+    P2 --> S2
 ```
+
+> PUB/SUB가 서로의 주소를 알아야 한다. 연결 수 = N x M.
+
+**proxy 사용 -- N + M 연결:**
+
+```mermaid
+flowchart LR
+    P1[PUB 1] --> XSUB
+    P2[PUB 2] --> XSUB
+    subgraph 프록시
+        XSUB --> XPUB
+    end
+    XPUB --> S1[SUB 1]
+    XPUB --> S2[SUB 2]
+```
+
+> proxy 주소만 알면 된다. 연결 수 = N + M.
 
 | 용도 | 설명 |
 |------|------|

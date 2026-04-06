@@ -35,8 +35,12 @@ struct registry_state_t {
 
 ### 2.2 Registry State Machine
 
-```
-[INIT] → start() → [RUNNING] → stop() → [STOPPED]
+```mermaid
+stateDiagram-v2
+    [*] --> INIT
+    INIT --> RUNNING : start()
+    RUNNING --> STOPPED : stop()
+    STOPPED --> [*]
 ```
 
 ### 2.3 SERVICE_LIST Broadcast Triggers
@@ -54,9 +58,13 @@ struct registry_state_t {
 ## 3. Discovery Internal Implementation
 
 ### 3.1 State Machine (Per Service)
-```
-[EMPTY] → SERVICE_LIST(count>0) → [AVAILABLE]
-[AVAILABLE] → SERVICE_LIST(count==0) → [UNAVAILABLE]
+
+```mermaid
+stateDiagram-v2
+    [*] --> EMPTY
+    EMPTY --> AVAILABLE : SERVICE_LIST (count > 0)
+    AVAILABLE --> UNAVAILABLE : SERVICE_LIST (count == 0)
+    UNAVAILABLE --> AVAILABLE : SERVICE_LIST (count > 0)
 ```
 
 ### 3.2 Service Types and Roles
@@ -157,6 +165,27 @@ Frame 1~N: Payload (variable)
 | 0x000B | TOPOLOGY_QUERY | Client → Registry |
 | 0x000C | TOPOLOGY_REPLY | Registry → Client |
 | 0x000D | UNREGISTER_ACK | Registry → Service |
+
+#### Registration and Heartbeat Flow
+
+```mermaid
+sequenceDiagram
+    participant S as Service
+    participant R as Registry
+    participant D as Discovery
+
+    S->>R: REGISTER
+    R->>S: REGISTER_ACK
+    loop Every heartbeat interval
+        S->>R: HEARTBEAT
+    end
+    R->>D: SERVICE_LIST (broadcast)
+    Note over R,D: Triggered by registration,<br/>deregistration, or periodic timer
+
+    S->>R: UNREGISTER
+    R->>S: UNREGISTER_ACK
+    R->>D: SERVICE_LIST (updated)
+```
 
 ### 4.3 SERVICE_LIST Format
 ```

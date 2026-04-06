@@ -21,17 +21,17 @@ STREAM 소켓은 ZMP를 사용하지 않는 외부 클라이언트(웹 브라우
 
 ### 2.2 데이터 흐름
 
-```
-Application                Stream Socket              Engine              Transport
-    │                          │                        │                     │
-    │  zlink_send(rid+data)    │                        │                     │
-    │─────────────────────────►│                        │                     │
-    │                          │  pipe_t::write()       │                     │
-    │                          │───────────────────────►│                     │
-    │                          │                        │  raw_encode         │
-    │                          │                        │  (4B len + payload) │
-    │                          │                        │────────────────────►│
-    │                          │                        │                     │  ws::write
+```mermaid
+sequenceDiagram
+    participant App as 애플리케이션
+    participant SS as Stream 소켓
+    participant Eng as 엔진
+    participant Tr as 전송
+
+    App->>SS: zlink_send(rid + data)
+    SS->>Eng: pipe_t::write()
+    Eng->>Tr: raw_encode (4B len + payload)
+    Tr->>Tr: ws::write
 ```
 
 ## 3. WS/WSS 성능 최적화

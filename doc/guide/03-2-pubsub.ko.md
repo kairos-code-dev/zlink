@@ -44,11 +44,13 @@ XSUB(`filter=false`)은 `!false = true`이므로 `match()`를 건너뛴다.
 
 **프록시 패턴에서 XSUB/XPUB을 쓰는 이유:**
 
-```
-PUB ──── XSUB ═══ XPUB ──── SUB
-          │         │
-          │  프록시  │
-          └─────────┘
+```mermaid
+flowchart LR
+  PUB -- 데이터 --> XSUB
+  XSUB == 프록시 ==> XPUB
+  XPUB -- 데이터 --> SUB
+  SUB -. 구독 .-> XPUB
+  XPUB -. 전파 .-> XSUB
 ```
 
 - XSUB은 구독 상태 없이 PUB의 모든 메시지를 통과시킨다.
@@ -56,14 +58,10 @@ PUB ──── XSUB ═══ XPUB ──── SUB
   프록시가 구독 관리 로직(필터링, 로깅, 인가 등)을 삽입할 수 있다.
 - 일반 SUB/PUB으로는 이 중계 구조를 만들 수 없다.
 
-```
-              ┌─────┐
-         ┌───►│SUB 1│ (topic: "weather")
-┌─────┐  │   └─────┘
-│ PUB │──┤
-└─────┘  │   ┌─────┐
-         └───►│SUB 2│ (topic: "sports")
-              └─────┘
+```mermaid
+flowchart LR
+  PUB --> SUB1["SUB 1 (weather)"]
+  PUB --> SUB2["SUB 2 (sports)"]
 ```
 
 ---

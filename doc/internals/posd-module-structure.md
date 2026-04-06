@@ -19,66 +19,67 @@ principles:
 
 ## 2. Layer Structure
 
-```
-bindings / C callers
-        │
-        v
-core/include/zlink.h
-        │
-        v
-API Facade (core/src/api/)
-  ├─ context_api
-  ├─ socket_api · socket_message_api
-  ├─ message_api
-  ├─ service_api · service_*_api (spot, discovery, registry, ...)
-  ├─ monitor_api · monitor_*_api
-  ├─ poller_api
-  └─ zlink_option · zlink_option_*_api
-        │
-        v
-Service Access Layer
-  ├─ discovery_access_t    (core/src/services/discovery/)
-  ├─ registry_access_t     (core/src/services/discovery/)
-  ├─ registry_query_access_t (core/src/services/discovery/)
-  ├─ spot_node_access_t    (core/src/services/spot/)
-  └─ spot_subject_access_t (core/src/services/spot/)
-        │
-        v
-Service Runtime
-  ├─ Discovery: discovery_bootstrap · discovery_state · discovery_update
-  │             discovery_uplink · discovery_registry_client
-  ├─ SPOT:      spot_node · spot_pub · spot_sub (option · recv)
-  │             spot_data_plane (forwarding · protocol)
-  │             spot_handle · spot_runtime
-  └─ Common:    service_runtime_base · service_public_api_guard
-               service_monitor · socket_monitor_bridge
-        │
-        v
-Socket Semantic / Runtime (core/src/sockets/)
-  ├─ Families: pair · pub · sub · xpub · xsub · dealer · router · stream
-  ├─ Base:     socket_base (semantic entrypoint)
-  │            socket_base_api · socket_base_dispatch · socket_base_endpoint
-  │            socket_base_lifecycle · socket_base_monitor
-  │            socket_base_msg · socket_base_routing
-  └─ Runtime:  socket_runtime · socket_close_ops
-        │
-        v
-Runtime Core (core/src/core/)
-  ├─ ctx · own · reaper · mailbox · pipe
-  ├─ multipart_send_txn (logical multipart send)
-  ├─ options · options_dispatch
-  │  options_core_socket · options_transport_network · options_protocol_metadata
-  ├─ send_internal · recv_internal
-  └─ session_base · socket_poller
-        │
-        v
-Engine (core/src/engine/)
-  └─ asio/ (Boost.Asio-based poller, io_context, mailbox execution)
-        │
-        v
-Transport / Protocol
-  ├─ Protocol: raw · zmp · metadata  (core/src/protocol/)
-  └─ Transport: tcp · ipc · tls · ws · pgm  (core/src/transports/)
+```mermaid
+flowchart TB
+    subgraph Callers ["Bindings / C Callers"]
+        zlink_h["core/include/zlink.h"]
+    end
+
+    subgraph API ["API Facade (core/src/api/)"]
+        context_api["context_api"]
+        socket_api["socket_api · socket_message_api"]
+        message_api["message_api"]
+        service_api["service_api · service_*_api"]
+        monitor_api["monitor_api · monitor_*_api"]
+        poller_api["poller_api"]
+        zlink_option["zlink_option · zlink_option_*_api"]
+    end
+
+    subgraph SAL ["Service Access Layer"]
+        discovery_access["discovery_access_t"]
+        registry_access["registry_access_t"]
+        registry_query_access["registry_query_access_t"]
+        spot_node_access["spot_node_access_t"]
+        spot_subject_access["spot_subject_access_t"]
+    end
+
+    subgraph SvcRT ["Service Runtime"]
+        direction LR
+        discovery_rt["Discovery: bootstrap · state · update · uplink · registry_client"]
+        spot_rt["SPOT: node · pub · sub · data_plane · handle · runtime"]
+        common_rt["Common: runtime_base · api_guard · monitor · bridge"]
+    end
+
+    subgraph SocketRT ["Socket Semantic / Runtime (core/src/sockets/)"]
+        families["Families: pair · pub · sub · xpub · xsub · dealer · router · stream"]
+        base["Base: socket_base · api · dispatch · endpoint · lifecycle · monitor · msg · routing"]
+        runtime["Runtime: socket_runtime · socket_close_ops"]
+    end
+
+    subgraph Core ["Runtime Core (core/src/core/)"]
+        core_mods["ctx · own · reaper · mailbox · pipe"]
+        multipart["multipart_send_txn"]
+        options["options · options_dispatch · core_socket · transport_network · protocol_metadata"]
+        send_recv["send_internal · recv_internal"]
+        session["session_base · socket_poller"]
+    end
+
+    subgraph Engine ["Engine (core/src/engine/)"]
+        asio["asio/ — Boost.Asio poller, io_context, mailbox execution"]
+    end
+
+    subgraph TP ["Transport / Protocol"]
+        protocol["Protocol: raw · zmp · metadata"]
+        transport["Transport: tcp · ipc · tls · ws · pgm"]
+    end
+
+    Callers --> API
+    API --> SAL
+    SAL --> SvcRT
+    SvcRT --> SocketRT
+    SocketRT --> Core
+    Core --> Engine
+    Engine --> TP
 ```
 
 ## 3. Layer Roles
@@ -204,16 +205,14 @@ used by `zlink_send` and `spot publish`.
 
 ## 4. Dependency Direction
 
-```
-API Facade → Service Access → Service Runtime
-                                    ↓
-                            Socket Semantic/Runtime
-                                    ↓
-                              Runtime Core
-                                    ↓
-                            Engine (Asio backend)
-                                    ↓
-                          Transport / Protocol
+```mermaid
+flowchart TB
+    A["API Facade"] --> B["Service Access"]
+    B --> C["Service Runtime"]
+    C --> D["Socket Semantic / Runtime"]
+    D --> E["Runtime Core"]
+    E --> F["Engine (Asio backend)"]
+    F --> G["Transport / Protocol"]
 ```
 
 Prohibited directions:

@@ -35,16 +35,12 @@ While maintaining compatibility with libzmq's patterns and API, it applies the f
 
 ### 1.2 Design Principles
 
-```
-┌──────────────────────┬──────────────────────────────────────────────────────┐
-│       Principle       │                    Description                       │
-├──────────────────────┼──────────────────────────────────────────────────────┤
-│  Zero-Copy           │  Saves memory bandwidth by minimizing message copies │
-│  Lock-Free           │  Uses lock-free data structures (YPipe) for ITC      │
-│  True Async          │  True asynchronous I/O based on the Proactor pattern │
-│  Protocol Agnostic   │  Clear separation of transport and protocol          │
-└──────────────────────┴──────────────────────────────────────────────────────┘
-```
+| Principle | Description |
+|---|---|
+| Zero-Copy | Saves memory bandwidth by minimizing message copies |
+| Lock-Free | Uses lock-free data structures (YPipe) for ITC |
+| True Async | True asynchronous I/O based on the Proactor pattern |
+| Protocol Agnostic | Clear separation of transport and protocol |
 
 ### 1.3 Supported Sockets and Transports
 
@@ -83,29 +79,27 @@ libzmq uses a classic **Reactor pattern**.
 A central poller (`poller_t`) monitors fd readiness (readable/writable state)
 and invokes engine handlers when fds become ready.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    libzmq Reactor Model                           │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │              poller_t (Central Event Loop)                │   │
-│   │                                                          │   │
-│   │   epoll_wait() / kqueue() / select() / IOCP              │   │
-│   │              │                                           │   │
-│   │              v                                           │   │
-│   │   ┌──────────────────────┐                               │   │
-│   │   │  fd ready (readable) │──→ engine->in_event()        │   │
-│   │   │  fd ready (writable) │──→ engine->out_event()       │   │
-│   │   │  fd error            │──→ engine->in_event()        │   │
-│   │   └──────────────────────┘                               │   │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   Flow: register fd → wait for readiness → notify → read/write  │
-│   Key: poller says "ready to read", then engine calls read()     │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Reactor["libzmq Reactor Model"]
+        poller["poller_t\n(Central Event Loop)\nepoll_wait() / kqueue() / select() / IOCP"]
+        readable["fd ready (readable)"]
+        writable["fd ready (writable)"]
+        fderror["fd error"]
+        in_event["engine->in_event()"]
+        out_event["engine->out_event()"]
+
+        poller --> readable
+        poller --> writable
+        poller --> fderror
+        readable --> in_event
+        writable --> out_event
+        fderror --> in_event
+    end
+
+    note["Flow: register fd -> wait for readiness -> notify -> read/write\nKey: poller says 'ready to read', then engine calls read()"]
+
+    Reactor ~~~ note
 ```
 
 **Key characteristics:**
@@ -119,37 +113,29 @@ and invokes engine handlers when fds become ready.
 zlink uses the Boost.Asio **Proactor pattern**.
 Engines request asynchronous I/O operations from the OS, and the OS invokes completion callbacks when done.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    zlink Proactor Model                           │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │              asio_engine_t (Async Engine)                 │   │
-│   │                                                          │   │
-│   │   (1) async_read_some(buffer, handler)                   │   │
-│   │       │  Delegate read to OS                             │   │
-│   │       └──→ [OS kernel performs I/O] ──→ on_read_complete()│  │
-│   │                                                          │   │
-│   │   (2) async_write_some(buffer, handler)                  │   │
-│   │       │  Delegate write to OS                            │   │
-│   │       └──→ [OS kernel performs I/O] ──→ on_write_complete()│ │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │              io_context (Boost.Asio)                      │   │
-│   │                                                          │   │
-│   │   io_context::run()                                      │   │
-│   │   - Dispatches completion handlers for finished ops      │   │
-│   │   - One io_context per I/O thread, single-threaded       │   │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   Flow: request async op → OS completes I/O → completion call   │
-│   Key: engine never performs I/O directly, only handles results  │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Proactor["zlink Proactor Model"]
+        subgraph Engine["asio_engine_t (Async Engine)"]
+            async_read["async_read_some\n(buffer, handler)"]
+            os_read["OS kernel\nperforms read"]
+            on_read["on_read_complete()"]
+            async_write["async_write_some\n(buffer, handler)"]
+            os_write["OS kernel\nperforms write"]
+            on_write["on_write_complete()"]
+
+            async_read -->|"delegate to OS"| os_read --> on_read
+            async_write -->|"delegate to OS"| os_write --> on_write
+        end
+
+        subgraph IoCtx["io_context (Boost.Asio)"]
+            run["io_context::run()\n- Dispatches completion handlers\n- One per I/O thread, single-threaded"]
+        end
+    end
+
+    note["Flow: request async op -> OS completes I/O -> completion callback\nKey: engine never performs I/O directly, only handles results"]
+
+    Proactor ~~~ note
 ```
 
 **Key characteristics:**
@@ -160,97 +146,43 @@ Engines request asynchronous I/O operations from the OS, and the OS invokes comp
 
 ### 2.3 Reactor vs. Proactor Comparison
 
-```
-┌──────────────────┬──────────────────────────┬──────────────────────────────┐
-│     Aspect        │   libzmq (Reactor)       │   zlink (Proactor)           │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  I/O Model        │ Readiness-based          │ Completion-based             │
-│                   │ "ready to read" → read() │ "read done" → callback       │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  Main Loop        │ poller_t::loop()          │ io_context::run()            │
-│                   │ (custom event loop)       │ (Boost.Asio event loop)      │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  I/O Threads      │ poller_t per thread       │ io_context per thread        │
-│                   │ + fd_table management     │ + independent execution       │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  Engine Callbacks │ in_event() / out_event() │ on_read_complete()           │
-│                   │                          │ on_write_complete()          │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  Protocol         │ ZMTP 3.x                 │ ZMP v1.0 (8B fixed header)  │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  Transport        │ Direct fd management     │ i_asio_transport abstraction │
-│  Extension Cost   │ Must fit fd-based API    │ Implement interface only      │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  Platform Pollers │ 6 implementations        │ Delegated to Boost.Asio      │
-│                   │ (epoll,kqueue,IOCP,etc)  │ (single codebase)            │
-├──────────────────┼──────────────────────────┼──────────────────────────────┤
-│  Optimizations    │ Reactor event batching   │ Speculative I/O              │
-│                   │                          │ Gather Write                 │
-│                   │                          │ Backpressure (pending buf)   │
-└──────────────────┴──────────────────────────┴──────────────────────────────┘
-```
+| Aspect | libzmq (Reactor) | zlink (Proactor) |
+|---|---|---|
+| I/O Model | Readiness-based: "ready to read" -> read() | Completion-based: "read done" -> callback |
+| Main Loop | poller_t::loop() (custom event loop) | io_context::run() (Boost.Asio event loop) |
+| I/O Threads | poller_t per thread + fd_table management | io_context per thread + independent execution |
+| Engine Callbacks | in_event() / out_event() | on_read_complete() / on_write_complete() |
+| Protocol | ZMTP 3.x | ZMP v1.0 (8B fixed header) |
+| Transport Extension Cost | Direct fd management; must fit fd-based API | i_asio_transport abstraction; implement interface only |
+| Platform Pollers | 6 implementations (epoll, kqueue, IOCP, etc.) | Delegated to Boost.Asio (single codebase) |
+| Optimizations | Reactor event batching | Speculative I/O, Gather Write, Backpressure (pending buf) |
 
 ### 2.4 Migration Strategy
 
 The port from libzmq to zlink used **selective per-layer replacement**, not a full rewrite.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                   Per-Layer: Preserved / Replaced / Added            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ■ Preserved (kept from libzmq as-is)                               │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │  Socket Logic Layer                                           │ │
-│  │  - socket_base_t, pair_t, dealer_t, router_t, pub_t, sub_t   │ │
-│  │  - Routing strategies: lb_t, fq_t, dist_t                    │ │
-│  │  - Subscription management: mtrie_t, radix_tree_t             │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Inter-Thread Infrastructure                                  │ │
-│  │  - YPipe (Lock-free queue, CAS-based)                         │ │
-│  │  - pipe_t (Bidirectional message pipe)                        │ │
-│  │  - mailbox_t + signaler_t (Inter-thread command delivery)     │ │
-│  │  - command_t (20 internal command types)                      │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Message System                                               │ │
-│  │  - msg_t (64-byte fixed, VSM/LMSG/CMSG/ZCLMSG)              │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│  ■ Replaced (libzmq implementation swapped for new)                │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │  poller_t (epoll/kqueue/select)  →  asio_poller_t            │ │
-│  │  - Minimal reactor wrapper for mailbox monitoring             │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  zmtp_engine_t (ZMTP 3.x)  →  asio_engine_t (Proactor)      │ │
-│  │  - Core I/O engine completely redesigned for completion-based │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Direct fd management  →  i_asio_transport interface         │ │
-│  │  - TCP/IPC wrapped with Boost.Asio sockets                   │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  ZMTP 3.x  →  ZMP v1.0                                       │ │
-│  │  - Simplified to 8-byte fixed header, HELLO/READY handshake  │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│  ■ Added (new in zlink)                                            │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │  Speculative I/O                                              │ │
-│  │  - Synchronous attempt before async → eliminates callback     │ │
-│  │    overhead on fast path                                      │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Backpressure (pending_buffers)                               │ │
-│  │  - Buffers received data up to 10MB when HWM reached         │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Gather Write                                                 │ │
-│  │  - Scatter/gather I/O sends header+payload in single syscall │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Native WS/WSS/TLS Transports                                │ │
-│  │  - Beast WebSocket + OpenSSL unified via i_asio_transport    │ │
-│  ├───────────────────────────────────────────────────────────────┤ │
-│  │  Service Layer (Registry, Discovery, SPOT)                  │ │
-│  │  - Higher-level service abstractions not present in libzmq   │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Preserved["Preserved (kept from libzmq as-is)"]
+        SL["Socket Logic Layer\nsocket_base_t, pair_t, dealer_t, router_t, pub_t, sub_t\nRouting: lb_t, fq_t, dist_t\nSubscriptions: mtrie_t, radix_tree_t"]
+        IT["Inter-Thread Infrastructure\nYPipe (Lock-free queue, CAS-based)\npipe_t (Bidirectional message pipe)\nmailbox_t + signaler_t\ncommand_t (20 internal command types)"]
+        MS["Message System\nmsg_t (64-byte fixed, VSM/LMSG/CMSG/ZCLMSG)"]
+    end
+
+    subgraph Replaced["Replaced (libzmq -> new implementation)"]
+        R1["poller_t -> asio_poller_t\nMinimal reactor wrapper for mailbox monitoring"]
+        R2["zmtp_engine_t -> asio_engine_t\nCore I/O engine redesigned for completion-based"]
+        R3["Direct fd mgmt -> i_asio_transport\nTCP/IPC wrapped with Boost.Asio sockets"]
+        R4["ZMTP 3.x -> ZMP v1.0\n8-byte fixed header, HELLO/READY handshake"]
+    end
+
+    subgraph Added["Added (new in zlink)"]
+        A1["Speculative I/O\nSync attempt before async -> eliminates callback overhead"]
+        A2["Backpressure (pending_buffers)\nBuffers received data up to 10MB when HWM reached"]
+        A3["Gather Write\nScatter/gather I/O: header+payload in single syscall"]
+        A4["Native WS/WSS/TLS Transports\nBeast WebSocket + OpenSSL via i_asio_transport"]
+        A5["Service Layer\nRegistry, Discovery, SPOT"]
+    end
 ```
 
 **Why wasn't the Reactor completely removed?**
@@ -267,62 +199,38 @@ The actual data I/O path (`asio_engine_t`) operates as a pure Proactor pattern.
 zlink is composed of 5 clearly separated layers.
 Each layer has a single responsibility, and layers closer to the bottom are closer to the physical network.
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          APPLICATION LAYER                              │
-│                                                                         │
-│   User code:                                                            │
-│   zlink_ctx_new() -> zlink_socket() -> zlink_bind/connect()             │
-│   -> zlink_send() / zlink_recv() -> zlink_close()                       │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                           PUBLIC API LAYER                              │
-│                                                                         │
-│   src/api/zlink.cpp                                                     │
-│   - C API entry points (zlink_socket, zlink_send, zlink_recv, etc.)     │
-│   - Error handling and parameter validation                             │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                          SOCKET LOGIC LAYER                             │
-│                                                                         │
-│   src/sockets/                                                          │
-│   - socket_base_t: Base class for all sockets                           │
-│   - pair_t, dealer_t, router_t, pub_t, sub_t, xpub_t, xsub_t, stream_t │
-│   - Routing strategies: lb_t(RR), fq_t(Fair Queue), dist_t(Fan-out)    │
-│   - Subscription management: mtrie_t(XPUB), radix_tree_t /             │
-│     trie_with_size_t(XSUB)                                             │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                          ENGINE LAYER (ASIO)                            │
-│                                                                         │
-│   src/engine/asio/                                                      │
-│   - asio_engine_t      : Proactor pattern-based async I/O engine (base) │
-│   - asio_zmp_engine_t  : ZMP protocol (8B fixed header + handshake)     │
-│   - asio_raw_engine_t  : RAW protocol (4B Length-Prefix, STREAM only)   │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                          PROTOCOL LAYER                                 │
-│                                                                         │
-│   ┌───────────────────────────┐    ┌───────────────────────────┐       │
-│   │    ZMP v1.0 Protocol      │    │     RAW Protocol          │       │
-│   │    src/protocol/zmp_*     │    │     src/protocol/raw_*    │       │
-│   │    - 8-byte fixed header  │    │     - 4-byte length prefix│       │
-│   │    - Handshake support    │    │     - No handshake        │       │
-│   └───────────────────────────┘    └───────────────────────────┘       │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                          TRANSPORT LAYER                                │
-│                                                                         │
-│   src/transports/                                                       │
-│   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌──────────┐                 │
-│   │   TCP   │  │   IPC   │  │   WS    │  │ TLS/WSS  │                 │
-│   │  tcp_   │  │  ipc_   │  │  ws_    │  │  ssl_    │                 │
-│   │transport│  │transport│  │transport│  │transport │                 │
-│   └─────────┘  └─────────┘  └─────────┘  └──────────┘                 │
-│                                                                         │
-│   i_asio_transport: Unified async interface for all transports          │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph L1["APPLICATION LAYER"]
+        App["User code:\nzlink_ctx_new() -> zlink_socket() -> zlink_bind/connect()\n-> zlink_send() / zlink_recv() -> zlink_close()"]
+    end
+
+    subgraph L2["PUBLIC API LAYER"]
+        API["src/api/zlink.cpp\nC API entry points (zlink_socket, zlink_send, zlink_recv, etc.)\nError handling and parameter validation"]
+    end
+
+    subgraph L3["SOCKET LOGIC LAYER"]
+        Sockets["src/sockets/\nsocket_base_t: Base class for all sockets\npair_t, dealer_t, router_t, pub_t, sub_t, xpub_t, xsub_t, stream_t\nRouting: lb_t(RR), fq_t(Fair Queue), dist_t(Fan-out)\nSubscriptions: mtrie_t(XPUB), radix_tree_t / trie_with_size_t(XSUB)"]
+    end
+
+    subgraph L4["ENGINE LAYER (ASIO)"]
+        Engines["src/engine/asio/\nasio_engine_t: Proactor-based async I/O engine (base)\nasio_zmp_engine_t: ZMP protocol (8B fixed header + handshake)\nasio_raw_engine_t: RAW protocol (4B Length-Prefix, STREAM only)"]
+    end
+
+    subgraph L5A["PROTOCOL LAYER"]
+        ZMP["ZMP v1.0 Protocol\nsrc/protocol/zmp_*\n8-byte fixed header\nHandshake support"]
+        RAW["RAW Protocol\nsrc/protocol/raw_*\n4-byte length prefix\nNo handshake"]
+    end
+
+    subgraph L5B["TRANSPORT LAYER"]
+        TCP["TCP\ntcp_transport"]
+        IPC["IPC\nipc_transport"]
+        WS["WS\nws_transport"]
+        TLSWSS["TLS/WSS\nssl_transport"]
+        iface["i_asio_transport: Unified async interface"]
+    end
+
+    L1 --> L2 --> L3 --> L4 --> L5A --> L5B
 ```
 
 **Message passing path between layers**:
@@ -335,42 +243,21 @@ Each layer has a single responsibility, and layers closer to the bottom are clos
 
 The diagram below shows the ownership relationships and interactions between zlink internal objects.
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                              ctx_t                                   │
-│  (Global context: I/O thread pool, socket management, inproc        │
-│   endpoints)                                                         │
-└────────────────────────────────┬─────────────────────────────────────┘
-                                 │ owns
-            ┌────────────────────┼────────────────────┐
-            │                    │                    │
-            v                    v                    v
-    ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-    │  socket_base_t│   │  io_thread_t  │   │   reaper_t    │
-    │ (socket inst.) │   │ (I/O worker)  │   │(resource      │
-    │               │   │               │   │ cleanup)      │
-    └───────┬───────┘   └───────┬───────┘   └───────────────┘
-            │                   │
-            │ owns              │ runs
-            v                   v
-    ┌───────────────┐   ┌───────────────┐
-    │ session_base_t│   │  io_context   │
-    │ (session mgmt)│   │ (Asio reactor)│
-    └───────┬───────┘   └───────────────┘
-            │
-     ┌──────┴──────┐
-     │             │
-     v             v
-┌─────────┐  ┌─────────────┐
-│ pipe_t  │  │asio_engine_t│
-│(msg que)│  │ (I/O engine) │
-└─────────┘  └──────┬──────┘
-                    │
-                    v
-            ┌───────────────┐
-            │i_asio_transport│
-            │  (transport)   │
-            └───────────────┘
+```mermaid
+flowchart TB
+    ctx["ctx_t\n(Global context: I/O thread pool,\nsocket management, inproc endpoints)"]
+
+    ctx -->|"owns"| socket["socket_base_t\n(socket instance)"]
+    ctx -->|"owns"| iothread["io_thread_t\n(I/O worker)"]
+    ctx -->|"owns"| reaper["reaper_t\n(resource cleanup)"]
+
+    socket -->|"owns"| session["session_base_t\n(session mgmt)"]
+    iothread -->|"runs"| ioctx["io_context\n(Asio reactor)"]
+
+    session -->|"owns"| pipe["pipe_t\n(msg queue)"]
+    session -->|"owns"| engine["asio_engine_t\n(I/O engine)"]
+
+    engine --> transport["i_asio_transport\n(transport)"]
 ```
 
 **Key ownership relationships**:
@@ -388,16 +275,24 @@ The diagram below shows the ownership relationships and interactions between zli
 
 ### 5.1 Class Hierarchy
 
-```
-socket_base_t (base class)
-├── pair_t              # PAIR socket: 1:1 bidirectional communication
-├── dealer_t            # DEALER socket: async request, round-robin
-├── router_t            # ROUTER socket: ID-based routing (inherits routing_socket_base_t)
-├── xpub_t              # XPUB socket: can receive subscription messages
-│   └── pub_t           # PUB socket: simplified XPUB (no subscription exposure)
-├── xsub_t              # XSUB socket: receives all without local filter (proxy use)
-│   └── sub_t           # SUB socket: simplified XSUB (subscribe via setsockopt)
-└── stream_t            # STREAM socket: RAW TCP, external client integration
+```mermaid
+flowchart TB
+    base["socket_base_t\n(base class)"]
+    pair["pair_t\nPAIR: 1:1 bidirectional"]
+    dealer["dealer_t\nDEALER: async request, round-robin"]
+    router["router_t\nROUTER: ID-based routing"]
+    xpub["xpub_t\nXPUB: can receive subscription messages"]
+    pub["pub_t\nPUB: simplified XPUB"]
+    xsub["xsub_t\nXSUB: receives all without local filter"]
+    sub["sub_t\nSUB: local topic filtering"]
+    stream["stream_t\nSTREAM: RAW TCP"]
+
+    base --> pair
+    base --> dealer
+    base --> router
+    base --> xpub --> pub
+    base --> xsub --> sub
+    base --> stream
 ```
 
 `socket_base_t` provides common functionality for all sockets:
@@ -410,43 +305,33 @@ socket_base_t (base class)
 
 Strategy classes for message distribution and collection are separated by socket type:
 
+```mermaid
+flowchart LR
+    subgraph LB["lb_t (Load Balancer) - Sender-side round-robin"]
+        direction LR
+        msg1["msg1"] --> PA1["Pipe A"]
+        msg2["msg2"] --> PB1["Pipe B"]
+        msg3["msg3"] --> PC1["Pipe C"]
+    end
+
+    subgraph FQ["fq_t (Fair Queue) - Receiver-side fair queue"]
+        direction LR
+        PA2["Pipe A"] --> recv1["msg"]
+        PB2["Pipe B"] --> recv2["msg"]
+        PC2["Pipe C"] --> recv3["msg"]
+    end
+
+    subgraph DIST["dist_t (Distributor) - Broadcast fan-out"]
+        direction LR
+        src["msg"] --> PA3["Pipe A"]
+        src --> PB3["Pipe B"]
+        src --> PC3["Pipe C"]
+    end
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                     Routing Strategies                                │
-├──────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  lb_t (Load Balancer) - Sender-side round-robin              │    │
-│  │                                                               │    │
-│  │  Pipe A ──→ [ msg1 ]                                         │    │
-│  │  Pipe B ──→ [ msg2 ]    ← Distributes in order               │    │
-│  │  Pipe C ──→ [ msg3 ]                                         │    │
-│  │                                                               │    │
-│  │  Used by: DEALER (Tx)                                        │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  fq_t (Fair Queue) - Receiver-side fair queue                │    │
-│  │                                                               │    │
-│  │  Pipe A ←── [ msg ]                                          │    │
-│  │  Pipe B ←── [ msg ]    ← Fairly receives from each pipe     │    │
-│  │  Pipe C ←── [ msg ]                                          │    │
-│  │                                                               │    │
-│  │  Used by: DEALER (Rx), SUB (Rx)                              │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  dist_t (Distributor) - Broadcast fan-out                    │    │
-│  │                                                               │    │
-│  │  [ msg ] ──→ Pipe A                                          │    │
-│  │          ──→ Pipe B    ← Sends the same message to all pipes │    │
-│  │          ──→ Pipe C                                          │    │
-│  │                                                               │    │
-│  │  Used by: PUB, XPUB (Tx)                                    │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
-```
+
+- **lb_t**: Used by DEALER (Tx) -- distributes messages in round-robin order
+- **fq_t**: Used by DEALER (Rx), SUB (Rx) -- fairly receives from each pipe
+- **dist_t**: Used by PUB, XPUB (Tx) -- sends the same message to all pipes
 
 ### 5.3 Routing Strategy Mapping by Socket
 
@@ -502,81 +387,48 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 
 ### 6.2 Proactor Pattern Structure
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        asio_engine_t                             │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌─────────────────┐         ┌──────────────────────────────┐  │
-│  │ async_read_some │--------→│      on_read_complete        │  │
-│  │  (async read)   │         │  - Data receive complete CB   │  │
-│  └─────────────────┘         │  - Parse message via decoder  │  │
-│                              │  - Forward message to session │  │
-│                              └──────────────────────────────┘  │
-│                                                                  │
-│  ┌─────────────────┐         ┌──────────────────────────────┐  │
-│  │async_write_some │--------→│     on_write_complete        │  │
-│  │  (async write)  │         │  - Data send complete CB      │  │
-│  └─────────────────┘         │  - Encode next message        │  │
-│                              │  - Repeat if more data to send│  │
-│                              └──────────────────────────────┘  │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                  Speculative I/O (Optimization)          │   │
-│  │                                                          │   │
-│  │  speculative_read():                                     │   │
-│  │    Attempts synchronous read first for immediately       │   │
-│  │    available data                                        │   │
-│  │    -> Improves throughput without async overhead          │   │
-│  │                                                          │   │
-│  │  speculative_write():                                    │   │
-│  │    Writes synchronously if immediately possible          │   │
-│  │    -> Completes instantly without callback on success    │   │
-│  │    -> Falls back to async_write_some() on EAGAIN         │   │
-│  │                                                          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                   Backpressure                           │   │
-│  │                                                          │   │
-│  │  _pending_buffers: Temporary storage for unprocessed data│   │
-│  │  max_pending_buffer_size: 10MB limit                     │   │
-│  │  Pauses reading when limit exceeded -> resumes when      │   │
-│  │  space becomes available                                 │   │
-│  │                                                          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph asio_engine["asio_engine_t"]
+        subgraph ReadPath["Read Path"]
+            ar["async_read_some\n(async read)"] -->|"completion"| orc["on_read_complete\n- Data receive complete CB\n- Parse message via decoder\n- Forward message to session"]
+        end
+
+        subgraph WritePath["Write Path"]
+            aw["async_write_some\n(async write)"] -->|"completion"| owc["on_write_complete\n- Data send complete CB\n- Encode next message\n- Repeat if more data to send"]
+        end
+
+        subgraph Speculative["Speculative I/O (Optimization)"]
+            sr["speculative_read():\nAttempts sync read first for\nimmediately available data\n-> Improves throughput without async overhead"]
+            sw["speculative_write():\nWrites sync if immediately possible\n-> Completes instantly without callback\n-> Falls back to async_write_some() on EAGAIN"]
+        end
+
+        subgraph BP["Backpressure"]
+            bp["_pending_buffers: Temporary storage for unprocessed data\nmax_pending_buffer_size: 10MB limit\nPauses reading when limit exceeded -> resumes when space available"]
+        end
+    end
 ```
 
 ### 6.3 Engine State Machine
 
-```
-          ┌─────────────────────┐
-          │      Created        │
-          └──────────┬──────────┘
-                     │ plug()
-                     v
-          ┌─────────────────────┐
-          │    Handshaking      │  TLS/WebSocket: transport handshake
-          │  (_handshaking)     │  ZMP: protocol handshake
-          └──────────┬──────────┘
-                     │ handshake complete
-                     v
-          ┌─────────────────────┐
-          │      Active         │ <-----------------┐
-          │   Data send/recv    │                   │
-          └──────────┬──────────┘                   │
-                     │ I/O error                     │ restart
-                     v                              │
-          ┌─────────────────────┐                   │
-          │       Error         │ -----------------┘
-          └──────────┬──────────┘
-                     │ terminate()
-                     v
-          ┌─────────────────────┐
-          │    Terminated       │
-          └─────────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> Created
+    Created --> Handshaking : plug()
+    Handshaking --> Active : handshake complete
+    Active --> Error : I/O error
+    Error --> Active : restart
+    Error --> Terminated : terminate()
+    Terminated --> [*]
+
+    note right of Handshaking
+        TLS/WebSocket: transport handshake
+        ZMP: protocol handshake
+    end note
+
+    note right of Active
+        Data send/recv
+    end note
 ```
 
 ### 6.4 ZMP v1.0 Frame Structure
@@ -624,21 +476,17 @@ A simple protocol for STREAM sockets and external client integration.
 
 ### 6.6 ZMP Handshake Sequence
 
-```
-    Client                              Server
-       │                                   │
-       │─────── HELLO (greeting) ─────────→│
-       │                                   │
-       │←────── HELLO (greeting) ──────────│
-       │                                   │
-       │                                   │  (Socket type compatibility check)
-       │                                   │
-       │─────── READY (metadata) ─────────→│
-       │                                   │
-       │←────── READY (metadata) ──────────│
-       │                                   │
-       │←─────── Data Exchange ───────────→│
-       │                                   │
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: HELLO (greeting)
+    S->>C: HELLO (greeting)
+    Note over S: Socket type compatibility check
+    C->>S: READY (metadata)
+    S->>C: READY (metadata)
+    Note over C,S: Data Exchange
 ```
 
 - **HELLO**: Socket type (1B) + Identity length (1B) + Identity value (0-255B)
@@ -648,18 +496,13 @@ A simple protocol for STREAM sockets and external client integration.
 
 The engine is automatically selected based on the socket type:
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                       Engine Selection Rules                         │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Socket type == STREAM ?                                            │
-│      ├─ YES → asio_raw_engine_t  (RAW protocol, no handshake)      │
-│      └─ NO  → asio_zmp_engine_t  (ZMP protocol, HELLO/READY)      │
-│                                                                     │
-│  This rule is the same across all transports (TCP/TLS/IPC/WS/WSS). │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    Q{"Socket type\n== STREAM?"}
+    Q -->|YES| RAW["asio_raw_engine_t\n(RAW protocol, no handshake)"]
+    Q -->|NO| ZMP["asio_zmp_engine_t\n(ZMP protocol, HELLO/READY)"]
+    Note["This rule is the same across all transports\n(TCP/TLS/IPC/WS/WSS)"]
+    Q ~~~ Note
 ```
 
 **Full Mapping Matrix**:
@@ -674,48 +517,37 @@ The engine is automatically selected based on the socket type:
 
 ### 6.8 Handshake Stage Comparison
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      Handshake Stage Comparison                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  TCP + PAIR/DEALER/ROUTER/PUB/SUB                                      │
-│  ┌─────────┐    ┌─────────────┐                                       │
-│  │  TCP    │───→│  ZMP        │───→ Data Transfer                     │
-│  │ Connect │    │  Handshake  │                                       │
-│  └─────────┘    └─────────────┘                                       │
-│                                                                         │
-│  TCP + STREAM                                                          │
-│  ┌─────────┐                                                           │
-│  │  TCP    │───────────────────────→ Data Transfer (immediate)         │
-│  │ Connect │                                                           │
-│  └─────────┘                                                           │
-│                                                                         │
-│  TLS + PAIR/DEALER/ROUTER/PUB/SUB                                      │
-│  ┌─────────┐    ┌─────────┐    ┌─────────────┐                        │
-│  │  TCP    │───→│  SSL    │───→│  ZMP        │───→ Data Transfer      │
-│  │ Connect │    │Handshake│    │  Handshake  │                        │
-│  └─────────┘    └─────────┘    └─────────────┘                        │
-│                                                                         │
-│  WS + PAIR/DEALER/ROUTER/PUB/SUB                                       │
-│  ┌─────────┐    ┌─────────┐    ┌─────────────┐                        │
-│  │  TCP    │───→│   WS    │───→│  ZMP        │───→ Data Transfer      │
-│  │ Connect │    │ Upgrade │    │  Handshake  │                        │
-│  └─────────┘    └─────────┘    └─────────────┘                        │
-│                                                                         │
-│  WSS + PAIR/DEALER/ROUTER/PUB/SUB                                      │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────────┐        │
-│  │  TCP    │───→│  SSL    │───→│   WS    │───→│  ZMP        │───→ Tx │
-│  │ Connect │    │Handshake│    │ Upgrade │    │  Handshake  │        │
-│  └─────────┘    └─────────┘    └─────────┘    └─────────────┘        │
-│                                                                         │
-│  WSS + STREAM                                                          │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐                            │
-│  │  TCP    │───→│  SSL    │───→│   WS    │───────────────→ Data Tx    │
-│  │ Connect │    │Handshake│    │ Upgrade │                            │
-│  └─────────┘    └─────────┘    └─────────┘                            │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph tcp_zmp["TCP + PAIR/DEALER/ROUTER/PUB/SUB"]
+        direction LR
+        t1["TCP Connect"] --> z1["ZMP Handshake"] --> d1["Data Transfer"]
+    end
+
+    subgraph tcp_stream["TCP + STREAM"]
+        direction LR
+        t2["TCP Connect"] --> d2["Data Transfer (immediate)"]
+    end
+
+    subgraph tls_zmp["TLS + PAIR/DEALER/ROUTER/PUB/SUB"]
+        direction LR
+        t3["TCP Connect"] --> s3["SSL Handshake"] --> z3["ZMP Handshake"] --> d3["Data Transfer"]
+    end
+
+    subgraph ws_zmp["WS + PAIR/DEALER/ROUTER/PUB/SUB"]
+        direction LR
+        t4["TCP Connect"] --> w4["WS Upgrade"] --> z4["ZMP Handshake"] --> d4["Data Transfer"]
+    end
+
+    subgraph wss_zmp["WSS + PAIR/DEALER/ROUTER/PUB/SUB"]
+        direction LR
+        t5["TCP Connect"] --> s5["SSL Handshake"] --> w5["WS Upgrade"] --> z5["ZMP Handshake"] --> d5["Data Transfer"]
+    end
+
+    subgraph wss_stream["WSS + STREAM"]
+        direction LR
+        t6["TCP Connect"] --> s6["SSL Handshake"] --> w6["WS Upgrade"] --> d6["Data Transfer"]
+    end
 ```
 
 ### 6.9 Transport Characteristics Comparison
@@ -802,28 +634,20 @@ It is designed to handle small messages without `malloc` calls.
 A bidirectional pipe for passing messages between threads.
 It exchanges `msg_t` instances lock-free between the Application thread and the I/O thread.
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                          pipe_t                               │
-├───────────────────────────────────────────────────────────────┤
-│                                                               │
-│  Thread A (Socket)              Thread B (I/O)                │
-│       │                              │                        │
-│       │    ┌──────────────────┐     │                        │
-│       ├───→│   _out_pipe      │────→│  (Tx: Socket -> I/O)   │
-│       │    │   (YPipe<msg_t>) │     │                        │
-│       │    └──────────────────┘     │                        │
-│       │                              │                        │
-│       │    ┌──────────────────┐     │                        │
-│       │←───│   _in_pipe       │←────┤  (Rx: I/O -> Socket)   │
-│       │    │   (YPipe<msg_t>) │     │                        │
-│       │    └──────────────────┘     │                        │
-│                                                               │
-│  High Water Mark (HWM): Message queue size limit              │
-│  - _hwm: Outbound HWM (blocks send when queue exceeded)      │
-│  - _lwm: Inbound Low Water Mark (half of HWM, resume point)  │
-│                                                               │
-└───────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph pipe_t
+        TA["Thread A\n(Socket)"]
+        TB["Thread B\n(I/O)"]
+        out["_out_pipe\n(YPipe&lt;msg_t&gt;)"]
+        in["_in_pipe\n(YPipe&lt;msg_t&gt;)"]
+
+        TA -->|"Tx: Socket -> I/O"| out --> TB
+        TB -->|"Rx: I/O -> Socket"| in --> TA
+    end
+
+    hwm["HWM: Message queue size limit\n_hwm: Outbound HWM (blocks send when exceeded)\n_lwm: Inbound Low Water Mark (half of HWM, resume point)"]
+    pipe_t ~~~ hwm
 ```
 
 **YPipe characteristics**:
@@ -833,25 +657,16 @@ It exchanges `msg_t` instances lock-free between the Application thread and the 
 
 **Pipe state machine**:
 
-```
-                    ┌────────────┐
-                    │   active   │ <────────────────┐
-                    └─────┬──────┘                  │
-                          │ receive delimiter       │ connect
-                          v                         │
-              ┌───────────────────────┐             │
-              │ delimiter_received    │             │
-              └───────────┬───────────┘             │
-                          │ send term_ack           │
-                          v                         │
-              ┌───────────────────────┐             │
-              │    term_ack_sent      │             │
-              └───────────┬───────────┘             │
-                          │ receive term_ack        │
-                          v                         │
-                    ┌───────────┐                   │
-                    │ terminated│ ──────────────────┘
-                    └───────────┘     (on reconnect)
+```mermaid
+stateDiagram-v2
+    [*] --> active
+    active --> delimiter_received : receive delimiter
+    active --> waiting_for_delimiter : send term_req
+    waiting_for_delimiter --> term_req_sent1 : receive delimiter
+    delimiter_received --> term_ack_sent : send term_ack
+    term_req_sent1 --> term_req_sent2 : send term_ack
+    term_ack_sent --> [*] : receive term_ack
+    term_req_sent2 --> [*] : receive term_ack
 ```
 
 ### 7.3 ctx_t - Context
@@ -894,84 +709,63 @@ ctx_t internal structure:
 
 Acts as a bridge between the socket and the engine.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     session_base_t                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐    ┌─────────┐    ┌─────────────────┐   │
-│  │ socket_base_t│←──→│ pipe_t  │←──→│ asio_engine_t   │   │
-│  │              │    │         │    │                 │   │
-│  │  zlink_send() │    │ YPipe   │    │ async_read/     │   │
-│  │  zlink_recv() │    │         │    │ async_write     │   │
-│  └──────────────┘    └─────────┘    └─────────────────┘   │
-│                                                             │
-│  push_msg(): Engine -> Session -> Pipe -> Socket            │
-│  pull_msg(): Socket -> Pipe -> Session -> Engine            │
-│                                                             │
-│  Additional roles:                                          │
-│  - Connection state management                              │
-│  - Reconnection logic (exponential backoff)                 │
-│  - Connecter selection (based on URL scheme)                │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph session["session_base_t"]
+        socket["socket_base_t\nzlink_send()\nzlink_recv()"]
+        pipe["pipe_t\nYPipe"]
+        engine["asio_engine_t\nasync_read / async_write"]
+
+        socket --> pipe --> engine
+        engine --> pipe --> socket
+    end
+
+    push["push_msg(): Engine -> Session -> Pipe -> Socket"]
+    pull["pull_msg(): Socket -> Pipe -> Session -> Engine"]
+    roles["Additional roles:\n- Connection state management\n- Reconnection logic (exponential backoff)\n- Connecter selection (based on URL scheme)"]
+
+    session ~~~ push
+    session ~~~ pull
+    session ~~~ roles
 ```
 
 ### 7.5 Threading Model
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    zlink Threading Model                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                 Application Threads                      │   │
-│  │  - Call zlink_send() / zlink_recv()                     │   │
-│  │  - Recommended: access each socket from a single thread │   │
-│  │  - Multiple sockets can be used from multiple threads   │   │
-│  └──────────────────────────┬──────────────────────────────┘   │
-│                              │                                  │
-│                   Lock-free Pipes (YPipe)                       │
-│                              │                                  │
-│  ┌──────────────────────────v──────────────────────────────┐   │
-│  │                    I/O Threads                           │   │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐                │   │
-│  │  │ Thread 0 │ │ Thread 1 │ │ Thread N │  (configurable) │   │
-│  │  │io_context│ │io_context│ │io_context│                │   │
-│  │  └──────────┘ └──────────┘ └──────────┘                │   │
-│  │                                                          │   │
-│  │  - Asynchronous I/O processing (Proactor pattern)       │   │
-│  │  - Encoder/decoder execution                             │   │
-│  │  - Network send/receive                                  │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                    Reaper Thread                         │   │
-│  │  - Resource cleanup for terminated sockets/sessions     │   │
-│  │  - Deferred deletion processing                          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph AppThreads["Application Threads"]
+        app["Call zlink_send() / zlink_recv()\nRecommended: access each socket from a single thread\nMultiple sockets can be used from multiple threads"]
+    end
+
+    pipes["Lock-free Pipes (YPipe)"]
+
+    subgraph IOThreads["I/O Threads"]
+        t0["Thread 0\nio_context"]
+        t1["Thread 1\nio_context"]
+        tN["Thread N\nio_context"]
+        io_desc["Async I/O processing (Proactor pattern)\nEncoder/decoder execution\nNetwork send/receive"]
+    end
+
+    subgraph Reaper["Reaper Thread"]
+        reaper["Resource cleanup for terminated sockets/sessions\nDeferred deletion processing"]
+    end
+
+    AppThreads --> pipes --> IOThreads
 ```
 
 **Inter-thread communication (Mailbox system)**:
 
-```
-Application Thread              I/O Thread
-      │                              │
-      │  zlink_send()                 │
-      │      │                       │
-      │      v                       │
-      │  [Push msg_t to YPipe]       │
-      │      │                       │
-      │  mailbox.send(activate_write)│
-      │─────────────────────────────→│
-      │                              │  (signal received)
-      │                              │
-      │                              v
-      │                         [Pop msg_t from YPipe]
-      │                              │
-      │                         [Encode and transmit]
+```mermaid
+sequenceDiagram
+    participant App as Application Thread
+    participant IO as I/O Thread
+
+    App->>App: zlink_send()
+    App->>App: Push msg_t to YPipe
+    App->>IO: mailbox.send(activate_write)
+    Note over IO: signal received
+    IO->>IO: Pop msg_t from YPipe
+    IO->>IO: Encode and transmit
 ```
 
 - Each thread has its own `mailbox_t`.
@@ -984,153 +778,83 @@ Application Thread              I/O Thread
 
 ### 8.1 Message Send (Outbound / Tx)
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                    APPLICATION THREAD                             │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  (1) zlink_send(socket, data, size, flags)                        │
-│       │                                                           │
-│       v                                                           │
-│  (2) socket_base_t::send()                                       │
-│       │  - Create msg_t (VSM or LMSG)                            │
-│       │  - Select routing strategy by socket type                 │
-│       │    . DEALER: lb_t (Round-robin)                          │
-│       │    . ROUTER: ID-based direct routing                     │
-│       │    . PUB: dist_t (send to all subscribers)               │
-│       v                                                           │
-│  (3) pipe_t::write()                                             │
-│       │  - Push message to YPipe (Lock-free)                     │
-│       │  - HWM check (block or drop when exceeded)               │
-│       v                                                           │
-│  (4) mailbox signal to I/O thread                                │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-                              │
-                              v
-┌───────────────────────────────────────────────────────────────────┐
-│                      I/O THREAD                                   │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  (5) asio_engine_t: receive activate_write event                  │
-│       │                                                           │
-│       v                                                           │
-│  (6) pull_msg_from_session()                                     │
-│       │  - Read message from pipe                                │
-│       v                                                           │
-│  (7) encoder: message -> byte stream                              │
-│       │  - ZMP: 8-byte header + payload                          │
-│       │  - RAW: 4-byte length + payload                          │
-│       v                                                           │
-│  (8) speculative_write() attempt                                 │
-│       │  - Success: synchronous write completes immediately       │
-│       │  - Failure (EAGAIN): schedule async_write_some()         │
-│       v                                                           │
-│  (9) transport: network transmission                              │
-│       - TCP: direct send                                          │
-│       - TLS: encrypt with SSL then send                          │
-│       - WS: Beast WebSocket framing then send                    │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant App as Application Thread
+    participant Socket as socket_base_t
+    participant Pipe as pipe_t (YPipe)
+    participant Engine as asio_engine_t
+    participant Encoder as Encoder
+    participant Transport as Transport
+
+    App->>Socket: (1) zlink_send(socket, data, size, flags)
+    Socket->>Socket: (2) Create msg_t (VSM or LMSG)
+    Note over Socket: Select routing strategy by socket type<br/>DEALER: lb_t / ROUTER: ID-based / PUB: dist_t
+    Socket->>Pipe: (3) pipe_t::write() [Lock-free, HWM check]
+    Pipe->>Engine: (4) mailbox signal (activate_write)
+    Engine->>Engine: (5) receive activate_write event
+    Engine->>Pipe: (6) pull_msg_from_session()
+    Engine->>Encoder: (7) message -> byte stream
+    Note over Encoder: ZMP: 8B header + payload<br/>RAW: 4B length + payload
+    Engine->>Transport: (8) speculative_write() attempt
+    Note over Engine: Success: sync write completes immediately<br/>EAGAIN: schedule async_write_some()
+    Transport->>Transport: (9) network transmission
+    Note over Transport: TCP: direct send<br/>TLS: SSL encrypt then send<br/>WS: Beast framing then send
 ```
 
 ### 8.2 Message Receive (Inbound / Rx)
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                      I/O THREAD                                   │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  (1) async_read_some() completion callback                        │
-│       │  - Receive bytes from network                            │
-│       v                                                           │
-│  (2) on_read_complete()                                          │
-│       │                                                           │
-│       v                                                           │
-│  (3) decoder: byte stream -> message                              │
-│       │  - Parse header (ZMP 8B / RAW 4B)                        │
-│       │  - Verify payload size                                   │
-│       │  - Create msg_t                                          │
-│       v                                                           │
-│  (4) push_msg_to_session()                                       │
-│       │                                                           │
-│       v                                                           │
-│  (5) session_base_t::push_msg()                                  │
-│       │  - Message validation                                    │
-│       │  - Forward to inbound pipe                               │
-│       v                                                           │
-│  (6) pipe_t::write() (inbound pipe)                              │
-│       │  - Push message to YPipe                                 │
-│       v                                                           │
-│  (7) Signal read-ready to socket (activate_read)                 │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-                              │
-                              v
-┌───────────────────────────────────────────────────────────────────┐
-│                    APPLICATION THREAD                             │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  (8) zlink_recv(socket, buffer, size, flags)                      │
-│       │                                                           │
-│       v                                                           │
-│  (9) socket_base_t::recv()                                       │
-│       │  - Receive strategy by socket type                       │
-│       │    . DEALER/SUB: fq_t (Fair Queueing)                   │
-│       │    . ROUTER: extract Routing ID then deliver message     │
-│       │  - Topic filtering (SUB)                                 │
-│       v                                                           │
-│  (10) pipe_t::read()                                             │
-│        │  - Pop message from YPipe (Lock-free)                   │
-│        v                                                          │
-│  (11) Copy data to user buffer                                   │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant Transport as Transport
+    participant Engine as asio_engine_t
+    participant Decoder as Decoder
+    participant Session as session_base_t
+    participant Pipe as pipe_t (YPipe)
+    participant Socket as socket_base_t
+    participant App as Application Thread
+
+    Transport->>Engine: (1) async_read_some() completion callback
+    Engine->>Engine: (2) on_read_complete()
+    Engine->>Decoder: (3) byte stream -> message
+    Note over Decoder: Parse header (ZMP 8B / RAW 4B)<br/>Verify payload size, Create msg_t
+    Decoder->>Session: (4) push_msg_to_session()
+    Session->>Session: (5) Message validation
+    Session->>Pipe: (6) pipe_t::write() [inbound pipe]
+    Pipe->>Socket: (7) Signal read-ready (activate_read)
+    App->>Socket: (8) zlink_recv(socket, buffer, size, flags)
+    Socket->>Socket: (9) Receive strategy by socket type
+    Note over Socket: DEALER/SUB: fq_t / ROUTER: extract Routing ID<br/>Topic filtering (SUB)
+    Socket->>Pipe: (10) pipe_t::read() [Lock-free pop]
+    Pipe->>App: (11) Copy data to user buffer
 ```
 
 ### 8.3 Connection Establishment Flow
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                   Connection Establishment Steps                   │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  zlink_connect("tcp://host:port")                                 │
-│       │                                                           │
-│       v                                                           │
-│  (1) address_t parsing                                            │
-│       │  - Identify protocol (tcp, tls, ws, wss, ipc)            │
-│       │  - Extract address/port                                   │
-│       v                                                           │
-│  (2) Create session_base_t                                       │
-│       │  - Set reconnection policy                                │
-│       v                                                           │
-│  (3) Create and start connecter                                   │
-│       │  - Select connecter class based on URL scheme             │
-│       │  - Call async_connect()                                   │
-│       v                                                           │
-│  (4) TCP connection complete (3-way handshake)                    │
-│       │                                                           │
-│       v                                                           │
-│  (5) [TLS/WSS] Transport handshake                                │
-│       │  - TLS: SSL_do_handshake()                               │
-│       │  - WS: HTTP Upgrade request/response                     │
-│       v                                                           │
-│  (6) Create engine and plug()                                    │
-│       │  - Select asio_zmp_engine_t or asio_raw_engine_t         │
-│       │    based on socket type                                   │
-│       v                                                           │
-│  (7) [ZMP] Protocol handshake                                     │
-│       │  - HELLO exchange (socket type, Identity)                │
-│       │  - Socket type compatibility check                       │
-│       │  - READY exchange (metadata)                             │
-│       v                                                           │
-│  (8) engine_ready()                                              │
-│       - Create and connect pipe                                   │
-│       - start_input() / start_output()                            │
-│       -> Data send/receive is now possible                        │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Addr as address_t
+    participant Session as session_base_t
+    participant Conn as Connecter
+    participant TP as Transport
+    participant Eng as Engine
+
+    App->>Addr: (1) zlink_connect("tcp://host:port")
+    Note over Addr: Identify protocol (tcp, tls, ws, wss, ipc)<br/>Extract address/port
+    Addr->>Session: (2) Create session_base_t
+    Note over Session: Set reconnection policy
+    Session->>Conn: (3) Create and start connecter
+    Note over Conn: Select connecter class by URL scheme<br/>Call async_connect()
+    Conn->>Conn: (4) TCP connection complete (3-way handshake)
+    Conn->>TP: (5) [TLS/WSS] Transport handshake
+    Note over TP: TLS: SSL_do_handshake()<br/>WS: HTTP Upgrade request/response
+    TP->>Eng: (6) Create engine and plug()
+    Note over Eng: Select asio_zmp_engine_t or<br/>asio_raw_engine_t based on socket type
+    Eng->>Eng: (7) [ZMP] Protocol handshake
+    Note over Eng: HELLO exchange (socket type, Identity)<br/>Socket type compatibility check<br/>READY exchange (metadata)
+    Eng->>Session: (8) engine_ready()
+    Note over Session: Create and connect pipe<br/>start_input() / start_output()<br/>Data send/receive is now possible
 ```
 
 ---

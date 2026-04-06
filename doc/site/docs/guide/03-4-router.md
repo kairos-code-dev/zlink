@@ -11,15 +11,11 @@ The ROUTER socket is a **routing_id-based routing** socket. It automatically pre
 
 **Valid socket combinations:** ROUTER ↔ DEALER, ROUTER ↔ ROUTER
 
-```
-┌────────┐              ┌────────┐
-│DEALER 1│─────────────►│        │
-│ (D1)   │              │ ROUTER │  ← distinguishes each DEALER by routing_id
-└────────┘              │        │
-┌────────┐              │        │
-│DEALER 2│─────────────►│        │
-│ (D2)   │              └────────┘
-└────────┘
+```mermaid
+flowchart LR
+    D1["DEALER 1 (D1)"] --> R[ROUTER]
+    D2["DEALER 2 (D2)"] --> R
+    R -. "distinguishes each DEALER\nby routing_id" .-> R
 ```
 
 ## 2. Basic Usage
@@ -828,7 +824,7 @@ identifies the sender via `source_rid` in `zlink_recv()`.
 | Option | Type | Default | Description |
 |------|------|--------|------|
 | `ZLINK_ROUTER_OPT_MANDATORY` | int | 0 | Return EHOSTUNREACH error for undeliverable messages (set via `zlink_set_router_option()`) |
-| `ZLINK_ROUTER_HANDOVER` | int | 0 | Replace existing connection on routing_id conflict |
+| `ZLINK_ROUTER_OPT_HANDOVER` | int | 0 | Replace existing connection on routing_id conflict |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | Send HWM |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | Receive HWM |

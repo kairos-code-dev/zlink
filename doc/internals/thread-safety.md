@@ -98,6 +98,17 @@ The lifecycle gate is a single atomic word that tracks two pieces of
 state: a closing bit and an in-flight count. This enables fail-fast
 decisions without broad locks.
 
+```mermaid
+stateDiagram-v2
+    [*] --> Operational
+    Operational --> Operational : API enter (in-flight++)
+    Operational --> Operational : API exit (in-flight--)
+    Operational --> Closing : close accepted (closing bit set)
+    Operational --> Operational : close rejected (EBUSY, no latch)
+    Closing --> Closed : drain complete, teardown
+    Closed --> [*]
+```
+
 | Condition | errno | Meaning |
 |---|---|---|
 | In-flight admitted API on the same handle | `EBUSY` | Another thread is executing; close rejected |

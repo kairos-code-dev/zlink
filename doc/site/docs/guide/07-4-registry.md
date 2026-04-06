@@ -647,22 +647,16 @@ TLS is configured through socket options on the appropriate internal socket:
 ### 4.1 Standalone Process
 
 Registry runs as a dedicated service. Multiple applications connect
-through their own Discovery instances.
+through their own Discovery instances. Use this mode when the Registry
+must survive application restarts or when multiple independent services
+share a single Registry cluster.
 
-```
-┌─────────────────────────────────────────┐
-│         Registry Process                │
-│  Registry (PUB:5550 + ROUTER:5551)      │
-└──────────────┬──────────────────────────┘
-               │ SERVICE_LIST broadcast
-       ┌───────┼───────┐
-       │       │       │
-       v       v       v
-   ┌──────┐ ┌──────┐ ┌──────┐
-   │App A │ │App B │ │App C │
-   │Disc. │ │Disc. │ │Disc. │
-   │ SOCK │ │ SOCK │ │ SPOT │
-   └──────┘ └──────┘ └──────┘
+```mermaid
+flowchart TB
+    R["Registry Process\nRegistry (PUB:5550 + ROUTER:5551)"]
+    R -- "SERVICE_LIST broadcast" --> A["App A\nDiscovery\nSOCK"]
+    R -- "SERVICE_LIST broadcast" --> B["App B\nDiscovery\nSOCK"]
+    R -- "SERVICE_LIST broadcast" --> C["App C\nDiscovery\nSPOT"]
 ```
 
 This is the recommended pattern for production deployments:
@@ -674,7 +668,10 @@ This is the recommended pattern for production deployments:
 ### 4.2 Embedded Deployment
 
 Registry, Discovery, and services (SPOT/Socket) all live in a single process.
-Useful for development, testing, or single-node deployments.
+Useful for development, testing, or single-node deployments. Choose embedded
+mode when you want a self-contained application with no external infrastructure
+dependencies. The code below creates a Registry, registers a ROUTER server,
+and connects a DEALER client all within one process.
 
 === "C"
 
@@ -1125,25 +1122,18 @@ Each Registry node needs a unique ID and the PUB endpoints of its peers:
 
 Registry uses flooding-based synchronization via PUB/SUB:
 
-```
-┌────────────┐     PUB/SUB      ┌────────────┐
-│ Registry 1 │◄────────────────►│ Registry 2 │
-│ (id=1)     │                  │ (id=2)     │
-│ PUB:5550   │                  │ PUB:5550   │
-└────────────┘                  └────────────┘
-      ▲                               ▲
-      │           PUB/SUB             │
-      └───────────────────────────────┘
-                     │
-              ┌────────────┐
-              │ Registry 3 │
-              │ (id=3)     │
-              │ PUB:5550   │
-              └────────────┘
+```mermaid
+flowchart LR
+    R1["Registry 1\n(id=1)\nPUB:5550"] -- "PUB/SUB" --> R2["Registry 2\n(id=2)\nPUB:5550"]
+    R2 -- "PUB/SUB" --> R1
+    R1 -- "PUB/SUB" --> R3["Registry 3\n(id=3)\nPUB:5550"]
+    R3 -- "PUB/SUB" --> R1
+    R2 -- "PUB/SUB" --> R3
+    R3 -- "PUB/SUB" --> R2
 ```
 
 - Each Registry subscribes to every other Registry's PUB endpoint
-- Service list changes are immediately propagated via flooding
+- Service list changes are propagated via flooding on the next broadcast cycle
 - **Eventually Consistent**: all Registries converge to the same state
 - Duplicate and out-of-order updates are safely ignored via `registry_id` + `list_seq`
 
@@ -2464,29 +2454,22 @@ useful for weighted routing decisions and operational inspection.
 
 ### 7.1 Service Registration/Deregistration Flow
 
-```
-SpotNode/Socket       Discovery              Registry
-    │                     │                      │
-    │ attach_discovery    │                      │
-    │ + bind              │                      │
-    │────────────────────►│                      │
-    │                     │ bootstrap + REGISTER │
-    │                     │─────────────────────►│
-    │                     │                      │ (add to service list)
-    │                     │      REGISTER_ACK    │
-    │                     │◄─────────────────────│
-    │                     │                      │
-    │                     │   HEARTBEAT (5s)     │
-    │                     │─────────────────────►│
-    │                     │                      │
-    │                     │   HEARTBEAT (5s)     │
-    │                     │─────────────────────►│
-    │                     │                      │
-    │ destroy             │                      │
-    │────────────────────►│                      │
-    │                     │     UNREGISTER       │
-    │                     │─────────────────────►│
-    │                     │                      │ (remove from list)
+```mermaid
+sequenceDiagram
+    participant S as SpotNode/Socket
+    participant D as Discovery
+    participant R as Registry
+
+    S->>D: attach_discovery + bind
+    D->>R: bootstrap + REGISTER
+    Note right of R: add to service list
+    R->>D: REGISTER_ACK
+    loop Every 5 s
+        D->>R: HEARTBEAT
+    end
+    S->>D: destroy
+    D->>R: UNREGISTER
+    Note right of R: remove from list
 ```
 
 ### 7.2 Heartbeat Timeout and Auto-Removal

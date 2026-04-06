@@ -13,14 +13,28 @@ The DEALER socket is an asynchronous request socket. It sends to multiple peers 
 
 **Valid socket combinations:** DEALER ↔ ROUTER, DEALER ↔ DEALER
 
+```mermaid
+flowchart LR
+    D1[DEALER 1] -->|round-robin| R[ROUTER]
+    D2[DEALER 2] -->|round-robin| R
 ```
-┌──────────┐                ┌────────┐
-│ DEALER 1 │────────────────►│        │
-└──────────┘  Round-robin   │ ROUTER │
-┌──────────┐                │        │
-│ DEALER 2 │────────────────►│        │
-└──────────┘                └────────┘
-```
+
+### Concrete Scenario: 3 DEALERs Sending to 1 ROUTER
+
+Three DEALER clients connect to a single ROUTER server. Each DEALER sends
+requests independently; the ROUTER receives them via fair-queue and
+distinguishes each sender by `source_rid`.
+
+| Sender | routing_id | Message | ROUTER sees |
+|--------|-----------|---------|-------------|
+| DEALER 1 | `D1` | `"buy AAPL 100"` | source_rid=`D1`, data=`"buy AAPL 100"` |
+| DEALER 2 | `D2` | `"sell TSLA 50"` | source_rid=`D2`, data=`"sell TSLA 50"` |
+| DEALER 3 | `D3` | `"buy MSFT 200"` | source_rid=`D3`, data=`"buy MSFT 200"` |
+
+The ROUTER replies to each DEALER using `zlink_send_rid()` with the
+corresponding `source_rid`. Because DEALER uses round-robin for
+*outgoing* connections, if a single DEALER connects to multiple ROUTERs,
+its messages cycle across them (msg1 -> ROUTER-A, msg2 -> ROUTER-B, ...).
 
 ## 2. Basic Usage
 
@@ -68,7 +82,6 @@ int rc = zlink_recv(dealer, &source_rid, &parts, &part_count, 0);
 if (rc == 0) {
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 
@@ -119,13 +132,13 @@ zlink_send(dealer, parts, 2, 0);
 | Option | Type | Default | Description |
 |------|------|--------|------|
 | `zlink_set_routing_id()` | binary | Auto (UUID) | ID for identification by ROUTER (dedicated function) |
-| `ZLINK_PROBE_ROUTER` | int | 0 | Send empty message on connect (connection notification) |
+| `ZLINK_DEALER_OPT_PROBE` | int | 0 | Send empty message on connect (connection notification) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms) |
-| `ZLINK_CONNECT_ROUTING_ID` | binary | -- | Alias applied to the next connect |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | binary | -- | Alias applied to the next connect |
 
 ### Setting routing_id
 

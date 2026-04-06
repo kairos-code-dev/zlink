@@ -13,23 +13,25 @@
 | Reaper Thread | Resource cleanup for terminated sockets/sessions | 1 |
 
 ### 1.2 Thread Diagram
-```
-┌─────────────────────────────────────────────────────────┐
-│  Application Threads                                     │
-│  zlink_send() / zlink_recv()                             │
-│  Recommended: access each socket from a single thread    │
-└──────────────────────┬──────────────────────────────────┘
-                       │ Lock-free Pipes (YPipe)
-┌──────────────────────┼──────────────────────────────────┐
-│  I/O Threads                                             │
-│  Thread 0 (io_context) │ Thread 1 │ ... │ Thread N       │
-│  Async I/O, encoding/decoding, network send/receive      │
-└──────────────────────────────────────────────────────────┘
-┌──────────────────────────────────────────────────────────┐
-│  Reaper Thread                                           │
-│  Terminated socket/session resource cleanup, deferred    │
-│  deletion                                                │
-└──────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph APP["Application Threads"]
+        direction LR
+        A1["zlink_send() / zlink_recv()"]
+        A2["Thread-safe: concurrent sends allowed (see thread-safety guide)"]
+    end
+    subgraph IO["I/O Threads"]
+        direction LR
+        T0["Thread 0 (io_context)"]
+        T1["Thread 1"]
+        TN["Thread N"]
+        IO_DESC["Async I/O, encoding/decoding, network send/receive"]
+    end
+    subgraph REAPER["Reaper Thread"]
+        R1["Terminated socket/session resource cleanup, deferred deletion"]
+    end
+    APP -- "Lock-free Pipes (YPipe)" --> IO
+    IO --> REAPER
 ```
 
 ## 2. Inter-Thread Communication
@@ -45,15 +47,15 @@ class mailbox_t {
 Command types: stop, plug, attach, bind, activate_read, activate_write, etc.
 
 ### 2.2 Data Flow
-```
-Application Thread              I/O Thread
-      │                              │
-      │  zlink_send()                │
-      │  [Push msg_t to YPipe]       │
-      │  mailbox.send(activate_write)│
-      │─────────────────────────────►│
-      │                         [Pop from YPipe]
-      │                         [Encode and transmit]
+```mermaid
+sequenceDiagram
+    participant App as Application Thread
+    participant IOT as I/O Thread
+    App->>App: zlink_send()
+    App->>App: Push msg_t to YPipe
+    App->>IOT: mailbox.send(activate_write)
+    IOT->>IOT: Pop from YPipe
+    IOT->>IOT: Encode and transmit
 ```
 
 ## 3. I/O Thread Selection

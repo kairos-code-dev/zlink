@@ -644,22 +644,16 @@ TLS는 해당 내부 소켓의 소켓 옵션을 통해 구성한다:
 ### 4.1 독립 프로세스 배포
 
 Registry를 전용 서비스로 실행한다. 여러 애플리케이션이 각자의 Discovery
-인스턴스를 통해 연결한다.
+인스턴스를 통해 연결한다. 애플리케이션 재시작 시에도 Registry가 유지되어야
+하거나, 여러 독립 서비스가 하나의 Registry 클러스터를 공유할 때 이 모드를
+사용한다.
 
-```
-┌─────────────────────────────────────────┐
-│         Registry 프로세스               │
-│  Registry (PUB:5550 + ROUTER:5551)      │
-└──────────────┬──────────────────────────┘
-               │ SERVICE_LIST 브로드캐스트
-       ┌───────┼───────┐
-       │       │       │
-       v       v       v
-   ┌──────┐ ┌──────┐ ┌──────┐
-   │App A │ │App B │ │App C │
-   │Disc. │ │Disc. │ │Disc. │
-   │ SOCK │ │ SOCK │ │ SPOT │
-   └──────┘ └──────┘ └──────┘
+```mermaid
+flowchart TB
+    R["Registry 프로세스\nRegistry (PUB:5550 + ROUTER:5551)"]
+    R -- "SERVICE_LIST 브로드캐스트" --> A["App A\nDiscovery\nSOCK"]
+    R -- "SERVICE_LIST 브로드캐스트" --> B["App B\nDiscovery\nSOCK"]
+    R -- "SERVICE_LIST 브로드캐스트" --> C["App C\nDiscovery\nSPOT"]
 ```
 
 프로덕션 배포에 권장하는 패턴:
@@ -671,7 +665,10 @@ Registry를 전용 서비스로 실행한다. 여러 애플리케이션이 각�
 ### 4.2 임베디드 배포
 
 Registry, Discovery, 서비스(SPOT/Socket)가 모두 단일 프로세스에 존재한다.
-개발, 테스트, 또는 단일 노드 배포에 유용하다.
+개발, 테스트, 또는 단일 노드 배포에 유용하다. 외부 인프라 의존 없이
+자체 완결형 애플리케이션을 원할 때 임베디드 모드를 선택한다. 아래 코드는
+하나의 프로세스 안에서 Registry를 생성하고, ROUTER 서버를 등록하고,
+DEALER 클라이언트를 연결하는 예제다.
 
 === "C"
 
@@ -1121,25 +1118,18 @@ Registry, Discovery, 서비스(SPOT/Socket)가 모두 단일 프로세스에 존
 
 Registry는 PUB/SUB 기반 flooding 동기화를 사용한다:
 
-```
-┌────────────┐     PUB/SUB      ┌────────────┐
-│ Registry 1 │◄────────────────►│ Registry 2 │
-│ (id=1)     │                  │ (id=2)     │
-│ PUB:5550   │                  │ PUB:5550   │
-└────────────┘                  └────────────┘
-      ▲                               ▲
-      │           PUB/SUB             │
-      └───────────────────────────────┘
-                     │
-              ┌────────────┐
-              │ Registry 3 │
-              │ (id=3)     │
-              │ PUB:5550   │
-              └────────────┘
+```mermaid
+flowchart LR
+    R1["Registry 1\n(id=1)\nPUB:5550"] -- "PUB/SUB" --> R2["Registry 2\n(id=2)\nPUB:5550"]
+    R2 -- "PUB/SUB" --> R1
+    R1 -- "PUB/SUB" --> R3["Registry 3\n(id=3)\nPUB:5550"]
+    R3 -- "PUB/SUB" --> R1
+    R2 -- "PUB/SUB" --> R3
+    R3 -- "PUB/SUB" --> R2
 ```
 
 - 각 Registry가 다른 모든 Registry의 PUB 엔드포인트를 구독
-- 서비스 목록 변경이 flooding을 통해 즉시 전파
+- 서비스 목록 변경이 다음 브로드캐스트 주기에 flooding을 통해 전파
 - **Eventually Consistent**: 모든 Registry가 동일한 상태로 수렴
 - `registry_id` + `list_seq`를 통해 중복/역전 업데이트를 안전하게 무시
 
@@ -2460,29 +2450,22 @@ Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 opa
 
 ### 7.1 서비스 등록/해제 흐름
 
-```
-SpotNode/Socket       Discovery              Registry
-    │                     │                      │
-    │ attach_discovery    │                      │
-    │ + bind              │                      │
-    │────────────────────►│                      │
-    │                     │ bootstrap + REGISTER │
-    │                     │─────────────────────►│
-    │                     │                      │ (서비스 목록에 추가)
-    │                     │      REGISTER_ACK    │
-    │                     │◄─────────────────────│
-    │                     │                      │
-    │                     │   HEARTBEAT (5초)    │
-    │                     │─────────────────────►│
-    │                     │                      │
-    │                     │   HEARTBEAT (5초)    │
-    │                     │─────────────────────►│
-    │                     │                      │
-    │ destroy             │                      │
-    │────────────────────►│                      │
-    │                     │     UNREGISTER       │
-    │                     │─────────────────────►│
-    │                     │                      │ (목록에서 제거)
+```mermaid
+sequenceDiagram
+    participant S as SpotNode/Socket
+    participant D as Discovery
+    participant R as Registry
+
+    S->>D: attach_discovery + bind
+    D->>R: bootstrap + REGISTER
+    Note right of R: 서비스 목록에 추가
+    R->>D: REGISTER_ACK
+    loop 5초마다
+        D->>R: HEARTBEAT
+    end
+    S->>D: destroy
+    D->>R: UNREGISTER
+    Note right of R: 목록에서 제거
 ```
 
 ### 7.2 하트비트 타임아웃 및 자동 제거

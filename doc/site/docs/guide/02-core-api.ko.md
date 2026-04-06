@@ -519,7 +519,6 @@ Socket은 기본적으로 pull mode로 시작한다.
                    (char *)zlink_msg_data(&parts[i]));
             zlink_msg_close(&parts[i]);
         }
-        free(parts);
     }
 
     /* Non-blocking recv */

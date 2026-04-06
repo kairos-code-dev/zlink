@@ -1,6 +1,8 @@
 
 # Socket Option Defaults (Code Source)
 
+This document lists the default values for each socket option, broken down by socket type. Some socket types override the global defaults to match their specific semantics.
+
 This page summarizes effective socket option defaults from implementation code,
 not from examples:
 

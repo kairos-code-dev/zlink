@@ -33,9 +33,14 @@ int zlink_proxy (void *frontend, void *backend, void *capture);
 
 The most common proxy pattern.
 
-```
-Data flow:              PUB ──► XSUB ══ proxy ══► XPUB ──► SUB
-Subscription (reverse): PUB ◄── XSUB ◄── proxy ◄── XPUB ◄── SUB
+```mermaid
+flowchart LR
+    PUB -->|data| XSUB
+    XSUB ==>|proxy| XPUB
+    XPUB -->|data| SUB
+    SUB -.->|subscribe| XPUB
+    XPUB -.->|proxy| XSUB
+    XSUB -.->|subscribe| PUB
 ```
 
 ### 3.1 Built-in Proxy
@@ -152,22 +157,32 @@ alone is sufficient. For manual construction, use `zlink_recv()` →
 
 ## 5. Why Use a Proxy?
 
-```
-Direct (no proxy)                    With proxy
-─────────────────                    ──────────
+**Direct (no proxy) -- N x M connections:**
 
-┌─────┐     ┌─────┐                 ┌─────┐     ┌───────────┐     ┌─────┐
-│PUB 1│────►│SUB 1│                 │PUB 1│──►  │           │  ──►│SUB 1│
-└─────┘     └─────┘                 └─────┘     │   XSUB    │     └─────┘
-┌─────┐     ┌─────┐                 ┌─────┐     │     │     │     ┌─────┐
-│PUB 2│────►│SUB 2│                 │PUB 2│──►  │     ▼     │  ──►│SUB 2│
-└─────┘     └─────┘                 └─────┘     │   XPUB    │     └─────┘
-                                                │  (Proxy)  │
- N × M connections                              └───────────┘
- PUB/SUB must know each other
-                                                 N + M connections
-                                                 Only need proxy address
+```mermaid
+flowchart LR
+    P1[PUB 1] --> S1[SUB 1]
+    P1 --> S2[SUB 2]
+    P2[PUB 2] --> S1
+    P2 --> S2
 ```
+
+> PUB/SUB must know each other's addresses. Connection count = N x M.
+
+**With proxy -- N + M connections:**
+
+```mermaid
+flowchart LR
+    P1[PUB 1] --> XSUB
+    P2[PUB 2] --> XSUB
+    subgraph Proxy
+        XSUB --> XPUB
+    end
+    XPUB --> S1[SUB 1]
+    XPUB --> S2[SUB 2]
+```
+
+> Only the proxy address is needed. Connection count = N + M.
 
 | Use Case | Description |
 |----------|-------------|

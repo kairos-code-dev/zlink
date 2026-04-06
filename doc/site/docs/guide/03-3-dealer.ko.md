@@ -13,26 +13,34 @@ send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하�
 
 **유효한 소켓 조합:** DEALER ↔ ROUTER, DEALER ↔ DEALER
 
+```mermaid
+flowchart LR
+    DA[DEALER A] <-->|양방향 비동기| DB[DEALER B]
 ```
-1:1 양방향 비동기 (PAIR와 유사, HWM/재연결 지원)
 
-┌──────────┐                    ┌──────────┐
-│ DEALER A │◄──────────────────►│ DEALER B │
-└──────────┘                    └──────────┘
-
-
-1:N Round-robin 작업 분배 (PUSH/PULL 대체)
-
-                  ┌──────────┐
-        msg 1 ───►│ DEALER 1 │
-       /          └──────────┘
-┌────────┐        ┌──────────┐
-│ DEALER │─msg 2─►│ DEALER 2 │
-└────────┘        └──────────┘
-       \          ┌──────────┐
-        msg 3 ───►│ DEALER 3 │
-                  └──────────┘
+```mermaid
+flowchart LR
+    D[DEALER] -->|msg 1| W1[DEALER 1]
+    D -->|msg 2| W2[DEALER 2]
+    D -->|msg 3| W3[DEALER 3]
 ```
+
+### 구체적 시나리오: 3개 DEALER가 1개 ROUTER로 전송
+
+3개의 DEALER 클라이언트가 하나의 ROUTER 서버에 연결한다. 각 DEALER는
+독립적으로 요청을 전송하며, ROUTER는 fair-queue로 수신하고
+`source_rid`로 각 송신자를 구분한다.
+
+| 송신자 | routing_id | 메시지 | ROUTER 수신 |
+|--------|-----------|--------|-------------|
+| DEALER 1 | `D1` | `"buy AAPL 100"` | source_rid=`D1`, data=`"buy AAPL 100"` |
+| DEALER 2 | `D2` | `"sell TSLA 50"` | source_rid=`D2`, data=`"sell TSLA 50"` |
+| DEALER 3 | `D3` | `"buy MSFT 200"` | source_rid=`D3`, data=`"buy MSFT 200"` |
+
+ROUTER는 `zlink_send_rid()`에 해당 `source_rid`를 전달하여 각 DEALER에
+응답한다. DEALER는 *송신* 연결에 round-robin을 사용하므로, 하나의
+DEALER가 여러 ROUTER에 연결하면 메시지가 순환 분배된다
+(msg1 -> ROUTER-A, msg2 -> ROUTER-B, ...).
 
 ## 2. 기본 사용법
 
@@ -761,13 +769,13 @@ DEALER는 요청을 전송하고 블로킹 `zlink_recv()`로 응답을 수신한
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER에서 식별할 ID (전용 함수) |
-| `ZLINK_PROBE_ROUTER` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
+| `ZLINK_DEALER_OPT_PROBE` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
 | `ZLINK_OPT_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
 | `ZLINK_OPT_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms) |
-| `ZLINK_CONNECT_ROUTING_ID` | binary | — | 다음 connect에 적용할 alias |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | binary | — | 다음 connect에 적용할 alias |
 
 ### routing_id 설정
 

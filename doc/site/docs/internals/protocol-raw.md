@@ -1,6 +1,8 @@
 
 # RAW (STREAM) Protocol Details
 
+The RAW protocol is used when external clients connect without the ZMP framing. STREAM sockets use this protocol to accept arbitrary connections over any supported transport (tcp, tls, ws, wss).
+
 ## 1. Overview
 A protocol dedicated to the STREAM socket. Used for communication with external clients that do not use ZMP.
 

@@ -1,6 +1,18 @@
 
 # ZMP v1.0 Protocol Details
 
+## Why ZMP instead of ZMTP?
+
+ZMP (zlink Message Protocol) is a purpose-built wire protocol that
+replaces ZMTP. ZMTP's variable-length size encoding, multi-step
+greeting/handshake negotiation, and backward-compatibility machinery add
+parsing complexity and per-frame overhead that zlink does not need.
+ZMP uses a fixed 8-byte header, a two-round-trip handshake with no
+version negotiation, and a flag set tailored to zlink's routing,
+subscription, and control semantics. The result is simpler parsing,
+smaller per-frame overhead, and a handshake that completes in fewer
+round trips.
+
 ## 1. Design Philosophy
 - ZMTP-incompatible (optimized exclusively for zlink)
 - 8B fixed header (no variable-length encoding)
@@ -38,14 +50,18 @@ Fields:
 ## 3. Handshake
 
 ### 3.1 Sequence
-```
-Client                              Server
-   │                                   │
-   │─────── HELLO (greeting) ─────────►│
-   │◄────── HELLO (greeting) ──────────│
-   │─────── READY (metadata) ─────────►│
-   │◄────── READY (metadata) ──────────│
-   │◄─────── Data Exchange ───────────►│
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: HELLO (greeting)
+    S->>C: HELLO (greeting)
+    C->>S: READY (metadata)
+    S->>C: READY (metadata)
+    C->>S: Data Exchange
+    S->>C: Data Exchange
 ```
 
 ### 3.2 HELLO Frame

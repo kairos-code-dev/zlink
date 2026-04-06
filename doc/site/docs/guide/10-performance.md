@@ -186,11 +186,24 @@ At this point:
 
 This hysteresis (using different upper and lower thresholds to create a gap between state transitions) prevents rapid oscillation between writable and non-writable states.
 
-```
-Example: HWM = 100
-    → LWM = (100 + 1) / 2 = 50
-    → Queue blocks when it reaches 100
-    → Receiver consumes messages, queue drops to ≤50 → resumes
+```mermaid
+sequenceDiagram
+    participant Sender
+    participant Queue
+    participant Receiver
+
+    Note over Queue: HWM = 100, LWM = 50
+
+    Sender->>Queue: Send messages
+    Note over Queue: Queue fills toward 100
+    Sender->>Queue: Queue reaches 100 (HWM)
+    Queue-->>Sender: Block / EAGAIN (non-writable)
+
+    Receiver->>Queue: Consume messages
+    Note over Queue: Queue drains toward 50
+    Receiver->>Queue: Queue drops to 50 (LWM)
+    Queue-->>Sender: activate_write (writable)
+    Sender->>Queue: Resume sending
 ```
 
 ### Practical HWM Recommendations
@@ -1378,7 +1391,7 @@ application-level buffer:
 
     /* Handler callback receives "pong" reply and records end time */
     void on_pong(const zlink_routing_id_t *source_rid,
-                 zlink_msg_t *parts, size_t part_count)
+                 zlink_msg_t *parts, size_t part_count, void *userdata)
     {
         clock_gettime(CLOCK_MONOTONIC, &end);
         double rtt_us = ((end.tv_sec - start.tv_sec) * 1e6 +

@@ -91,6 +91,17 @@ Lifecycle gate는 두 가지 상태를 추적하는 단일 원자 워드입니�
 bit와 in-flight 카운트. 이를 통해 broad lock 없이 fail-fast 결정이
 가능합니다.
 
+```mermaid
+stateDiagram-v2
+    [*] --> 운영중
+    운영중 --> 운영중 : API 진입 (in-flight++)
+    운영중 --> 운영중 : API 퇴장 (in-flight--)
+    운영중 --> 닫는중 : close 수락 (closing bit 설정)
+    운영중 --> 운영중 : close 거부 (EBUSY, no latch)
+    닫는중 --> 닫힘 : drain 완료, teardown
+    닫힘 --> [*]
+```
+
 | 조건 | errno | 의미 |
 |---|---|---|
 | 같은 핸들에 in-flight admitted API 존재 | `EBUSY` | 다른 스레드가 실행 중; close 거부 |

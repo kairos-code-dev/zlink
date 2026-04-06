@@ -21,17 +21,17 @@ The STREAM socket supports RAW communication with external clients (web browsers
 
 ### 2.2 Data Flow
 
-```
-Application                Stream Socket              Engine              Transport
-    │                          │                        │                     │
-    │  zlink_send(rid+data)    │                        │                     │
-    │─────────────────────────►│                        │                     │
-    │                          │  pipe_t::write()       │                     │
-    │                          │───────────────────────►│                     │
-    │                          │                        │  raw_encode         │
-    │                          │                        │  (4B len + payload) │
-    │                          │                        │────────────────────►│
-    │                          │                        │                     │  ws::write
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant SS as Stream Socket
+    participant Eng as Engine
+    participant Tr as Transport
+
+    App->>SS: zlink_send(rid + data)
+    SS->>Eng: pipe_t::write()
+    Eng->>Tr: raw_encode (4B len + payload)
+    Tr->>Tr: ws::write
 ```
 
 ## 3. WS/WSS Performance Optimization

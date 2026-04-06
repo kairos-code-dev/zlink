@@ -42,11 +42,13 @@ XSUB (`filter=false`) evaluates `!false = true` and skips `match()` entirely.
 
 **Why XSUB/XPUB in the proxy pattern:**
 
-```
-PUB ──── XSUB ═══ XPUB ──── SUB
-          │         │
-          │  proxy   │
-          └─────────┘
+```mermaid
+flowchart LR
+  PUB -- data --> XSUB
+  XSUB == proxy ==> XPUB
+  XPUB -- data --> SUB
+  SUB -. subscribe .-> XPUB
+  XPUB -. propagate .-> XSUB
 ```
 
 - XSUB passes all messages from PUB without subscription state.
@@ -55,14 +57,10 @@ PUB ──── XSUB ═══ XPUB ──── SUB
   (filtering, logging, authorization, etc.).
 - Plain SUB/PUB cannot build this relay structure.
 
-```
-              ┌─────┐
-         ┌───►│SUB 1│ (topic: "weather")
-┌─────┐  │   └─────┘
-│ PUB │──┤
-└─────┘  │   ┌─────┐
-         └───►│SUB 2│ (topic: "sports")
-              └─────┘
+```mermaid
+flowchart LR
+  PUB --> SUB1["SUB 1 (weather)"]
+  PUB --> SUB2["SUB 2 (sports)"]
 ```
 
 ---
@@ -414,12 +412,16 @@ XPUB can observe which clients subscribe to or unsubscribe from which topics.
 
 A proxy has **two separate flows**:
 
-```
-Data flow (publish):
-  PUB ──► XSUB ══ proxy forward ══► XPUB ──► SUB
-
-Subscription flow (propagation, reverse direction):
-  PUB ◄── XSUB ◄── proxy app ◄── XPUB ◄── SUB
+```mermaid
+flowchart LR
+  subgraph data ["Data flow (publish)"]
+    direction LR
+    P1[PUB] -- publish --> X1[XSUB] == proxy forward ==> X2[XPUB] -- deliver --> S1[SUB]
+  end
+  subgraph sub ["Subscription flow (reverse)"]
+    direction RL
+    S2[SUB] -. subscribe .-> X3[XPUB] -. propagate .-> X4[XSUB] -. register .-> P2[PUB]
+  end
 ```
 
 #### Data Flow

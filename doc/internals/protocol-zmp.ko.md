@@ -2,6 +2,15 @@
 
 # ZMP v1.0 프로토콜 상세
 
+## 왜 ZMTP 대신 ZMP인가?
+
+ZMP(zlink Message Protocol)는 ZMTP를 대체하는 전용 와이어 프로토콜이다.
+ZMTP의 가변 길이 크기 인코딩, 다단계 greeting/handshake 협상, 하위 호환
+기구는 zlink에 불필요한 파싱 복잡도와 프레임당 오버헤드를 추가한다. ZMP는
+고정 8바이트 헤더, 버전 협상 없는 2회 왕복 핸드셰이크, zlink의 라우팅/구독/제어
+의미에 맞춘 플래그 세트를 사용한다. 그 결과 파싱이 단순하고, 프레임당
+오버헤드가 작으며, 핸드셰이크가 더 적은 왕복으로 완료된다.
+
 ## 1. 설계 철학
 - ZMTP 비호환 (zlink 전용 최적화)
 - 8B 고정 헤더 (가변 길이 인코딩 배제)
@@ -39,14 +48,18 @@ Fields:
 ## 3. 핸드셰이크
 
 ### 3.1 시퀀스
-```
-Client                              Server
-   │                                   │
-   │─────── HELLO (greeting) ─────────►│
-   │◄────── HELLO (greeting) ──────────│
-   │─────── READY (metadata) ─────────►│
-   │◄────── READY (metadata) ──────────│
-   │◄─────── Data Exchange ───────────►│
+
+```mermaid
+sequenceDiagram
+    participant C as 클라이언트
+    participant S as 서버
+
+    C->>S: HELLO (greeting)
+    S->>C: HELLO (greeting)
+    C->>S: READY (메타데이터)
+    S->>C: READY (메타데이터)
+    C->>S: 데이터 교환
+    S->>C: 데이터 교환
 ```
 
 ### 3.2 HELLO 프레임

@@ -4,6 +4,8 @@
 
 ## 1. Overview
 
+Monitoring enables real-time observation of socket connection state — essential for diagnosing connectivity issues, detecting peer failures, and triggering application-level recovery.
+
 The zlink monitoring API allows real-time observation of socket events such as connection, disconnection, and handshake. Like other sockets, monitors support both recv mode (pull) and callback mode.
 
 ## 2. Enabling the Monitor
@@ -92,10 +94,17 @@ These report transport/session state for raw sockets.
 
 ### Connection flow
 
-```
-Client: CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY → start send/recv
-Server: LISTENING → ACCEPTED → CONNECTION_READY → start send/recv
-Close:  CONNECTION_READY → DISCONNECTED → CONNECT_DELAYED → reconnect...
+```mermaid
+flowchart LR
+    subgraph Client
+        CD1[CONNECT_DELAYED\noptional] --> CO1[CONNECTED] --> CR1[CONNECTION_READY] --> SR1[start send/recv]
+    end
+    subgraph Server
+        L1[LISTENING] --> A1[ACCEPTED] --> CR2[CONNECTION_READY] --> SR2[start send/recv]
+    end
+    subgraph Close
+        CR3[CONNECTION_READY] --> D1[DISCONNECTED] --> CD2[CONNECT_DELAYED] --> RE1[reconnect...]
+    end
 ```
 
 ### CONNECTION_READY details
@@ -127,35 +136,42 @@ When `HANDSHAKE_FAILED_PROTOCOL` fires, the `value` field contains one of these 
 
 ### Successful Connection
 
-```
-Client side:
-  CONNECT_DELAYED (optional) → CONNECTED → CONNECTION_READY
-
-Server side:
-  ACCEPTED → CONNECTION_READY
+```mermaid
+flowchart LR
+    subgraph Client side
+        CD[CONNECT_DELAYED\noptional] --> CO[CONNECTED] --> CR1[CONNECTION_READY]
+    end
+    subgraph Server side
+        A[ACCEPTED] --> CR2[CONNECTION_READY]
+    end
 ```
 
 ### Handshake Failure
 
-```
-Client side:
-  CONNECTED → HANDSHAKE_FAILED_* → DISCONNECTED
-
-Server side:
-  ACCEPTED → HANDSHAKE_FAILED_* → DISCONNECTED
+```mermaid
+flowchart LR
+    subgraph Client side
+        CO[CONNECTED] --> HF1[HANDSHAKE_FAILED_*] --> D1[DISCONNECTED]
+    end
+    subgraph Server side
+        A[ACCEPTED] --> HF2[HANDSHAKE_FAILED_*] --> D2[DISCONNECTED]
+    end
 ```
 
 ### Normal Disconnection
 
-```
-CONNECTION_READY → DISCONNECTED
+```mermaid
+flowchart LR
+    CR[CONNECTION_READY] --> D[DISCONNECTED]
 ```
 
 ### Reconnection
 
-```
-CONNECTED → CONNECTION_READY → DISCONNECTED →
-CONNECT_DELAYED → CONNECT_RETRIED → CONNECTED → CONNECTION_READY
+```mermaid
+flowchart LR
+    CO1[CONNECTED] --> CR1[CONNECTION_READY] --> D[DISCONNECTED]
+    D --> CD[CONNECT_DELAYED] --> RT[CONNECT_RETRIED]
+    RT --> CO2[CONNECTED] --> CR2[CONNECTION_READY]
 ```
 
 ## 6. DISCONNECTED Reason Codes
@@ -522,7 +538,7 @@ void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
 /* Start after expected clients are connection-ready */
 zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
-zlink_subscribe(sub, &parts, &count, 0, topic_buf, &topic_len);
+zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
 
 zlink_monitor_close(&pub_mon);
 zlink_monitor_close(&sub_mon);

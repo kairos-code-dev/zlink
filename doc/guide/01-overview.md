@@ -41,7 +41,7 @@ Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
 +------------------------------------------------------+
 |  Runtime Core  (core/src/core/)                      |
 |  ctx · own · reaper · multipart_send_txn             |
-|  options dispatch (core_socket · transport · protocol)|
+|  options dispatch (core_socket · transport · protocol|
 |  close/drain/finalization contract                   |
 +------------------------------------------------------+
 |  Engine Layer (Boost.Asio)                           |

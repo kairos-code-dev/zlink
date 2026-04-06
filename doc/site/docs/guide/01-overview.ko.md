@@ -40,7 +40,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 +------------------------------------------------------+
 |  Runtime Core  (core/src/core/)                      |
 |  ctx · own · reaper · multipart_send_txn             |
-|  options dispatch (core_socket · transport · protocol)|
+|  options dispatch (core_socket · transport · protocol|
 |  close/drain/finalization contract                   |
 +------------------------------------------------------+
 |  Engine Layer (Boost.Asio)                           |

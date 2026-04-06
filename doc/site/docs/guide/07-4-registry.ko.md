@@ -650,10 +650,10 @@ Registry를 전용 서비스로 실행한다. 여러 애플리케이션이 각�
 
 ```mermaid
 flowchart TB
-    R["Registry 프로세스\nRegistry (PUB:5550 + ROUTER:5551)"]
-    R -- "SERVICE_LIST 브로드캐스트" --> A["App A\nDiscovery\nSOCK"]
-    R -- "SERVICE_LIST 브로드캐스트" --> B["App B\nDiscovery\nSOCK"]
-    R -- "SERVICE_LIST 브로드캐스트" --> C["App C\nDiscovery\nSPOT"]
+    R["Registry Process\nRegistry (PUB:5550 + ROUTER:5551)"]
+    R -- "SERVICE_LIST broadcast" --> A["App A\nDiscovery\nSOCK"]
+    R -- "SERVICE_LIST broadcast" --> B["App B\nDiscovery\nSOCK"]
+    R -- "SERVICE_LIST broadcast" --> C["App C\nDiscovery\nSPOT"]
 ```
 
 프로덕션 배포에 권장하는 패턴:
@@ -2458,14 +2458,14 @@ sequenceDiagram
 
     S->>D: attach_discovery + bind
     D->>R: bootstrap + REGISTER
-    Note right of R: 서비스 목록에 추가
+    Note right of R: add to service list
     R->>D: REGISTER_ACK
-    loop 5초마다
+    loop Every 5 s
         D->>R: HEARTBEAT
     end
     S->>D: destroy
     D->>R: UNREGISTER
-    Note right of R: 목록에서 제거
+    Note right of R: remove from list
 ```
 
 ### 7.2 하트비트 타임아웃 및 자동 제거

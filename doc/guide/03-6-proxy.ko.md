@@ -35,25 +35,25 @@ int zlink_proxy (void *frontend, void *backend, void *capture);
 
 ```mermaid
 flowchart LR
-    PUB -->|데이터| XSUB
-    XSUB ==>|프록시| XPUB
-    XPUB -->|데이터| SUB
-    SUB -.->|구독| XPUB
-    XPUB -.->|프록시| XSUB
-    XSUB -.->|구독| PUB
+    PUB -->|data| XSUB
+    XSUB ==>|proxy| XPUB
+    XPUB -->|data| SUB
+    SUB -.->|subscribe| XPUB
+    XPUB -.->|proxy| XSUB
+    XSUB -.->|subscribe| PUB
 ```
 
 ### 3.1 내장 proxy 사용
 
 ```c
 void *xsub = zlink_socket(ctx, ZLINK_XSUB);
-zlink_bind(xsub, "tcp://*:5556");      /* PUB들이 connect */
+zlink_bind(xsub, "tcp://*:5556");      /* PUBs connect here */
 
 void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-zlink_bind(xpub, "tcp://*:5557");      /* SUB들이 connect */
+zlink_bind(xpub, "tcp://*:5557");      /* SUBs connect here */
 
 void *capture = zlink_socket(ctx, ZLINK_PUB);
-zlink_bind(capture, "tcp://*:5558");   /* optional: 메시지 기록 */
+zlink_bind(capture, "tcp://*:5558");   /* optional: message recording */
 
 zlink_proxy(xsub, xpub, capture);      /* blocking */
 ```
@@ -92,7 +92,7 @@ zlink_bind(xsub, "tcp://*:5556");
 zlink_bind(xpub, "tcp://*:5557");
 
 while (running) {
-    /* 데이터 전달: XSUB → 앱 → XPUB */
+    /* Data relay: XSUB → app → XPUB */
     zlink_routing_id_t rid;
     zlink_msg_t *parts = NULL;
     size_t count = 0;
@@ -101,18 +101,18 @@ while (running) {
     int rc = zlink_subscribe(xsub, &rid, &parts, &count,
                              topic, &topic_len, ZLINK_DONTWAIT);
     if (rc == 0) {
-        /* 커스텀 로직 삽입 가능 (필터링, 로깅 등) */
+        /* Insert custom logic here (filtering, logging, etc.) */
         zlink_publish(xpub, topic, parts, count, 0);
     }
 
-    /* 구독 전파: XPUB → 앱 → XSUB */
+    /* Subscription propagation: XPUB → app → XSUB */
     int subscribed;
     char sub_topic[256];
     size_t sub_len = sizeof(sub_topic);
     rc = zlink_subscription_event(xpub, &rid, &subscribed,
                                   sub_topic, &sub_len, ZLINK_DONTWAIT);
     if (rc == 0) {
-        /* 커스텀 로직 삽입 가능 (인가, 리맵핑 등) */
+        /* Insert custom logic here (authorization, remapping, etc.) */
         if (subscribed)
             zlink_set_subscription(xsub, sub_topic);
         else
@@ -174,7 +174,7 @@ flowchart LR
 flowchart LR
     P1[PUB 1] --> XSUB
     P2[PUB 2] --> XSUB
-    subgraph 프록시
+    subgraph Proxy
         XSUB --> XPUB
     end
     XPUB --> S1[SUB 1]

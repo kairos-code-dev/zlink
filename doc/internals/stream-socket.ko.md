@@ -23,10 +23,10 @@ STREAM 소켓은 ZMP를 사용하지 않는 외부 클라이언트(웹 브라우
 
 ```mermaid
 sequenceDiagram
-    participant App as 애플리케이션
-    participant SS as Stream 소켓
-    participant Eng as 엔진
-    participant Tr as 전송
+    participant App as Application
+    participant SS as Stream Socket
+    participant Eng as Engine
+    participant Tr as Transport
 
     App->>SS: zlink_send(rid + data)
     SS->>Eng: pipe_t::write()

@@ -13,11 +13,11 @@
 ### Transport별 오버헤드 분석
 
 ```
-inproc:  Lock-free pipe 직접 연결. 시스템콜 없음.
-ipc:     Unix 도메인 소켓. TCP 스택 우회.
-tcp:     TCP/IP 스택. Nagle 비활성화로 지연 최소화.
-ws:      tcp + WebSocket 프레이밍(2~14B 헤더). Binary mode.
-wss/tls: ws/tcp + TLS 암호화. 핸드셰이크 + 레코드 오버헤드.
+inproc:  Lock-free pipe direct connection. No system calls.
+ipc:     Unix domain socket. Bypasses TCP stack.
+tcp:     TCP/IP stack. Nagle disabled to minimize latency.
+ws:      tcp + WebSocket framing (2~14B header). Binary mode.
+wss/tls: ws/tcp + TLS encryption. Handshake + record overhead.
 ```
 
 ## 2. I/O 스레드 수 설정 가이드
@@ -193,22 +193,22 @@ LWM 공식: **`(HWM + 1) / 2`**
 
 ```mermaid
 sequenceDiagram
-    participant 송신자 as Sender
-    participant 큐 as Queue
-    participant 수신자 as Receiver
+    participant Sender
+    participant Queue
+    participant Receiver
 
-    Note over 큐: HWM = 100, LWM = 50
+    Note over Queue: HWM = 100, LWM = 50
 
-    송신자->>큐: 메시지 전송
-    Note over 큐: 큐가 100을 향해 채워짐
-    송신자->>큐: 큐가 100에 도달 (HWM)
-    큐-->>송신자: 블로킹 / EAGAIN (non-writable)
+    Sender->>Queue: Send messages
+    Note over Queue: Queue fills toward 100
+    Sender->>Queue: Queue reaches 100 (HWM)
+    Queue-->>Sender: Block / EAGAIN (non-writable)
 
-    수신자->>큐: 메시지 소비
-    Note over 큐: 큐가 50을 향해 감소
-    수신자->>큐: 큐가 50 이하로 감소 (LWM)
-    큐-->>송신자: activate_write (writable)
-    송신자->>큐: 전송 재개
+    Receiver->>Queue: Consume messages
+    Note over Queue: Queue drains toward 50
+    Receiver->>Queue: Queue drops to 50 (LWM)
+    Queue-->>Sender: activate_write (writable)
+    Sender->>Queue: Resume sending
 ```
 
 ### 실전 HWM 권장값
@@ -233,13 +233,13 @@ sequenceDiagram
 HWM은 연결별(per-connection)이므로, 총 메모리는 HWM × 메시지 크기 × 연결 수이다.
 
 ```
-예상 메모리 = SNDHWM × 평균_메시지_크기 × 연결_수
+Estimated memory = SNDHWM × average_message_size × connection_count
 
-예 1: 일반 서비스 — HWM=100, 메시지=1KB, 연결=1000
-      = 100 × 1KB × 1000 = ~100MB
+Example 1: Regular service — HWM=100, message=1KB, connections=1000
+           = 100 × 1KB × 1000 = ~100MB
 
-예 2: STREAM 대규모 — HWM=10, 메시지=1KB, 연결=10000
-      = 10 × 1KB × 10000 = ~100MB
+Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
+           = 10 × 1KB × 10000 = ~100MB
 ```
 
 ## 4. Send/Recv 흐름 제어

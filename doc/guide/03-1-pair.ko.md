@@ -15,7 +15,7 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
 
 ```mermaid
 flowchart LR
-    A[PAIR A] <-->|양방향| B[PAIR B]
+    A[PAIR A] <-->|Bidirectional| B[PAIR B]
 ```
 
 ## 2. 기본 사용법
@@ -25,11 +25,11 @@ flowchart LR
 ```c
 void *ctx = zlink_ctx_new();
 
-/* 서버 측 */
+/* Server side */
 void *server = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(server, "tcp://*:5555");
 
-/* 클라이언트 측 */
+/* Client side */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, "tcp://127.0.0.1:5555");
 ```
@@ -37,7 +37,7 @@ zlink_connect(client, "tcp://127.0.0.1:5555");
 ### 메시지 교환
 
 ```c
-/* 수신 핸들러 정의 */
+/* Define receive handler */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
@@ -49,22 +49,22 @@ void on_message(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-/* 서버는 recv 모드를 유지 */
+/* Server stays in recv model */
 void *server = zlink_socket(ctx, ZLINK_PAIR);
 
-/* 클라이언트 (송신 전용) */
+/* Client (send only) */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
 
 /* ... bind/connect ... */
 
-/* 클라이언트 → 서버 */
+/* Client → Server */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "Hello", 5);
 zlink_send(client, &msg, 1, 0);
-/* 서버는 zlink_recv() 또는 poller + zlink_recv()로 수신 */
+/* Server receives with zlink_recv() or poller + zlink_recv() */
 
-/* 서버 → 클라이언트 (양방향이지만 클라이언트도 수신하려면 핸들러 필요) */
+/* Server → Client (bidirectional, but client needs handler too for receiving) */
 zlink_msg_t reply;
 zlink_msg_init_size(&reply, 5);
 memcpy(zlink_msg_data(&reply), "World", 5);
@@ -96,7 +96,7 @@ zlink_msg_init_size(&parts[1], 6);
 memcpy(zlink_msg_data(&parts[1]), "foobar", 6);
 zlink_send(server, parts, 2, 0);
 
-/* 수신 측은 한 번의 zlink_recv() 호출로 두 프레임을 수신:
+/* Receiver pulls both frames from one zlink_recv() call:
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
@@ -116,7 +116,7 @@ zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
 if (rc == 0) {
-    /* parts[0..part_count-1] 처리 */
+    /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
 ```
@@ -143,8 +143,8 @@ if (rc == 0) {
 PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포함된다.
 
 ```
-단일 프레임:     [데이터]
-멀티파트 프레임:  [프레임1][프레임2]...[프레임N]
+Single frame:     [data]
+Multipart frame:  [frame1][frame2]...[frameN]
 ```
 
 > `source_rid` 등 공통 수신 인터페이스는
@@ -175,7 +175,7 @@ zlink_send(server, parts, 2, 0);
 int hwm = 5000;
 zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
-int linger = 0;  /* close 즉시 반환 */
+int linger = 0;  /* return immediately on close */
 zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
@@ -186,21 +186,21 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 가장 일반적인 PAIR 사용 사례. inproc transport로 스레드 간 zero-copy 통신.
 
 ```c
-/* 메인 스레드 */
+/* Main thread */
 void *signal = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(signal, "inproc://signal");
 
-/* 워커 스레드 */
+/* Worker thread */
 void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
-/* 워커 → 메인: 작업 완료 시그널 */
+/* Worker → Main: task completion signal */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "DONE", 4);
 zlink_send(worker_signal, &msg, 1, 0);
 
-/* 메인: on_signal 콜백이 "DONE"을 비동기로 수신 */
+/* Main: on_signal callback receives "DONE" asynchronously */
 ```
 
 > 참고: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce 패턴
@@ -210,16 +210,16 @@ zlink_send(worker_signal, &msg, 1, 0);
 네트워크를 통한 1:1 통신. 와일드카드 바인드로 포트 자동 할당 가능.
 
 ```c
-/* 서버: 와일드카드 포트 */
+/* Server: wildcard port */
 void *server = zlink_socket(ctx, ZLINK_PAIR);
 zlink_bind(server, "tcp://127.0.0.1:*");
 
-/* 할당된 엔드포인트 조회 */
+/* Query the assigned endpoint */
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-/* 클라이언트: 조회된 엔드포인트로 연결 */
+/* Client: connect using the queried endpoint */
 void *client = zlink_socket(ctx, ZLINK_PAIR);
 zlink_connect(client, endpoint);
 ```
@@ -258,8 +258,8 @@ zlink_connect(client, "ipc:///tmp/myapp.ipc");
 PAIR 소켓은 하나의 연결만 유지한다. 두 번째 피어가 connect하면 첫 번째 연결이 끊어진다.
 
 ```
- 허용:  PAIR A ↔ PAIR B      (1:1)
- 불가:  PAIR A ← PAIR B      (N:1 시도 시 기존 연결 끊김)
+ Allowed:  PAIR A ↔ PAIR B      (1:1)
+ Invalid:  PAIR A ← PAIR B      (N:1 attempt drops existing connection)
                ← PAIR C
 ```
 
@@ -270,12 +270,12 @@ N:1 통신이 필요하면 DEALER/ROUTER를 사용한다.
 inproc transport는 **반드시 bind가 connect보다 먼저** 호출되어야 한다.
 
 ```c
-/* 올바른 순서 */
-zlink_bind(a, "inproc://signal");     /* 1. bind 먼저 */
+/* Correct order */
+zlink_bind(a, "inproc://signal");     /* 1. bind first */
 zlink_connect(b, "inproc://signal");  /* 2. connect */
 
-/* 잘못된 순서 — 실패 */
-zlink_connect(b, "inproc://signal");  /* bind가 아직 없으므로 실패 */
+/* Wrong order -- fails */
+zlink_connect(b, "inproc://signal");  /* fails because bind has not been called yet */
 zlink_bind(a, "inproc://signal");
 ```
 
@@ -284,7 +284,7 @@ zlink_bind(a, "inproc://signal");
 IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 초과할 수 없다.
 
 ```c
-/* 너무 긴 경로 → ENAMETOOLONG 에러 */
+/* Path too long → ENAMETOOLONG error */
 zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 ```
 

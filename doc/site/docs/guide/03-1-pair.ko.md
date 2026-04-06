@@ -13,7 +13,7 @@ PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 형�
 
 ```mermaid
 flowchart LR
-    A[PAIR A] <-->|양방향| B[PAIR B]
+    A[PAIR A] <-->|Bidirectional| B[PAIR B]
 ```
 
 ## 2. 기본 사용법
@@ -23,117 +23,117 @@ flowchart LR
 === "C"
 
     ```c
-    void *ctx = zlink_ctx_new();
+    int hwm = 5000;
+    zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
-    /* 서버 측 */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(server, "tcp://*:5555");
-
-    /* 클라이언트 측 */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(client, "tcp://127.0.0.1:5555");
+    int linger = 0;  /* return immediately on close */
+    zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
     ```
 
 === "C++"
 
     ```cpp
-    zlink::context_t ctx;
+    // Correct order
+    a.bind("inproc://signal");     // 1. bind first
+    b.connect("inproc://signal");  // 2. connect
 
-    // 서버 측
-    zlink::pair_socket_t server(ctx);
-    server.bind("tcp://*:5555");
-
-    // 클라이언트 측
-    zlink::pair_socket_t client(ctx);
-    client.connect("tcp://127.0.0.1:5555");
+    // Wrong order -- fails
+    b.connect("inproc://signal");  // fails because bind has not been called yet
+    a.bind("inproc://signal");
     ```
 
 === "Java"
 
-    ```java
-    Context ctx = new Context();
+    ```python
+    import zlink
 
-    // 서버 측
-    PairSocket server = new PairSocket(ctx);
-    server.bind("tcp://*:5555");
+    ctx = zlink.Context()
 
-    // 클라이언트 측
-    PairSocket client = new PairSocket(ctx);
-    client.connect("tcp://127.0.0.1:5555");
+    server = zlink.PairSocket(ctx)
+    server.bind("tcp://*:5555")
+
+    client = zlink.PairSocket(ctx)
+    client.connect("tcp://localhost:5555")
+
+    client.send(b"ping")
+
+    source_rid, parts = server.recv()
+    print(f"Received: {parts[0].decode()}")
+
+    client.close()
+    server.close()
+    ctx.term()
     ```
 
 === "Python"
 
     ```python
-    ctx = zlink.Context()
+    # Correct order
+    a.bind("inproc://signal")      # 1. bind first
+    b.connect("inproc://signal")   # 2. connect
 
-    # 서버 측
-    server = zlink.PairSocket(ctx)
-    server.bind("tcp://*:5555")
-
-    # 클라이언트 측
-    client = zlink.PairSocket(ctx)
-    client.connect("tcp://127.0.0.1:5555")
+    # Wrong order -- fails
+    b.connect("inproc://signal")   # fails because bind has not been called yet
+    a.bind("inproc://signal")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    const ctx = new zlink.Context();
+    // Correct order
+    a.bind("inproc://signal");     // 1. bind first
+    b.connect("inproc://signal");  // 2. connect
 
-    // 서버 측
-    const server = new zlink.PairSocket(ctx);
-    server.bind("tcp://*:5555");
-
-    // 클라이언트 측
-    const client = new zlink.PairSocket(ctx);
-    client.connect("tcp://127.0.0.1:5555");
+    // Wrong order -- fails
+    b.connect("inproc://signal");  // fails because bind has not been called yet
+    a.bind("inproc://signal");
     ```
 
 === "C#/.NET"
 
     ```csharp
-    var ctx = new Context();
+    // Correct order
+    a.Bind("inproc://signal");     // 1. bind first
+    b.Connect("inproc://signal");  // 2. connect
 
-    // 서버 측
-    var server = new PairSocket(ctx);
-    server.Bind("tcp://*:5555");
-
-    // 클라이언트 측
-    var client = new PairSocket(ctx);
-    client.Connect("tcp://127.0.0.1:5555");
+    // Wrong order -- fails
+    b.Connect("inproc://signal");  // fails because bind has not been called yet
+    a.Bind("inproc://signal");
     ```
 
 === "Rust"
 
-    ```rust
-    let ctx = Context::new();
+    ```java
+    // Correct order
+    a.bind("inproc://signal");     // 1. bind first
+    b.connect("inproc://signal");  // 2. connect
 
-    // 서버 측
-    let server = ctx.pair_socket();
-    server.bind("tcp://*:5555");
-
-    // 클라이언트 측
-    let client = ctx.pair_socket();
-    client.connect("tcp://127.0.0.1:5555");
+    // Wrong order -- fails
+    b.connect("inproc://signal");  // fails because bind has not been called yet
+    a.bind("inproc://signal");
     ```
 
 === "Go"
 
-    ```go
-    ctx, err := zlink.NewContext()
-    if err != nil { log.Fatal(err) }
-    defer ctx.Close()
+    ```csharp
+    using Zlink;
 
-    // 서버 측
-    server, err := ctx.PairSocket()
-    if err != nil { log.Fatal(err) }
-    server.Bind("tcp://*:5555")
+    var ctx = new Context();
 
-    // 클라이언트 측
-    client, err := ctx.PairSocket()
-    if err != nil { log.Fatal(err) }
-    client.Connect("tcp://127.0.0.1:5555")
+    var server = new PairSocket(ctx);
+    server.Bind("tcp://*:5555");
+
+    var client = new PairSocket(ctx);
+    client.Connect("tcp://localhost:5555");
+
+    client.Send("ping");
+
+    var (rid, parts) = server.Receive();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
+
+    client.Close();
+    server.Close();
+    ctx.Term();
     ```
 
 ### 메시지 교환
@@ -142,177 +142,193 @@ flowchart LR
     수신 핸들러는 C 전용 타입(`zlink_routing_id_t`, `zlink_msg_t`)을
     사용한다. 각 바인딩은 자체적인 관용적 콜백/수신 인터페이스를 제공한다.
 
-    ```c
-    /* 수신 핸들러 정의 */
-    void on_message(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
+
+    int main()
     {
-        printf("Received: %.*s\n",
-               (int)zlink_msg_size(&parts[0]),
-               (char *)zlink_msg_data(&parts[0]));
-        for (size_t i = 0; i < part_count; i++)
-            zlink_msg_close(&parts[i]);
+        zlink::context_t ctx;
+
+        zlink::pair_socket_t server(ctx);
+        server.bind("tcp://*:5555");
+
+        zlink::pair_socket_t client(ctx);
+        client.connect("tcp://localhost:5555");
+
+        client.send("ping");
+
+        auto [rid, parts] = server.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        return 0;
     }
     ```
 
 === "C"
 
     ```c
-    /* 서버는 recv 모드를 유지 */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* 클라이언트 (송신 전용) */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
 
-    zlink_bind(server, "tcp://*:5555");
-    zlink_connect(client, "tcp://127.0.0.1:5555");
+        void *server = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(server, "tcp://*:5555");
 
-    /* 클라이언트 → 서버 */
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 5);
-    memcpy(zlink_msg_data(&msg), "Hello", 5);
-    zlink_send(client, &msg, 1, 0);
-    /* 서버는 zlink_recv() 또는 poller + zlink_recv()로 수신 */
+        void *client = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(client, "tcp://localhost:5555");
 
-    /* 서버 → 클라이언트 (양방향이지만 클라이언트도 수신하려면 핸들러 필요) */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send(server, &reply, 1, 0);
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 4);
+        memcpy(zlink_msg_data(&msg), "ping", 4);
+        zlink_send(client, &msg, 1, 0);
+
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts;
+        size_t count;
+        zlink_recv(server, &rid, &parts, &count, 0);
+        printf("Received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(client);
+        zlink_close(server);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
-    ```cpp
-    // 서버는 recv 모드를 유지
-    zlink::pair_socket_t server(ctx);
+    ```rust
+    // Correct order
+    a.bind("inproc://signal");     // 1. bind first
+    b.connect("inproc://signal");  // 2. connect
 
-    // 클라이언트 (송신 전용)
-    zlink::pair_socket_t client(ctx);
-
-    server.bind("tcp://*:5555");
-    client.connect("tcp://127.0.0.1:5555");
-
-    // 클라이언트 → 서버
-    client.send("Hello");
-
-    // 서버 → 클라이언트
-    server.send("World");
+    // Wrong order -- fails
+    b.connect("inproc://signal");  // fails because bind has not been called yet
+    a.bind("inproc://signal");
     ```
 
 === "Java"
 
-    ```java
-    // 서버는 recv 모드를 유지
-    PairSocket server = new PairSocket(ctx);
+    ```python
+    import zlink
 
-    // 클라이언트 (송신 전용)
-    PairSocket client = new PairSocket(ctx);
+    ctx = zlink.Context()
 
-    server.bind("tcp://*:5555");
-    client.connect("tcp://127.0.0.1:5555");
+    server = zlink.PairSocket(ctx)
+    server.bind("ipc:///tmp/myapp.ipc")
 
-    // 클라이언트 → 서버
-    client.send("Hello");
+    client = zlink.PairSocket(ctx)
+    client.connect("ipc:///tmp/myapp.ipc")
 
-    // 서버 → 클라이언트
-    server.send("World");
+    client.send(b"ipc-ping")
+
+    source_rid, parts = server.recv()
+    print(f"Received: {parts[0].decode()}")
+
+    client.close()
+    server.close()
+    ctx.term()
     ```
 
 === "Python"
 
-    ```python
-    # 서버는 recv 모드를 유지
-    server = zlink.PairSocket(ctx)
+    ```go
+    // Correct order
+    a.Bind("inproc://signal")  // 1. bind first
+    b.Connect("inproc://signal")  // 2. connect
 
-    # 클라이언트 (송신 전용)
-    client = zlink.PairSocket(ctx)
-
-    server.bind("tcp://*:5555")
-    client.connect("tcp://127.0.0.1:5555")
-
-    # 클라이언트 → 서버
-    client.send(b"Hello")
-
-    # 서버 → 클라이언트
-    server.send(b"World")
+    // Wrong order -- fails
+    b.Connect("inproc://signal")  // fails because bind has not been called yet
+    a.Bind("inproc://signal")
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // 서버는 recv 모드를 유지
-    const server = new zlink.PairSocket(ctx);
+    ```csharp
+    using Zlink;
 
-    // 클라이언트 (송신 전용)
-    const client = new zlink.PairSocket(ctx);
+    var ctx = new Context();
 
-    server.bind('tcp://*:5555');
-    client.connect('tcp://127.0.0.1:5555');
+    var server = new PairSocket(ctx);
+    server.Bind("ipc:///tmp/myapp.ipc");
 
-    // 클라이언트 → 서버
-    client.send(Buffer.from("Hello"));
+    var client = new PairSocket(ctx);
+    client.Connect("ipc:///tmp/myapp.ipc");
 
-    // 서버 → 클라이언트
-    server.send(Buffer.from("World"));
+    client.Send("ipc-ping");
+
+    var (rid, parts) = server.Receive();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
+
+    client.Close();
+    server.Close();
+    ctx.Term();
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    // 서버는 recv 모드를 유지
-    var server = new PairSocket(ctx);
+    ```c
+    /* Correct order */
+    zlink_bind(a, "inproc://signal");     /* 1. bind first */
+    zlink_connect(b, "inproc://signal");  /* 2. connect */
 
-    // 클라이언트 (송신 전용)
-    var client = new PairSocket(ctx);
-
-    server.Bind("tcp://*:5555");
-    client.Connect("tcp://127.0.0.1:5555");
-
-    // 클라이언트 → 서버
-    client.Send("Hello");
-
-    // 서버 → 클라이언트
-    server.Send("World");
+    /* Wrong order -- fails */
+    zlink_connect(b, "inproc://signal");  /* fails because bind has not been called yet */
+    zlink_bind(a, "inproc://signal");
     ```
 
 === "Rust"
 
     ```rust
-    // 서버는 recv 모드를 유지
-    let server = ctx.pair_socket();
+    use zlink::Context;
 
-    // 클라이언트 (송신 전용)
-    let client = ctx.pair_socket();
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    server.bind("tcp://*:5555")?;
-    client.connect("tcp://127.0.0.1:5555")?;
+        let server = ctx.pair_socket();
+        server.bind("tcp://*:5555")?;
 
-    // 클라이언트 → 서버
-    client.send(b"Hello");
+        let client = ctx.pair_socket();
+        client.connect("tcp://localhost:5555")?;
 
-    // 서버 → 클라이언트
-    server.send(b"World");
+        client.send(b"ping")?;
+
+        let (rid, parts) = server.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
-    ```go
-    // 서버는 recv 모드를 유지
-    server, _ := ctx.PairSocket()
+    ```typescript
+    import * as zlink from 'zlink';
 
-    // 클라이언트 (송신 전용)
-    client, _ := ctx.PairSocket()
+    const ctx = new zlink.Context();
 
-    server.Bind("tcp://*:5555")
-    client.Connect("tcp://127.0.0.1:5555")
+    const server = new zlink.PairSocket(ctx);
+    server.bind('tcp://*:5555');
 
-    // 클라이언트 → 서버
-    client.Send(zlink.NewMessage([]byte("Hello")))
+    const client = new zlink.PairSocket(ctx);
+    client.connect('tcp://localhost:5555');
 
-    // 서버 → 클라이언트
-    server.Send(zlink.NewMessage([]byte("World")))
+    client.send(Buffer.from('ping'));
+
+    const [rid, parts] = server.receive();
+    console.log(`Received: ${parts[0].toString()}`);
+
+    client.close();
+    server.close();
+    ctx.term();
     ```
 
 ??? example "Full Sample Code -- Recv"
@@ -361,16 +377,16 @@ flowchart LR
         void *client = zlink_socket(ctx, ZLINK_PAIR);
         zlink_connect(client, "tcp://127.0.0.1:5555");
 
-        /* callback 모드로 전환 */
+        /* Transition server to callback mode */
         zlink_recv_handler(server, on_message, NULL);
 
-        /* 클라이언트 → 서버 */
+        /* Send from client to server */
         zlink_msg_t msg;
         zlink_msg_init_size(&msg, 10);
         memcpy(zlink_msg_data(&msg), "hello-pair", 10);
         zlink_send(client, &msg, 1, 0);
 
-        zlink_msleep(200);  /* 콜백 실행 대기 */
+        zlink_msleep(200);  /* let callback fire */
 
         zlink_close(client);
         zlink_close(server);
@@ -397,13 +413,13 @@ flowchart LR
         zlink::pair_socket_t client(ctx);
         client.connect("tcp://127.0.0.1:5555");
 
-        // callback 모드로 전환
+        // Transition server to callback mode
         server.recv_handler([](const zlink::routing_id_t& source_rid,
                                std::span<zlink::msg> parts) {
             std::cout << "Callback received: " << parts[0].str() << std::endl;
         });
 
-        // 클라이언트 → 서버
+        // Send from client to server
         client.send("hello-pair");
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -427,13 +443,13 @@ flowchart LR
             PairSocket client = new PairSocket(ctx);
             client.connect("tcp://127.0.0.1:5555");
 
-            // callback 모드로 전환
+            // Transition server to callback mode
             server.onReceive((sourceRid, parts) -> {
                 System.out.println("Callback received: "
                     + parts[0].dataAsString());
             });
 
-            // 클라이언트 → 서버
+            // Send from client to server
             client.send("hello-pair");
 
             Thread.sleep(200);
@@ -459,13 +475,13 @@ flowchart LR
     client = zlink.PairSocket(ctx)
     client.connect("tcp://127.0.0.1:5555")
 
-    # callback 모드로 전환
+    # Transition server to callback mode
     def on_message(source_rid, parts):
         print(f"Callback received: {parts[0].decode()}")
 
     server.on_receive(on_message)
 
-    # 클라이언트 → 서버
+    # Send from client to server
     client.send(b"hello-pair")
 
     time.sleep(0.2)
@@ -488,12 +504,12 @@ flowchart LR
     const client = new zlink.PairSocket(ctx);
     client.connect('tcp://127.0.0.1:5555');
 
-    // callback 모드로 전환
+    // Transition server to callback mode
     server.recvHandler((sourceRid, parts) => {
         console.log(`Callback received: ${parts[0].toString()}`);
     });
 
-    // 클라이언트 → 서버
+    // Send from client to server
     client.send(Buffer.from('hello-pair'));
 
     await new Promise(r => setTimeout(r, 200));
@@ -516,12 +532,12 @@ flowchart LR
     var client = new PairSocket(ctx);
     client.Connect("tcp://127.0.0.1:5555");
 
-    // callback 모드로 전환
+    // Transition server to callback mode
     server.RecvHandler((sourceRid, parts) => {
         Console.WriteLine($"Callback received: {parts[0].GetString()}");
     });
 
-    // 클라이언트 → 서버
+    // Send from client to server
     client.Send("hello-pair");
 
     Thread.Sleep(200);
@@ -547,13 +563,13 @@ flowchart LR
         let client = ctx.pair_socket();
         client.connect("tcp://127.0.0.1:5555")?;
 
-        // callback 모드로 전환
+        // Transition server to callback mode
         server.on_receive(|source_rid, parts| {
             println!("Callback received: {}",
                      String::from_utf8_lossy(parts[0].data()));
         });
 
-        // 클라이언트 → 서버
+        // Send from client to server
         client.send(b"hello-pair")?;
 
         thread::sleep(Duration::from_millis(200));
@@ -589,12 +605,12 @@ flowchart LR
         defer client.Close()
         client.Connect("tcp://127.0.0.1:5555")
 
-        // callback 모드로 전환
+        // Transition server to callback mode
         server.OnMessage(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
             fmt.Printf("Callback received: %s\n", parts[0].Data())
         })
 
-        // 클라이언트 → 서버
+        // Send from client to server
         client.Send(zlink.NewMessage([]byte("hello-pair")))
 
         time.Sleep(200 * time.Millisecond)
@@ -620,82 +636,94 @@ flowchart LR
 
 === "C"
 
-    ```c
-    zlink_msg_t parts[2];
-    zlink_msg_init_size(&parts[0], 3);
-    memcpy(zlink_msg_data(&parts[0]), "foo", 3);
-    zlink_msg_init_size(&parts[1], 6);
-    memcpy(zlink_msg_data(&parts[1]), "foobar", 6);
-    zlink_send(server, parts, 2, 0);
+    ```python
+    import zlink
 
-    /* 수신 측은 한 번의 zlink_recv() 호출로 두 프레임을 수신:
-       parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
+    ctx = zlink.Context()
+
+    sender = zlink.PairSocket(ctx)
+    sender.bind("tcp://*:5556")
+
+    receiver = zlink.PairSocket(ctx)
+    receiver.connect("tcp://127.0.0.1:5556")
+
+    # Send two frames as one multipart message
+    sender.send([b"header", b"payload"])
+
+    # Receive both frames in one call
+    source_rid, parts = receiver.recv()
+    print(f"Frame 0: {parts[0].decode()}")
+    print(f"Frame 1: {parts[1].decode()}")
+
+    receiver.close()
+    sender.close()
+    ctx.term()
     ```
 
 === "C++"
 
-    ```cpp
-    server.send({"foo", "foobar"});
-
-    // 수신 측은 한 번의 recv() 호출로 두 프레임을 수신:
-    // parts[0] = "foo", parts[1] = "foobar"
+    ```java
+    // Path too long → ENAMETOOLONG error
+    socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     ```
 
 === "Java"
 
-    ```java
-    server.send("foo", "foobar");
-
-    // 수신 측은 한 번의 recv() 호출로 두 프레임을 수신:
-    // parts[0] = "foo", parts[1] = "foobar"
+    ```rust
+    // Path too long → ENAMETOOLONG error
+    socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     ```
 
 === "Python"
 
     ```python
-    server.send([b"foo", b"foobar"])
-
-    # 수신 측은 한 번의 recv() 호출로 두 프레임을 수신:
-    # parts[0] = b"foo", parts[1] = b"foobar"
+    # Path too long → ENAMETOOLONG error
+    socket.bind("ipc:///very/long/path/.../endpoint.ipc")
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    server.send([Buffer.from("foo"), Buffer.from("foobar")]);
+    ```go
+    socket.SetOption(zlink.OptionSndHWM, 5000)
 
-    // 수신 측은 한 번의 receive() 호출로 두 프레임을 수신:
-    // parts[0] = "foo", parts[1] = "foobar"
+    socket.SetOption(zlink.OptionLinger, 0)  // return immediately on close
     ```
 
 === "C#/.NET"
 
     ```csharp
-    server.Send("foo", "foobar");
-
-    // 수신 측은 한 번의 Receive() 호출로 두 프레임을 수신:
-    // parts[0] = "foo", parts[1] = "foobar"
+    // Path too long → ENAMETOOLONG error
+    socket.Bind("ipc:///very/long/path/.../endpoint.ipc");
     ```
 
 === "Rust"
 
-    ```rust
-    server.send(&[b"foo", b"foobar"]);
-
-    // 수신 측은 한 번의 recv() 호출로 두 프레임을 수신:
-    // parts[0] = "foo", parts[1] = "foobar"
+    ```c
+    /* Path too long → ENAMETOOLONG error */
+    zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
     ```
 
 === "Go"
 
-    ```go
-    server.SendMultipart([]zlink.Message{
-        zlink.NewMessage([]byte("foo")),
-        zlink.NewMessage([]byte("foobar")),
-    })
+    ```rust
+    use zlink::Context;
 
-    // 수신 측은 한 번의 recv() 호출로 두 프레임을 수신:
-    // parts[0] = "foo", parts[1] = "foobar"
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let server = ctx.pair_socket();
+        server.bind("ipc:///tmp/myapp.ipc")?;
+
+        let client = ctx.pair_socket();
+        client.connect("ipc:///tmp/myapp.ipc")?;
+
+        client.send(b"ipc-ping")?;
+
+        let (rid, parts) = server.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 > 참고: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
@@ -707,91 +735,81 @@ PAIR의 public API는 recv/poller-only다.
 
 === "C"
 
-    ```c
-    void *pair = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(pair, "tcp://*:5556");
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    zlink_routing_id_t source_rid;
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
-    if (rc == 0) {
-        /* parts[0..part_count-1] 처리 */
-        zlink_multipart_close(parts, part_count);
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::pair_socket_t server(ctx);
+        server.bind("ipc:///tmp/myapp.ipc");
+
+        zlink::pair_socket_t client(ctx);
+        client.connect("ipc:///tmp/myapp.ipc");
+
+        client.send("ipc-ping");
+
+        auto [rid, parts] = server.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        return 0;
     }
     ```
 
 === "C++"
 
-    ```cpp
-    zlink::pair_socket_t pair(ctx);
-    pair.bind("tcp://*:5556");
-
-    auto [source_rid, parts] = pair.recv();
-    // parts[0..N-1] 처리
+    ```typescript
+    // Path too long → ENAMETOOLONG error
+    socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     ```
 
 === "Java"
 
-    ```java
-    PairSocket pair = new PairSocket(ctx);
-    pair.bind("tcp://*:5556");
-
-    Message msg = pair.recv();
-    // msg.parts() 처리
+    ```cpp
+    // Path too long → ENAMETOOLONG error
+    socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     ```
 
 === "Python"
 
-    ```python
-    pair = zlink.PairSocket(ctx)
-    pair.bind("tcp://*:5556")
-
-    source_rid, parts = pair.recv()
-    # parts[0..N-1] 처리
+    ```go
+    // Path too long → ENAMETOOLONG error
+    socket.Bind("ipc:///very/long/path/.../endpoint.ipc")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    const pair = new zlink.PairSocket(ctx);
-    pair.bind("tcp://*:5556");
+    socket.setOption(ZLINK_OPT_SNDHWM, 5000);
 
-    const [sourceRid, parts] = pair.receive();
-    // parts[0..N-1] 처리
+    socket.setOption(ZLINK_OPT_LINGER, 0);  // return immediately on close
     ```
 
 === "C#/.NET"
 
     ```csharp
-    var pair = new PairSocket(ctx);
-    pair.Bind("tcp://*:5556");
+    socket.SetOption(ZLINK_OPT_SNDHWM, 5000);
 
-    var (sourceRid, parts) = pair.Receive();
-    // parts[0..N-1] 처리
+    socket.SetOption(ZLINK_OPT_LINGER, 0);  // return immediately on close
     ```
 
 === "Rust"
 
-    ```rust
-    let pair = ctx.pair_socket();
-    pair.bind("tcp://*:5556");
+    ```java
+    socket.setOption(ZLINK_OPT_SNDHWM, 5000);
 
-    let (source_rid, parts) = pair.recv();
-    // parts[0..N-1] 처리
+    socket.setOption(ZLINK_OPT_LINGER, 0);  // return immediately on close
     ```
 
 === "Go"
 
-    ```go
-    pair, _ := ctx.PairSocket()
-    pair.Bind("tcp://*:5556")
-
-    received, err := pair.Recv()
-    if err != nil { log.Fatal(err) }
-    defer received.Close()
-    // received parts 처리
-    ```
+```
+ Allowed:  PAIR A ↔ PAIR B      (1:1)
+ Invalid:  PAIR A ← PAIR B      (N:1 attempt drops existing connection)
+               ← PAIR C
+```
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
 > `EAGAIN`을 반환한다. 고급 backpressure 패턴은
@@ -815,8 +833,8 @@ PAIR의 public API는 recv/poller-only다.
 PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포함된다.
 
 ```
-단일 프레임:     [데이터]
-멀티파트 프레임:  [프레임1][프레임2]...[프레임N]
+Single frame:     [data]
+Multipart frame:  [frame1][frame2]...[frameN]
 ```
 
 > `source_rid` 등 공통 수신 인터페이스는
@@ -826,58 +844,68 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
 === "C"
 
-    ```c
-    zlink_msg_t parts[2];
-    zlink_msg_init_size(&parts[0], 6);
-    memcpy(zlink_msg_data(&parts[0]), "header", 6);
-    zlink_msg_init_size(&parts[1], 4);
-    memcpy(zlink_msg_data(&parts[1]), "body", 4);
-    zlink_send(server, parts, 2, 0);
+    ```typescript
+    import * as zlink from 'zlink';
+
+    const ctx = new zlink.Context();
+
+    const server = new zlink.PairSocket(ctx);
+    server.bind('ipc:///tmp/myapp.ipc');
+
+    const client = new zlink.PairSocket(ctx);
+    client.connect('ipc:///tmp/myapp.ipc');
+
+    client.send(Buffer.from('ipc-ping'));
+
+    const [rid, parts] = server.receive();
+    console.log(`Received: ${parts[0].toString()}`);
+
+    client.close();
+    server.close();
+    ctx.term();
     ```
 
 === "C++"
 
-    ```cpp
-    server.send({"header", "body"});
+    ```csharp
+    socket.SetOption(ZLINK_OPT_LINGER, 0);
     ```
 
 === "Java"
 
     ```java
-    server.send("header", "body");
+    socket.setOption(ZLINK_OPT_LINGER, 0);
     ```
 
 === "Python"
 
     ```python
-    server.send([b"header", b"body"])
+    socket.set_option(ZLINK_OPT_LINGER, 0)
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    server.send([Buffer.from("header"), Buffer.from("body")]);
+    ```rust
+    socket.set_option(ZLINK_OPT_LINGER, 0);
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    server.Send("header", "body");
+    ```go
+    socket.SetOption(zlink.OptionLinger, 0)
     ```
 
 === "Rust"
 
-    ```rust
-    server.send(&[b"header", b"body"]);
+    ```typescript
+    socket.setOption(ZLINK_OPT_LINGER, 0);
     ```
 
 === "Go"
 
-    ```go
-    server.SendMultipart([]zlink.Message{
-        zlink.NewMessage([]byte("header")),
-        zlink.NewMessage([]byte("body")),
-    })
+    ```c
+    int linger = 0;
+    zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
     ```
 
 ## 4. 소켓 옵션
@@ -892,12 +920,10 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
 === "C"
 
-    ```c
-    int hwm = 5000;
-    zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
+    ```rust
+    socket.set_option(ZLINK_OPT_SNDHWM, 5000);
 
-    int linger = 0;  /* close 즉시 반환 */
-    zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
+    socket.set_option(ZLINK_OPT_LINGER, 0);  // return immediately on close
     ```
 
 === "C++"
@@ -905,31 +931,51 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
     ```cpp
     socket.set_option(ZLINK_OPT_SNDHWM, 5000);
 
-    socket.set_option(ZLINK_OPT_LINGER, 0);  // close 즉시 반환
+    socket.set_option(ZLINK_OPT_LINGER, 0);  // return immediately on close
     ```
 
 === "Java"
 
-    ```java
-    socket.setOption(ZLINK_OPT_SNDHWM, 5000);
+    ```python
+    socket.set_option(ZLINK_OPT_SNDHWM, 5000)
 
-    socket.setOption(ZLINK_OPT_LINGER, 0);  // close 즉시 반환
+    socket.set_option(ZLINK_OPT_LINGER, 0)  # return immediately on close
     ```
 
 === "Python"
 
-    ```python
-    socket.set_option(ZLINK_OPT_SNDHWM, 5000)
-
-    socket.set_option(ZLINK_OPT_LINGER, 0)  # close 즉시 반환
+    ```cpp
+    socket.set_option(ZLINK_OPT_LINGER, 0);
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    socket.setOption(ZLINK_OPT_SNDHWM, 5000);
+    ```python
+    import zlink
 
-    socket.setOption(ZLINK_OPT_LINGER, 0);  // close 즉시 반환
+    ctx = zlink.Context()
+
+    # Server: wildcard port
+    server = zlink.PairSocket(ctx)
+    server.bind("tcp://127.0.0.1:*")
+
+    # Query the assigned endpoint
+    endpoint = server.get_option(ZLINK_OPT_LAST_ENDPOINT)
+    print(f"Server bound to: {endpoint}")
+
+    # Client: connect using the queried endpoint
+    client = zlink.PairSocket(ctx)
+    client.connect(endpoint)
+
+    # Exchange a message
+    client.send(b"ping")
+
+    source_rid, parts = server.recv()
+    print(f"Received: {parts[0].decode()}")
+
+    client.close()
+    server.close()
+    ctx.term()
     ```
 
 === "C#/.NET"
@@ -950,10 +996,29 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
 === "Go"
 
-    ```go
-    socket.SetOption(zlink.OptionSndHWM, 5000)
+    ```python
+    import zlink
 
-    socket.SetOption(zlink.OptionLinger, 0)  // close 즉시 반환
+    ctx = zlink.Context()
+
+    # Main thread side
+    main_sock = zlink.PairSocket(ctx)
+    main_sock.bind("inproc://signal")
+
+    # Worker thread side (same context)
+    worker_sock = zlink.PairSocket(ctx)
+    worker_sock.connect("inproc://signal")
+
+    # Worker sends completion signal
+    worker_sock.send(b"DONE")
+
+    # Main thread receives signal
+    source_rid, parts = main_sock.recv()
+    print(f"Signal: {parts[0].decode()}")
+
+    worker_sock.close()
+    main_sock.close()
+    ctx.term()
     ```
 
 ## 5. 사용 패턴
@@ -964,127 +1029,226 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
 === "C"
 
-    ```c
-    /* 메인 스레드 */
-    void *signal = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(signal, "inproc://signal");
+    ```csharp
+    using Zlink;
 
-    /* 워커 스레드 */
-    void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(worker_signal, "inproc://signal");
+    var ctx = new Context();
 
-    /* 워커 → 메인: 작업 완료 시그널 */
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, 4);
-    memcpy(zlink_msg_data(&msg), "DONE", 4);
-    zlink_send(worker_signal, &msg, 1, 0);
+    // Main thread side
+    var mainSock = new PairSocket(ctx);
+    mainSock.Bind("inproc://signal");
 
-    /* 메인: on_signal 콜백이 "DONE"을 비동기로 수신 */
+    // Worker thread side (same context)
+    var workerSock = new PairSocket(ctx);
+    workerSock.Connect("inproc://signal");
+
+    // Worker sends completion signal
+    workerSock.Send("DONE");
+
+    // Main thread receives signal
+    var (rid, parts) = mainSock.Receive();
+    Console.WriteLine($"Signal: {parts[0].GetString()}");
+
+    workerSock.Close();
+    mainSock.Close();
+    ctx.Term();
     ```
 
 === "C++"
 
     ```cpp
-    // 메인 스레드
-    zlink::pair_socket_t signal(ctx);
-    signal.bind("inproc://signal");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // 워커 스레드
-    zlink::pair_socket_t worker_signal(ctx);
-    worker_signal.connect("inproc://signal");
+    int main()
+    {
+        zlink::context_t ctx;
 
-    // 워커 → 메인: 작업 완료 시그널
-    worker_signal.send("DONE");
+        // Main thread side
+        zlink::pair_socket_t main_sock(ctx);
+        main_sock.bind("inproc://signal");
+
+        // Worker thread side (same context)
+        zlink::pair_socket_t worker_sock(ctx);
+        worker_sock.connect("inproc://signal");
+
+        // Worker sends completion signal
+        worker_sock.send("DONE");
+
+        // Main thread receives signal
+        auto [rid, parts] = main_sock.recv();
+        std::cout << "Signal: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
-    ```java
-    // 메인 스레드
-    PairSocket signal = new PairSocket(ctx);
-    signal.bind("inproc://signal");
+    ```csharp
+    using Zlink;
 
-    // 워커 스레드
-    PairSocket workerSignal = new PairSocket(ctx);
-    workerSignal.connect("inproc://signal");
+    var ctx = new Context();
 
-    // 워커 → 메인: 작업 완료 시그널
-    workerSignal.send("DONE");
+    var sender = new PairSocket(ctx);
+    sender.Bind("tcp://*:5556");
+
+    var receiver = new PairSocket(ctx);
+    receiver.Connect("tcp://127.0.0.1:5556");
+
+    // Send two frames as one multipart message
+    sender.Send("header", "payload");
+
+    // Receive both frames in one call
+    var (rid, parts) = receiver.Receive();
+    Console.WriteLine($"Frame 0: {parts[0].GetString()}");
+    Console.WriteLine($"Frame 1: {parts[1].GetString()}");
+
+    receiver.Close();
+    sender.Close();
+    ctx.Term();
     ```
 
 === "Python"
 
     ```python
-    # 메인 스레드
-    signal = zlink.PairSocket(ctx)
-    signal.bind("inproc://signal")
+    import zlink
 
-    # 워커 스레드
-    worker_signal = zlink.PairSocket(ctx)
-    worker_signal.connect("inproc://signal")
+    ctx = zlink.Context()
 
-    # 워커 → 메인: 작업 완료 시그널
-    worker_signal.send(b"DONE")
+    server = zlink.PairSocket(ctx)
+    server.bind("tcp://*:5555")
+
+    client = zlink.PairSocket(ctx)
+    client.connect("tcp://127.0.0.1:5555")
+
+    # Send from client to server
+    client.send(b"hello-pair")
+
+    # Receive on server
+    source_rid, parts = server.recv()
+    print(f"Received: {parts[0].decode()}")
+
+    # Send reply back (bidirectional)
+    server.send(b"World")
+
+    source_rid, reply = client.recv()
+    print(f"Reply: {reply[0].decode()}")
+
+    client.close()
+    server.close()
+    ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // 메인 스레드
-    const signal = new zlink.PairSocket(ctx);
-    signal.bind("inproc://signal");
+    import * as zlink from 'zlink';
 
-    // 워커 스레드
-    const workerSignal = new zlink.PairSocket(ctx);
-    workerSignal.connect("inproc://signal");
+    const ctx = new zlink.Context();
 
-    // 워커 → 메인: 작업 완료 시그널
-    workerSignal.send(Buffer.from("DONE"));
+    // Main thread side
+    const mainSock = new zlink.PairSocket(ctx);
+    mainSock.bind('inproc://signal');
+
+    // Worker thread side (same context)
+    const workerSock = new zlink.PairSocket(ctx);
+    workerSock.connect('inproc://signal');
+
+    // Worker sends completion signal
+    workerSock.send(Buffer.from('DONE'));
+
+    // Main thread receives signal
+    const [rid, parts] = mainSock.receive();
+    console.log(`Signal: ${parts[0].toString()}`);
+
+    workerSock.close();
+    mainSock.close();
+    ctx.term();
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    // 메인 스레드
-    var signal = new PairSocket(ctx);
-    signal.Bind("inproc://signal");
+    ```java
+    import dev.kairoscode.zlink.*;
 
-    // 워커 스레드
-    var workerSignal = new PairSocket(ctx);
-    workerSignal.Connect("inproc://signal");
+    public class IpcExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    // 워커 → 메인: 작업 완료 시그널
-    workerSignal.Send("DONE");
+            PairSocket server = new PairSocket(ctx);
+            server.bind("ipc:///tmp/myapp.ipc");
+
+            PairSocket client = new PairSocket(ctx);
+            client.connect("ipc:///tmp/myapp.ipc");
+
+            client.send("ipc-ping");
+
+            Message msg = server.recv();
+            System.out.println("Received: " + msg.partAsString(0));
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Rust"
 
     ```rust
-    // 메인 스레드
-    let signal = ctx.pair_socket();
-    signal.bind("inproc://signal");
+    use zlink::Context;
 
-    // 워커 스레드
-    let worker_signal = ctx.pair_socket();
-    worker_signal.connect("inproc://signal");
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    // 워커 → 메인: 작업 완료 시그널
-    worker_signal.send(b"DONE");
+        // Main thread side
+        let main_sock = ctx.pair_socket();
+        main_sock.bind("inproc://signal")?;
+
+        // Worker thread side (same context)
+        let worker_sock = ctx.pair_socket();
+        worker_sock.connect("inproc://signal")?;
+
+        // Worker sends completion signal
+        worker_sock.send(b"DONE")?;
+
+        // Main thread receives signal
+        let (rid, parts) = main_sock.recv()?;
+        println!("Signal: {}", String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
-    ```go
-    // 메인 스레드
-    signal, _ := ctx.PairSocket()
-    signal.Bind("inproc://signal")
+    ```csharp
+    using Zlink;
 
-    // 워커 스레드
-    workerSignal, _ := ctx.PairSocket()
-    workerSignal.Connect("inproc://signal")
+    var ctx = new Context();
 
-    // 워커 → 메인: 작업 완료 시그널
-    workerSignal.Send(zlink.NewMessage([]byte("DONE")))
+    // Server: wildcard port
+    var server = new PairSocket(ctx);
+    server.Bind("tcp://127.0.0.1:*");
+
+    // Query the assigned endpoint
+    var endpoint = server.GetOption(ZLINK_OPT_LAST_ENDPOINT);
+    Console.WriteLine($"Server bound to: {endpoint}");
+
+    // Client: connect using the queried endpoint
+    var client = new PairSocket(ctx);
+    client.Connect(endpoint);
+
+    // Exchange a message
+    client.Send("ping");
+
+    var (rid, parts) = server.Receive();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
+
+    client.Close();
+    server.Close();
+    ctx.Term();
     ```
 
 > 참고: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce 패턴
@@ -1095,125 +1259,231 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
 === "C"
 
-    ```c
-    /* 서버: 와일드카드 포트 */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(server, "tcp://127.0.0.1:*");
+    ```typescript
+    import * as zlink from 'zlink';
 
-    /* 할당된 엔드포인트 조회 */
-    char endpoint[256];
-    size_t len = sizeof(endpoint);
-    zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
+    const ctx = new zlink.Context();
 
-    /* 클라이언트: 조회된 엔드포인트로 연결 */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(client, endpoint);
+    const sender = new zlink.PairSocket(ctx);
+    sender.bind('tcp://*:5556');
+
+    const receiver = new zlink.PairSocket(ctx);
+    receiver.connect('tcp://127.0.0.1:5556');
+
+    // Send two frames as one multipart message
+    sender.send([Buffer.from('header'), Buffer.from('payload')]);
+
+    // Receive both frames in one call
+    const [rid, parts] = receiver.receive();
+    console.log(`Frame 0: ${parts[0].toString()}`);
+    console.log(`Frame 1: ${parts[1].toString()}`);
+
+    receiver.close();
+    sender.close();
+    ctx.term();
     ```
 
 === "C++"
 
     ```cpp
-    // 서버: 와일드카드 포트
-    zlink::pair_socket_t server(ctx);
-    server.bind("tcp://127.0.0.1:*");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    // 할당된 엔드포인트 조회
-    auto endpoint = server.get_option<std::string>(ZLINK_OPT_LAST_ENDPOINT);
+    int main()
+    {
+        zlink::context_t ctx;
 
-    // 클라이언트: 조회된 엔드포인트로 연결
-    zlink::pair_socket_t client(ctx);
-    client.connect(endpoint);
+        zlink::pair_socket_t sender(ctx);
+        sender.bind("tcp://*:5556");
+
+        zlink::pair_socket_t receiver(ctx);
+        receiver.connect("tcp://127.0.0.1:5556");
+
+        // Send two frames as one multipart message
+        sender.send({"header", "payload"});
+
+        // Receive both frames in one call
+        auto [rid, parts] = receiver.recv();
+        std::cout << "Frame 0: " << parts[0].str() << std::endl;
+        std::cout << "Frame 1: " << parts[1].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
-    ```java
-    // 서버: 와일드카드 포트
-    PairSocket server = new PairSocket(ctx);
-    server.bind("tcp://127.0.0.1:*");
+    ```csharp
+    using Zlink;
 
-    // 할당된 엔드포인트 조회
-    String endpoint = server.getOption(ZLINK_OPT_LAST_ENDPOINT);
+    var ctx = new Context();
 
-    // 클라이언트: 조회된 엔드포인트로 연결
-    PairSocket client = new PairSocket(ctx);
-    client.connect(endpoint);
+    var server = new PairSocket(ctx);
+    server.Bind("tcp://*:5555");
+
+    var client = new PairSocket(ctx);
+    client.Connect("tcp://127.0.0.1:5555");
+
+    // Send from client to server
+    client.Send("hello-pair");
+
+    // Receive on server
+    var (rid, parts) = server.Receive();
+    Console.WriteLine($"Received: {parts[0].GetString()}");
+
+    // Send reply back (bidirectional)
+    server.Send("World");
+
+    var (rid2, reply) = client.Receive();
+    Console.WriteLine($"Reply: {reply[0].GetString()}");
+
+    client.Close();
+    server.Close();
+    ctx.Term();
     ```
 
 === "Python"
 
-    ```python
-    # 서버: 와일드카드 포트
-    server = zlink.PairSocket(ctx)
-    server.bind("tcp://127.0.0.1:*")
+    ```typescript
+    import * as zlink from 'zlink';
 
-    # 할당된 엔드포인트 조회
-    endpoint = server.get_option(ZLINK_OPT_LAST_ENDPOINT)
+    const ctx = new zlink.Context();
 
-    # 클라이언트: 조회된 엔드포인트로 연결
-    client = zlink.PairSocket(ctx)
-    client.connect(endpoint)
+    // Server: wildcard port
+    const server = new zlink.PairSocket(ctx);
+    server.bind('tcp://127.0.0.1:*');
+
+    // Query the assigned endpoint
+    const endpoint = server.getOption(ZLINK_OPT_LAST_ENDPOINT);
+    console.log(`Server bound to: ${endpoint}`);
+
+    // Client: connect using the queried endpoint
+    const client = new zlink.PairSocket(ctx);
+    client.connect(endpoint);
+
+    // Exchange a message
+    client.send(Buffer.from('ping'));
+
+    const [rid, parts] = server.receive();
+    console.log(`Received: ${parts[0].toString()}`);
+
+    client.close();
+    server.close();
+    ctx.term();
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // 서버: 와일드카드 포트
-    const server = new zlink.PairSocket(ctx);
-    server.bind("tcp://127.0.0.1:*");
+    ```java
+    import dev.kairoscode.zlink.*;
 
-    // 할당된 엔드포인트 조회
-    const endpoint = server.getOption(ZLINK_OPT_LAST_ENDPOINT);
+    public class DnsConnectExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
 
-    // 클라이언트: 조회된 엔드포인트로 연결
-    const client = new zlink.PairSocket(ctx);
-    client.connect(endpoint);
+            PairSocket server = new PairSocket(ctx);
+            server.bind("tcp://*:5555");
+
+            PairSocket client = new PairSocket(ctx);
+            client.connect("tcp://localhost:5555");
+
+            client.send("ping");
+
+            Message msg = server.recv();
+            System.out.println("Received: " + msg.partAsString(0));
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    // 서버: 와일드카드 포트
-    var server = new PairSocket(ctx);
-    server.Bind("tcp://127.0.0.1:*");
+    ```rust
+    use zlink::Context;
 
-    // 할당된 엔드포인트 조회
-    var endpoint = server.GetOption(ZLINK_OPT_LAST_ENDPOINT);
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    // 클라이언트: 조회된 엔드포인트로 연결
-    var client = new PairSocket(ctx);
-    client.Connect(endpoint);
+        let sender = ctx.pair_socket();
+        sender.bind("tcp://*:5556")?;
+
+        let receiver = ctx.pair_socket();
+        receiver.connect("tcp://127.0.0.1:5556")?;
+
+        // Send two frames as one multipart message
+        sender.send(&[b"header", b"payload"])?;
+
+        // Receive both frames in one call
+        let (rid, parts) = receiver.recv()?;
+        println!("Frame 0: {}", String::from_utf8_lossy(parts[0].data()));
+        println!("Frame 1: {}", String::from_utf8_lossy(parts[1].data()));
+
+        Ok(())
+    }
     ```
 
 === "Rust"
 
     ```rust
-    // 서버: 와일드카드 포트
-    let server = ctx.pair_socket();
-    server.bind("tcp://127.0.0.1:*");
+    use zlink::Context;
 
-    // 할당된 엔드포인트 조회
-    let endpoint = server.get_option::<String>(ZLINK_OPT_LAST_ENDPOINT);
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
 
-    // 클라이언트: 조회된 엔드포인트로 연결
-    let client = ctx.pair_socket();
-    client.connect(&endpoint);
+        // Server: wildcard port
+        let server = ctx.pair_socket();
+        server.bind("tcp://127.0.0.1:*")?;
+
+        // Query the assigned endpoint
+        let endpoint = server.get_option::<String>(ZLINK_OPT_LAST_ENDPOINT);
+        println!("Server bound to: {}", endpoint);
+
+        // Client: connect using the queried endpoint
+        let client = ctx.pair_socket();
+        client.connect(&endpoint)?;
+
+        // Exchange a message
+        client.send(b"ping")?;
+
+        let (rid, parts) = server.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Go"
 
-    ```go
-    // 서버: 와일드카드 포트
-    server, _ := ctx.PairSocket()
-    server.Bind("tcp://127.0.0.1:*")
+    ```typescript
+    import * as zlink from 'zlink';
 
-    // 할당된 엔드포인트 조회
-    status, _ := server.StatusSnapshot()
-    endpoint := status.LocalEndpoint
+    const ctx = new zlink.Context();
 
-    // 클라이언트: 조회된 엔드포인트로 연결
-    client, _ := ctx.PairSocket()
-    client.Connect(endpoint)
+    const server = new zlink.PairSocket(ctx);
+    server.bind('tcp://*:5555');
+
+    const client = new zlink.PairSocket(ctx);
+    client.connect('tcp://127.0.0.1:5555');
+
+    // Send from client to server
+    client.send(Buffer.from('hello-pair'));
+
+    // Receive on server
+    const [rid, parts] = server.receive();
+    console.log(`Received: ${parts[0].toString()}`);
+
+    // Send reply back (bidirectional)
+    server.send(Buffer.from('World'));
+
+    const [rid2, reply] = client.receive();
+    console.log(`Reply: ${reply[0].toString()}`);
+
+    client.close();
+    server.close();
+    ctx.term();
     ```
 
 > 참고: `core/tests/test_pair_tcp.cpp` — `bind_loopback_ipv4()` + 와일드카드 바인드
@@ -1286,82 +1556,264 @@ PAIR 소켓의 메시지 프레임에는 **애플리케이션 데이터만** 포
 
 === "C"
 
-    ```c
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_bind(server, "ipc:///tmp/myapp.ipc");
+    ```cpp
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
-    zlink_connect(client, "ipc:///tmp/myapp.ipc");
+    int main()
+    {
+        zlink::context_t ctx;
+
+        // Server: wildcard port
+        zlink::pair_socket_t server(ctx);
+        server.bind("tcp://127.0.0.1:*");
+
+        // Query the assigned endpoint
+        auto endpoint = server.get_option<std::string>(ZLINK_OPT_LAST_ENDPOINT);
+        std::cout << "Server bound to: " << endpoint << std::endl;
+
+        // Client: connect using the queried endpoint
+        zlink::pair_socket_t client(ctx);
+        client.connect(endpoint);
+
+        // Exchange a message
+        client.send("ping");
+
+        auto [rid, parts] = server.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "C++"
 
     ```cpp
-    zlink::pair_socket_t server(ctx);
-    server.bind("ipc:///tmp/myapp.ipc");
+    #include <zlink/socket.hpp>
+    #include <iostream>
 
-    zlink::pair_socket_t client(ctx);
-    client.connect("ipc:///tmp/myapp.ipc");
+    int main()
+    {
+        zlink::context_t ctx;
+
+        zlink::pair_socket_t server(ctx);
+        server.bind("tcp://*:5555");
+
+        zlink::pair_socket_t client(ctx);
+        client.connect("tcp://127.0.0.1:5555");
+
+        // Send from client to server
+        client.send("hello-pair");
+
+        // Receive on server
+        auto [rid, parts] = server.recv();
+        std::cout << "Received: " << parts[0].str() << std::endl;
+
+        // Send reply back (bidirectional)
+        server.send("World");
+
+        auto [rid2, reply] = client.recv();
+        std::cout << "Reply: " << reply[0].str() << std::endl;
+
+        return 0;
+    }
     ```
 
 === "Java"
 
-    ```java
-    PairSocket server = new PairSocket(ctx);
-    server.bind("ipc:///tmp/myapp.ipc");
+    ```rust
+    use zlink::Context;
 
-    PairSocket client = new PairSocket(ctx);
-    client.connect("ipc:///tmp/myapp.ipc");
+    fn main() -> Result<(), Box<dyn std::error::Error>> {
+        let ctx = Context::new();
+
+        let server = ctx.pair_socket();
+        server.bind("tcp://*:5555")?;
+
+        let client = ctx.pair_socket();
+        client.connect("tcp://127.0.0.1:5555")?;
+
+        // Send from client to server
+        client.send(b"hello-pair")?;
+
+        // Receive on server
+        let (rid, parts) = server.recv()?;
+        println!("Received: {}", String::from_utf8_lossy(parts[0].data()));
+
+        // Send reply back (bidirectional)
+        server.send(b"World")?;
+
+        let (rid2, reply) = client.recv()?;
+        println!("Reply: {}", String::from_utf8_lossy(reply[0].data()));
+
+        Ok(())
+    }
     ```
 
 === "Python"
 
-    ```python
-    server = zlink.PairSocket(ctx)
-    server.bind("ipc:///tmp/myapp.ipc")
+    ```go
+    package main
 
-    client = zlink.PairSocket(ctx)
-    client.connect("ipc:///tmp/myapp.ipc")
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("ipc:///tmp/myapp.ipc")
+
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect("ipc:///tmp/myapp.ipc")
+
+        client.Send(zlink.NewMessage([]byte("ipc-ping")))
+
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+    }
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    const server = new zlink.PairSocket(ctx);
-    server.bind("ipc:///tmp/myapp.ipc");
+    ```java
+    import dev.kairoscode.zlink.*;
 
-    const client = new zlink.PairSocket(ctx);
-    client.connect("ipc:///tmp/myapp.ipc");
+    public class PairMultipartExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            PairSocket sender = new PairSocket(ctx);
+            sender.bind("tcp://*:5556");
+
+            PairSocket receiver = new PairSocket(ctx);
+            receiver.connect("tcp://127.0.0.1:5556");
+
+            // Send two frames as one multipart message
+            sender.send("header", "payload");
+
+            // Receive both frames in one call
+            Message msg = receiver.recv();
+            System.out.println("Frame 0: " + msg.partAsString(0));
+            System.out.println("Frame 1: " + msg.partAsString(1));
+
+            receiver.close();
+            sender.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    var server = new PairSocket(ctx);
-    server.Bind("ipc:///tmp/myapp.ipc");
+    ```java
+    import dev.kairoscode.zlink.*;
 
-    var client = new PairSocket(ctx);
-    client.Connect("ipc:///tmp/myapp.ipc");
+    public class InprocSignalExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            // Main thread side
+            PairSocket mainSock = new PairSocket(ctx);
+            mainSock.bind("inproc://signal");
+
+            // Worker thread side (same context)
+            PairSocket workerSock = new PairSocket(ctx);
+            workerSock.connect("inproc://signal");
+
+            // Worker sends completion signal
+            workerSock.send("DONE");
+
+            // Main thread receives signal
+            Message msg = mainSock.recv();
+            System.out.println("Signal: " + msg.partAsString(0));
+
+            workerSock.close();
+            mainSock.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Rust"
 
-    ```rust
-    let server = ctx.pair_socket();
-    server.bind("ipc:///tmp/myapp.ipc");
+    ```go
+    package main
 
-    let client = ctx.pair_socket();
-    client.connect("ipc:///tmp/myapp.ipc");
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("tcp://*:5555")
+
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect("tcp://localhost:5555")
+
+        client.Send(zlink.NewMessage([]byte("ping")))
+
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+    }
     ```
 
 === "Go"
 
-    ```go
-    server, _ := ctx.PairSocket()
-    server.Bind("ipc:///tmp/myapp.ipc")
+    ```java
+    import dev.kairoscode.zlink.*;
 
-    client, _ := ctx.PairSocket()
-    client.Connect("ipc:///tmp/myapp.ipc")
+    public class PairExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            PairSocket server = new PairSocket(ctx);
+            server.bind("tcp://*:5555");
+
+            PairSocket client = new PairSocket(ctx);
+            client.connect("tcp://127.0.0.1:5555");
+
+            // Send from client to server
+            client.send("hello-pair");
+
+            // Receive on server
+            Message msg = server.recv();
+            System.out.println("Received: " + msg.partAsString(0));
+
+            // Send reply back (bidirectional)
+            server.send("World");
+
+            Message reply = client.recv();
+            System.out.println("Reply: " + reply.partAsString(0));
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
     ```
 
 > 참고: `core/tests/test_pair_ipc.cpp` — IPC 경로 길이 검증 포함
@@ -1387,73 +1839,241 @@ inproc transport는 **반드시 bind가 connect보다 먼저** 호출되어야 �
 === "C"
 
     ```c
-    /* 올바른 순서 */
-    zlink_bind(a, "inproc://signal");     /* 1. bind 먼저 */
-    zlink_connect(b, "inproc://signal");  /* 2. connect */
+    #include <zlink.h>
+    #include <string.h>
+    #include <stdio.h>
 
-    /* 잘못된 순서 — 실패 */
-    zlink_connect(b, "inproc://signal");  /* bind가 아직 없으므로 실패 */
-    zlink_bind(a, "inproc://signal");
+    int main(void)
+    {
+        void *ctx = zlink_ctx_new();
+
+        void *server = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_bind(server, "ipc:///tmp/myapp.ipc");
+
+        void *client = zlink_socket(ctx, ZLINK_PAIR);
+        zlink_connect(client, "ipc:///tmp/myapp.ipc");
+
+        zlink_msg_t msg;
+        zlink_msg_init_size(&msg, 8);
+        memcpy(zlink_msg_data(&msg), "ipc-ping", 8);
+        zlink_send(client, &msg, 1, 0);
+
+        zlink_routing_id_t rid;
+        zlink_msg_t *parts;
+        size_t count;
+        zlink_recv(server, &rid, &parts, &count, 0);
+        printf("Received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+        zlink_multipart_close(parts, count);
+
+        zlink_close(client);
+        zlink_close(server);
+        zlink_ctx_term(ctx);
+        return 0;
+    }
     ```
 
 === "C++"
 
-    ```cpp
-    // 올바른 순서
-    a.bind("inproc://signal");     // 1. bind 먼저
-    b.connect("inproc://signal");  // 2. connect
+    ```java
+    import dev.kairoscode.zlink.*;
 
-    // 잘못된 순서 — 실패
-    b.connect("inproc://signal");  // bind가 아직 없으므로 실패
-    a.bind("inproc://signal");
+    public class TcpWildcardExample {
+        public static void main(String[] args) {
+            Context ctx = new Context();
+
+            // Server: wildcard port
+            PairSocket server = new PairSocket(ctx);
+            server.bind("tcp://127.0.0.1:*");
+
+            // Query the assigned endpoint
+            String endpoint = server.getOption(ZLINK_OPT_LAST_ENDPOINT);
+            System.out.println("Server bound to: " + endpoint);
+
+            // Client: connect using the queried endpoint
+            PairSocket client = new PairSocket(ctx);
+            client.connect(endpoint);
+
+            // Exchange a message
+            client.send("ping");
+
+            Message msg = server.recv();
+            System.out.println("Received: " + msg.partAsString(0));
+
+            client.close();
+            server.close();
+            ctx.close();
+        }
+    }
     ```
 
 === "Java"
 
-    ```java
-    // 올바른 순서
-    a.bind("inproc://signal");     // 1. bind 먼저
-    b.connect("inproc://signal");  // 2. connect
+    ```go
+    package main
 
-    // 잘못된 순서 — 실패
-    b.connect("inproc://signal");  // bind가 아직 없으므로 실패
-    a.bind("inproc://signal");
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        // Main thread side
+        mainSock, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer mainSock.Close()
+        mainSock.Bind("inproc://signal")
+
+        // Worker thread side (same context)
+        workerSock, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer workerSock.Close()
+        workerSock.Connect("inproc://signal")
+
+        // Worker sends completion signal
+        workerSock.Send(zlink.NewMessage([]byte("DONE")))
+
+        // Main thread receives signal
+        received, err := mainSock.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Signal: %s\n", received.Parts[0].Data())
+        received.Close()
+    }
     ```
 
 === "Python"
 
-    ```python
-    # 올바른 순서
-    a.bind("inproc://signal")      # 1. bind 먼저
-    b.connect("inproc://signal")   # 2. connect
+    ```go
+    package main
 
-    # 잘못된 순서 — 실패
-    b.connect("inproc://signal")   # bind가 아직 없으므로 실패
-    a.bind("inproc://signal")
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        sender, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer sender.Close()
+        sender.Bind("tcp://*:5556")
+
+        receiver, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer receiver.Close()
+        receiver.Connect("tcp://127.0.0.1:5556")
+
+        // Send two frames as one multipart message
+        sender.SendMultipart([]zlink.Message{
+            zlink.NewMessage([]byte("header")),
+            zlink.NewMessage([]byte("payload")),
+        })
+
+        // Receive both frames in one call
+        received, err := receiver.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Frame 0: %s\n", received.Parts[0].Data())
+        fmt.Printf("Frame 1: %s\n", received.Parts[1].Data())
+        received.Close()
+    }
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // 올바른 순서
-    a.bind("inproc://signal");     // 1. bind 먼저
-    b.connect("inproc://signal");  // 2. connect
+    ```go
+    package main
 
-    // 잘못된 순서 — 실패
-    b.connect("inproc://signal");  // bind가 아직 없으므로 실패
-    a.bind("inproc://signal");
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        // Server: wildcard port
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("tcp://127.0.0.1:*")
+
+        // Query the assigned endpoint
+        status, _ := server.StatusSnapshot()
+        endpoint := status.LocalEndpoint
+        fmt.Printf("Server bound to: %s\n", endpoint)
+
+        // Client: connect using the queried endpoint
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect(endpoint)
+
+        // Exchange a message
+        client.Send(zlink.NewMessage([]byte("ping")))
+
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+    }
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    // 올바른 순서
-    a.Bind("inproc://signal");     // 1. bind 먼저
-    b.Connect("inproc://signal");  // 2. connect
+    ```go
+    package main
 
-    // 잘못된 순서 — 실패
-    b.Connect("inproc://signal");  // bind가 아직 없으므로 실패
-    a.Bind("inproc://signal");
+    import (
+        "fmt"
+        "log"
+        "github.com/kairos-code-dev/zlink-go"
+    )
+
+    func main() {
+        ctx, err := zlink.NewContext()
+        if err != nil { log.Fatal(err) }
+        defer ctx.Close()
+
+        server, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer server.Close()
+        server.Bind("tcp://*:5555")
+
+        client, err := ctx.PairSocket()
+        if err != nil { log.Fatal(err) }
+        defer client.Close()
+        client.Connect("tcp://127.0.0.1:5555")
+
+        // Send from client to server
+        client.Send(zlink.NewMessage([]byte("hello-pair")))
+
+        // Receive on server
+        received, err := server.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+
+        // Send reply back (bidirectional)
+        server.Send(zlink.NewMessage([]byte("World")))
+
+        reply, err := client.Recv()
+        if err != nil { log.Fatal(err) }
+        fmt.Printf("Reply: %s\n", reply.Parts[0].Data())
+        reply.Close()
+    }
     ```
 
 === "Rust"

@@ -54,16 +54,16 @@ zlink는 8종의 소켓 타입을 제공한다.
 ### 의사결정 플로우
 
 ```
-통신 상대가 외부 클라이언트(브라우저, 게임)인가?
+Is the communication peer an external client (browser, game)?
 +-- Yes → STREAM (ws/wss/tcp/tls)
-+-- No → zlink 소켓 간 통신
-         +-- 1:1 전용인가?
++-- No → Communication between zlink sockets
+         +-- Is it 1:1 exclusive?
          |   +-- Yes → PAIR
-         +-- No → N:M 통신
-              +-- 발행-구독 (브로드캐스트)인가?
-              |   +-- 프록시/브로커 필요 → XPUB/XSUB
-              |   +-- 단순 발행-구독 → PUB/SUB
-              +-- 요청-응답 / 라우팅인가?
+         +-- No → N:M communication
+              +-- Publish-subscribe (broadcast)?
+              |   +-- Proxy/broker needed → XPUB/XSUB
+              |   +-- Simple pub-sub → PUB/SUB
+              +-- Request-reply / routing?
                   +-- DEALER/ROUTER
 ```
 
@@ -102,9 +102,9 @@ zlink는 8종의 소켓 타입을 제공한다.
 
 ```c
 int zlink_recv (void *socket,
-                zlink_routing_id_t *source_rid,  /* 송신자 routing_id */
-                zlink_msg_t **parts,              /* 멀티파트 데이터 */
-                size_t *part_count,               /* 프레임 수 */
+                zlink_routing_id_t *source_rid,  /* sender routing_id */
+                zlink_msg_t **parts,              /* multipart data */
+                size_t *part_count,               /* frame count */
                 zlink_send_flags_t flags);
 ```
 
@@ -143,35 +143,35 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 모든 소켓 타입에 공통되는 기본 패턴:
 
 ```c
-/* 1. Context 생성 */
+/* 1. Create Context */
 void *ctx = zlink_ctx_new();
 
-/* 2. 핸들러 콜백 정의 */
+/* 2. Define handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* 수신 메시지 처리 */
+    /* process received message */
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
 
-/* 3. 소켓 생성 (raw STREAM callback 예제) */
+/* 3. Create Socket (raw STREAM callback example) */
 void *socket = zlink_socket(ctx, ZLINK_STREAM);
 zlink_recv_handler(socket, on_message, NULL);
 
-/* 4. 소켓 옵션 설정 (bind/connect 전) */
+/* 4. Set socket options (before bind/connect) */
 zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
 
-/* 5. 연결 (bind 또는 connect) */
+/* 5. Establish connection (bind or connect) */
 zlink_bind(socket, "tcp://*:5555");
-// 또는
+// or
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-/* 6. 메시지 송신 (수신은 콜백으로 처리) */
+/* 6. Send messages (receive is handled by callback) */
 zlink_send(socket, data, size, flags);
 
-/* 7. 정리 */
+/* 7. Cleanup */
 zlink_close(socket);
 zlink_ctx_term(ctx);
 ```

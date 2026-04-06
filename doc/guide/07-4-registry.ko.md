@@ -31,7 +31,7 @@ void *ctx = zlink_ctx_new();
 
 /* === Registry === */
 void *registry = zlink_registry_new(ctx);
-/* PUB: 서비스 목록 브로드캐스트, ROUTER: 등록/하트비트/쿼리 */
+/* PUB: service list broadcast, ROUTER: registration/heartbeat/queries */
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Discovery === */
@@ -39,14 +39,14 @@ void *discovery = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SOCKET, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* === ROUTER 소켓 (서버, Discovery 관리) === */
+/* === ROUTER socket (server, Discovery-managed) === */
 void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 zlink_socket_attach_discovery(server, discovery);
 
-/* ... 애플리케이션 로직 ... */
+/* ... application logic ... */
 
-/* 정리 */
+/* Cleanup */
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
@@ -59,15 +59,15 @@ zlink_ctx_term(ctx);
 ### 3.1 하트비트
 
 ```c
-/* interval_ms: 서비스가 하트비트를 보내는 주기 (기본 5000ms)
-   timeout_ms:  무응답 서비스 만료 시간         (기본 15000ms) */
+/* interval_ms: how often services send heartbeats (default 5000 ms)
+   timeout_ms:  when to expire silent services   (default 15000 ms) */
 zlink_registry_set_heartbeat(registry, 5000, 15000);
 ```
 
 ### 3.2 브로드캐스트 주기
 
 ```c
-/* PUB에 전체 SERVICE_LIST를 발행하는 주기 (기본 30000ms) */
+/* How often the full SERVICE_LIST is published on PUB (default 30000 ms) */
 zlink_registry_set_broadcast_interval(registry, 30000);
 ```
 
@@ -76,11 +76,11 @@ zlink_registry_set_broadcast_interval(registry, 30000);
 Registry의 내부 소켓에 저수준 소켓 옵션을 적용한다:
 
 ```c
-/* 예: PUB 소켓에 TLS 설정 */
+/* Example: set TLS on the PUB socket */
 zlink_registry_setsockopt(registry,
-    ZLINK_REGISTRY_SOCKET_PUB,        /* 대상 소켓 */
-    ZLINK_TLS_CA_CERT,                /* 옵션 */
-    ca_pem, strlen(ca_pem));          /* 값 */
+    ZLINK_REGISTRY_SOCKET_PUB,        /* target socket */
+    ZLINK_TLS_CA_CERT,                /* option */
+    ca_pem, strlen(ca_pem));          /* value */
 ```
 
 | 소켓 역할 | 상수 | 용도 |
@@ -92,7 +92,7 @@ zlink_registry_setsockopt(registry,
 ### 3.4 클러스터 ID
 
 ```c
-/* 클러스터 동기화를 위한 고유 ID 할당 (노드마다 고유해야 함) */
+/* Assign a unique ID for cluster synchronization (must be unique per node) */
 zlink_registry_set_id(registry, 1);
 ```
 
@@ -101,13 +101,13 @@ zlink_registry_set_id(registry, 1);
 TLS는 해당 내부 소켓의 소켓 옵션을 통해 구성한다:
 
 ```c
-/* PUB에 TLS 설정 (Discovery로의 브로드캐스트) */
+/* TLS on PUB (broadcast to Discovery) */
 zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_PUB,
     ZLINK_TLS_SERVER_CERT, cert_pem, strlen(cert_pem));
 zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_PUB,
     ZLINK_TLS_SERVER_KEY, key_pem, strlen(key_pem));
 
-/* ROUTER에 TLS 설정 (등록/하트비트) */
+/* TLS on ROUTER (registration/heartbeat) */
 zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_ROUTER,
     ZLINK_TLS_SERVER_CERT, cert_pem, strlen(cert_pem));
 zlink_registry_setsockopt(registry, ZLINK_REGISTRY_SOCKET_ROUTER,
@@ -125,10 +125,10 @@ Registry를 전용 서비스로 실행한다. 여러 애플리케이션이 각�
 
 ```mermaid
 flowchart TB
-    R["Registry 프로세스\nRegistry (PUB:5550 + ROUTER:5551)"]
-    R -- "SERVICE_LIST 브로드캐스트" --> A["App A\nDiscovery\nSOCK"]
-    R -- "SERVICE_LIST 브로드캐스트" --> B["App B\nDiscovery\nSOCK"]
-    R -- "SERVICE_LIST 브로드캐스트" --> C["App C\nDiscovery\nSPOT"]
+    R["Registry Process\nRegistry (PUB:5550 + ROUTER:5551)"]
+    R -- "SERVICE_LIST broadcast" --> A["App A\nDiscovery\nSOCK"]
+    R -- "SERVICE_LIST broadcast" --> B["App B\nDiscovery\nSOCK"]
+    R -- "SERVICE_LIST broadcast" --> C["App C\nDiscovery\nSPOT"]
 ```
 
 프로덕션 배포에 권장하는 패턴:
@@ -148,22 +148,22 @@ DEALER 클라이언트를 연결하는 예제다.
 ```c
 void *ctx = zlink_ctx_new();
 
-/* Registry (임베디드) */
+/* Registry (embedded) */
 void *registry = zlink_registry_new(ctx);
-/* PUB: 서비스 목록 브로드캐스트, ROUTER: 등록/하트비트/쿼리 */
+/* PUB: service list broadcast, ROUTER: registration/heartbeat/queries */
 zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
-/* Discovery (같은 프로세스) */
+/* Discovery (same process) */
 void *discovery = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
-/* ROUTER 소켓 (서버, Discovery 관리) */
+/* ROUTER socket (server, Discovery-managed) */
 void *server = zlink_socket_new(ctx, ZLINK_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 zlink_socket_attach_discovery(server, discovery);
 
-/* DEALER 소켓 (클라이언트, 같은 프로세스) */
+/* DEALER socket (client, same process) */
 void *client_disc = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
@@ -171,18 +171,18 @@ zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 void *client = zlink_socket_new(ctx, ZLINK_DEALER);
 zlink_socket_attach_discovery(client, client_disc);
 
-/* 요청 전송 */
+/* Send request */
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_send(client, &part, 1, 0);
 
-/* 응답 수신 */
+/* Receive reply */
 zlink_msg_t *reply_parts = NULL;
 size_t reply_count = 0;
 zlink_recv(client, &reply_parts, &reply_count, 0);
 
-/* 정리 (역순) */
+/* Cleanup (reverse order) */
 zlink_close(client);
 zlink_discovery_destroy(&client_disc);
 zlink_close(server);
@@ -206,7 +206,7 @@ void *reg1 = zlink_registry_new(ctx);
 zlink_registry_set_id(reg1, 1);
 zlink_registry_add_peer(reg1, "tcp://registry2:5550");
 zlink_registry_add_peer(reg1, "tcp://registry3:5550");
-/* PUB: 서비스 목록 브로드캐스트, ROUTER: 등록/하트비트/쿼리 */
+/* PUB: service list broadcast, ROUTER: registration/heartbeat/queries */
 zlink_registry_bind(reg1, "tcp://*:5550", "tcp://*:5551");
 ```
 
@@ -244,7 +244,7 @@ zlink_registry_set_id(reg1, 1);
 zlink_registry_add_peer(reg1, "tcp://registry2:5550");
 zlink_registry_add_peer(reg1, "tcp://registry3:5550");
 zlink_registry_set_heartbeat(reg1, 5000, 15000);
-/* PUB: 서비스 목록 브로드캐스트, ROUTER: 등록/하트비트/쿼리 */
+/* PUB: service list broadcast, ROUTER: registration/heartbeat/queries */
 zlink_registry_bind(reg1, "tcp://*:5550", "tcp://*:5551");
 
 /* === Node 2 === */
@@ -263,7 +263,7 @@ zlink_registry_add_peer(reg3, "tcp://registry2:5550");
 zlink_registry_set_heartbeat(reg3, 5000, 15000);
 zlink_registry_bind(reg3, "tcp://*:5550", "tcp://*:5551");
 
-/* Discovery가 여러 Registry에 연결 (HA — 서비스 가시성은 하나만으로도 충분) */
+/* Discovery connects to multiple Registries (HA — a single one suffices for service visibility) */
 void *discovery = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SOCKET, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
@@ -272,7 +272,7 @@ zlink_discovery_connect_registry(discovery, "tcp://registry3:5551");
 
 /* ... */
 
-/* 정리 */
+/* Cleanup */
 zlink_discovery_destroy(&discovery);
 zlink_registry_destroy(&reg3);
 zlink_registry_destroy(&reg2);
@@ -291,11 +291,11 @@ Registry는 글로벌 서비스 토폴로지를 조회하는 API를 제공한다
 #### 전체 스냅샷
 
 ```c
-/* 필요한 개수 먼저 조회 */
+/* Query required count first */
 size_t count = 0;
 zlink_registry_topology_snapshot(registry, NULL, &count);
 
-/* 할당 후 조회 */
+/* Allocate and fetch */
 zlink_registry_topology_entry_t *entries = malloc(
     count * sizeof(zlink_registry_topology_entry_t));
 zlink_registry_topology_snapshot(registry, entries, &count);
@@ -312,7 +312,7 @@ free(entries);
 #### 필터 기반 조회
 
 ```c
-/* "payment-service"의 READY 상태 SOCKET 인스턴스만 조회 */
+/* Query only READY SOCKET instances of "payment-service" */
 zlink_registry_topology_filter_t filter;
 memset(&filter, 0, sizeof(filter));
 filter.service_kind = ZLINK_SERVICE_KIND_SOCKET;
@@ -324,7 +324,7 @@ size_t count = 64;
 zlink_registry_topology_entry_t entries[64];
 zlink_registry_topology_query(registry, &filter, entries, &count);
 
-printf("READY 인스턴스: %zu\n", count);
+printf("READY instances: %zu\n", count);
 for (size_t i = 0; i < count; i++) {
     printf("  %s (ready_count=%u)\n",
            entries[i].endpoint, entries[i].ready_count);
@@ -367,11 +367,11 @@ for (size_t i = 0; i < count; i++) {
 ```c
 void *ctx = zlink_ctx_new();
 
-/* 쿼리 클라이언트 생성 및 Registry ROUTER 엔드포인트 연결 */
+/* Create query client and connect to Registry ROUTER endpoint */
 void *client = zlink_registry_query_client_new(ctx);
 zlink_registry_query_client_connect(client, "tcp://registry1:5551");
 
-/* 필터 없는 스냅샷 (NULL 필터로 전체 조회) */
+/* Unfiltered snapshot (pass NULL filter for all entries) */
 size_t count = 0;
 zlink_registry_query_snapshot(client, NULL, NULL, &count);
 
@@ -379,7 +379,7 @@ zlink_registry_topology_entry_t *entries = malloc(
     count * sizeof(zlink_registry_topology_entry_t));
 zlink_registry_query_snapshot(client, NULL, entries, &count);
 
-/* 토폴로지 덤프 출력 */
+/* Print topology dump */
 for (size_t i = 0; i < count; i++) {
     const char *kind_str = "?";
     if (entries[i].service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
@@ -399,7 +399,7 @@ for (size_t i = 0; i < count; i++) {
 }
 free(entries);
 
-/* 필터 기반 원격 조회 */
+/* Filtered remote query */
 zlink_registry_topology_filter_t filter;
 memset(&filter, 0, sizeof(filter));
 filter.state = ZLINK_TOPOLOGY_STATE_LOST;
@@ -407,9 +407,9 @@ filter.state = ZLINK_TOPOLOGY_STATE_LOST;
 size_t lost_count = 64;
 zlink_registry_topology_entry_t lost[64];
 zlink_registry_query_snapshot(client, &filter, lost, &lost_count);
-printf("LOST 엔트리: %zu\n", lost_count);
+printf("LOST entries: %zu\n", lost_count);
 
-/* 정리 */
+/* Cleanup */
 zlink_registry_query_destroy(&client);
 zlink_ctx_term(ctx);
 ```
@@ -423,7 +423,7 @@ Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 opa
 #### Registry Member Peer 조회
 
 ```c
-/* 로컬 Registry에서 특정 서비스의 member peer 조회 */
+/* Query member peers of a specific service from the local Registry */
 size_t count = 0;
 zlink_registry_member_peers(registry,
     ZLINK_SERVICE_TYPE_SOCKET, "payment-service", NULL, &count);
@@ -445,7 +445,7 @@ free(peers);
 #### Member Peer 메타데이터
 
 ```c
-/* 특정 피어의 opaque 메타데이터 blob 조회 */
+/* Retrieve opaque metadata blob for a specific peer */
 zlink_msg_t metadata;
 zlink_msg_init(&metadata);
 int rc = zlink_registry_member_peer_metadata(registry,
@@ -472,7 +472,7 @@ zlink_msg_close(&metadata);
 #### Discovery Member Peer 조회
 
 ```c
-/* 로컬 Discovery 캐시에서 member peer 조회 */
+/* Query member peers from the local Discovery cache */
 size_t count = 0;
 zlink_discovery_member_peers(discovery, NULL, &count);
 
@@ -489,7 +489,7 @@ for (size_t i = 0; i < count; i++) {
 }
 free(peers);
 
-/* Discovery를 통해 특정 피어의 메타데이터 조회 */
+/* Retrieve metadata for a specific peer via Discovery */
 zlink_msg_t metadata;
 zlink_msg_init(&metadata);
 zlink_discovery_member_peer_metadata(discovery,
@@ -511,14 +511,14 @@ sequenceDiagram
 
     S->>D: attach_discovery + bind
     D->>R: bootstrap + REGISTER
-    Note right of R: 서비스 목록에 추가
+    Note right of R: add to service list
     R->>D: REGISTER_ACK
-    loop 5초마다
+    loop Every 5 s
         D->>R: HEARTBEAT
     end
     S->>D: destroy
     D->>R: UNREGISTER
-    Note right of R: 목록에서 제거
+    Note right of R: remove from list
 ```
 
 ### 7.2 하트비트 타임아웃 및 자동 제거

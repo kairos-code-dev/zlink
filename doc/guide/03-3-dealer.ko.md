@@ -17,14 +17,18 @@ send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하�
 
 ```mermaid
 flowchart LR
-    DA[DEALER A] <-->|양방향 비동기| DB[DEALER B]
+    D1[DEALER 1] -->|round-robin| R[ROUTER]
+    D2[DEALER 2] -->|round-robin| R
 ```
 
-```mermaid
-flowchart LR
-    D[DEALER] -->|msg 1| W1[DEALER 1]
-    D -->|msg 2| W2[DEALER 2]
-    D -->|msg 3| W3[DEALER 3]
+```c
+/* DEALER → ROUTER send */
+zlink_msg_t parts[2];
+zlink_msg_init_size(&parts[0], 6);
+memcpy(zlink_msg_data(&parts[0]), "header", 6);
+zlink_msg_init_size(&parts[1], 4);
+memcpy(zlink_msg_data(&parts[1]), "body", 4);
+zlink_send(dealer, parts, 2, 0);
 ```
 
 ### 구체적 시나리오: 3개 DEALER가 1개 ROUTER로 전송
@@ -51,17 +55,17 @@ DEALER가 여러 ROUTER에 연결하면 메시지가 순환 분배된다
 ```c
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 
-/* routing_id 설정 (선택, ROUTER에서 식별용) */
+/* Set routing_id (optional, used for identification by ROUTER) */
 zlink_set_routing_id(dealer, "client-1", 8);
 
-/* 서버에 연결 */
+/* Connect to server */
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
 
 ### 메시지 송수신
 
 ```c
-/* 요청 전송 — 순서 제약 없이 연속 전송 가능 */
+/* Send requests -- can send consecutively without ordering constraints */
 zlink_msg_t msg1, msg2, msg3;
 zlink_msg_init_size(&msg1, 9);
 memcpy(zlink_msg_data(&msg1), "request-1", 9);
@@ -75,7 +79,7 @@ zlink_msg_init_size(&msg3, 9);
 memcpy(zlink_msg_data(&msg3), "request-3", 9);
 zlink_send(dealer, &msg3, 1, 0);
 
-/* 응답은 생성 시 등록한 핸들러 콜백으로 디스패치됨 */
+/* Responses are dispatched to the handler callback registered at creation */
 ```
 
 ### 수신 모드
@@ -88,7 +92,7 @@ zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 int rc = zlink_recv(dealer, &source_rid, &parts, &part_count, 0);
 if (rc == 0) {
-    /* parts[0..part_count-1] 처리 */
+    /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
 ```
@@ -126,13 +130,14 @@ if (rc == 0) {
 ## 3. 사용 예제
 
 ```c
-/* DEALER ↔ DEALER 멀티파트 전송 */
-zlink_msg_t parts[2];
-zlink_msg_init_size(&parts[0], 6);
-memcpy(zlink_msg_data(&parts[0]), "header", 6);
-zlink_msg_init_size(&parts[1], 4);
-memcpy(zlink_msg_data(&parts[1]), "body", 4);
-zlink_send(dealer, parts, 2, 0);
+/* Send with no peer connected */
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "data", 4);
+int rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
+if (rc == -1 && errno == EAGAIN) {
+    /* HWM exceeded or no peer connected */
+}
 ```
 
 ## 4. 소켓 옵션
@@ -153,7 +158,7 @@ zlink_send(dealer, parts, 2, 0);
 ROUTER가 DEALER를 식별하려면 명시적으로 routing_id를 설정한다.
 
 ```c
-/* bind/connect 전에 설정 */
+/* Set before bind/connect */
 zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ```
@@ -169,12 +174,14 @@ PAIR와 유사하지만 HWM과 자동 재연결을 지원한다. 응답이 필�
 
 ```c
 void *a = zlink_socket(ctx, ZLINK_DEALER);
+/* Receive with zlink_recv() */
 zlink_bind(a, "tcp://*:5558");
 
 void *b = zlink_socket(ctx, ZLINK_DEALER);
+/* Receive with zlink_recv() */
 zlink_connect(b, "tcp://127.0.0.1:5558");
 
-/* 양방향 자유 전송 */
+/* Bidirectional free send */
 zlink_msg_t ping;
 zlink_msg_init_size(&ping, 4);
 memcpy(zlink_msg_data(&ping), "ping", 4);
@@ -185,7 +192,7 @@ zlink_msg_init_size(&pong, 4);
 memcpy(zlink_msg_data(&pong), "pong", 4);
 zlink_send(b, &pong, 1, 0);
 
-/* b가 "ping" 수신, a가 "pong" 수신 */
+/* on_message_b receives "ping", on_message_a receives "pong" */
 ```
 
 ### 패턴 2: 1:N Round-robin 작업 분배
@@ -194,27 +201,34 @@ PUSH/PULL 없이 작업을 N개 워커에 순환 분배하는 패턴.
 응답이 필요 없는 작업 분배 또는 파이프라인 단계 간 전달에 사용한다.
 
 ```c
-/* 분배자 */
-void *sender = zlink_socket(ctx, ZLINK_DEALER);
-zlink_bind(sender, "tcp://*:5558");
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+/* ROUTER receives with zlink_recv() and distinguishes each DEALER by source_rid */
+zlink_bind(router, "tcp://127.0.0.1:*");
 
-/* 워커 3대 */
-void *w1 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_connect(w1, "tcp://127.0.0.1:5558");
-void *w2 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_connect(w2, "tcp://127.0.0.1:5558");
-void *w3 = zlink_socket(ctx, ZLINK_DEALER);
-zlink_connect(w3, "tcp://127.0.0.1:5558");
+char endpoint[256];
+size_t len = sizeof(endpoint);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-/* 6개 작업 전송 → w1, w2, w3, w1, w2, w3 (round-robin) */
-for (int i = 0; i < 6; i++) {
-    char buf[16];
-    int len = snprintf(buf, sizeof(buf), "task-%d", i);
-    zlink_msg_t task;
-    zlink_msg_init_size(&task, len);
-    memcpy(zlink_msg_data(&task), buf, len);
-    zlink_send(sender, &task, 1, 0);
-}
+void *dealer1 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_set_routing_id(dealer1, "D1", 2);
+zlink_connect(dealer1, endpoint);
+
+void *dealer2 = zlink_socket(ctx, ZLINK_DEALER);
+zlink_set_routing_id(dealer2, "D2", 2);
+zlink_connect(dealer2, endpoint);
+
+/* Each DEALER sends a message */
+zlink_msg_t m1;
+zlink_msg_init_size(&m1, 12);
+memcpy(zlink_msg_data(&m1), "from_dealer1", 12);
+zlink_send(dealer1, &m1, 1, 0);
+
+zlink_msg_t m2;
+zlink_msg_init_size(&m2, 12);
+memcpy(zlink_msg_data(&m2), "from_dealer2", 12);
+zlink_send(dealer2, &m2, 1, 0);
+
+/* on_message receives each DEALER's message with its routing_id */
 ```
 
 > DEALER ↔ ROUTER 조합(로드밸런싱 + 응답 라우팅, 프록시 등)은
@@ -227,14 +241,9 @@ for (int i = 0; i < 6; i++) {
 연결된 피어가 없으면 메시지는 송신 큐에 쌓인다. HWM 초과 시 블록(기본) 또는 `EAGAIN` 반환(`ZLINK_DONTWAIT`).
 
 ```c
-/* 피어가 없는 상태에서 전송 */
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 4);
-memcpy(zlink_msg_data(&msg), "data", 4);
-int rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
-if (rc == -1 && errno == EAGAIN) {
-    /* HWM 초과 또는 피어 없음 */
-}
+/* Correct order */
+zlink_set_routing_id(dealer, "D1", 2);
+zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 
 ### Round-robin 분배
@@ -246,9 +255,16 @@ if (rc == -1 && errno == EAGAIN) {
 `zlink_set_routing_id()`는 `zlink_connect()` 호출 전에 호출해야 한다. 연결 후 변경은 적용되지 않는다.
 
 ```c
-/* 올바른 순서 */
-zlink_set_routing_id(dealer, "D1", 2);
-zlink_connect(dealer, endpoint);  /* D1으로 식별 */
+/* Frontend: clients connect here */
+void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(frontend, "tcp://*:5558");
+
+/* Backend: worker threads connect here */
+void *backend = zlink_socket(ctx, ZLINK_DEALER);
+zlink_bind(backend, "inproc://backend");
+
+/* Start worker threads then run proxy */
+zlink_proxy(frontend, backend, NULL);
 ```
 
 ---

@@ -17,18 +17,18 @@ zlink Service Discovery는 **수동 주소 관리를 제거**한다.
 **Discovery 없이** -- 배포 시 모든 피어 주소를 직접 알아야 한다:
 
 ```c
-/* 각 피어 엔드포인트를 수동으로 설정 */
+/* Manually configure each peer endpoint */
 zlink_connect(sub, "tcp://10.0.1.5:9100");   /* price-feed-1 */
 zlink_connect(sub, "tcp://10.0.1.8:9100");   /* price-feed-2 */
-/* price-feed-3 추가? price-feed-1 이동? → 설정 변경, 재배포 필요 */
+/* price-feed-3 added? price-feed-1 moved? → update config, redeploy */
 ```
 
 **Discovery 사용** -- 소켓을 attach 하기만 하면 된다:
 
 ```c
 zlink_socket_attach_discovery(sub, discovery);
-/* 모든 price-feed PUB 인스턴스가 자동으로 발견된다.
-   새 인스턴스 추가, 장애 인스턴스 제거 — 코드 변경 없음. */
+/* All price-feed PUB instances are found automatically.
+   New instances appear, crashed ones vanish — zero code changes. */
 ```
 
 ### 핵심 개념
@@ -72,18 +72,18 @@ flowchart TB
 
     subgraph nodeC["Node C — price-feed"]
         DC["Discovery<br/>(SUB + DEALER)"]
-        SC["SUB socket<br/>(자동 연결)"]
+        SC["SUB socket<br/>(auto-connect)"]
         SC --- DC
     end
 
     DA -- "bootstrap + heartbeat<br/>(DEALER → ROUTER)" --> R1
-    R1 -. "서비스 목록 broadcast<br/>(PUB → SUB)" .-> DA
+    R1 -. "service list broadcast<br/>(PUB → SUB)" .-> DA
 
     DB -- "bootstrap + heartbeat" --> R2
-    R2 -. "서비스 목록 broadcast" .-> DB
+    R2 -. "service list broadcast" .-> DB
 
     DC -- "bootstrap + heartbeat" --> R1
-    R1 -. "서비스 목록 broadcast" .-> DC
+    R1 -. "service list broadcast" .-> DC
 ```
 
 각 **Registry**는 두 개의 소켓을 노출한다:
@@ -116,26 +116,26 @@ Node C의 코드에는 `tcp://10.0.1.8:9100` 주소가 어디에도 없다.
 
 ```mermaid
 sequenceDiagram
-    participant Svc as 서비스 / 소켓
+    participant Svc as Service / Socket
     participant Disc as Discovery
     participant Reg as Registry
 
-    Svc->>Disc: attach (엔드포인트 등록)
+    Svc->>Disc: attach (register endpoint)
     Disc->>Reg: bootstrap_req (DEALER → ROUTER)
     Reg-->>Disc: bootstrap_rep (pub_ep, uplink_ep, heartbeat_ms)
-    Disc->>Reg: pub_ep 구독 (SUB → PUB)
-    Disc->>Reg: 서비스 등록 (DEALER → ROUTER)
+    Disc->>Reg: subscribe to pub_ep (SUB → PUB)
+    Disc->>Reg: register service (DEALER → ROUTER)
 
-    loop 30초마다
+    loop Every 30 s
         Reg-->>Disc: service_list broadcast (PUB → SUB)
-        Note over Disc: 로컬 피어 테이블 갱신
+        Note over Disc: Update local peer table
     end
 
-    loop 5초마다
+    loop Every 5 s
         Disc->>Reg: heartbeat (DEALER → ROUTER)
     end
 
-    Disc-->>Svc: 피어 발견 → 자동 연결
+    Disc-->>Svc: peer discovered → auto-connect
 ```
 
 1. 서비스가 Discovery에 **attach** (또는 SPOT 노드를 등록).
@@ -168,27 +168,27 @@ Registry는 중앙 조정 서버다. 운영 환경에서는 HA를 위해 3노드
 void *ctx = zlink_ctx_new();
 void *registry = zlink_registry_new(ctx);
 
-/* 클러스터 피어 추가 (선택, bind 전에 호출) */
+/* Add cluster peers (optional, must be called before bind) */
 zlink_registry_add_peer(registry, "tcp://registry2:5550");
 zlink_registry_add_peer(registry, "tcp://registry3:5550");
 
-/* Heartbeat 설정 (선택, bind 전에 호출) */
+/* Heartbeat configuration (optional, must be called before bind) */
 zlink_registry_set_heartbeat(registry, 5000, 15000);
 
-/* 브로드캐스트 주기 (선택, 기본 30초) */
+/* Broadcast interval (optional, default 30 seconds) */
 zlink_registry_set_broadcast_interval(registry, 30000);
 
-/* bind + start
-   첫 번째 인자: PUB endpoint — 서비스 목록 브로드캐스트 (Discovery SUB가 구독)
-   두 번째 인자: ROUTER endpoint — 등록/하트비트/쿼리 수신 (Discovery가 bootstrap 연결) */
+/* Bind and start
+   First arg:  PUB endpoint — broadcasts service list (Discovery SUB subscribes)
+   Second arg: ROUTER endpoint — receives registration/heartbeat/queries (Discovery bootstraps here) */
 zlink_registry_bind(registry,
-    "tcp://*:5550",    /* PUB (서비스 목록 브로드캐스트) */
-    "tcp://*:5551"     /* ROUTER (등록/하트비트/쿼리) */
+    "tcp://*:5550",    /* PUB (service list broadcast) */
+    "tcp://*:5551"     /* ROUTER (registration/heartbeat/queries) */
 );
 
-/* ... 애플리케이션 로직 ... */
+/* ... application logic ... */
 
-/* 종료 */
+/* Shutdown */
 zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
@@ -201,15 +201,15 @@ raw 소켓을 attach한다. Discovery가 등록, 피어 조회, heartbeat를 대
 처리한다.
 
 ```c
-/* service_type: ZLINK_SERVICE_TYPE_SPOT 또는 ZLINK_SERVICE_TYPE_SOCKET */
+/* service_type: ZLINK_SERVICE_TYPE_SPOT or ZLINK_SERVICE_TYPE_SOCKET */
 void *discovery = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SPOT, "order-service");
 
-/* Registry bootstrap/control 엔드포인트 연결 (여러 개 가능) */
+/* Connect to Registry bootstrap/control endpoint (multiple allowed) */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 
-/* 모니터로 서비스 상태 관찰 */
+/* Observe service state via monitor */
 zlink_service_monitor_open_options_t opts = {
     .events = ZLINK_DISCOVERY_MONITOR_EVENT_SERVICE_UP
             | ZLINK_DISCOVERY_MONITOR_EVENT_PROVIDERS_CHANGED,
@@ -217,9 +217,9 @@ zlink_service_monitor_open_options_t opts = {
 void *mon = zlink_service_monitor_open(discovery, &opts);
 zlink_service_monitor_handler(mon, on_discovery_event, NULL);
 
-/* ... Discovery가 콜백을 통해 이벤트 전달 ... */
+/* ... Discovery delivers events through the callback ... */
 
-/* 정리 */
+/* Cleanup */
 zlink_monitor_close(&mon);
 zlink_discovery_destroy(&discovery);
 ```
@@ -231,22 +231,22 @@ lifecycle 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 �
 통신을 가능하게 한다.
 
 ```c
-/* SOCKET 타입으로 Discovery 생성 */
+/* Create Discovery with SOCKET type */
 void *discovery = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SOCKET, "price-feed");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-/* PUB 소켓을 생성하고 Discovery에 연결 */
+/* Create a PUB socket and attach it to Discovery */
 void *pub = zlink_socket_new(ctx, ZLINK_PUB);
 zlink_bind(pub, "tcp://*:9100");
 zlink_socket_attach_discovery(pub, discovery);
-/* Discovery가 PUB 엔드포인트를 등록하고 heartbeat를 관리한다.
-   같은 서비스("price-feed")의 원격 SUB 소켓이 이 엔드포인트를
-   자동으로 발견하고 연결한다. */
+/* Discovery registers the PUB endpoint and manages heartbeats.
+   Remote SUB sockets in the same service ("price-feed") will
+   automatically discover and connect to this endpoint. */
 
-/* ... 메시지 발행 ... */
+/* ... publish messages ... */
 
-/* Discovery를 파괴하여 연결된 소켓 종료 */
+/* Destroy Discovery to shut down the attached socket */
 zlink_discovery_destroy(&discovery);
 ```
 
@@ -258,19 +258,19 @@ zlink_discovery_destroy(&discovery);
 
 ```mermaid
 sequenceDiagram
-    participant Svc as SPOT / 소켓
+    participant Svc as SPOT / Socket
     participant Disc as Discovery
     participant Reg as Registry
 
-    Svc->>Disc: register / summary 업데이트
+    Svc->>Disc: register / summary update
     Disc->>Reg: bootstrap + uplink (DEALER → ROUTER)
 
-    loop 주기적 (5초)
+    loop Periodic (5 s)
         Disc->>Reg: heartbeat / summary
     end
 
-    Note over Reg: 15초간 heartbeat 없음
-    Reg--xDisc: entry 만료 (LOST)
+    Note over Reg: No heartbeat for 15 s
+    Reg--xDisc: entry expires (LOST)
 ```
 
 - Registry visibility는 Discovery가 소유하는 heartbeat/topology uplink로

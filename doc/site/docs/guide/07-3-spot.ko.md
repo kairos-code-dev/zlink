@@ -31,12 +31,12 @@ SPOT이 없다면, 여러 노드에 걸친 토픽 기반 메시징을 사용하�
 
 ```mermaid
 sequenceDiagram
-    participant SpotPub as SpotPub
-    participant Worker as SPOT 노드 (worker)
-    participant SpotSub as SpotSub
+    participant SpotPub
+    participant Worker as SPOT Node (worker)
+    participant SpotSub
 
     SpotPub->>Worker: publish (inproc)
-    Worker->>SpotSub: 전달 (inproc)
+    Worker->>SpotSub: deliver (inproc)
 ```
 
 SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 SpotSub에게
@@ -47,14 +47,14 @@ SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 S
 
 ```mermaid
 sequenceDiagram
-    participant SpotPub as SpotPub (노드 1)
-    participant W1 as 노드 1 Worker
-    participant W2 as 노드 2 Worker
-    participant SpotSub as SpotSub (노드 2)
+    participant SpotPub as SpotPub (Node 1)
+    participant W1 as Node 1 Worker
+    participant W2 as Node 2 Worker
+    participant SpotSub as SpotSub (Node 2)
 
     SpotPub->>W1: publish (inproc)
     W1->>W2: PUB (tcp mesh)
-    W2->>SpotSub: 전달 (inproc)
+    W2->>SpotSub: deliver (inproc)
 ```
 
 로컬 publish는 worker가 두 갈래로 분기한다:
@@ -68,10 +68,10 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    subgraph 노드1["노드 1"]
+    subgraph Node1["Node 1"]
         P1[SpotPub] --> W1[Worker] --> S1[SpotSub]
     end
-    subgraph 노드2["노드 2"]
+    subgraph Node2["Node 2"]
         P2[SpotPub] --> W2[Worker] --> S2[SpotSub]
     end
     W1 -- "PUB (tcp)" --> W2
@@ -444,7 +444,7 @@ unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
 
 === "Python"
 
-    ```python
+    ```go
     spot.Publish("chat:room1:message", zlink.NewMessage([]byte("hello world")))
     ```
 
@@ -468,7 +468,7 @@ unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
 
 === "Go"
 
-    ```go
+    ```python
     spot.publish("chat:room1:message", b"hello world")
     ```
 
@@ -506,7 +506,7 @@ unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
 
 === "Python"
 
-    ```python
+    ```go
     spot.SetSubscription("chat:room1:message")
     spot.SetSubscription("chat:room1:*")
 
@@ -546,7 +546,7 @@ unified `spot` 내부의 `inproc` 연결은 TLS 설정 surface가 아니다.
 
 === "Go"
 
-    ```go
+    ```python
     spot.set_subscription("chat:room1:message")
     spot.set_subscription("chat:room1:*")
 
@@ -590,15 +590,15 @@ recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
         void *subscriber = zlink_spot_new(sub_node);
 
         zlink_set_subscription(subscriber, "chat:room1:message");
-        zlink_msleep(100);  /* 구독 전파 대기 */
+        zlink_msleep(100);  /* wait for subscription to propagate */
 
-        /* 발행 */
+        /* Publish */
         zlink_msg_t part;
         zlink_msg_init_size(&part, 11);
         memcpy(zlink_msg_data(&part), "hello world", 11);
         zlink_publish(publisher, "chat:room1:message", &part, 1, 0);
 
-        /* 수신 */
+        /* Receive */
         zlink_routing_id_t source_rid;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
@@ -930,7 +930,7 @@ recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
         memcpy(zlink_msg_data(&part), "hello world", 11);
         zlink_publish(publisher, "chat:room1:message", &part, 1, 0);
 
-        zlink_msleep(200);  /* 콜백 실행 대기 */
+        zlink_msleep(200);  /* let callback fire */
 
         zlink_spot_destroy(&subscriber);
         zlink_spot_destroy(&publisher);
@@ -1311,9 +1311,9 @@ late join에 대한 과거 메시지 재전송은 보장하지 않는다.
 === "Python"
 
     ```python
-    spot.Destroy()
-    node.Destroy()
-    discovery.Destroy()
+    spot.destroy()
+    node.destroy()
+    discovery.destroy()
     ```
 
 === "Node/TypeScript"
@@ -1343,9 +1343,9 @@ late join에 대한 과거 메시지 재전송은 보장하지 않는다.
 === "Go"
 
     ```go
-    spot.destroy()
-    node.destroy()
-    discovery.destroy()
+    spot.Destroy()
+    node.Destroy()
+    discovery.Destroy()
     ```
 
 **정리 순서:** `spot`을 먼저 destroy하고, 그 다음 `SpotNode`, 마지막으로

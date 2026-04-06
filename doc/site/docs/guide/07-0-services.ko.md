@@ -13,8 +13,8 @@ zlink의 서비스 계층은 8종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
 
 ```mermaid
 flowchart TB
-    subgraph app["애플리케이션"]
-        A1["SPOT (발행/구독) · 소켓 패밀리"]
+    subgraph app["Application"]
+        A1["SPOT (pub/sub) · Socket Family"]
     end
 
     subgraph facade["Public API Facade"]
@@ -25,16 +25,16 @@ flowchart TB
         AC1["discovery_access · registry_access<br/>spot_node_access · spot_subject_access<br/>service_public_api_guard (admission/close guard)"]
     end
 
-    subgraph runtime["서비스 런타임"]
+    subgraph runtime["Service Runtime"]
         RT1["Discovery: bootstrap · state · update · uplink · registry_client<br/>SPOT: node · data_plane (forwarding · protocol) · pub · sub"]
     end
 
-    subgraph infra["Discovery (서비스 발견) · Registry (서비스 등록소)"]
+    subgraph infra["Discovery (service discovery) · Registry (service reg.)"]
         IN1["subscribe · heartbeat · broadcast SERVICE_LIST"]
     end
 
     subgraph core["zlink Core"]
-        C1["8종 소켓 + 6종 Transport"]
+        C1["8 socket types + 6 transports"]
     end
 
     app --> facade --> access --> runtime --> infra --> core
@@ -117,9 +117,9 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(서비스 타입
 
 ```mermaid
 flowchart LR
-    A["C API<br/>(zlink_spot_publish 등)"] --> B["service_api.cpp<br/>(validate + delegate)"]
+    A["C API<br/>(zlink_spot_publish, etc.)"] --> B["service_api.cpp<br/>(validate + delegate)"]
     B --> C["*_access.hpp<br/>(service-local seam)"]
-    C --> D["서비스 런타임<br/>(concrete 구현)"]
+    C --> D["Service Runtime<br/>(concrete implementation)"]
 ```
 
 | 서비스 | Access Seam | 역할 |
@@ -142,10 +142,10 @@ service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
 ```mermaid
 flowchart TB
     R["Registry<br/>(PUB + ROUTER)"]
-    R -- "SERVICE_LIST 브로드캐스트" --> D1["Discovery<br/>(SPOT 용)"]
-    R -- "SERVICE_LIST 브로드캐스트" --> D2["Discovery<br/>(소켓 용)"]
+    R -- "SERVICE_LIST broadcast" --> D1["Discovery<br/>(SPOT)"]
+    R -- "SERVICE_LIST broadcast" --> D2["Discovery<br/>(Socket)"]
     D1 --> S1["SPOT<br/>(PUB + SUB)"]
-    D2 --> S2["소켓 패밀리<br/>(R/D/P/S)"]
+    D2 --> S2["Socket Family<br/>(R/D/P/S)"]
 ```
 
 - **Discovery가 기반 인프라**: SPOT, 소켓 패밀리 모두 Discovery를 통해 대상을 발견한다.

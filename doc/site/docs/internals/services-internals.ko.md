@@ -62,7 +62,7 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> EMPTY : 초기
+    [*] --> EMPTY
     EMPTY --> AVAILABLE : SERVICE_LIST (count > 0)
     AVAILABLE --> UNAVAILABLE : SERVICE_LIST (count == 0)
     UNAVAILABLE --> AVAILABLE : SERVICE_LIST (count > 0)
@@ -73,18 +73,18 @@ stateDiagram-v2
 Discovery는 프로바이더를 (service_type, service_role) 쌍으로 추적한다:
 
 ```cpp
-// 서비스 타입
+// Service types
 static const uint16_t service_type_spot_node = 2;
 static const uint16_t service_type_socket = 3;
 
-// 서비스 역할
+// Service roles
 enum service_role_t {
     service_role_invalid = 0,
-    service_role_spot    = 2,  // spot 타입 고정
-    service_role_router  = 3,  // 소켓 패밀리
-    service_role_dealer  = 4,  // 소켓 패밀리
-    service_role_pub     = 5,  // 소켓 패밀리
-    service_role_sub     = 6   // 소켓 패밀리
+    service_role_spot    = 2,  // fixed for spot type
+    service_role_router  = 3,  // socket family
+    service_role_dealer  = 4,  // socket family
+    service_role_pub     = 5,  // socket family
+    service_role_sub     = 6   // socket family
 };
 ```
 
@@ -146,7 +146,7 @@ heartbeat를 주기적으로 갱신한다.
 ### 4.1 프레임 구조
 ```
 Frame 0: msgId (uint16_t)
-Frame 1~N: Payload (가변)
+Frame 1~N: Payload (variable)
 ```
 
 ### 4.2 메시지 타입
@@ -171,21 +171,21 @@ Frame 1~N: Payload (가변)
 
 ```mermaid
 sequenceDiagram
-    participant S as 서비스
+    participant S as Service
     participant R as Registry
     participant D as Discovery
 
     S->>R: REGISTER
     R->>S: REGISTER_ACK
-    loop 하트비트 주기마다
+    loop Every heartbeat interval
         S->>R: HEARTBEAT
     end
-    R->>D: SERVICE_LIST (브로드캐스트)
-    Note over R,D: 등록, 해제, 또는<br/>주기적 타이머에 의해 트리거
+    R->>D: SERVICE_LIST (broadcast)
+    Note over R,D: Triggered by registration,<br/>deregistration, or periodic timer
 
     S->>R: UNREGISTER
     R->>S: UNREGISTER_ACK
-    R->>D: SERVICE_LIST (갱신)
+    R->>D: SERVICE_LIST (updated)
 ```
 
 ### 4.3 SERVICE_LIST 포맷
@@ -194,11 +194,11 @@ Frame 0: msgId = 0x0005
 Frame 1: registry_id (uint32_t)
 Frame 2: list_seq (uint64_t)
 Frame 3: service_count (uint32_t)
-Frame 4~N: 서비스 엔트리 (service_count만큼 반복)
+Frame 4~N: Service entries (repeated service_count times)
   - service_type (uint16_t)
   - service_name (string)
   - provider_count (uint32_t)
-  - provider entries (provider_count만큼 반복):
+  - provider entries (repeated provider_count times):
       service_role (uint16_t), endpoint (string),
       routing_id, weight (uint32_t)
 ```

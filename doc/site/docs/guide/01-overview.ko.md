@@ -44,15 +44,15 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |  close/drain/finalization contract                   |
 +------------------------------------------------------+
 |  Engine Layer (Boost.Asio)                           |
-|  asio_zmp_engine — ZMP v1.0 Protocol (8B 고정 헤더)  |
-|  Proactor 패턴 · Speculative I/O · Backpressure      |
+|  asio_zmp_engine — ZMP v1.0 Protocol (8B fixed hdr)  |
+|  Proactor pattern · Speculative I/O · Backpressure   |
 +------------------------------------------------------+
 |  Transport / Protocol                                |
-|  tcp · ipc · inproc · ws — 평문                      |
-|  tls · wss             — OpenSSL 암호화              |
+|  tcp · ipc · inproc · ws — plaintext                 |
+|  tls · wss             — OpenSSL encrypted           |
 +------------------------------------------------------+
 |  Core Infrastructure                                 |
-|  msg_t(64B 고정) · pipe_t(Lock-free YPipe)           |
+|  msg_t(64B fixed) · pipe_t(Lock-free YPipe)          |
 |  ctx_t(I/O Thread Pool) · session_base_t(Bridge)     |
 +------------------------------------------------------+
 ```
@@ -123,27 +123,27 @@ cmake --build build
     int main(void) {
         void *ctx = zlink_ctx_new();
 
-        /* 서버 */
+        /* Server */
         void *server = zlink_socket(ctx, ZLINK_PAIR);
         zlink_bind(server, "tcp://*:5555");
 
-        /* 클라이언트 */
+        /* Client */
         void *client = zlink_socket(ctx, ZLINK_PAIR);
         zlink_connect(client, "tcp://127.0.0.1:5555");
 
-        /* 송신 */
+        /* Send */
         zlink_msg_t part;
         zlink_msg_init_size(&part, 12);
         memcpy(zlink_msg_data(&part), "Hello zlink!", 12);
         zlink_send(client, &part, 1, 0);
 
-        /* 수신 */
+        /* Receive */
         zlink_routing_id_t source_rid;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         int rc = zlink_recv(server, &source_rid, &parts, &part_count, 0);
         if (rc == 0)
-            printf("수신: %.*s\n",
+            printf("Received: %.*s\n",
                    (int)zlink_msg_size(&parts[0]),
                    (char *)zlink_msg_data(&parts[0]));
         for (size_t i = 0; i < part_count; i++)
@@ -165,22 +165,22 @@ cmake --build build
     int main() {
         zlink::context_t ctx;
 
-        // 서버
+        // Server
         zlink::pair_socket_t server(ctx);
         server.bind("tcp://*:5555");
 
-        // 클라이언트
+        // Client
         zlink::pair_socket_t client(ctx);
         client.connect("tcp://127.0.0.1:5555");
 
-        // 송신
+        // Send
         zlink::message_t msg("Hello zlink!", 12);
         client.send(msg);
 
-        // 수신
+        // Receive
         auto [source_rid, parts] = server.recv();
         if (!parts.empty())
-            std::cout << "수신: " << parts[0].to_string() << "\n";
+            std::cout << "Received: " << parts[0].to_string() << "\n";
 
         client.close();
         server.close();
@@ -196,21 +196,21 @@ cmake --build build
     public class HelloZlink {
         public static void main(String[] args) throws Exception {
             try (Context ctx = new Context()) {
-                // 서버
+                // Server
                 PairSocket server = new PairSocket(ctx);
                 server.bind("tcp://*:5555");
 
-                // 클라이언트
+                // Client
                 PairSocket client = new PairSocket(ctx);
                 client.connect("tcp://127.0.0.1:5555");
 
-                // 송신
+                // Send
                 Message msg = new Message("Hello zlink!".getBytes());
                 client.send(msg);
 
-                // 수신
+                // Receive
                 RecvResult result = server.recv();
-                System.out.println("수신: "
+                System.out.println("Received: "
                     + new String(result.parts()[0].data()));
 
                 client.close();
@@ -227,20 +227,20 @@ cmake --build build
 
     ctx = zlink.Context()
 
-    # 서버
+    # Server
     server = zlink.PairSocket(ctx)
     server.bind("tcp://*:5555")
 
-    # 클라이언트
+    # Client
     client = zlink.PairSocket(ctx)
     client.connect("tcp://127.0.0.1:5555")
 
-    # 송신
+    # Send
     client.send(b"Hello zlink!")
 
-    # 수신
+    # Receive
     source_rid, parts = server.recv()
-    print(f"수신: {parts[0].data().decode()}")
+    print(f"Received: {parts[0].data().decode()}")
 
     client.close()
     server.close()
@@ -254,20 +254,20 @@ cmake --build build
 
     const ctx = new zlink.Context();
 
-    // 서버
+    // Server
     const server = new zlink.PairSocket(ctx);
     server.bind("tcp://*:5555");
 
-    // 클라이언트
+    // Client
     const client = new zlink.PairSocket(ctx);
     client.connect("tcp://127.0.0.1:5555");
 
-    // 송신
+    // Send
     client.send(Buffer.from("Hello zlink!"));
 
-    // 수신
+    // Receive
     const { sourceRid, parts } = server.recv();
-    console.log(`수신: ${parts[0].data().toString()}`);
+    console.log(`Received: ${parts[0].data().toString()}`);
 
     client.close();
     server.close();
@@ -281,20 +281,20 @@ cmake --build build
 
     using var ctx = new Context();
 
-    // 서버
+    // Server
     using var server = new PairSocket(ctx);
     server.Bind("tcp://*:5555");
 
-    // 클라이언트
+    // Client
     using var client = new PairSocket(ctx);
     client.Connect("tcp://127.0.0.1:5555");
 
-    // 송신
+    // Send
     client.Send(new Message("Hello zlink!"u8));
 
-    // 수신
+    // Receive
     var (sourceRid, parts) = server.Recv();
-    Console.WriteLine($"수신: {parts[0].DataString()}");
+    Console.WriteLine($"Received: {parts[0].DataString()}");
     ```
 
 === "Rust"
@@ -305,20 +305,20 @@ cmake --build build
     fn main() -> zlink::Result<()> {
         let ctx = Context::new()?;
 
-        // 서버
+        // Server
         let server = ctx.pair_socket()?;
         server.bind("tcp://*:5555")?;
 
-        // 클라이언트
+        // Client
         let client = ctx.pair_socket()?;
         client.connect("tcp://127.0.0.1:5555")?;
 
-        // 송신
+        // Send
         client.send(b"Hello zlink!")?;
 
-        // 수신
+        // Receive
         let (source_rid, parts) = server.recv()?;
-        println!("수신: {}", parts[0].as_str()?);
+        println!("Received: {}", parts[0].as_str()?);
 
         client.close()?;
         server.close()?;
@@ -343,28 +343,28 @@ cmake --build build
         if err != nil { log.Fatal(err) }
         defer ctx.Close()
 
-        // 서버
+        // Server
         server, err := ctx.PairSocket()
         if err != nil { log.Fatal(err) }
         defer server.Close()
         server.Bind("tcp://*:5555")
 
-        // 클라이언트
+        // Client
         client, err := ctx.PairSocket()
         if err != nil { log.Fatal(err) }
         defer client.Close()
         client.Connect("tcp://127.0.0.1:5555")
 
-        // 송신
+        // Send
         msg := zlink.NewMessage([]byte("Hello zlink!"))
         client.Send(msg)
 
-        // 수신
+        // Receive
         received, err := server.Recv()
         if err != nil { log.Fatal(err) }
         defer received.Close()
         part, _ := received.SinglePartOrError()
-        fmt.Printf("수신: %s\n", string(part.Data()))
+        fmt.Printf("Received: %s\n", string(part.Data()))
     }
     ```
 

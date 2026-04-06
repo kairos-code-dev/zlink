@@ -16,7 +16,7 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
 유효 조합:
 
 ```
-외부 raw client  <---- RAW 바이트 스트림 ---->  STREAM(server)
+external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 ```
 
 > STREAM은 zlink 내부 소켓(PAIR/PUB/SUB/DEALER/ROUTER)과 직접 호환되지 않는다.
@@ -84,11 +84,11 @@ void on_message(const zlink_routing_id_t *source_rid,
         size_t size = zlink_msg_size(&parts[i]);
 
         if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-            /* 새 클라이언트 연결 */
+            /* new client connected */
         } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-            /* 클라이언트 연결 해제 */
+            /* client disconnected */
         } else {
-            /* 에코 응답 */
+            /* echo reply */
             zlink_msg_t reply;
             zlink_msg_init_size(&reply, size);
             memcpy(zlink_msg_data(&reply), data, size);
@@ -98,7 +98,7 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-/* 콜백 dispatch attach */
+/* Attach callback dispatch (permanent, cannot be undone) */
 zlink_recv_handler(stream, on_message, NULL);
 ```
 
@@ -145,13 +145,12 @@ STREAM은 raw 바이트를 그대로 전달하므로, **패킷 경계(프레이�
 아래는 `[4B length][body]` 형식을 사용자가 정의한 POSIX TCP 예시(개념):
 
 ```c
-// 사용자 정의 프레이밍 예시: [4B length(big-endian)][body]
-// send
+// send: [4B length][body]
 uint32_t len_be = htonl(body_len);
 send(fd, &len_be, 4, 0);
 send(fd, body, body_len, 0);
 
-// recv
+// recv: [4B length][body]
 recv(fd, &len_be, 4, MSG_WAITALL);
 uint32_t body_len = ntohl(len_be);
 recv(fd, body, body_len, MSG_WAITALL);

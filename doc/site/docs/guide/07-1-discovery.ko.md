@@ -15,18 +15,18 @@ zlink Service Discovery는 **수동 주소 관리를 제거**한다.
 **Discovery 없이** -- 배포 시 모든 피어 주소를 직접 알아야 한다:
 
 ```c
-/* 각 피어 엔드포인트를 수동으로 설정 */
+/* Manually configure each peer endpoint */
 zlink_connect(sub, "tcp://10.0.1.5:9100");   /* price-feed-1 */
 zlink_connect(sub, "tcp://10.0.1.8:9100");   /* price-feed-2 */
-/* price-feed-3 추가? price-feed-1 이동? → 설정 변경, 재배포 필요 */
+/* price-feed-3 added? price-feed-1 moved? → update config, redeploy */
 ```
 
 **Discovery 사용** -- 소켓을 attach 하기만 하면 된다:
 
 ```c
 zlink_socket_attach_discovery(sub, discovery);
-/* 모든 price-feed PUB 인스턴스가 자동으로 발견된다.
-   새 인스턴스 추가, 장애 인스턴스 제거 — 코드 변경 없음. */
+/* All price-feed PUB instances are found automatically.
+   New instances appear, crashed ones vanish — zero code changes. */
 ```
 
 ### 핵심 개념
@@ -70,18 +70,18 @@ flowchart TB
 
     subgraph nodeC["Node C — price-feed"]
         DC["Discovery<br/>(SUB + DEALER)"]
-        SC["SUB socket<br/>(자동 연결)"]
+        SC["SUB socket<br/>(auto-connect)"]
         SC --- DC
     end
 
     DA -- "bootstrap + heartbeat<br/>(DEALER → ROUTER)" --> R1
-    R1 -. "서비스 목록 broadcast<br/>(PUB → SUB)" .-> DA
+    R1 -. "service list broadcast<br/>(PUB → SUB)" .-> DA
 
     DB -- "bootstrap + heartbeat" --> R2
-    R2 -. "서비스 목록 broadcast" .-> DB
+    R2 -. "service list broadcast" .-> DB
 
     DC -- "bootstrap + heartbeat" --> R1
-    R1 -. "서비스 목록 broadcast" .-> DC
+    R1 -. "service list broadcast" .-> DC
 ```
 
 각 **Registry**는 두 개의 소켓을 노출한다:
@@ -114,26 +114,26 @@ Node C의 코드에는 `tcp://10.0.1.8:9100` 주소가 어디에도 없다.
 
 ```mermaid
 sequenceDiagram
-    participant Svc as 서비스 / 소켓
+    participant Svc as Service / Socket
     participant Disc as Discovery
     participant Reg as Registry
 
-    Svc->>Disc: attach (엔드포인트 등록)
+    Svc->>Disc: attach (register endpoint)
     Disc->>Reg: bootstrap_req (DEALER → ROUTER)
     Reg-->>Disc: bootstrap_rep (pub_ep, uplink_ep, heartbeat_ms)
-    Disc->>Reg: pub_ep 구독 (SUB → PUB)
-    Disc->>Reg: 서비스 등록 (DEALER → ROUTER)
+    Disc->>Reg: subscribe to pub_ep (SUB → PUB)
+    Disc->>Reg: register service (DEALER → ROUTER)
 
-    loop 30초마다
+    loop Every 30 s
         Reg-->>Disc: service_list broadcast (PUB → SUB)
-        Note over Disc: 로컬 피어 테이블 갱신
+        Note over Disc: Update local peer table
     end
 
-    loop 5초마다
+    loop Every 5 s
         Disc->>Reg: heartbeat (DEALER → ROUTER)
     end
 
-    Disc-->>Svc: 피어 발견 → 자동 연결
+    Disc-->>Svc: peer discovered → auto-connect
 ```
 
 1. 서비스가 Discovery에 **attach** (또는 SPOT 노드를 등록).
@@ -628,19 +628,19 @@ lifecycle 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 �
 
 ```mermaid
 sequenceDiagram
-    participant Svc as SPOT / 소켓
+    participant Svc as SPOT / Socket
     participant Disc as Discovery
     participant Reg as Registry
 
-    Svc->>Disc: register / summary 업데이트
+    Svc->>Disc: register / summary update
     Disc->>Reg: bootstrap + uplink (DEALER → ROUTER)
 
-    loop 주기적 (5초)
+    loop Periodic (5 s)
         Disc->>Reg: heartbeat / summary
     end
 
-    Note over Reg: 15초간 heartbeat 없음
-    Reg--xDisc: entry 만료 (LOST)
+    Note over Reg: No heartbeat for 15 s
+    Reg--xDisc: entry expires (LOST)
 ```
 
 - Registry visibility는 Discovery가 소유하는 heartbeat/topology uplink로

@@ -8,7 +8,7 @@
 
 ```
   Thread A --- zlink_send(socket, ...) ---+
-  Thread B --- zlink_send(socket, ...) ---+--> 같은 소켓, mutex 불필요
+  Thread B --- zlink_send(socket, ...) ---+--> same socket, no mutex needed
   Thread C --- zlink_send(socket, ...) ---+
 ```
 

@@ -17,29 +17,31 @@ ROUTER 소켓은 **routing_id 기반 라우팅** 소켓이다.
 
 ```mermaid
 flowchart LR
-    subgraph mesh ["ROUTER ↔ ROUTER 메시"]
-        RA["ROUTER A (RA)"] <--> RB["ROUTER B (RB)"]
-        RB <--> RC["ROUTER C (RC)"]
-        RC <--> RA
-    end
+    D1["DEALER 1 (D1)"] --> R[ROUTER]
+    D2["DEALER 2 (D2)"] --> R
+    R -. "distinguishes each DEALER\nby routing_id" .-> R
 ```
 
 > A->RC, B->RA, C->RB ... routing_id로 대상 지정
 
-```mermaid
-flowchart LR
-    D1["DEALER 1 (D1)"] -->|send| RA[ROUTER A]
-    D1 -->|send| RBB[ROUTER B]
-    D1 -->|send| RCC[ROUTER C]
-    D2["DEALER 2 (D2)"] -.->|"A, B, C에 round-robin"| RA
+```c
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+
+/* TCP */
+zlink_bind(router, "tcp://127.0.0.1:5558");
+
+/* IPC (Linux/macOS) */
+zlink_bind(router, "ipc:///tmp/router.ipc");
+
+/* inproc (same process) */
+zlink_bind(router, "inproc://router");
+
+/* DEALERs connect via each transport -- ROUTER manages them uniformly by routing_id */
 ```
 
-```mermaid
-flowchart LR
-    D1x["DEALER 1 (D1)"] -- "① send" --> RAx[ROUTER A]
-    RAx -- "② send_rid\nsource_rid=D1" --> D1x
-    D2x["DEALER 2 (D2)"] -- "① send" --> RBx[ROUTER B]
-    RBx -- "② send_rid\nsource_rid=D2" --> D2x
+```c
+/* Explicit routing_id -- remains the same across reconnections */
+zlink_set_routing_id(dealer, "stable-id", 9);
 ```
 
 ## 2. 기본 사용법
@@ -56,12 +58,12 @@ zlink_bind(router, "tcp://*:5558");
 ROUTER는 소켓 생성 후 부착한 핸들러 콜백으로 메시지를 수신한다.
 
 ```c
-/* DEALER가 "Hello" 전송 → 핸들러가 source_rid + parts를 수신 */
+/* DEALER sends "Hello" → handler receives source_rid + parts */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    printf("[%.*s]로부터: %.*s\n",
+    printf("From [%.*s]: %.*s\n",
            (int)source_rid->size, source_rid->data,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
@@ -70,7 +72,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* zlink_recv()로 수신 */
+/* Receive with zlink_recv() */
 ```
 
 ### 메시지 송신
@@ -78,7 +80,7 @@ void *router = zlink_socket(ctx, ZLINK_ROUTER);
 응답 시 `zlink_send_rid`에 콜백의 `source_rid`를 전달하여 대상을 지정한다.
 
 ```c
-/* 콜백의 source_rid를 사용하여 응답 */
+/* Reply using source_rid from the callback */
 zlink_msg_t reply;
 zlink_msg_init_size(&reply, 5);
 memcpy(zlink_msg_data(&reply), "World", 5);
@@ -95,8 +97,8 @@ zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 int rc = zlink_recv(router, &source_rid, &parts, &part_count, 0);
 if (rc == 0) {
-    /* source_rid로 송신자 식별 */
-    /* parts[0..part_count-1] 처리 */
+    /* source_rid identifies the sender */
+    /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
 ```
@@ -126,12 +128,12 @@ ROUTER는 `zlink_send_rid()`로 특정 피어에 전송하고,
 ### 콜백을 사용한 수신/응답
 
 ```c
-/* 수신: 핸들러 콜백이 routing_id와 데이터를 제공 */
+/* Receive: handler callback provides routing_id and data */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* 응답: zlink_send_rid로 원본 피어에게 전송 */
+    /* Reply: send to the source peer using zlink_send_rid */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
@@ -161,7 +163,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 int mandatory = 1;
 zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
 
-/* 존재하지 않는 대상에게 전송 시도 */
+/* Attempt to send to a non-existent target */
 zlink_routing_id_t target_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
@@ -179,61 +181,81 @@ int rc = zlink_send_rid(router, &target_rid, &msg, 1, 0);
 ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하여 특정 노드에 전송한다.
 1:1이면 DEALER로 충분하므로, ROUTER ↔ ROUTER는 N개 노드 간 통신에서 의미가 있다.
 
-```
-  +----------+    ① send_rid       +-----------+
-  | ROUTER A |--------------------->|           |
-  |   (RA)   |    target="HUB"     |    HUB    |
-  +----------+<--------------------+  (ROUTER) |
-                  ③ send_rid       |           |
-                  target="RA"      +-----+-----+
-                                         |
-                                         | ② send_rid
-                                         |    target="RB"
-                                         v
-                                   +----------+
-                                   | ROUTER B |
-                                   |   (RB)   |
-                                   +----------+
+```c
+/* ROUTER handler: DEALER's initial message confirms connection */
+void on_connect(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* source_rid->data = "X" -- now it is safe to send to "X" */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 7);
+    memcpy(zlink_msg_data(&reply), "Welcome", 7);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+/* DEALER connects and sends initial message */
+void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+zlink_set_routing_id(dealer, "X", 1);
+zlink_connect(dealer, endpoint);
+zlink_msg_t hello;
+zlink_msg_init_size(&hello, 5);
+memcpy(zlink_msg_data(&hello), "Hello", 5);
+zlink_send(dealer, &hello, 1, 0);
+
+/* on_connect receives: source_rid = "X", parts[0] = "Hello"
+   and replies with "Welcome" */
 ```
 
 ```c
-/* 허브 ROUTER: bind */
-void *hub = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_set_routing_id(hub, "HUB", 3);
-zlink_bind(hub, "tcp://127.0.0.1:*");
+/* Server: ROUTER with handler */
+void on_request(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    /* Reply to the sender */
+    zlink_msg_t reply;
+    zlink_msg_init_size(&reply, 5);
+    memcpy(zlink_msg_data(&reply), "reply", 5);
+    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
+
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+/* Receive with zlink_recv() */
+zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
-zlink_get_option(hub, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
+zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-/* 노드 A, B: connect */
-void *ra = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_set_routing_id(ra, "RA", 2);
-zlink_connect(ra, endpoint);
+/* Client 1 */
+void *d1 = zlink_socket(ctx, ZLINK_DEALER);
+/* Receive replies with zlink_recv() */
+zlink_set_routing_id(d1, "D1", 2);
+zlink_connect(d1, endpoint);
 
-void *rb = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_set_routing_id(rb, "RB", 2);
-zlink_connect(rb, endpoint);
+/* Client 2 */
+void *d2 = zlink_socket(ctx, ZLINK_DEALER);
+/* Receive replies with zlink_recv() */
+zlink_set_routing_id(d2, "D2", 2);
+zlink_connect(d2, endpoint);
 
-/* ① A → HUB: routing_id "HUB"를 지정하여 전송 */
-zlink_routing_id_t target_hub = { .data = "HUB", .size = 3 };
-zlink_msg_t msg_a;
-zlink_msg_init_size(&msg_a, 7);
-memcpy(zlink_msg_data(&msg_a), "from_RA", 7);
-zlink_send_rid(ra, &target_hub, &msg_a, 1, 0);
+/* Each client sends a message -- on_request receives with source_rid */
+zlink_msg_t m1;
+zlink_msg_init_size(&m1, 7);
+memcpy(zlink_msg_data(&m1), "from_d1", 7);
+zlink_send(d1, &m1, 1, 0);
 
-/* ② HUB 수신: source_rid = "RA" → HUB가 "RB"에게 전달 */
-zlink_routing_id_t target_rb = { .data = "RB", .size = 2 };
-zlink_msg_t forward;
-zlink_msg_init_size(&forward, 10);
-memcpy(zlink_msg_data(&forward), "forwarded", 10);
-zlink_send_rid(hub, &target_rb, &forward, 1, 0);
+zlink_msg_t m2;
+zlink_msg_init_size(&m2, 7);
+memcpy(zlink_msg_data(&m2), "from_d2", 7);
+zlink_send(d2, &m2, 1, 0);
 
-/* ③ HUB → RA 응답 */
-zlink_msg_t reply;
-zlink_msg_init_size(&reply, 3);
-memcpy(zlink_msg_data(&reply), "ack", 3);
-zlink_send_rid(hub, source_rid, &reply, 1, 0);  /* source_rid = "RA" */
+/* on_reply receives the reply for each DEALER */
 ```
 
 > ROUTER ↔ ROUTER는 브로커, 클러스터 노드 간 메시 통신에 적합하다.
@@ -272,30 +294,29 @@ DEALER ↔ ROUTER 조합의 핵심 장점:
 ```
 
 ```c
-/* ROUTER 서버 3대 */
-void *ra = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_bind(ra, "tcp://127.0.0.1:5560");
-void *rb = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_bind(rb, "tcp://127.0.0.1:5561");
-void *rc = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_bind(rc, "tcp://127.0.0.1:5562");
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(router, "tcp://*:5558");
 
-/* DEALER 클라이언트: 3개 ROUTER에 연결 → round-robin 분배 */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-zlink_set_routing_id(dealer, "D1", 2);
-zlink_connect(dealer, "tcp://127.0.0.1:5560");
-zlink_connect(dealer, "tcp://127.0.0.1:5561");
-zlink_connect(dealer, "tcp://127.0.0.1:5562");
+/* Default behavior: silently drops undeliverable messages */
+zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "DATA", 4);
+zlink_send_rid(router, &bad_rid, &msg, 1, 0);
+/* No error, message lost */
 
-/* 3개 요청 전송 → req1→RA, req2→RB, req3→RC (round-robin) */
-for (int i = 0; i < 3; i++) {
-    zlink_msg_t req;
-    zlink_msg_init_size(&req, 5);
-    memcpy(zlink_msg_data(&req), "Hello", 5);
-    zlink_send(dealer, &req, 1, 0);
+/* Enable MANDATORY mode */
+int mandatory = 1;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
+
+/* Now returns error on undeliverable message */
+zlink_msg_t msg2;
+zlink_msg_init_size(&msg2, 4);
+memcpy(zlink_msg_data(&msg2), "DATA", 4);
+int rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+if (rc == -1 && errno == EHOSTUNREACH) {
+    /* Target "UNKNOWN" not found */
 }
-
-/* 각 ROUTER는 source_rid = "D1"로 요청 DEALER를 식별하여 응답 */
 ```
 
 ### 패턴 3: ROUTER ↔ ROUTER 가중치 라우팅
@@ -434,16 +455,8 @@ ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
 ```
 
 ```c
-/* 프론트엔드: 클라이언트가 연결 */
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
-zlink_bind(frontend, "tcp://*:5558");
-
-/* 백엔드: 워커 스레드가 연결 */
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
-zlink_bind(backend, "inproc://backend");
-
-/* 워커 스레드 시작 후 프록시 실행 */
-zlink_proxy(frontend, backend, NULL);
+void *router = zlink_socket(ctx, ZLINK_ROUTER);
+zlink_bind(router, "tcp://*:5558");
 ```
 
 ```c

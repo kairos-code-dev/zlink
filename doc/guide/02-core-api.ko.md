@@ -7,17 +7,17 @@
 Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한다.
 
 ```c
-/* 생성 */
+/* Create */
 void *ctx = zlink_ctx_new();
 
-/* 설정 — 다중 연결 서버에서는 I/O thread를 늘린다 */
-zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* 기본 1; 연결이 많으면 4가 최적 */
+/* Configure — increase I/O threads for multi-connection servers */
+zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 1; 4 is optimal under heavy load */
 
-/* 조회 */
+/* Query */
 int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS);
 
-/* 종료 */
-zlink_ctx_term(ctx);  /* 모든 socket이 닫힌 후 반환 */
+/* Terminate */
+zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 ```
 
 ### Context 옵션
@@ -39,7 +39,7 @@ zlink_ctx_term(ctx);  /* 모든 socket이 닫힌 후 반환 */
 
 ```c
 void *socket = zlink_socket(ctx, ZLINK_DEALER);
-/* ... 사용 ... */
+/* ... use ... */
 zlink_close(socket);
 ```
 
@@ -65,7 +65,7 @@ zlink_bind(socket, "tcp://*:5555");
 /* Connect (client) */
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-/* Unbind / Disconnect */
+/* Unbind */
 zlink_unbind(socket, "tcp://*:5555");
 zlink_disconnect(socket, "tcp://127.0.0.1:5555");
 ```
@@ -73,11 +73,11 @@ zlink_disconnect(socket, "tcp://127.0.0.1:5555");
 ### 2.4 Socket Option
 
 ```c
-/* 옵션 설정 */
+/* Set option */
 int hwm = 5000;
 zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
-/* 옵션 조회 */
+/* Get option */
 int value;
 size_t len = sizeof(value);
 zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
@@ -175,7 +175,7 @@ size_t part_count = 0;
 int rc = zlink_recv(socket, &source_rid, &parts, &part_count, 0);
 if (rc == 0) {
     for (size_t i = 0; i < part_count; i++) {
-        printf("frame %zu: %.*s\n", i,
+        printf("Frame %zu: %.*s\n", i,
                (int)zlink_msg_size(&parts[i]),
                (char *)zlink_msg_data(&parts[i]));
         zlink_msg_close(&parts[i]);
@@ -185,7 +185,7 @@ if (rc == 0) {
 /* Non-blocking recv */
 rc = zlink_recv(socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
 if (rc == -1 && zlink_errno() == EAGAIN) {
-    /* 현재 사용 가능한 message 없음 */
+    /* No message available right now */
 }
 ```
 
@@ -201,7 +201,7 @@ void on_message(const zlink_routing_id_t *source_rid,
                 void *userdata)
 {
     for (size_t i = 0; i < part_count; i++) {
-        printf("frame %zu: %.*s\n", i,
+        printf("Frame %zu: %.*s\n", i,
                (int)zlink_msg_size(&parts[i]),
                (char *)zlink_msg_data(&parts[i]));
         zlink_msg_close(&parts[i]);
@@ -248,7 +248,7 @@ memcpy(zlink_msg_data(&part), data, size);
 int rc = zlink_send(socket, &part, 1, 0);
 if (rc == -1) {
     int err = zlink_errno();
-    printf("error: %s\n", zlink_strerror(err));
+    printf("Error: %s\n", zlink_strerror(err));
 }
 ```
 
@@ -276,7 +276,7 @@ void on_router_message(const zlink_routing_id_t *source_rid,
                        zlink_msg_t *parts, size_t part_count,
                        void *userdata)
 {
-    printf("[%.*s] recv: %.*s\n",
+    printf("Received from [%.*s]: %.*s\n",
            (int)source_rid->size, source_rid->data,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
@@ -288,7 +288,7 @@ void on_dealer_message(const zlink_routing_id_t *source_rid,
                        zlink_msg_t *parts, size_t part_count,
                        void *userdata)
 {
-    printf("reply: %.*s\n",
+    printf("Reply: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
     for (size_t i = 0; i < part_count; i++)
@@ -300,12 +300,12 @@ int main(void) {
 
     /* ROUTER (server) */
     void *router = zlink_socket(ctx, ZLINK_ROUTER);
-    /* zlink_recv()로 수신 */
+    /* Receive with zlink_recv() */
     zlink_bind(router, "tcp://*:5555");
 
     /* DEALER (client) */
     void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-    /* zlink_recv()로 수신 */
+    /* Receive with zlink_recv() */
     zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
     /* DEALER → ROUTER */
@@ -314,7 +314,7 @@ int main(void) {
     memcpy(zlink_msg_data(&req), "request", 7);
     zlink_send(dealer, &req, 1, 0);
 
-    /* Handler callback이 비동기로 message를 처리 */
+    /* Handler callbacks process messages asynchronously */
     msleep(100);
 
     zlink_close(dealer);

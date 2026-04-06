@@ -51,15 +51,15 @@ Fields:
 
 ```mermaid
 sequenceDiagram
-    participant C as 클라이언트
-    participant S as 서버
+    participant C as Client
+    participant S as Server
 
     C->>S: HELLO (greeting)
     S->>C: HELLO (greeting)
-    C->>S: READY (메타데이터)
-    S->>C: READY (메타데이터)
-    C->>S: 데이터 교환
-    S->>C: 데이터 교환
+    C->>S: READY (metadata)
+    S->>C: READY (metadata)
+    C->>S: Data Exchange
+    S->>C: Data Exchange
 ```
 
 ### 3.2 HELLO 프레임

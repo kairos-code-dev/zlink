@@ -78,12 +78,12 @@ Proxy는 두 소켓 사이에서 메시지를 중계하는 패턴이다.
 
 ```mermaid
 flowchart LR
-    PUB -->|데이터| XSUB
-    XSUB ==>|프록시| XPUB
-    XPUB -->|데이터| SUB
-    SUB -.->|구독| XPUB
-    XPUB -.->|프록시| XSUB
-    XSUB -.->|구독| PUB
+    PUB -->|data| XSUB
+    XSUB ==>|proxy| XPUB
+    XPUB -->|data| SUB
+    SUB -.->|subscribe| XPUB
+    XPUB -.->|proxy| XSUB
+    XSUB -.->|subscribe| PUB
 ```
 
 ### 3.1 내장 proxy 사용
@@ -92,13 +92,13 @@ flowchart LR
 
     ```c
     void *xsub = zlink_socket(ctx, ZLINK_XSUB);
-    zlink_bind(xsub, "tcp://*:5556");      /* PUB들이 connect */
+    zlink_bind(xsub, "tcp://*:5556");      /* PUBs connect here */
 
     void *xpub = zlink_socket(ctx, ZLINK_XPUB);
-    zlink_bind(xpub, "tcp://*:5557");      /* SUB들이 connect */
+    zlink_bind(xpub, "tcp://*:5557");      /* SUBs connect here */
 
     void *capture = zlink_socket(ctx, ZLINK_PUB);
-    zlink_bind(capture, "tcp://*:5558");   /* optional: 메시지 기록 */
+    zlink_bind(capture, "tcp://*:5558");   /* optional: message recording */
 
     zlink_proxy(xsub, xpub, capture);      /* blocking */
     ```
@@ -107,13 +107,13 @@ flowchart LR
 
     ```cpp
     zlink::xsub_socket_t xsub(ctx);
-    xsub.bind("tcp://*:5556");      // PUB들이 connect
+    xsub.bind("tcp://*:5556");      // PUBs connect here
 
     zlink::xpub_socket_t xpub(ctx);
-    xpub.bind("tcp://*:5557");      // SUB들이 connect
+    xpub.bind("tcp://*:5557");      // SUBs connect here
 
     zlink::pub_socket_t capture(ctx);
-    capture.bind("tcp://*:5558");   // optional: 메시지 기록
+    capture.bind("tcp://*:5558");   // optional: message recording
 
     zlink::proxy(xsub, xpub, capture);  // blocking
     ```
@@ -122,13 +122,13 @@ flowchart LR
 
     ```java
     XSubSocket xsub = new XSubSocket(ctx);
-    xsub.bind("tcp://*:5556");      // PUB들이 connect
+    xsub.bind("tcp://*:5556");      // PUBs connect here
 
     XPubSocket xpub = new XPubSocket(ctx);
-    xpub.bind("tcp://*:5557");      // SUB들이 connect
+    xpub.bind("tcp://*:5557");      // SUBs connect here
 
     PubSocket capture = new PubSocket(ctx);
-    capture.bind("tcp://*:5558");   // optional: 메시지 기록
+    capture.bind("tcp://*:5558");   // optional: message recording
 
     Proxy.start(xsub, xpub, capture);  // blocking
     ```
@@ -137,13 +137,13 @@ flowchart LR
 
     ```python
     xsub = zlink.XSubSocket(ctx)
-    xsub.bind("tcp://*:5556")       # PUB들이 connect
+    xsub.bind("tcp://*:5556")       # PUBs connect here
 
     xpub = zlink.XPubSocket(ctx)
-    xpub.bind("tcp://*:5557")       # SUB들이 connect
+    xpub.bind("tcp://*:5557")       # SUBs connect here
 
     capture = zlink.PubSocket(ctx)
-    capture.bind("tcp://*:5558")    # optional: 메시지 기록
+    capture.bind("tcp://*:5558")    # optional: message recording
 
     zlink.proxy(xsub, xpub, capture)  # blocking
     ```
@@ -152,13 +152,13 @@ flowchart LR
 
     ```typescript
     const xsub = new zlink.XSubSocket(ctx);
-    xsub.bind("tcp://*:5556");      // PUB들이 connect
+    xsub.bind("tcp://*:5556");      // PUBs connect here
 
     const xpub = new zlink.XPubSocket(ctx);
-    xpub.bind("tcp://*:5557");      // SUB들이 connect
+    xpub.bind("tcp://*:5557");      // SUBs connect here
 
     const capture = new zlink.PubSocket(ctx);
-    capture.bind("tcp://*:5558");   // optional: 메시지 기록
+    capture.bind("tcp://*:5558");   // optional: message recording
 
     zlink.proxy(xsub, xpub, capture);  // blocking
     ```
@@ -167,13 +167,13 @@ flowchart LR
 
     ```csharp
     using var xsub = new XSubSocket(ctx);
-    xsub.Bind("tcp://*:5556");      // PUB들이 connect
+    xsub.Bind("tcp://*:5556");      // PUBs connect here
 
     using var xpub = new XPubSocket(ctx);
-    xpub.Bind("tcp://*:5557");      // SUB들이 connect
+    xpub.Bind("tcp://*:5557");      // SUBs connect here
 
     using var capture = new PubSocket(ctx);
-    capture.Bind("tcp://*:5558");   // optional: 메시지 기록
+    capture.Bind("tcp://*:5558");   // optional: message recording
 
     Proxy.Start(xsub, xpub, capture);  // blocking
     ```
@@ -182,13 +182,13 @@ flowchart LR
 
     ```rust
     let xsub = ctx.xsub_socket()?;
-    xsub.bind("tcp://*:5556")?;     // PUB들이 connect
+    xsub.bind("tcp://*:5556")?;     // PUBs connect here
 
     let xpub = ctx.xpub_socket()?;
-    xpub.bind("tcp://*:5557")?;     // SUB들이 connect
+    xpub.bind("tcp://*:5557")?;     // SUBs connect here
 
     let capture = ctx.pub_socket()?;
-    capture.bind("tcp://*:5558")?;  // optional: 메시지 기록
+    capture.bind("tcp://*:5558")?;  // optional: message recording
 
     zlink::proxy(&xsub, &xpub, Some(&capture))?;  // blocking
     ```
@@ -198,15 +198,15 @@ flowchart LR
     ```go
     xsub, err := ctx.XSubSocket()
     if err != nil { panic(err) }
-    xsub.Bind("tcp://*:5556")  // PUB들이 connect
+    xsub.Bind("tcp://*:5556")  // PUBs connect here
 
     xpub, err := ctx.XPubSocket()
     if err != nil { panic(err) }
-    xpub.Bind("tcp://*:5557")  // SUB들이 connect
+    xpub.Bind("tcp://*:5557")  // SUBs connect here
 
     capture, err := ctx.PubSocket()
     if err != nil { panic(err) }
-    capture.Bind("tcp://*:5558")  // optional: 메시지 기록
+    capture.Bind("tcp://*:5558")  // optional: message recording
 
     zlink.Proxy(xsub, xpub, capture)  // blocking
     ```
@@ -247,7 +247,7 @@ flowchart LR
     zlink_bind(xpub, "tcp://*:5557");
 
     while (running) {
-        /* 데이터 전달: XSUB → 앱 → XPUB */
+        /* Data relay: XSUB → app → XPUB */
         zlink_routing_id_t rid;
         zlink_msg_t *parts = NULL;
         size_t count = 0;
@@ -256,18 +256,18 @@ flowchart LR
         int rc = zlink_subscribe(xsub, &rid, &parts, &count,
                                  topic, &topic_len, ZLINK_DONTWAIT);
         if (rc == 0) {
-            /* 커스텀 로직 삽입 가능 (필터링, 로깅 등) */
+            /* Insert custom logic here (filtering, logging, etc.) */
             zlink_publish(xpub, topic, parts, count, 0);
         }
 
-        /* 구독 전파: XPUB → 앱 → XSUB */
+        /* Subscription propagation: XPUB → app → XSUB */
         int subscribed;
         char sub_topic[256];
         size_t sub_len = sizeof(sub_topic);
         rc = zlink_subscription_event(xpub, &rid, &subscribed,
                                       sub_topic, &sub_len, ZLINK_DONTWAIT);
         if (rc == 0) {
-            /* 커스텀 로직 삽입 가능 (인가, 리맵핑 등) */
+            /* Insert custom logic here (authorization, remapping, etc.) */
             if (subscribed)
                 zlink_set_subscription(xsub, sub_topic);
             else
@@ -285,14 +285,14 @@ flowchart LR
     xpub.bind("tcp://*:5557");
 
     while (running) {
-        // 데이터 전달: XSUB -> 앱 -> XPUB
+        // Data relay: XSUB -> app -> XPUB
         auto msg = xsub.subscribe(zlink::dontwait);
         if (msg) {
-            // 커스텀 로직 삽입 가능
+            // Insert custom logic here
             xpub.publish(msg->topic, msg->parts);
         }
 
-        // 구독 전파: XPUB -> 앱 -> XSUB
+        // Subscription propagation: XPUB -> app -> XSUB
         auto event = xpub.subscription_event(zlink::dontwait);
         if (event) {
             if (event->subscribed)
@@ -312,14 +312,14 @@ flowchart LR
     xpub.bind("tcp://*:5557");
 
     while (running) {
-        // 데이터 전달: XSUB -> 앱 -> XPUB
+        // Data relay: XSUB -> app -> XPUB
         SubscribeResult msg = xsub.subscribe(DONTWAIT);
         if (msg != null) {
-            // 커스텀 로직 삽입 가능
+            // Insert custom logic here
             xpub.publish(msg.topic(), msg.parts());
         }
 
-        // 구독 전파: XPUB -> 앱 -> XSUB
+        // Subscription propagation: XPUB -> app -> XSUB
         SubscriptionEvent event = xpub.subscriptionEvent(DONTWAIT);
         if (event != null) {
             if (event.subscribed())
@@ -339,13 +339,13 @@ flowchart LR
     xpub.bind("tcp://*:5557")
 
     while running:
-        # 데이터 전달: XSUB -> 앱 -> XPUB
+        # Data relay: XSUB -> app -> XPUB
         msg = xsub.subscribe(dontwait=True)
         if msg:
-            # 커스텀 로직 삽입 가능
+            # Insert custom logic here
             xpub.publish(msg.topic, msg.parts)
 
-        # 구독 전파: XPUB -> 앱 -> XSUB
+        # Subscription propagation: XPUB -> app -> XSUB
         event = xpub.subscription_event(dontwait=True)
         if event:
             if event.subscribed:
@@ -363,14 +363,14 @@ flowchart LR
     xpub.bind("tcp://*:5557");
 
     while (running) {
-        // 데이터 전달: XSUB -> 앱 -> XPUB
+        // Data relay: XSUB -> app -> XPUB
         const msg = xsub.subscribe({ dontwait: true });
         if (msg) {
-            // 커스텀 로직 삽입 가능
+            // Insert custom logic here
             xpub.publish(msg.topic, msg.parts);
         }
 
-        // 구독 전파: XPUB -> 앱 -> XSUB
+        // Subscription propagation: XPUB -> app -> XSUB
         const event = xpub.subscriptionEvent({ dontwait: true });
         if (event) {
             if (event.subscribed)
@@ -390,14 +390,14 @@ flowchart LR
     xpub.Bind("tcp://*:5557");
 
     while (running) {
-        // 데이터 전달: XSUB -> 앱 -> XPUB
+        // Data relay: XSUB -> app -> XPUB
         var msg = xsub.Subscribe(dontwait: true);
         if (msg != null) {
-            // 커스텀 로직 삽입 가능
+            // Insert custom logic here
             xpub.Publish(msg.Topic, msg.Parts);
         }
 
-        // 구독 전파: XPUB -> 앱 -> XSUB
+        // Subscription propagation: XPUB -> app -> XSUB
         var ev = xpub.SubscriptionEvent(dontwait: true);
         if (ev != null) {
             if (ev.Subscribed)
@@ -417,13 +417,13 @@ flowchart LR
     xpub.bind("tcp://*:5557")?;
 
     while running {
-        // 데이터 전달: XSUB -> 앱 -> XPUB
+        // Data relay: XSUB -> app -> XPUB
         if let Some(msg) = xsub.subscribe(zlink::DONTWAIT)? {
-            // 커스텀 로직 삽입 가능
+            // Insert custom logic here
             xpub.publish(&msg.topic, &msg.parts)?;
         }
 
-        // 구독 전파: XPUB -> 앱 -> XSUB
+        // Subscription propagation: XPUB -> app -> XSUB
         if let Some(event) = xpub.subscription_event(zlink::DONTWAIT)? {
             if event.subscribed {
                 xsub.set_subscription(&event.topic)?;
@@ -445,13 +445,13 @@ flowchart LR
     xpub.Bind("tcp://*:5557")
 
     for running {
-        // 데이터 전달: XSUB -> 앱 -> XPUB
+        // Data relay: XSUB -> app -> XPUB
         if msg, err := xsub.Subscribe(); err == nil {
-            // 커스텀 로직 삽입 가능
+            // Insert custom logic here
             xpub.Publish(msg.Topic, msg.Parts)
         }
 
-        // 구독 전파: XPUB -> 앱 -> XSUB
+        // Subscription propagation: XPUB -> app -> XSUB
         if event, err := xpub.SubscriptionEvent(); err == nil {
             if event.Subscribed {
                 xsub.SetSubscription(event.Topic)
@@ -603,7 +603,7 @@ flowchart LR
 flowchart LR
     P1[PUB 1] --> XSUB
     P2[PUB 2] --> XSUB
-    subgraph 프록시
+    subgraph Proxy
         XSUB --> XPUB
     end
     XPUB --> S1[SUB 1]

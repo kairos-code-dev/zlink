@@ -116,7 +116,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "C"
 
     ```c
-    /* 종료 시 미전송 메시지를 최대 1초 대기 */
+    /* Wait up to 1 second for pending messages on close */
     int linger = 1000;
     zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
     ```
@@ -180,7 +180,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "C"
 
     ```c
-    /* send/recv를 500ms 후 포기 */
+    /* Give up send/recv after 500 ms */
     int sndtimeo = 500;
     zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
     int rcvtimeo = 500;
@@ -253,7 +253,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "C"
 
     ```c
-    /* 3초 이내 미연결 시 재시도 */
+    /* Fail connect attempts after 3 seconds */
     int timeout = 3000;
     zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
     ```
@@ -321,7 +321,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "C"
 
     ```c
-    /* 지수 백오프: 초기 200ms, ��한 30s */
+    /* Exponential backoff: 200ms initial, cap at 30s */
     int ivl = 200;
     zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL, &ivl, sizeof(ivl));
     int ivl_max = 30000;
@@ -399,7 +399,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "C"
 
     ```c
-    // 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
     zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE, &(int){1}, sizeof(int));
     zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_IDLE, &(int){60}, sizeof(int));
     zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_INTVL, &(int){10}, sizeof(int));
@@ -409,7 +409,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "C++"
 
     ```cpp
-    // 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
     s.set_option(ZLINK_OPT_TCP_KEEPALIVE, 1);
     s.set_option(ZLINK_OPT_TCP_KEEPALIVE_IDLE, 60);
     s.set_option(ZLINK_OPT_TCP_KEEPALIVE_INTVL, 10);
@@ -419,7 +419,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "Java"
 
     ```java
-    // 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
     s.setOption(Option.TCP_KEEPALIVE, 1);
     s.setOption(Option.TCP_KEEPALIVE_IDLE, 60);
     s.setOption(Option.TCP_KEEPALIVE_INTVL, 10);
@@ -429,7 +429,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "Python"
 
     ```python
-    # 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    # Probe after 60s idle, every 10s, 3 probes max, then disconnect
     s.set_option(zlink.Option.TCP_KEEPALIVE, 1)
     s.set_option(zlink.Option.TCP_KEEPALIVE_IDLE, 60)
     s.set_option(zlink.Option.TCP_KEEPALIVE_INTVL, 10)
@@ -439,7 +439,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "Node/TypeScript"
 
     ```typescript
-    // 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
     s.setOption(zlink.Option.TCP_KEEPALIVE, 1);
     s.setOption(zlink.Option.TCP_KEEPALIVE_IDLE, 60);
     s.setOption(zlink.Option.TCP_KEEPALIVE_INTVL, 10);
@@ -449,7 +449,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "C#/.NET"
 
     ```csharp
-    // 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
     s.SetOption(Option.TcpKeepalive, 1);
     s.SetOption(Option.TcpKeepaliveIdle, 60);
     s.SetOption(Option.TcpKeepaliveIntvl, 10);
@@ -459,7 +459,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "Rust"
 
     ```rust
-    // 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
     s.set_option(zlink::Option::TcpKeepalive, 1)?;
     s.set_option(zlink::Option::TcpKeepaliveIdle, 60)?;
     s.set_option(zlink::Option::TcpKeepaliveIntvl, 10)?;
@@ -469,7 +469,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 === "Go"
 
     ```go
-    // 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+    // Probe after 60s idle, every 10s, 3 probes max, then disconnect
     s.SetOption(zlink.OptionTcpKeepalive, 1)
     s.SetOption(zlink.OptionTcpKeepaliveIdle, 60)
     s.SetOption(zlink.OptionTcpKeepaliveIntvl, 10)
@@ -527,10 +527,10 @@ ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정
 === "C"
 
     ```c
-    /* 5초마다 PING, 원격 TTL 15초, 로컬 PONG 타임아웃 10초 */
+    /* PING every 5s, remote TTL 15s, local PONG timeout 10s */
     int hb_ivl = 5000;
     zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
-    int hb_ttl = 150;  /* 0.1초 단위 → 15초 */
+    int hb_ttl = 150;  /* 0.1s units → 15s */
     zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
     int hb_timeout = 10000;
     zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
@@ -540,7 +540,7 @@ ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정
 
     ```cpp
     socket.set_option(zlink::heartbeat_ivl, 5000);
-    socket.set_option(zlink::heartbeat_ttl, 150);      // 0.1초 단위 → 15초
+    socket.set_option(zlink::heartbeat_ttl, 150);      // 0.1s units → 15s
     socket.set_option(zlink::heartbeat_timeout, 10000);
     ```
 
@@ -548,7 +548,7 @@ ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정
 
     ```java
     socket.setOption(SocketOptions.HEARTBEAT_IVL, 5000);
-    socket.setOption(SocketOptions.HEARTBEAT_TTL, 150);      // 0.1초 단위 → 15초
+    socket.setOption(SocketOptions.HEARTBEAT_TTL, 150);      // 0.1s units → 15s
     socket.setOption(SocketOptions.HEARTBEAT_TIMEOUT, 10000);
     ```
 
@@ -556,7 +556,7 @@ ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정
 
     ```python
     socket.set_option(zlink.SocketOption.HEARTBEAT_IVL, 5000)
-    socket.set_option(zlink.SocketOption.HEARTBEAT_TTL, 150)      # 0.1초 단위 → 15초
+    socket.set_option(zlink.SocketOption.HEARTBEAT_TTL, 150)      # 0.1s units → 15s
     socket.set_option(zlink.SocketOption.HEARTBEAT_TIMEOUT, 10000)
     ```
 
@@ -564,7 +564,7 @@ ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정
 
     ```typescript
     socket.options.heartbeatInterval = 5000;
-    socket.options.heartbeatTtl = 150;      // 0.1초 단위 → 15초
+    socket.options.heartbeatTtl = 150;      // 0.1s units → 15s
     socket.options.heartbeatTimeout = 10000;
     ```
 
@@ -572,7 +572,7 @@ ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정
 
     ```csharp
     socket.SetOption(SocketOptions.HeartbeatIvl, 5000);
-    socket.SetOption(SocketOptions.HeartbeatTtl, 150);      // 0.1초 단위 → 15초
+    socket.SetOption(SocketOptions.HeartbeatTtl, 150);      // 0.1s units → 15s
     socket.SetOption(SocketOptions.HeartbeatTimeout, 10000);
     ```
 
@@ -588,7 +588,7 @@ ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정
 
     ```go
     socket.SetOption(zlink.OptionHeartbeatIvl, 5000)
-    socket.SetOption(zlink.OptionHeartbeatTtl, 150)      // 0.1초 단위 → 15초
+    socket.SetOption(zlink.OptionHeartbeatTtl, 150)      // 0.1s units → 15s
     socket.SetOption(zlink.OptionHeartbeatTimeout, 10000)
     ```
 

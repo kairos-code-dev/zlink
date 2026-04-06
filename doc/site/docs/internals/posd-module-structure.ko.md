@@ -18,7 +18,7 @@
 
 ```mermaid
 flowchart TB
-    subgraph Callers ["바인딩 / C 호출자"]
+    subgraph Callers ["Bindings / C Callers"]
         zlink_h["core/include/zlink.h"]
     end
 
@@ -32,7 +32,7 @@ flowchart TB
         zlink_option["zlink_option · zlink_option_*_api"]
     end
 
-    subgraph SAL ["서비스 접근 계층"]
+    subgraph SAL ["Service Access Layer"]
         discovery_access["discovery_access_t"]
         registry_access["registry_access_t"]
         registry_query_access["registry_query_access_t"]
@@ -40,20 +40,20 @@ flowchart TB
         spot_subject_access["spot_subject_access_t"]
     end
 
-    subgraph SvcRT ["서비스 런타임"]
+    subgraph SvcRT ["Service Runtime"]
         direction LR
         discovery_rt["Discovery: bootstrap · state · update · uplink · registry_client"]
         spot_rt["SPOT: node · pub · sub · data_plane · handle · runtime"]
-        common_rt["공통: runtime_base · api_guard · monitor · bridge"]
+        common_rt["Common: runtime_base · api_guard · monitor · bridge"]
     end
 
-    subgraph SocketRT ["소켓 시맨틱 / 런타임 (core/src/sockets/)"]
-        families["패밀리: pair · pub · sub · xpub · xsub · dealer · router · stream"]
+    subgraph SocketRT ["Socket Semantic / Runtime (core/src/sockets/)"]
+        families["Families: pair · pub · sub · xpub · xsub · dealer · router · stream"]
         base["Base: socket_base · api · dispatch · endpoint · lifecycle · monitor · msg · routing"]
-        runtime["런타임: socket_runtime · socket_close_ops"]
+        runtime["Runtime: socket_runtime · socket_close_ops"]
     end
 
-    subgraph Core ["런타임 코어 (core/src/core/)"]
+    subgraph Core ["Runtime Core (core/src/core/)"]
         core_mods["ctx · own · reaper · mailbox · pipe"]
         multipart["multipart_send_txn"]
         options["options · options_dispatch · core_socket · transport_network · protocol_metadata"]
@@ -61,13 +61,13 @@ flowchart TB
         session["session_base · socket_poller"]
     end
 
-    subgraph Engine ["엔진 (core/src/engine/)"]
-        asio["asio/ — Boost.Asio poller, io_context, mailbox 실행"]
+    subgraph Engine ["Engine (core/src/engine/)"]
+        asio["asio/ — Boost.Asio poller, io_context, mailbox execution"]
     end
 
-    subgraph TP ["전송 / 프로토콜"]
-        protocol["프로토콜: raw · zmp · metadata"]
-        transport["전송: tcp · ipc · tls · ws · pgm"]
+    subgraph TP ["Transport / Protocol"]
+        protocol["Protocol: raw · zmp · metadata"]
+        transport["Transport: tcp · ipc · tls · ws · pgm"]
     end
 
     Callers --> API
@@ -212,12 +212,12 @@ Option은 세 카테고리로 분류되어 각 도메인 소유자가 validation
 
 ```mermaid
 flowchart TB
-    A["API Facade"] --> B["서비스 접근"]
-    B --> C["서비스 런타임"]
-    C --> D["소켓 시맨틱 / 런타임"]
-    D --> E["런타임 코어"]
-    E --> F["엔진 (Asio 백엔드)"]
-    F --> G["전송 / 프로토콜"]
+    A["API Facade"] --> B["Service Access"]
+    B --> C["Service Runtime"]
+    C --> D["Socket Semantic / Runtime"]
+    D --> E["Runtime Core"]
+    E --> F["Engine (Asio backend)"]
+    F --> G["Transport / Protocol"]
 ```
 
 금지 방향:
@@ -229,7 +229,7 @@ flowchart TB
 
 ```
 core/src/
-  api/           37 files — C API facade (관심사별 분리)
+  api/           37 files — C API facade (split by concern)
   core/          61 files — runtime core, options dispatch, multipart send
   engine/asio/   — Boost.Asio execution backbone
   sockets/       37 files — socket families + base runtime components
@@ -240,5 +240,5 @@ core/src/
     discovery/   23 files — discovery + registry access + socket attachment
     spot/        29 files — node/pub/sub/data_plane/handle/subject_access
   transports/    — tcp/ipc/tls/ws/pgm
-  utils/         — 도메인 무관 유틸리티
+  utils/         — domain-agnostic utilities
 ```

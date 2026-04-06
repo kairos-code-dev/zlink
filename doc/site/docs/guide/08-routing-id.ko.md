@@ -1554,9 +1554,9 @@ routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 �
 === "C"
 
     ```c
-    /* routing_id 비교 */
+    /* routing_id comparison */
     if (rid_size == 2 && memcmp(rid, "D1", 2) == 0) {
-        /* D1 클라이언트의 메시지 */
+        /* Message from client D1 */
     }
     ```
 

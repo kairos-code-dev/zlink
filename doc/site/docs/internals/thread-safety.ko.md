@@ -93,13 +93,13 @@ bit와 in-flight 카운트. 이를 통해 broad lock 없이 fail-fast 결정이
 
 ```mermaid
 stateDiagram-v2
-    [*] --> 운영중
-    운영중 --> 운영중 : API 진입 (in-flight++)
-    운영중 --> 운영중 : API 퇴장 (in-flight--)
-    운영중 --> 닫는중 : close 수락 (closing bit 설정)
-    운영중 --> 운영중 : close 거부 (EBUSY, no latch)
-    닫는중 --> 닫힘 : drain 완료, teardown
-    닫힘 --> [*]
+    [*] --> Operational
+    Operational --> Operational : API enter (in-flight++)
+    Operational --> Operational : API exit (in-flight--)
+    Operational --> Closing : close accepted (closing bit set)
+    Operational --> Operational : close rejected (EBUSY, no latch)
+    Closing --> Closed : drain complete, teardown
+    Closed --> [*]
 ```
 
 | 조건 | errno | 의미 |
@@ -220,9 +220,9 @@ dispatch가 핸들러 포인터를 읽을 때, setter 스레드가 핸들러를
 **Callback 진입/퇴장:**
 
 ```cpp
-enter_callback_api();   // callback을 in-flight로 표시
+enter_callback_api();   // marks callback as in-flight
 handler(subject, userdata);
-leave_callback_api();   // in-flight 플래그 해제
+leave_callback_api();   // clears in-flight flag
 ```
 
 `enter_callback_api` / `leave_callback_api` 쌍은 `close`가 callback을

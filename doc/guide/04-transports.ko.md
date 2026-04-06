@@ -34,16 +34,16 @@
 ### 기본 사용법
 
 ```c
-/* 서버: 특정 인터페이스 */
+/* Server: specific interface */
 zlink_bind(socket, "tcp://192.168.1.10:5555");
 
-/* 서버: 모든 인터페이스 */
+/* Server: all interfaces */
 zlink_bind(socket, "tcp://*:5555");
 
-/* 클라이언트: IP 주소 */
+/* Client: IP address */
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-/* 클라이언트: DNS 이름 */
+/* Client: DNS name */
 zlink_connect(socket, "tcp://server.example.com:5555");
 ```
 
@@ -52,16 +52,16 @@ zlink_connect(socket, "tcp://server.example.com:5555");
 OS가 사용 가능한 포트를 자동 할당한다. 테스트나 동적 포트 환경에서 유용하다.
 
 ```c
-/* 포트 0 또는 * 사용 */
+/* Use port 0 or * */
 zlink_bind(socket, "tcp://127.0.0.1:*");
 
-/* 할당된 엔드포인트 조회 */
+/* Query the assigned endpoint */
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
-/* endpoint = "tcp://127.0.0.1:53821" (예시) */
+/* endpoint = "tcp://127.0.0.1:53821" (example) */
 
-/* 조회된 엔드포인트로 연결 */
+/* Connect using the retrieved endpoint */
 zlink_connect(other_socket, endpoint);
 ```
 
@@ -72,7 +72,7 @@ zlink_connect(other_socket, endpoint);
 connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행된다.
 
 ```c
-/* DNS 이름으로 연결 */
+/* Connect using DNS name */
 zlink_connect(socket, "tcp://localhost:5555");
 ```
 
@@ -82,17 +82,17 @@ zlink_connect(socket, "tcp://localhost:5555");
 ### 에러 처리
 
 ```c
-/* bind 실패: 포트 이미 사용 중 */
+/* bind failure: port already in use */
 int rc = zlink_bind(socket, "tcp://*:5555");
 if (rc == -1) {
     if (errno == EADDRINUSE)
-        printf("포트 5555 이미 사용 중\n");
+        printf("Port 5555 already in use\n");
 }
 
-/* connect 실패: 잘못된 주소 */
+/* connect failure: invalid address */
 rc = zlink_connect(socket, "tcp://invalid:99999");
 if (rc == -1) {
-    printf("연결 실패: %s\n", zlink_strerror(errno));
+    printf("Connection failed: %s\n", zlink_strerror(errno));
 }
 ```
 
@@ -111,17 +111,17 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 ### 기본 사용법
 
 ```c
-/* 서버 */
+/* Server */
 zlink_bind(socket, "ipc:///tmp/myapp.ipc");
 
-/* 클라이언트 */
+/* Client */
 zlink_connect(socket, "ipc:///tmp/myapp.ipc");
 ```
 
 ### 와일드카드 바인드
 
 ```c
-/* IPC 와일드카드 — 임시 경로 자동 할당 */
+/* IPC wildcard — auto-assigns a temporary path */
 zlink_bind(socket, "ipc://*");
 
 char endpoint[256];
@@ -134,10 +134,10 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ### 에러 처리
 
 ```c
-/* 경로가 너무 긴 경우 */
+/* Path too long */
 int rc = zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 if (rc == -1 && errno == ENAMETOOLONG) {
-    printf("IPC 경로가 시스템 제한(108자)을 초과\n");
+    printf("IPC path exceeds system limit (108 characters)\n");
 }
 ```
 
@@ -156,7 +156,7 @@ if (rc == -1 && errno == ENAMETOOLONG) {
 ### 기본 사용법
 
 ```c
-/* bind가 먼저 호출되어야 함 */
+/* bind must be called first */
 zlink_bind(socket_a, "inproc://workers");
 zlink_connect(socket_b, "inproc://workers");
 ```
@@ -164,10 +164,10 @@ zlink_connect(socket_b, "inproc://workers");
 ### 에러 처리
 
 ```c
-/* bind 없이 connect 시도 */
+/* Attempting connect without bind */
 int rc = zlink_connect(socket, "inproc://nonexistent");
 if (rc == -1) {
-    printf("bind가 아직 없음\n");
+    printf("No bind exists yet\n");
 }
 ```
 
@@ -187,13 +187,13 @@ if (rc == -1) {
 ### 기본 사용법
 
 ```c
-/* 서버 */
+/* Server */
 zlink_bind(socket, "ws://*:8080");
 
-/* 클라이언트 */
+/* Client */
 zlink_connect(socket, "ws://server:8080");
 
-/* 와일드카드 포트 */
+/* Wildcard port */
 zlink_bind(socket, "ws://127.0.0.1:*");
 char endpoint[256];
 size_t len = sizeof(endpoint);
@@ -216,11 +216,11 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 ### 기본 사용법
 
 ```c
-/* 서버 */
+/* Server */
 zlink_set_tls_server(socket, cert_path, key_path, 0);
 zlink_bind(socket, "wss://*:8443");
 
-/* 클라이언트 */
+/* Client */
 zlink_set_tls_client(socket, ca_path, "localhost", 0);
 zlink_connect(socket, "wss://server:8443");
 ```
@@ -241,11 +241,11 @@ zlink_connect(socket, "wss://server:8443");
 ### 기본 사용법
 
 ```c
-/* 서버 */
+/* Server */
 zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 zlink_bind(socket, "tls://*:5555");
 
-/* 클라이언트 */
+/* Client */
 zlink_set_tls_client(socket, "/path/to/ca.pem", NULL, 1);
 zlink_connect(socket, "tls://server:5555");
 ```
@@ -286,12 +286,12 @@ zlink_connect(socket, "tls://server:5555");
 하나의 소켓에 여러 엔드포인트를 bind하거나 connect할 수 있다.
 
 ```c
-/* 다중 bind — 여러 인터페이스에서 수신 */
+/* Multiple bind — listen on multiple interfaces */
 zlink_bind(router, "tcp://192.168.1.10:5555");
 zlink_bind(router, "tcp://10.0.0.1:5555");
 zlink_bind(router, "ipc:///tmp/router.ipc");
 
-/* 다중 connect — 여러 서버에 연결 */
+/* Multiple connect — connect to multiple servers */
 zlink_connect(dealer, "tcp://server1:5555");
 zlink_connect(dealer, "tcp://server2:5555");
 ```
@@ -306,7 +306,7 @@ zlink_bind(socket, "tcp://127.0.0.1:*");
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
-printf("바인드된 엔드포인트: %s\n", endpoint);
+printf("Bound endpoint: %s\n", endpoint);
 ```
 
 성능 비교는 [성능 가이드](10-performance.ko.md)를 참고.

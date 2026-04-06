@@ -52,16 +52,16 @@ zlink는 8종의 소켓 타입을 제공한다.
 ### 의사결정 플로우
 
 ```
-통신 상대가 외부 클라이언트(브라우저, 게임)인가?
+Is the communication peer an external client (browser, game)?
 +-- Yes → STREAM (ws/wss/tcp/tls)
-+-- No → zlink 소켓 간 통신
-         +-- 1:1 전용인가?
++-- No → Communication between zlink sockets
+         +-- Is it 1:1 exclusive?
          |   +-- Yes → PAIR
-         +-- No → N:M 통신
-              +-- 발행-구독 (브로드캐스트)인가?
-              |   +-- 프록시/브로커 필요 → XPUB/XSUB
-              |   +-- 단순 발행-구독 → PUB/SUB
-              +-- 요청-응답 / 라우팅인가?
+         +-- No → N:M communication
+              +-- Publish-subscribe (broadcast)?
+              |   +-- Proxy/broker needed → XPUB/XSUB
+              |   +-- Simple pub-sub → PUB/SUB
+              +-- Request-reply / routing?
                   +-- DEALER/ROUTER
 ```
 
@@ -102,9 +102,9 @@ zlink는 8종의 소켓 타입을 제공한다.
 
     ```c
     int zlink_recv (void *socket,
-                    zlink_routing_id_t *source_rid,  /* 송신자 routing_id */
-                    zlink_msg_t **parts,              /* 멀티파트 데이터 */
-                    size_t *part_count,               /* 프레임 수 */
+                    zlink_routing_id_t *source_rid,  /* sender routing_id */
+                    zlink_msg_t **parts,              /* multipart data */
+                    size_t *part_count,               /* frame count */
                     zlink_send_flags_t flags);
     ```
 
@@ -145,35 +145,35 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 === "C"
 
     ```c
-    /* 1. Context 생성 */
+    /* 1. Create Context */
     void *ctx = zlink_ctx_new();
 
-    /* 2. 핸들러 콜백 정의 */
+    /* 2. Define handler callback */
     void on_message(const zlink_routing_id_t *source_rid,
                     zlink_msg_t *parts, size_t part_count,
                     void *userdata)
     {
-        /* 수신 메시지 처리 */
+        /* process received message */
         for (size_t i = 0; i < part_count; i++)
             zlink_msg_close(&parts[i]);
     }
 
-    /* 3. 소켓 생성 (raw STREAM callback 예제) */
+    /* 3. Create Socket (raw STREAM callback example) */
     void *socket = zlink_socket(ctx, ZLINK_STREAM);
     zlink_recv_handler(socket, on_message, NULL);
 
-    /* 4. 소켓 옵션 설정 (bind/connect 전) */
+    /* 4. Set socket options (before bind/connect) */
     zlink_set_option(socket, ZLINK_OPT_<OPTION>, &value, sizeof(value));
 
-    /* 5. 연결 (bind 또는 connect) */
+    /* 5. Establish connection (bind or connect) */
     zlink_bind(socket, "tcp://*:5555");
-    // 또는
+    // or
     zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-    /* 6. 메시지 송신 (수신은 콜백으로 처리) */
+    /* 6. Send messages (receive is handled by callback) */
     zlink_send(socket, data, size, flags);
 
-    /* 7. 정리 */
+    /* 7. Cleanup */
     zlink_close(socket);
     zlink_ctx_term(ctx);
     ```
@@ -181,59 +181,59 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 === "C++"
 
     ```cpp
-    // 1. Context 생성
+    // 1. Create Context
     zlink::context_t ctx;
 
-    // 2. 핸들러 콜백 정의
+    // 2. Define handler callback
     auto on_message = [](const zlink::routing_id_t& source_rid,
                          std::vector<zlink::message_t> parts,
                          void* userdata) {
-        // 수신 메시지 처리
+        // process received message
     };
 
-    // 3. 소켓 생성 (raw STREAM callback 예제)
+    // 3. Create Socket (raw STREAM callback example)
     zlink::stream_socket_t socket(ctx);
     socket.recv_handler(on_message, nullptr);
 
-    // 4. 소켓 옵션 설정 (bind/connect 전)
+    // 4. Set socket options (before bind/connect)
     socket.set_option(ZLINK_OPT_<OPTION>, value);
 
-    // 5. 연결 (bind 또는 connect)
+    // 5. Establish connection (bind or connect)
     socket.bind("tcp://*:5555");
-    // 또는
+    // or
     socket.connect("tcp://127.0.0.1:5555");
 
-    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    // 6. Send messages (receive is handled by callback)
     socket.send(data);
 
-    // 7. 정리
+    // 7. Cleanup
     socket.close();
     ```
 
 === "Java"
 
     ```java
-    // 1. Context 생성
+    // 1. Create Context
     Context ctx = new Context();
 
-    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    // 2–3. Create Socket with callback (raw STREAM example)
     StreamSocket socket = new StreamSocket(ctx);
     socket.recvHandler((sourceRid, parts) -> {
-        // 수신 메시지 처리
+        // process received message
     });
 
-    // 4. 소켓 옵션 설정 (bind/connect 전)
+    // 4. Set socket options (before bind/connect)
     socket.setOption(Option.<OPTION>, value);
 
-    // 5. 연결 (bind 또는 connect)
+    // 5. Establish connection (bind or connect)
     socket.bind("tcp://*:5555");
-    // 또는
+    // or
     socket.connect("tcp://127.0.0.1:5555");
 
-    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    // 6. Send messages (receive is handled by callback)
     socket.send(data);
 
-    // 7. 정리
+    // 7. Cleanup
     socket.close();
     ctx.close();
     ```
@@ -241,25 +241,25 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 === "Python"
 
     ```python
-    # 1. Context 생성
+    # 1. Create Context
     ctx = zlink.Context()
 
-    # 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    # 2–3. Create Socket with callback (raw STREAM example)
     socket = zlink.StreamSocket(ctx)
     socket.recv_handler(lambda source_rid, parts: ...)
 
-    # 4. 소켓 옵션 설정 (bind/connect 전)
+    # 4. Set socket options (before bind/connect)
     socket.set_option(zlink.Option.<OPTION>, value)
 
-    # 5. 연결 (bind 또는 connect)
+    # 5. Establish connection (bind or connect)
     socket.bind("tcp://*:5555")
-    # 또는
+    # or
     socket.connect("tcp://127.0.0.1:5555")
 
-    # 6. 메시지 송신 (수신은 콜백으로 처리)
+    # 6. Send messages (receive is handled by callback)
     socket.send(data)
 
-    # 7. 정리
+    # 7. Cleanup
     socket.close()
     ctx.term()
     ```
@@ -267,27 +267,27 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 === "Node/TypeScript"
 
     ```typescript
-    // 1. Context 생성
+    // 1. Create Context
     const ctx = new zlink.Context();
 
-    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    // 2–3. Create Socket with callback (raw STREAM example)
     const socket = new zlink.StreamSocket(ctx);
     socket.recvHandler((sourceRid, parts) => {
-        // 수신 메시지 처리
+        // process received message
     });
 
-    // 4. 소켓 옵션 설정 (bind/connect 전)
+    // 4. Set socket options (before bind/connect)
     socket.setOption(zlink.Option.<OPTION>, value);
 
-    // 5. 연결 (bind 또는 connect)
+    // 5. Establish connection (bind or connect)
     socket.bind("tcp://*:5555");
-    // 또는
+    // or
     socket.connect("tcp://127.0.0.1:5555");
 
-    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    // 6. Send messages (receive is handled by callback)
     socket.send(data);
 
-    // 7. 정리
+    // 7. Cleanup
     socket.close();
     ctx.term();
     ```
@@ -295,51 +295,51 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 === "C#/.NET"
 
     ```csharp
-    // 1. Context 생성
+    // 1. Create Context
     using var ctx = new Context();
 
-    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    // 2–3. Create Socket with callback (raw STREAM example)
     using var socket = new StreamSocket(ctx);
     socket.RecvHandler((sourceRid, parts) => {
-        // 수신 메시지 처리
+        // process received message
     });
 
-    // 4. 소켓 옵션 설정 (bind/connect 전)
+    // 4. Set socket options (before bind/connect)
     socket.SetOption(Option.<OPTION>, value);
 
-    // 5. 연결 (bind 또는 connect)
+    // 5. Establish connection (bind or connect)
     socket.Bind("tcp://*:5555");
-    // 또는
+    // or
     socket.Connect("tcp://127.0.0.1:5555");
 
-    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    // 6. Send messages (receive is handled by callback)
     socket.Send(data);
     ```
 
 === "Rust"
 
     ```rust
-    // 1. Context 생성
+    // 1. Create Context
     let ctx = zlink::Context::new()?;
 
-    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    // 2–3. Create Socket with callback (raw STREAM example)
     let socket = ctx.stream_socket()?;
     socket.recv_handler(|source_rid, parts| {
-        // 수신 메시지 처리
+        // process received message
     })?;
 
-    // 4. 소켓 옵션 설정 (bind/connect 전)
+    // 4. Set socket options (before bind/connect)
     socket.set_option(zlink::Option::<OPTION>, value)?;
 
-    // 5. 연결 (bind 또는 connect)
+    // 5. Establish connection (bind or connect)
     socket.bind("tcp://*:5555")?;
-    // 또는
+    // or
     socket.connect("tcp://127.0.0.1:5555")?;
 
-    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    // 6. Send messages (receive is handled by callback)
     socket.send(data)?;
 
-    // 7. 정리
+    // 7. Cleanup
     socket.close()?;
     ctx.term()?;
     ```
@@ -347,29 +347,29 @@ PUB/SUB 계열은 `zlink_recv()` 대신 전용 API를 사용한다:
 === "Go"
 
     ```go
-    // 1. Context 생성
+    // 1. Create Context
     ctx, err := zlink.NewContext()
     if err != nil { panic(err) }
 
-    // 2-3. 소켓 생성 + 콜백 (raw STREAM 예제)
+    // 2–3. Create Socket with callback (raw STREAM example)
     socket, err := ctx.StreamSocket()
     if err != nil { panic(err) }
     socket.RecvHandler(func(sourceRid zlink.RoutingID, parts []zlink.Message) {
-        // 수신 메시지 처리
+        // process received message
     })
 
-    // 4. 소켓 옵션 설정 (bind/connect 전)
+    // 4. Set socket options (before bind/connect)
     socket.SetOption(zlink.OptionOPTION, value)
 
-    // 5. 연결 (bind 또는 connect)
+    // 5. Establish connection (bind or connect)
     socket.Bind("tcp://*:5555")
-    // 또는
+    // or
     socket.Connect("tcp://127.0.0.1:5555")
 
-    // 6. 메시지 송신 (수신은 콜백으로 처리)
+    // 6. Send messages (receive is handled by callback)
     socket.Send(data)
 
-    // 7. 정리
+    // 7. Cleanup
     socket.Close()
     ctx.Close()
     ```

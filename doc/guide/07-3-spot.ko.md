@@ -33,12 +33,12 @@ SPOT이 없다면, 여러 노드에 걸친 토픽 기반 메시징을 사용하�
 
 ```mermaid
 sequenceDiagram
-    participant SpotPub as SpotPub
-    participant Worker as SPOT 노드 (worker)
-    participant SpotSub as SpotSub
+    participant SpotPub
+    participant Worker as SPOT Node (worker)
+    participant SpotSub
 
     SpotPub->>Worker: publish (inproc)
-    Worker->>SpotSub: 전달 (inproc)
+    Worker->>SpotSub: deliver (inproc)
 ```
 
 SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 SpotSub에게
@@ -49,14 +49,14 @@ SpotPub이 publish하면 SPOT Node 내부 worker가 받아서 같은 노드의 S
 
 ```mermaid
 sequenceDiagram
-    participant SpotPub as SpotPub (노드 1)
-    participant W1 as 노드 1 Worker
-    participant W2 as 노드 2 Worker
-    participant SpotSub as SpotSub (노드 2)
+    participant SpotPub as SpotPub (Node 1)
+    participant W1 as Node 1 Worker
+    participant W2 as Node 2 Worker
+    participant SpotSub as SpotSub (Node 2)
 
     SpotPub->>W1: publish (inproc)
     W1->>W2: PUB (tcp mesh)
-    W2->>SpotSub: 전달 (inproc)
+    W2->>SpotSub: deliver (inproc)
 ```
 
 로컬 publish는 worker가 두 갈래로 분기한다:
@@ -70,10 +70,10 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    subgraph 노드1["노드 1"]
+    subgraph Node1["Node 1"]
         P1[SpotPub] --> W1[Worker] --> S1[SpotSub]
     end
-    subgraph 노드2["노드 2"]
+    subgraph Node2["Node 2"]
         P2[SpotPub] --> W2[Worker] --> S2[SpotSub]
     end
     W1 -- "PUB (tcp)" --> W2
@@ -99,16 +99,16 @@ flowchart LR
 ```c
 void *ctx = zlink_ctx_new();
 
-/* Discovery 설정 (peer 발견 + registry uplink / heartbeat owner) */
+/* Discovery setup (peer discovery + registry uplink / heartbeat owner) */
 void *discovery = zlink_discovery_new(ctx,
     ZLINK_SERVICE_TYPE_SPOT, "spot-node");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-/* SPOT Node 설정 */
+/* SPOT Node setup */
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* Discovery 연결 */
+/* Attach Discovery */
 zlink_spot_node_attach_discovery(node, discovery);
 ```
 
@@ -127,7 +127,7 @@ Discovery가 attach되면 Registry를 통해 자동으로 peer를 발견하고 �
 zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
 zlink_spot_node_status_t status;
 zlink_spot_node_status_snapshot(node, &status);
-/* status.local_endpoint에 "tcp://127.0.0.1:43521" 같은 실제 주소가 들어감 */
+/* status.local_endpoint contains e.g. "tcp://127.0.0.1:43521" */
 ```
 
 ### 3.2 수동 Mesh
@@ -136,7 +136,7 @@ zlink_spot_node_status_snapshot(node, &status);
 void *node = zlink_spot_node_new(ctx);
 zlink_spot_node_bind(node, "tcp://*:9000");
 
-/* 다른 노드의 PUB에 직접 연결 */
+/* Directly connect to other nodes' PUB */
 zlink_spot_node_connect_peer(node, "tcp://node2:9000");
 zlink_spot_node_connect_peer(node, "tcp://node3:9000");
 ```
@@ -193,7 +193,7 @@ recv 모드에서는 `zlink_subscribe()`로 메시지를 직접 수신한다.
 void *spot = zlink_spot_new(node);
 zlink_set_subscription(spot, "chat:room1:message");
 
-/* 다음 메시지 수신 */
+/* Pull next message */
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
@@ -202,7 +202,7 @@ size_t topic_len = sizeof(topic_buf);
 int rc = zlink_subscribe(spot, &source_rid, &parts, &part_count,
                               topic_buf, &topic_len, 0);
 if (rc == 0) {
-    printf("토픽: %.*s, 파트: %zu\n",
+    printf("Topic: %.*s, Parts: %zu\n",
            (int)topic_len, topic_buf, part_count);
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
@@ -228,16 +228,16 @@ if (rc == 0) {
 일방 전환된다. 이후 수신 메시지는 설치된 callback으로 자동 dispatch된다.
 
 ```c
-/* 콜백 함수 정의 */
+/* Define callback function */
 void on_message(const zlink_routing_id_t *source_rid,
                 const char *topic, size_t topic_len,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    printf("토픽: %.*s, 파트: %zu\n", (int)topic_len, topic, part_count);
+    printf("Topic: %.*s, Parts: %zu\n", (int)topic_len, topic, part_count);
 }
 
-/* unified spot 생성 시 handler 등록 */
+/* Register handler at unified spot creation */
 void *spot = zlink_spot_new(node);
 zlink_subscribe_handler(spot, on_message, NULL);
 ```

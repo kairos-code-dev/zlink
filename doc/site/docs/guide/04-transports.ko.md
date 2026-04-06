@@ -35,16 +35,16 @@
 === "C"
 
     ```c
-    /* 서버: 특정 인터페이스 */
+    /* Server: specific interface */
     zlink_bind(socket, "tcp://192.168.1.10:5555");
 
-    /* 서버: 모든 인터페이스 */
+    /* Server: all interfaces */
     zlink_bind(socket, "tcp://*:5555");
 
-    /* 클라이언트: IP 주소 */
+    /* Client: IP address */
     zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-    /* 클라이언트: DNS 이름 */
+    /* Client: DNS name */
     zlink_connect(socket, "tcp://server.example.com:5555");
     ```
 
@@ -118,16 +118,16 @@ OS가 사용 가능한 포트를 자동 할당한다. 테스트나 동적 포트
 === "C"
 
     ```c
-    /* 포트 0 또는 * 사용 */
+    /* Use port 0 or * */
     zlink_bind(socket, "tcp://127.0.0.1:*");
 
-    /* 할당된 엔드포인트 조회 */
+    /* Query the assigned endpoint */
     char endpoint[256];
     size_t len = sizeof(endpoint);
     zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
-    /* endpoint = "tcp://127.0.0.1:53821" (예시) */
+    /* endpoint = "tcp://127.0.0.1:53821" (example) */
 
-    /* 조회된 엔드포인트로 연결 */
+    /* Connect using the retrieved endpoint */
     zlink_connect(other_socket, endpoint);
     ```
 
@@ -196,7 +196,7 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
 === "C"
 
     ```c
-    /* DNS 이름으로 연결 */
+    /* Connect using DNS name */
     zlink_connect(socket, "tcp://localhost:5555");
     ```
 
@@ -250,17 +250,17 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
 === "C"
 
     ```c
-    /* bind 실패: 포트 이미 사용 중 */
+    /* bind failure: port already in use */
     int rc = zlink_bind(socket, "tcp://*:5555");
     if (rc == -1) {
         if (errno == EADDRINUSE)
-            printf("포트 5555 이미 사용 중\n");
+            printf("Port 5555 already in use\n");
     }
 
-    /* connect 실패: 잘못된 주소 */
+    /* connect failure: invalid address */
     rc = zlink_connect(socket, "tcp://invalid:99999");
     if (rc == -1) {
-        printf("연결 실패: %s\n", zlink_strerror(errno));
+        printf("Connection failed: %s\n", zlink_strerror(errno));
     }
     ```
 
@@ -270,13 +270,13 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
     try {
         socket.bind("tcp://*:5555");
     } catch (const zlink::error_t& e) {
-        // 포트 5555 이미 사용 중
+        // Port 5555 already in use
     }
 
     try {
         socket.connect("tcp://invalid:99999");
     } catch (const zlink::error_t& e) {
-        std::cerr << "연결 실패: " << e.what() << "\n";
+        std::cerr << "Connection failed: " << e.what() << "\n";
     }
     ```
 
@@ -286,13 +286,13 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
     try {
         socket.bind("tcp://*:5555");
     } catch (ZlinkException e) {
-        // 포트 5555 이미 사용 중
+        // Port 5555 already in use
     }
 
     try {
         socket.connect("tcp://invalid:99999");
     } catch (ZlinkException e) {
-        System.err.println("연결 실패: " + e.getMessage());
+        System.err.println("Connection failed: " + e.getMessage());
     }
     ```
 
@@ -302,12 +302,12 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
     try:
         socket.bind("tcp://*:5555")
     except zlink.ZlinkError:
-        pass  # 포트 5555 이미 사용 중
+        pass  # Port 5555 already in use
 
     try:
         socket.connect("tcp://invalid:99999")
     except zlink.ZlinkError as e:
-        print(f"연결 실패: {e}")
+        print(f"Connection failed: {e}")
     ```
 
 === "Node/TypeScript"
@@ -316,13 +316,13 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
     try {
         socket.bind("tcp://*:5555");
     } catch (e) {
-        // 포트 5555 이미 사용 중
+        // Port 5555 already in use
     }
 
     try {
         socket.connect("tcp://invalid:99999");
     } catch (e) {
-        console.error(`연결 실패: ${e}`);
+        console.error(`Connection failed: ${e}`);
     }
     ```
 
@@ -332,13 +332,13 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
     try {
         socket.Bind("tcp://*:5555");
     } catch (ZlinkException) {
-        // 포트 5555 이미 사용 중
+        // Port 5555 already in use
     }
 
     try {
         socket.Connect("tcp://invalid:99999");
     } catch (ZlinkException e) {
-        Console.Error.WriteLine($"연결 실패: {e.Message}");
+        Console.Error.WriteLine($"Connection failed: {e.Message}");
     }
     ```
 
@@ -346,11 +346,11 @@ connect 시 호스트명을 사용하면 내부적으로 DNS 리졸빙이 수행
 
     ```rust
     if let Err(e) = socket.bind("tcp://*:5555") {
-        // 포트 5555 이미 사용 중
+        // Port 5555 already in use
     }
 
     if let Err(e) = socket.connect("tcp://invalid:99999") {
-        eprintln!("연결 실패: {}", e);
+        eprintln!("Connection failed: {}", e);
     }
     ```
 
@@ -383,10 +383,10 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* 서버 */
+    /* Server */
     zlink_bind(socket, "ipc:///tmp/myapp.ipc");
 
-    /* 클라이언트 */
+    /* Client */
     zlink_connect(socket, "ipc:///tmp/myapp.ipc");
     ```
 
@@ -444,7 +444,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* IPC 와일드카드 — 임시 경로 자동 할당 */
+    /* IPC wildcard — auto-assigns a temporary path */
     zlink_bind(socket, "ipc://*");
 
     char endpoint[256];
@@ -508,10 +508,10 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* 경로가 너무 긴 경우 */
+    /* Path too long */
     int rc = zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
     if (rc == -1 && errno == ENAMETOOLONG) {
-        printf("IPC 경로가 시스템 제한(108자)을 초과\n");
+        printf("IPC path exceeds system limit (108 characters)\n");
     }
     ```
 
@@ -521,7 +521,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try {
         socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     } catch (const zlink::error_t& e) {
-        // IPC 경로가 시스템 제한(108자)을 초과
+        // IPC path exceeds system limit (108 characters)
     }
     ```
 
@@ -531,7 +531,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try {
         socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     } catch (ZlinkException e) {
-        // IPC 경로가 시스템 제한(108자)을 초과
+        // IPC path exceeds system limit (108 characters)
     }
     ```
 
@@ -541,7 +541,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try:
         socket.bind("ipc:///very/long/path/.../endpoint.ipc")
     except zlink.ZlinkError:
-        pass  # IPC 경로가 시스템 제한(108자)을 초과
+        pass  # IPC path exceeds system limit (108 characters)
     ```
 
 === "Node/TypeScript"
@@ -550,7 +550,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try {
         socket.bind("ipc:///very/long/path/.../endpoint.ipc");
     } catch (e) {
-        // IPC 경로가 시스템 제한(108자)을 초과
+        // IPC path exceeds system limit (108 characters)
     }
     ```
 
@@ -560,7 +560,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try {
         socket.Bind("ipc:///very/long/path/.../endpoint.ipc");
     } catch (ZlinkException) {
-        // IPC 경로가 시스템 제한(108자)을 초과
+        // IPC path exceeds system limit (108 characters)
     }
     ```
 
@@ -568,7 +568,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 
     ```rust
     if let Err(e) = socket.bind("ipc:///very/long/path/.../endpoint.ipc") {
-        // IPC 경로가 시스템 제한(108자)을 초과
+        // IPC path exceeds system limit (108 characters)
     }
     ```
 
@@ -597,7 +597,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* bind가 먼저 호출되어야 함 */
+    /* bind must be called first */
     zlink_bind(socket_a, "inproc://workers");
     zlink_connect(socket_b, "inproc://workers");
     ```
@@ -656,10 +656,10 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* bind 없이 connect 시도 */
+    /* Attempting connect without bind */
     int rc = zlink_connect(socket, "inproc://nonexistent");
     if (rc == -1) {
-        printf("bind가 아직 없음\n");
+        printf("No bind exists yet\n");
     }
     ```
 
@@ -669,7 +669,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try {
         socket.connect("inproc://nonexistent");
     } catch (const zlink::error_t& e) {
-        // bind가 아직 없음
+        // No bind exists yet
     }
     ```
 
@@ -679,7 +679,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try {
         socket.connect("inproc://nonexistent");
     } catch (ZlinkException e) {
-        // bind가 아직 없음
+        // No bind exists yet
     }
     ```
 
@@ -689,7 +689,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try:
         socket.connect("inproc://nonexistent")
     except zlink.ZlinkError:
-        pass  # bind가 아직 없음
+        pass  # No bind exists yet
     ```
 
 === "Node/TypeScript"
@@ -698,7 +698,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try {
         socket.connect("inproc://nonexistent");
     } catch (e) {
-        // bind가 아직 없음
+        // No bind exists yet
     }
     ```
 
@@ -708,7 +708,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     try {
         socket.Connect("inproc://nonexistent");
     } catch (ZlinkException) {
-        // bind가 아직 없음
+        // No bind exists yet
     }
     ```
 
@@ -716,7 +716,7 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 
     ```rust
     if let Err(e) = socket.connect("inproc://nonexistent") {
-        // bind가 아직 없음
+        // No bind exists yet
     }
     ```
 
@@ -746,13 +746,13 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* 서버 */
+    /* Server */
     zlink_bind(socket, "ws://*:8080");
 
-    /* 클라이언트 */
+    /* Client */
     zlink_connect(socket, "ws://server:8080");
 
-    /* 와일드카드 포트 */
+    /* Wildcard port */
     zlink_bind(socket, "ws://127.0.0.1:*");
     char endpoint[256];
     size_t len = sizeof(endpoint);
@@ -840,11 +840,11 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* 서버 */
+    /* Server */
     zlink_set_tls_server(socket, cert_path, key_path, 0);
     zlink_bind(socket, "wss://*:8443");
 
-    /* 클라이언트 */
+    /* Client */
     zlink_set_tls_client(socket, ca_path, "localhost", 0);
     zlink_connect(socket, "wss://server:8443");
     ```
@@ -937,11 +937,11 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* 서버 */
+    /* Server */
     zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
     zlink_bind(socket, "tls://*:5555");
 
-    /* 클라이언트 */
+    /* Client */
     zlink_set_tls_client(socket, "/path/to/ca.pem", NULL, 1);
     zlink_connect(socket, "tls://server:5555");
     ```
@@ -1054,12 +1054,12 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
 === "C"
 
     ```c
-    /* 다중 bind — 여러 인터페이스에서 수신 */
+    /* Multiple bind — listen on multiple interfaces */
     zlink_bind(router, "tcp://192.168.1.10:5555");
     zlink_bind(router, "tcp://10.0.0.1:5555");
     zlink_bind(router, "ipc:///tmp/router.ipc");
 
-    /* 다중 connect — 여러 서버에 연결 */
+    /* Multiple connect — connect to multiple servers */
     zlink_connect(dealer, "tcp://server1:5555");
     zlink_connect(dealer, "tcp://server2:5555");
     ```
@@ -1153,49 +1153,49 @@ Unix 도메인 소켓 기반 로컬 프로세스 간 통신.
     char endpoint[256];
     size_t len = sizeof(endpoint);
     zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
-    printf("바인드된 엔드포인트: %s\n", endpoint);
+    printf("Bound endpoint: %s\n", endpoint);
     ```
 
 === "C++"
 
     ```cpp
     socket.bind("tcp://127.0.0.1:*");
-    std::cout << "바인드된 엔드포인트: " << socket.last_endpoint() << "\n";
+    std::cout << "Bound endpoint: " << socket.last_endpoint() << "\n";
     ```
 
 === "Java"
 
     ```java
     socket.bind("tcp://127.0.0.1:*");
-    System.out.println("바인드된 엔드포인트: " + socket.lastEndpoint());
+    System.out.println("Bound endpoint: " + socket.lastEndpoint());
     ```
 
 === "Python"
 
     ```python
     socket.bind("tcp://127.0.0.1:*")
-    print(f"바인드된 엔드포인트: {socket.last_endpoint()}")
+    print(f"Bound endpoint: {socket.last_endpoint()}")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
     socket.bind("tcp://127.0.0.1:*");
-    console.log(`바인드된 엔드포인트: ${socket.lastEndpoint()}`);
+    console.log(`Bound endpoint: ${socket.lastEndpoint()}`);
     ```
 
 === "C#/.NET"
 
     ```csharp
     socket.Bind("tcp://127.0.0.1:*");
-    Console.WriteLine($"바인드된 엔드포인트: {socket.LastEndpoint}");
+    Console.WriteLine($"Bound endpoint: {socket.LastEndpoint}");
     ```
 
 === "Rust"
 
     ```rust
     socket.bind("tcp://127.0.0.1:*")?;
-    println!("바인드된 엔드포인트: {}", socket.last_endpoint()?);
+    println!("Bound endpoint: {}", socket.last_endpoint()?);
     ```
 
 === "Go"

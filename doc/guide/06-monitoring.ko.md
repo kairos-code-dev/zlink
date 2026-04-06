@@ -17,12 +17,12 @@ I/O 스레드에서 이벤트 발생 즉시 핸들러가 호출된다.
 이벤트 유실 없이 실시간으로 처리하려면 콜백 모드가 적합하다.
 
 ```c
-/* 이벤트 핸들러 정의 */
+/* Define event handler */
 void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
 {
-    printf("이벤트: 0x%llx\n", (unsigned long long)ev->event);
-    printf("로컬: %s\n", ev->local_addr);
-    printf("원격: %s\n", ev->remote_addr);
+    printf("Event: 0x%llx\n", (unsigned long long)ev->event);
+    printf("Local: %s\n", ev->local_addr);
+    printf("Remote: %s\n", ev->remote_addr);
 
     if (ev->routing_id.size > 0) {
         printf("routing_id: ");
@@ -35,7 +35,7 @@ void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
 void *server = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_bind(server, "tcp://*:5555");
 
-/* 모니터 생성 (옵션 기반) */
+/* Create monitor with options */
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *mon = zlink_socket_monitor_open(server, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
@@ -47,11 +47,11 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 ```c
 typedef struct {
-    uint64_t event;               /* 이벤트 타입 */
-    uint64_t value;               /* 보조 값 (fd, errno, reason 등) */
-    zlink_routing_id_t routing_id; /* 상대방 routing_id */
-    char local_addr[256];         /* 로컬 주소 */
-    char remote_addr[256];        /* 원격 주소 */
+    uint64_t event;               /* Event type */
+    uint64_t value;               /* Auxiliary value (fd, errno, reason, etc.) */
+    zlink_routing_id_t routing_id; /* Peer routing_id */
+    char local_addr[256];         /* Local address */
+    char remote_addr[256];        /* Remote address */
 } zlink_monitor_event_t;
 ```
 
@@ -99,14 +99,14 @@ raw 소켓의 transport/session 상태를 알려준다.
 
 ```mermaid
 flowchart LR
-    subgraph 클라이언트
-        CD1["CONNECT_DELAYED\n(선택)"] --> CO1[CONNECTED] --> CR1[CONNECTION_READY] --> SR1["send/recv 시작"]
+    subgraph Client
+        CD1[CONNECT_DELAYED\noptional] --> CO1[CONNECTED] --> CR1[CONNECTION_READY] --> SR1[start send/recv]
     end
-    subgraph 서버
-        L1[LISTENING] --> A1[ACCEPTED] --> CR2[CONNECTION_READY] --> SR2["send/recv 시작"]
+    subgraph Server
+        L1[LISTENING] --> A1[ACCEPTED] --> CR2[CONNECTION_READY] --> SR2[start send/recv]
     end
-    subgraph 종료
-        CR3[CONNECTION_READY] --> D1[DISCONNECTED] --> CD2[CONNECT_DELAYED] --> RE1["재연결..."]
+    subgraph Close
+        CR3[CONNECTION_READY] --> D1[DISCONNECTED] --> CD2[CONNECT_DELAYED] --> RE1[reconnect...]
     end
 ```
 
@@ -142,10 +142,10 @@ readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 �
 
 ```mermaid
 flowchart LR
-    subgraph 클라이언트 측
-        CD["CONNECT_DELAYED\n(선택)"] --> CO[CONNECTED] --> CR1[CONNECTION_READY]
+    subgraph Client side
+        CD[CONNECT_DELAYED\noptional] --> CO[CONNECTED] --> CR1[CONNECTION_READY]
     end
-    subgraph 서버 측
+    subgraph Server side
         A[ACCEPTED] --> CR2[CONNECTION_READY]
     end
 ```
@@ -154,10 +154,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph 클라이언트 측
+    subgraph Client side
         CO[CONNECTED] --> HF1[HANDSHAKE_FAILED_*] --> D1[DISCONNECTED]
     end
-    subgraph 서버 측
+    subgraph Server side
         A[ACCEPTED] --> HF2[HANDSHAKE_FAILED_*] --> D2[DISCONNECTED]
     end
 ```
@@ -197,19 +197,19 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
     if (ev->event == ZLINK_EVENT_DISCONNECTED) {
         switch (ev->value) {
             case ZLINK_DISCONNECT_REASON_UNKNOWN:
-                printf("원인 불명 해제\n");
+                printf("Unknown disconnection\n");
                 break;
             case ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED:
-                printf("핸드셰이크 실패 — TLS 설정 확인\n");
+                printf("Handshake failed -- check TLS configuration\n");
                 break;
             case ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR:
-                printf("전송 오류 — 네트워크 확인\n");
+                printf("Transport error -- check network\n");
                 break;
             case ZLINK_DISCONNECT_REASON_CTX_TERM:
-                printf("컨텍스트 종료\n");
+                printf("Context terminated\n");
                 break;
             default:
-                printf("알 수 없는 reason=%llu\n", (unsigned long long)ev->value);
+                printf("Unknown reason=%llu\n", (unsigned long long)ev->value);
                 break;
         }
     }
@@ -221,7 +221,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 ### 특정 이벤트만 구독
 
 ```c
-/* 연결/해제 이벤트만 */
+/* Connection/disconnection events only */
 zlink_socket_monitor_open_options_t opts = {
     .events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED,
 };
@@ -241,17 +241,17 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ### 프리셋 구현 예제
 
 ```c
-/* 기본 프리셋 */
+/* Basic preset */
 #define MONITOR_PRESET_BASIC \
     (ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED)
 
-/* 디버깅 프리셋 */
+/* Debug preset */
 #define MONITOR_PRESET_DEBUG \
     (MONITOR_PRESET_BASIC | ZLINK_EVENT_CONNECTED | \
      ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_CONNECT_DELAYED | \
      ZLINK_EVENT_CONNECT_RETRIED)
 
-/* 보안 프리셋 */
+/* Security preset */
 #define MONITOR_PRESET_SECURITY \
     (MONITOR_PRESET_BASIC | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL | \
      ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL | \
@@ -309,7 +309,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
     if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
         zlink_monitor_snapshot_t snapshot;
         zlink_monitor_snapshot(g_monitor, &snapshot);
-        printf("monitor snapshot updated\n");
+        printf("Monitor snapshot updated\n");
     }
 }
 ```
@@ -328,7 +328,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 ### 서비스 모니터 열기
 
 ```c
-/* Discovery 서비스 모니터 */
+/* Discovery service monitor */
 zlink_service_monitor_open_options_t opts = {
     .events = ZLINK_SERVICE_MONITOR_EVENT_ERROR
               | ZLINK_SERVICE_MONITOR_EVENT_CLOSED
@@ -395,12 +395,12 @@ if (rc == 0) {
 ```c
 void on_event_a(const zlink_monitor_event_t *ev, void *userdata)
 {
-    printf("소켓 A 이벤트: 0x%llx\n", (unsigned long long)ev->event);
+    printf("Socket A event: 0x%llx\n", (unsigned long long)ev->event);
 }
 
 void on_event_b(const zlink_monitor_event_t *ev, void *userdata)
 {
-    printf("소켓 B 이벤트: 0x%llx\n", (unsigned long long)ev->event);
+    printf("Socket B event: 0x%llx\n", (unsigned long long)ev->event);
 }
 
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
@@ -409,9 +409,9 @@ zlink_socket_monitor_handler(mon_a, on_event_a, NULL);
 void *mon_b = zlink_socket_monitor_open(sock_b, &opts);
 zlink_socket_monitor_handler(mon_b, on_event_b, NULL);
 
-/* ... 애플리케이션 로직 ... */
+/* ... application logic ... */
 
-/* 정리 */
+/* Cleanup */
 zlink_monitor_close(&mon_a);
 zlink_monitor_close(&mon_b);
 ```
@@ -428,13 +428,13 @@ zlink_monitor_close(&mon_b);
 에서 실행되므로 callback 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
 
 ```c
-/* 애플리케이션 스레드에서 monitor open */
+/* Open a monitor from an application thread */
 void *socket = zlink_socket(ctx, ZLINK_ROUTER);
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *mon = zlink_socket_monitor_open(socket, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
-/* 이후 다른 작업 스레드에서 snapshot 조회 가능 */
+/* Snapshot reads may happen later from another worker thread */
 zlink_monitor_snapshot_t snapshot;
 zlink_monitor_snapshot(mon, &snapshot);
 ```
@@ -453,36 +453,40 @@ zlink_monitor_snapshot(mon, &snapshot);
 모니터 API는 **inproc 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
 원격 모니터링이 필요하면 콜백에서 이벤트를 수신하고 PUB 소켓으로 중계한다.
 
-```mermaid
-flowchart LR
-    S["대상 소켓"] -- "inproc (PAIR)\n이벤트 수집" --> M["monitor 콜백\n→ PUB 중계"] -- "tcp/wss (PUB)\n이벤트 발행" --> R["원격 SUB\n(모니터링)"]
+```c
+zlink_service_event_t ev;
+int rc = zlink_service_monitor_recv(mon, &ev);
+if (rc == 0) {
+    printf("event: 0x%x, value: %u\n", ev.event_type, ev.value);
+}
 ```
 
 ```c
-/* PUB 소켓으로 이벤트 중계 */
-void *pub = zlink_socket(ctx, ZLINK_PUB);
-zlink_bind(pub, "tcp://0.0.0.0:9090");
+zlink_set_subscription(sub, "topic");
 
-void on_monitor_relay(const zlink_monitor_event_t *ev, void *userdata)
-{
-    void *pub = userdata;
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, sizeof(*ev));
-    memcpy(zlink_msg_data(&msg), ev, sizeof(*ev));
-    zlink_publish_msg(pub, "monitor", 7, &msg, 1, ZLINK_DONTWAIT);
-}
+/* SUB/PUB perf gate: wait for connection-ready */
+zlink_socket_monitor_open_options_t sub_opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY
+};
+void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
 
-zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
-void *mon = zlink_socket_monitor_open(server, &opts);
-zlink_socket_monitor_handler(mon, on_monitor_relay, pub);
+zlink_socket_monitor_open_options_t pub_opts = {
+    .events = ZLINK_EVENT_CONNECTION_READY
+};
+void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-/* 원격에서 SUB으로 모니터링 이벤트 수신 */
+/* Start after expected clients are connection-ready */
+zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
+zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
+
+zlink_monitor_close(&pub_mon);
+zlink_monitor_close(&sub_mon);
 ```
 
 ### 모니터 종료 절차
 
 ```c
-/* 모니터 핸들 닫기 */
+/* Close the monitor handle */
 zlink_monitor_close(&mon);
 ```
 
@@ -506,17 +510,16 @@ zlink_monitor_close(&mon);
 `CONNECTION_READY` 이벤트를 받으면 즉시 send/recv가 가능하다.
 
 ```c
-/* DEALER/ROUTER 예시 */
+/* DEALER/ROUTER example */
 zlink_socket_monitor_open_options_t opts = {
     .events = ZLINK_EVENT_CONNECTION_READY
 };
 void *mon = zlink_socket_monitor_open(router, &opts);
 
-/* monitor callback에서 ready 확인 */
 void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
     if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
-        /* ROUTER: ev->routing_id에 peer identity가 들어있다 */
-        /* 바로 routed send 가능 */
+        /* ROUTER: ev->routing_id contains the peer identity */
+        /* routed send is possible now */
     }
 }
 zlink_socket_monitor_handler(mon, on_ready, NULL);
@@ -540,11 +543,11 @@ STREAM은 ROUTER와 동일하게 동작한다 — routing_id는 TCP 연결이 �
 4. 클라이언트의 payload(있는 경우)는 ready 이벤트 이후에 도착
 
 ```c
-/* STREAM server: CONNECTION_READY → routing_id 확보 → send/recv */
+/* STREAM server: CONNECTION_READY → routing_id available → send/recv */
 void on_ready(const zlink_monitor_event_t *ev, void *userdata) {
     if (ev->event & ZLINK_EVENT_CONNECTION_READY) {
-        /* ev->routing_id에 peer의 routing_id가 들어있다 */
-        /* 즉시 send 가능, 또는 inbound payload 대기 */
+        /* ev->routing_id contains the peer's routing_id */
+        /* send to this peer immediately, or wait for inbound payload */
     }
 }
 
@@ -568,25 +571,13 @@ raw PUB/SUB perf는 `CONNECTION_READY`를 expected client 수만큼 받은 뒤
 메시징을 시작한다. perf는 delivery-ready exactness를 gate로 사용하지 않는다.
 
 ```c
-zlink_set_subscription(sub, "topic");
-
-/* SUB/PUB perf gate: connection-ready 대기 */
-zlink_socket_monitor_open_options_t sub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY
-};
-void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
-
-zlink_socket_monitor_open_options_t pub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY
-};
-void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
-
-/* expected client 수만큼 connection-ready 수신 후 시작 */
-zlink_publish(pub, "topic", &part, 1, 0);
-zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
-
-zlink_monitor_close(&pub_mon);
-zlink_monitor_close(&sub_mon);
+zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
+void *monitor = zlink_socket_monitor_open(socket, &opts);
+zlink_monitor_snapshot_t snapshot;
+zlink_monitor_snapshot(monitor, &snapshot);
+printf("sndq=%llu, rcvq=%llu\n",
+       (unsigned long long) snapshot.snd_pending_msgs,
+       (unsigned long long) snapshot.rcv_pending_msgs);
 ```
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
@@ -620,7 +611,7 @@ snapshot/status 조회는 운영 관찰/디버깅용이며, aggregate ready coun
 현재 상태를 조회하는 용도다. 운영 대시보드, health check, 디버깅에 활용한다.
 
 ```c
-/* 현재 discovery 상태 확인 */
+/* Check current discovery health */
 zlink_discovery_status_t status;
 zlink_discovery_status_snapshot(discovery, &status);
 printf("state=%d\n", status.state);

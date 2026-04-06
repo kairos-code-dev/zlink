@@ -229,14 +229,14 @@ raw 소켓의 transport/session 상태를 알려준다.
 
 ```mermaid
 flowchart LR
-    subgraph 클라이언트
-        CD1["CONNECT_DELAYED\n(선택)"] --> CO1[CONNECTED] --> CR1[CONNECTION_READY] --> SR1["send/recv 시작"]
+    subgraph Client
+        CD1[CONNECT_DELAYED\noptional] --> CO1[CONNECTED] --> CR1[CONNECTION_READY] --> SR1[start send/recv]
     end
-    subgraph 서버
-        L1[LISTENING] --> A1[ACCEPTED] --> CR2[CONNECTION_READY] --> SR2["send/recv 시작"]
+    subgraph Server
+        L1[LISTENING] --> A1[ACCEPTED] --> CR2[CONNECTION_READY] --> SR2[start send/recv]
     end
-    subgraph 종료
-        CR3[CONNECTION_READY] --> D1[DISCONNECTED] --> CD2[CONNECT_DELAYED] --> RE1["재연결..."]
+    subgraph Close
+        CR3[CONNECTION_READY] --> D1[DISCONNECTED] --> CD2[CONNECT_DELAYED] --> RE1[reconnect...]
     end
 ```
 
@@ -271,10 +271,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph 클라이언트 측
-        CD["CONNECT_DELAYED\n(선택)"] --> CO[CONNECTED] --> CR1[CONNECTION_READY]
+    subgraph Client side
+        CD[CONNECT_DELAYED\noptional] --> CO[CONNECTED] --> CR1[CONNECTION_READY]
     end
-    subgraph 서버 측
+    subgraph Server side
         A[ACCEPTED] --> CR2[CONNECTION_READY]
     end
 ```
@@ -283,10 +283,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph 클라이언트 측
+    subgraph Client side
         CO[CONNECTED] --> HF1[HANDSHAKE_FAILED_*] --> D1[DISCONNECTED]
     end
-    subgraph 서버 측
+    subgraph Server side
         A[ACCEPTED] --> HF2[HANDSHAKE_FAILED_*] --> D2[DISCONNECTED]
     end
 ```
@@ -889,9 +889,10 @@ SPOT과 SpotNode는 더 이상 공개 service-monitor surface를 제공하지 �
 === "Go"
 
     ```go
-    mon.SetHandler(func(ev zlink.ServiceEvent) {
-        if ev.EventType()&zlink.DiscoveryProvidersChanged != 0 {
-            fmt.Println("provider set changed")
+    mon.SetHandler(func(ev zlink.MonitorEvent) {
+        if ev.Event() == zlink.EventConnectionReady {
+            snapshot, _ := mon.Snapshot()
+            fmt.Println("Monitor snapshot updated")
         }
     })
     ```
@@ -1249,120 +1250,122 @@ SPOT과 SpotNode는 더 이상 공개 service-monitor surface를 제공하지 �
 모니터 API는 **inproc 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
 원격 모니터링이 필요하면 콜백에서 이벤트를 수신하고 PUB 소켓으로 중계한다.
 
-```mermaid
-flowchart LR
-    S["대상 소켓"] -- "inproc (PAIR)\n이벤트 수집" --> M["monitor 콜백\n→ PUB 중계"] -- "tcp/wss (PUB)\n이벤트 발행" --> R["원격 SUB\n(모니터링)"]
-```
+    ```c
+    /* Close the monitor handle */
+    zlink_monitor_close(&mon);
+    ```
 
 === "C"
 
     ```c
-    /* PUB 소켓으로 이벤트 중계 */
-    void *pub = zlink_socket(ctx, ZLINK_PUB);
-    zlink_bind(pub, "tcp://0.0.0.0:9090");
-
-    void on_monitor_relay(const zlink_monitor_event_t *ev, void *userdata)
+    void on_event_a(const zlink_monitor_event_t *ev, void *userdata)
     {
-        void *pub = userdata;
-        zlink_msg_t msg;
-        zlink_msg_init_size(&msg, sizeof(*ev));
-        memcpy(zlink_msg_data(&msg), ev, sizeof(*ev));
-        zlink_publish_msg(pub, "monitor", 7, &msg, 1, ZLINK_DONTWAIT);
+        printf("Socket A event: 0x%llx\n", (unsigned long long)ev->event);
+    }
+
+    void on_event_b(const zlink_monitor_event_t *ev, void *userdata)
+    {
+        printf("Socket B event: 0x%llx\n", (unsigned long long)ev->event);
     }
 
     zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
-    void *mon = zlink_socket_monitor_open(server, &opts);
-    zlink_socket_monitor_handler(mon, on_monitor_relay, pub);
-    /* 원격에서 SUB으로 모니터링 이벤트 수신 */
+    void *mon_a = zlink_socket_monitor_open(sock_a, &opts);
+    zlink_socket_monitor_handler(mon_a, on_event_a, NULL);
+    void *mon_b = zlink_socket_monitor_open(sock_b, &opts);
+    zlink_socket_monitor_handler(mon_b, on_event_b, NULL);
+
+    /* ... application logic ... */
+
+    /* Cleanup */
+    zlink_monitor_close(&mon_a);
+    zlink_monitor_close(&mon_b);
     ```
 
 === "C++"
 
-    ```cpp
-    auto pub = zlink::socket(ctx, zlink::socket_type::pub_);
-    pub.bind("tcp://0.0.0.0:9090");
+    ```rust
+    let opts = zlink::MonitorOptions::new(zlink::EVENT_ALL);
+    let mon_a = sock_a.monitor_open(&opts)?;
+    mon_a.set_handler(|ev| println!("Socket A event: 0x{:x}", ev.event()));
+    let mon_b = sock_b.monitor_open(&opts)?;
+    mon_b.set_handler(|ev| println!("Socket B event: 0x{:x}", ev.event()));
 
-    auto mon = server.monitor_open({zlink::event::all});
-    mon.set_handler([&](const zlink::monitor_event& ev) {
-        zlink::msg msg(sizeof(ev));
-        std::memcpy(msg.data(), &ev, sizeof(ev));
-        pub.publish("monitor", &msg, 1, zlink::DONTWAIT);
-    });
+    // ... application logic ...
+
+    mon_a.close();
+    mon_b.close();
     ```
 
 === "Java"
 
     ```java
-    var pub = ctx.socket(SocketType.PUB);
-    pub.bind("tcp://0.0.0.0:9090");
-
-    var mon = server.monitorOpen(new MonitorOptions(MonitorEvent.ALL));
-    mon.setHandler(ev -> pub.publish("monitor", ev.toBytes()));
+    var mon = socket.monitorOpen(new MonitorOptions(MonitorEvent.ALL));
+    var snapshot = mon.snapshot();
+    System.out.printf("sndq=%d, rcvq=%d%n",
+        snapshot.sndPendingMsgs(), snapshot.rcvPendingMsgs());
     ```
 
 === "Python"
 
     ```python
-    pub = ctx.socket(zlink.PUB)
-    pub.bind("tcp://0.0.0.0:9090")
-
-    mon = server.monitor_open(zlink.MonitorOptions(events=zlink.EVENT_ALL))
-    mon.set_handler(lambda ev: pub.publish("monitor", ev.to_bytes()))
+    mon = socket.monitor_open(zlink.MonitorOptions(events=zlink.EVENT_ALL))
+    snapshot = mon.snapshot()
+    print(f"sndq={snapshot.snd_pending_msgs}, rcvq={snapshot.rcv_pending_msgs}")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    const pub = ctx.socket(zlink.PUB);
-    pub.bind("tcp://0.0.0.0:9090");
+    const socket = ctx.socket(zlink.ROUTER);
+    const mon = socket.monitorOpen({ events: zlink.EVENT_ALL });
+    mon.setHandler(onMonitorEvent);
 
-    const mon = server.monitorOpen({ events: zlink.EVENT_ALL });
-    mon.setHandler((ev) => pub.publish("monitor", ev.toBuffer()));
+    // Snapshot reads may happen later from another worker thread
+    const snapshot = mon.snapshot();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    using var pub = ctx.CreateSocket(SocketType.Pub);
-    pub.Bind("tcp://0.0.0.0:9090");
-
-    using var mon = server.MonitorOpen(new MonitorOptions { Events = MonitorEvent.All });
-    mon.SetHandler(ev => pub.Publish("monitor", ev.ToBytes()));
+    var opts = new MonitorOptions {
+        Events = MonitorEvent.ConnectionReady | MonitorEvent.Disconnected
+    };
+    using var mon = server.MonitorOpen(opts);
+    mon.SetHandler(OnMonitorEvent);
     ```
 
 === "Rust"
 
     ```rust
-    let pub_sock = ctx.socket(zlink::PUB)?;
-    pub_sock.bind("tcp://0.0.0.0:9090")?;
+    let socket = ctx.socket(zlink::ROUTER)?;
+    let mon = socket.monitor_open(&zlink::MonitorOptions::new(zlink::EVENT_ALL))?;
+    mon.set_handler(on_monitor_event);
 
-    let mon = server.monitor_open(&zlink::MonitorOptions::new(zlink::EVENT_ALL))?;
-    mon.set_handler(move |ev| {
-        let bytes = ev.to_bytes();
-        pub_sock.publish("monitor", &bytes, zlink::DONTWAIT).ok();
-    });
+    // Snapshot reads may happen later from another worker thread
+    let snapshot = mon.snapshot()?;
     ```
 
 === "Go"
 
-    ```go
-    pubSock, _ := ctx.PubSocket()
-    pubSock.Bind("tcp://0.0.0.0:9090")
+    ```python
+    opts = zlink.MonitorOptions(events=zlink.EVENT_ALL)
+    mon_a = sock_a.monitor_open(opts)
+    mon_a.set_handler(lambda ev: print(f"Socket A event: 0x{ev.event:x}"))
+    mon_b = sock_b.monitor_open(opts)
+    mon_b.set_handler(lambda ev: print(f"Socket B event: 0x{ev.event:x}"))
 
-    opts := zlink.MonitorOptions{Events: zlink.EventAll}
-    mon, _ := server.MonitorOpen(opts)
-    mon.SetHandler(func(ev zlink.MonitorEvent) {
-        pubSock.Publish("monitor", zlink.NewMessage(ev.ToBytes()))
-    })
+    # ... application logic ...
+
+    mon_a.close()
+    mon_b.close()
     ```
 
 ### 모니터 종료 절차
 
 === "C"
 
-    ```c
-    /* Close the monitor handle */
-    zlink_monitor_close(&mon);
+    ```csharp
+    mon.Dispose(); // or using statement
     ```
 
 === "C++"
@@ -1391,8 +1394,8 @@ flowchart LR
 
 === "C#/.NET"
 
-    ```csharp
-    mon.Dispose(); // or using statement
+    ```typescript
+    mon.close();
     ```
 
 === "Rust"
@@ -1663,7 +1666,7 @@ raw PUB/SUB perf는 `CONNECTION_READY`를 expected client 수만큼 받은 뒤
 ```c
 zlink_set_subscription(sub, "topic");
 
-/* SUB/PUB perf gate: connection-ready 대기 */
+/* SUB/PUB perf gate: wait for connection-ready */
 zlink_socket_monitor_open_options_t sub_opts = {
     .events = ZLINK_EVENT_CONNECTION_READY
 };
@@ -1674,8 +1677,8 @@ zlink_socket_monitor_open_options_t pub_opts = {
 };
 void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
 
-/* expected client 수만큼 connection-ready 수신 후 시작 */
-zlink_publish(pub, NULL, &part, 1, 0);
+/* Start after expected clients are connection-ready */
+zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
 zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
 
 zlink_monitor_close(&pub_mon);

@@ -43,7 +43,7 @@ own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피
 ### 소켓 Identity 설정
 
 ```c
-/* bind/connect 전에 설정 */
+/* Set before bind/connect */
 const char *id = "router-A";
 zlink_set_routing_id(socket, id, strlen(id));
 ```
@@ -57,12 +57,12 @@ zlink_set_routing_id(socket, id, strlen(id));
 ### 사용자 지정 시 고려사항
 
 ```c
-/* 좋은 예: 의미 있는 식별자 */
+/* Good example: meaningful identifiers */
 zlink_set_routing_id(dealer, "worker-01", 9);
 zlink_set_routing_id(dealer, "D1", 2);
 
-/* 주의: 자동 생성 routing_id와 충돌 가능성 */
-/* UUID 형식(16B 바이너리)은 피해야 함 */
+/* Caution: potential collision with auto-generated routing_ids */
+/* Avoid UUID format (16B binary) */
 ```
 
 > 참고: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
@@ -87,12 +87,12 @@ printf("\n");
 ROUTER에서 특정 연결을 의미 있는 이름으로 참조할 때 사용한다.
 
 ```c
-/* 다음 connect에 alias 적용 */
+/* Apply alias to the next connect */
 const char *alias = "edge-1";
 zlink_set_router_option(socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, alias, strlen(alias));
 zlink_connect(socket, "tcp://server:5555");
 
-/* 다른 연결에 다른 alias */
+/* Different alias for another connection */
 const char *alias2 = "edge-2";
 zlink_set_router_option(socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, alias2, strlen(alias2));
 zlink_connect(socket, "tcp://server2:5556");
@@ -117,14 +117,14 @@ ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id�
 ### 기본 요청-응답
 
 ```c
-/* ROUTER 서버 (핸들러 사용) */
+/* ROUTER server (with handler) */
 void on_request(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
     /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
 
-    /* 응답: zlink_send_rid로 directed send */
+    /* Reply: use zlink_send_rid for directed send */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "World", 5);
@@ -135,25 +135,25 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 
 void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* zlink_recv()로 수신 */
+/* Receive with zlink_recv() */
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
 size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
-/* DEALER 클라이언트 (명시적 routing_id) */
+/* DEALER client (explicit routing_id) */
 void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);
 
-/* DEALER 전송 */
+/* DEALER send */
 zlink_msg_t req;
 zlink_msg_init_size(&req, 5);
 memcpy(zlink_msg_data(&req), "Hello", 5);
 zlink_send(dealer, &req, 1, 0);
 
-/* on_request 콜백이 메시지를 수신하고 응답 */
+/* on_request callback receives the message and replies */
 ```
 
 ### 다중 클라이언트 구분
@@ -167,13 +167,13 @@ zlink_connect(dealer1, endpoint);
 zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
-/* ROUTER 핸들러가 source_rid로 클라이언트를 구분 */
+/* ROUTER handler distinguishes clients by source_rid */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* source_rid->data에 "D1" 또는 "D2" 포함 */
-    /* 특정 클라이언트에게 응답 */
+    /* source_rid->data contains "D1" or "D2" */
+    /* Reply to specific client */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
@@ -188,15 +188,15 @@ void on_message(const zlink_routing_id_t *source_rid,
 ### zlink_msg_t를 사용한 routing_id 처리
 
 ```c
-/* 핸들러 콜백이 routing_id와 데이터를 직접 제공 */
+/* Handler callback provides routing_id and data directly */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* routing_id 크기 및 내용 확인 */
+    /* Check routing_id size and content */
     printf("routing_id: %zu bytes\n", source_rid->size);
 
-    /* 응답: source_rid 사용 */
+    /* Reply: use source_rid */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
@@ -214,7 +214,7 @@ STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별�
 ### 기본 사용
 
 ```c
-/* 콜백 dispatch */
+/* Callback dispatch */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
@@ -223,7 +223,7 @@ void on_message(const zlink_routing_id_t *source_rid,
         void *data = zlink_msg_data(&parts[i]);
         size_t size = zlink_msg_size(&parts[i]);
 
-        /* 응답: 동일 routing_id 사용 */
+        /* Reply: use the same routing_id */
         zlink_msg_t reply;
         zlink_msg_init_size(&reply, size);
         memcpy(zlink_msg_data(&reply), data, size);
@@ -247,14 +247,14 @@ void on_message(const zlink_routing_id_t *source_rid,
         size_t size = zlink_msg_size(&parts[i]);
 
         if (size == 1 && data[0] == 0x01) {
-            /* 새 클라이언트 연결: source_rid로 식별 */
-            printf("연결: ");
+            /* New client connected: identify by source_rid */
+            printf("Connected: ");
             for (size_t j = 0; j < source_rid->size; j++)
                 printf("%02x", source_rid->data[j]);
             printf("\n");
         } else if (size == 1 && data[0] == 0x00) {
-            /* 클라이언트 해제: source_rid로 식별하여 정리 */
-            printf("해제\n");
+            /* Client disconnected: identify by source_rid and clean up */
+            printf("Disconnected\n");
         }
         zlink_msg_close(&parts[i]);
     }
@@ -287,7 +287,7 @@ void print_routing_id(const void *data, size_t size) {
     printf("\n");
 }
 
-/* 핸들러 콜백 내에서 */
+/* In handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
@@ -305,7 +305,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 ```c
 zlink_set_routing_id(dealer, "D1", 2);
 
-/* ROUTER 핸들러 콜백 내에서 */
+/* In ROUTER handler callback */
 void on_message(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
@@ -322,10 +322,10 @@ void on_message(const zlink_routing_id_t *source_rid,
 ### 자동 생성 routing_id 확인
 
 ```c
-/* 소켓 생성 후 자동 할당된 routing_id 조회 */
+/* Query the auto-assigned routing_id after socket creation */
 zlink_routing_id_t rid;
 zlink_get_routing_id(socket, &rid);
-printf("자동 생성 routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) */
+printf("Auto-generated routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) */
 ```
 
 ## 9. 바이너리 처리 원칙
@@ -337,9 +337,9 @@ printf("자동 생성 routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) */
 - 로그 출력 시 hex 포맷 권장
 
 ```c
-/* routing_id 비교 */
+/* routing_id comparison */
 if (rid_size == 2 && memcmp(rid, "D1", 2) == 0) {
-    /* D1 클라이언트의 메시지 */
+    /* Message from client D1 */
 }
 ```
 

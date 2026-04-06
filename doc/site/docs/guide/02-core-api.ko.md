@@ -8,99 +8,99 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 === "C"
 
     ```c
-    /* 생성 */
+    /* Create */
     void *ctx = zlink_ctx_new();
 
-    /* 설정 — 다중 연결 서버에서는 I/O thread를 늘린다 */
-    zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* 기본 1; 연결이 많으면 4가 최적 */
+    /* Configure — increase I/O threads for multi-connection servers */
+    zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 1; 4 is optimal under heavy load */
 
-    /* 조회 */
+    /* Query */
     int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS);
 
-    /* 종료 */
-    zlink_ctx_term(ctx);  /* 모든 socket이 닫힌 후 반환 */
+    /* Terminate */
+    zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
     ```
 
 === "C++"
 
     ```cpp
-    // 생성
+    // Create
     zlink::context_t ctx;
-    ctx.set_io_threads(4);       // 기본 1; 연결이 많으면 4가 최적
+    ctx.set_io_threads(4);       // default 1; 4 is optimal under heavy load
     int io_threads = ctx.io_threads();
 
-    // 종료 — RAII 또는 명시적
+    // Terminate — RAII or explicit
     ctx.close();
     ```
 
 === "Java"
 
     ```java
-    // 생성
+    // Create
     Context ctx = new Context();
-    ctx.setIoThreads(4);         // 기본 1; 연결이 많으면 4가 최적
+    ctx.setIoThreads(4);         // default 1; 4 is optimal under heavy load
     int ioThreads = ctx.getIoThreads();
 
-    // 종료
-    ctx.close();  // 또는 try-with-resources
+    // Terminate
+    ctx.close();  // or use try-with-resources
     ```
 
 === "Python"
 
     ```python
-    # 생성
+    # Create
     ctx = zlink.Context()
-    ctx.set_io_threads(4)        # 기본 1; 연결이 많으면 4가 최적
+    ctx.set_io_threads(4)        # default 1; 4 is optimal under heavy load
     io_threads = ctx.io_threads
 
-    # 종료
+    # Terminate
     ctx.term()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // 생성
+    // Create
     const ctx = new zlink.Context();
-    ctx.setIoThreads(4);         // 기본 1; 연결이 많으면 4가 최적
+    ctx.setIoThreads(4);         // default 1; 4 is optimal under heavy load
     const ioThreads = ctx.ioThreads;
 
-    // 종료
+    // Terminate
     ctx.term();
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // 생성
+    // Create
     using var ctx = new Context();
-    ctx.IoThreads = 4;           // 기본 1; 연결이 많으면 4가 최적
+    ctx.IoThreads = 4;           // default 1; 4 is optimal under heavy load
     int ioThreads = ctx.IoThreads;
 
-    // 종료 — Dispose 패턴
+    // Terminate — Dispose pattern
     ```
 
 === "Rust"
 
     ```rust
-    // 생성
+    // Create
     let ctx = zlink::Context::new()?;
-    ctx.set_io_threads(4)?;      // 기본 1; 연결이 많으면 4가 최적
+    ctx.set_io_threads(4)?;      // default 1; 4 is optimal under heavy load
     let io_threads = ctx.io_threads()?;
 
-    // 종료 — Drop trait
+    // Terminate — Drop trait
     ```
 
 === "Go"
 
     ```go
-    // 생성
+    // Create
     ctx, err := zlink.NewContext()
     if err != nil { log.Fatal(err) }
-    ctx.SetIoThreads(4) // 기본 1; 연결이 많으면 4가 최적
+    ctx.SetIoThreads(4) // default 1; 4 is optimal under heavy load
     ioThreads := ctx.IoThreads()
 
-    // 종료
+    // Terminate
     defer ctx.Close()
     ```
 
@@ -125,7 +125,7 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 
     ```c
     void *socket = zlink_socket(ctx, ZLINK_DEALER);
-    /* ... 사용 ... */
+    /* ... use ... */
     zlink_close(socket);
     ```
 
@@ -133,15 +133,15 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 
     ```cpp
     zlink::dealer_socket_t socket(ctx);
-    // ... 사용 ...
-    socket.close();  // 또는 RAII
+    // ... use ...
+    socket.close();  // or RAII
     ```
 
 === "Java"
 
     ```java
     DealerSocket socket = new DealerSocket(ctx);
-    // ... 사용 ...
+    // ... use ...
     socket.close();
     ```
 
@@ -149,7 +149,7 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 
     ```python
     socket = zlink.DealerSocket(ctx)
-    # ... 사용 ...
+    # ... use ...
     socket.close()
     ```
 
@@ -157,7 +157,7 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 
     ```typescript
     const socket = new zlink.DealerSocket(ctx);
-    // ... 사용 ...
+    // ... use ...
     socket.close();
     ```
 
@@ -165,15 +165,15 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 
     ```csharp
     using var socket = new DealerSocket(ctx);
-    // ... 사용 ...
+    // ... use ...
     ```
 
 === "Rust"
 
     ```rust
     let socket = ctx.dealer_socket()?;
-    // ... 사용 ...
-    // Drop trait이 close 처리
+    // ... use ...
+    // Drop trait handles close
     ```
 
 === "Go"
@@ -182,7 +182,7 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
     socket, err := ctx.DealerSocket()
     if err != nil { log.Fatal(err) }
     defer socket.Close()
-    // ... 사용 ...
+    // ... use ...
     ```
 
 ### 2.2 Socket Type 상수
@@ -209,7 +209,7 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
     /* Connect (client) */
     zlink_connect(socket, "tcp://127.0.0.1:5555");
 
-    /* Unbind / Disconnect */
+    /* Unbind */
     zlink_unbind(socket, "tcp://*:5555");
     zlink_disconnect(socket, "tcp://127.0.0.1:5555");
     ```
@@ -282,11 +282,11 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 === "C"
 
     ```c
-    /* 옵션 설정 */
+    /* Set option */
     int hwm = 5000;
     zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 
-    /* 옵션 조회 */
+    /* Get option */
     int value;
     size_t len = sizeof(value);
     zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
@@ -514,7 +514,7 @@ Socket은 기본적으로 pull mode로 시작한다.
     int rc = zlink_recv(socket, &source_rid, &parts, &part_count, 0);
     if (rc == 0) {
         for (size_t i = 0; i < part_count; i++) {
-            printf("frame %zu: %.*s\n", i,
+            printf("Frame %zu: %.*s\n", i,
                    (int)zlink_msg_size(&parts[i]),
                    (char *)zlink_msg_data(&parts[i]));
             zlink_msg_close(&parts[i]);
@@ -524,7 +524,7 @@ Socket은 기본적으로 pull mode로 시작한다.
     /* Non-blocking recv */
     rc = zlink_recv(socket, &source_rid, &parts, &part_count, ZLINK_DONTWAIT);
     if (rc == -1 && zlink_errno() == EAGAIN) {
-        /* 현재 사용 가능한 message 없음 */
+        /* No message available right now */
     }
     ```
 
@@ -537,11 +537,11 @@ Socket은 기본적으로 pull mode로 시작한다.
     // Blocking recv
     auto [source_rid, parts] = socket.recv();
     for (size_t i = 0; i < parts.size(); i++)
-        std::cout << "frame " << i << ": " << parts[i].to_string() << "\n";
+        std::cout << "Frame " << i << ": " << parts[i].to_string() << "\n";
 
     // Non-blocking recv
     auto result = socket.recv(zlink::dontwait);
-    if (!result)  // EAGAIN
+    if (!result)  // EAGAIN — no message available
         ;
     ```
 
@@ -554,12 +554,12 @@ Socket은 기본적으로 pull mode로 시작한다.
     // Blocking recv
     RecvResult result = socket.recv();
     for (int i = 0; i < result.parts().length; i++)
-        System.out.println("frame " + i + ": "
+        System.out.println("Frame " + i + ": "
             + new String(result.parts()[i].data()));
 
     // Non-blocking recv
     RecvResult r = socket.recv(DONTWAIT);
-    if (r == null)  // EAGAIN
+    if (r == null)  // EAGAIN — no message available
         ;
     ```
 
@@ -572,13 +572,13 @@ Socket은 기본적으로 pull mode로 시작한다.
     # Blocking recv
     source_rid, parts = socket.recv()
     for i, part in enumerate(parts):
-        print(f"frame {i}: {part.data().decode()}")
+        print(f"Frame {i}: {part.data().decode()}")
 
     # Non-blocking recv
     try:
         source_rid, parts = socket.recv(dontwait=True)
     except zlink.Again:
-        pass  # 현재 사용 가능한 message 없음
+        pass  # No message available right now
     ```
 
 === "Node/TypeScript"
@@ -590,11 +590,11 @@ Socket은 기본적으로 pull mode로 시작한다.
     // Blocking recv
     const { sourceRid, parts } = socket.recv();
     parts.forEach((part, i) =>
-        console.log(`frame ${i}: ${part.data().toString()}`));
+        console.log(`Frame ${i}: ${part.data().toString()}`));
 
     // Non-blocking recv
     const result = socket.recv({ dontwait: true });
-    if (!result)  // EAGAIN
+    if (!result)  // EAGAIN — no message available
         ;
     ```
 
@@ -607,11 +607,11 @@ Socket은 기본적으로 pull mode로 시작한다.
     // Blocking recv
     var (sourceRid, parts) = socket.Recv();
     for (int i = 0; i < parts.Length; i++)
-        Console.WriteLine($"frame {i}: {parts[i].DataString()}");
+        Console.WriteLine($"Frame {i}: {parts[i].DataString()}");
 
     // Non-blocking recv
     var result = socket.TryRecv();
-    if (result == null)  // EAGAIN
+    if (result == null)  // EAGAIN — no message available
         ;
     ```
 
@@ -624,12 +624,12 @@ Socket은 기본적으로 pull mode로 시작한다.
     // Blocking recv
     let (source_rid, parts) = socket.recv()?;
     for (i, part) in parts.iter().enumerate() {
-        println!("frame {}: {}", i, part.as_str()?);
+        println!("Frame {}: {}", i, part.as_str()?);
     }
 
     // Non-blocking recv
     match socket.recv_dontwait() {
-        Ok((rid, parts)) => { /* 처리 */ }
+        Ok((rid, parts)) => { /* process */ }
         Err(e) if e.kind() == zlink::ErrorKind::Again => {}
         Err(e) => return Err(e),
     }
@@ -647,13 +647,13 @@ Socket은 기본적으로 pull mode로 시작한다.
     if err != nil { log.Fatal(err) }
     defer received.Close()
     for i := 0; i < received.PartCount(); i++ {
-        fmt.Printf("frame %d: %s\n", i, string(received.Part(i).Data()))
+        fmt.Printf("Frame %d: %s\n", i, string(received.Part(i).Data()))
     }
 
     // Non-blocking recv
     received2, err := socket.RecvDontWait()
     if err != nil {
-        // EAGAIN — 현재 사용 가능한 message 없음
+        // EAGAIN — no message available
     }
     ```
 
@@ -671,7 +671,7 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
                     void *userdata)
     {
         for (size_t i = 0; i < part_count; i++) {
-            printf("frame %zu: %.*s\n", i,
+            printf("Frame %zu: %.*s\n", i,
                    (int)zlink_msg_size(&parts[i]),
                    (char *)zlink_msg_data(&parts[i]));
             zlink_msg_close(&parts[i]);
@@ -689,7 +689,7 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
     socket.on_message([](const zlink::routing_id_t& rid,
                          std::span<zlink::message_t> parts) {
         for (size_t i = 0; i < parts.size(); i++)
-            std::cout << "frame " << i << ": "
+            std::cout << "Frame " << i << ": "
                       << parts[i].to_string() << "\n";
     });
     ```
@@ -700,7 +700,7 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
     StreamSocket socket = new StreamSocket(ctx);
     socket.onMessage((rid, parts) -> {
         for (int i = 0; i < parts.length; i++)
-            System.out.println("frame " + i + ": "
+            System.out.println("Frame " + i + ": "
                 + new String(parts[i].data()));
     });
     ```
@@ -712,7 +712,7 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
 
     def on_message(rid, parts):
         for i, part in enumerate(parts):
-            print(f"frame {i}: {part.data().decode()}")
+            print(f"Frame {i}: {part.data().decode()}")
 
     socket.on_message(on_message)
     ```
@@ -723,7 +723,7 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
     const socket = new zlink.StreamSocket(ctx);
     socket.onMessage((rid, parts) => {
         parts.forEach((part, i) =>
-            console.log(`frame ${i}: ${part.data().toString()}`));
+            console.log(`Frame ${i}: ${part.data().toString()}`));
     });
     ```
 
@@ -733,7 +733,7 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
     using var socket = new StreamSocket(ctx);
     socket.OnMessage((rid, parts) => {
         for (int i = 0; i < parts.Length; i++)
-            Console.WriteLine($"frame {i}: {parts[i].DataString()}");
+            Console.WriteLine($"Frame {i}: {parts[i].DataString()}");
     });
     ```
 
@@ -743,7 +743,7 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
     let socket = ctx.stream_socket()?;
     socket.on_message(|rid, parts| {
         for (i, part) in parts.iter().enumerate() {
-            println!("frame {}: {}", i, part.as_str()?);
+            println!("Frame {}: {}", i, part.as_str()?);
         }
         Ok(())
     })?;
@@ -756,7 +756,7 @@ Handler가 부착된 상태에서 `zlink_recv()` 호출 시 `EBUSY`를 반환한
     if err != nil { log.Fatal(err) }
     socket.OnMessage(func(rid zlink.RoutingID, parts []zlink.Message) {
         for i, part := range parts {
-            fmt.Printf("frame %d: %s\n", i, string(part.Data()))
+            fmt.Printf("Frame %d: %s\n", i, string(part.Data()))
         }
     })
     ```
@@ -799,7 +799,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     int rc = zlink_send(socket, &part, 1, 0);
     if (rc == -1) {
         int err = zlink_errno();
-        printf("error: %s\n", zlink_strerror(err));
+        printf("Error: %s\n", zlink_strerror(err));
     }
     ```
 
@@ -809,7 +809,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     try {
         socket.send(zlink::message_t(data, size));
     } catch (const zlink::error_t& e) {
-        std::cerr << "error: " << e.what() << "\n";
+        std::cerr << "Error: " << e.what() << "\n";
     }
     ```
 
@@ -819,7 +819,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     try {
         socket.send(new Message(data));
     } catch (ZlinkException e) {
-        System.err.println("error: " + e.getMessage());
+        System.err.println("Error: " + e.getMessage());
     }
     ```
 
@@ -829,7 +829,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     try:
         socket.send(data)
     except zlink.ZlinkError as e:
-        print(f"error: {e}")
+        print(f"Error: {e}")
     ```
 
 === "Node/TypeScript"
@@ -838,7 +838,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     try {
         socket.send(data);
     } catch (e) {
-        console.error(`error: ${e}`);
+        console.error(`Error: ${e}`);
     }
     ```
 
@@ -848,7 +848,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     try {
         socket.Send(new Message(data));
     } catch (ZlinkException e) {
-        Console.Error.WriteLine($"error: {e.Message}");
+        Console.Error.WriteLine($"Error: {e.Message}");
     }
     ```
 
@@ -857,7 +857,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     ```rust
     match socket.send(&zlink::Message::from(data)) {
         Ok(()) => {}
-        Err(e) => eprintln!("error: {}", e),
+        Err(e) => eprintln!("Error: {}", e),
     }
     ```
 
@@ -866,7 +866,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     ```go
     err := socket.Send(zlink.NewMessage(data))
     if err != nil {
-        fmt.Fprintf(os.Stderr, "error: %v\n", err)
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
     }
     ```
 
@@ -896,7 +896,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
                            zlink_msg_t *parts, size_t part_count,
                            void *userdata)
     {
-        printf("[%.*s] recv: %.*s\n",
+        printf("Received from [%.*s]: %.*s\n",
                (int)source_rid->size, source_rid->data,
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
@@ -908,7 +908,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
                            zlink_msg_t *parts, size_t part_count,
                            void *userdata)
     {
-        printf("reply: %.*s\n",
+        printf("Reply: %.*s\n",
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
         for (size_t i = 0; i < part_count; i++)
@@ -920,12 +920,12 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
 
         /* ROUTER (server) */
         void *router = zlink_socket(ctx, ZLINK_ROUTER);
-        /* zlink_recv()로 수신 */
+        /* Receive with zlink_recv() */
         zlink_bind(router, "tcp://*:5555");
 
         /* DEALER (client) */
         void *dealer = zlink_socket(ctx, ZLINK_DEALER);
-        /* zlink_recv()로 수신 */
+        /* Receive with zlink_recv() */
         zlink_connect(dealer, "tcp://127.0.0.1:5555");
 
         /* DEALER → ROUTER */
@@ -934,7 +934,7 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
         memcpy(zlink_msg_data(&req), "request", 7);
         zlink_send(dealer, &req, 1, 0);
 
-        /* Handler callback이 비동기로 message를 처리 */
+        /* Handler callbacks process messages asynchronously */
         msleep(100);
 
         zlink_close(dealer);
@@ -964,10 +964,10 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
         // DEALER → ROUTER
         dealer.send(zlink::message_t("request", 7));
 
-        // 수신 및 출력
+        // Receive and print
         auto [rid, parts] = router.recv();
-        std::cout << "[" << rid.to_string()
-                  << "] recv: " << parts[0].to_string() << "\n";
+        std::cout << "Received from [" << rid.to_string()
+                  << "]: " << parts[0].to_string() << "\n";
 
         dealer.close();
         router.close();
@@ -983,16 +983,21 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     public class DealerRouterExample {
         public static void main(String[] args) throws Exception {
             try (Context ctx = new Context()) {
+                // ROUTER (server)
                 RouterSocket router = new RouterSocket(ctx);
                 router.bind("tcp://*:5555");
 
+                // DEALER (client)
                 DealerSocket dealer = new DealerSocket(ctx);
                 dealer.connect("tcp://127.0.0.1:5555");
 
+                // DEALER → ROUTER
                 dealer.send(new Message("request".getBytes()));
 
+                // Receive and print
                 RecvResult result = router.recv();
-                System.out.println("[" + result.routingId() + "] recv: "
+                System.out.println("Received from ["
+                    + result.routingId() + "]: "
                     + new String(result.parts()[0].data()));
 
                 dealer.close();
@@ -1009,16 +1014,20 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
 
     ctx = zlink.Context()
 
+    # ROUTER (server)
     router = zlink.RouterSocket(ctx)
     router.bind("tcp://*:5555")
 
+    # DEALER (client)
     dealer = zlink.DealerSocket(ctx)
     dealer.connect("tcp://127.0.0.1:5555")
 
+    # DEALER → ROUTER
     dealer.send(b"request")
 
+    # Receive and print
     rid, parts = router.recv()
-    print(f"[{rid}] recv: {parts[0].data().decode()}")
+    print(f"Received from [{rid}]: {parts[0].data().decode()}")
 
     dealer.close()
     router.close()
@@ -1032,16 +1041,20 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
 
     const ctx = new zlink.Context();
 
+    // ROUTER (server)
     const router = new zlink.RouterSocket(ctx);
     router.bind("tcp://*:5555");
 
+    // DEALER (client)
     const dealer = new zlink.DealerSocket(ctx);
     dealer.connect("tcp://127.0.0.1:5555");
 
+    // DEALER → ROUTER
     dealer.send(Buffer.from("request"));
 
+    // Receive and print
     const { sourceRid, parts } = router.recv();
-    console.log(`[${sourceRid}] recv: ${parts[0].data().toString()}`);
+    console.log(`Received from [${sourceRid}]: ${parts[0].data().toString()}`);
 
     dealer.close();
     router.close();
@@ -1055,16 +1068,20 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
 
     using var ctx = new Context();
 
+    // ROUTER (server)
     using var router = new RouterSocket(ctx);
     router.Bind("tcp://*:5555");
 
+    // DEALER (client)
     using var dealer = new DealerSocket(ctx);
     dealer.Connect("tcp://127.0.0.1:5555");
 
+    // DEALER → ROUTER
     dealer.Send(new Message("request"u8));
 
+    // Receive and print
     var (rid, parts) = router.Recv();
-    Console.WriteLine($"[{rid}] recv: {parts[0].DataString()}");
+    Console.WriteLine($"Received from [{rid}]: {parts[0].DataString()}");
     ```
 
 === "Rust"
@@ -1075,16 +1092,20 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
     fn main() -> zlink::Result<()> {
         let ctx = Context::new()?;
 
+        // ROUTER (server)
         let router = ctx.router_socket()?;
         router.bind("tcp://*:5555")?;
 
+        // DEALER (client)
         let dealer = ctx.dealer_socket()?;
         dealer.connect("tcp://127.0.0.1:5555")?;
 
+        // DEALER → ROUTER
         dealer.send(&zlink::Message::from("request"))?;
 
+        // Receive and print
         let (rid, parts) = router.recv()?;
-        println!("[{}] recv: {}", rid, parts[0].as_str()?);
+        println!("Received from [{}]: {}", rid, parts[0].as_str()?);
 
         Ok(())
     }
@@ -1098,23 +1119,27 @@ Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업
         if err != nil { log.Fatal(err) }
         defer ctx.Close()
 
+        // ROUTER (server)
         router, err := ctx.RouterSocket()
         if err != nil { log.Fatal(err) }
         defer router.Close()
         router.Bind("tcp://*:5555")
 
+        // DEALER (client)
         dealer, err := ctx.DealerSocket()
         if err != nil { log.Fatal(err) }
         defer dealer.Close()
         dealer.Connect("tcp://127.0.0.1:5555")
 
+        // DEALER → ROUTER
         dealer.Send(zlink.NewMessage([]byte("request")))
 
+        // Receive and print
         received, err := router.Recv()
         if err != nil { log.Fatal(err) }
         defer received.Close()
         part, _ := received.SinglePartOrError()
-        fmt.Printf("[%v] recv: %s\n",
+        fmt.Printf("Received from [%v]: %s\n",
             received.RoutingID(), string(part.Data()))
     }
     ```

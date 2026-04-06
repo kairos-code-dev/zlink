@@ -78,18 +78,20 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 
 두 함수 모두 message 내용을 다른 `zlink_msg_t`로 옮기지만 동작이 다르다:
 
-```
-zlink_msg_move(dest, src)             zlink_msg_copy(dest, src)
--------------------------             -------------------------
-
-Before:                               Before:
-  src:  [data---→ buf]                  src:  [data---→ buf (rc=1)]
-  dest: [empty]                         dest: [empty]
-
-After:                                After:
-  src:  [empty]       ← 빈 상태        src:  [data---→ buf (rc=2)]
-  dest: [data---→ buf]                  dest: [data---+           ]
-                                                     ↑ 같은 buffer 공유
+```c
+/* Handler callback receives all frames as parts array */
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    for (size_t i = 0; i < part_count; i++) {
+        printf("Frame[%zu bytes]: %.*s\n",
+               zlink_msg_size(&parts[i]),
+               (int)zlink_msg_size(&parts[i]),
+               (char *)zlink_msg_data(&parts[i]));
+        zlink_msg_close(&parts[i]);
+    }
+}
 ```
 
 - **move**: ownership 이전. src를 더 이상 사용할 수 없다. refcount 변화 없음.
@@ -107,16 +109,17 @@ After:                                After:
 | ZCLMSG | refcount 감소. 0이 되면 `ffn(data, hint)` callback 호출 |
 
 ```c
-/* 예시: copy 후 close 순서에 따른 해제 시점 */
-zlink_msg_t a, b;
-zlink_msg_init_size(&a, 1024);        /* LMSG, refcount=1 */
-memcpy(zlink_msg_data(&a), data, 1024);
+void on_message(const zlink_routing_id_t *source_rid,
+                zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    printf("Received: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
 
-zlink_msg_init(&b);
-zlink_msg_copy(&b, &a);               /* refcount=2, shared=1 */
-
-zlink_msg_close(&a);                  /* refcount=1, buffer 유지 */
-zlink_msg_close(&b);                  /* refcount=0 → free(buffer) */
+    for (size_t i = 0; i < part_count; i++)
+        zlink_msg_close(&parts[i]);
+}
 ```
 
 ## 4. Message Lifecycle
@@ -130,7 +133,7 @@ Recv용 message나 `zlink_msg_copy()` target으로 사용. Data 없이 생성.
 ```c
 zlink_msg_t msg;
 zlink_msg_init(&msg);
-/* copy target이나 recv buffer로 사용. zlink_msg_close()로 해제 */
+/* Used for initialization or as a target for zlink_msg_copy(). Free with zlink_msg_close() */
 ```
 
 #### zlink_msg_init_size — Size 지정 (copy 필요)
@@ -140,7 +143,7 @@ zlink_msg_init(&msg);
 
 ```c
 zlink_msg_t msg;
-zlink_msg_init_size(&msg, 1024);          /* LMSG: heap 할당 */
+zlink_msg_init_size(&msg, 1024);
 memcpy(zlink_msg_data(&msg), source_data, 1024);
 zlink_send(socket, &msg, 1, 0);
 ```
@@ -162,9 +165,9 @@ memcpy(buf, source_data, 4096);
 
 zlink_msg_t msg;
 zlink_msg_init_data(&msg, buf, 4096, my_free, NULL);
-/* buf는 이제 message가 소유. 직접 free 하지 않음 */
+/* buf is now owned by the message. Do not free it directly */
 zlink_send(socket, &msg, 1, 0);
-/* send 완료 후 my_free(buf, NULL) 자동 호출 */
+/* my_free(buf, NULL) is called automatically after sending completes */
 ```
 
 **`ffn=NULL`인 경우 (CMSG):** buffer를 해제하지 않고 borrowed reference로
@@ -172,10 +175,7 @@ zlink_send(socket, &msg, 1, 0);
 이 경우 `zlink_msg_refcnt()`는 항상 1을 반환한다.
 
 ```c
-zlink_msg_t msg;
-zlink_msg_init_data(&msg, (void *)"Hello", 5, NULL, NULL);  /* CMSG */
-zlink_send(socket, &msg, 1, 0);
-/* "Hello" literal은 free되지 않음 */
+int zlink_send(void *s_, zlink_msg_t *parts_, size_t part_count_, zlink_send_flags_t flags_);
 ```
 
 **사용 시점:** 대용량 data의 copy를 피하고 싶을 때. Buffer 해제 시점을 library에 위임.
@@ -185,8 +185,8 @@ zlink_send(socket, &msg, 1, 0);
 ### 4.2 Data Access
 
 ```c
-void *data = zlink_msg_data(&msg);   /* data buffer pointer */
-size_t size = zlink_msg_size(&msg);  /* data size in bytes */
+void *data = zlink_msg_data(&msg);
+size_t size = zlink_msg_size(&msg);
 ```
 
 > **제거됨:** `zlink_msg_more()`와 `ZLINK_MORE`는 header에서 제거되었다.
@@ -201,15 +201,16 @@ Message 내용을 dest로 이동시키고 src는 빈 상태가 된다.
 LMSG의 경우 refcount를 증가시키지 않고 pointer만 이전한다.
 
 ```c
-zlink_msg_t src, dest;
-zlink_msg_init_size(&src, 512);
-memcpy(zlink_msg_data(&src), payload, 512);
+/* Single frame */
+zlink_msg_t msg;
+zlink_msg_init_data(&msg, (void *)"Hello", 5, NULL, NULL);
+zlink_send(socket, &msg, 1, 0);
 
-zlink_msg_init(&dest);
-zlink_msg_move(&dest, &src);
-/* src는 이제 빈 message. dest만 유효 */
-/* zlink_msg_size(&src) == 0 */
-/* zlink_msg_size(&dest) == 512 */
+/* Multipart — parts array */
+zlink_msg_t parts[2];
+zlink_msg_init_data(&parts[0], (void *)"foo", 3, NULL, NULL);
+zlink_msg_init_data(&parts[1], (void *)"foobar", 6, NULL, NULL);
+zlink_send(socket, parts, 2, 0);
 ```
 
 **사용 시점:** message를 다른 변수로 넘길 때. `zlink_msg_copy()`와 달리
@@ -228,11 +229,13 @@ memcpy(zlink_msg_data(&original), data, 1024);
 zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &original);
 
-/* original과 copy 모두 같은 buffer를 참조 (refcount=2) */
-int refcnt = zlink_msg_refcnt(&copy);  /* 2 */
+/* Both original and copy reference the same data */
+/* storage refcount is now 2 */
+int refcnt = zlink_msg_refcnt(&copy);
+/* refcnt == 2 */
 
-zlink_msg_close(&original);  /* refcount=1, buffer 유지 */
-zlink_msg_close(&copy);      /* refcount=0 → free(buffer) */
+zlink_msg_close(&original);
+zlink_msg_close(&copy);  /* Actual memory freed when last reference is released */
 ```
 
 > 참고: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`
@@ -243,15 +246,13 @@ Message에 부착된 metadata property를 string으로 반환한다.
 해당 property가 없으면 `NULL`을 반환한다.
 
 ```c
-const char *peer_addr = zlink_msg_gets(&msg, "Peer-Address");
-if (peer_addr)
-    printf("peer: %s\n", peer_addr);
+zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
 ### 4.5 Send
 
 ```c
-/* Multipart send: msg parts array를 전달 */
+/* Multipart send: pass an array of msg parts */
 zlink_msg_t parts[2];
 zlink_msg_init_size(&parts[0], 6);
 memcpy(zlink_msg_data(&parts[0]), "header", 6);
@@ -260,7 +261,7 @@ memcpy(zlink_msg_data(&parts[1]), "body", 4);
 
 int rc = zlink_send(socket, parts, 2, 0);
 if (rc == -1) {
-    /* 실패: caller가 여전히 소유 */
+    /* Failure: caller still owns parts */
     for (size_t i = 0; i < 2; i++)
         zlink_msg_close(&parts[i]);
 }
@@ -275,16 +276,21 @@ Message는 socket에 등록한 handler callback으로 수신된다.
 Callback이 `zlink_msg_t` part를 직접 제공한다:
 
 ```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    printf("recv: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
+zlink_msg_t part;
+zlink_msg_init_size(&part, 100);
+memcpy(zlink_msg_data(&part), data, 100);
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc == -1) {
+    if (errno == EAGAIN) {
+        /* HWM exceeded: retry later */
+    } else if (errno == ENOTSUP) {
+        /* Send not supported on this socket (e.g., SUB socket) */
+    } else if (errno == ETERM) {
+        /* Context terminated */
+    }
+    /* On failure, part is still valid -> must close */
+    zlink_msg_close(&part);
 }
 ```
 
@@ -306,26 +312,26 @@ zlink_msg_close(&msg);
 ### Ownership 규칙 실전
 
 ```c
-/* Pattern 1: send 성공 → msg part 자동 정리 */
+/* Pattern 1: Send succeeds → msg parts automatically cleaned up */
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "Hello", 5);
 int rc = zlink_send(socket, &part, 1, 0);
 if (rc != -1) {
-    /* 성공: part는 이제 빈 상태. close 호출해도 안전하지만 불필요 */
+    /* Success: part is now empty. Calling close is safe but unnecessary */
 }
 
-/* Pattern 2: send 실패 → 수동 정리 필요 */
+/* Pattern 2: Send fails → manual cleanup required */
 zlink_msg_t part2;
 zlink_msg_init_size(&part2, 5);
 memcpy(zlink_msg_data(&part2), "Hello", 5);
 rc = zlink_send(socket, &part2, 1, ZLINK_DONTWAIT);
 if (rc == -1) {
-    /* 실패: part2는 여전히 유효. 반드시 close 필요 */
+    /* Failure: part2 is still valid. Must close */
     zlink_msg_close(&part2);
 }
 
-/* Pattern 3: send 후 msg data access — 위험! */
+/* Pattern 3: Accessing msg data after send — dangerous! */
 zlink_send(socket, &part, 1, 0);
 /* zlink_msg_data(&part);  ← undefined behavior! */
 ```
@@ -335,22 +341,22 @@ zlink_send(socket, &part, 1, 0);
 ### Free Function Callback 작성법
 
 ```c
-/* 기본 free callback */
+/* Basic free callback */
 void simple_free(void *data, void *hint) {
     free(data);
 }
 
-/* hint를 활용한 callback */
+/* Callback using hint */
 void pool_free(void *data, void *hint) {
     struct memory_pool *pool = (struct memory_pool *)hint;
     pool_return(pool, data);
 }
 
-/* Notification callback (data 자체는 해제하지 않음) */
+/* Notification callback (does not free the data itself) */
 void notify_free(void *data, void *hint) {
-    /* data가 더 이상 사용되지 않음을 알림 */
+    /* Notify that the data is no longer in use */
     memcpy(hint, "freed", 5);
-    /* data는 외부에서 관리 */
+    /* data is managed externally */
 }
 ```
 
@@ -359,22 +365,22 @@ void notify_free(void *data, void *hint) {
 ### Free Function 호출 시점
 
 ```c
-/* 1. Message close 시 호출 */
+/* 1. Called on message close */
 zlink_msg_t msg;
 zlink_msg_init_data(&msg, buf, size, my_free, NULL);
-zlink_msg_close(&msg);  /* → my_free(buf, NULL) 호출 */
+zlink_msg_close(&msg);  /* → my_free(buf, NULL) called */
 
-/* 2. Send 완료 후 호출 */
+/* 2. Called after sending completes */
 zlink_msg_init_data(&msg, buf, size, my_free, NULL);
 zlink_send(socket, &msg, 1, 0);
-/* send 완료 시점에 my_free(buf, NULL) 호출 */
+/* my_free(buf, NULL) called when sending completes */
 
-/* 3. Copy 후 마지막 reference 해제 시 호출 */
+/* 3. Called when original is freed after copy */
 zlink_msg_t copy;
 zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &msg);
 zlink_msg_close(&msg);
-zlink_msg_close(&copy);  /* 마지막 reference 해제 시 my_free 호출 */
+zlink_msg_close(&copy);  /* my_free called when last reference is released */
 ```
 
 > 참고: `core/tests/test_msg_ffn.cpp` — close/send/copy 각 시나리오
@@ -385,15 +391,23 @@ zlink_msg_close(&copy);  /* 마지막 reference 해제 시 my_free 호출 */
 copy 없이 전송할 수 있다.
 
 ```c
-/* Single frame */
-zlink_msg_t msg;
-zlink_msg_init_data(&msg, (void *)"Hello", 5, NULL, NULL);
-zlink_send(socket, &msg, 1, 0);
+/* Single-part send */
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "Hello", 5);
+zlink_send(socket, &part, 1, 0);
 
-/* Multipart — parts array */
+/* Zero-copy send */
+zlink_msg_t zcmsg;
+zlink_msg_init_data(&zcmsg, large_buf, large_size, my_free, NULL);
+zlink_send(socket, &zcmsg, 1, 0);
+
+/* Multipart send */
 zlink_msg_t parts[2];
-zlink_msg_init_data(&parts[0], (void *)"foo", 3, NULL, NULL);
-zlink_msg_init_data(&parts[1], (void *)"foobar", 6, NULL, NULL);
+zlink_msg_init_size(&parts[0], 6);
+memcpy(zlink_msg_data(&parts[0]), "header", 6);
+zlink_msg_init_size(&parts[1], 4);
+memcpy(zlink_msg_data(&parts[1]), "body", 4);
 zlink_send(socket, parts, 2, 0);
 ```
 
@@ -406,20 +420,20 @@ Multipart message는 `zlink_send()` 한 번의 호출로 parts array를 전송�
 ### Pattern 1: Request-Reply (DEALER/ROUTER)
 
 ```c
-/* DEALER → ROUTER: single frame send */
+/* DEALER → ROUTER: send single frame */
 zlink_msg_t req;
 zlink_msg_init_size(&req, 7);
 memcpy(zlink_msg_data(&req), "request", 7);
 zlink_send(dealer, &req, 1, 0);
 
-/* ROUTER handler callback recv: source_rid + parts */
+/* ROUTER handler callback receives: source_rid + parts */
 void on_request(const zlink_routing_id_t *source_rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* parts[0] = "request", source_rid = DEALER의 routing_id */
+    /* parts[0] = "request", source_rid = DEALER's routing_id */
 
-    /* ROUTER reply: zlink_send_rid로 directed send */
+    /* ROUTER reply: directed send via zlink_send_rid */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
@@ -435,7 +449,7 @@ void on_request(const zlink_routing_id_t *source_rid,
 ### Pattern 2: Topic + Data (PUB/SUB)
 
 ```c
-/* PUB: [topic][payload] parts array */
+/* PUB: [topic][payload] as parts array */
 zlink_msg_t pub_parts[2];
 zlink_msg_init_size(&pub_parts[0], 7);
 memcpy(zlink_msg_data(&pub_parts[0]), "weather", 7);
@@ -443,7 +457,7 @@ zlink_msg_init_size(&pub_parts[1], 5);
 memcpy(zlink_msg_data(&pub_parts[1]), "sunny", 5);
 zlink_send(pub, pub_parts, 2, 0);
 
-/* SUB handler callback이 topic과 payload를 분리하여 recv */
+/* SUB handler callback receives topic and payload separately */
 void on_spot(const zlink_routing_id_t *source_rid,
              const char *topic, size_t topic_len,
              zlink_msg_t *parts, size_t part_count,
@@ -458,19 +472,20 @@ void on_spot(const zlink_routing_id_t *source_rid,
 ### Pattern 3: Handler Callback에서 Multipart 처리
 
 ```c
-/* Handler callback이 모든 frame을 parts array로 recv */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    for (size_t i = 0; i < part_count; i++) {
-        printf("frame[%zu bytes]: %.*s\n",
-               zlink_msg_size(&parts[i]),
-               (int)zlink_msg_size(&parts[i]),
-               (char *)zlink_msg_data(&parts[i]));
-        zlink_msg_close(&parts[i]);
-    }
-}
+/* Reference-counted message */
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 1024);
+int refcnt = zlink_msg_refcnt(&msg);  /* 1: single owner */
+
+zlink_msg_t copy;
+zlink_msg_init(&copy);
+zlink_msg_copy(&copy, &msg);
+refcnt = zlink_msg_refcnt(&copy);  /* 2: shared by msg and copy */
+
+/* Constant data message */
+zlink_msg_t const_msg;
+zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
+refcnt = zlink_msg_refcnt(&const_msg);  /* 1: not internally refcounted */
 ```
 
 ## 8. Storage Refcount — zlink_msg_refcnt
@@ -537,7 +552,7 @@ if (rc == -1) {
 `zlink_send()`는 `zlink_msg_t` parts array와 part count를 받는다:
 
 ```c
-int zlink_send(void *s_, zlink_msg_t *parts_, size_t part_count_, zlink_send_flags_t flags_);
+zlink_msg_close(&msg);
 ```
 
 ```c

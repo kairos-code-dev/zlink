@@ -15,7 +15,7 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
 유효 조합:
 
 ```
-외부 raw client  <---- RAW 바이트 스트림 ---->  STREAM(server)
+external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 ```
 
 > STREAM은 zlink 내부 소켓(PAIR/PUB/SUB/DEALER/ROUTER)과 직접 호환되지 않는다.
@@ -141,7 +141,7 @@ STREAM만의 고유 동작은 다음과 같다.
         zlink_set_option(stream, ZLINK_OPT_STREAM_NOTIFY, &notify, sizeof(notify));
         zlink_bind(stream, "tcp://*:8080");
 
-        /* raw 클라이언트로부터 수신 */
+        /* Receive from raw client */
         zlink_routing_id_t rid;
         zlink_msg_t *parts;
         size_t count;
@@ -150,7 +150,7 @@ STREAM만의 고유 동작은 다음과 같다.
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
 
-        /* 에코 응답 */
+        /* Echo back */
         size_t sz = zlink_msg_size(&parts[0]);
         zlink_msg_t reply;
         zlink_msg_init_size(&reply, sz);
@@ -177,11 +177,11 @@ STREAM만의 고유 동작은 다음과 같다.
         stream.set_option(zlink::opt::stream_notify, 0);
         stream.bind("tcp://*:8080");
 
-        // raw 클라이언트로부터 수신
+        // Receive from raw client
         auto [rid, parts] = stream.recv();
         std::cout << "Received: " << parts[0].str() << std::endl;
 
-        // 에코 응답
+        // Echo back
         stream.send_rid(rid, parts[0]);
 
         return 0;
@@ -200,12 +200,12 @@ STREAM만의 고유 동작은 다음과 같다.
             stream.setStreamNotify(0);
             stream.bind("tcp://*:8080");
 
-            // raw 클라이언트로부터 수신
+            // Receive from raw client
             RecvResult result = stream.recv();
             System.out.println("Received: "
                 + new String(result.parts()[0].data()));
 
-            // 에코 응답
+            // Echo back
             stream.sendRid(result.routingId(), result.parts()[0]);
 
             stream.close();
@@ -224,11 +224,11 @@ STREAM만의 고유 동작은 다음과 같다.
     stream.set_option(zlink.OPT_STREAM_NOTIFY, 0)
     stream.bind("tcp://*:8080")
 
-    # raw 클라이언트로부터 수신
+    # Receive from raw client
     rid, parts = stream.recv()
     print(f"Received: {parts[0].decode()}")
 
-    # 에코 응답
+    # Echo back
     stream.send_rid(rid, parts[0])
 
     stream.close()
@@ -245,11 +245,11 @@ STREAM만의 고유 동작은 다음과 같다.
     stream.setOption(zlink.OPT_STREAM_NOTIFY, 0);
     stream.bind('tcp://*:8080');
 
-    // raw 클라이언트로부터 수신
+    // Receive from raw client
     const { sourceRid, parts } = stream.recv();
     console.log(`Received: ${parts[0].toString()}`);
 
-    // 에코 응답
+    // Echo back
     stream.sendRid(sourceRid, parts[0]);
 
     stream.close();
@@ -266,11 +266,11 @@ STREAM만의 고유 동작은 다음과 같다.
     stream.StreamNotify = 0;
     stream.Bind("tcp://*:8080");
 
-    // raw 클라이언트로부터 수신
+    // Receive from raw client
     var (rid, parts) = stream.Recv();
     Console.WriteLine($"Received: {parts[0].GetString()}");
 
-    // 에코 응답
+    // Echo back
     stream.SendRid(rid, parts[0]);
     ```
 
@@ -285,11 +285,11 @@ STREAM만의 고유 동작은 다음과 같다.
         stream.set_stream_notify(0)?;
         stream.bind("tcp://*:8080")?;
 
-        // raw 클라이언트로부터 수신
+        // Receive from raw client
         let (rid, parts) = stream.recv()?;
         println!("Received: {}", String::from_utf8_lossy(parts[0].as_bytes()));
 
-        // 에코 응답
+        // Echo back
         stream.send_rid(&rid, &parts[0])?;
 
         Ok(())
@@ -318,12 +318,12 @@ STREAM만의 고유 동작은 다음과 같다.
         stream.SetOption(zlink.OptionStreamNotify, 0)
         stream.Bind("tcp://*:8080")
 
-        // raw 클라이언트로부터 수신
+        // Receive from raw client
         rid, parts, err := stream.Recv()
         if err != nil { log.Fatal(err) }
         fmt.Printf("Received: %s\n", string(parts[0].Data()))
 
-        // 에코 응답
+        // Echo back
         stream.SendTo(rid, parts[0])
     }
     ```
@@ -389,11 +389,11 @@ STREAM의 콜백에서는 connect/disconnect 이벤트와 데이터를 구분해
         zlink_set_option(g_stream, ZLINK_OPT_STREAM_NOTIFY, &notify, sizeof(notify));
         zlink_bind(g_stream, "tcp://*:8080");
 
-        /* 에코 콜백 attach (영구, 해제 불가) */
+        /* Attach echo callback (permanent, cannot be undone) */
         zlink_recv_handler(g_stream, on_message, NULL);
 
-        /* 콜백이 연결을 처리하는 동안 블록.
-           프로덕션에서는 zlink_poll 또는 이벤트 루프를 사용한다. */
+        /* Block while the callback handles connections.
+           In production, use zlink_poll or an event loop. */
         getchar();
 
         zlink_close(g_stream);
@@ -678,13 +678,12 @@ STREAM은 raw 바이트를 그대로 전달하므로, **패킷 경계(프레이�
     각 언어는 자체 네이티브 TCP/WebSocket 클라이언트 라이브러리를 사용한다.
 
 ```c
-// 사용자 정의 프레이밍 예시: [4B length(big-endian)][body]
-// send
+// send: [4B length][body]
 uint32_t len_be = htonl(body_len);
 send(fd, &len_be, 4, 0);
 send(fd, body, body_len, 0);
 
-// recv
+// recv: [4B length][body]
 recv(fd, &len_be, 4, MSG_WAITALL);
 uint32_t body_len = ntohl(len_be);
 recv(fd, body, body_len, MSG_WAITALL);

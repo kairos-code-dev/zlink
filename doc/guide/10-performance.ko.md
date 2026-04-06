@@ -15,11 +15,11 @@
 ### Transport별 오버헤드 분석
 
 ```
-inproc:  Lock-free pipe 직접 연결. 시스템콜 없음.
-ipc:     Unix 도메인 소켓. TCP 스택 우회.
-tcp:     TCP/IP 스택. Nagle 비활성화로 지연 최소화.
-ws:      tcp + WebSocket 프레이밍(2~14B 헤더). Binary mode.
-wss/tls: ws/tcp + TLS 암호화. 핸드셰이크 + 레코드 오버헤드.
+inproc:  Lock-free pipe direct connection. No system calls.
+ipc:     Unix domain socket. Bypasses TCP stack.
+tcp:     TCP/IP stack. Nagle disabled to minimize latency.
+ws:      tcp + WebSocket framing (2~14B header). Binary mode.
+wss/tls: ws/tcp + TLS encryption. Handshake + record overhead.
 ```
 
 ## 2. I/O 스레드 수 설정 가이드
@@ -92,22 +92,22 @@ LWM 공식: **`(HWM + 1) / 2`**
 
 ```mermaid
 sequenceDiagram
-    participant 송신자 as Sender
-    participant 큐 as Queue
-    participant 수신자 as Receiver
+    participant Sender
+    participant Queue
+    participant Receiver
 
-    Note over 큐: HWM = 100, LWM = 50
+    Note over Queue: HWM = 100, LWM = 50
 
-    송신자->>큐: 메시지 전송
-    Note over 큐: 큐가 100을 향해 채워짐
-    송신자->>큐: 큐가 100에 도달 (HWM)
-    큐-->>송신자: 블로킹 / EAGAIN (non-writable)
+    Sender->>Queue: Send messages
+    Note over Queue: Queue fills toward 100
+    Sender->>Queue: Queue reaches 100 (HWM)
+    Queue-->>Sender: Block / EAGAIN (non-writable)
 
-    수신자->>큐: 메시지 소비
-    Note over 큐: 큐가 50을 향해 감소
-    수신자->>큐: 큐가 50 이하로 감소 (LWM)
-    큐-->>송신자: activate_write (writable)
-    송신자->>큐: 전송 재개
+    Receiver->>Queue: Consume messages
+    Note over Queue: Queue drains toward 50
+    Receiver->>Queue: Queue drops to 50 (LWM)
+    Queue-->>Sender: activate_write (writable)
+    Sender->>Queue: Resume sending
 ```
 
 ### 실전 HWM 권장값
@@ -132,13 +132,13 @@ sequenceDiagram
 HWM은 연결별(per-connection)이므로, 총 메모리는 HWM × 메시지 크기 × 연결 수이다.
 
 ```
-예상 메모리 = SNDHWM × 평균_메시지_크기 × 연결_수
+Estimated memory = SNDHWM × average_message_size × connection_count
 
-예 1: 일반 서비스 — HWM=100, 메시지=1KB, 연결=1000
-      = 100 × 1KB × 1000 = ~100MB
+Example 1: Regular service — HWM=100, message=1KB, connections=1000
+           = 100 × 1KB × 1000 = ~100MB
 
-예 2: STREAM 대규모 — HWM=10, 메시지=1KB, 연결=10000
-      = 10 × 1KB × 10000 = ~100MB
+Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
+           = 10 × 1KB × 10000 = ~100MB
 ```
 
 ## 4. Send/Recv 흐름 제어
@@ -161,7 +161,7 @@ Mark(HWM)이 큐 깊이를 제한하며, HWM 도달 시 동작은 소켓 타입�
 | N (ms) | 최대 N밀리초 블로킹 후 `EAGAIN` |
 
 ```c
-/* 최대 1초 블로킹 */
+/* Block for at most 1 second */
 int timeout = 1000;
 zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 
@@ -170,7 +170,7 @@ zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
 int rc = zlink_send(socket, &part, 1, 0);
 if (rc == -1 && zlink_errno() == EAGAIN) {
-    /* 타임아웃 — 큐가 아직 가득 참 */
+    /* Timed out — queue is still full */
     zlink_msg_close(&part);
 }
 ```
@@ -186,7 +186,7 @@ zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
 int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
 if (rc == -1 && zlink_errno() == EAGAIN) {
-    /* HWM 도달 — backpressure 처리 */
+    /* HWM reached — handle backpressure */
     zlink_msg_close(&part);
 }
 ```
@@ -231,22 +231,22 @@ void on_send_ready(void *subject, void *userdata)
             state->pending_data = NULL;
         else
             zlink_msg_close(&part);
-        /* 여전히 EAGAIN이면 다음 전환 시 콜백이 다시 호출됨 */
+        /* If still EAGAIN, callback will fire again on next transition */
     }
 }
 
-/* 핸들러 설치 */
+/* Install the handler */
 app_state_t state = { .socket = socket };
 zlink_send_ready_handler(socket, on_send_ready, &state);
 
-/* 송신 루프 */
+/* Send loop */
 zlink_msg_t part;
 zlink_msg_init_size(&part, size);
 memcpy(zlink_msg_data(&part), data, size);
 int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
 if (rc == -1 && zlink_errno() == EAGAIN) {
     zlink_msg_close(&part);
-    /* send-ready 호출 시 재전송하도록 버퍼링 */
+    /* Buffer for retry when send-ready fires */
     state.pending_data = data;
     state.pending_size = size;
 }
@@ -280,10 +280,10 @@ void on_message(const zlink_routing_id_t *rid,
                 zlink_msg_t *parts, size_t part_count,
                 void *userdata)
 {
-    /* 나쁜 예: 느린 처리가 I/O 스레드 블로킹 */
+    /* BAD: slow processing blocks I/O thread */
     // heavy_computation(parts);
 
-    /* 좋은 예: 큐에 넣고 빠르게 반환 */
+    /* GOOD: enqueue and return quickly */
     work_queue_push(userdata, parts, part_count);
 }
 ```
@@ -332,7 +332,7 @@ static void flush_queue(sender_t *s)
         int rc = zlink_send(s->socket, &part, 1, ZLINK_DONTWAIT);
         if (rc == -1) {
             zlink_msg_close(&part);
-            break; /* 아직 가득 참 — 다음 send-ready 대기 */
+            break; /* Still full — wait for next send-ready */
         }
         free(s->queue[s->head]);
         s->head = (s->head + 1) % MAX_PENDING;
@@ -364,14 +364,14 @@ int main(void)
         int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
         if (rc == -1 && zlink_errno() == EAGAIN) {
             zlink_msg_close(&part);
-            /* send-ready 호출 시 전달하도록 대기열에 추가 */
+            /* Enqueue for later delivery */
             if (sender.count < MAX_PENDING) {
                 int idx = (sender.head + sender.count) % MAX_PENDING;
                 sender.queue[idx] = strdup(msg);
                 sender.sizes[idx] = len;
                 sender.count++;
             } else {
-                printf("애플리케이션 버퍼 가득 참 — 메시지 드롭\n");
+                printf("Application buffer full — dropping message\n");
             }
         }
     }
@@ -396,23 +396,23 @@ int main(void)
 ### LINGER 설정
 
 ```c
-/* 테스트 환경: 즉시 종료 */
+/* Test environment: terminate immediately */
 int linger = 0;
 zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
-/* 프로덕션: 미전송 메시지 대기 */
-int linger = 3000;  /* 3초 */
+/* Production: wait for unsent messages */
+int linger = 3000;  /* 3 seconds */
 zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ### 타임아웃 설정
 
 ```c
-/* 송신 타임아웃: 1초 후 EAGAIN */
+/* Send timeout: EAGAIN after 1 second */
 int timeout = 1000;
 zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &timeout, sizeof(timeout));
 
-/* 수신 타임아웃: 500ms 후 EAGAIN */
+/* Receive timeout: EAGAIN after 500ms */
 int timeout = 500;
 zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &timeout, sizeof(timeout));
 ```
@@ -439,21 +439,21 @@ clock_gettime(CLOCK_MONOTONIC, &end);
 double elapsed = (end.tv_sec - start.tv_sec) +
                  (end.tv_nsec - start.tv_nsec) / 1e9;
 
-printf("처리량: %.2f msg/s\n", count / elapsed);
-printf("처리량: %.2f MB/s\n", (count * size) / elapsed / 1e6);
+printf("Throughput: %.2f msg/s\n", count / elapsed);
+printf("Throughput: %.2f MB/s\n", (count * size) / elapsed / 1e6);
 ```
 
 ### 지연시간 측정 (Ping-Pong)
 
 ```c
-/* 클라이언트: ping 전송, 콜백에서 pong 수신 시 종료 시간 기록 */
+/* Client: send ping, measure until pong arrives in callback */
 clock_gettime(CLOCK_MONOTONIC, &start);
 zlink_msg_t ping;
 zlink_msg_init_size(&ping, 4);
 memcpy(zlink_msg_data(&ping), "ping", 4);
 zlink_send(socket, &ping, 1, 0);
 
-/* 핸들러 콜백이 "pong" 응답을 수신하여 종료 시간 기록 */
+/* Handler callback receives "pong" reply and records end time */
 void on_pong(const zlink_routing_id_t *source_rid,
              zlink_msg_t *parts, size_t part_count, void *userdata)
 {

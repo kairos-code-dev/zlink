@@ -10,7 +10,7 @@
 
 ```
   Thread A --- zlink_send(socket, ...) ---+
-  Thread B --- zlink_send(socket, ...) ---+--> 같은 소켓, mutex 불필요
+  Thread B --- zlink_send(socket, ...) ---+--> same socket, no mutex needed
   Thread C --- zlink_send(socket, ...) ---+
 ```
 
@@ -64,7 +64,7 @@ void *worker(void *arg)
     char buf[64];
     for (int i = 0; i < 10000; i++) {
         int len = snprintf(buf, sizeof(buf), "worker-%d msg-%d", w->id, i);
-        zlink_send(w->socket, buf, len, 0);  /* mutex 불필요 */
+        zlink_send(w->socket, buf, len, 0);  /* no mutex needed */
     }
     return NULL;
 }
@@ -119,14 +119,14 @@ void *send_thread(void *arg)
         zlink_msg_t part;
         zlink_msg_init_size(&part, sizeof(buf) - 1);
         memcpy(zlink_msg_data(&part), buf, sizeof(buf) - 1);
-        zlink_send(socket, &part, 1, 0);  /* 빠른 경로 */
+        zlink_send(socket, &part, 1, 0);  /* hot path */
     return NULL;
 }
 
 void *setup_thread(void *arg)
 {
     void *socket = arg;
-    /* send_thread가 실행 중이어도 안전하게 호출 가능 */
+    /* These are safe to call while send_thread is running */
     zlink_connect(socket, "tcp://10.0.0.2:5555");
     zlink_connect(socket, "tcp://10.0.0.3:5555");
 
@@ -174,7 +174,7 @@ zlink가 명확한 에러 코드를 반환합니다:
 
 atomic_int g_running = 1;
 
-/* 워커 스레드는 g_running을 확인하고 ESHUTDOWN도 처리 */
+/* Worker threads check g_running and also handle ESHUTDOWN */
 void *sender(void *arg)
 {
     void *socket = arg;
@@ -183,17 +183,17 @@ void *sender(void *arg)
         zlink_msg_init_size(&part, 32);
         int rc = zlink_send(socket, &part, 1, 0);
         if (rc == -1 && zlink_errno() == ESHUTDOWN)
-            break;  /* 핸들이 종료 중, 정상 종료 */
+            break;  /* handle is shutting down, stop gracefully */
     }
     return NULL;
 }
 
 void shutdown_socket(void *socket)
 {
-    /* 1단계: 워커에게 중단 신호 전송 */
+    /* Step 1: tell workers to stop */
     atomic_store(&g_running, 0);
 
-    /* 2단계: 워커가 마무리할 시간을 주고 close */
+    /* Step 2: give workers a moment to finish, then close */
     msleep(50);
     zlink_close(socket);
 }
@@ -212,20 +212,20 @@ void shutdown_socket(void *socket)
 됩니다:
 
 ```c
-/* 잘못 — 두 스레드가 같은 msg를 공유 */
+/* WRONG — two threads sharing the same msg */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 100);
 /* Thread A: */ zlink_send_msg(socket, &msg, 0);
-/* Thread B: */ zlink_send_msg(socket, &msg, 0);  /* 데이터 경쟁! */
+/* Thread B: */ zlink_send_msg(socket, &msg, 0);  /* data race! */
 ```
 
 ```c
-/* 올바름 — 각 스레드가 자체 msg를 생성 */
+/* RIGHT — each thread makes its own msg */
 /* Thread A */                       /* Thread B */
 zlink_msg_t msg_a;                   zlink_msg_t msg_b;
 zlink_msg_init_size(&msg_a, 100);    zlink_msg_init_size(&msg_b, 100);
 memcpy(zlink_msg_data(&msg_a),...);  memcpy(zlink_msg_data(&msg_b),...);
-zlink_send_msg(socket, &msg_a, 0);   zlink_send_msg(socket, &msg_b, 0);  /* 안전 */
+zlink_send_msg(socket, &msg_a, 0);   zlink_send_msg(socket, &msg_b, 0);  /* safe */
 ```
 
 **콜백 소유권:** 콜백이 `zlink_msg_t *parts`를 받으면 소유권이 콜백으로
@@ -256,13 +256,13 @@ void on_message(const zlink_routing_id_t *source_rid,
                 void *userdata)
 {
     for (size_t i = 0; i < part_count; i++) {
-        /* 자체 thread-safe 큐에 넣기 */
+        /* Push to your own thread-safe queue */
         app_queue_push(app_queue,
                        zlink_msg_data(&parts[i]),
                        zlink_msg_size(&parts[i]));
         zlink_msg_close(&parts[i]);
     }
-    /* 빠르게 반환 — 워커 스레드가 큐를 처리 */
+    /* Return quickly — a worker thread processes the queue */
 }
 ```
 
@@ -305,7 +305,7 @@ void run_socket_pool(void *socket)
 한 스레드가 발행하고, 다른 스레드가 런타임에 구독을 관리:
 
 ```c
-/* 데이터 스레드: 고빈도 발행 */
+/* Data thread: publishes at high frequency */
 void *publisher(void *arg)
 {
     void *spot = arg;
@@ -317,14 +317,14 @@ void *publisher(void *arg)
     return NULL;
 }
 
-/* 제어 스레드: 발행 중에 구독 조정 */
+/* Control thread: adjusts subscriptions while publisher is running */
 void *control(void *arg)
 {
     void *spot = arg;
     msleep(100);
-    zlink_set_subscription(spot, "audit.*");      /* 발행 중에도 안전 */
+    zlink_set_subscription(spot, "audit.*");      /* safe while publishing */
     msleep(200);
-    zlink_unset_subscription(spot, "audit.*");    /* 역시 안전 */
+    zlink_unset_subscription(spot, "audit.*");    /* also safe */
     return NULL;
 }
 ```

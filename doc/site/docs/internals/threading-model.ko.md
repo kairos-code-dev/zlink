@@ -14,20 +14,20 @@
 ### 1.2 스레드 다이어그램
 ```mermaid
 flowchart TB
-    subgraph APP["애플리케이션 스레드"]
+    subgraph APP["Application Threads"]
         direction LR
         A1["zlink_send() / zlink_recv()"]
-        A2["스레드 안전: 동시 전송 가능 (thread-safety 가이드 참조)"]
+        A2["Thread-safe: concurrent sends allowed (see thread-safety guide)"]
     end
-    subgraph IO["I/O 스레드"]
+    subgraph IO["I/O Threads"]
         direction LR
         T0["Thread 0 (io_context)"]
         T1["Thread 1"]
         TN["Thread N"]
-        IO_DESC["비동기 I/O, 인코딩/디코딩, 네트워크 송수신"]
+        IO_DESC["Async I/O, encoding/decoding, network send/receive"]
     end
-    subgraph REAPER["Reaper 스레드"]
-        R1["종료된 소켓/세션 자원 정리, 지연 삭제"]
+    subgraph REAPER["Reaper Thread"]
+        R1["Terminated socket/session resource cleanup, deferred deletion"]
     end
     APP -- "Lock-free Pipes (YPipe)" --> IO
     IO --> REAPER
@@ -38,8 +38,8 @@ flowchart TB
 ### 2.1 Mailbox 시스템
 ```cpp
 class mailbox_t {
-    ypipe_t<command_t> _commands;  // Lock-free 명령 큐
-    signaler_t _signaler;           // 깨우기 신호
+    ypipe_t<command_t> _commands;  // Lock-free command queue
+    signaler_t _signaler;           // Wake-up signal
 };
 ```
 
@@ -48,13 +48,13 @@ class mailbox_t {
 ### 2.2 데이터 흐름
 ```mermaid
 sequenceDiagram
-    participant App as 애플리케이션 스레드
-    participant IOT as I/O 스레드
+    participant App as Application Thread
+    participant IOT as I/O Thread
     App->>App: zlink_send()
-    App->>App: msg_t를 YPipe에 push
+    App->>App: Push msg_t to YPipe
     App->>IOT: mailbox.send(activate_write)
-    IOT->>IOT: YPipe에서 pop
-    IOT->>IOT: 인코딩 및 전송
+    IOT->>IOT: Pop from YPipe
+    IOT->>IOT: Encode and transmit
 ```
 
 ## 3. I/O 스레드 선택

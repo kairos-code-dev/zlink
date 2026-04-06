@@ -24,34 +24,21 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 `zlink_msg_t`는 항상 64 byte 고정 struct이다. data 크기에 따라
 내부 저장 전략이 자동으로 결정된다:
 
-```
-+-------------------------------------------------------------+
-|                  zlink_msg_t (64 bytes)                     |
-+-------------------------------------------------------------+
-|                                                             |
-|  VSM (≤33B):  [ type | size | data ····················· ]  |
-|                               ↑ data가 struct 내부에 inline |
-|                                                             |
-|  LMSG (>33B): [ type | content_ptr                          |
-|                           ↓                                 |
-|                  +--------------------+                     |
-|                  | heap buffer        |                     |
-|                  | + refcount         |                     |
-|                  +--------------------+                     |
-|                                                             |
-|  CMSG:        [ type | data_ptr                             |
-|                           ↓                                 |
-|                  +--------------------+                     |
-|                  | external const buf                       |
-|                  +--------------------+                     |
-|                                                             |
-|  ZCLMSG:      [ type | data_ptr | ffn_ptr | hint | ··· ]    |
-|                           ↓          ↓                      |
-|                  +----------+   ffn(data, hint)로 해제      |
-|                  | user buf |                               |
-|                  +----------+                               |
-+-------------------------------------------------------------+
-```
+    ```c
+    /* Handler callback receives all frames as parts array */
+    void on_message(const zlink_routing_id_t *source_rid,
+                    zlink_msg_t *parts, size_t part_count,
+                    void *userdata)
+    {
+        for (size_t i = 0; i < part_count; i++) {
+            printf("Frame[%zu bytes]: %.*s\n",
+                   zlink_msg_size(&parts[i]),
+                   (int)zlink_msg_size(&parts[i]),
+                   (char *)zlink_msg_data(&parts[i]));
+            zlink_msg_close(&parts[i]);
+        }
+    }
+    ```
 
 핵심: `zlink_msg_t` struct 자체는 stack/배열에 놓이고, 큰 data만 heap을
 사용한다. 이 구조 덕분에 message array를 stack에 선언하고 바로 send할 수
@@ -76,19 +63,17 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 
 두 함수 모두 message 내용을 다른 `zlink_msg_t`로 옮기지만 동작이 다르다:
 
-```
-zlink_msg_move(dest, src)             zlink_msg_copy(dest, src)
--------------------------             -------------------------
-
-Before:                               Before:
-  src:  [data---→ buf]                  src:  [data---→ buf (rc=1)]
-  dest: [empty]                         dest: [empty]
-
-After:                                After:
-  src:  [empty]       ← 빈 상태        src:  [data---→ buf (rc=2)]
-  dest: [data---→ buf]                  dest: [data---+           ]
-                                                     ↑ 같은 buffer 공유
-```
+    ```cpp
+    socket.on_receive(
+        [](const zlink_routing_id_t *, zlink_msg_t *parts, size_t count, void *) {
+            for (size_t i = 0; i < count; i++) {
+                std::cout << "Frame[" << zlink_msg_size(&parts[i]) << " bytes]: "
+                          << std::string((const char *)zlink_msg_data(&parts[i]),
+                                         zlink_msg_size(&parts[i])) << std::endl;
+                zlink_msg_close(&parts[i]);
+            }
+        });
+    ```
 
 - **move**: ownership 이전. src를 더 이상 사용할 수 없다. refcount 변화 없음.
 - **copy**: ownership 공유. VSM이면 byte copy, LMSG이면 refcount를 증가시켜 같은 buffer를 가리킨다. 양쪽 모두 `zlink_msg_close()` 필요.
@@ -753,61 +738,65 @@ Message에 부착된 metadata property를 string으로 반환한다.
 
 === "C"
 
-    ```c
-    const char *peer_addr = zlink_msg_gets(&msg, "Peer-Address");
-    if (peer_addr)
-        printf("peer: %s\n", peer_addr);
+    ```rust
+    let parts = vec![
+        Message::from_bytes(b"header")?,
+        Message::from_bytes(b"body")?,
+    ];
+    socket.send(parts)?;
     ```
 
 === "C++"
 
-    ```cpp
-    const char *peer_addr = msg.gets("Peer-Address");
-    if (peer_addr)
-        std::cout << "peer: " << peer_addr << std::endl;
+    ```typescript
+    // Node: GC handles Buffer lifecycle
+    const msg = Message.wrap(buf);
+    socket.send(msg);
+    // buf can be reused after send
     ```
 
 === "Java"
 
-    ```java
-    String peerAddr = msg.property("Peer-Address");
-    if (peerAddr != null)
-        System.out.println("peer: " + peerAddr);
+    ```go
+    msg, err := zlink.NewMessage([]byte{})  // Empty message
+    if err != nil { log.Fatal(err) }
+    defer msg.Close()
     ```
 
 === "Python"
 
     ```python
-    # Python: metadata properties are not directly exposed
-    # Access via C FFI if needed
+    # Python: refcount is not directly exposed in the binding
+    # Use the C API for diagnostics if needed
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // Node: metadata properties are not directly exposed
+    // Node: refcount is not exposed; Buffer uses JS GC
     ```
 
 === "C#/.NET"
 
     ```csharp
-    string? peerAddr = msg.GetPropertyString("Peer-Address");
-    if (peerAddr != null)
-        Console.WriteLine($"peer: {peerAddr}");
+    // Callback mode
+    socket.OnReceive(received => {
+        Console.WriteLine($"Received: {received.Parts[0].GetString()}");
+        received.Dispose();
+    });
     ```
 
 === "Rust"
 
-    ```rust
-    // Rust: metadata properties are not directly exposed
-    // Access via FFI if needed
+    ```cpp
+    msg.close();     // Explicit close
+    // Or let destructor handle it — RAII cleans up automatically
     ```
 
 === "Go"
 
-    ```go
-    // Go: metadata properties are not directly exposed
-    // Access via C FFI if needed
+    ```rust
+    drop(msg);       // Explicit drop, or let scope handle it — RAII
     ```
 
 ### 4.5 Send
@@ -997,12 +986,12 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
 
 === "C#/.NET"
 
-    ```csharp
+    ```go
     // Callback mode
-    socket.OnReceive(received => {
-        Console.WriteLine($"Received: {received.Parts[0].GetString()}");
-        received.Dispose();
-    });
+    socket.OnReceive(func(received *zlink.Received) {
+        fmt.Printf("Received: %s\n", received.Parts[0].Data())
+        received.Close()
+    })
     ```
 
 === "Rust"
@@ -1017,12 +1006,12 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
 
 === "Go"
 
-    ```go
+    ```java
     // Callback mode
-    socket.OnReceive(func(received *zlink.Received) {
-        fmt.Printf("Received: %s\n", received.Parts[0].Data())
-        received.Close()
-    })
+    socket.onReceive(received -> {
+        System.out.println("Received: " + received.part(0).toUtf8String());
+        received.close();
+    });
     ```
 
 ### 4.7 Close
@@ -1036,8 +1025,7 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
 === "C++"
 
     ```cpp
-    msg.close();     // Explicit close
-    // Or let destructor handle it — RAII cleans up automatically
+    zlink::message_t msg;  // RAII — empty message, automatically closed on destruction
     ```
 
 === "Java"
@@ -1066,14 +1054,14 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
 
 === "Rust"
 
-    ```rust
-    drop(msg);       // Explicit drop, or let scope handle it — RAII
+    ```go
+    msg.Close()      // Explicit close required
     ```
 
 === "Go"
 
-    ```go
-    msg.Close()      // Explicit close required
+    ```csharp
+    msg.Dispose();   // IDisposable — or use 'using' statement
     ```
 
 ## 5. Ownership 규칙
@@ -1303,7 +1291,7 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
     // 1. Called on close (destructor or explicit)
     {
         auto msg = zlink::message_t::from_external(buf, size, my_free);
-    }  // destructor calls close -> my_free(buf, nullptr)
+    }  // destructor calls close → my_free(buf, nullptr)
 
     // 2. Called after send completes
     auto msg = zlink::message_t::from_external(buf, size, my_free);
@@ -1338,15 +1326,6 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
 
 === "Node/TypeScript"
 
-    ```typescript
-    // Node: GC handles Buffer lifecycle
-    const msg = Message.wrap(buf);
-    socket.send(msg);
-    // buf can be reused after send
-    ```
-
-=== "C#/.NET"
-
     ```csharp
     // C#: IDisposable handles lifecycle
     using (var msg = new Message(data)) {
@@ -1355,7 +1334,7 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
     // Native memory freed on Dispose
     ```
 
-=== "Rust"
+=== "C#/.NET"
 
     ```rust
     // Rust: Drop trait handles deallocation
@@ -1363,6 +1342,16 @@ Callback이 `zlink_msg_t` part를 직접 제공한다:
         let msg = Message::from_bytes(&data)?;
         socket.send(msg)?;
     }  // msg dropped, native storage freed
+    ```
+
+=== "Rust"
+
+    ```rust
+    let msg = Message::from_bytes(&data[..100])?;
+    match socket.try_send(msg) {
+        Ok(result) => { /* result: Sent, Backpressured, NotReady */ }
+        Err(e) => { /* Handle ZlinkError */ }
+    }
     ```
 
 === "Go"
@@ -1413,7 +1402,7 @@ copy 없이 전송할 수 있다.
 === "C++"
 
     ```cpp
-    // Single frame -- from_string copies the literal
+    // Single frame — from_string copies the literal
     auto msg = zlink::message_t::from_string("Hello");
     socket.send(msg);
 
@@ -1534,7 +1523,7 @@ Multipart message는 `zlink_send()` 한 번의 호출로 parts array를 전송�
 === "C++"
 
     ```cpp
-    // DEALER -> ROUTER: send single frame
+    // DEALER → ROUTER: send single frame
     auto req = zlink::message_t::from_string("request");
     dealer.send(req);
 
@@ -1553,7 +1542,7 @@ Multipart message는 `zlink_send()` 한 번의 호출로 parts array를 전송�
 === "Java"
 
     ```java
-    // DEALER -> ROUTER: send single frame
+    // DEALER → ROUTER: send single frame
     dealer.send(Message.copyOfUtf8("request"));
 
     // ROUTER callback receives routing id + parts
@@ -1762,34 +1751,32 @@ Multipart message는 `zlink_send()` 한 번의 호출로 parts array를 전송�
 
 === "C"
 
-    ```c
-    /* Handler callback receives all frames as parts array */
-    void on_message(const zlink_routing_id_t *source_rid,
-                    zlink_msg_t *parts, size_t part_count,
-                    void *userdata)
-    {
-        for (size_t i = 0; i < part_count; i++) {
-            printf("Frame[%zu bytes]: %.*s\n",
-                   zlink_msg_size(&parts[i]),
-                   (int)zlink_msg_size(&parts[i]),
-                   (char *)zlink_msg_data(&parts[i]));
-            zlink_msg_close(&parts[i]);
-        }
-    }
+    ```cpp
+    // Callback mode: register handler, library delivers received_t
+    socket.on_receive(
+        [](const zlink_routing_id_t *, zlink_msg_t *parts, size_t count, void *) {
+            std::cout << "Received: " << std::string(
+                (const char *)zlink_msg_data(&parts[0]),
+                zlink_msg_size(&parts[0])) << std::endl;
+            for (size_t i = 0; i < count; i++)
+                zlink_msg_close(&parts[i]);
+        });
     ```
 
 === "C++"
 
-    ```cpp
-    socket.on_receive(
-        [](const zlink_routing_id_t *, zlink_msg_t *parts, size_t count, void *) {
-            for (size_t i = 0; i < count; i++) {
-                std::cout << "Frame[" << zlink_msg_size(&parts[i]) << " bytes]: "
-                          << std::string((const char *)zlink_msg_data(&parts[i]),
-                                         zlink_msg_size(&parts[i])) << std::endl;
-                zlink_msg_close(&parts[i]);
-            }
-        });
+    ```c
+    void on_message(const zlink_routing_id_t *source_rid,
+                    zlink_msg_t *parts, size_t part_count,
+                    void *userdata)
+    {
+        printf("Received: %.*s\n",
+               (int)zlink_msg_size(&parts[0]),
+               (char *)zlink_msg_data(&parts[0]));
+
+        for (size_t i = 0; i < part_count; i++)
+            zlink_msg_close(&parts[i]);
+    }
     ```
 
 === "Java"
@@ -1878,7 +1865,7 @@ Refcounted storage가 아니면 1을 반환한다.
 === "C"
 
     ```c
-    /* Reference counted message */
+    /* Reference-counted message */
     zlink_msg_t msg;
     zlink_msg_init_size(&msg, 1024);
     int refcnt = zlink_msg_refcnt(&msg);  /* 1: single owner */
@@ -1886,12 +1873,12 @@ Refcounted storage가 아니면 1을 반환한다.
     zlink_msg_t copy;
     zlink_msg_init(&copy);
     zlink_msg_copy(&copy, &msg);
-    refcnt = zlink_msg_refcnt(&copy);  /* 2: msg와 copy가 공유 */
+    refcnt = zlink_msg_refcnt(&copy);  /* 2: shared by msg and copy */
 
-    /* Constant data message (CMSG) */
+    /* Constant data message */
     zlink_msg_t const_msg;
     zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
-    refcnt = zlink_msg_refcnt(&const_msg);  /* 1: internal refcount 대상 아님 */
+    refcnt = zlink_msg_refcnt(&const_msg);  /* 1: not internally refcounted */
     ```
 
 === "C++"
@@ -1901,7 +1888,7 @@ Refcounted storage가 아니면 1을 반환한다.
     int refcnt = msg.refcnt();  // 1: single owner
 
     auto copy = msg;  // copy constructor increments refcount
-    refcnt = copy.refcnt();  // 2: msg and copy share storage
+    refcnt = copy.refcnt();  // 2: shared by msg and copy
     ```
 
 === "Java"
@@ -1913,14 +1900,14 @@ Refcounted storage가 아니면 1을 반환한다.
 
 === "Python"
 
-    ```python
-    # Python: refcount is not directly exposed in the binding
+    ```typescript
+    // No explicit close needed — GC handles Buffer lifecycle
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // Node: refcount is not exposed; Buffer uses JS GC
+    ```java
+    msg.close();     // AutoCloseable — or use try-with-resources
     ```
 
 === "C#/.NET"
@@ -1938,6 +1925,7 @@ Refcounted storage가 아니면 1을 반환한다.
     ```rust
     // Rust: refcount is not directly exposed; ownership is exclusive
     let msg = Message::with_size(1024)?;
+    // Single owner — no shared references
     ```
 
 === "Go"
@@ -1963,13 +1951,13 @@ Refcounted storage가 아니면 1을 반환한다.
     int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
     if (rc == -1) {
         if (errno == EAGAIN) {
-            /* HWM 초과: 나중에 retry */
+            /* HWM exceeded: retry later */
         } else if (errno == ENOTSUP) {
-            /* 해당 socket에서 send 불가 (예: SUB socket) */
+            /* Send not supported on this socket (e.g., SUB socket) */
         } else if (errno == ETERM) {
             /* Context terminated */
         }
-        /* 실패 시 part는 여전히 유효 → 반드시 close */
+        /* On failure, part is still valid -> must close */
         zlink_msg_close(&part);
     }
     ```
@@ -2031,11 +2019,13 @@ Refcounted storage가 아니면 1을 반환한다.
 
 === "Rust"
 
-    ```rust
-    let msg = Message::from_bytes(&data[..100])?;
-    match socket.try_send(msg) {
-        Ok(result) => { /* result: Sent, Backpressured, NotReady */ }
-        Err(e) => { /* Handle ZlinkError */ }
+    ```csharp
+    using var msg = new Message(data.AsSpan(0, 100));
+    try {
+        var result = socket.TrySend(msg);
+        // result: Sent, Backpressured, or NotReady
+    } catch (ZlinkException e) {
+        // Handle error
     }
     ```
 
@@ -2062,43 +2052,44 @@ Refcounted storage가 아니면 1을 반환한다.
 === "C++"
 
     ```cpp
-    // socket.send(msg) or socket.send(parts)
+    router.send(target_rid, parts);
     ```
 
 === "Java"
 
     ```java
-    // socket.send(msg) or socket.send(parts)
+    router.send(targetRid, parts);
     ```
 
 === "Python"
 
     ```python
-    # socket.send(payload) or socket.send([part1, part2])
+    msg = zlink.Message.from_bytes(source_data[:1024])
+    socket.send(msg)
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // socket.send(msg) or socket.send([part1, part2])
+    router.send(targetRid, parts);
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // socket.Send(msg) or socket.Send(parts)
+    router.Send(targetRid, parts);
     ```
 
 === "Rust"
 
     ```rust
-    // socket.send(msg)? or socket.send(parts)?
+    router.send(&target_rid, parts)?;
     ```
 
 === "Go"
 
     ```go
-    // socket.Send(parts...)
+    router.SendTo(targetRID, parts...)
     ```
 
 === "C"
@@ -2127,15 +2118,11 @@ Refcounted storage가 아니면 1을 반환한다.
 === "C++"
 
     ```cpp
-    // Single-part send
-    auto part = zlink::message_t::from_string("Hello");
-    socket.send(part);
-
-    // Multipart send
     std::vector<zlink::message_t> parts;
     parts.push_back(zlink::message_t::from_string("header"));
     parts.push_back(zlink::message_t::from_string("body"));
     socket.send(parts);
+    /* On failure, send() throws; parts remain valid for retry */
     ```
 
 === "Java"
@@ -2220,44 +2207,47 @@ ROUTER directed send에는 `zlink_send_rid()`를 사용한다:
 
 === "C++"
 
-    ```cpp
-    router.send(target_rid, parts);
+    ```python
+    router.send(parts, routing_id=target_rid)
     ```
 
 === "Java"
 
-    ```java
-    router.send(targetRid, parts);
+    ```c
+    zlink_send_rid(router, &target_rid, parts, part_count, 0);
     ```
 
 === "Python"
 
     ```python
-    router.send(parts, routing_id=target_rid)
+    data = msg.data()   # returns bytes
+    size = msg.size()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    router.send(targetRid, parts);
+    const msg = Message.empty();  // Empty zero-length message
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    router.Send(targetRid, parts);
+    ```cpp
+    void *data = msg.data();
+    size_t size = msg.size();
     ```
 
 === "Rust"
 
-    ```rust
-    router.send(&target_rid, parts)?;
+    ```c
+    zlink_msg_close(&msg);
     ```
 
 === "Go"
 
     ```go
-    router.SendTo(targetRID, parts...)
+    msg, _ := zlink.NewMessage(sourceData[:1024])
+    socket.Send(msg)
     ```
 
 > **Legacy:** `zlink_msg_send()`는 아직 header에 존재하지만 제거 예정이다.

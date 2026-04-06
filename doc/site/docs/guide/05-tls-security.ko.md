@@ -18,10 +18,10 @@ handle은 TLS 설정 surface가 아니며 `ENOTSUP`로 실패한다.
     ```c
     void *socket = zlink_socket(ctx, ZLINK_ROUTER);
 
-    /* 인증서 및 키 설정 (bind 전) */
+    /* Set certificate and key (before bind) */
     zlink_set_tls_server(socket, "/path/to/server.crt", "/path/to/server.key", 0);
 
-    /* TLS 바인드 */
+    /* TLS bind */
     zlink_bind(socket, "tls://*:5555");
     ```
 
@@ -89,10 +89,10 @@ handle은 TLS 설정 surface가 아니며 `ENOTSUP`로 실패한다.
     ```c
     void *socket = zlink_socket(ctx, ZLINK_DEALER);
 
-    /* CA 인증서 및 호스트명 검증 설정 */
+    /* Set CA certificate and hostname verification */
     zlink_set_tls_client(socket, "/path/to/ca.crt", "server.example.com", 0);
 
-    /* TLS 연결 */
+    /* TLS connect */
     zlink_connect(socket, "tls://server.example.com:5555");
     ```
 
@@ -164,10 +164,10 @@ WSS는 ws에 TLS 암호화를 추가한 transport이다. ws 대비 추가 설정
     ```c
     void *socket = zlink_socket(ctx, ZLINK_STREAM);
 
-    /* TLS 인증서/키 설정 */
+    /* Set TLS certificate/key */
     zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 
-    /* WSS 바인드 */
+    /* WSS bind */
     zlink_bind(socket, "wss://*:8443");
     ```
 
@@ -235,9 +235,9 @@ WSS는 ws에 TLS 암호화를 추가한 transport이다. ws 대비 추가 설정
 개념 예시:
 
 ```text
-대상: wss://server:8443
-- CA 신뢰: /path/to/ca.pem
-- 호스트명 검증: localhost
+target: wss://server:8443
+- trust CA: /path/to/ca.pem
+- verify hostname: localhost
 ```
 
 ### ws vs wss 설정 비교
@@ -313,7 +313,7 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 === "C"
 
     ```c
-    /* PEM 형식 파일 경로 */
+    /* PEM format file paths */
     zlink_set_tls_server(socket, "server.crt", "server.key", 0);
     ```
 
@@ -424,70 +424,70 @@ TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
 === "C"
 
     ```c
-    /* 사설 CA + 호스트명 검증 */
+    /* Private CA with hostname verification */
     zlink_set_tls_client(socket, "ca.crt", "server.example.com", 0);
 
-    /* 시스템 CA만 사용 (사설 CA 없음, 호스트명 미검증) */
+    /* System CA only (no private CA, no hostname check) */
     zlink_set_tls_client(socket, NULL, NULL, 1);
     ```
 
 === "C++"
 
     ```cpp
-    // 사설 CA + 호스트명 검증
+    // Private CA with hostname verification
     socket.set_tls_client("ca.crt", "server.example.com", 0);
 
-    // 시스템 CA만 사용
+    // System CA only
     socket.set_tls_client("", "", true);
     ```
 
 === "Java"
 
     ```java
-    // 사설 CA + 호스트명 검증
+    // Private CA with hostname verification
     socket.setTlsClient("ca.crt", "server.example.com", 0);
 
-    // 시스템 CA만 사용
+    // System CA only
     socket.setTlsClient(null, null, true);
     ```
 
 === "Python"
 
     ```python
-    # 사설 CA + 호스트명 검증
+    # Private CA with hostname verification
     socket.set_tls_client("ca.crt", "server.example.com", 0)
 
-    # 시스템 CA만 사용
+    # System CA only
     socket.set_tls_client(None, None, True)
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // 사설 CA + 호스트명 검증
-    socket.setTlsClient("ca.crt", "server.example.com", 0);
+    ```csharp
+    // Private CA with hostname verification
+    socket.SetTlsClient("ca.crt", "server.example.com", 0);
 
-    // 시스템 CA만 사용
-    socket.setTlsClient(null, null, true);
+    // System CA only
+    socket.SetTlsClient(null, null, true);
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    // 사설 CA + 호스트명 검증
-    socket.SetTlsClient("ca.crt", "server.example.com", 0);
+    ```typescript
+    // Private CA with hostname verification
+    socket.setTlsClient("ca.crt", "server.example.com", 0);
 
-    // 시스템 CA만 사용
-    socket.SetTlsClient(null, null, true);
+    // System CA only
+    socket.setTlsClient(null, null, true);
     ```
 
 === "Rust"
 
     ```rust
-    // 사설 CA + 호스트명 검증
+    // Private CA with hostname verification
     socket.set_tls_client("ca.crt", "server.example.com", false)?;
 
-    // 시스템 CA만 사용
+    // System CA only
     socket.set_tls_client(None, None, true)?;
     ```
 
@@ -550,34 +550,28 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
 
 ### 인증서/키 불일치
 
-```
-증상: bind 또는 핸드셰이크 실패
-원인: 서버 인증서와 개인키가 일치하지 않음
-해결: 인증서-키 쌍 확인
-```
+    ```go
+    socket.SetTLSClient(caCertPath, hostname, trustSystem)
+    ```
 
 ```bash
-# 인증서와 키의 modulus 비교
+# Compare the modulus of the certificate and key
 openssl x509 -noout -modulus -in server.crt | openssl md5
 openssl rsa -noout -modulus -in server.key | openssl md5
-# 두 값이 같아야 함
+# Both values should match
 ```
 
 ### CA 인증서 미설정
 
-```
-증상: 클라이언트 연결 실패, 핸드셰이크 타임아웃
-원인: 클라이언트가 서버 인증서를 검증할 CA가 없음
-해결: zlink_set_tls_client()의 ca_cert_path 설정 또는 trust_system 파라미터 확인
-```
+    ```c
+    zlink_set_tls_client(socket, ca_cert_path, hostname, trust_system);
+    ```
 
 ### 호스트명 불일치
 
-```
-증상: 핸드셰이크 실패
-원인: zlink_set_tls_client()의 hostname 파라미터와 인증서 CN/SAN 불일치
-해결: 인증서에 올바른 CN/SAN 포함, 또는 hostname 파라미터 수정
-```
+    ```csharp
+    socket.SetTlsClient(caCertPath, hostname, trustSystem);
+    ```
 
 ### 인증서 만료
 
@@ -588,7 +582,7 @@ openssl rsa -noout -modulus -in server.key | openssl md5
 ```
 
 ```bash
-# 인증서 유효기간 확인
+# Check certificate validity period
 openssl x509 -noout -dates -in server.crt
 ```
 
@@ -601,7 +595,7 @@ openssl x509 -noout -dates -in server.crt
 ```c
 void on_tls_error(const zlink_monitor_event_t *ev, void *userdata)
 {
-    printf("핸드셰이크 실패: event=0x%llx value=%llu\n",
+    printf("Handshake failed: event=0x%llx value=%llu\n",
            (unsigned long long)ev->event,
            (unsigned long long)ev->value);
 }
@@ -651,23 +645,23 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     int main(void) {
         void *ctx = zlink_ctx_new();
 
-        /* TLS 서버 */
+        /* TLS Server */
         void *server = zlink_socket(ctx, ZLINK_PAIR);
         zlink_set_tls_server(server, "server.crt", "server.key", 0);
         zlink_bind(server, "tls://*:5555");
 
-        /* TLS 클라이언트 */
+        /* TLS Client */
         void *client = zlink_socket(ctx, ZLINK_PAIR);
         zlink_set_tls_client(client, "ca.crt", "localhost", 0);
         zlink_connect(client, "tls://127.0.0.1:5555");
 
-        /* 암호화된 통신 — 서버는 핸들러 콜백으로 수신 */
+        /* Encrypted communication — server receives via handler callback */
         zlink_msg_t part;
         zlink_msg_init_size(&part, 12);
         memcpy(zlink_msg_data(&part), "Secure Hello", 12);
         zlink_send(client, &part, 1, 0);
 
-        /* on_message 콜백 수신: parts[0] = "Secure Hello" */
+        /* on_message callback receives: parts[0] = "Secure Hello" */
 
         zlink_close(client);
         zlink_close(server);
@@ -685,21 +679,21 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     int main() {
         zlink::context_t ctx;
 
-        // TLS 서버
+        // TLS Server
         zlink::pair_socket_t server(ctx);
         server.set_tls_server("server.crt", "server.key", 0);
         server.bind("tls://*:5555");
 
-        // TLS 클라이언트
+        // TLS Client
         zlink::pair_socket_t client(ctx);
         client.set_tls_client("ca.crt", "localhost", 0);
         client.connect("tls://127.0.0.1:5555");
 
-        // 암호화된 통신
+        // Encrypted communication
         client.send(zlink::message_t("Secure Hello", 12));
 
         auto [rid, parts] = server.recv();
-        std::cout << "수신: " << parts[0].to_string() << "\n";
+        std::cout << "Received: " << parts[0].to_string() << "\n";
 
         return 0;
     }
@@ -724,7 +718,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
                 client.send(new Message("Secure Hello".getBytes()));
 
                 RecvResult result = server.recv();
-                System.out.println("수신: "
+                System.out.println("Received: "
                     + new String(result.parts()[0].data()));
             }
         }
@@ -749,7 +743,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     client.send(b"Secure Hello")
 
     rid, parts = server.recv()
-    print(f"수신: {parts[0].data().decode()}")
+    print(f"Received: {parts[0].data().decode()}")
 
     client.close()
     server.close()
@@ -774,7 +768,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     client.send(Buffer.from("Secure Hello"));
 
     const { sourceRid, parts } = server.recv();
-    console.log(`수신: ${parts[0].data().toString()}`);
+    console.log(`Received: ${parts[0].data().toString()}`);
 
     client.close();
     server.close();
@@ -799,7 +793,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     client.Send(new Message("Secure Hello"u8));
 
     var (rid, parts) = server.Recv();
-    Console.WriteLine($"수신: {parts[0].DataString()}");
+    Console.WriteLine($"Received: {parts[0].DataString()}");
     ```
 
 === "Rust"
@@ -821,7 +815,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
         client.send(&zlink::Message::from("Secure Hello"))?;
 
         let (rid, parts) = server.recv()?;
-        println!("수신: {}", parts[0].as_str()?);
+        println!("Received: {}", parts[0].as_str()?);
 
         Ok(())
     }
@@ -859,15 +853,15 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     ```c
     void *ctx = zlink_ctx_new();
 
-    /* WSS 서버 (STREAM) */
+    /* WSS Server (STREAM) */
     void *server = zlink_socket(ctx, ZLINK_STREAM);
     zlink_set_tls_server(server, "server.crt", "server.key", 0);
     int linger = 0;
     zlink_set_option(server, ZLINK_OPT_LINGER, &linger, sizeof(linger));
     zlink_bind(server, "wss://*:8443");
 
-    /* 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
-     * STREAM 서버는 [routing_id][0x01] 이벤트 수신 후 데이터 프레임을 처리한다.
+    /* External raw WSS client connects to this endpoint.
+     * STREAM server receives [routing_id][0x01] and then data frames.
      */
 
     zlink_close(server);
@@ -884,7 +878,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     server.set_option(zlink::opt::linger, 0);
     server.bind("wss://*:8443");
 
-    // 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+    // External raw WSS client connects to this endpoint.
     ```
 
 === "Java"
@@ -897,7 +891,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     server.setLinger(0);
     server.bind("wss://*:8443");
 
-    // 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+    // External raw WSS client connects to this endpoint.
     ```
 
 === "Python"
@@ -910,7 +904,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     server.set_option(zlink.OPT_LINGER, 0)
     server.bind("wss://*:8443")
 
-    # 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+    # External raw WSS client connects to this endpoint.
     ```
 
 === "Node/TypeScript"
@@ -923,7 +917,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     server.setOption(zlink.OPT_LINGER, 0);
     server.bind("wss://*:8443");
 
-    // 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+    // External raw WSS client connects to this endpoint.
     ```
 
 === "C#/.NET"
@@ -936,7 +930,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     server.Linger = 0;
     server.Bind("wss://*:8443");
 
-    // 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+    // External raw WSS client connects to this endpoint.
     ```
 
 === "Rust"
@@ -949,7 +943,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
     server.set_linger(0)?;
     server.bind("wss://*:8443")?;
 
-    // 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+    // External raw WSS client connects to this endpoint.
     ```
 
 === "Go"

@@ -65,7 +65,7 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof(rcvhwm));
   종료 시 대기할 필요 없음)
 
 ```c
-/* 종료 시 미전송 메시지를 최대 1초 대기 */
+/* Wait up to 1 second for pending messages on close */
 int linger = 1000;
 zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
@@ -85,7 +85,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 **서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파.
 
 ```c
-/* send/recv를 500ms 후 포기 */
+/* Give up send/recv after 500 ms */
 int sndtimeo = 500;
 zlink_set_option(socket, ZLINK_OPT_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
 int rcvtimeo = 500;
@@ -107,7 +107,7 @@ zlink_set_option(socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
 짧게 설정하여 빠른 failover를 구현할 때 유용하다.
 
 ```c
-/* 3초 이내 미연결 시 재시도 */
+/* Fail connect attempts after 3 seconds */
 int timeout = 3000;
 zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
 ```
@@ -131,7 +131,7 @@ zlink_set_option(socket, ZLINK_OPT_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
 **음수:** `RECONNECT_IVL < 0`이면 자동 재연결을 비활성화한다.
 
 ```c
-/* 지수 백오프: 초기 200ms, 상한 30s */
+/* Exponential backoff: 200ms initial, cap at 30s */
 int ivl = 200;
 zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL, &ivl, sizeof(ivl));
 int ivl_max = 30000;
@@ -157,7 +157,7 @@ zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max))
 
 **권장 설정 예:**
 ```c
-// 60초 유휴 후 10초 간격으로 3회 probe, 실패 시 연결 끊김
+// Probe after 60s idle, every 10s, 3 probes max, then disconnect
 zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE, &(int){1}, sizeof(int));
 zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_IDLE, &(int){60}, sizeof(int));
 zlink_set_option(s, ZLINK_OPT_TCP_KEEPALIVE_INTVL, &(int){10}, sizeof(int));
@@ -213,10 +213,10 @@ ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정
 먼저 감지한다.
 
 ```c
-/* 5초마다 PING, 원격 TTL 15초, 로컬 PONG 타임아웃 10초 */
+/* PING every 5s, remote TTL 15s, local PONG timeout 10s */
 int hb_ivl = 5000;
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
-int hb_ttl = 150;  /* 0.1초 단위 → 15초 */
+int hb_ttl = 150;  /* 0.1s units → 15s */
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
 int hb_timeout = 10000;
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));

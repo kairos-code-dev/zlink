@@ -44,11 +44,11 @@ XSUB(`filter=false`)은 `!false = true`이므로 `match()`를 건너뛴다.
 
 ```mermaid
 flowchart LR
-  PUB -- 데이터 --> XSUB
-  XSUB == 프록시 ==> XPUB
-  XPUB -- 데이터 --> SUB
-  SUB -. 구독 .-> XPUB
-  XPUB -. 전파 .-> XSUB
+  PUB -- data --> XSUB
+  XSUB == proxy ==> XPUB
+  XPUB -- data --> SUB
+  SUB -. subscribe .-> XPUB
+  XPUB -. propagate .-> XSUB
 ```
 
 - XSUB은 구독 상태 없이 PUB의 모든 메시지를 통과시킨다.
@@ -91,20 +91,20 @@ flowchart LR
         zlink_connect(sub, "tcp://127.0.0.1:5556");
         zlink_set_subscription(sub, "weather");
 
-        /* 구독 전파 대기 */
+        /* Wait for subscription to propagate */
         zlink_routing_id_t rid;
         int subscribed;
         char topic[256];
         size_t topic_len = sizeof(topic);
         zlink_subscription_event(pub, &rid, &subscribed, topic, &topic_len, 0);
 
-        /* 발행 */
+        /* Publish */
         zlink_msg_t msg;
         zlink_msg_init_size(&msg, 5);
         memcpy(zlink_msg_data(&msg), "sunny", 5);
         zlink_publish(pub, "weather", &msg, 1, 0);
 
-        /* 수신 */
+        /* Receive */
         zlink_msg_t *parts;
         size_t count;
         char recv_topic[256];
@@ -141,13 +141,13 @@ flowchart LR
         sub.connect("tcp://127.0.0.1:5556");
         sub.set_subscription("weather");
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         auto [ev_rid, subscribed, ev_topic] = pub.subscription_event();
 
-        // 발행
+        // Publish
         pub.publish("weather", "sunny");
 
-        // 수신
+        // Receive
         auto [rid, topic, parts] = sub.subscribe();
         std::cout << "Topic: " << topic
                   << ", Data: " << parts[0].str() << std::endl;
@@ -172,13 +172,13 @@ flowchart LR
             sub.connect("tcp://127.0.0.1:5556");
             sub.setSubscription("weather");
 
-            // 구독 전파 대기
+            // Wait for subscription to propagate
             pub.subscriptionEvent();
 
-            // 발행
+            // Publish
             pub.publish("weather", "sunny");
 
-            // 수신
+            // Receive
             SubscribeResult result = sub.subscribe();
             System.out.println("Topic: " + result.topic()
                 + ", Data: " + result.partAsString(0));
@@ -204,13 +204,13 @@ flowchart LR
     sub.connect("tcp://127.0.0.1:5556")
     sub.set_subscription("weather")
 
-    # 구독 전파 대기
+    # Wait for subscription to propagate
     pub.subscription_event()
 
-    # 발행
+    # Publish
     pub.publish("weather", b"sunny")
 
-    # 수신
+    # Receive
     source_rid, topic, parts = sub.subscribe()
     print(f"Topic: {topic}, Data: {parts[0].decode()}")
 
@@ -233,13 +233,13 @@ flowchart LR
     sub.connect('tcp://127.0.0.1:5556');
     sub.setSubscription('weather');
 
-    // 구독 전파 대기
+    // Wait for subscription to propagate
     pub.subscriptionEvent();
 
-    // 발행
+    // Publish
     pub.publish('weather', Buffer.from('sunny'));
 
-    // 수신
+    // Receive
     const [rid, topic, parts] = sub.subscribe();
     console.log(`Topic: ${topic}, Data: ${parts[0].toString()}`);
 
@@ -262,13 +262,13 @@ flowchart LR
     sub.Connect("tcp://127.0.0.1:5556");
     sub.SetSubscription("weather");
 
-    // 구독 전파 대기
+    // Wait for subscription to propagate
     pub.SubscriptionEvent();
 
-    // 발행
+    // Publish
     pub.Publish("weather", "sunny");
 
-    // 수신
+    // Receive
     var (rid, topic, parts) = sub.Subscribe();
     Console.WriteLine($"Topic: {topic}, Data: {parts[0].GetString()}");
 
@@ -292,13 +292,13 @@ flowchart LR
         sub.connect("tcp://127.0.0.1:5556")?;
         sub.set_subscription("weather")?;
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         pub_sock.subscription_event()?;
 
-        // 발행
+        // Publish
         pub_sock.publish("weather", b"sunny")?;
 
-        // 수신
+        // Receive
         let (rid, topic, parts) = sub.subscribe()?;
         println!("Topic: {}, Data: {}",
                  topic, String::from_utf8_lossy(parts[0].data()));
@@ -334,13 +334,13 @@ flowchart LR
         sub.Connect("tcp://127.0.0.1:5556")
         sub.SetSubscription("weather")
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         pub.SubscriptionEvent()
 
-        // 발행
+        // Publish
         pub.Publish("weather", zlink.NewMessage([]byte("sunny")))
 
-        // 수신
+        // Receive
         result, err := sub.Subscribe()
         if err != nil { log.Fatal(err) }
         fmt.Printf("Topic: %s, Data: %s\n",
@@ -421,7 +421,7 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
         zlink_connect(sub, "tcp://127.0.0.1:5556");
         zlink_set_subscription(sub, "weather");
 
-        /* 구독 전파 대기 */
+        /* Wait for subscription to propagate */
         zlink_routing_id_t rid;
         int subscribed;
         char topic[256];
@@ -429,16 +429,16 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
         zlink_subscription_event(pub, &rid, &subscribed,
                                  topic, &topic_len, 0);
 
-        /* callback 모드로 전환 */
+        /* Transition sub to callback mode */
         zlink_subscribe_handler(sub, on_topic_message, NULL);
 
-        /* 발행 */
+        /* Publish */
         zlink_msg_t msg;
         zlink_msg_init_size(&msg, 5);
         memcpy(zlink_msg_data(&msg), "sunny", 5);
         zlink_publish(pub, "weather", &msg, 1, 0);
 
-        zlink_msleep(200);  /* 콜백 실행 대기 */
+        zlink_msleep(200);  /* let callback fire */
 
         zlink_close(sub);
         zlink_close(pub);
@@ -466,10 +466,10 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
         sub.connect("tcp://127.0.0.1:5556");
         sub.set_subscription("weather");
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         pub.subscription_event();
 
-        // callback 모드로 전환
+        // Transition sub to callback mode
         sub.subscribe_handler([](const zlink::routing_id_t& source_rid,
                                  std::string_view topic,
                                  std::span<zlink::msg> parts) {
@@ -477,7 +477,7 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
                       << " data=" << parts[0].str() << std::endl;
         });
 
-        // 발행
+        // Publish
         pub.publish("weather", "sunny");
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -502,16 +502,16 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
             sub.connect("tcp://127.0.0.1:5556");
             sub.setSubscription("weather");
 
-            // 구독 전파 대기
+            // Wait for subscription to propagate
             pub.subscriptionEvent();
 
-            // callback 모드로 전환
+            // Transition sub to callback mode
             sub.onSubscribe((sourceRid, topic, parts) -> {
                 System.out.println("Callback: topic=" + topic
                     + " data=" + parts[0].dataAsString());
             });
 
-            // 발행
+            // Publish
             pub.publish("weather", "sunny");
 
             Thread.sleep(200);
@@ -538,16 +538,16 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
     sub.connect("tcp://127.0.0.1:5556")
     sub.set_subscription("weather")
 
-    # 구독 전파 대기
+    # Wait for subscription to propagate
     pub.subscription_event()
 
-    # callback 모드로 전환
+    # Transition sub to callback mode
     def on_topic_message(source_rid, topic, parts):
         print(f"Callback: topic={topic} data={parts[0].decode()}")
 
     sub.subscribe_handler(on_topic_message)
 
-    # 발행
+    # Publish
     pub.publish("weather", b"sunny")
 
     time.sleep(0.2)
@@ -571,15 +571,15 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
     sub.connect('tcp://127.0.0.1:5556');
     sub.setSubscription('weather');
 
-    // 구독 전파 대기
+    // Wait for subscription to propagate
     pub.subscriptionEvent();
 
-    // callback 모드로 전환
+    // Transition sub to callback mode
     sub.subscribeHandler((sourceRid, topic, parts) => {
         console.log(`Callback: topic=${topic} data=${parts[0].toString()}`);
     });
 
-    // 발행
+    // Publish
     pub.publish('weather', Buffer.from('sunny'));
 
     await new Promise(r => setTimeout(r, 200));
@@ -603,15 +603,15 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
     sub.Connect("tcp://127.0.0.1:5556");
     sub.SetSubscription("weather");
 
-    // 구독 전파 대기
+    // Wait for subscription to propagate
     pub.SubscriptionEvent();
 
-    // callback 모드로 전환
+    // Transition sub to callback mode
     sub.SubscribeHandler((sourceRid, topic, parts) => {
         Console.WriteLine($"Callback: topic={topic} data={parts[0].GetString()}");
     });
 
-    // 발행
+    // Publish
     pub.Publish("weather", "sunny");
 
     Thread.Sleep(200);
@@ -638,16 +638,16 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
         sub.connect("tcp://127.0.0.1:5556")?;
         sub.set_subscription("weather")?;
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         pub_sock.subscription_event()?;
 
-        // callback 모드로 전환
+        // Transition sub to callback mode
         sub.subscribe_handler(|source_rid, topic, parts| {
             println!("Callback: topic={} data={}",
                      topic, String::from_utf8_lossy(parts[0].data()));
         });
 
-        // 발행
+        // Publish
         pub_sock.publish("weather", b"sunny")?;
 
         thread::sleep(Duration::from_millis(200));
@@ -684,15 +684,15 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
         sub.Connect("tcp://127.0.0.1:5556")
         sub.SetSubscription("weather")
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         pub.SubscriptionEvent()
 
-        // callback 모드로 전환
+        // Transition sub to callback mode
         sub.OnSubscribe(func(sourceRid zlink.RoutingID, topic string, parts []zlink.Message) {
             fmt.Printf("Callback: topic=%s data=%s\n", topic, parts[0].Data())
         })
 
-        // 발행
+        // Publish
         pub.Publish("weather", zlink.NewMessage([]byte("sunny")))
 
         time.Sleep(200 * time.Millisecond)
@@ -731,89 +731,89 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "C"
 
     ```c
-    /* 여러 토픽 구독 */
+    /* Subscribe to multiple topics */
     zlink_set_subscription(sub, "weather");
     zlink_set_subscription(sub, "sports");
 
-    /* 구독 해제 */
+    /* Unsubscribe */
     zlink_unset_subscription(sub, "sports");
     ```
 
 === "C++"
 
     ```cpp
-    // 여러 토픽 구독
+    // Subscribe to multiple topics
     sub.set_subscription("weather");
     sub.set_subscription("sports");
 
-    // 구독 해제
+    // Unsubscribe
     sub.unset_subscription("sports");
     ```
 
 === "Java"
 
     ```java
-    // 여러 토픽 구독
+    // Subscribe to multiple topics
     sub.setSubscription("weather");
     sub.setSubscription("sports");
 
-    // 구독 해제
+    // Unsubscribe
     sub.unsetSubscription("sports");
     ```
 
 === "Python"
 
     ```python
-    # 여러 토픽 구독
+    # Subscribe to multiple topics
     sub.set_subscription("weather")
     sub.set_subscription("sports")
 
-    # 구독 해제
+    # Unsubscribe
     sub.unset_subscription("sports")
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // 여러 토픽 구독
-    sub.setSubscription("weather");
-    sub.setSubscription("sports");
+    ```go
+    // Subscribe to multiple topics
+    sub.SetSubscription("weather")
+    sub.SetSubscription("sports")
 
-    // 구독 해제
-    sub.unsetSubscription("sports");
+    // Unsubscribe
+    sub.UnsetSubscription("sports")
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // 여러 토픽 구독
+    // Subscribe to multiple topics
     sub.SetSubscription("weather");
     sub.SetSubscription("sports");
 
-    // 구독 해제
+    // Unsubscribe
     sub.UnsetSubscription("sports");
     ```
 
 === "Rust"
 
     ```rust
-    // 여러 토픽 구독
+    // Subscribe to multiple topics
     sub.set_subscription("weather");
     sub.set_subscription("sports");
 
-    // 구독 해제
+    // Unsubscribe
     sub.unset_subscription("sports");
     ```
 
 === "Go"
 
-    ```go
-    // 여러 토픽 구독
-    sub.SetSubscription("weather")
-    sub.SetSubscription("sports")
+    ```typescript
+    // Subscribe to multiple topics
+    sub.setSubscription("weather");
+    sub.setSubscription("sports");
 
-    // 구독 해제
-    sub.UnsetSubscription("sports")
+    // Unsubscribe
+    sub.unsetSubscription("sports");
     ```
 
 ### 빈 구독 (모든 메시지)
@@ -821,57 +821,57 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "C"
 
     ```c
-    /* 빈 문자열 구독 — 모든 메시지 수신 */
+    /* Subscribe with empty string -- receives all messages */
     zlink_set_subscription(sub, "");
     ```
 
 === "C++"
 
     ```cpp
-    // 빈 문자열 구독 — 모든 메시지 수신
+    // Subscribe with empty string -- receives all messages
     sub.set_subscription("");
     ```
 
 === "Java"
 
     ```java
-    // 빈 문자열 구독 — 모든 메시지 수신
+    // Subscribe with empty string -- receives all messages
     sub.setSubscription("");
     ```
 
 === "Python"
 
     ```python
-    # 빈 문자열 구독 — 모든 메시지 수신
+    # Subscribe with empty string -- receives all messages
     sub.set_subscription("")
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // 빈 문자열 구독 — 모든 메시지 수신
-    sub.setSubscription("");
+    ```csharp
+    // Subscribe with empty string -- receives all messages
+    sub.SetSubscription("");
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    // 빈 문자열 구독 — 모든 메시지 수신
-    sub.SetSubscription("");
+    ```go
+    // Subscribe with empty string -- receives all messages
+    sub.SetSubscription("")
     ```
 
 === "Rust"
 
     ```rust
-    // 빈 문자열 구독 — 모든 메시지 수신
+    // Subscribe with empty string -- receives all messages
     sub.set_subscription("");
     ```
 
 === "Go"
 
-    ```go
-    // 빈 문자열 구독 — 모든 메시지 수신
-    sub.SetSubscription("")
+    ```typescript
+    // Subscribe with empty string -- receives all messages
+    sub.setSubscription("");
     ```
 
 > 참고: `core/tests/test_pubsub.cpp` — `zlink_set_subscription(subscriber, "")`
@@ -887,16 +887,16 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 
     ```c
     int zlink_publish (void *subject,
-                       const char *topic_id,      /* 토픽 문자열 */
-                       zlink_msg_t *parts,         /* 데이터 프레임 배열 */
-                       size_t part_count,           /* 프레임 수 */
+                       const char *topic_id,      /* topic string */
+                       zlink_msg_t *parts,         /* data frame array */
+                       size_t part_count,           /* number of frames */
                        zlink_send_flags_t flags);
     ```
 
 === "C"
 
     ```c
-    /* 발행: topic = "sensor:cpu", payload = 2개 프레임 */
+    /* Publish: topic = "sensor:cpu", payload = 2 frames */
     zlink_msg_t parts[2];
     zlink_msg_init_size(&parts[0], 4);
     memcpy(zlink_msg_data(&parts[0]), "host", 4);
@@ -904,7 +904,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     memcpy(zlink_msg_data(&parts[1]), "73", 2);
     zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 
-    /* SUB 수신 (zlink_subscribe 또는 subscribe_handler 콜백):
+    /* SUB receives (zlink_subscribe or subscribe_handler callback):
        topic     = "sensor:cpu"
        parts[0]  = "host"
        parts[1]  = "73" */
@@ -913,10 +913,10 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "C++"
 
     ```cpp
-    // 발행: topic = "sensor:cpu", payload = 2개 프레임
+    // Publish: topic = "sensor:cpu", payload = 2 frames
     pub.publish("sensor:cpu", {"host", "73"});
 
-    // SUB 수신:
+    // SUB receives:
     //   topic     = "sensor:cpu"
     //   parts[0]  = "host"
     //   parts[1]  = "73"
@@ -925,10 +925,10 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "Java"
 
     ```java
-    // 발행: topic = "sensor:cpu", payload = 2개 프레임
+    // Publish: topic = "sensor:cpu", payload = 2 frames
     pub.publish("sensor:cpu", "host", "73");
 
-    // SUB 수신:
+    // SUB receives:
     //   topic     = "sensor:cpu"
     //   parts[0]  = "host"
     //   parts[1]  = "73"
@@ -937,10 +937,10 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "Python"
 
     ```python
-    # 발행: topic = "sensor:cpu", payload = 2개 프레임
+    # Publish: topic = "sensor:cpu", payload = 2 frames
     pub.publish("sensor:cpu", [b"host", b"73"])
 
-    # SUB 수신:
+    # SUB receives:
     #   topic     = "sensor:cpu"
     #   parts[0]  = b"host"
     #   parts[1]  = b"73"
@@ -949,10 +949,10 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "Node/TypeScript"
 
     ```typescript
-    // 발행: topic = "sensor:cpu", payload = 2개 프레임
+    // Publish: topic = "sensor:cpu", payload = 2 frames
     pub.publish("sensor:cpu", [Buffer.from("host"), Buffer.from("73")]);
 
-    // SUB 수신:
+    // SUB receives:
     //   topic     = "sensor:cpu"
     //   parts[0]  = "host"
     //   parts[1]  = "73"
@@ -961,10 +961,10 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "C#/.NET"
 
     ```csharp
-    // 발행: topic = "sensor:cpu", payload = 2개 프레임
+    // Publish: topic = "sensor:cpu", payload = 2 frames
     pub.Publish("sensor:cpu", "host", "73");
 
-    // SUB 수신:
+    // SUB receives:
     //   topic     = "sensor:cpu"
     //   parts[0]  = "host"
     //   parts[1]  = "73"
@@ -973,10 +973,10 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "Rust"
 
     ```rust
-    // 발행: topic = "sensor:cpu", payload = 2개 프레임
+    // Publish: topic = "sensor:cpu", payload = 2 frames
     pub_sock.publish("sensor:cpu", &[b"host", b"73"]);
 
-    // SUB 수신:
+    // SUB receives:
     //   topic     = "sensor:cpu"
     //   parts[0]  = "host"
     //   parts[1]  = "73"
@@ -985,12 +985,12 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
 === "Go"
 
     ```go
-    // 발행: topic = "sensor:cpu", payload = 2개 프레임
+    // Publish: topic = "sensor:cpu", payload = 2 frames
     pubSock.Publish("sensor:cpu",
         zlink.NewMessage([]byte("host")),
         zlink.NewMessage([]byte("73")))
 
-    // SUB 수신:
+    // SUB receives:
     //   topic     = "sensor:cpu"
     //   parts[0]  = "host"
     //   parts[1]  = "73"
@@ -1045,7 +1045,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
         zlink_connect(sub, "tcp://127.0.0.1:5556");
         zlink_set_subscription(sub, "");
 
-        /* 구독 전파 대기 */
+        /* Wait for subscription to propagate */
         zlink_routing_id_t rid;
         int subscribed;
         char topic[256];
@@ -1053,13 +1053,13 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
         zlink_subscription_event(pub, &rid, &subscribed,
                                  topic, &topic_len, 0);
 
-        /* 발행 */
+        /* Publish */
         zlink_msg_t msg;
         zlink_msg_init_size(&msg, 4);
         memcpy(zlink_msg_data(&msg), "test", 4);
         zlink_publish(pub, "greeting", &msg, 1, 0);
 
-        /* 수신 */
+        /* Receive */
         zlink_msg_t *parts;
         size_t count;
         char recv_topic[256];
@@ -1096,7 +1096,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
         sub.connect("tcp://127.0.0.1:5556");
         sub.set_subscription("");
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         pub.subscription_event();
 
         pub.publish("greeting", "test");
@@ -1125,7 +1125,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
             sub.connect("tcp://127.0.0.1:5556");
             sub.setSubscription("");
 
-            // 구독 전파 대기
+            // Wait for subscription to propagate
             pub.subscriptionEvent();
 
             pub.publish("greeting", "test");
@@ -1155,7 +1155,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     sub.connect("tcp://127.0.0.1:5556")
     sub.set_subscription("")
 
-    # 구독 전파 대기
+    # Wait for subscription to propagate
     pub.subscription_event()
 
     pub.publish("greeting", b"test")
@@ -1182,7 +1182,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     sub.connect('tcp://127.0.0.1:5556');
     sub.setSubscription('');
 
-    // 구독 전파 대기
+    // Wait for subscription to propagate
     pub.subscriptionEvent();
 
     pub.publish('greeting', Buffer.from('test'));
@@ -1209,7 +1209,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     sub.Connect("tcp://127.0.0.1:5556");
     sub.SetSubscription("");
 
-    // 구독 전파 대기
+    // Wait for subscription to propagate
     pub.SubscriptionEvent();
 
     pub.Publish("greeting", "test");
@@ -1237,7 +1237,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
         sub.connect("tcp://127.0.0.1:5556")?;
         sub.set_subscription("")?;
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         pub_sock.subscription_event()?;
 
         pub_sock.publish("greeting", b"test")?;
@@ -1277,7 +1277,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
         sub.Connect("tcp://127.0.0.1:5556")
         sub.SetSubscription("")
 
-        // 구독 전파 대기
+        // Wait for subscription to propagate
         pub.SubscriptionEvent()
 
         pub.Publish("greeting", zlink.NewMessage([]byte("test")))
@@ -1310,7 +1310,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
     zlink_set_subscription(sub_sports, "sports");
 
-    /* weather만 sub_weather가 수신, sports만 sub_sports가 수신 */
+    /* Only sub_weather receives weather, only sub_sports receives sports */
     ```
 
 === "C++"
@@ -1327,7 +1327,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     sub_sports.connect("tcp://127.0.0.1:5556");
     sub_sports.set_subscription("sports");
 
-    // weather만 sub_weather가 수신, sports만 sub_sports가 수신
+    // Only sub_weather receives weather, only sub_sports receives sports
     ```
 
 === "Java"
@@ -1344,7 +1344,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     subSports.connect("tcp://127.0.0.1:5556");
     subSports.setSubscription("sports");
 
-    // weather만 subWeather가 수신, sports만 subSports가 수신
+    // Only subWeather receives weather, only subSports receives sports
     ```
 
 === "Python"
@@ -1361,7 +1361,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     sub_sports.connect("tcp://127.0.0.1:5556")
     sub_sports.set_subscription("sports")
 
-    # weather만 sub_weather가 수신, sports만 sub_sports가 수신
+    # Only sub_weather receives weather, only sub_sports receives sports
     ```
 
 === "Node/TypeScript"
@@ -1378,7 +1378,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     subSports.connect("tcp://127.0.0.1:5556");
     subSports.setSubscription("sports");
 
-    // weather만 subWeather가 수신, sports만 subSports가 수신
+    // Only subWeather receives weather, only subSports receives sports
     ```
 
 === "C#/.NET"
@@ -1395,7 +1395,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     subSports.Connect("tcp://127.0.0.1:5556");
     subSports.SetSubscription("sports");
 
-    // weather만 subWeather가 수신, sports만 subSports가 수신
+    // Only subWeather receives weather, only subSports receives sports
     ```
 
 === "Rust"
@@ -1412,7 +1412,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     sub_sports.connect("tcp://127.0.0.1:5556");
     sub_sports.set_subscription("sports");
 
-    // weather만 sub_weather가 수신, sports만 sub_sports가 수신
+    // Only sub_weather receives weather, only sub_sports receives sports
     ```
 
 === "Go"
@@ -1429,7 +1429,7 @@ SUB 소켓의 토픽 필터링은 **prefix match** 방식이다.
     subSports.Connect("tcp://127.0.0.1:5556")
     subSports.SetSubscription("sports")
 
-    // weather만 subWeather가 수신, sports만 subSports가 수신
+    // Only subWeather receives weather, only subSports receives sports
     ```
 
 ### 패턴 3: 다중 PUB → SUB
@@ -1519,7 +1519,7 @@ send queue가 HWM에 도달하면 해당 subscriber에게 보내는 message를
 === "C"
 
     ```c
-    /* 대응 1: HWM 조정으로 buffer 확대 */
+    /* Option 1: Increase buffer by adjusting HWM */
     int hwm = 100000;
     zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
     ```
@@ -1527,49 +1527,49 @@ send queue가 HWM에 도달하면 해당 subscriber에게 보내는 message를
 === "C++"
 
     ```cpp
-    // 대응 1: HWM 조정으로 buffer 확대
+    // Option 1: Increase buffer by adjusting HWM
     pub.set_option(ZLINK_OPT_SNDHWM, 100000);
     ```
 
 === "Java"
 
     ```java
-    // 대응 1: HWM 조정으로 buffer 확대
+    // Option 1: Increase buffer by adjusting HWM
     pub.setOption(ZLINK_OPT_SNDHWM, 100000);
     ```
 
 === "Python"
 
     ```python
-    # 대응 1: HWM 조정으로 buffer 확대
+    # Option 1: Increase buffer by adjusting HWM
     pub.set_option(ZLINK_OPT_SNDHWM, 100000)
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // 대응 1: HWM 조정으로 buffer 확대
-    pub.setOption(ZLINK_OPT_SNDHWM, 100000);
+    ```csharp
+    // Option 1: Increase buffer by adjusting HWM
+    pub.SetOption(ZLINK_OPT_SNDHWM, 100000);
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    // 대응 1: HWM 조정으로 buffer 확대
-    pub.SetOption(ZLINK_OPT_SNDHWM, 100000);
+    ```typescript
+    // Option 1: Increase buffer by adjusting HWM
+    pub.setOption(ZLINK_OPT_SNDHWM, 100000);
     ```
 
 === "Rust"
 
     ```rust
-    // 대응 1: HWM 조정으로 buffer 확대
+    // Option 1: Increase buffer by adjusting HWM
     pub_sock.set_option(ZLINK_OPT_SNDHWM, 100000);
     ```
 
 === "Go"
 
     ```go
-    // 대응 1: HWM 조정으로 buffer 확대
+    // Option 1: Increase buffer by adjusting HWM
     pubSock.SetOption(zlink.OptionSndHWM, 100000)
     ```
 
@@ -1582,18 +1582,18 @@ backpressure를 제어할 수 있다.
 === "C"
 
     ```c
-    /* XPUB에서 NODROP 활성화 */
+    /* Enable NODROP on XPUB */
     void *xpub = zlink_socket(ctx, ZLINK_XPUB);
     int nodrop = 1;
     zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 
-    /* send 시 HWM 도달하면 EAGAIN 반환 (drop 아님) */
+    /* On HWM, send returns EAGAIN instead of dropping */
     zlink_msg_t msg;
     zlink_msg_init_size(&msg, 5);
     memcpy(zlink_msg_data(&msg), "hello", 5);
     int rc = zlink_publish(xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
     if (rc == -1 && zlink_errno() == EAGAIN) {
-        /* HWM 도달 — retry 또는 backpressure 로직 */
+        /* HWM reached — retry or apply backpressure logic */
         zlink_msg_close(&msg);
     }
     ```
@@ -1601,89 +1601,89 @@ backpressure를 제어할 수 있다.
 === "C++"
 
     ```cpp
-    // XPUB에서 NODROP 활성화
+    // Enable NODROP on XPUB
     zlink::xpub_socket_t xpub(ctx);
     xpub.set_pub_option(ZLINK_PUB_OPT_NODROP, 1);
 
-    // send 시 HWM 도달하면 EAGAIN 반환 (drop 아님)
+    // On HWM, send returns EAGAIN instead of dropping
     try {
         xpub.publish("", "hello");
     } catch (const zlink::eagain_error& e) {
-        // HWM 도달 — retry 또는 backpressure 로직
+        // HWM reached — retry or apply backpressure logic
     }
     ```
 
 === "Java"
 
     ```java
-    // XPUB에서 NODROP 활성화
+    // Enable NODROP on XPUB
     XPubSocket xpub = new XPubSocket(ctx);
     xpub.setPubOption(ZLINK_PUB_OPT_NODROP, 1);
 
-    // send 시 HWM 도달하면 EagainException 발생 (drop 아님)
+    // On HWM, send throws EagainException instead of dropping
     try {
         xpub.publish("", "hello");
     } catch (EagainException e) {
-        // HWM 도달 — retry 또는 backpressure 로직
+        // HWM reached — retry or apply backpressure logic
     }
     ```
 
 === "Python"
 
     ```python
-    # XPUB에서 NODROP 활성화
+    # Enable NODROP on XPUB
     xpub = zlink.XPubSocket(ctx)
     xpub.set_pub_option(ZLINK_PUB_OPT_NODROP, 1)
 
-    # send 시 HWM 도달하면 Again 발생 (drop 아님)
+    # On HWM, send raises Again instead of dropping
     try:
         xpub.publish("", b"hello")
     except zlink.Again:
-        # HWM 도달 — retry 또는 backpressure 로직
+        # HWM reached — retry or apply backpressure logic
         pass
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // XPUB에서 NODROP 활성화
+    // Enable NODROP on XPUB
     const xpub = new zlink.XPubSocket(ctx);
     xpub.setPubOption(ZLINK_PUB_OPT_NODROP, 1);
 
-    // send 시 HWM 도달하면 EAGAIN 발생 (drop 아님)
+    // On HWM, send throws EAGAIN instead of dropping
     try {
         xpub.publish("", Buffer.from("hello"));
     } catch (e) {
-        // HWM 도달 — retry 또는 backpressure 로직
+        // HWM reached — retry or apply backpressure logic
     }
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // XPUB에서 NODROP 활성화
+    // Enable NODROP on XPUB
     var xpub = new XPubSocket(ctx);
     xpub.SetPubOption(ZLINK_PUB_OPT_NODROP, 1);
 
-    // send 시 HWM 도달하면 EagainException 발생 (drop 아님)
+    // On HWM, send throws EagainException instead of dropping
     try {
         xpub.Publish("", "hello");
     } catch (EagainException) {
-        // HWM 도달 — retry 또는 backpressure 로직
+        // HWM reached — retry or apply backpressure logic
     }
     ```
 
 === "Rust"
 
     ```rust
-    // XPUB에서 NODROP 활성화
+    // Enable NODROP on XPUB
     let xpub = ctx.xpub_socket();
     xpub.set_pub_option(ZLINK_PUB_OPT_NODROP, 1);
 
-    // send 시 HWM 도달하면 Err(Eagain) 반환 (drop 아님)
+    // On HWM, send returns Err(Eagain) instead of dropping
     match xpub.publish("", b"hello") {
         Err(ZlinkError::Eagain) => {
-            // HWM 도달 — retry 또는 backpressure 로직
+            // HWM reached — retry or apply backpressure logic
         }
         _ => {}
     }
@@ -1692,14 +1692,14 @@ backpressure를 제어할 수 있다.
 === "Go"
 
     ```go
-    // XPUB에서 NODROP 활성화
+    // Enable NODROP on XPUB
     xpub, _ := ctx.XPubSocket()
     xpub.SetOption(zlink.OptionPubNoDrop, 1)
 
-    // send 시 HWM 도달하면 error 반환 (drop 아님)
+    // On HWM, send returns error instead of dropping
     err := xpub.Publish("", zlink.NewMessage([]byte("hello")))
     if err != nil {
-        // HWM 도달 — retry 또는 backpressure 로직
+        // HWM reached — retry or apply backpressure logic
     }
     ```
 
@@ -1718,81 +1718,77 @@ SUB가 connect한 뒤 구독 메시지가 PUB에 도달하기 전에 발행된 �
 === "C"
 
     ```c
-    /* 구독이 PUB에 전파될 시간 필요 */
+    /* Time needed for subscription to propagate to PUB */
     zlink_connect(sub, "tcp://127.0.0.1:5556");
     zlink_set_subscription(sub, "topic");
-    msleep(100);  /* 구독 전파 대기 */
-    /* 이후 발행된 메시지부터 수신 가능 */
+    msleep(100);  /* wait for subscription propagation */
+    /* Only messages published after this point can be received */
     ```
 
 === "C++"
 
-    ```cpp
-    // 구독이 PUB에 전파될 시간 필요
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.set_subscription("topic");
-    msleep(100);  // 구독 전파 대기
-    // 이후 발행된 메시지부터 수신 가능
+    ```rust
+    let sub = ctx.sub_socket();
+    sub.set_subscription("");
+    sub.connect("tcp://pub1:5556");
+    sub.connect("tcp://pub2:5557");
     ```
 
 === "Java"
 
-    ```java
-    // 구독이 PUB에 전파될 시간 필요
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.setSubscription("topic");
-    Thread.sleep(100);  // 구독 전파 대기
-    // 이후 발행된 메시지부터 수신 가능
+    ```csharp
+    var sub = new SubSocket(ctx);
+    sub.SetSubscription("");
+    sub.Connect("tcp://pub1:5556");
+    sub.Connect("tcp://pub2:5557");
     ```
 
 === "Python"
 
     ```python
-    # 구독이 PUB에 전파될 시간 필요
-    sub.connect("tcp://127.0.0.1:5556")
-    sub.set_subscription("topic")
-    time.sleep(0.1)  # 구독 전파 대기
-    # 이후 발행된 메시지부터 수신 가능
+    sub = zlink.SubSocket(ctx)
+    sub.set_subscription("")
+    sub.connect("tcp://pub1:5556")
+    sub.connect("tcp://pub2:5557")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // 구독이 PUB에 전파될 시간 필요
-    sub.connect("tcp://127.0.0.1:5556");
-    sub.setSubscription("topic");
-    await sleep(100);  // 구독 전파 대기
-    // 이후 발행된 메시지부터 수신 가능
+    const sub = new zlink.SubSocket(ctx);
+    sub.setSubscription("");
+    sub.connect("tcp://pub1:5556");
+    sub.connect("tcp://pub2:5557");
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // 구독이 PUB에 전파될 시간 필요
+    // Time needed for subscription to propagate to PUB
     sub.Connect("tcp://127.0.0.1:5556");
     sub.SetSubscription("topic");
-    Thread.Sleep(100);  // 구독 전파 대기
-    // 이후 발행된 메시지부터 수신 가능
+    Thread.Sleep(100);  // wait for subscription propagation
+    // Only messages published after this point can be received
     ```
 
 === "Rust"
 
-    ```rust
-    // 구독이 PUB에 전파될 시간 필요
+    ```cpp
+    // Time needed for subscription to propagate to PUB
     sub.connect("tcp://127.0.0.1:5556");
     sub.set_subscription("topic");
-    thread::sleep(Duration::from_millis(100));  // 구독 전파 대기
-    // 이후 발행된 메시지부터 수신 가능
+    msleep(100);  // wait for subscription propagation
+    // Only messages published after this point can be received
     ```
 
 === "Go"
 
     ```go
-    // 구독이 PUB에 전파될 시간 필요
+    // Time needed for subscription to propagate to PUB
     sub.Connect("tcp://127.0.0.1:5556")
     sub.SetSubscription("topic")
-    time.Sleep(100 * time.Millisecond)  // 구독 전파 대기
-    // 이후 발행된 메시지부터 수신 가능
+    time.Sleep(100 * time.Millisecond)  // wait for subscription propagation
+    // Only messages published after this point can be received
     ```
 
 ### 방향 제약
@@ -1802,16 +1798,16 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "C"
 
     ```c
-    /* PUB: zlink_publish()로 송신. recv handler 부착 불가 */
+    /* PUB: send via zlink_publish(). Cannot attach recv handler */
     zlink_msg_t part;
     zlink_msg_init_size(&part, 5);
     memcpy(zlink_msg_data(&part), "sunny", 5);
     zlink_publish(pub, "weather", &part, 1, 0);  /* OK */
 
-    /* PUB에 zlink_send() 사용 → ENOTSUP */
+    /* Using zlink_send() on PUB → ENOTSUP */
     zlink_send(pub, &part, 1, 0);  /* errno = ENOTSUP */
 
-    /* SUB: zlink_subscribe()로 수신. publish 불가 */
+    /* SUB: receive via zlink_subscribe(). Cannot send/publish */
     zlink_publish(sub, "weather", &part, 1, 0);  /* errno = ENOTSUP */
     zlink_send(sub, &part, 1, 0);               /* errno = ENOTSUP */
     ```
@@ -1819,13 +1815,13 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "C++"
 
     ```cpp
-    // PUB: publish()로 송신. recv handler 부착 불가
+    // PUB: send via publish(). Cannot attach recv handler
     pub.publish("weather", "sunny");  // OK
 
-    // PUB에 send() 사용 → ENOTSUP
+    // Using send() on PUB → throws ENOTSUP
     // pub.send("sunny");  // error: ENOTSUP
 
-    // SUB: subscribe()로 수신. publish 불가
+    // SUB: receive via subscribe(). Cannot send/publish
     // sub.publish("weather", "sunny");  // error: ENOTSUP
     // sub.send("sunny");               // error: ENOTSUP
     ```
@@ -1833,13 +1829,13 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "Java"
 
     ```java
-    // PUB: publish()로 송신. recv handler 부착 불가
+    // PUB: send via publish(). Cannot attach recv handler
     pub.publish("weather", "sunny");  // OK
 
-    // PUB에 send() 사용 → ENOTSUP
+    // Using send() on PUB → throws ENOTSUP
     // pub.send("sunny");  // error: ENOTSUP
 
-    // SUB: subscribe()로 수신. publish 불가
+    // SUB: receive via subscribe(). Cannot send/publish
     // sub.publish("weather", "sunny");  // error: ENOTSUP
     // sub.send("sunny");               // error: ENOTSUP
     ```
@@ -1847,13 +1843,13 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "Python"
 
     ```python
-    # PUB: publish()로 송신. recv handler 부착 불가
+    # PUB: send via publish(). Cannot attach recv handler
     pub.publish("weather", b"sunny")  # OK
 
-    # PUB에 send() 사용 → ENOTSUP
+    # Using send() on PUB → raises ENOTSUP
     # pub.send(b"sunny")  # error: ENOTSUP
 
-    # SUB: subscribe()로 수신. publish 불가
+    # SUB: receive via subscribe(). Cannot send/publish
     # sub.publish("weather", b"sunny")  # error: ENOTSUP
     # sub.send(b"sunny")               # error: ENOTSUP
     ```
@@ -1861,13 +1857,13 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "Node/TypeScript"
 
     ```typescript
-    // PUB: publish()로 송신. recv handler 부착 불가
+    // PUB: send via publish(). Cannot attach recv handler
     pub.publish("weather", Buffer.from("sunny"));  // OK
 
-    // PUB에 send() 사용 → ENOTSUP
+    // Using send() on PUB → throws ENOTSUP
     // pub.send(Buffer.from("sunny"));  // error: ENOTSUP
 
-    // SUB: subscribe()로 수신. publish 불가
+    // SUB: receive via subscribe(). Cannot send/publish
     // sub.publish("weather", Buffer.from("sunny"));  // error: ENOTSUP
     // sub.send(Buffer.from("sunny"));               // error: ENOTSUP
     ```
@@ -1875,13 +1871,13 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "C#/.NET"
 
     ```csharp
-    // PUB: Publish()로 송신. recv handler 부착 불가
+    // PUB: send via Publish(). Cannot attach recv handler
     pub.Publish("weather", "sunny");  // OK
 
-    // PUB에 Send() 사용 → ENOTSUP
+    // Using Send() on PUB → throws ENOTSUP
     // pub.Send("sunny");  // error: ENOTSUP
 
-    // SUB: Subscribe()로 수신. publish 불가
+    // SUB: receive via Subscribe(). Cannot send/publish
     // sub.Publish("weather", "sunny");  // error: ENOTSUP
     // sub.Send("sunny");               // error: ENOTSUP
     ```
@@ -1889,13 +1885,13 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "Rust"
 
     ```rust
-    // PUB: publish()로 송신. recv handler 부착 불가
+    // PUB: send via publish(). Cannot attach recv handler
     pub_sock.publish("weather", b"sunny");  // OK
 
-    // PUB에 send() 사용 → Err(ENOTSUP)
+    // Using send() on PUB → returns Err(ENOTSUP)
     // pub_sock.send(b"sunny");  // error: ENOTSUP
 
-    // SUB: subscribe()로 수신. publish 불가
+    // SUB: receive via subscribe(). Cannot send/publish
     // sub.publish("weather", b"sunny");  // error: ENOTSUP
     // sub.send(b"sunny");               // error: ENOTSUP
     ```
@@ -1903,13 +1899,13 @@ PUB/SUB는 각각 전용 API만 사용 가능하다:
 === "Go"
 
     ```go
-    // PUB: Publish()로 송신. recv handler 부착 불가
+    // PUB: send via Publish(). Cannot attach recv handler
     pubSock.Publish("weather", zlink.NewMessage([]byte("sunny")))  // OK
 
-    // PUB에 Send() 사용 시 ENOTSUP 반환
+    // Using Send() on PUB returns ENOTSUP
     // pubSock.Send(zlink.NewMessage([]byte("sunny")))  // error: ENOTSUP
 
-    // SUB: Subscribe()로 수신. publish 불가
+    // SUB: receive via Subscribe(). Cannot send/publish
     // sub.Publish("weather", zlink.NewMessage([]byte("sunny")))  // error: ENOTSUP
     // sub.Send(zlink.NewMessage([]byte("sunny")))                // error: ENOTSUP
     ```
@@ -1976,80 +1972,80 @@ XPUB/XSUB 간의 구독/해제 프레임은 다음 형식을 따른다:
 === "C"
 
     ```c
-    /* XSUB에서 구독 */
+    /* Subscribe from XSUB */
     zlink_set_subscription(xsub, "A");
 
-    /* XSUB에서 구독 해제 */
+    /* Unsubscribe from XSUB */
     zlink_unset_subscription(xsub, "A");
     ```
 
 === "C++"
 
     ```cpp
-    // XSUB에서 구독
+    // Subscribe from XSUB
     xsub.set_subscription("A");
 
-    // XSUB에서 구독 해제
+    // Unsubscribe from XSUB
     xsub.unset_subscription("A");
     ```
 
 === "Java"
 
     ```java
-    // XSUB에서 구독
+    // Subscribe from XSUB
     xsub.setSubscription("A");
 
-    // XSUB에서 구독 해제
+    // Unsubscribe from XSUB
     xsub.unsetSubscription("A");
     ```
 
 === "Python"
 
     ```python
-    # XSUB에서 구독
+    # Subscribe from XSUB
     xsub.set_subscription("A")
 
-    # XSUB에서 구독 해제
+    # Unsubscribe from XSUB
     xsub.unset_subscription("A")
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // XSUB에서 구독
+    // Subscribe from XSUB
     xsub.setSubscription("A");
 
-    // XSUB에서 구독 해제
+    // Unsubscribe from XSUB
     xsub.unsetSubscription("A");
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // XSUB에서 구독
+    // Subscribe from XSUB
     xsub.SetSubscription("A");
 
-    // XSUB에서 구독 해제
+    // Unsubscribe from XSUB
     xsub.UnsetSubscription("A");
     ```
 
 === "Rust"
 
     ```rust
-    // XSUB에서 구독
+    // Subscribe from XSUB
     xsub.set_subscription("A");
 
-    // XSUB에서 구독 해제
+    // Unsubscribe from XSUB
     xsub.unset_subscription("A");
     ```
 
 === "Go"
 
     ```go
-    // XSUB에서 구독
+    // Subscribe from XSUB
     xsub.SetSubscription("A")
 
-    // XSUB에서 구독 해제
+    // Unsubscribe from XSUB
     xsub.UnsetSubscription("A")
     ```
 
@@ -2154,129 +2150,129 @@ MANUAL 모드에서는 구독 프레임을 수신한 후, 애플리케이션이 
 === "C"
 
     ```c
-    /* MANUAL 모드 활성화 */
+    /* Enable MANUAL mode */
     int manual = 1;
     zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
-    /* zlink_subscription_event()로 subscribed=1, topic="A"를 받은 뒤
-       변환된 구독 적용: */
+    /* zlink_subscription_event() returns subscribed=1, topic="A"
+       Then apply transformed subscription: */
     zlink_set_subscription(xpub, "XA");
 
-    /* 발행 */
+    /* Publish */
     zlink_msg_t msg_a;
     zlink_msg_init_size(&msg_a, 1);
     memcpy(zlink_msg_data(&msg_a), "A", 1);
-    zlink_publish(xpub, NULL, &msg_a, 1, 0);   /* 구독자에게 도달하지 않음 */
+    zlink_publish(xpub, NULL, &msg_a, 1, 0);   /* does not reach the subscriber */
 
     zlink_msg_t msg_xa;
     zlink_msg_init_size(&msg_xa, 2);
     memcpy(zlink_msg_data(&msg_xa), "XA", 2);
-    zlink_publish(xpub, NULL, &msg_xa, 1, 0);  /* 구독자가 수신 */
+    zlink_publish(xpub, NULL, &msg_xa, 1, 0);  /* subscriber receives this */
     ```
 
 === "C++"
 
     ```cpp
-    // MANUAL 모드 활성화
+    // Enable MANUAL mode
     xpub.set_pub_option(ZLINK_PUB_OPT_MANUAL, 1);
 
-    // subscription_event()로 subscribed=true, topic="A"를 받은 뒤
-    // 변환된 구독 적용:
+    // subscription_event() returns subscribed=true, topic="A"
+    // Then apply transformed subscription:
     xpub.set_subscription("XA");
 
-    // 발행
-    xpub.publish("", "A");   // 구독자에게 도달하지 않음
-    xpub.publish("", "XA");  // 구독자가 수신
+    // Publish
+    xpub.publish("", "A");   // does not reach the subscriber
+    xpub.publish("", "XA");  // subscriber receives this
     ```
 
 === "Java"
 
     ```java
-    // MANUAL 모드 활성화
+    // Enable MANUAL mode
     xpub.setPubOption(ZLINK_PUB_OPT_MANUAL, 1);
 
-    // subscriptionEvent()로 subscribed=true, topic="A"를 받은 뒤
-    // 변환된 구독 적용:
+    // subscriptionEvent() returns subscribed=true, topic="A"
+    // Then apply transformed subscription:
     xpub.setSubscription("XA");
 
-    // 발행
-    xpub.publish("", "A");   // 구독자에게 도달하지 않음
-    xpub.publish("", "XA");  // 구독자가 수신
+    // Publish
+    xpub.publish("", "A");   // does not reach the subscriber
+    xpub.publish("", "XA");  // subscriber receives this
     ```
 
 === "Python"
 
     ```python
-    # MANUAL 모드 활성화
+    # Enable MANUAL mode
     xpub.set_pub_option(ZLINK_PUB_OPT_MANUAL, 1)
 
-    # subscription_event()로 subscribed=True, topic="A"를 받은 뒤
-    # 변환된 구독 적용:
+    # subscription_event() returns subscribed=True, topic="A"
+    # Then apply transformed subscription:
     xpub.set_subscription("XA")
 
-    # 발행
-    xpub.publish("", b"A")   # 구독자에게 도달하지 않음
-    xpub.publish("", b"XA")  # 구독자가 수신
+    # Publish
+    xpub.publish("", b"A")   # does not reach the subscriber
+    xpub.publish("", b"XA")  # subscriber receives this
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    // MANUAL 모드 활성화
+    // Enable MANUAL mode
     xpub.setPubOption(ZLINK_PUB_OPT_MANUAL, 1);
 
-    // subscriptionEvent()로 subscribed=true, topic="A"를 받은 뒤
-    // 변환된 구독 적용:
+    // subscriptionEvent() returns subscribed=true, topic="A"
+    // Then apply transformed subscription:
     xpub.setSubscription("XA");
 
-    // 발행
-    xpub.publish("", Buffer.from("A"));   // 구독자에게 도달하지 않음
-    xpub.publish("", Buffer.from("XA"));  // 구독자가 수신
+    // Publish
+    xpub.publish("", Buffer.from("A"));   // does not reach the subscriber
+    xpub.publish("", Buffer.from("XA"));  // subscriber receives this
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // MANUAL 모드 활성화
+    // Enable MANUAL mode
     xpub.SetPubOption(ZLINK_PUB_OPT_MANUAL, 1);
 
-    // SubscriptionEvent()로 subscribed=true, topic="A"를 받은 뒤
-    // 변환된 구독 적용:
+    // SubscriptionEvent() returns subscribed=true, topic="A"
+    // Then apply transformed subscription:
     xpub.SetSubscription("XA");
 
-    // 발행
-    xpub.Publish("", "A");   // 구독자에게 도달하지 않음
-    xpub.Publish("", "XA");  // 구독자가 수신
+    // Publish
+    xpub.Publish("", "A");   // does not reach the subscriber
+    xpub.Publish("", "XA");  // subscriber receives this
     ```
 
 === "Rust"
 
     ```rust
-    // MANUAL 모드 활성화
+    // Enable MANUAL mode
     xpub.set_pub_option(ZLINK_PUB_OPT_MANUAL, 1);
 
-    // subscription_event()로 subscribed=true, topic="A"를 받은 뒤
-    // 변환된 구독 적용:
+    // subscription_event() returns subscribed=true, topic="A"
+    // Then apply transformed subscription:
     xpub.set_subscription("XA");
 
-    // 발행
-    xpub.publish("", b"A");   // 구독자에게 도달하지 않음
-    xpub.publish("", b"XA");  // 구독자가 수신
+    // Publish
+    xpub.publish("", b"A");   // does not reach the subscriber
+    xpub.publish("", b"XA");  // subscriber receives this
     ```
 
 === "Go"
 
     ```go
-    // MANUAL 모드 활성화
+    // Enable MANUAL mode
     xpub.SetOption(zlink.OptionPubManual, 1)
 
-    // SubscriptionEvent()로 subscribed=true, topic="A"를 받은 뒤
-    // 변환된 구독 적용:
+    // SubscriptionEvent() returns subscribed=true, topic="A"
+    // Then apply transformed subscription:
     xpub.SetSubscription("XA")
 
-    // 발행
-    xpub.Publish("", zlink.NewMessage([]byte("A")))   // 구독자에게 도달하지 않음
-    xpub.Publish("", zlink.NewMessage([]byte("XA")))  // 구독자가 수신
+    // Publish
+    xpub.Publish("", zlink.NewMessage([]byte("A")))   // does not reach the subscriber
+    xpub.Publish("", zlink.NewMessage([]byte("XA")))  // subscriber receives this
     ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_basic()`: A 구독 요청 → B로 변환
@@ -2290,121 +2286,121 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
 === "C"
 
     ```c
-    /* 프록시 프론트엔드: PUB들이 연결 */
+    /* Proxy frontend: PUBs connect here */
     void *xsub = zlink_socket(ctx, ZLINK_XSUB);
     zlink_bind(xsub, "tcp://*:5556");
 
-    /* 프록시 백엔드: SUB들이 연결 */
+    /* Proxy backend: SUBs connect here */
     void *xpub = zlink_socket(ctx, ZLINK_XPUB);
     zlink_bind(xpub, "tcp://*:5557");
 
-    /* 프록시 실행 (메시지와 구독을 양방향으로 전달) */
+    /* Run proxy (forwards messages and subscriptions bidirectionally) */
     zlink_proxy(xsub, xpub, NULL);
     ```
 
 === "C++"
 
     ```cpp
-    // 프록시 프론트엔드: PUB들이 연결
+    // Proxy frontend: PUBs connect here
     zlink::xsub_socket_t xsub(ctx);
     xsub.bind("tcp://*:5556");
 
-    // 프록시 백엔드: SUB들이 연결
+    // Proxy backend: SUBs connect here
     zlink::xpub_socket_t xpub(ctx);
     xpub.bind("tcp://*:5557");
 
-    // 프록시 실행 (메시지와 구독을 양방향으로 전달)
+    // Run proxy (forwards messages and subscriptions bidirectionally)
     zlink::proxy(xsub, xpub);
     ```
 
 === "Java"
 
     ```java
-    // 프록시 프론트엔드: PUB들이 연결
+    // Proxy frontend: PUBs connect here
     XSubSocket xsub = new XSubSocket(ctx);
     xsub.bind("tcp://*:5556");
 
-    // 프록시 백엔드: SUB들이 연결
+    // Proxy backend: SUBs connect here
     XPubSocket xpub = new XPubSocket(ctx);
     xpub.bind("tcp://*:5557");
 
-    // 프록시 실행 (메시지와 구독을 양방향으로 전달)
+    // Run proxy (forwards messages and subscriptions bidirectionally)
     Proxy.run(xsub, xpub);
     ```
 
 === "Python"
 
     ```python
-    # 프록시 프론트엔드: PUB들이 연결
+    # Proxy frontend: PUBs connect here
     xsub = zlink.XSubSocket(ctx)
     xsub.bind("tcp://*:5556")
 
-    # 프록시 백엔드: SUB들이 연결
+    # Proxy backend: SUBs connect here
     xpub = zlink.XPubSocket(ctx)
     xpub.bind("tcp://*:5557")
 
-    # 프록시 실행 (메시지와 구독을 양방향으로 전달)
+    # Run proxy (forwards messages and subscriptions bidirectionally)
     zlink.proxy(xsub, xpub)
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // 프록시 프론트엔드: PUB들이 연결
-    const xsub = new zlink.XSubSocket(ctx);
-    xsub.bind("tcp://*:5556");
+    ```go
+    // Proxy frontend: PUBs connect here
+    xsub := ctx.XSubSocket()
+    xsub.Bind("tcp://*:5556")
 
-    // 프록시 백엔드: SUB들이 연결
-    const xpub = new zlink.XPubSocket(ctx);
-    xpub.bind("tcp://*:5557");
+    // Proxy backend: SUBs connect here
+    xpub := ctx.XPubSocket()
+    xpub.Bind("tcp://*:5557")
 
-    // 프록시 실행 (메시지와 구독을 양방향으로 전달)
-    zlink.proxy(xsub, xpub);
+    // Run proxy (forwards messages and subscriptions bidirectionally)
+    zlink.Proxy(xsub, xpub, nil)
     ```
 
 === "C#/.NET"
 
     ```csharp
-    // 프록시 프론트엔드: PUB들이 연결
+    // Proxy frontend: PUBs connect here
     var xsub = new XSubSocket(ctx);
     xsub.Bind("tcp://*:5556");
 
-    // 프록시 백엔드: SUB들이 연결
+    // Proxy backend: SUBs connect here
     var xpub = new XPubSocket(ctx);
     xpub.Bind("tcp://*:5557");
 
-    // 프록시 실행 (메시지와 구독을 양방향으로 전달)
+    // Run proxy (forwards messages and subscriptions bidirectionally)
     Proxy.Run(xsub, xpub);
     ```
 
 === "Rust"
 
     ```rust
-    // 프록시 프론트엔드: PUB들이 연결
+    // Proxy frontend: PUBs connect here
     let xsub = ctx.xsub_socket();
     xsub.bind("tcp://*:5556");
 
-    // 프록시 백엔드: SUB들이 연결
+    // Proxy backend: SUBs connect here
     let xpub = ctx.xpub_socket();
     xpub.bind("tcp://*:5557");
 
-    // 프록시 실행 (메시지와 구독을 양방향으로 전달)
+    // Run proxy (forwards messages and subscriptions bidirectionally)
     zlink::proxy(&xsub, &xpub);
     ```
 
 === "Go"
 
-    ```go
-    // 프록시 프론트엔드: PUB들이 연결
-    xsub, _ := ctx.XSubSocket()
-    xsub.Bind("tcp://*:5556")
+    ```typescript
+    // Proxy frontend: PUBs connect here
+    const xsub = new zlink.XSubSocket(ctx);
+    xsub.bind("tcp://*:5556");
 
-    // 프록시 백엔드: SUB들이 연결
-    xpub, _ := ctx.XPubSocket()
-    xpub.Bind("tcp://*:5557")
+    // Proxy backend: SUBs connect here
+    const xpub = new zlink.XPubSocket(ctx);
+    xpub.bind("tcp://*:5557");
 
-    // 프록시 실행 (메시지와 구독을 양방향으로 전달)
-    zlink.Proxy(xsub, xpub, nil)
+    // Run proxy (forwards messages and subscriptions bidirectionally)
+    zlink.proxy(xsub, xpub);
     ```
 
 ### 패턴 2: MANUAL 모드 프록시 (구독 변환)
@@ -2427,13 +2423,13 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
           xpub, &source_rid, &subscribed, topic, &topic_len, 0);
 
         if (subscribed) {
-            /* 구독 등록 */
+            /* Register subscription */
             zlink_set_subscription(xpub, topic);
 
-            /* 업스트림에 구독 전파 (XSUB) */
+            /* Propagate subscription upstream (XSUB) */
             zlink_set_subscription(xsub, topic);
         } else {
-            /* 구독 해제 */
+            /* Unsubscription */
             zlink_unset_subscription(xpub, topic);
 
             zlink_unset_subscription(xsub, topic);
@@ -2450,13 +2446,13 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
         auto [source_rid, subscribed, topic] = xpub.subscription_event();
 
         if (subscribed) {
-            // 구독 등록
+            // Register subscription
             xpub.set_subscription(topic);
 
-            // 업스트림에 구독 전파 (XSUB)
+            // Propagate subscription upstream (XSUB)
             xsub.set_subscription(topic);
         } else {
-            // 구독 해제
+            // Unsubscription
             xpub.unset_subscription(topic);
 
             xsub.unset_subscription(topic);
@@ -2473,13 +2469,13 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
         SubscriptionEvent event = xpub.subscriptionEvent();
 
         if (event.isSubscribed()) {
-            // 구독 등록
+            // Register subscription
             xpub.setSubscription(event.topic());
 
-            // 업스트림에 구독 전파 (XSUB)
+            // Propagate subscription upstream (XSUB)
             xsub.setSubscription(event.topic());
         } else {
-            // 구독 해제
+            // Unsubscription
             xpub.unsetSubscription(event.topic());
 
             xsub.unsetSubscription(event.topic());
@@ -2496,13 +2492,13 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
         source_rid, subscribed, topic = xpub.subscription_event()
 
         if subscribed:
-            # 구독 등록
+            # Register subscription
             xpub.set_subscription(topic)
 
-            # 업스트림에 구독 전파 (XSUB)
+            # Propagate subscription upstream (XSUB)
             xsub.set_subscription(topic)
         else:
-            # 구독 해제
+            # Unsubscription
             xpub.unset_subscription(topic)
 
             xsub.unset_subscription(topic)
@@ -2517,13 +2513,13 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
         const [sourceRid, subscribed, topic] = xpub.subscriptionEvent();
 
         if (subscribed) {
-            // 구독 등록
+            // Register subscription
             xpub.setSubscription(topic);
 
-            // 업스트림에 구독 전파 (XSUB)
+            // Propagate subscription upstream (XSUB)
             xsub.setSubscription(topic);
         } else {
-            // 구독 해제
+            // Unsubscription
             xpub.unsetSubscription(topic);
 
             xsub.unsetSubscription(topic);
@@ -2540,13 +2536,13 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
         var (sourceRid, subscribed, topic) = xpub.SubscriptionEvent();
 
         if (subscribed) {
-            // 구독 등록
+            // Register subscription
             xpub.SetSubscription(topic);
 
-            // 업스트림에 구독 전파 (XSUB)
+            // Propagate subscription upstream (XSUB)
             xsub.SetSubscription(topic);
         } else {
-            // 구독 해제
+            // Unsubscription
             xpub.UnsetSubscription(topic);
 
             xsub.UnsetSubscription(topic);
@@ -2563,13 +2559,13 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
         let (source_rid, subscribed, topic) = xpub.subscription_event();
 
         if subscribed {
-            // 구독 등록
+            // Register subscription
             xpub.set_subscription(&topic);
 
-            // 업스트림에 구독 전파 (XSUB)
+            // Propagate subscription upstream (XSUB)
             xsub.set_subscription(&topic);
         } else {
-            // 구독 해제
+            // Unsubscription
             xpub.unset_subscription(&topic);
 
             xsub.unset_subscription(&topic);
@@ -2586,13 +2582,13 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
         _, subscribed, topic, _ := xpub.SubscriptionEvent()
 
         if subscribed {
-            // 구독 등록
+            // Register subscription
             xpub.SetSubscription(topic)
 
-            // 업스트림에 구독 전파 (XSUB)
+            // Propagate subscription upstream (XSUB)
             xsub.SetSubscription(topic)
         } else {
-            // 구독 해제
+            // Unsubscription
             xpub.UnsetSubscription(topic)
 
             xsub.UnsetSubscription(topic)
@@ -2620,7 +2616,7 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
         zlink_subscription_event(
           xpub, &source_rid, &subscribed, topic, &topic_len, 0);
-        printf("%s: %.*s\n", subscribed ? "새 구독" : "구독 해제",
+        printf("%s: %.*s\n", subscribed ? "New subscription" : "Unsubscription",
                (int) topic_len, topic);
     }
     ```
@@ -2633,7 +2629,7 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
     for (;;) {
         auto [source_rid, subscribed, topic] = xpub.subscription_event();
-        std::cout << (subscribed ? "새 구독" : "구독 해제")
+        std::cout << (subscribed ? "New subscription" : "Unsubscription")
                   << ": " << topic << std::endl;
     }
     ```
@@ -2647,7 +2643,7 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
     while (true) {
         SubscriptionEvent event = xpub.subscriptionEvent();
         System.out.printf("%s: %s%n",
-            event.isSubscribed() ? "새 구독" : "구독 해제",
+            event.isSubscribed() ? "New subscription" : "Unsubscription",
             event.topic());
     }
     ```
@@ -2660,7 +2656,7 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
     while True:
         source_rid, subscribed, topic = xpub.subscription_event()
-        label = "새 구독" if subscribed else "구독 해제"
+        label = "New subscription" if subscribed else "Unsubscription"
         print(f"{label}: {topic}")
     ```
 
@@ -2672,7 +2668,7 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
     while (true) {
         const [sourceRid, subscribed, topic] = xpub.subscriptionEvent();
-        console.log(`${subscribed ? "새 구독" : "구독 해제"}: ${topic}`);
+        console.log(`${subscribed ? "New subscription" : "Unsubscription"}: ${topic}`);
     }
     ```
 
@@ -2684,7 +2680,7 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
     while (true) {
         var (sourceRid, subscribed, topic) = xpub.SubscriptionEvent();
-        Console.WriteLine($"{(subscribed ? "새 구독" : "구독 해제")}: {topic}");
+        Console.WriteLine($"{(subscribed ? "New subscription" : "Unsubscription")}: {topic}");
     }
     ```
 
@@ -2697,7 +2693,7 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
     loop {
         let (source_rid, subscribed, topic) = xpub.subscription_event();
         println!("{}: {}",
-            if subscribed { "새 구독" } else { "구독 해제" },
+            if subscribed { "New subscription" } else { "Unsubscription" },
             topic);
     }
     ```
@@ -2710,9 +2706,9 @@ XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
     for {
         _, subscribed, topic, _ := xpub.SubscriptionEvent()
-        label := "구독 해제"
+        label := "Unsubscription"
         if subscribed {
-            label = "새 구독"
+            label = "New subscription"
         }
         fmt.Printf("%s: %s\n", label, topic)
     }
@@ -2725,81 +2721,81 @@ SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달�
 === "C"
 
     ```c
-    /* SUB 연결 해제 후 */
+    /* After SUB disconnects */
     zlink_close(sub);
 
-    /* 이어지는 zlink_subscription_event() 호출이
-       subscribed=0과 기존 구독 토픽을 반환 */
+    /* The next zlink_subscription_event() returns
+       subscribed=0 and the previously subscribed topic */
     ```
 
 === "C++"
 
     ```cpp
-    // SUB 연결 해제 후
+    // After SUB disconnects
     sub.close();
 
-    // 이어지는 subscription_event() 호출이
-    // subscribed=false와 기존 구독 토픽을 반환
+    // The next subscription_event() returns
+    // subscribed=false and the previously subscribed topic
     ```
 
 === "Java"
 
     ```java
-    // SUB 연결 해제 후
+    // After SUB disconnects
     sub.close();
 
-    // 이어지는 subscriptionEvent() 호출이
-    // subscribed=false와 기존 구독 토픽을 반환
+    // The next subscriptionEvent() returns
+    // subscribed=false and the previously subscribed topic
     ```
 
 === "Python"
 
     ```python
-    # SUB 연결 해제 후
+    # After SUB disconnects
     sub.close()
 
-    # 이어지는 subscription_event() 호출이
-    # subscribed=False와 기존 구독 토픽을 반환
+    # The next subscription_event() returns
+    # subscribed=False and the previously subscribed topic
     ```
 
 === "Node/TypeScript"
 
-    ```typescript
-    // SUB 연결 해제 후
-    sub.close();
+    ```csharp
+    // After SUB disconnects
+    sub.Close();
 
-    // 이어지는 subscriptionEvent() 호출이
-    // subscribed=false와 기존 구독 토픽을 반환
+    // The next SubscriptionEvent() returns
+    // subscribed=false and the previously subscribed topic
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    // SUB 연결 해제 후
-    sub.Close();
+    ```go
+    // After SUB disconnects
+    sub.Close()
 
-    // 이어지는 SubscriptionEvent() 호출이
-    // subscribed=false와 기존 구독 토픽을 반환
+    // The next subscription_event() returns
+    // subscribed=false and the previously subscribed topic
     ```
 
 === "Rust"
 
     ```rust
-    // SUB 연결 해제 후
+    // After SUB disconnects
     sub.close();
 
-    // 이어지는 subscription_event() 호출이
-    // subscribed=false와 기존 구독 토픽을 반환
+    // The next subscription_event() returns
+    // subscribed=false and the previously subscribed topic
     ```
 
 === "Go"
 
-    ```go
-    // SUB 연결 해제 후
-    sub.Close()
+    ```typescript
+    // After SUB disconnects
+    sub.close();
 
-    // 이어지는 subscription_event() 호출이
-    // subscribed=false와 기존 구독 토픽을 반환
+    // The next subscriptionEvent() returns
+    // subscribed=false and the previously subscribed topic
     ```
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
@@ -2813,81 +2809,76 @@ SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달�
 === "C"
 
     ```c
-    zlink_connect(sub, endpoint);
-    zlink_set_subscription(sub, "topic");
-    /* 이 시점에 "topic" 메시지를 발행하면 유실 가능 */
-    msleep(100);  /* 구독 전파 대기 */
-    /* 이후 발행 시 수신 가능 */
+    void *sub = zlink_socket(ctx, ZLINK_SUB);
+    zlink_set_subscription(sub, "");
+    zlink_connect(sub, "tcp://pub1:5556");
+    zlink_connect(sub, "tcp://pub2:5557");
     ```
 
 === "C++"
 
     ```cpp
-    sub.connect(endpoint);
-    sub.set_subscription("topic");
-    // 이 시점에 "topic" 메시지를 발행하면 유실 가능
-    msleep(100);  // 구독 전파 대기
-    // 이후 발행 시 수신 가능
+    zlink::sub_socket_t sub(ctx);
+    sub.set_subscription("");
+    sub.connect("tcp://pub1:5556");
+    sub.connect("tcp://pub2:5557");
     ```
 
 === "Java"
 
-    ```java
-    sub.connect(endpoint);
-    sub.setSubscription("topic");
-    // 이 시점에 "topic" 메시지를 발행하면 유실 가능
-    Thread.sleep(100);  // 구독 전파 대기
-    // 이후 발행 시 수신 가능
+    ```csharp
+    var xpub = new XPubSocket(ctx);
+    xpub.Bind("tcp://*:5557");
+
+    var (sourceRid, subscribed, topic) = xpub.SubscriptionEvent();
     ```
 
 === "Python"
 
     ```python
-    sub.connect(endpoint)
-    sub.set_subscription("topic")
-    # 이 시점에 "topic" 메시지를 발행하면 유실 가능
-    time.sleep(0.1)  # 구독 전파 대기
-    # 이후 발행 시 수신 가능
+    xpub = zlink.XPubSocket(ctx)
+    xpub.bind("tcp://*:5557")
+
+    source_rid, subscribed, topic = xpub.subscription_event()
     ```
 
 === "Node/TypeScript"
 
     ```typescript
-    sub.connect(endpoint);
-    sub.setSubscription("topic");
-    // 이 시점에 "topic" 메시지를 발행하면 유실 가능
-    await sleep(100);  // 구독 전파 대기
-    // 이후 발행 시 수신 가능
+    const xpub = new zlink.XPubSocket(ctx);
+    xpub.bind("tcp://*:5557");
+
+    const [sourceRid, subscribed, topic] = xpub.subscriptionEvent();
     ```
 
 === "C#/.NET"
 
-    ```csharp
-    sub.Connect(endpoint);
-    sub.SetSubscription("topic");
-    // 이 시점에 "topic" 메시지를 발행하면 유실 가능
-    Thread.Sleep(100);  // 구독 전파 대기
-    // 이후 발행 시 수신 가능
+    ```java
+    XPubSocket xpub = new XPubSocket(ctx);
+    xpub.bind("tcp://*:5557");
+
+    SubscriptionEvent event = xpub.subscriptionEvent();
+    // event.isSubscribed(), event.topic()
     ```
 
 === "Rust"
 
-    ```rust
+    ```cpp
     sub.connect(endpoint);
     sub.set_subscription("topic");
-    // 이 시점에 "topic" 메시지를 발행하면 유실 가능
-    thread::sleep(Duration::from_millis(100));  // 구독 전파 대기
-    // 이후 발행 시 수신 가능
+    // Publishing a "topic" message at this point may result in loss
+    msleep(100);  // wait for subscription propagation
+    // Messages published after this point can be received
     ```
 
 === "Go"
 
-    ```go
-    sub.Connect(endpoint)
-    sub.SetSubscription("topic")
-    // 이 시점에 "topic" 메시지를 발행하면 유실 가능
-    time.Sleep(100 * time.Millisecond)  // 구독 전파 대기
-    // 이후 발행 시 수신 가능
+    ```csharp
+    sub.Connect(endpoint);
+    sub.SetSubscription("topic");
+    // Publishing a "topic" message at this point may result in loss
+    Thread.Sleep(100);  // wait for subscription propagation
+    // Messages published after this point can be received
     ```
 
 ### XPUB MANUAL 모드에서 구독 관리

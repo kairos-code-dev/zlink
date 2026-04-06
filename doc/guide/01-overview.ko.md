@@ -46,15 +46,15 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |  close/drain/finalization contract                   |
 +------------------------------------------------------+
 |  Engine Layer (Boost.Asio)                           |
-|  asio_zmp_engine — ZMP v1.0 Protocol (8B 고정 헤더)  |
-|  Proactor 패턴 · Speculative I/O · Backpressure      |
+|  asio_zmp_engine — ZMP v1.0 Protocol (8B fixed hdr)  |
+|  Proactor pattern · Speculative I/O · Backpressure   |
 +------------------------------------------------------+
 |  Transport / Protocol                                |
-|  tcp · ipc · inproc · ws — 평문                      |
-|  tls · wss             — OpenSSL 암호화              |
+|  tcp · ipc · inproc · ws — plaintext                 |
+|  tls · wss             — OpenSSL encrypted           |
 +------------------------------------------------------+
 |  Core Infrastructure                                 |
-|  msg_t(64B 고정) · pipe_t(Lock-free YPipe)           |
+|  msg_t(64B fixed) · pipe_t(Lock-free YPipe)          |
 |  ctx_t(I/O Thread Pool) · session_base_t(Bridge)     |
 +------------------------------------------------------+
 ```
@@ -123,27 +123,27 @@ cmake --build build
 int main(void) {
     void *ctx = zlink_ctx_new();
 
-    /* 서버 */
+    /* Server */
     void *server = zlink_socket(ctx, ZLINK_PAIR);
     zlink_bind(server, "tcp://*:5555");
 
-    /* 클라이언트 */
+    /* Client */
     void *client = zlink_socket(ctx, ZLINK_PAIR);
     zlink_connect(client, "tcp://127.0.0.1:5555");
 
-    /* 송신 */
+    /* Send */
     zlink_msg_t part;
     zlink_msg_init_size(&part, 12);
     memcpy(zlink_msg_data(&part), "Hello zlink!", 12);
     zlink_send(client, &part, 1, 0);
 
-    /* 수신 */
+    /* Receive */
     zlink_routing_id_t source_rid;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     int rc = zlink_recv(server, &source_rid, &parts, &part_count, 0);
     if (rc == 0)
-        printf("수신: %.*s\n",
+        printf("Received: %.*s\n",
                (int)zlink_msg_size(&parts[0]),
                (char *)zlink_msg_data(&parts[0]));
     for (size_t i = 0; i < part_count; i++)

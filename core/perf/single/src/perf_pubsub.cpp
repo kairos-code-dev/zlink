@@ -13,6 +13,7 @@
 namespace {
 
 static const char *k_pubsub_topic = "bench";
+static const size_t k_metric_queue_capacity = 65536;
 
 inline int resolve_pubsub_xpub_nodrop_opt()
 {
@@ -28,6 +29,7 @@ struct pubsub_callback_state_t
         payload_size(0),
         active_deadline_us(0),
         fatal(false),
+        phase_wait_armed(false),
         warmup_received(0),
         active_received(0),
         warmup_processed(0),
@@ -42,6 +44,7 @@ struct pubsub_callback_state_t
     size_t payload_size;
     std::atomic<uint64_t> active_deadline_us;
     std::atomic<bool> fatal;
+    std::atomic<bool> phase_wait_armed;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     std::atomic<unsigned long long> warmup_processed;
@@ -179,6 +182,7 @@ bool run_oneway_phase(void *pub_socket,
       std::chrono::steady_clock::now()
       + std::chrono::seconds(duration_s > 0 ? duration_s : 1);
     state->fatal.store(false, std::memory_order_release);
+    state->phase_wait_armed.store(false, std::memory_order_release);
     state->warmup_received.store(0, std::memory_order_release);
     state->active_received.store(0, std::memory_order_release);
     state->warmup_processed.store(0, std::memory_order_release);
@@ -233,6 +237,20 @@ bool run_oneway_phase(void *pub_socket,
 
 } // namespace
 
+template <>
+inline void single_set_phase_wait_armed<pubsub_callback_state_t>(
+  pubsub_callback_state_t &state_, bool value_)
+{
+    state_.phase_wait_armed.store(value_, std::memory_order_relaxed);
+}
+
+template <>
+inline bool single_phase_wait_notify_armed<pubsub_callback_state_t>(
+  const pubsub_callback_state_t &state_)
+{
+    return state_.phase_wait_armed.load(std::memory_order_relaxed);
+}
+
 void run_pubsub(const std::string &transport,
                 size_t msg_size,
                 const std::string &lib_name)
@@ -264,16 +282,19 @@ void run_pubsub(const std::string &transport,
     std::vector<char> payload(payload_size, 'a');
     queue_probe_t queue_probe(pub.get(), sub.get());
     pubsub_callback_state_t state;
-    single_callback_metric_queue_t queue(65536);
-    single_metric_worker_t<pubsub_callback_state_t> worker;
-    worker.state = &state;
-    worker.queue = &queue;
+    single_callback_metric_queue_t callback_queue(k_metric_queue_capacity);
+    single_metric_worker_t<pubsub_callback_state_t> metric_worker;
     state.run_id = static_cast<uint32_t>(perf_single_metric::now_us());
     state.msg_size = msg_size;
     state.payload_size = payload_size;
-    state.callback_queue = &queue;
-    if (zlink_subscribe_handler(sub.get(), &pubsub_recv_handler, &state) != 0
-        || !start_single_metric_worker(&worker)) {
+    state.callback_queue = &callback_queue;
+    metric_worker.state = &state;
+    metric_worker.queue = &callback_queue;
+    if (zlink_subscribe_handler(sub.get(), &pubsub_recv_handler, &state) != 0) {
+        print_fail_result(lib_name, "PUBSUB", transport, msg_size, &queue_probe);
+        return;
+    }
+    if (!start_single_metric_worker(&metric_worker)) {
         print_fail_result(lib_name, "PUBSUB", transport, msg_size, &queue_probe);
         return;
     }
@@ -303,11 +324,11 @@ void run_pubsub(const std::string &transport,
                              &queue_probe,
                              &received,
                              &latency_stats)) {
-        stop_single_metric_worker(&worker);
+        stop_single_metric_worker(&metric_worker);
         print_fail_result(lib_name, "PUBSUB", transport, msg_size, &queue_probe);
         return;
     }
-    stop_single_metric_worker(&worker);
+    stop_single_metric_worker(&metric_worker);
     print_result(lib_name,
                  "PUBSUB",
                  transport,

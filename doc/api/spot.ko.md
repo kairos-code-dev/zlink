@@ -153,22 +153,38 @@ handle에 `zlink_set_tls_server()` 또는 `zlink_set_tls_client()`를 호출하�
 `zlink_spot_node_peers_snapshot()`, `zlink_spot_node_subjects_snapshot()`을
 사용합니다.
 
-## Internal Mesh Publish Budget
+## SpotNode Internal Data-Plane HWM
 
-SPOT은 SpotNode 런타임 내부에서 peer fanout 용 `mesh_pub` sender를 사용합니다.
-이 내부 `mesh_pub`의 send HWM 기본값은 `tcp`, `tls`, `ws`, `wss`를 포함한
-모든 transport에서 `100`입니다.
+SpotNode는 다음 내부 data-plane을 가집니다.
 
-이 내부 budget은 unified `Spot` handle에 설정하는 public `SNDHWM` /
-`RCVHWM`과는 별개의 값입니다.
+- `ingress` receive queue
+- `fanout` local publish queue
+- `mesh_pub` peer publish queue
+- `mesh_xsub` peer receive queue
 
-- internal `mesh_pub` send HWM 기본값: `100`
+기본 data-plane HWM은 `1000`입니다. `SpotNode` handle에 `SNDHWM` /
+`RCVHWM`을 설정하면 같은 방향의 내부 data-plane budget에도 함께 적용됩니다.
+
+- `SpotNode` 의 `SNDHWM`
+  - 기본 SpotNode pub handle
+  - internal `fanout` send HWM
+  - internal `mesh_pub` send HWM
+- `SpotNode` 의 `RCVHWM`
+  - 기본 SpotNode sub handle
+  - internal `ingress` receive HWM
+  - internal `mesh_xsub` receive HWM
+
+이 내부 data-plane budget은 unified `Spot` handle에 설정하는 public
+`SNDHWM` / `RCVHWM`과는 별개입니다. `peer_ctrl` 는 control-plane 기본값을
+유지하며 SpotNode data-plane HWM 묶음에 포함하지 않습니다.
+
+- internal data-plane HWM 기본값: `1000`
 - transport별 기본 확장은 적용하지 않습니다
-- 특정 배포에서만 별도 internal budget이 필요하면
-  `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM=<value>`로 override 하십시오
-
-transport 비교 perf에서는 transport별 internal backlog 깊이 차이로
-queueing latency가 왜곡되지 않도록 기본값 유지가 권장됩니다.
+- 세부 internal override는 진단용으로만 남겨둡니다
+  - `ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM`
+  - `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM`
+  - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
+  - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
 
 ## callback 계약
 

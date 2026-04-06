@@ -909,7 +909,7 @@ _env_sizes = parse_env_list("PERF_MSG_SIZES", int)
 if _env_sizes:
     MSG_SIZES = _env_sizes
 else:
-    MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
+    MSG_SIZES = [256, 1024, 65536, 131072, 262144]
 
 _env_stream_sizes = parse_env_list(
     "PERF_STREAM_MSG_SIZES",
@@ -922,7 +922,7 @@ elif _env_sizes:
     # unless a stream-specific override is explicitly provided.
     STREAM_MSG_SIZES = _env_sizes
 else:
-    STREAM_MSG_SIZES = [64, 256, 1024, 65536]
+    STREAM_MSG_SIZES = [256, 1024, 65536]
 
 DEFAULT_RUN_COOLDOWN_MS = max(
     0,
@@ -1229,9 +1229,7 @@ def pattern_default_clients(pattern_name, transport=None):
 
 
 def pattern_default_hwm(pattern_name):
-    if pattern_name in STREAM_VARIANT_PATTERNS:
-        return 10
-    return 100
+    return 1000
 
 
 def pattern_default_io_threads(pattern_name):
@@ -2790,6 +2788,9 @@ def run_sizes_test(
     pattern_name,
     result_line_callback=None,
 ):
+    # Multi policy invariant:
+    # each pattern/transport/size case runs in its own isolated server/client
+    # process lifecycle. Do not batch multiple sizes into one process pair.
     size_list = list(sizes) if sizes else [64]
     split_size_transition_ms = max(
         0,
@@ -3135,6 +3136,9 @@ def _emit_table_row(
 
 
 def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None, table_lines=None):
+    # Runner policy invariant:
+    # collect_data owns transport/run aggregation and human-readable reporting,
+    # while each benchmark subprocess still executes one size case at a time.
     def emit(line):
         print(line, flush=True)
         if table_lines is not None:
@@ -4860,12 +4864,14 @@ def main():
         emit_result_lines(current_results)
 
     run_status = "complete" if expected_result_lines == actual_result_lines else "partial"
-    max_files = resolve_results_max_files()
-    prune_result_files(
-        os.path.dirname(result_file),
-        max_files,
-        exclude_names=[os.path.basename(result_file)],
-    )
+    preserve_result_file = bool(args["results_tag"] or args["result_file"])
+    if not preserve_result_file:
+        max_files = resolve_results_max_files()
+        prune_result_files(
+            os.path.dirname(result_file),
+            max_files,
+            exclude_names=[os.path.basename(result_file)],
+        )
     print(f"\nSaved result file: {result_file} (status={run_status})")
 
     print("\n## Status Summary")

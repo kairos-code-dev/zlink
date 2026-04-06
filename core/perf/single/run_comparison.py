@@ -856,6 +856,9 @@ def run_single_test(
     timeout_sec: int,
     pin_cpu: bool,
 ) -> RunOutcome:
+    # Single policy invariant:
+    # one benchmark process executes exactly one pattern/transport/size/run
+    # case. Repetition, aggregation, and table formatting stay in the runner.
     binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(current_lib_dir)
     cmd = build_bench_cmd(binary_path, [lib_name, transport, str(size)], pin_cpu)

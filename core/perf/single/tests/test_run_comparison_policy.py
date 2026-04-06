@@ -1,4 +1,5 @@
 import importlib.util
+import builtins
 import os
 import pathlib
 import sys
@@ -119,6 +120,91 @@ class RunComparisonPolicyTests(unittest.TestCase):
             RC.collect_unsupported_patterns(["PAIR", "SPOT"], "recv"),
             ["PAIR", "SPOT"],
         )
+
+    def test_single_runner_executes_each_size_case_separately(self):
+        old_run_single_test = RC.run_single_test
+        old_msg_sizes_for_pattern = RC.msg_sizes_for_pattern
+        old_select_transports = RC.select_transports
+        old_parse_args = RC.parse_args
+        old_collect_missing_patterns = RC.collect_missing_patterns
+        old_open = builtins.open
+        old_makedirs = RC.os.makedirs
+        old_stdout = RC.sys.stdout
+        old_stderr = RC.sys.stderr
+        old_build_result_filename = RC.build_result_filename
+        old_single_result_dir = RC.single_result_dir
+        old_print_effective_options = RC.print_effective_options
+        calls = []
+
+        class DummyFile:
+            def write(self, _data):
+                return 0
+
+            def flush(self):
+                return None
+
+            def close(self):
+                return None
+
+        try:
+            RC.run_single_test = lambda build_dir, current_lib_dir, binary_name, lib_name, pattern, transport, size, timeout_sec, pin_cpu: (
+                calls.append((binary_name, pattern, transport, size))
+                or RC.RunOutcome(
+                    status="success",
+                    throughput=1.0,
+                    bandwidth=1.0,
+                    latency=1.0,
+                    latency_p95=1.0,
+                    latency_p99=1.0,
+                )
+            )
+            RC.msg_sizes_for_pattern = lambda pattern: [64, 256]
+            RC.select_transports = lambda pattern: ["tcp"]
+            RC.parse_args = lambda: type(
+                "Args",
+                (),
+                {
+                    "pattern": "PAIR",
+                    "runs": 1,
+                    "duration": None,
+                    "build_dir": "",
+                    "pin_cpu": False,
+                    "results_dir": "/tmp/ignored",
+                    "results_tag": "",
+                    "result_file": "",
+                    "recv": "callback",
+                },
+            )()
+            RC.collect_missing_patterns = lambda *args, **kwargs: []
+            builtins.open = lambda *args, **kwargs: DummyFile()
+            RC.os.makedirs = lambda *args, **kwargs: None
+            RC.build_result_filename = lambda recv_mode, tag="": "dummy.txt"
+            RC.single_result_dir = lambda root: root
+            RC.print_effective_options = lambda *args, **kwargs: None
+
+            rc = RC.main()
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(
+                calls,
+                [
+                    ("perf_pair", "PAIR", "tcp", 64),
+                    ("perf_pair", "PAIR", "tcp", 256),
+                ],
+            )
+        finally:
+            RC.run_single_test = old_run_single_test
+            RC.msg_sizes_for_pattern = old_msg_sizes_for_pattern
+            RC.select_transports = old_select_transports
+            RC.parse_args = old_parse_args
+            RC.collect_missing_patterns = old_collect_missing_patterns
+            builtins.open = old_open
+            RC.os.makedirs = old_makedirs
+            RC.sys.stdout = old_stdout
+            RC.sys.stderr = old_stderr
+            RC.build_result_filename = old_build_result_filename
+            RC.single_result_dir = old_single_result_dir
+            RC.print_effective_options = old_print_effective_options
 
 
 if __name__ == "__main__":

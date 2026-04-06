@@ -34,7 +34,7 @@ inline perf_send_class_t perf_classify_send_result (int rc_)
 
 inline void single_increment_counter (std::atomic<unsigned long long> &counter_)
 {
-    counter_.fetch_add (1, std::memory_order_acq_rel);
+    counter_.fetch_add (1, std::memory_order_relaxed);
 }
 
 inline void single_increment_counter (unsigned long long &counter_)
@@ -45,7 +45,7 @@ inline void single_increment_counter (unsigned long long &counter_)
 inline unsigned long long single_load_counter (
   const std::atomic<unsigned long long> &counter_)
 {
-    return counter_.load (std::memory_order_acquire);
+    return counter_.load (std::memory_order_relaxed);
 }
 
 inline unsigned long long single_load_counter (
@@ -92,6 +92,65 @@ inline void single_notify_metric_waiters (StateT *state_)
         return;
     state_->cv.notify_all ();
 }
+
+template <typename StateT>
+inline auto single_set_phase_wait_armed_impl (StateT &state_,
+                                              bool value_,
+                                              int)
+  -> decltype (state_.phase_wait_armed.store (value_,
+                                              std::memory_order_release),
+               void ())
+{
+    state_.phase_wait_armed.store (value_, std::memory_order_release);
+}
+
+template <typename StateT>
+inline void single_set_phase_wait_armed_impl (StateT &, bool, long)
+{
+}
+
+template <typename StateT>
+inline void single_set_phase_wait_armed (StateT &state_, bool value_)
+{
+    single_set_phase_wait_armed_impl (state_, value_, 0);
+}
+
+template <typename StateT>
+inline auto single_phase_wait_notify_armed_impl (const StateT &state_, int)
+  -> decltype (state_.phase_wait_armed.load (std::memory_order_acquire), bool ())
+{
+    return state_.phase_wait_armed.load (std::memory_order_acquire);
+}
+
+template <typename StateT>
+inline bool single_phase_wait_notify_armed_impl (const StateT &, long)
+{
+    return true;
+}
+
+template <typename StateT>
+inline bool single_phase_wait_notify_armed (const StateT &state_)
+{
+    return single_phase_wait_notify_armed_impl (state_, 0);
+}
+
+template <typename StateT>
+class single_phase_wait_arm_scope_t
+{
+  public:
+    explicit single_phase_wait_arm_scope_t (StateT &state_) : _state (state_)
+    {
+        single_set_phase_wait_armed (_state, true);
+    }
+
+    ~single_phase_wait_arm_scope_t ()
+    {
+        single_set_phase_wait_armed (_state, false);
+    }
+
+  private:
+    StateT &_state;
+};
 
 template <typename StateT>
 inline void single_mark_callback_fatal (StateT *state_)
@@ -142,7 +201,8 @@ inline void single_note_callback_receive (
     if (state_->probe)
         state_->probe->sample_recv_if_due ();
 
-    state_->cv.notify_all ();
+    if (single_phase_wait_notify_armed (*state_))
+        state_->cv.notify_all ();
 }
 
 template <typename StateT>
@@ -169,6 +229,7 @@ inline bool single_wait_for_phase_processed (StateT &state_,
     const auto idle_window =
       std::chrono::milliseconds (std::max (50, std::min (1000, timeout_ms_)));
     std::unique_lock<std::mutex> lock (state_.mutex);
+    single_phase_wait_arm_scope_t<StateT> phase_wait_arm (state_);
     unsigned long long observed =
       single_load_phase_received (state_, phase_);
 

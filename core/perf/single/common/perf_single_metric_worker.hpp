@@ -25,8 +25,6 @@ inline void single_account_metric_event (
             : 0.0;
         state_->latency.add (latency_us);
     }
-
-    state_->cv.notify_all ();
 }
 
 template <typename StateT>

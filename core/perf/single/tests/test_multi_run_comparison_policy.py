@@ -26,6 +26,16 @@ def multi_args():
 
 
 class MultiRunComparisonPolicyTests(unittest.TestCase):
+    def test_multi_default_msg_sizes_exclude_64b(self):
+        self.assertEqual(
+            RC.MSG_SIZES,
+            [256, 1024, 65536, 131072, 262144],
+        )
+        self.assertEqual(
+            RC.STREAM_MSG_SIZES,
+            [256, 1024, 65536],
+        )
+
     def test_result_filename_includes_recv_mode(self):
         old_value = os.environ.get("PERF_RECV_MODE")
         try:
@@ -97,12 +107,222 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 os.environ.pop(key, None)
             self.assertEqual(RC.pattern_default_clients("DEALER_DEALER"), 100)
             self.assertEqual(RC.pattern_default_clients("STREAM"), 10000)
-            self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 100)
-            self.assertEqual(RC.pattern_default_hwm("STREAM"), 10)
+            self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 1000)
+            self.assertEqual(RC.pattern_default_hwm("STREAM"), 1000)
             self.assertEqual(RC.pattern_default_io_threads("DEALER_DEALER"), 4)
             self.assertEqual(RC.pattern_default_io_threads("STREAM"), 4)
         finally:
             RC.ALLOW_MULTI = old_allow_multi
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_multi_split_runner_isolates_each_size_case(self):
+        old_allow_multi = RC.ALLOW_MULTI
+        old_split = RC.run_sizes_test_split
+        calls = []
+        try:
+            RC.ALLOW_MULTI = True
+
+            def fake_split(server_name, client_name, lib_name, transport, sizes,
+                           pattern_name, result_line_callback=None):
+                calls.append(
+                    (server_name, client_name, lib_name, transport,
+                     list(sizes), pattern_name)
+                )
+                return {
+                    "status": "success",
+                    "parsed": {},
+                    "timed_out": False,
+                    "returncode": 0,
+                    "cpu_pct": None,
+                    "mem_mb": None,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+            RC.run_sizes_test_split = fake_split
+            outcome = RC.run_sizes_test(
+                "ignored",
+                "current",
+                "tcp",
+                [64, 256, 1024],
+                "SPOT",
+            )
+
+            self.assertEqual(outcome["status"], "success")
+            self.assertEqual(
+                calls,
+                [
+                    ("comp_src_spot_server", "comp_src_spot_client",
+                     "current", "tcp", [64], "SPOT"),
+                    ("comp_src_spot_server", "comp_src_spot_client",
+                     "current", "tcp", [256], "SPOT"),
+                    ("comp_src_spot_server", "comp_src_spot_client",
+                     "current", "tcp", [1024], "SPOT"),
+                ],
+            )
+        finally:
+            RC.ALLOW_MULTI = old_allow_multi
+            RC.run_sizes_test_split = old_split
+
+    def test_multi_stream_runner_isolates_each_size_case(self):
+        old_stream = RC.run_sizes_test_stream_shared
+        calls = []
+        try:
+            def fake_stream(server_name, lib_name, transport, sizes,
+                            pattern_name, result_line_callback=None):
+                calls.append(
+                    (server_name, lib_name, transport, list(sizes), pattern_name)
+                )
+                return {
+                    "status": "success",
+                    "parsed": {},
+                    "timed_out": False,
+                    "returncode": 0,
+                    "cpu_pct": None,
+                    "mem_mb": None,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+            RC.run_sizes_test_stream_shared = fake_stream
+            outcome = RC.run_sizes_test(
+                "ignored",
+                "current",
+                "wss",
+                [64, 256],
+                "STREAM",
+            )
+
+            self.assertEqual(outcome["status"], "success")
+            self.assertEqual(
+                calls,
+                [
+                    ("comp_src_stream_server", "current", "wss", [64], "STREAM"),
+                    ("comp_src_stream_server", "current", "wss", [256], "STREAM"),
+                ],
+            )
+        finally:
+            RC.run_sizes_test_stream_shared = old_stream
+
+    def test_multi_size_transition_sleep_applies_only_between_cases(self):
+        old_allow_multi = RC.ALLOW_MULTI
+        old_split = RC.run_sizes_test_split
+        old_sleep = RC.time.sleep
+        old_env = os.environ.copy()
+        calls = []
+        sleeps = []
+        try:
+            RC.ALLOW_MULTI = True
+            os.environ["PERF_MULTI_SIZE_TRANSITION_MS"] = "17"
+
+            def fake_split(server_name, client_name, lib_name, transport, sizes,
+                           pattern_name, result_line_callback=None):
+                calls.append(list(sizes))
+                return {
+                    "status": "success",
+                    "parsed": {},
+                    "timed_out": False,
+                    "returncode": 0,
+                    "cpu_pct": None,
+                    "mem_mb": None,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+            def fake_sleep(seconds):
+                sleeps.append(seconds)
+
+            RC.run_sizes_test_split = fake_split
+            RC.time.sleep = fake_sleep
+
+            outcome = RC.run_sizes_test(
+                "ignored",
+                "current",
+                "tcp",
+                [64, 256, 1024],
+                "SPOT",
+            )
+
+            self.assertEqual(outcome["status"], "success")
+            self.assertEqual(calls, [[64], [256], [1024]])
+            self.assertEqual(sleeps, [0.017, 0.017])
+        finally:
+            RC.ALLOW_MULTI = old_allow_multi
+            RC.run_sizes_test_split = old_split
+            RC.time.sleep = old_sleep
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_multi_transport_cooldown_runs_only_between_transports(self):
+        old_allow_multi = RC.ALLOW_MULTI
+        old_run_sizes_test = RC.run_sizes_test
+        old_sleep = RC.time.sleep
+        old_env = os.environ.copy()
+        calls = []
+        sleeps = []
+        try:
+            RC.ALLOW_MULTI = True
+            os.environ["PERF_RUN_COOLDOWN_MS"] = "0"
+            os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "23"
+
+            def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
+                                    pattern_name, result_line_callback=None):
+                calls.append((transport, list(sizes), pattern_name))
+                if result_line_callback is not None:
+                    for size in sizes:
+                        for metric_name, value in (
+                            ("throughput", 1.0),
+                            ("bandwidth", 1.0),
+                            ("latency", 1.0),
+                            (RC.LATENCY_P95_METRIC, 1.0),
+                            (RC.LATENCY_P99_METRIC, 1.0),
+                            ("server_snd_pending_max", 0.0),
+                            ("server_rcv_pending_max", 0.0),
+                            ("server_rcv_pending_end", 0.0),
+                        ):
+                            result_line_callback(transport, size, metric_name, value)
+                return {
+                    "status": "success",
+                    "parsed": {},
+                    "timed_out": False,
+                    "returncode": 0,
+                    "cpu_pct": None,
+                    "mem_mb": None,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+            def fake_sleep(seconds):
+                sleeps.append(seconds)
+
+            RC.run_sizes_test = fake_run_sizes_test
+            RC.time.sleep = fake_sleep
+
+            final_stats, failures = RC.collect_data(
+                "ignored",
+                "current",
+                "SPOT",
+                1,
+                transports=["tcp", "tls", "ws"],
+                table_lines=[],
+            )
+
+            self.assertEqual(failures, [])
+            self.assertEqual(
+                calls,
+                [
+                    ("tcp", RC.MSG_SIZES, "SPOT"),
+                    ("tls", RC.MSG_SIZES, "SPOT"),
+                    ("ws", RC.MSG_SIZES, "SPOT"),
+                ],
+            )
+            self.assertEqual(sleeps, [0.023, 0.023])
+            self.assertIn("tcp|256|throughput", final_stats)
+        finally:
+            RC.ALLOW_MULTI = old_allow_multi
+            RC.run_sizes_test = old_run_sizes_test
+            RC.time.sleep = old_sleep
             os.environ.clear()
             os.environ.update(old_env)
 

@@ -59,6 +59,16 @@
 - 위 항목이 이미 존재하지만 실제로는 ready 이벤트 하나 대기하거나 phase 종료를
   우회적으로 표현한 것뿐이면 삭제한다.
 
+### 1.0.1 실행 계약 불변식
+
+- `single`의 최소 측정 단위는 `pattern/transport/size/run` 이다.
+- runner는 size마다 perf 바이너리를 **다시 실행**해야 한다.
+- 하나의 perf 바이너리 프로세스가 여러 size를 내부 루프로 순회하면 정책 위반이다.
+- perf 바이너리는 해당 size 케이스를 측정하고 `RESULT` line만 출력한다.
+- size 반복 실행, runs 집계, markdown table 출력, 결과 파일 저장은 runner 책임이다.
+- single 리팩토링은 위 책임 분리를 유지해야 하며, 변경 시 자동 검증(test)도
+  함께 갱신해야 한다.
+
 ### 1.1 Single 핵심 정책
 
 - 목적
@@ -77,10 +87,16 @@
   - callback hot path는 메시지에서 metric header와 timestamp 등 필요한 최소
     메타데이터만 추출해 bounded queue로 전달한다. `zlink_msg_t` handle,
     payload pointer, multipart parts 소유권을 callback 밖으로 넘기지 않는다.
+  - callback dispatch thread는 phase별 receive count 증가와 metric event
+    enqueue까지만 수행한다.
   - send: sender는 active 구간 동안 blocking send를 연속 수행한다.
   - throughput/latency 집계, phase window 판정, 결과 출력용 통계 계산은
     callback 안에서 직접 수행하지 않고 전용 worker가 queue를 drain하며
     처리한다. single callback 모델에서 app thread는 sender를 겸하지 않는다.
+  - latency sample 계산, percentile sample 축적, processed-count 완료 대기는
+    callback 밖 전용 worker가 맡는다.
+  - 위 callback/worker 경계는 `PAIR`, `PUBSUB`, `DEALER_DEALER`,
+    `DEALER_ROUTER`, `ROUTER_ROUTER`, `SPOT` 전 패턴에 동일하게 적용한다.
   - phase 종료 보장은 별도 bench phase가 아니라 내부 processed-count drain으로
     처리한다.
 - poller

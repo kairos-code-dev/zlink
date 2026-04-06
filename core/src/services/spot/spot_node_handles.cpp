@@ -17,6 +17,52 @@ static void preserve_first_error_local (int rc_, int *first_error_)
         return;
     *first_error_ = errno != 0 ? errno : EIO;
 }
+
+static void copy_int_option_value (const void *optval_,
+                                   size_t optvallen_,
+                                   int *out_)
+{
+    if (!optval_ || !out_ || optvallen_ == 0)
+        return;
+
+    *out_ = 0;
+    memcpy (out_, optval_, std::min (optvallen_, sizeof (*out_)));
+}
+
+static void refresh_runtime_pub_hwm (spot_runtime_t *runtime_,
+                                     const void *optval_,
+                                     size_t optvallen_)
+{
+    if (!runtime_ || !optval_ || optvallen_ == 0)
+        return;
+
+    int value = 0;
+    copy_int_option_value (optval_, optvallen_, &value);
+    if (runtime_->mesh_pub)
+        (void) runtime_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                               &value, sizeof (value));
+    if (runtime_->local_fanout_xpub)
+        (void) runtime_->local_fanout_xpub->setsockopt (
+          ZLINK_INTERNAL_OPT_SNDHWM, &value, sizeof (value));
+    runtime_->data_plane_state.current_mesh_pub_sndhwm = value;
+}
+
+static void refresh_runtime_sub_hwm (spot_runtime_t *runtime_,
+                                     const void *optval_,
+                                     size_t optvallen_)
+{
+    if (!runtime_ || !optval_ || optvallen_ == 0)
+        return;
+
+    int value = 0;
+    copy_int_option_value (optval_, optvallen_, &value);
+    if (runtime_->local_pub_ingress_sub)
+        (void) runtime_->local_pub_ingress_sub->setsockopt (
+          ZLINK_INTERNAL_OPT_RCVHWM, &value, sizeof (value));
+    if (runtime_->mesh_xsub)
+        (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                                &value, sizeof (value));
+}
 }
 
 spot_node_default_handles_t::spot_node_default_handles_t () :
@@ -362,7 +408,13 @@ int spot_node_t::set_pub_option (int option_,
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    return _handle_defaults.set_pub_option (option_, optval_, optvallen_);
+    const int rc = _handle_defaults.set_pub_option (option_, optval_, optvallen_);
+    if (rc != 0)
+        return rc;
+
+    if (option_ == ZLINK_SPOT_PUB_OPT_SNDHWM)
+        refresh_runtime_pub_hwm (_runtime, optval_, optvallen_);
+    return 0;
 }
 
 int spot_node_t::set_sub_option (int option_,
@@ -372,7 +424,13 @@ int spot_node_t::set_sub_option (int option_,
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    return _handle_defaults.set_sub_option (option_, optval_, optvallen_);
+    const int rc = _handle_defaults.set_sub_option (option_, optval_, optvallen_);
+    if (rc != 0)
+        return rc;
+
+    if (option_ == ZLINK_SPOT_SUB_OPT_RCVHWM)
+        refresh_runtime_sub_hwm (_runtime, optval_, optvallen_);
+    return 0;
 }
 
 spot_node_t::pub_defaults_t spot_node_t::load_pub_defaults () const

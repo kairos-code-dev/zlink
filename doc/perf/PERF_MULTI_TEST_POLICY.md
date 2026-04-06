@@ -231,7 +231,7 @@ perf/multi/
 | 옵션 | CLI 인자 | 환경 변수 | 기본값 |
 |------|----------|-----------|--------|
 | runs | `--runs N` | — | 1 |
-| msg sizes | `--msg-sizes` | `PERF_MSG_SIZES` | 표준 6종 |
+| msg sizes | `--msg-sizes` | `PERF_MSG_SIZES` | 표준 5종 |
 | transports | `--transports` | `PERF_TRANSPORTS` | 패턴별 기본값 (§11.3 참조) |
 | clients | `--clients` | `PERF_MULTI_CLIENTS` | 100 (stream=10000), 메모리 가드에 의해 자동 하향 가능 |
 
@@ -307,6 +307,19 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 - Multi 벤치마크는 대량의 클라이언트 소켓(1000~10000)을 사용하므로, transport/pattern 전환 시 OS 소켓 리소스 해제를 위한 충분한 대기가 필요하다.
 - 전환 cooldown은 이전 server/client 프로세스 종료 후 다음 server 실행 전에 **스크립트 레벨**에서 `sleep`으로 수행한다.
+
+#### 실행 계약 불변식
+
+- `pattern/transport/size` 는 측정의 최소 독립 단위다.
+- 각 size 케이스는 반드시 **독립된 server/client 프로세스 쌍**으로 실행한다.
+- 여러 size를 하나의 server/client 생명주기에 묶어 실행하는 리팩토링은 정책 위반이다.
+- size 간 상태 공유는 허용하지 않는다. 다음 size는 이전 size의 연결, ready 상태,
+  active 집계, control state를 이어받아서는 안 된다.
+- `transport_transition_ms`, `pattern_transition_ms` cooldown은 이전 케이스 종료
+  후 다음 케이스 시작 전에만 적용한다. active 구간 안으로 밀어 넣거나 측정 시간에
+  포함시키면 안 된다.
+- runner 리팩토링은 위 불변식을 유지해야 하며, 변경 시 자동 검증(test)도 함께
+  갱신해야 한다.
 
 ### 3.4 종료 코드
 
@@ -486,7 +499,7 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 | `--io-threads N` | 서버/클라이언트 io threads 동시 설정 (레거시 별칭) | — |
 | `--server-io-threads N` | 서버 io threads (Linux sh만 지원, Windows PS1은 `--io-threads`로 통합) | non-stream=2, stream=4 |
 | `--client-io-threads N` | 클라이언트 io threads (Linux sh만 지원, Windows PS1은 `--io-threads`로 통합) | non-stream=2, stream=4 |
-| `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). STREAM 계열은 § 11.2 참조 | `64,256,1024,65536,131072,262144` (STREAM: `64,256,1024,65536`) |
+| `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). multi 기본 세트는 `64B`를 제외한다. STREAM 계열은 § 11.2 참조 | `256,1024,65536,131072,262144` (STREAM: `256,1024,65536`) |
 | `--transports LIST` | transport 목록 (쉼표 구분) | `tcp,tls,ws,wss` |
 | `--recv MODE` | recv 모델 선택: `recv` (기본) 또는 `callback` | `recv` |
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
@@ -1094,7 +1107,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
 | `PERF_IO_THREADS` | context I/O threads | 0 |
-| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행) | `64,256,1024,65536,131072,262144` |
+| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행). multi 기본 세트는 `64B`를 제외한다 | `256,1024,65536,131072,262144` |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | 패턴별 기본값 (§11.3 참조) |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 (`1`로 활성화) | 0 |
@@ -1117,8 +1130,8 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_MULTI_CLIENTS` | 클라이언트 소켓 수 | 100 (stream=10000) |
-| `PERF_MULTI_STREAM_MSG_SIZES` | STREAM 계열 전용 size 목록 (러너가 size별 케이스로 분할 실행). 미설정 시 `PERF_MSG_SIZES`가 설정되어 있으면 그 값을 사용하고, 둘 다 미설정이면 기본값 사용 | `64,256,1024,65536` |
-| `PERF_MULTI_HWM` | 소켓 HWM | 100 (stream=10) |
+| `PERF_MULTI_STREAM_MSG_SIZES` | STREAM 계열 전용 size 목록 (러너가 size별 케이스로 분할 실행). 미설정 시 `PERF_MSG_SIZES`가 설정되어 있으면 그 값을 사용하고, 둘 다 미설정이면 기본값 사용 | `256,1024,65536` |
+| `PERF_MULTI_HWM` | 소켓 HWM | 1000 |
 | `PERF_MULTI_SNDHWM` | 소켓 송신 HWM | `PERF_MULTI_HWM` |
 | `PERF_MULTI_RCVHWM` | 소켓 수신 HWM | `PERF_MULTI_HWM` |
 | `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | auto (clients≥10000: 1024, 기타: 128) |

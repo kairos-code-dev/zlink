@@ -21,10 +21,42 @@ namespace zlink
 {
 namespace
 {
-static const size_t spot_sub_queue_hwm_default = 16;
-static const int spot_internal_ingress_rcvhwm_default = 8192;
-static const int spot_internal_mesh_xsub_rcvhwm_default = 8192;
+static const int spot_data_plane_hwm_default = 1000;
+static const int spot_internal_ingress_rcvhwm_default = 1000;
+static const int spot_internal_mesh_xsub_rcvhwm_default = 1000;
 static const int spot_internal_peer_ctrl_rcvhwm_default = 1024;
+
+static int resolve_node_pub_sndhwm_default (const spot_runtime_t *runtime_)
+{
+    if (!runtime_ || !runtime_->owner)
+        return spot_data_plane_hwm_default;
+
+    const spot_node_t::pub_defaults_t defaults =
+      runtime_->owner->load_pub_defaults ();
+    if (!defaults.sndhwm.enabled || defaults.sndhwm.size == 0)
+        return spot_data_plane_hwm_default;
+
+    int value = spot_data_plane_hwm_default;
+    memcpy (&value, &defaults.sndhwm.value,
+            std::min (defaults.sndhwm.size, sizeof (value)));
+    return value > 0 ? value : 0;
+}
+
+static int resolve_node_sub_rcvhwm_default (const spot_runtime_t *runtime_)
+{
+    if (!runtime_ || !runtime_->owner)
+        return spot_data_plane_hwm_default;
+
+    const spot_node_t::sub_defaults_t defaults =
+      runtime_->owner->load_sub_defaults ();
+    if (!defaults.rcvhwm.enabled || defaults.rcvhwm.size == 0)
+        return spot_data_plane_hwm_default;
+
+    int value = spot_data_plane_hwm_default;
+    memcpy (&value, &defaults.rcvhwm.value,
+            std::min (defaults.rcvhwm.size, sizeof (value)));
+    return value > 0 ? value : 0;
+}
 
 static int apply_common_internal_opts (socket_base_t *socket_, int linger_)
 {
@@ -57,18 +89,24 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     const int zero = 0;
     const int neg_one = -1;
     const int one = 1;
+    const int node_pub_sndhwm = resolve_node_pub_sndhwm_default (runtime_);
+    const int node_sub_rcvhwm = resolve_node_sub_rcvhwm_default (runtime_);
     const int ingress_rcvhwm =
       spot_data_plane_forwarder_t::resolve_internal_hwm_override (
         "ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM",
-        spot_internal_ingress_rcvhwm_default);
+        node_sub_rcvhwm > 0 ? node_sub_rcvhwm
+                            : spot_internal_ingress_rcvhwm_default);
     const int mesh_xsub_rcvhwm =
       spot_data_plane_forwarder_t::resolve_internal_hwm_override (
         "ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM",
-        spot_internal_mesh_xsub_rcvhwm_default);
+        node_sub_rcvhwm > 0 ? node_sub_rcvhwm
+                            : spot_internal_mesh_xsub_rcvhwm_default);
     const int mesh_pub_sndhwm =
       spot_data_plane_forwarder_t::resolve_internal_hwm_override (
         "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
-        spot_mesh_pub_budget_t::resolve_default (std::string (), 0));
+        node_pub_sndhwm > 0 ? node_pub_sndhwm
+                            : spot_mesh_pub_budget_t::resolve_default (
+                                std::string (), 0));
     const int peer_ctrl_rcvhwm =
       spot_data_plane_forwarder_t::resolve_internal_hwm_override (
         "ZLINK_SPOT_INTERNAL_PEER_CTRL_RCVHWM",
@@ -76,7 +114,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     const int fanout_sndhwm =
       spot_data_plane_forwarder_t::resolve_internal_hwm_override (
         "ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM",
-        static_cast<int> (spot_sub_queue_hwm_default));
+        node_pub_sndhwm > 0 ? node_pub_sndhwm : spot_data_plane_hwm_default);
 
     apply_common_internal_opts (state_->ctrl, linger);
     apply_common_internal_opts (state_->mesh_pub, linger);

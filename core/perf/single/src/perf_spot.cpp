@@ -52,6 +52,7 @@ struct spot_client_state_t
         msg_size (0),
         active_deadline_us (0),
         fatal (false),
+        phase_wait_armed (false),
         warmup_received (0),
         active_received (0),
         warmup_processed (0),
@@ -65,6 +66,7 @@ struct spot_client_state_t
     size_t msg_size;
     std::atomic<uint64_t> active_deadline_us;
     std::atomic<bool> fatal;
+    std::atomic<bool> phase_wait_armed;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     std::atomic<unsigned long long> warmup_processed;
@@ -75,6 +77,18 @@ struct spot_client_state_t
     std::mutex mutex;
     std::condition_variable cv;
 };
+
+inline void single_set_phase_wait_armed (spot_client_state_t &state_,
+                                         bool value_)
+{
+    state_.phase_wait_armed.store (value_, std::memory_order_release);
+}
+
+inline bool single_phase_wait_notify_armed (
+  const spot_client_state_t &state_)
+{
+    return state_.phase_wait_armed.load (std::memory_order_acquire);
+}
 
 std::atomic<spot_client_state_t *> g_spot_client_state (NULL);
 
@@ -458,9 +472,6 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    single_callback_metric_queue_t metric_queue (k_metric_queue_capacity);
-    single_metric_worker_t<spot_client_state_t> metric_worker;
-
     const int base_port = 35000 + (current_process_id () % 1000) * 8;
     const std::string endpoint = bind_node (pub_node, transport_, base_port);
     if (endpoint.empty ()) {
@@ -488,25 +499,31 @@ int run_case (const std::string &lib_name_,
     }
 
     spot_client_state_t client_state;
+    single_callback_metric_queue_t callback_queue (k_metric_queue_capacity);
+    single_metric_worker_t<spot_client_state_t> metric_worker;
     client_state.run_id = static_cast<uint32_t> (current_process_id ());
     client_state.msg_size = msg_size_;
-    client_state.callback_queue = &metric_queue;
     spot_client_state_scope_t client_state_scope (&client_state);
     queue_probe_t probe (pub, sub);
     client_state.probe = &probe;
+    client_state.callback_queue = &callback_queue;
     metric_worker.state = &client_state;
-    metric_worker.queue = &metric_queue;
+    metric_worker.queue = &callback_queue;
+
+    if (!start_single_metric_worker (&metric_worker)) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-spot] metric worker start failed"
+                      << std::endl;
+        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
+        return 1;
+    }
 
     if (!wait_for_spot_ready_barrier (
           pub, client_state, msg_size_,
           resolve_spot_subscription_ready_timeout_ms (transport_))) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready barrier failed" << std::endl;
-        cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
-        return 1;
-    }
-
-    if (!start_single_metric_worker (&metric_worker)) {
+        stop_single_metric_worker (&metric_worker);
         cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }
@@ -516,7 +533,6 @@ int run_case (const std::string &lib_name_,
           pub, client_state, probe, payload, msg_size_,
           perf_single_metric::phase_warmup,
           resolve_single_warmup_seconds (), NULL, NULL)) {
-        stop_single_metric_worker (&metric_worker);
         const queue_stats_t queue_stats = probe.snapshot ();
         print_result (lib_name_,
                       k_pattern,
@@ -527,6 +543,7 @@ int run_case (const std::string &lib_name_,
                       0.0,
                       0.0,
                       queue_stats);
+        stop_single_metric_worker (&metric_worker);
         cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }
@@ -537,7 +554,6 @@ int run_case (const std::string &lib_name_,
       pub, client_state, probe, payload, msg_size_,
       perf_single_metric::phase_active, resolve_single_duration_seconds (),
       &throughput, &latency);
-    stop_single_metric_worker (&metric_worker);
     const queue_stats_t queue_stats = probe.snapshot ();
     print_result (lib_name_,
                   k_pattern,
@@ -549,6 +565,7 @@ int run_case (const std::string &lib_name_,
                   active_ok ? latency.p99_us : 0.0,
                   queue_stats);
 
+    stop_single_metric_worker (&metric_worker);
     cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
     return active_ok ? 0 : 1;
 }

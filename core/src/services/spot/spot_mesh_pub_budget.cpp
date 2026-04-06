@@ -5,6 +5,7 @@
 #include "services/spot/spot_mesh_pub_budget.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "sockets/socket_base.hpp"
 
@@ -66,6 +67,17 @@ int spot_mesh_pub_budget_t::resolve_runtime_default (
 {
     if (!runtime_)
         return resolve_default (std::string (), 0);
+
+    if (runtime_->owner) {
+        const spot_node_t::pub_defaults_t defaults =
+          runtime_->owner->load_pub_defaults ();
+        if (defaults.sndhwm.enabled && defaults.sndhwm.size > 0) {
+            int value = resolve_default (std::string (), 0);
+            memcpy (&value, &defaults.sndhwm.value,
+                    std::min (defaults.sndhwm.size, sizeof (value)));
+            return value > 0 ? value : 0;
+        }
+    }
 
     const uint32_t ready_peers =
       mesh_pub_ready_peer_count (&runtime_->mesh_peer_state);

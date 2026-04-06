@@ -141,7 +141,55 @@
   단발성 self-check 1회만 수행하고, 실패 시 즉시 fail 처리한다.
 - registry/bootstrap/query/summary 조회는 measurement phase 밖에서만 수행한다.
 
-## 1.2 패턴 해석 규칙
+## 1.2 Binary And Runner Responsibilities
+
+perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`와 bindings perf에
+동일하게 적용한다.
+
+### 1.2.1 바이너리 책임
+
+- 바이너리는 **단일 측정 케이스**만 수행한다.
+- 단일 측정 케이스의 최소 단위는 `pattern/transport/size/run` 이다.
+- 바이너리는 입력 조건에 따라 해당 케이스의 ready/warmup/active를 수행하고,
+  `RESULT,...` line과 필요한 제어 신호만 stdout으로 출력한다.
+- 바이너리는 다음 책임을 가지지 않는다.
+  - 여러 pattern 순회
+  - 여러 transport 순회
+  - 여러 size 반복 실행 orchestration
+  - runs > 1 집계
+  - markdown table 포맷팅
+  - median/최종 report 저장
+- 바이너리 내부에서 측정 hot path를 흐리게 하는 report formatting, 문자열 조합,
+  동적 집계 컨테이너 orchestration 로직을 추가하면 안 된다.
+- callback 기반 측정에서 callback dispatch thread는 phase별 count 증가와
+  최소 metric event enqueue까지만 수행한다. throughput/latency 계산,
+  sample aggregation, 완료 대기는 callback 밖 worker에서 처리해야 하며,
+  패턴별 예외를 두지 않는다.
+
+### 1.2.2 Runner 책임
+
+- runner(`run_benchmarks*.sh/.ps1`, `run_comparison.py`)는 전체 suite orchestration을 담당한다.
+- runner 책임:
+  - pattern/transport/size/run 순회
+  - 프로세스 시작/종료 및 READY 대기
+  - cooldown 적용
+  - RESULT line 수집/파싱
+  - runs > 1 median 집계
+  - markdown table 출력
+  - 결과 파일 저장 및 complete/partial 판정
+- 사람용 출력 형식과 결과 파일 구조는 runner에서만 관리한다.
+- policy 변경으로 출력 형식이나 완료 판정 로직이 바뀌면, 바이너리가 아니라
+  runner를 우선 수정한다.
+
+### 1.2.3 구조 불변식
+
+- `pattern/transport/size/run` 단위 측정 의미를 바이너리 밖 runner가 조합한다.
+- 바이너리는 “한 케이스 실행 + RESULT line 출력”을 넘는 orchestration 책임을
+  가져서는 안 된다.
+- runner 리팩토링은 이 책임 분리를 유지해야 하며, 관련 자동 검증(test)도 함께
+  갱신해야 한다.
+
+## 1.3 패턴 해석 규칙
 
 - echo
   - request/reply 의미를 유지한다.
@@ -852,7 +900,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
 | `PERF_IO_THREADS` | context I/O threads | 0 |
-| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행) | `64,256,1024,65536,131072,262144` |
+| `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행). single 기본값은 `64,256,1024,65536,131072,262144`, multi 기본값은 `256,1024,65536,131072,262144` | suite/패턴별 기본값 |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | suite/패턴별 기본값 |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 | 0 |

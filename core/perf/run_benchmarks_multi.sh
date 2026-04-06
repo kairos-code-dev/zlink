@@ -199,6 +199,10 @@ When callback mode is selected without an explicit pattern, default PATTERN is:
 By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 2s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
+Policy contract:
+  - benchmark binaries execute one pattern/transport/size/run case only
+  - this runner owns pattern/transport/size iteration, cooldown, aggregation,
+    markdown table output, and result-file persistence
 
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above).
@@ -220,12 +224,14 @@ Options:
                          (default: 4).
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
                          (default: 4).
-  --msg-sizes LIST       Comma-separated message sizes.
+  --msg-sizes LIST       Comma-separated message sizes
+                         (default: 256,1024,65536,131072,262144;
+                         STREAM: 256,1024,65536).
   --transports LIST      Comma-separated transports.
   --warmup N             Optional override for multi warmup seconds (default 2).
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
-  --hwm N                Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
+  --hwm N                Override PERF_MULTI_HWM (default: 1000 in binary).
   --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
   --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
   --sndbuf SIZE          Override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
@@ -334,7 +340,6 @@ expand_and_add_explicit_pattern() {
 }
 
 HAS_EXPLICIT_TRANSPORT=0
-HAS_EXPLICIT_TRANSPORT_TRANSITION=0
 HAS_EXPLICIT_MSG_SIZES=0
 HAS_EXPLICIT_RESULTS_TAG=0
 HAS_EXPLICIT_RUNS=0
@@ -622,7 +627,6 @@ while [[ $# -gt 0 ]]; do
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      HAS_EXPLICIT_TRANSPORT_TRANSITION=1
       TRANSPORT_TRANSITION_MS="${2}"
       shift 2
       ;;
@@ -975,24 +979,6 @@ if [[ "${RECV_MODE}" == "callback" && "${#RUN_PATTERNS[@]}" -gt 1 ]]; then
     fi
   done
   RUN_PATTERNS=("${reordered_patterns[@]}")
-fi
-
-if [[ "${HAS_EXPLICIT_TRANSPORT_TRANSITION}" -eq 0 \
-   && "${RECV_MODE}" == "callback" ]]; then
-  EFFECTIVE_TRANSPORTS="${PERF_TRANSPORTS:-${TRANSPORTS}}"
-  has_spot_pattern=0
-  for pattern in "${RUN_PATTERNS[@]}"; do
-    if [[ "${pattern}" == "SPOT" || "${pattern}" == "MULTI_SPOT" ]]; then
-      has_spot_pattern=1
-      break
-    fi
-  done
-  if [[ "${has_spot_pattern}" -eq 1 \
-     && "${EFFECTIVE_TRANSPORTS}" == *,* \
-     && ( "${EFFECTIVE_TRANSPORTS}" == *"tls"* \
-          || "${EFFECTIVE_TRANSPORTS}" == *"wss"* ) ]]; then
-    TRANSPORT_TRANSITION_MS=5000
-  fi
 fi
 
 RUN_ENV+=(PERF_MULTI_TRANSPORT_TRANSITION_MS="${TRANSPORT_TRANSITION_MS}")

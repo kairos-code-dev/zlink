@@ -155,22 +155,39 @@ Returns `EBUSY` in callback model.
 Use `zlink_spot_node_status_snapshot()`, `zlink_spot_node_peers_snapshot()`,
 and `zlink_spot_node_subjects_snapshot()` for observability.
 
-## Internal Mesh Publish Budget
+## SpotNode Internal Data-Plane HWM
 
-SPOT uses an internal `mesh_pub` sender inside the SpotNode runtime to fan out
-payloads to connected peers. The internal `mesh_pub` send HWM defaults to
-`100` for every transport, including `tcp`, `tls`, `ws`, and `wss`.
+SpotNode owns an internal data-plane made of:
 
-This internal budget is separate from public socket `SNDHWM` or `RCVHWM`
-options applied to unified `Spot` handles.
+- `ingress` receive queue
+- `fanout` local publish queue
+- `mesh_pub` peer publish queue
+- `mesh_xsub` peer receive queue
 
-- Default internal `mesh_pub` send HWM: `100`
+The default data-plane HWM is `1000`. When `SNDHWM` / `RCVHWM` are set on a
+`SpotNode` handle, the value is also used as the internal data-plane budget in
+the matching direction:
+
+- `SNDHWM` on `SpotNode`
+  - default SpotNode pub handles
+  - internal `fanout` send HWM
+  - internal `mesh_pub` send HWM
+- `RCVHWM` on `SpotNode`
+  - default SpotNode sub handles
+  - internal `ingress` receive HWM
+  - internal `mesh_xsub` receive HWM
+
+This internal data-plane budget is separate from public `SNDHWM` / `RCVHWM`
+options applied to unified `Spot` handles. `peer_ctrl` remains on its own
+control-plane default and is not grouped into the SpotNode data-plane HWM.
+
+- Default internal data-plane HWM: `1000`
 - Transport-specific default expansion is not applied
-- Override only when a deployment explicitly needs a different internal budget:
-  `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM=<value>`
-
-Keep the default when comparing transport behavior in perf runs so queueing
-latency is not distorted by transport-specific internal backlog depth.
+- Fine-grained internal overrides remain available only for diagnostics:
+  - `ZLINK_SPOT_INTERNAL_INGRESS_RCVHWM`
+  - `ZLINK_SPOT_INTERNAL_FANOUT_SNDHWM`
+  - `ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM`
+  - `ZLINK_SPOT_INTERNAL_MESH_XSUB_RCVHWM`
 
 ## Callback contract
 

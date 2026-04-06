@@ -10,6 +10,8 @@
 
 namespace {
 
+static const size_t k_metric_queue_capacity = 65536;
+
 inline void debug_pair (const char *message_)
 {
     if (bench_debug_enabled ())
@@ -24,6 +26,7 @@ struct pair_callback_state_t
         payload_size (0),
         active_deadline_us (0),
         fatal (false),
+        phase_wait_armed (false),
         warmup_received (0),
         active_received (0),
         probe (NULL),
@@ -35,6 +38,7 @@ struct pair_callback_state_t
     size_t payload_size;
     std::atomic<uint64_t> active_deadline_us;
     std::atomic<bool> fatal;
+    std::atomic<bool> phase_wait_armed;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
     latency_stats_builder_t latency;
@@ -113,6 +117,7 @@ inline bool run_oneway_phase_callback (void *sender,
       std::chrono::steady_clock::now ()
       + std::chrono::seconds (duration_s > 0 ? duration_s : 1);
     state->fatal.store (false, std::memory_order_release);
+    state->phase_wait_armed.store (false, std::memory_order_release);
     state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
     state->active_deadline_us.store (
@@ -213,6 +218,20 @@ inline bool run_oneway_phase_callback (void *sender,
 
 } // namespace
 
+template <>
+inline void single_set_phase_wait_armed<pair_callback_state_t> (
+  pair_callback_state_t &state_, bool value_)
+{
+    state_.phase_wait_armed.store (value_, std::memory_order_relaxed);
+}
+
+template <>
+inline bool single_phase_wait_notify_armed<pair_callback_state_t> (
+  const pair_callback_state_t &state_)
+{
+    return state_.phase_wait_armed.load (std::memory_order_relaxed);
+}
+
 void run_pair (const std::string &transport,
                size_t msg_size,
                const std::string &lib_name)
@@ -242,7 +261,7 @@ void run_pair (const std::string &transport,
     std::vector<char> payload (payload_size, 'a');
     queue_probe_t queue_probe (s_conn.get (), s_bind.get ());
     pair_callback_state_t callback_state;
-    single_callback_metric_queue_t callback_queue (65536);
+    single_callback_metric_queue_t callback_queue (k_metric_queue_capacity);
     single_metric_worker_t<pair_callback_state_t> metric_worker;
 
     auto print_fail_with_queue = [&] () {
@@ -302,11 +321,12 @@ void run_pair (const std::string &transport,
       s_conn.get (), &payload, payload_size, &callback_state, &seq,
       perf_single_metric::phase_active, duration_s, recv_timeout_ms,
       &queue_probe, &received, &latency_stats);
-    stop_single_metric_worker (&metric_worker);
     if (!active_ok) {
+        stop_single_metric_worker (&metric_worker);
         print_fail_with_queue ();
         return;
     }
+    stop_single_metric_worker (&metric_worker);
 
     const double throughput =
       static_cast<double> (received) / static_cast<double> (duration_s);

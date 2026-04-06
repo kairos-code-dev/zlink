@@ -28,7 +28,7 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  zlink_msg_t (64 bytes)                      │
+│                  zlink_msg_t (64 bytes)                     │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  VSM (≤33B):  [ type | size | data ····················· ]  │
@@ -40,13 +40,13 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 │                  │ heap buffer        │                      │
 │                  │ + refcount         │                      │
 │                  └────────────────────┘                      │
-│                                                             │
+│                    │
 │  CMSG:        [ type | data_ptr | ··· ]                     │
 │                           ↓                                 │
 │                  ┌────────────────────┐                      │
 │                  │ external const buf │  ← free 안 함       │
 │                  └────────────────────┘                      │
-│                                                             │
+│                    │
 │  ZCLMSG:      [ type | data_ptr | ffn_ptr | hint | ··· ]   │
 │                           ↓          ↓                      │
 │                  ┌──────────┐   ffn(data, hint)로 해제      │

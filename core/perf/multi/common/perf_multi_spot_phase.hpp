@@ -87,7 +87,6 @@ struct client_hooks_t
     void (*set_collect_active)(void *, bool);
     bool (*wait_for_active_phase)(void *, size_t, int);
     bool (*wait_for_phase_duration)(void *, double);
-    bool (*wait_for_active_drain)(void *, size_t);
 };
 
 inline bool run_client_case(void *state,
@@ -122,11 +121,6 @@ inline bool run_client_case(void *state,
 
     if (!hooks.wait_for_phase_duration(
           state, static_cast<double>(std::max(1, settings.duration_seconds)))) {
-        hooks.set_collect_active(state, false);
-        return false;
-    }
-    if (hooks.wait_for_active_drain
-        && !hooks.wait_for_active_drain(state, msg_size)) {
         hooks.set_collect_active(state, false);
         return false;
     }

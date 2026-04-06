@@ -697,6 +697,7 @@ void run_multi_spot_process_sequence_case (
                   connect_ready_timeout_ms_);
         common_env.push_back (buf);
     }
+    common_env.push_back ("PERF_DEFAULT_IO_THREADS=4");
     common_env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
 
     std::vector<std::string> msg_sizes;
@@ -864,6 +865,18 @@ void test_multi_spot_process_recv_many_clients_tcp_large_sequence ()
       "recv", "tcp", "64,256,1024,65536,131072,262144", 100, 5000, 2, 2);
 }
 
+void test_multi_spot_process_callback_many_clients_tcp_large_sequence ()
+{
+    run_multi_spot_process_sequence_case (
+      "callback", "tcp", "64,256,1024,65536,131072,262144", 100, 5000, 2, 2);
+}
+
+void test_multi_spot_process_callback_many_clients_tls_large_sequence ()
+{
+    run_multi_spot_process_sequence_case (
+      "callback", "tls", "64,256,1024,65536,131072,262144", 100, 10000, 2, 2);
+}
+
 void test_multi_spot_process_recv_1000_clients_tcp_ready_count ()
 {
     run_multi_spot_process_case ("recv", "tcp", "64", 1000, 20000, 1, 1);
@@ -939,6 +952,8 @@ int main (int argc, char **argv)
             RUN_TEST (name);                                                   \
     } while (0)
     RUN_SPOT_PROCESS_TEST (test_multi_spot_process_recv_smoke);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_callback_many_clients_tcp_large_sequence);
+    RUN_SPOT_PROCESS_TEST (test_multi_spot_process_callback_many_clients_tls_large_sequence);
     RUN_SPOT_PROCESS_TEST (test_multi_spot_process_invalid_mode_is_rejected);
 #undef RUN_SPOT_PROCESS_TEST
     return UNITY_END ();

@@ -93,8 +93,7 @@ struct spot_client_state_t
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
         recv_mode(spot_recv_recv),
         recv_workers_stop(false),
-        metrics_epoch(1),
-        last_active_recv_us(0)
+        metrics_epoch(1)
     {
     }
 
@@ -123,7 +122,6 @@ struct spot_client_state_t
     spot_recv_mode_t recv_mode;
     std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
-    std::atomic<uint64_t> last_active_recv_us;
 };
 
 spot_client_state_t *g_client_state = NULL;
@@ -658,11 +656,6 @@ void handle_spot_client_parts(const char *topic,
                 : 0.0;
             metrics->latency.add(latency_us);
         }
-        if (state->recv_mode == spot_recv_recv) {
-            state->last_active_recv_us.store(
-              trace_phases ? recv_ts_us : perf_multi_metric::now_us(),
-              std::memory_order_release);
-        }
     }
 
     if (phase_changed)
@@ -981,7 +974,6 @@ void reset_metrics(spot_client_state_t *state, size_t msg_size)
 {
     state->expected_msg_size.store(msg_size, std::memory_order_release);
     state->collect_active.store(false, std::memory_order_release);
-    state->last_active_recv_us.store(0, std::memory_order_release);
     state->control_started_msg_size.store(0, std::memory_order_release);
     state->control_start_recv_us.store(0, std::memory_order_release);
     {
@@ -1143,70 +1135,6 @@ bool wait_phase_duration(spot_client_state_t *state, double seconds)
     return perf_multi_spot_control::wait_for_phase_duration(state, seconds);
 }
 
-int resolve_spot_active_drain_quiet_ms(size_t msg_size)
-{
-    int quiet_ms = 25;
-    if (msg_size >= 65536)
-        quiet_ms = 50;
-    if (msg_size >= 131072)
-        quiet_ms = 100;
-    if (msg_size >= 262144)
-        quiet_ms = 150;
-    return resolve_multi_int_env(
-      "PERF_MULTI_SPOT_ACTIVE_DRAIN_QUIET_MS", quiet_ms, 0);
-}
-
-int resolve_spot_active_drain_timeout_ms(size_t msg_size)
-{
-    int timeout_ms = 250;
-    if (msg_size >= 1024)
-        timeout_ms = 750;
-    if (msg_size >= 65536)
-        timeout_ms = 1500;
-    if (msg_size >= 131072)
-        timeout_ms = 2500;
-    if (msg_size >= 262144)
-        timeout_ms = 4000;
-    return resolve_multi_int_env(
-      "PERF_MULTI_SPOT_ACTIVE_DRAIN_TIMEOUT_MS", timeout_ms, 0);
-}
-
-bool wait_for_active_drain(spot_client_state_t *state, size_t msg_size)
-{
-    if (!state || msg_size == 0)
-        return false;
-
-    const int quiet_ms = resolve_spot_active_drain_quiet_ms(msg_size);
-    const int timeout_ms = resolve_spot_active_drain_timeout_ms(msg_size);
-    if (quiet_ms <= 0 || timeout_ms <= 0)
-        return true;
-
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(timeout_ms);
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (state->fatal.load(std::memory_order_acquire))
-            return false;
-
-        const uint64_t last_active_us =
-          state->last_active_recv_us.load(std::memory_order_acquire);
-        if (last_active_us != 0) {
-            const uint64_t now_us = perf_multi_metric::now_us();
-            if (now_us >= last_active_us
-                && now_us - last_active_us
-                     >= static_cast<uint64_t>(quiet_ms) * 1000ULL) {
-                return true;
-            }
-        }
-
-        zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll(&item, 0, 5) < 0 && zlink_errno() != EINTR)
-            return false;
-    }
-
-    return true;
-}
-
 bool wait_for_control_link_ready_hook(void *state, int timeout_ms)
 {
     return wait_for_control_link_ready(
@@ -1269,12 +1197,6 @@ bool wait_phase_duration_hook(void *state, double seconds)
     return wait_phase_duration(static_cast<spot_client_state_t *>(state), seconds);
 }
 
-bool wait_for_active_drain_hook(void *state, size_t msg_size)
-{
-    return wait_for_active_drain(
-      static_cast<spot_client_state_t *>(state), msg_size);
-}
-
 bool run_single_size_case(spot_client_state_t *state,
                           const multi_bench_settings_t &settings,
                           const std::string &lib_name,
@@ -1295,7 +1217,6 @@ bool run_single_size_case(spot_client_state_t *state,
     hooks.set_collect_active = &set_collect_active_hook;
     hooks.wait_for_active_phase = &wait_active_phase_hook;
     hooks.wait_for_phase_duration = &wait_phase_duration_hook;
-    hooks.wait_for_active_drain = &wait_for_active_drain_hook;
     const bool ok = perf_multi_spot_phase::run_client_case(
       state, settings, lib_name, transport, msg_size, phase_timeout_ms, hooks);
     if (!ok) {

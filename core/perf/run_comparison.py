@@ -1238,7 +1238,7 @@ def pattern_default_io_threads(pattern_name):
     if pattern_name in STREAM_VARIANT_PATTERNS:
         return 4
     if normalize_multi_pattern_name(pattern_name) == "SPOT":
-        return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 8))
+        return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
     return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
 
 

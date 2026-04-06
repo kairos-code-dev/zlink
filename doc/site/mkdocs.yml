@@ -164,7 +164,6 @@ markdown_extensions:
   - def_list
 
 extra_css:
-  - https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap
   - assets/stylesheets/extra.css
 
 extra:

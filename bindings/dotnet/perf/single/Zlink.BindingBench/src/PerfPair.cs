@@ -10,9 +10,8 @@ internal static class PerfPair
     internal static int RunPair(string transport, int size)
     {
         int warmupCount = ResolveSingleWarmupCount("PAIR");
-        int settleMs = SingleSettleTimeMs;
-        int durationSeconds = ParseEnv("PERF_SINGLE_DURATION_SECONDS", 5);
-        int recvTimeoutMs = ParseEnvNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+        int durationSeconds = ResolveSingleDurationSeconds();
+        int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
         int latCount = ResolveSingleLatencyCount("PAIR");
 
         using var ctx = new Context();
@@ -42,8 +41,6 @@ internal static class PerfPair
                 return 2;
             }
 
-            Thread.Sleep(settleMs);
-
             if (!RunPhase(right, left, payload, payloadSize, 0, durationSeconds,
                     recvTimeoutMs, latCount, out long received,
                     out var latencySamples))
@@ -72,7 +69,7 @@ internal static class PerfPair
         long deadlineTicks = active
             ? DeadlineTicksFromSeconds(durationSeconds)
             : 0;
-        long drainTicks = Math.Max(1,
+        long recvFlushTicks = Math.Max(1,
             (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
         long received = 0;
@@ -113,7 +110,7 @@ internal static class PerfPair
                             out int bytesRead))
                     {
                         if (done && Stopwatch.GetTimestamp() - lastRecvTicks
-                            >= drainTicks)
+                            >= recvFlushTicks)
                         {
                             break;
                         }

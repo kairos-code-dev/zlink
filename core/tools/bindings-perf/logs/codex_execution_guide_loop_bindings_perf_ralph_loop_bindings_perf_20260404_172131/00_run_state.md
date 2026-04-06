@@ -1,0 +1,16 @@
+# Run State
+
+- session_dir: /home/hep7/project/kairos/zlink/core/tools/bindings-perf/logs/codex_execution_guide_loop_bindings_perf_ralph_loop_bindings_perf_20260404_172131
+- previous_session_dir: /home/hep7/project/kairos/zlink/core/tools/bindings-perf/logs/codex_execution_guide_loop_bindings_perf_ralph_loop_bindings_perf_20260404_172004
+- status: in_progress
+- active_language: cpp
+- active_mode: multi recv
+- current_focus: cpp multi recv full comparable rerun 재개 전 정책/집계 정합성을 다시 확인하고 active benchmark job 종료를 기다리는 중
+- current_issue: `core/perf/run_comparison.py` 와 `doc/perf/PERF_MULTI_TEST_POLICY.md` 를 다시 대조한 결과, `client_cpu_pct/client_mem_mb` 는 바이너리 RESULT line 출력 대상이지만 최종 집계/완료 판정에는 반영되지 않는 informational metric 이다. 실제 남은 blocker는 secure `MULTI_SPOT` 수정 후 recv full comparable rerun을 아직 단독 재실행하지 못했다는 점이며, 현재 다른 benchmark job이 active 상태다
+- worst_ratio: pending (latest cpp multi recv report `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_173823_codex_cpp_multi_recv_comparable_20260404.txt` is non-comparable because result coverage mismatch; callback still has only warmup/duration-mismatched SPOT-only report)
+- comparable_report: pending (`/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_173823_codex_cpp_multi_recv_comparable_20260404.txt` is baseline-aligned but partial: expected result lines 680, actual 620, status partial; callback comparable report still absent)
+- current_action: policy 문서와 `core/perf/run_comparison.py` 집계 로직을 다시 확인해 client metric 누락을 blocker에서 제외하고, 외부 active benchmark job 종료를 대기하면서 다음 단독 recv comparable rerun 조건을 정리하는 중
+- next_action: active benchmark job이 끝나면 `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_fix_resource_tls` 를 처음부터 단독 실행하고 summarize script로 comparable 여부를 재판정
+- blocker: shared workspace에 suspended benchmark shell이 남아 있어(`bash ./run_benchmarks_multi.sh`, `bash /home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh ...`, `bash ./run_benchmarks.sh`, 모두 `ps` 상태 `T`) execution guide의 non-overlap 규칙상 새 comparable perf/test/build를 시작할 수 없음
+- latest_verification: `doc/perf/PERF_MULTI_TEST_POLICY.md` section 6.x/10 and `core/perf/run_comparison.py` confirm `client_cpu_pct/client_mem_mb` are informational RESULT lines only and do not affect final table/completion; `ps -o pid,etimes,stat,cmd -p 402920,403003,443466,604479` shows the three benchmark shells remain suspended (`STAT=T`), so this session has not started any new perf/test/build command
+- changed_files: bindings/cpp/perf/multi/common/perf_common.hpp, bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp, bindings/cpp/perf/multi/src/perf_dealer_dealer_server.cpp, bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp, bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp, bindings/cpp/perf/multi/src/perf_pubsub_client.cpp, bindings/cpp/perf/multi/src/perf_pubsub_server.cpp, bindings/cpp/perf/multi/src/perf_router_router_client.cpp, bindings/cpp/perf/multi/src/perf_router_router_server.cpp, bindings/cpp/perf/multi/src/perf_spot_client.cpp, bindings/cpp/perf/multi/src/perf_spot_server.cpp

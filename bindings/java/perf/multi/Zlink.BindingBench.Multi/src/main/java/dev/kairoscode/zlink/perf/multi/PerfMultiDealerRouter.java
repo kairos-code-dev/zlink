@@ -66,22 +66,22 @@ final class PerfMultiDealerRouter {
                 PerfUtil.await(go, "dealer/router start", java.time.Duration.ofSeconds(10));
                 long warmupEnd = System.nanoTime() + warmup * 1_000_000_000L;
                 while (System.nanoTime() < warmupEnd) {
-                    send(client, config.size(), (byte) 2);
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
+                        client.send(List.of(m));
+                    }
                 }
                 long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                 while (System.nanoTime() < activeEnd) {
-                    send(client, config.size(), (byte) 0);
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) {
+                        client.send(List.of(m));
+                    }
                 }
-                send(client, config.size(), (byte) 1);
+                try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+                    client.send(List.of(m));
+                }
             }
         }, "multi-dr-client-" + index), config.warmupSeconds(), config.durationSeconds());
         return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
             config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
-    }
-
-    private static void send(DealerSocket socket, int size, byte phase) {
-        try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
-            socket.send(List.of(payload));
-        }
     }
 }

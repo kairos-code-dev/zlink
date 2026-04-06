@@ -29,9 +29,8 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(server.SetRecvTimeout(500 * time.Millisecond))
 
 	stats := perfcommon.NewStats()
-	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
-	activeAt := time.Now().Add(cfg.warmup)
-	recvStopAt := stopAt.Add(500 * time.Millisecond)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
+	recvStopAt := window.StopAt.Add(500 * time.Millisecond)
 
 	type dealerClient struct {
 		ctx    *zlink.Context
@@ -76,7 +75,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 			part, err := received.SinglePartOrError()
 			if err == nil {
 				now := time.Now()
-				if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && now.After(activeAt) && now.Before(recvStopAt) {
+				if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && now.After(window.ActiveAt) && now.Before(recvStopAt) {
 					stats.Add(sentAt)
 				}
 			}
@@ -91,7 +90,7 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 			defer wg.Done()
 
 			payload := perfcommon.PreparePayload(cfg.msgSize)
-			for time.Now().Before(stopAt) {
+			for time.Now().Before(window.StopAt) {
 				perfcommon.StampPayload(payload)
 				err := socket.Send(perfcommon.NewMessage(payload))
 				if err != nil {

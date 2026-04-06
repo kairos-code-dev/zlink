@@ -42,10 +42,9 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
-	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
-	activeAt := time.Now().Add(cfg.warmup)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
-	for time.Now().Before(stopAt) {
+	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
 		err := client.SendTo(serverID, perfcommon.NewMessage(payload))
 		if err != nil {
@@ -63,9 +62,7 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
-		if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-			stats.Add(sentAt)
-		}
+		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
 		perfcommon.Must(reply.Close())
 	}
 
@@ -74,33 +71,27 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 
 func waitForRouterRouterReady(client *zlink.RouterSocket, serverID zlink.RoutingID) {
 	payload := perfcommon.PreparePayload(64)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		perfcommon.StampPayload(payload)
-		err := client.SendTo(serverID, perfcommon.NewMessage(payload))
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
+	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
+		Name: "router/router perf endpoint",
+		Probe: func() (bool, error) {
+			perfcommon.StampPayload(payload)
+			err := client.SendTo(serverID, perfcommon.NewMessage(payload))
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					return false, nil
+				}
+				return false, err
 			}
-			perfcommon.Must(err)
-		}
-		reply, err := client.Recv()
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
+			reply, err := client.Recv()
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					return false, nil
+				}
+				return false, err
 			}
-			perfcommon.Must(err)
-		}
-		perfcommon.Must(reply.Close())
-		return
-	}
-	perfcommon.Must(&routerRouterReadyError{})
-}
-
-type routerRouterReadyError struct{}
-
-func (e *routerRouterReadyError) Error() string {
-	return "router/router perf endpoint did not become ready"
+			return true, reply.Close()
+		},
+	}))
 }
 
 func startRouterRouterEchoServer(server *zlink.RouterSocket) {

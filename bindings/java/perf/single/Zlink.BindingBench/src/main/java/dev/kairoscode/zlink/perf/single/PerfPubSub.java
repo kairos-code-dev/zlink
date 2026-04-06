@@ -56,26 +56,40 @@ final class PerfPubSub {
             sub.connect(endpoint);
             PerfUtil.waitForMonitorEvent(subMonitor, SUB_READY_EVENT, 1,
                 Duration.ofSeconds(20), "pubsub subscriber ready");
-            send(pub, topic, config.size(), (byte) 2);
+            try (Message primer = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
+                pub.publish(topic, List.of(primer));
+            }
             PerfUtil.await(primed, "pubsub preflight", Duration.ofSeconds(10));
             Thread traffic = new Thread(() -> {
                 long warmupEnd = System.nanoTime()
                     + config.warmupSeconds() * 1_000_000_000L;
                 while (System.nanoTime() < warmupEnd) {
-                    send(pub, topic, config.size(), (byte) 2);
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
+                        pub.publish(topic, List.of(m));
+                    }
                 }
                 metrics.startResourceWindow();
                 long activeEnd = System.nanoTime()
                     + config.durationSeconds() * 1_000_000_000L;
                 while (System.nanoTime() < activeEnd) {
-                    send(pub, topic, config.size(), (byte) 0);
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) {
+                        pub.publish(topic, List.of(m));
+                    }
                 }
                 long stopDeadline = System.nanoTime() + 1_000_000_000L;
                 while (finished.getCount() > 0L && System.nanoTime() < stopDeadline) {
-                    sendStopBurst(pub, topic, config.size());
+                    for (int i = 0; i < 16; i++) {
+                        try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+                            pub.publish(topic, List.of(m));
+                        }
+                    }
                 }
                 if (finished.getCount() > 0L) {
-                    sendStopBurst(pub, topic, config.size());
+                    for (int i = 0; i < 16; i++) {
+                        try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+                            pub.publish(topic, List.of(m));
+                        }
+                    }
                 }
             }, "single-pubsub-sender");
             traffic.start();
@@ -88,18 +102,6 @@ final class PerfPubSub {
                 subCtx.close();
             }
             pubCtx.close();
-        }
-    }
-
-    private static void send(PubSocket pub, String topic, int size, byte phase) {
-        try (Message message = PerfUtil.payload(size, phase, System.nanoTime())) {
-            pub.publish(topic, List.of(message));
-        }
-    }
-
-    private static void sendStopBurst(PubSocket pub, String topic, int size) {
-        for (int i = 0; i < 16; i++) {
-            send(pub, topic, size, (byte) 1);
         }
     }
 }

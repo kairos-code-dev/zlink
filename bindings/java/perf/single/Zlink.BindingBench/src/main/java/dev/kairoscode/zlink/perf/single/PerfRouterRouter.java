@@ -59,12 +59,14 @@ final class PerfRouterRouter {
                 Duration.ofSeconds(20), "router/router sender ready");
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENTS, 1,
                 Duration.ofSeconds(20), "router/router receiver ready");
-            send(sender, config.size(), (byte) 2);
+            try (Message primer = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
+                sender.send(ROUTER1, List.of(primer));
+            }
             PerfUtil.await(primed, "router/router preflight", Duration.ofSeconds(10));
             Thread traffic = SingleSendLoops.oneWaySend(
-                () -> send(sender, config.size(), (byte) 2),
-                () -> send(sender, config.size(), (byte) 0),
-                () -> sendStopBurst(sender, config.size()),
+                () -> { try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) { sender.send(ROUTER1, List.of(m)); } },
+                () -> { try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) { sender.send(ROUTER1, List.of(m)); } },
+                () -> { for (int i = 0; i < 16; i++) { try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) { sender.send(ROUTER1, List.of(m)); } } },
                 config.warmupSeconds(),
                 config.durationSeconds(),
                 metrics);
@@ -78,18 +80,6 @@ final class PerfRouterRouter {
                 senderCtx.close();
             }
             receiverCtx.close();
-        }
-    }
-
-    private static void send(RouterSocket socket, int size, byte phase) {
-        try (Message message = PerfUtil.payload(size, phase, System.nanoTime())) {
-            socket.send(ROUTER1, List.of(message));
-        }
-    }
-
-    private static void sendStopBurst(RouterSocket socket, int size) {
-        for (int i = 0; i < 16; i++) {
-            send(socket, size, (byte) 1);
         }
     }
 }

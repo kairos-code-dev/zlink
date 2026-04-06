@@ -3,6 +3,7 @@
 
 mod common;
 
+use common::backpressure::SocketBackpressure;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 use zlink::*;
@@ -29,7 +30,7 @@ fn main() {
 
     let mut stop_seen = false;
     let mut pending: VecDeque<(RoutingId, Vec<u8>)> = VecDeque::new();
-    let mut pollout_on = false;
+    let mut backpressure = SocketBackpressure::new();
 
     while !stop_seen && Instant::now() < deadline {
         let remain = (deadline - Instant::now()).as_millis() as i64;
@@ -50,10 +51,9 @@ fn main() {
                                     Ok(SendResult::Sent) => {}
                                     _ => {
                                         pending.push_back((rid, payload));
-                                        if !pollout_on {
+                                        backpressure.mark_pending(|| {
                                             let _ = poller.modify_socket(&stream, POLLIN | POLLOUT);
-                                            pollout_on = true;
-                                        }
+                                        });
                                     }
                                 }
                             }
@@ -70,9 +70,10 @@ fn main() {
                             _ => break,
                         }
                     }
-                    if pending.is_empty() && pollout_on {
-                        let _ = poller.modify_socket(&stream, POLLIN);
-                        pollout_on = false;
+                    if pending.is_empty() && backpressure.is_pending() {
+                        backpressure.clear_pending(|| {
+                            let _ = poller.modify_socket(&stream, POLLIN);
+                        });
                     }
                 }
             }

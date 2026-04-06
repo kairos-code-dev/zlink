@@ -23,24 +23,25 @@ internal static class PerfStreamServer
         Error = 2,
     }
 
-    internal static int Run(string transport, int size)
+    internal static int Run(PerfOptions options)
     {
-        size = Math.Max(1, size);
-        if (!IsCoreStreamServerTransport(transport))
+        int size = Math.Max(1, options.Size);
+        if (!IsCoreStreamServerTransport(options.Transport))
         {
-            Console.WriteLine($"UNSUPPORTED,current,{Pattern},{transport}");
+            Console.WriteLine($"UNSUPPORTED,current,{Pattern},{options.Transport}");
             return 0;
         }
 
-        int ioTimeoutMs = ResolveStreamIoTimeoutMs();
-        int pendingCapacity = ResolvePendingCapacity();
-        string endpoint = MultiEndpointFor(transport, "multi-stream");
+        int ioTimeoutMs = ResolveStreamIoTimeoutMs(options);
+        int pendingCapacity = ResolvePendingCapacity(options);
+        string endpoint = MultiEndpointFor(options.Transport, "multi-stream",
+            options);
 
         using var ctx = new Context();
-        ApplyMultiServerContextOptions(ctx);
+        ApplyMultiServerContextOptions(ctx, options);
         using var server = new StreamSocket(ctx);
-        ApplyMultiSocketOptions(server, Pattern);
-        ConfigureTlsServerIfNeeded(server, transport);
+        ApplyMultiSocketOptions(server, options);
+        ConfigureTlsServerIfNeeded(server, options.Transport);
         server.SetOption(SocketOptions.SndTimeo, ioTimeoutMs);
         server.SetOption(SocketOptions.RcvTimeo, ioTimeoutMs);
         server.SetOption(SocketOptions.TcpNoDelay, 1);
@@ -59,7 +60,7 @@ internal static class PerfStreamServer
         int rc = 0;
         while (Volatile.Read(ref control.StopRequested) == 0)
         {
-            EmitRequestedQueueProbe(server, transport, size, control);
+            EmitRequestedQueueProbe(server, options.Transport, size, control);
 
             poller.Modify(server, pendingCount > 0
                 ? PollEvents.PollIn | PollEvents.PollOut
@@ -99,7 +100,7 @@ internal static class PerfStreamServer
         }
 
         ServerQueueStats finalStats = SampleServerQueueStats(server);
-        PrintServerQueueMetrics(Pattern, transport, size, finalStats);
+        PrintServerQueueMetrics(Pattern, options.Transport, size, finalStats);
         return rc;
     }
 
@@ -155,10 +156,10 @@ internal static class PerfStreamServer
             SampleServerQueueStats(server));
     }
 
-    private static int ResolvePendingCapacity()
+    private static int ResolvePendingCapacity(PerfOptions options)
     {
-        int clients = ResolveClients(Pattern);
-        int hwm = ResolveHwm(Pattern);
+        int clients = ResolveClients(options);
+        int hwm = ResolveHwm(options);
         long capacity = Math.Max(64L, Math.Max(clients, Math.Max(1, hwm)) * 2L);
         return capacity > int.MaxValue ? int.MaxValue : (int)capacity;
     }

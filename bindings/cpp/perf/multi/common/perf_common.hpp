@@ -7,6 +7,8 @@
 #include "perf_spot_control.hpp"
 #include "perf_spot_handshake.hpp"
 #include "perf_tls.hpp"
+#include "../../common/perf_latency_sampler.hpp"
+#include "../../common/perf_monitor_wait.hpp"
 #include "../../common/perf_socket_compat.hpp"
 #include "../../../../../core/bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
@@ -116,26 +118,14 @@ class ctx_guard_t
     }
 
     zlink::context_t &ctx () { return _ctx; }
+    operator zlink::context_t &() { return _ctx; }
 
   private:
     zlink::context_t _ctx;
     bool _skip_term;
 };
 
-class socket_guard_t
-{
-  public:
-    socket_guard_t () : _sock () {}
-    socket_guard_t (ctx_guard_t &ctx, zlink::socket_type type) : _sock (ctx.ctx (), type)
-    {
-    }
-
-    perf_socket_t &sock () { return _sock; }
-    bool valid () const { return _sock.handle () != NULL; }
-
-  private:
-    perf_socket_t _sock;
-};
+using ::perf::socket_guard_t;
 
 struct connect_monitor_t
 {
@@ -155,120 +145,10 @@ struct server_queue_stats_t
     double rcv_pending_end;
 };
 
-struct bench_latency_stats_t
-{
-    bench_latency_stats_t () : mean_us (0.0), p95_us (0.0), p99_us (0.0) {}
-
-    double mean_us;
-    double p95_us;
-    double p99_us;
-};
-
-class bench_latency_sampler_t
-{
-  public:
-    explicit bench_latency_sampler_t (size_t cap = 200000)
-        : _cap (cap > 0 ? cap : 1), _count (0), _sum (0.0), _rng (0x9e3779b97f4a7c15ULL)
-    {
-        _samples.reserve (_cap);
-    }
-
-    void add (double latency_us)
-    {
-        const double sample = latency_us >= 0.0 ? latency_us : 0.0;
-        ++_count;
-        _sum += sample;
-
-        if (_samples.size () < _cap) {
-            _samples.push_back (sample);
-            return;
-        }
-
-        const unsigned long long slot = next_rand () % _count;
-        if (slot < static_cast<unsigned long long> (_cap))
-            _samples[static_cast<size_t> (slot)] = sample;
-    }
-
-    void merge_from (const bench_latency_sampler_t &other_)
-    {
-        if (other_._count == 0)
-            return;
-
-        _sum += other_._sum;
-        const unsigned long long base_count = _count;
-        _count += other_._count;
-
-        for (size_t i = 0; i < other_._samples.size (); ++i) {
-            if (_samples.size () < _cap) {
-                _samples.push_back (other_._samples[i]);
-                continue;
-            }
-
-            const unsigned long long slot =
-              (base_count + static_cast<unsigned long long> (i)) % _count;
-            if (slot < static_cast<unsigned long long> (_cap))
-                _samples[static_cast<size_t> (slot)] = other_._samples[i];
-        }
-    }
-
-    unsigned long long count () const { return _count; }
-
-    bench_latency_stats_t snapshot ()
-    {
-        bench_latency_stats_t out;
-        if (_count == 0)
-            return out;
-
-        out.mean_us = _sum / static_cast<double> (_count);
-        if (_samples.empty ()) {
-            out.p95_us = out.mean_us;
-            out.p99_us = out.mean_us;
-            return out;
-        }
-
-        std::sort (_samples.begin (), _samples.end ());
-        out.p95_us = percentile (_samples, 0.95);
-        out.p99_us = percentile (_samples, 0.99);
-        if (out.p95_us < out.mean_us)
-            out.p95_us = out.mean_us;
-        if (out.p99_us < out.p95_us)
-            out.p99_us = out.p95_us;
-        return out;
-    }
-
-  private:
-    static double percentile (const std::vector<double> &v, double q)
-    {
-        if (v.empty ())
-            return 0.0;
-        if (q <= 0.0)
-            return v.front ();
-        if (q >= 1.0)
-            return v.back ();
-
-        const double pos = (v.size () - 1) * q;
-        const size_t lo = static_cast<size_t> (pos);
-        const size_t hi = lo + 1 < v.size () ? lo + 1 : lo;
-        const double frac = pos - static_cast<double> (lo);
-        return v[lo] + (v[hi] - v[lo]) * frac;
-    }
-
-    unsigned long long next_rand ()
-    {
-        unsigned long long x = _rng;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        _rng = x;
-        return x;
-    }
-
-    size_t _cap;
-    unsigned long long _count;
-    double _sum;
-    unsigned long long _rng;
-    std::vector<double> _samples;
-};
+// Migrated to unified perf::latency_sampler_stats_t / perf::latency_sampler_t.
+// These typedefs preserve the old multi-bench names at call sites.
+typedef ::perf::latency_sampler_stats_t bench_latency_stats_t;
+typedef ::perf::latency_sampler_t bench_latency_sampler_t;
 
 inline void apply_benchmark_hwm (perf_socket_t &socket,
                                  int sndhwm,
@@ -338,63 +218,9 @@ inline bool open_connect_monitor (perf_socket_t &socket, connect_monitor_t &out)
       socket, zlink::monitor_event::connection_ready, out);
 }
 
-inline bool wait_socket_monitor_event (zlink::monitor_socket_t &monitor,
-                                       uint64_t event_type,
-                                       int64_t min_value,
-                                       int timeout_ms)
-{
-    for (;;) {
-        const zlink::maybe_t<zlink_socket_monitor_event_t> event =
-          monitor.try_recv ();
-        if (!event)
-            break;
-        if (event->event != event_type)
-            continue;
-        if (min_value >= 0 && static_cast<int64_t> (event->value) < min_value)
-            continue;
-        return true;
-    }
-
-    zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
-    if (poller.add (monitor, zlink::poll_event::pollin, NULL) != 0)
-        return false;
-
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1);
-    while (std::chrono::steady_clock::now () < deadline) {
-        const auto remaining = deadline - std::chrono::steady_clock::now ();
-        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                         remaining)
-                         .count ();
-        if (wait_ms < 1)
-            wait_ms = 1;
-
-        const int rc = poller.wait_all (events, wait_ms);
-        if (rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            return false;
-        }
-        if (rc == 0)
-            continue;
-
-        for (;;) {
-            const zlink::maybe_t<zlink_socket_monitor_event_t> event =
-              monitor.try_recv ();
-            if (!event)
-                break;
-            if (event->event != event_type)
-                continue;
-            if (min_value >= 0 && static_cast<int64_t> (event->value) < min_value)
-                continue;
-            return true;
-        }
-    }
-
-    return false;
-}
+// Migrated to unified perf::wait_socket_monitor_event in
+// common/perf_monitor_wait.hpp (monitor_socket_t overload).
+using ::perf::wait_socket_monitor_event;
 
 inline int poll_connect_ready_count (connect_monitor_t &mon)
 {
@@ -610,12 +436,6 @@ inline std::string bind_and_resolve_endpoint (perf_socket_t &socket,
         return std::string ();
 
     return normalize_endpoint_host (last);
-}
-
-inline void settle ()
-{
-    // Keep a short post-connect stabilization window before benchmark phases.
-    std::this_thread::sleep_for (std::chrono::milliseconds (300));
 }
 
 inline bool debug_header_trace_enabled ()

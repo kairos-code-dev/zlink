@@ -35,6 +35,7 @@ def main(argv=None):
                 print(f"READY,{endpoint}", flush=True)
                 while not stop.is_set():
                     spot.publish(TOPIC, stamp_payload(payload))
+                    time.sleep(0.001)
                 sys.stdout.flush()
                 os._exit(0)
 

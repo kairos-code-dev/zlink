@@ -3,40 +3,16 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
 const { createMetricCollector, decodeMetricHeader, summarizeMetrics } = require('../common/perf_metrics');
+const { parseMultiArgs } = require('./perf_multi_common');
 const TOPIC = 'perf.topic';
-function parseArgs(argv) {
-    const options = { endpoint: '', msgSize: 256, warmup: 1, duration: 2, clients: 1, recv: 'recv' };
-    for (let i = 0; i < argv.length; i += 1) {
-        if (argv[i] === '--endpoint') {
-            options.endpoint = argv[++i];
-        }
-        else if (argv[i] === '--msg-size') {
-            options.msgSize = Number(argv[++i]);
-        }
-        else if (argv[i] === '--warmup') {
-            options.warmup = Number(argv[++i]);
-        }
-        else if (argv[i] === '--duration') {
-            options.duration = Number(argv[++i]);
-        }
-        else if (argv[i] === '--clients') {
-            options.clients = Number(argv[++i]);
-        }
-        else if (argv[i] === '--recv') {
-            options.recv = argv[++i];
-        }
-    }
-    return options;
-}
 async function main() {
-    const options = parseArgs(process.argv.slice(2));
+    const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
     const collector = createMetricCollector({
         runId: 0,
         msgSize: options.msgSize
     });
     const slots = [];
-    let stopCount = 0;
     let stop = false;
     let stopResolve;
     let timeoutId = null;
@@ -44,17 +20,9 @@ async function main() {
     const stopped = new Promise((resolve) => {
         stopResolve = resolve;
     });
-    const waitForPeerDisconnectAfterTraffic = async () => {
-        while (!stop) {
-            if (firstHeaderLogged
-                && slots.length > 0
-                && slots.every((slot) => slot.node.statusSnapshot().connectedPeerCount === 0)) {
-                stopResolve();
-                return;
-            }
-            await new Promise((resolve) => setImmediate(resolve));
-        }
-    };
+    const deadlineReached = new Promise((resolve) => {
+        timeoutId = setTimeout(resolve, Math.ceil((options.warmup + options.duration + 2) * 1000));
+    });
     const handleDelivery = (received) => {
         const header = decodeMetricHeader(received.parts[0].toBuffer());
         if (!header) {
@@ -65,10 +33,7 @@ async function main() {
             console.error(`spot client first header: phase=${header.phase} msgSize=${header.msgSize} runId=${header.runId}`);
         }
         if (header.phase === 1) {
-            stopCount += 1;
-            if (stopCount >= options.clients) {
-                stopResolve();
-            }
+            stopResolve();
             return;
         }
         collector.record(header, process.hrtime.bigint());
@@ -137,17 +102,7 @@ async function main() {
         console.log(`CLIENT_READY,${options.msgSize}`);
         await Promise.race([
             stopped,
-            waitForPeerDisconnectAfterTraffic(),
-            new Promise((_, reject) => {
-                timeoutId = setTimeout(() => {
-                    console.error(`spot client debug: ${JSON.stringify(slots.map((slot) => ({
-                        status: slot.node.statusSnapshot(),
-                        peers: slot.node.peersSnapshot(),
-                        subjects: slot.node.subjectsSnapshot()
-                    })))}`);
-                    reject(new Error('spot client timeout'));
-                }, Math.ceil((options.warmup + options.duration + 10) * 1000));
-            })
+            deadlineReached
         ]);
         stop = true;
         if (timeoutId) {

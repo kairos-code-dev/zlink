@@ -96,7 +96,7 @@ void run_pattern_spot (const std::string &transport,
         std::string cert;
         std::string key;
         std::string ca;
-        if (!perf::single::try_resolve_perf_tls_paths (cert, key, ca)
+        if (!perf::try_resolve_tls_paths (cert, key, ca)
             || pub_node.set_tls_server (cert, key, false) != 0
             || sub_node.set_tls_client (ca, std::string ("localhost"), false)
                  != 0) {
@@ -124,8 +124,6 @@ void run_pattern_spot (const std::string &transport,
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return;
     }
-    perf::single::settle ();
-
     zlink::socket_t pub_socket = zlink::socket_t::wrap (pub_spot.handle ());
     zlink::socket_t sub_socket = zlink::socket_t::wrap (sub_spot.handle ());
     perf::single::queue_probe_t queue_probe (&pub_socket, &sub_socket);

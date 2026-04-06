@@ -1,0 +1,268 @@
+## Effective Options (start)
+- pattern: ALL
+- recv_mode: callback
+- duration_seconds: 5
+- warmup_seconds: 2
+- msg_sizes: 64,256,1024,65536,131072,262144
+- runs: 1
+- transports: inproc
+- results_dir: /home/hep7/project/kairos/zlink/bindings/node/perf/results
+
+## PATTERN: PAIR
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 118.36 Kmsg/s | 7.58 MB/s | 12.208 | 16.710 | 19.259 |
+| 256B | 108.87 Kmsg/s | 27.87 MB/s | 13.314 | 19.367 | 22.340 |
+| 1024B | 78.75 Kmsg/s | 80.64 MB/s | 18.468 | 26.330 | 28.796 |
+| 65536B | 4.66 Kmsg/s | 305.12 MB/s | 299.621 | 352.590 | 359.433 |
+| 131072B | 2.29 Kmsg/s | 300.10 MB/s | 575.139 | 672.615 | 696.111 |
+| 262144B | 1.02 Kmsg/s | 268.28 MB/s | 1155.449 | 1348.854 | 1373.149 |
+
+## PATTERN: PUBSUB
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 2.20 Kmsg/s | 0.14 MB/s | 615.292 | 799.499 | 820.164 |
+| 256B | 2.08 Kmsg/s | 0.53 MB/s | 634.372 | 829.117 | 850.247 |
+| 1024B | 1.94 Kmsg/s | 1.99 MB/s | 661.818 | 863.070 | 884.973 |
+| 65536B | 0.36 Kmsg/s | 23.37 MB/s | 2143.268 | 2834.675 | 2937.374 |
+| 131072B | 0.12 Kmsg/s | 15.94 MB/s | 3423.440 | 4129.773 | 4192.199 |
+| 262144B | 0.00 Kmsg/s | 0.00 MB/s | 0.000 | 0.000 | 0.000 |
+
+## PATTERN: DEALER_DEALER
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 133.85 Kmsg/s | 8.57 MB/s | 10.769 | 15.027 | 16.256 |
+| 256B | 108.12 Kmsg/s | 27.68 MB/s | 13.403 | 18.916 | 21.217 |
+| 1024B | 76.64 Kmsg/s | 78.48 MB/s | 19.071 | 27.638 | 29.975 |
+| 65536B | 4.80 Kmsg/s | 314.61 MB/s | 293.033 | 352.861 | 359.809 |
+| 131072B | 2.38 Kmsg/s | 312.58 MB/s | 564.057 | 678.040 | 694.432 |
+| 262144B | 1.06 Kmsg/s | 277.24 MB/s | 1064.550 | 1277.476 | 1316.608 |
+
+## PATTERN: DEALER_ROUTER
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 107.88 Kmsg/s | 6.90 MB/s | 13.479 | 19.411 | 20.973 |
+| 256B | 86.87 Kmsg/s | 22.24 MB/s | 16.744 | 23.121 | 25.122 |
+| 1024B | 62.20 Kmsg/s | 63.69 MB/s | 23.555 | 33.507 | 36.941 |
+| 65536B | 4.80 Kmsg/s | 314.64 MB/s | 291.683 | 352.887 | 363.259 |
+| 131072B | 1.85 Kmsg/s | 243.09 MB/s | 656.316 | 1001.964 | 1050.854 |
+| 262144B | 0.60 Kmsg/s | 157.34 MB/s | 1885.154 | 2535.196 | 2601.371 |
+
+## PATTERN: ROUTER_ROUTER
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 3.01 Kmsg/s | 0.19 MB/s | 452.063 | 587.776 | 607.117 |
+| 256B | 3.00 Kmsg/s | 0.77 MB/s | 455.811 | 591.815 | 611.180 |
+| 1024B | 2.60 Kmsg/s | 2.66 MB/s | 501.527 | 651.179 | 672.044 |
+| 65536B | 0.36 Kmsg/s | 23.46 MB/s | 2077.836 | 2775.448 | 2939.848 |
+| 131072B | 0.14 Kmsg/s | 18.74 MB/s | 3490.018 | 4372.362 | 4449.632 |
+| 262144B | 0.00 Kmsg/s | 0.00 MB/s | 0.000 | 0.000 | 0.000 |
+
+## PATTERN: SPOT
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 0.44 Kmsg/s | 0.03 MB/s | 2728.095 | 3165.088 | 3202.992 |
+| 256B | 0.41 Kmsg/s | 0.11 MB/s | 2739.420 | 3144.370 | 3179.847 |
+| 1024B | 0.24 Kmsg/s | 0.25 MB/s | 2677.644 | 2929.807 | 2952.293 |
+| 65536B | 0.00 Kmsg/s | 0.00 MB/s | 0.000 | 0.000 | 0.000 |
+| 131072B | 0.00 Kmsg/s | 0.00 MB/s | 0.000 | 0.000 | 0.000 |
+| 262144B | 0.00 Kmsg/s | 0.00 MB/s | 0.000 | 0.000 | 0.000 |
+
+
+## Result Data
+RESULT,current,PAIR,inproc,64,throughput,118361.80
+RESULT,current,PAIR,inproc,64,bandwidth,7.58
+RESULT,current,PAIR,inproc,64,latency,12207.54
+RESULT,current,PAIR,inproc,64,latency_p95,16709.95
+RESULT,current,PAIR,inproc,64,latency_p99,19258.69
+RESULT,current,PAIR,inproc,256,throughput,108874.60
+RESULT,current,PAIR,inproc,256,bandwidth,27.87
+RESULT,current,PAIR,inproc,256,latency,13313.63
+RESULT,current,PAIR,inproc,256,latency_p95,19367.25
+RESULT,current,PAIR,inproc,256,latency_p99,22339.65
+RESULT,current,PAIR,inproc,1024,throughput,78746.60
+RESULT,current,PAIR,inproc,1024,bandwidth,80.64
+RESULT,current,PAIR,inproc,1024,latency,18467.99
+RESULT,current,PAIR,inproc,1024,latency_p95,26329.91
+RESULT,current,PAIR,inproc,1024,latency_p99,28796.34
+RESULT,current,PAIR,inproc,65536,throughput,4655.80
+RESULT,current,PAIR,inproc,65536,bandwidth,305.12
+RESULT,current,PAIR,inproc,65536,latency,299620.88
+RESULT,current,PAIR,inproc,65536,latency_p95,352589.69
+RESULT,current,PAIR,inproc,65536,latency_p99,359432.83
+RESULT,current,PAIR,inproc,131072,throughput,2289.60
+RESULT,current,PAIR,inproc,131072,bandwidth,300.10
+RESULT,current,PAIR,inproc,131072,latency,575138.95
+RESULT,current,PAIR,inproc,131072,latency_p95,672615.33
+RESULT,current,PAIR,inproc,131072,latency_p99,696111.41
+RESULT,current,PAIR,inproc,262144,throughput,1023.40
+RESULT,current,PAIR,inproc,262144,bandwidth,268.28
+RESULT,current,PAIR,inproc,262144,latency,1155449.15
+RESULT,current,PAIR,inproc,262144,latency_p95,1348854.21
+RESULT,current,PAIR,inproc,262144,latency_p99,1373149.27
+RESULT,current,PUBSUB,inproc,64,throughput,2202.60
+RESULT,current,PUBSUB,inproc,64,bandwidth,0.14
+RESULT,current,PUBSUB,inproc,64,latency,615291.71
+RESULT,current,PUBSUB,inproc,64,latency_p95,799498.71
+RESULT,current,PUBSUB,inproc,64,latency_p99,820164.43
+RESULT,current,PUBSUB,inproc,256,throughput,2081.20
+RESULT,current,PUBSUB,inproc,256,bandwidth,0.53
+RESULT,current,PUBSUB,inproc,256,latency,634372.19
+RESULT,current,PUBSUB,inproc,256,latency_p95,829117.45
+RESULT,current,PUBSUB,inproc,256,latency_p99,850247.15
+RESULT,current,PUBSUB,inproc,1024,throughput,1944.20
+RESULT,current,PUBSUB,inproc,1024,bandwidth,1.99
+RESULT,current,PUBSUB,inproc,1024,latency,661818.15
+RESULT,current,PUBSUB,inproc,1024,latency_p95,863070.45
+RESULT,current,PUBSUB,inproc,1024,latency_p99,884973.20
+RESULT,current,PUBSUB,inproc,65536,throughput,356.60
+RESULT,current,PUBSUB,inproc,65536,bandwidth,23.37
+RESULT,current,PUBSUB,inproc,65536,latency,2143268.47
+RESULT,current,PUBSUB,inproc,65536,latency_p95,2834675.24
+RESULT,current,PUBSUB,inproc,65536,latency_p99,2937374.06
+RESULT,current,PUBSUB,inproc,131072,throughput,121.60
+RESULT,current,PUBSUB,inproc,131072,bandwidth,15.94
+RESULT,current,PUBSUB,inproc,131072,latency,3423440.02
+RESULT,current,PUBSUB,inproc,131072,latency_p95,4129773.02
+RESULT,current,PUBSUB,inproc,131072,latency_p99,4192198.70
+RESULT,current,PUBSUB,inproc,262144,throughput,0.00
+RESULT,current,PUBSUB,inproc,262144,bandwidth,0.00
+RESULT,current,PUBSUB,inproc,262144,latency,0.00
+RESULT,current,PUBSUB,inproc,262144,latency_p95,0.00
+RESULT,current,PUBSUB,inproc,262144,latency_p99,0.00
+RESULT,current,DEALER_DEALER,inproc,64,throughput,133852.60
+RESULT,current,DEALER_DEALER,inproc,64,bandwidth,8.57
+RESULT,current,DEALER_DEALER,inproc,64,latency,10768.99
+RESULT,current,DEALER_DEALER,inproc,64,latency_p95,15027.15
+RESULT,current,DEALER_DEALER,inproc,64,latency_p99,16255.99
+RESULT,current,DEALER_DEALER,inproc,256,throughput,108121.00
+RESULT,current,DEALER_DEALER,inproc,256,bandwidth,27.68
+RESULT,current,DEALER_DEALER,inproc,256,latency,13402.82
+RESULT,current,DEALER_DEALER,inproc,256,latency_p95,18915.58
+RESULT,current,DEALER_DEALER,inproc,256,latency_p99,21217.24
+RESULT,current,DEALER_DEALER,inproc,1024,throughput,76636.80
+RESULT,current,DEALER_DEALER,inproc,1024,bandwidth,78.48
+RESULT,current,DEALER_DEALER,inproc,1024,latency,19071.04
+RESULT,current,DEALER_DEALER,inproc,1024,latency_p95,27637.69
+RESULT,current,DEALER_DEALER,inproc,1024,latency_p99,29975.41
+RESULT,current,DEALER_DEALER,inproc,65536,throughput,4800.60
+RESULT,current,DEALER_DEALER,inproc,65536,bandwidth,314.61
+RESULT,current,DEALER_DEALER,inproc,65536,latency,293033.40
+RESULT,current,DEALER_DEALER,inproc,65536,latency_p95,352861.47
+RESULT,current,DEALER_DEALER,inproc,65536,latency_p99,359808.62
+RESULT,current,DEALER_DEALER,inproc,131072,throughput,2384.80
+RESULT,current,DEALER_DEALER,inproc,131072,bandwidth,312.58
+RESULT,current,DEALER_DEALER,inproc,131072,latency,564056.87
+RESULT,current,DEALER_DEALER,inproc,131072,latency_p95,678040.01
+RESULT,current,DEALER_DEALER,inproc,131072,latency_p99,694432.35
+RESULT,current,DEALER_DEALER,inproc,262144,throughput,1057.60
+RESULT,current,DEALER_DEALER,inproc,262144,bandwidth,277.24
+RESULT,current,DEALER_DEALER,inproc,262144,latency,1064549.94
+RESULT,current,DEALER_DEALER,inproc,262144,latency_p95,1277476.06
+RESULT,current,DEALER_DEALER,inproc,262144,latency_p99,1316608.21
+RESULT,current,DEALER_ROUTER,inproc,64,throughput,107881.40
+RESULT,current,DEALER_ROUTER,inproc,64,bandwidth,6.90
+RESULT,current,DEALER_ROUTER,inproc,64,latency,13479.47
+RESULT,current,DEALER_ROUTER,inproc,64,latency_p95,19410.97
+RESULT,current,DEALER_ROUTER,inproc,64,latency_p99,20972.96
+RESULT,current,DEALER_ROUTER,inproc,256,throughput,86870.40
+RESULT,current,DEALER_ROUTER,inproc,256,bandwidth,22.24
+RESULT,current,DEALER_ROUTER,inproc,256,latency,16743.77
+RESULT,current,DEALER_ROUTER,inproc,256,latency_p95,23121.25
+RESULT,current,DEALER_ROUTER,inproc,256,latency_p99,25122.05
+RESULT,current,DEALER_ROUTER,inproc,1024,throughput,62197.80
+RESULT,current,DEALER_ROUTER,inproc,1024,bandwidth,63.69
+RESULT,current,DEALER_ROUTER,inproc,1024,latency,23555.34
+RESULT,current,DEALER_ROUTER,inproc,1024,latency_p95,33506.70
+RESULT,current,DEALER_ROUTER,inproc,1024,latency_p99,36940.61
+RESULT,current,DEALER_ROUTER,inproc,65536,throughput,4801.00
+RESULT,current,DEALER_ROUTER,inproc,65536,bandwidth,314.64
+RESULT,current,DEALER_ROUTER,inproc,65536,latency,291682.90
+RESULT,current,DEALER_ROUTER,inproc,65536,latency_p95,352886.70
+RESULT,current,DEALER_ROUTER,inproc,65536,latency_p99,363258.76
+RESULT,current,DEALER_ROUTER,inproc,131072,throughput,1854.60
+RESULT,current,DEALER_ROUTER,inproc,131072,bandwidth,243.09
+RESULT,current,DEALER_ROUTER,inproc,131072,latency,656315.59
+RESULT,current,DEALER_ROUTER,inproc,131072,latency_p95,1001964.15
+RESULT,current,DEALER_ROUTER,inproc,131072,latency_p99,1050853.75
+RESULT,current,DEALER_ROUTER,inproc,262144,throughput,600.20
+RESULT,current,DEALER_ROUTER,inproc,262144,bandwidth,157.34
+RESULT,current,DEALER_ROUTER,inproc,262144,latency,1885154.12
+RESULT,current,DEALER_ROUTER,inproc,262144,latency_p95,2535195.85
+RESULT,current,DEALER_ROUTER,inproc,262144,latency_p99,2601371.21
+RESULT,current,ROUTER_ROUTER,inproc,64,throughput,3012.80
+RESULT,current,ROUTER_ROUTER,inproc,64,bandwidth,0.19
+RESULT,current,ROUTER_ROUTER,inproc,64,latency,452062.51
+RESULT,current,ROUTER_ROUTER,inproc,64,latency_p95,587776.26
+RESULT,current,ROUTER_ROUTER,inproc,64,latency_p99,607116.86
+RESULT,current,ROUTER_ROUTER,inproc,256,throughput,2998.80
+RESULT,current,ROUTER_ROUTER,inproc,256,bandwidth,0.77
+RESULT,current,ROUTER_ROUTER,inproc,256,latency,455811.34
+RESULT,current,ROUTER_ROUTER,inproc,256,latency_p95,591814.87
+RESULT,current,ROUTER_ROUTER,inproc,256,latency_p99,611179.79
+RESULT,current,ROUTER_ROUTER,inproc,1024,throughput,2597.60
+RESULT,current,ROUTER_ROUTER,inproc,1024,bandwidth,2.66
+RESULT,current,ROUTER_ROUTER,inproc,1024,latency,501527.17
+RESULT,current,ROUTER_ROUTER,inproc,1024,latency_p95,651179.31
+RESULT,current,ROUTER_ROUTER,inproc,1024,latency_p99,672043.62
+RESULT,current,ROUTER_ROUTER,inproc,65536,throughput,358.00
+RESULT,current,ROUTER_ROUTER,inproc,65536,bandwidth,23.46
+RESULT,current,ROUTER_ROUTER,inproc,65536,latency,2077835.78
+RESULT,current,ROUTER_ROUTER,inproc,65536,latency_p95,2775448.20
+RESULT,current,ROUTER_ROUTER,inproc,65536,latency_p99,2939848.47
+RESULT,current,ROUTER_ROUTER,inproc,131072,throughput,143.00
+RESULT,current,ROUTER_ROUTER,inproc,131072,bandwidth,18.74
+RESULT,current,ROUTER_ROUTER,inproc,131072,latency,3490017.62
+RESULT,current,ROUTER_ROUTER,inproc,131072,latency_p95,4372361.52
+RESULT,current,ROUTER_ROUTER,inproc,131072,latency_p99,4449632.08
+RESULT,current,ROUTER_ROUTER,inproc,262144,throughput,0.00
+RESULT,current,ROUTER_ROUTER,inproc,262144,bandwidth,0.00
+RESULT,current,ROUTER_ROUTER,inproc,262144,latency,0.00
+RESULT,current,ROUTER_ROUTER,inproc,262144,latency_p95,0.00
+RESULT,current,ROUTER_ROUTER,inproc,262144,latency_p99,0.00
+RESULT,current,SPOT,inproc,64,throughput,442.60
+RESULT,current,SPOT,inproc,64,bandwidth,0.03
+RESULT,current,SPOT,inproc,64,latency,2728095.33
+RESULT,current,SPOT,inproc,64,latency_p95,3165088.49
+RESULT,current,SPOT,inproc,64,latency_p99,3202992.02
+RESULT,current,SPOT,inproc,256,throughput,413.40
+RESULT,current,SPOT,inproc,256,bandwidth,0.11
+RESULT,current,SPOT,inproc,256,latency,2739420.34
+RESULT,current,SPOT,inproc,256,latency_p95,3144370.10
+RESULT,current,SPOT,inproc,256,latency_p99,3179846.70
+RESULT,current,SPOT,inproc,1024,throughput,241.40
+RESULT,current,SPOT,inproc,1024,bandwidth,0.25
+RESULT,current,SPOT,inproc,1024,latency,2677644.43
+RESULT,current,SPOT,inproc,1024,latency_p95,2929806.55
+RESULT,current,SPOT,inproc,1024,latency_p99,2952293.15
+RESULT,current,SPOT,inproc,65536,throughput,0.00
+RESULT,current,SPOT,inproc,65536,bandwidth,0.00
+RESULT,current,SPOT,inproc,65536,latency,0.00
+RESULT,current,SPOT,inproc,65536,latency_p95,0.00
+RESULT,current,SPOT,inproc,65536,latency_p99,0.00
+RESULT,current,SPOT,inproc,131072,throughput,0.00
+RESULT,current,SPOT,inproc,131072,bandwidth,0.00
+RESULT,current,SPOT,inproc,131072,latency,0.00
+RESULT,current,SPOT,inproc,131072,latency_p95,0.00
+RESULT,current,SPOT,inproc,131072,latency_p99,0.00
+RESULT,current,SPOT,inproc,262144,throughput,0.00
+RESULT,current,SPOT,inproc,262144,bandwidth,0.00
+RESULT,current,SPOT,inproc,262144,latency,0.00
+RESULT,current,SPOT,inproc,262144,latency_p95,0.00
+RESULT,current,SPOT,inproc,262144,latency_p99,0.00
+
+## Effective Options (result)
+- pattern: ALL
+- recv_mode: callback
+- duration_seconds: 5
+- warmup_seconds: 2
+- msg_sizes: 64,256,1024,65536,131072,262144
+- runs: 1
+- transports: inproc
+- results_dir: /home/hep7/project/kairos/zlink/bindings/node/perf/results
+- result_lines: 180
+## Status Summary
+- result_lines: 180
+- status: complete
+- expected_result_lines: 180
+- actual_result_lines: 180

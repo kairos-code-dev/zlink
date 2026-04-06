@@ -28,6 +28,8 @@ struct router_router_callback_state_t
         fatal (false),
         warmup_received (0),
         active_received (0),
+        warmup_processed (0),
+        active_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -42,11 +44,12 @@ struct router_router_callback_state_t
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
+    std::atomic<unsigned long long> warmup_processed;
+    std::atomic<unsigned long long> active_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
-    std::mutex latency_mutex;
     std::condition_variable cv;
 };
 
@@ -204,6 +207,8 @@ inline bool run_oneway_phase (void *sender,
     state->fatal.store (false, std::memory_order_release);
     state->warmup_received.store (0, std::memory_order_release);
     state->active_received.store (0, std::memory_order_release);
+    state->warmup_processed.store (0, std::memory_order_release);
+    state->active_processed.store (0, std::memory_order_release);
     state->active_deadline_us.store (
       active_phase
         ? perf_single_metric::now_us ()
@@ -211,10 +216,7 @@ inline bool run_oneway_phase (void *sender,
         : 0,
       std::memory_order_release);
     state->probe = queue_probe;
-    {
-        std::lock_guard<std::mutex> lock (state->latency_mutex);
-        state->latency = latency_stats_builder_t ();
-    }
+    state->latency = latency_stats_builder_t ();
 
     bool send_failed = false;
     unsigned long long successful_send_count = 0;
@@ -276,7 +278,7 @@ inline bool run_oneway_phase (void *sender,
         queue_probe->force_sample_send ();
 
     const int drain_timeout_ms =
-      single_phase_drain_timeout_ms (duration_s, recv_timeout_ms);
+      single_phase_completion_timeout_ms (duration_s, recv_timeout_ms);
     const bool drained = single_wait_for_phase_processed (
       *state, phase, successful_send_count, drain_timeout_ms);
 
@@ -305,7 +307,6 @@ inline bool run_oneway_phase (void *sender,
         if (*out_received == 0 || !out_latency) {
             return false;
         }
-        std::lock_guard<std::mutex> lock (state->latency_mutex);
         *out_latency = state->latency.snapshot ();
         if (state->latency.count () == 0)
             return false;

@@ -1,0 +1,50 @@
+## Effective Options (start)
+  pattern:   ALL
+  recv:      callback
+  duration:  5s
+  warmup:    2s
+  msg_sizes: 64
+  transports: inproc
+
+
+>> PAIR transport=inproc size=64
+RESULT,current,PAIR,inproc,64,throughput,3039736.20
+RESULT,current,PAIR,inproc,64,bandwidth,194.543117
+RESULT,current,PAIR,inproc,64,latency,44.39
+RESULT,current,PAIR,inproc,64,latency_p95,161.00
+RESULT,current,PAIR,inproc,64,latency_p99,275.00
+
+>> PUBSUB transport=inproc size=64
+RESULT,current,PUBSUB,inproc,64,throughput,2065981.80
+RESULT,current,PUBSUB,inproc,64,bandwidth,132.222835
+RESULT,current,PUBSUB,inproc,64,latency,17.78
+RESULT,current,PUBSUB,inproc,64,latency_p95,65.00
+RESULT,current,PUBSUB,inproc,64,latency_p99,247.00
+
+>> DEALER_DEALER transport=inproc size=64
+RESULT,current,DEALER_DEALER,inproc,64,throughput,2988750.80
+RESULT,current,DEALER_DEALER,inproc,64,bandwidth,191.280051
+RESULT,current,DEALER_DEALER,inproc,64,latency,35.02
+RESULT,current,DEALER_DEALER,inproc,64,latency_p95,182.00
+RESULT,current,DEALER_DEALER,inproc,64,latency_p99,286.00
+
+>> DEALER_ROUTER transport=inproc size=64
+RESULT,current,DEALER_ROUTER,inproc,64,throughput,3001494.40
+RESULT,current,DEALER_ROUTER,inproc,64,bandwidth,192.095642
+RESULT,current,DEALER_ROUTER,inproc,64,latency,27.46
+RESULT,current,DEALER_ROUTER,inproc,64,latency_p95,133.00
+RESULT,current,DEALER_ROUTER,inproc,64,latency_p99,253.00
+
+>> ROUTER_ROUTER transport=inproc size=64
+RESULT,current,ROUTER_ROUTER,inproc,64,throughput,2377439.20
+RESULT,current,ROUTER_ROUTER,inproc,64,bandwidth,152.156109
+RESULT,current,ROUTER_ROUTER,inproc,64,latency,19.87
+RESULT,current,ROUTER_ROUTER,inproc,64,latency_p95,90.00
+RESULT,current,ROUTER_ROUTER,inproc,64,latency_p99,215.00
+
+>> SPOT transport=inproc size=64
+RESULT,current,SPOT,inproc,64,throughput,2309675.80
+RESULT,current,SPOT,inproc,64,bandwidth,147.819251
+RESULT,current,SPOT,inproc,64,latency,15.69
+RESULT,current,SPOT,inproc,64,latency_p95,49.00
+RESULT,current,SPOT,inproc,64,latency_p99,194.00

@@ -10,9 +10,8 @@ internal static class PerfDealerRouter
     internal static int RunDealerRouter(string transport, int size)
     {
         int warmupCount = ResolveSingleWarmupCount("DEALER_ROUTER");
-        int settleMs = SingleSettleTimeMs;
-        int durationSeconds = ParseEnv("PERF_SINGLE_DURATION_SECONDS", 5);
-        int recvTimeoutMs = ParseEnvNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+        int durationSeconds = ResolveSingleDurationSeconds();
+        int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
         int latCount = ResolveSingleLatencyCount("DEALER_ROUTER");
 
         using var ctx = new Context();
@@ -43,8 +42,6 @@ internal static class PerfDealerRouter
                 return 2;
             }
 
-            Thread.Sleep(settleMs);
-
             if (!RunPhase(dealer, router, payload, payloadSize, 0,
                     durationSeconds, recvTimeoutMs, latCount, out long received,
                     out var latencySamples))
@@ -71,7 +68,7 @@ internal static class PerfDealerRouter
     {
         bool active = durationSeconds > 0;
         long deadlineTicks = active ? DeadlineTicksFromSeconds(durationSeconds) : 0;
-        long drainTicks = Math.Max(1,
+        long recvFlushTicks = Math.Max(1,
             (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
         long received = 0;
@@ -136,7 +133,7 @@ internal static class PerfDealerRouter
 
                     if (recvRc == 0)
                     {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks >= drainTicks)
+                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks >= recvFlushTicks)
                             break;
                         Thread.Yield();
                         continue;

@@ -7,25 +7,32 @@
 
 namespace perf_single_metric {
 
-static const uint32_t k_magic = 0x53504631U; // "SPF1"
+// "SPF1" (Single Perf Frame v1) -- identifies a single-bench metric
+// payload header.  Receivers reject messages whose first four bytes
+// do not match this value, preventing cross-talk from stale or
+// misrouted frames.
+static const uint32_t k_magic = 0x53504631U;
 
 enum phase_t
 {
-    phase_unknown = 0,
-    phase_warmup = 1,
-    phase_active = 2
+    phase_unknown = 0, // sentinel / invalid
+    phase_warmup = 1,  // pre-measurement warm-up messages
+    phase_active = 2   // measurement window messages (counted + latency)
 };
 
 struct header_t
 {
-    uint32_t magic;
-    uint32_t run_id;
-    uint32_t phase;
-    uint32_t msg_size;
-    uint64_t seq;
-    uint64_t sent_ts_us;
+    uint32_t magic;      // protocol tag (k_magic) for frame identification
+    uint32_t run_id;     // unique per-run token to reject stale frames
+    uint32_t phase;      // phase_t cast to uint32 for wire encoding
+    uint32_t msg_size;   // logical message size requested by the benchmark
+    uint64_t seq;        // monotonic send-side sequence number
+    uint64_t sent_ts_us; // sender wall-clock timestamp in microseconds
 };
 
+// Wire size of header_t: 4 x uint32 (16 bytes) + 2 x uint64 (16 bytes) = 32.
+// Explicitly computed from field sizes rather than sizeof(header_t) to
+// avoid padding differences across compilers.
 inline size_t header_size ()
 {
     return sizeof (uint32_t) * 4 + sizeof (uint64_t) * 2;

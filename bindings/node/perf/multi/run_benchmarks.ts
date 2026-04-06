@@ -13,16 +13,19 @@ const {
   DEFAULT_MULTI_TRANSPORTS,
   formatTableRows,
   parseCommonArgs,
+  primaryMetricsFromResultLines,
   resolveMultiPatternNames,
   writeReport
 } = require('../common/perf_metrics');
 const {
-  attachProcessCapture,
   reservePort,
+} = require('./perf_multi_common');
+const {
+  attachProcessCapture,
   spawnMultiPair,
   stopServer,
   waitForLine
-} = require('./perf_multi_common');
+} = require('./perf_multi_orchestrator');
 
 const STREAM_CLIENT = path.join(
   process.cwd(),
@@ -131,38 +134,61 @@ async function spawnSharedStreamPair(args) {
   return resultLines;
 }
 
-function primaryMetricsFromResultLines(pattern, msgSize, lines) {
-  const metrics = {};
-  for (const line of lines) {
-    const parts = line.split(',');
-    if (parts.length !== 7) {
-      continue;
-    }
-    if (parts[2] !== pattern || Number(parts[4]) !== msgSize) {
-      continue;
-    }
-    if (
-      parts[5] === 'throughput'
-      || parts[5] === 'bandwidth'
-      || parts[5] === 'latency'
-      || parts[5] === 'latency_p95'
-      || parts[5] === 'latency_p99'
-    ) {
-      metrics[parts[5]] = Number(parts[6]);
-    }
+const MULTI_PATTERN_RUNNERS = {
+  MULTI_DEALER_DEALER: {
+    server: 'perf_multi_dealer_dealer_server.js',
+    client: 'perf_multi_dealer_dealer_client.js',
+    recv: 'recv'
+  },
+  MULTI_PUBSUB: {
+    server: 'perf_multi_pubsub_server.js',
+    client: 'perf_multi_pubsub_client.js',
+    recv: 'recv'
+  },
+  MULTI_DEALER_ROUTER: {
+    server: 'perf_multi_dealer_router_server.js',
+    client: 'perf_multi_dealer_router_client.js',
+    recv: 'recv'
+  },
+  MULTI_ROUTER_ROUTER: {
+    server: 'perf_multi_router_router_server.js',
+    client: 'perf_multi_router_router_client.js',
+    recv: 'recv'
+  },
+  MULTI_SPOT: {
+    server: 'perf_multi_spot_server.js',
+    client: 'perf_multi_spot_client.js',
+    recv: ['recv', 'callback']
+  },
+  MULTI_STREAM: {
+    run: spawnSharedStreamPair,
+    recv: ['recv', 'callback']
   }
+};
 
-  if (
-    typeof metrics.throughput !== 'number'
-    || typeof metrics.bandwidth !== 'number'
-    || typeof metrics.latency !== 'number'
-    || typeof metrics.latency_p95 !== 'number'
-    || typeof metrics.latency_p99 !== 'number'
-  ) {
-    throw new Error(`missing primary metrics for ${pattern} size ${msgSize}`);
+function assertMultiRecvAllowed(patternName, recvMode) {
+  const runner = MULTI_PATTERN_RUNNERS[patternName];
+  if (!runner) {
+    throw new Error(`unsupported multi pattern: ${patternName}`);
   }
+  const allowed = Array.isArray(runner.recv) ? runner.recv : [runner.recv];
+  if (!allowed.includes(recvMode)) {
+    throw new Error(`${patternName} supports only --recv ${allowed.join('|')}`);
+  }
+  return runner;
+}
 
-  return metrics;
+async function runMultiPattern(patternName, options, msgSize) {
+  const runner = assertMultiRecvAllowed(patternName, options.recv);
+  if (typeof runner.run === 'function') {
+    return runner.run({ ...options, pattern: patternName, msgSize, clients: options.clients });
+  }
+  return spawnMultiPair(runner.server, runner.client, {
+    ...options,
+    pattern: patternName,
+    msgSize,
+    clients: options.clients
+  });
 }
 
 async function main() {
@@ -213,107 +239,13 @@ async function main() {
   for (const patternName of patternNames) {
     const patternRows = [];
     for (const msgSize of options.msgSizes) {
-      if (patternName === 'MULTI_DEALER_DEALER') {
-        if (options.recv !== 'recv') {
-          throw new Error('MULTI_DEALER_DEALER supports only --recv recv');
-        }
-        const lines = await spawnMultiPair(
-          'perf_multi_dealer_dealer_server.js',
-          'perf_multi_dealer_dealer_client.js',
-          { ...options, pattern: patternName, msgSize, clients: options.clients }
-        );
-        patternRows.push({
-          pattern: patternName,
-          msgSize,
-          metrics: primaryMetricsFromResultLines(patternName, msgSize, lines)
-        });
-        resultLines.push(...lines);
-        continue;
-      }
-
-      if (patternName === 'MULTI_PUBSUB') {
-        if (options.recv !== 'recv') {
-          throw new Error('MULTI_PUBSUB supports only --recv recv');
-        }
-        const lines = await spawnMultiPair(
-          'perf_multi_pubsub_server.js',
-          'perf_multi_pubsub_client.js',
-          { ...options, pattern: patternName, msgSize, clients: options.clients }
-        );
-        patternRows.push({
-          pattern: patternName,
-          msgSize,
-          metrics: primaryMetricsFromResultLines(patternName, msgSize, lines)
-        });
-        resultLines.push(...lines);
-        continue;
-      }
-
-      if (patternName === 'MULTI_DEALER_ROUTER') {
-        if (options.recv !== 'recv') {
-          throw new Error('MULTI_DEALER_ROUTER supports only --recv recv');
-        }
-        const lines = await spawnMultiPair(
-          'perf_multi_dealer_router_server.js',
-          'perf_multi_dealer_router_client.js',
-          { ...options, pattern: patternName, msgSize, clients: options.clients }
-        );
-        patternRows.push({
-          pattern: patternName,
-          msgSize,
-          metrics: primaryMetricsFromResultLines(patternName, msgSize, lines)
-        });
-        resultLines.push(...lines);
-        continue;
-      }
-
-      if (patternName === 'MULTI_ROUTER_ROUTER') {
-        if (options.recv !== 'recv') {
-          throw new Error('MULTI_ROUTER_ROUTER supports only --recv recv');
-        }
-        const lines = await spawnMultiPair(
-          'perf_multi_router_router_server.js',
-          'perf_multi_router_router_client.js',
-          { ...options, pattern: patternName, msgSize, clients: options.clients }
-        );
-        patternRows.push({
-          pattern: patternName,
-          msgSize,
-          metrics: primaryMetricsFromResultLines(patternName, msgSize, lines)
-        });
-        resultLines.push(...lines);
-        continue;
-      }
-
-      if (patternName === 'MULTI_STREAM') {
-        const lines = await spawnSharedStreamPair(
-          { ...options, pattern: patternName, msgSize, clients: options.clients }
-        );
-        patternRows.push({
-          pattern: patternName,
-          msgSize,
-          metrics: primaryMetricsFromResultLines(patternName, msgSize, lines)
-        });
-        resultLines.push(...lines);
-        continue;
-      }
-
-      if (patternName === 'MULTI_SPOT') {
-        const lines = await spawnMultiPair(
-          'perf_multi_spot_server.js',
-          'perf_multi_spot_client.js',
-          { ...options, pattern: patternName, msgSize, clients: options.clients }
-        );
-        patternRows.push({
-          pattern: patternName,
-          msgSize,
-          metrics: primaryMetricsFromResultLines(patternName, msgSize, lines)
-        });
-        resultLines.push(...lines);
-        continue;
-      }
-
-      throw new Error(`unsupported multi pattern: ${patternName}`);
+      const lines = await runMultiPattern(patternName, options, msgSize);
+      patternRows.push({
+        pattern: patternName,
+        msgSize,
+        metrics: primaryMetricsFromResultLines(patternName, msgSize, lines)
+      });
+      resultLines.push(...lines);
     }
 
     if (patternRows.length > 0) {

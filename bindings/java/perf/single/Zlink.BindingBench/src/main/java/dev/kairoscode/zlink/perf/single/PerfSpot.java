@@ -36,9 +36,9 @@ final class PerfSpot {
             });
             spot.setSubscription(topic);
             Thread traffic = SingleSendLoops.oneWaySend(
-                () -> send(spot, topic, config.size(), (byte) 2),
-                () -> send(spot, topic, config.size(), (byte) 0),
-                () -> send(spot, topic, config.size(), (byte) 1),
+                () -> { try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) { spot.publish(topic, List.of(m)); } },
+                () -> { try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) { spot.publish(topic, List.of(m)); } },
+                () -> { try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) { spot.publish(topic, List.of(m)); } },
                 config.warmupSeconds(),
                 config.durationSeconds(),
                 metrics);
@@ -47,12 +47,6 @@ final class PerfSpot {
                 config.warmupSeconds() + config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "spot sender", Duration.ofSeconds(10));
             return metrics.finishSingle(config);
-        }
-    }
-
-    private static void send(Spot spot, String topic, int size, byte phase) {
-        try (Message message = PerfUtil.payload(size, phase, System.nanoTime())) {
-            spot.publish(topic, List.of(message));
         }
     }
 }

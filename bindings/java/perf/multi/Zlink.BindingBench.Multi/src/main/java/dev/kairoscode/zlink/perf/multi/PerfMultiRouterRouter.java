@@ -73,13 +73,21 @@ final class PerfMultiRouterRouter {
                 PerfUtil.await(go, "router/router start", java.time.Duration.ofSeconds(10));
                 long warmupEnd = System.nanoTime() + warmup * 1_000_000_000L;
                 while (System.nanoTime() < warmupEnd) {
-                    send(client, config.size(), (byte) 2);
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
+                        client.send(SERVER_ID, List.of(m));
+                    }
                 }
                 long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                 while (System.nanoTime() < activeEnd) {
-                    send(client, config.size(), (byte) 0);
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) {
+                        client.send(SERVER_ID, List.of(m));
+                    }
                 }
-                sendStopBurst(client, config.size());
+                for (int i = 0; i < 32; i++) {
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+                        client.send(SERVER_ID, List.of(m));
+                    }
+                }
             }
             // Router/Router ws teardown can block in ctxTerm after the client loop
             // has already completed. This subprocess is short-lived, so process exit
@@ -87,17 +95,5 @@ final class PerfMultiRouterRouter {
         }, "multi-rr-client-" + index), config.warmupSeconds(), config.durationSeconds());
         return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
             config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
-    }
-
-    private static void send(RouterSocket socket, int size, byte phase) {
-        try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
-            socket.send(SERVER_ID, List.of(payload));
-        }
-    }
-
-    private static void sendStopBurst(RouterSocket socket, int size) {
-        for (int i = 0; i < 32; i++) {
-            send(socket, size, (byte) 1);
-        }
     }
 }

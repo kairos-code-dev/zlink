@@ -116,10 +116,8 @@ bool perf_router_router_server (const std::string &transport, size_t msg_size)
 
     const int warmup_seconds = settings.warmup_seconds > 0 ? settings.warmup_seconds : 0;
     const int active_seconds = settings.duration_seconds > 0 ? settings.duration_seconds : 1;
-    const int settle_seconds =
-      settings.settle_ms > 0 ? (settings.settle_ms + 999) / 1000 : 0;
     const int deadline_seconds =
-      warmup_seconds + settle_seconds + active_seconds + 2;
+      warmup_seconds + active_seconds + 2;
 
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::seconds (deadline_seconds);

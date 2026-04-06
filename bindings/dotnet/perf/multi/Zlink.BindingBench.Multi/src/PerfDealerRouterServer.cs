@@ -6,21 +6,21 @@ using static PerfRunner;
 
 internal static class PerfDealerRouterServer
 {
-    internal static int Run(string transport, int size)
+    internal static int Run(PerfOptions options)
     {
-        const string pattern = "DEALER_ROUTER";
-        size = Math.Max(1, size);
-        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs();
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
-        int latencySampleCap = ResolveMultiLatencySampleCap();
-        int clientCount = ResolveMultiClients(pattern);
-        string endpoint = MultiEndpointFor(transport, "multi-dealer-router");
+        int size = Math.Max(1, options.Size);
+        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
+        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
+        int latencySampleCap = ResolveMultiLatencySampleCap(options);
+        int clientCount = ResolveMultiClients(options);
+        string endpoint = MultiEndpointFor(options.Transport,
+            "multi-dealer-router", options);
 
         using var ctx = new Context();
-        ApplyMultiServerContextOptions(ctx);
+        ApplyMultiServerContextOptions(ctx, options);
         using var server = new RouterSocket(ctx);
-        ApplyMultiSocketOptions(server, pattern);
-        ConfigureTlsServerIfNeeded(server, transport);
+        ApplyMultiSocketOptions(server, options);
+        ConfigureTlsServerIfNeeded(server, options.Transport);
 
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
@@ -102,7 +102,8 @@ internal static class PerfDealerRouterServer
 Done:
         if (benchStartTicks > 0 && echoCount > 0)
         {
-            double configuredSeconds = Math.Max(1.0, ResolveMultiDurationSeconds());
+            double configuredSeconds = Math.Max(1.0,
+                ResolveMultiDurationSeconds(options));
             double throughput = echoCount / configuredSeconds;
             var latency = ComputeLatencyStats(latSamples);
             double fallbackLatencyUs = (configuredSeconds * 1_000_000.0)
@@ -110,7 +111,7 @@ Done:
             double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
             double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
             double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
-            PrintResult(pattern, transport, size, throughput, latencyUs,
+            PrintResult(options.Pattern, options.Transport, size, throughput, latencyUs,
                 latencyP95Us, latencyP99Us);
         }
 

@@ -21,6 +21,7 @@ final class PerfMultiStream {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
+        PerfUtil.validateMultiRecvMode(config);
         AtomicBoolean stopRequested = new AtomicBoolean(false);
         ArrayDeque<PendingReply> pending = new ArrayDeque<>();
         Object pendingLock = new Object();
@@ -28,6 +29,7 @@ final class PerfMultiStream {
 
         try (Context ctx = new Context();
              StreamSocket server = new StreamSocket(ctx)) {
+            PerfUtil.configureServerTls(server, config.transport());
             server.options().notify(true);
             server.options().sendTimeoutMillis(0);
             server.options().receiveTimeoutMillis(0);
@@ -49,7 +51,7 @@ final class PerfMultiStream {
                 });
                 PerfUtil.join(controlWatcher, "stream control watcher",
                     Duration.ofSeconds(30));
-            } else {
+            } else if ("recv".equalsIgnoreCase(config.recvMode())) {
                 while (!stopRequested.get()) {
                     Optional<dev.kairoscode.zlink.Received> maybe = server.tryRecv();
                     if (maybe.isEmpty()) {
@@ -78,6 +80,7 @@ final class PerfMultiStream {
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
+        PerfUtil.validateMultiRecvMode(config);
         return PerfUtil.Result.unsupported("shared_core_stream_client", config);
     }
 

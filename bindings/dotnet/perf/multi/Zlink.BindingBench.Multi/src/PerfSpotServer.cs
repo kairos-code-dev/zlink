@@ -9,19 +9,19 @@ internal static class PerfSpotServer
     private const string Pattern = "SPOT";
     private const uint RunId = 1;
     private const string Topic = "bench";
-    internal static int Run(string transport, int size)
+    internal static int Run(PerfOptions options)
     {
-        SpotServerConfig config = BuildConfig(transport, size);
-        _ = ResolveMultiRecvMode(Pattern);
+        SpotServerConfig config = BuildConfig(options);
+        _ = ResolveMultiRecvMode(options, Pattern);
         var control = new ControlState();
 
         using var ctx = new Context();
-        ApplyMultiServerContextOptions(ctx);
+        ApplyMultiServerContextOptions(ctx, options);
         using var nodePub = new SpotNode(ctx);
         using var spotPub = new Spot(nodePub);
 
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
-        TryConfigureSpotPublisherSocket(nodePub, Pattern, config.SndTimeoutMs,
+        TryConfigureSpotPublisherSocket(nodePub, options, config.SndTimeoutMs,
             config.RcvTimeoutMs);
         nodePub.Bind(config.Endpoint);
         StartControlWatcher(control);
@@ -38,30 +38,31 @@ internal static class PerfSpotServer
             config.WarmupSeconds, ref phaseState);
         SpotServerActiveStats activeStats = RunActivePhase(spotPub, control,
             config, ref phaseState);
-        SpotServerResult result = ComputeResult(activeStats);
+        SpotServerResult result = ComputeResult(activeStats,
+            config.DurationSeconds);
 
         PrintResult(Pattern, config.Transport, config.Size, result.Throughput,
             result.LatencyUs, result.LatencyP95Us, result.LatencyP99Us);
         return 0;
     }
 
-    private static SpotServerConfig BuildConfig(string transport, int size)
+    private static SpotServerConfig BuildConfig(PerfOptions options)
     {
-        int resolvedSize = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
+        int resolvedSize = Math.Max(1, options.Size);
+        int warmupSeconds = ResolveMultiWarmupSeconds(options);
         if (resolvedSize >= 65536 && warmupSeconds > 0)
             warmupSeconds = 0;
 
         return new SpotServerConfig(
-            transport,
+            options.Transport,
             resolvedSize,
             warmupSeconds,
-            ResolveMultiDurationSeconds(),
-            Math.Min(ResolveMultiSndTimeoutMs(), 200),
-            ResolveMultiRcvTimeoutMs(),
-            ResolveMultiConnectReadyTimeoutMs(),
-            ResolveMultiClients(Pattern),
-            MultiEndpointFor(transport, "multi-spot"));
+            ResolveMultiDurationSeconds(options),
+            Math.Min(ResolveMultiSndTimeoutMs(options), 200),
+            ResolveMultiRcvTimeoutMs(options),
+            ResolveMultiConnectReadyTimeoutMs(options),
+            ResolveMultiClients(options),
+            MultiEndpointFor(options.Transport, "multi-spot", options));
     }
 
     private static void RunPhase(Spot spotPub, ControlState control,
@@ -71,9 +72,8 @@ internal static class PerfSpotServer
         if (durationValue <= 0)
             return;
 
-        long durationTicks = phase == PerfPhase.Drain
-            ? Math.Max(0, durationValue) * Stopwatch.Frequency / 1000
-            : (long)Math.Max(0, durationValue) * Stopwatch.Frequency;
+        long durationTicks = (long)Math.Max(0, durationValue)
+            * Stopwatch.Frequency;
         long deadlineTicks = Stopwatch.GetTimestamp() + durationTicks;
         while (!control.StopRequested
                && Stopwatch.GetTimestamp() < deadlineTicks)
@@ -113,9 +113,10 @@ internal static class PerfSpotServer
             benchEndTicks);
     }
 
-    private static SpotServerResult ComputeResult(SpotServerActiveStats stats)
+    private static SpotServerResult ComputeResult(SpotServerActiveStats stats,
+        int durationSeconds)
     {
-        double configuredSeconds = Math.Max(1.0, ResolveMultiDurationSeconds());
+        double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = stats.SendCount / configuredSeconds;
         double latencyUs = (configuredSeconds * 1_000_000.0)
             / Math.Max(1.0, stats.SendCount);
@@ -199,12 +200,11 @@ internal static class PerfSpotServer
     }
 
     private static void TryConfigureSpotPublisherSocket(SpotNode node,
-        string pattern, int sndTimeoutMs, int rcvTimeoutMs)
+        PerfOptions options, int sndTimeoutMs, int rcvTimeoutMs)
     {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", pattern);
-        int xpubNoDrop = ParsePositiveEnv("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0
-            ? 1 : 0;
+        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", options);
+        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", options);
+        int xpubNoDrop = options.SpotXpubNoDrop > 0 ? 1 : 0;
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,
             SocketOptions.Linger, 0);
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Pub,

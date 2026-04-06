@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"strings"
 	"time"
 
 	"zlink/perf/internal/perfcommon"
@@ -31,18 +30,23 @@ var (
 func main() {
 	flag.Parse()
 
+	loaded := perfcommon.LoadMultiConfig(
+		*multiPattern,
+		*multiTransport,
+		*multiSize,
+		*multiWarmup,
+		*multiDuration,
+		*multiRecv,
+		*multiClients,
+	)
 	cfg := multiConfig{
-		pattern:   strings.ToUpper(*multiPattern),
-		transport: strings.ToLower(*multiTransport),
-		msgSize:   *multiSize,
-		warmup:    time.Duration(*multiWarmup) * time.Second,
-		duration:  time.Duration(*multiDuration) * time.Second,
-		recvMode:  strings.ToLower(*multiRecv),
-		clients:   *multiClients,
-	}
-	perfcommon.ValidateCommon(cfg.transport, cfg.msgSize, cfg.recvMode)
-	if cfg.clients <= 0 {
-		perfcommon.Must(&invalidClientCountError{clients: cfg.clients})
+		pattern:   loaded.Pattern,
+		transport: loaded.Transport,
+		msgSize:   loaded.MsgSize,
+		warmup:    loaded.Warmup,
+		duration:  loaded.Duration,
+		recvMode:  loaded.RecvMode.String(),
+		clients:   loaded.Clients,
 	}
 
 	var result perfcommon.Result
@@ -72,12 +76,4 @@ type unsupportedMultiPatternError struct {
 
 func (e *unsupportedMultiPatternError) Error() string {
 	return "unsupported multi perf pattern: " + e.pattern
-}
-
-type invalidClientCountError struct {
-	clients int
-}
-
-func (e *invalidClientCountError) Error() string {
-	return "clients must be > 0"
 }

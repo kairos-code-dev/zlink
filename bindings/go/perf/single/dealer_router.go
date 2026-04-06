@@ -38,10 +38,9 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
-	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
-	activeAt := time.Now().Add(cfg.warmup)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
-	for time.Now().Before(stopAt) {
+	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
 		err := dealer.Send(perfcommon.NewMessage(payload))
 		if err != nil {
@@ -59,9 +58,7 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
-		if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-			stats.Add(sentAt)
-		}
+		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
 		perfcommon.Must(reply.Close())
 	}
 
@@ -70,33 +67,27 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 
 func waitForDealerRouterReady(dealer *zlink.DealerSocket) {
 	payload := perfcommon.PreparePayload(64)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		perfcommon.StampPayload(payload)
-		err := dealer.Send(perfcommon.NewMessage(payload))
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
+	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
+		Name: "dealer/router perf endpoint",
+		Probe: func() (bool, error) {
+			perfcommon.StampPayload(payload)
+			err := dealer.Send(perfcommon.NewMessage(payload))
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					return false, nil
+				}
+				return false, err
 			}
-			perfcommon.Must(err)
-		}
-		reply, err := dealer.Recv()
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
+			reply, err := dealer.Recv()
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					return false, nil
+				}
+				return false, err
 			}
-			perfcommon.Must(err)
-		}
-		perfcommon.Must(reply.Close())
-		return
-	}
-	perfcommon.Must(&dealerRouterReadyError{})
-}
-
-type dealerRouterReadyError struct{}
-
-func (e *dealerRouterReadyError) Error() string {
-	return "dealer/router perf endpoint did not become ready"
+			return true, reply.Close()
+		},
+	}))
 }
 
 func startRouterEchoServer(router *zlink.RouterSocket, recvMode string) {

@@ -7,7 +7,6 @@
 #include "../common/perf_multi_spot_client_recv.hpp"
 #include "../common/perf_multi_spot_handshake.hpp"
 #include "../common/perf_multi_spot_phase.hpp"
-#include "../../common/perf_spot_handle.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
@@ -93,7 +92,8 @@ struct spot_client_state_t
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
         recv_mode(spot_recv_recv),
         recv_workers_stop(false),
-        metrics_epoch(1)
+        metrics_epoch(1),
+        last_active_recv_us(0)
     {
     }
 
@@ -122,6 +122,7 @@ struct spot_client_state_t
     spot_recv_mode_t recv_mode;
     std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
+    std::atomic<uint64_t> last_active_recv_us;
 };
 
 spot_client_state_t *g_client_state = NULL;
@@ -545,6 +546,7 @@ void handle_spot_client_parts(const char *topic,
         const uint64_t start_recv_us =
           bench_transition_debug_enabled() ? perf_multi_metric::now_us() : 0;
         {
+            // START only updates control state before active traffic begins.
             std::lock_guard<std::mutex> lock(state->mutex);
             state->control_started_msg_size.store(started_size,
                                                   std::memory_order_relaxed);
@@ -800,6 +802,8 @@ bool recv_one_control_message(spot_client_state_t *state, bool *received)
     if (perf_multi_spot_handshake::parse_start_command(
           payload.data(), payload.size(), &started_size)) {
         {
+            // Control START handling is part of the setup barrier, not the
+            // active-phase message path.
             std::lock_guard<std::mutex> lock(state->mutex);
             state->control_started_msg_size.store(started_size,
                                                   std::memory_order_relaxed);
@@ -921,6 +925,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
                   << " mode=" << spot_recv_mode_name(recv_mode) << std::endl;
     }
     for (size_t i = 0; i < service_clients; ++i) {
+        // Slots are provisioned once during setup before active traffic.
         spot_client_slot_t *slot = new (std::nothrow) spot_client_slot_t();
         if (!slot)
             return false;
@@ -943,7 +948,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
                           << " node=" << (slot->node != NULL)
                           << " err=" << zlink_errno() << std::endl;
             if (slot->handle)
-                perf_destroy_default_spot_handle(&slot->handle);
+                (void) zlink_spot_destroy(&slot->handle);
             if (slot->node)
                 zlink_spot_node_destroy(&slot->node);
             delete slot;
@@ -977,6 +982,7 @@ void reset_metrics(spot_client_state_t *state, size_t msg_size)
     state->control_started_msg_size.store(0, std::memory_order_release);
     state->control_start_recv_us.store(0, std::memory_order_release);
     {
+        // Metric reset runs between phases while traffic is quiesced.
         std::lock_guard<std::mutex> lock(state->mutex);
         state->seen_msg_size.store(0, std::memory_order_relaxed);
         state->seen_phase.store(

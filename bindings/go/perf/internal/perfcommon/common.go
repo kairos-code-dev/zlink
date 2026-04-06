@@ -1,7 +1,6 @@
 package perfcommon
 
 import (
-	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -69,10 +68,6 @@ func PrintResult(pattern, transport string, msgSize int, result Result) {
 		result.Latency, result.LatencyP95, result.LatencyP99)
 }
 
-func Unsupported(pattern, transport, reason string) {
-	fmt.Printf("UNSUPPORTED,current,%s,%s,%s\n", pattern, transport, reason)
-}
-
 func Must(err error) {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -119,11 +114,6 @@ func OpenMonitor(socket any) *zlink.SocketMonitor {
 	return mon
 }
 
-func WaitConnected(serverMon, clientMon *zlink.SocketMonitor) {
-	WaitMonitorEvent(serverMon)
-	WaitMonitorEvent(clientMon)
-}
-
 func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -156,29 +146,6 @@ func PreparePayload(size int) []byte {
 	return make([]byte, size)
 }
 
-func StampPayload(payload []byte) {
-	binary.LittleEndian.PutUint64(payload[:8], uint64(time.Now().UnixNano()))
-}
-
-func SentAtFromBytes(data []byte) (time.Time, bool) {
-	if len(data) < 8 {
-		return time.Time{}, false
-	}
-	return time.Unix(0, int64(binary.LittleEndian.Uint64(data[:8]))), true
-}
-
-func SentAtFromMessage(part *zlink.Message) (time.Time, bool) {
-	if part == nil {
-		return time.Time{}, false
-	}
-	data := part.Data()
-	if len(data) < 8 {
-		return time.Time{}, false
-	}
-	header := [8]byte{}
-	copy(header[:], data[:8])
-	return time.Unix(0, int64(binary.LittleEndian.Uint64(header[:]))), true
-}
 
 func NewMessage(payload []byte) *zlink.Message {
 	msg, err := zlink.NewMessage(payload)
@@ -199,10 +166,3 @@ func IsTransient(err error) bool {
 	return ok && (zerr.Code == 4 || zerr.Code == 11)
 }
 
-func percentile(values []float64, pct float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-	idx := int((pct / 100.0) * float64(len(values)-1))
-	return values[idx]
-}

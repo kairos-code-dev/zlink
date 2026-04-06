@@ -6,26 +6,26 @@ using static PerfRunner;
 
 internal static class PerfPubSubServer
 {
-    internal static int Run(string transport, int size)
+    internal static int Run(PerfOptions options)
     {
-        const string pattern = "PUBSUB";
-        size = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
-        int durationSeconds = ResolveMultiDurationSeconds();
-        int settleMs = ResolveMultiSettleMs();
-        int sndTimeoutMs = ResolveMultiSndTimeoutMs();
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
-        int clientCount = ResolveMultiClients(pattern);
-        string endpoint = MultiEndpointFor(transport, "multi-pubsub");
+        int size = Math.Max(1, options.Size);
+        int warmupSeconds = ResolveMultiWarmupSeconds(options);
+        int durationSeconds = ResolveMultiDurationSeconds(options);
+        int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
+        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
+        int clientCount = ResolveMultiClients(options);
+        string endpoint = MultiEndpointFor(options.Transport, "multi-pubsub",
+            options);
 
         using var ctx = new Context();
-        ApplyMultiServerContextOptions(ctx);
+        using var pollManager = new PollManager();
+        ApplyMultiServerContextOptions(ctx, options);
         using var server = new PubSocket(ctx);
-        ApplyMultiSocketOptions(server, pattern);
-        ConfigureTlsServerIfNeeded(server, transport);
+        ApplyMultiSocketOptions(server, options);
+        ConfigureTlsServerIfNeeded(server, options.Transport);
         server.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
         server.SetOption(SocketOptions.XPubNoDrop,
-            ParsePositiveEnv("PERF_PUBSUB_XPUB_NODROP", 1) > 0 ? 1 : 0);
+            options.PubSubXpubNoDrop > 0 ? 1 : 0);
 
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
@@ -45,17 +45,14 @@ internal static class PerfPubSubServer
         {
             long warmupDeadline = Stopwatch.GetTimestamp()
                 + (long)warmupSeconds * Stopwatch.Frequency;
-            RunPublishPhase(server, pollSockets, payload, runId, size,
-                PerfPhase.Warmup, ref seq, warmupDeadline);
+            RunPublishPhase(pollManager, server, pollSockets, payload, runId,
+                size, PerfPhase.Warmup, ref seq, warmupDeadline);
         }
-
-        if (settleMs > 0)
-            Thread.Sleep(settleMs);
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        long activeSent = RunPublishPhase(server, pollSockets, payload, runId,
-            size, PerfPhase.Active, ref seq, benchDeadlineTicks);
+        long activeSent = RunPublishPhase(pollManager, server, pollSockets,
+            payload, runId, size, PerfPhase.Active, ref seq, benchDeadlineTicks);
 
         if (activeSent > 0)
         {
@@ -63,7 +60,7 @@ internal static class PerfPubSubServer
             double throughput = activeSent / configuredSeconds;
             double latencyUs = (configuredSeconds * 1_000_000.0)
                 / Math.Max(1.0, activeSent);
-            PrintResult(pattern, transport, size, throughput, latencyUs,
+            PrintResult(options.Pattern, options.Transport, size, throughput, latencyUs,
                 latencyUs, latencyUs);
         }
 
@@ -76,7 +73,7 @@ internal static class PerfPubSubServer
             && written > 0;
     }
 
-    private static long RunPublishPhase(SocketBase server,
+    private static long RunPublishPhase(PollManager pollManager, SocketBase server,
         IReadOnlyList<SocketBase> pollSockets, byte[] payload, uint runId,
         int size, PerfPhase phase, ref ulong seq, long deadlineTicks)
     {
@@ -89,8 +86,9 @@ internal static class PerfPubSubServer
             if (!trySend)
             {
                 int pollTimeoutMs = RemainingMilliseconds(deadlineTicks);
-                if (PollSocketWriteReady(pollSockets, pollTimeoutMs) > 0
-                    && IsSocketWriteReady(0))
+                if (PollSocketWriteReady(pollManager, pollSockets,
+                        pollTimeoutMs) > 0
+                    && IsSocketWriteReady(pollManager, 0))
                 {
                     trySend = true;
                 }
@@ -116,7 +114,7 @@ internal static class PerfPubSubServer
 
             if (sendPending)
             {
-                _ = PollSocketWriteReady(pollSockets, timeoutMs);
+                _ = PollSocketWriteReady(pollManager, pollSockets, timeoutMs);
             }
             else
             {

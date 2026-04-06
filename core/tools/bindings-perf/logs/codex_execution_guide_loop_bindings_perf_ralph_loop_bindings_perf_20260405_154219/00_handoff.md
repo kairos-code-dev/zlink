@@ -1,0 +1,37 @@
+# Handoff
+
+- previous_session_dir: /home/hep7/project/kairos/zlink/core/tools/bindings-perf/logs/codex_execution_guide_loop_bindings_perf_ralph_loop_bindings_perf_20260404_201116
+- active_language: cpp
+- status: in_progress
+- unresolved_work:
+  - `ROUTER_ROUTER` recv reseed/POLLIN-first edit remains applied in `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - related verification already completed:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_client cpp_comp_src_router_router_server`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+  - latest clean official comparable reports are now:
+    - recv `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_194346_codex_cpp_multi_recv_comparable_20260405_session154219_post_router_router_reseed_align_fullrerun_serial_rerun2.txt`
+    - callback `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_200445_codex_cpp_multi_callback_comparable_20260405_session154219_post_recv_rerun2_restore_serial.txt`
+  - retained recv comparable remains `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_194346_codex_cpp_multi_recv_comparable_20260405_session154219_post_router_router_reseed_align_fullrerun_serial_rerun2.txt`
+  - retained callback comparable remains `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_200445_codex_cpp_multi_callback_comparable_20260405_session154219_post_recv_rerun2_restore_serial.txt`
+  - current worst known clean ratios from those retained reports are:
+    - recv `0.187` at `('MULTI_ROUTER_ROUTER', 'tcp', '64')`
+    - callback `0.458` at `('MULTI_SPOT', 'ws', '64')`
+  - invalid/incomplete evidence to keep only as history:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_192310_codex_cpp_multi_recv_comparable_20260405_session154219_post_router_router_reseed_align_fullrerun_serial.txt`
+    - it lacks final footer/result summary; do not use it for ratio decisions
+  - focused proof for the next recv issue:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_201222_codex_cpp_router_router_tcp64_probe_20260405_session154219_post_rerun2_serial.txt`
+    - `status=complete`, `fail=0`, `5/5`
+    - throughput `500797.0`
+    - official retained full rerun at the same point is only `175698.8`, so the current suspicion is full-surface-only carryover/interaction rather than a flat tcp64 fast-path break
+  - remaining unresolved work:
+    - keep `cpp` active; recv still has the largest deficit
+    - recheck `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before the next code edit
+    - inspect `bindings/cpp/perf/multi/src/perf_router_router_client.cpp` against `core/perf/multi/src/perf_multi_router_router_client.cpp` specifically for conditions that differ between isolated `tcp 64` probe and full comparable sequencing
+    - do not rerun official recv comparable again until a focused `ROUTER_ROUTER tcp 64` change improves the isolated probe or explains the full-surface-only drop
+    - keep the new callback official report above as the retained callback comparable so `summarize_bindings_perf.py --session-dir ...` does not fall back to a newer recv probe path
+- instruction:
+  - Recheck `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before the next code edit or next full rerun.
+  - Keep `cpp` active; do not advance to the next language.
+  - Run only one perf job at a time. Do not overlap it with build/test.
+  - First active step next turn should be to analyze why `ROUTER_ROUTER tcp 64` stays high in the focused probe but collapses inside the retained full recv comparable before any new broad rerun.

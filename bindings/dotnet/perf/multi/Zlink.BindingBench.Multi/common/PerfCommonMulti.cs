@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Threading;
 using Zlink;
 
 internal static partial class PerfRunner
@@ -16,29 +15,27 @@ internal static partial class PerfRunner
 
     internal const int MaxStreamFrameBytes = 16 * 1024 * 1024;
 
+    internal enum PerfPhase : uint
+    {
+        Unknown = 0,
+        Warmup = 1,
+        Active = 2,
+    }
+
     internal static string NormalizePerfPattern(string pattern)
     {
-        string normalized = (pattern ?? string.Empty).Trim()
-            .ToUpperInvariant();
-        const string multiPrefix = "MULTI_";
-        if (normalized.StartsWith(multiPrefix, StringComparison.Ordinal))
-            return normalized.Substring(multiPrefix.Length);
-        return normalized;
+        return PerfShared.NormalizePattern(pattern, trimMultiPrefix: true);
     }
 
     internal static bool IsMultiStreamPattern(string pattern)
     {
-        string normalized = NormalizePerfPattern(pattern);
-        return normalized == "STREAM";
+        return NormalizePerfPattern(pattern) == "STREAM";
     }
 
-    internal static PerfRecvMode ResolveMultiRecvMode(string pattern)
+    internal static PerfRecvMode ResolveMultiRecvMode(PerfOptions options,
+        string pattern)
     {
-        string raw = (Environment.GetEnvironmentVariable("PERF_RECV_MODE")
-                      ?? string.Empty).Trim();
-        if (raw.Length == 0)
-            return PerfRecvMode.Recv;
-
+        string raw = options.RecvMode;
         if (raw.Equals("recv", StringComparison.OrdinalIgnoreCase))
             return PerfRecvMode.Recv;
         if (raw.Equals("callback", StringComparison.OrdinalIgnoreCase))
@@ -56,135 +53,81 @@ internal static partial class PerfRunner
             nameof(pattern));
     }
 
-    internal static int ParseFirstPositiveEnv(int fallback,
-        params string[] variableNames)
+    internal static int ResolveClients(PerfOptions options)
     {
-        foreach (string name in variableNames)
-        {
-            int parsed = ParsePositiveEnv(name, -1);
-            if (parsed > 0)
-                return parsed;
-        }
-
-        return fallback;
+        return options.Clients;
     }
 
-    internal static int ParseFirstNonNegativeEnv(int fallback,
-        params string[] variableNames)
+    internal static int ResolveMultiClients(PerfOptions options)
     {
-        foreach (string name in variableNames)
-        {
-            int parsed = ParseNonNegativeEnv(name, -1);
-            if (parsed >= 0)
-                return parsed;
-        }
-
-        return fallback;
+        return ResolveClients(options);
     }
 
-    internal static int ResolveMultiDrainMs(string pattern)
+    internal static int ResolveWarmupSeconds(PerfOptions options)
     {
-        _ = pattern;
-        return 0;
+        return options.WarmupSeconds;
     }
 
-    internal static int ResolveClients(string pattern)
+    internal static int ResolveMultiWarmupSeconds(PerfOptions options)
     {
-        int fallback = IsMultiStreamPattern(pattern) ? 10000 : 100;
-        return Math.Max(1, ParseFirstPositiveEnv(fallback, "PERF_CLIENTS"));
+        return ResolveWarmupSeconds(options);
     }
 
-    internal static int ResolveMultiClients(string pattern)
+    internal static int ResolveDurationSeconds(PerfOptions options)
     {
-        return ResolveClients(pattern);
+        return options.DurationSeconds;
     }
 
-    internal static int ResolveWarmupSeconds()
+    internal static int ResolveMultiDurationSeconds(PerfOptions options)
     {
-        return ParseFirstNonNegativeEnv(2, "PERF_WARMUP_SECONDS");
+        return ResolveDurationSeconds(options);
     }
 
-    internal static int ResolveMultiWarmupSeconds()
+    internal static bool ResolveMultiActiveWarmup(PerfOptions options)
     {
-        return ResolveWarmupSeconds();
+        return options.ActiveWarmup;
     }
 
-    internal static int ResolveDurationSeconds()
+    internal static int ResolveMultiSndTimeoutMs(PerfOptions options)
     {
-        return ParseFirstPositiveEnv(5, "PERF_DURATION_SECONDS");
+        return options.SndTimeoutMs;
     }
 
-    internal static int ResolveMultiDurationSeconds()
+    internal static int ResolveMultiRcvTimeoutMs(PerfOptions options)
     {
-        return ResolveDurationSeconds();
+        return options.RcvTimeoutMs;
     }
 
-    internal static int ResolveSettleMs()
+    internal static int ResolveMultiConnectReadyTimeoutMs(PerfOptions options)
     {
-        return ParseFirstNonNegativeEnv(500, "PERF_SETTLE_MS");
+        return options.ConnectReadyTimeoutMs;
     }
 
-    internal static int ResolveMultiSettleMs()
+    internal static int ResolveStreamIoTimeoutMs(PerfOptions options)
     {
-        return ResolveSettleMs();
+        return options.StreamTimeoutMs;
     }
 
-    internal static int ResolveMultiSizeTransitionDrainMs()
+    internal static int ResolveMultiClientPollTimeoutMs(PerfOptions options)
     {
-        return 0;
+        return options.ClientPollTimeoutMs;
     }
 
-    internal static bool ResolveMultiActiveWarmup()
+    internal static int ResolveEffectiveMultiClientPollTimeoutMs(
+        PerfOptions options)
     {
-        return ParseNonNegativeEnv("PERF_ACTIVE_WARMUP", 0) == 1;
+        return Math.Max(0, ResolveMultiClientPollTimeoutMs(options));
     }
 
-    internal static int ResolveMultiWarmupDrainMs(int drainMs)
+    internal static int ResolveHwm(PerfOptions options)
     {
-        _ = drainMs;
-        return 0;
+        return options.MultiHwm;
     }
 
-    internal static int ResolveMultiSndTimeoutMs()
+    internal static string MultiEndpointFor(string transport, string name,
+        PerfOptions options)
     {
-        return ParseFirstPositiveEnv(200, "PERF_SNDTIMEO_MS");
-    }
-
-    internal static int ResolveMultiRcvTimeoutMs()
-    {
-        return ParseFirstPositiveEnv(200, "PERF_RCVTIMEO_MS");
-    }
-
-    internal static int ResolveMultiConnectReadyTimeoutMs()
-    {
-        return ParseFirstPositiveEnv(200, "PERF_CONNECT_READY_TIMEOUT_MS");
-    }
-
-    internal static int ResolveStreamIoTimeoutMs()
-    {
-        return ParseFirstNonNegativeEnv(5000, "PERF_STREAM_TIMEOUT_MS");
-    }
-
-    internal static int ResolveMultiClientPollTimeoutMs()
-    {
-        return ParseFirstNonNegativeEnv(0, "PERF_CLIENT_POLL_TIMEOUT_MS");
-    }
-
-    internal static int ResolveEffectiveMultiClientPollTimeoutMs()
-    {
-        // Perf clients should default to busy-poll semantics so poll timeout
-        // does not dominate the measured round-trip throughput.
-        return Math.Max(0, ResolveMultiClientPollTimeoutMs());
-    }
-
-    internal static int ResolveHwm(string pattern)
-    {
-        return IsMultiStreamPattern(pattern) ? 10 : 100;
-    }
-
-    internal static string MultiEndpointFor(string transport, string name)
-    {
-        int bindPort = ParseFirstNonNegativeEnv(0, "PERF_SERVER_BIND_PORT");
+        int bindPort = options.ServerBindPort;
         if (bindPort > 0)
             return $"{transport}://127.0.0.1:{bindPort}";
         return EndpointFor(transport, name);
@@ -207,6 +150,7 @@ internal static partial class PerfRunner
         if (DrainReadyEvents(monitor, acceptFallback) > 0)
             return true;
 
+        using var pollManager = new PollManager();
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (true)
         {
@@ -214,7 +158,8 @@ internal static partial class PerfRunner
             if (nowTicks >= deadlineTicks)
                 return true;
 
-            int rc = PollMonitorHandles(new List<MonitorSocket> { monitor },
+            int rc = PollMonitorHandles(pollManager,
+                new System.Collections.Generic.List<MonitorSocket> { monitor },
                 new[] { 0 }, 1, deadlineTicks, nowTicks);
             if (rc < 0)
                 return false;
@@ -226,8 +171,8 @@ internal static partial class PerfRunner
                 if (DrainReadyEvents(monitor, acceptFallback) > 0)
                     return true;
             }
-            catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
-                                            || ex.Errno == ErrnoEintr)
+            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+                                            || IsInterrupted(ex.Errno))
             {
             }
             catch
@@ -235,7 +180,6 @@ internal static partial class PerfRunner
                 return false;
             }
         }
-
     }
 
     internal static bool WaitConnectReadyCount(MonitorSocket monitor,
@@ -248,6 +192,7 @@ internal static partial class PerfRunner
         if (readyCount >= expectedReady)
             return true;
 
+        using var pollManager = new PollManager();
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (true)
         {
@@ -255,7 +200,8 @@ internal static partial class PerfRunner
             if (nowTicks >= deadlineTicks)
                 return true;
 
-            int rc = PollMonitorHandles(new List<MonitorSocket> { monitor },
+            int rc = PollMonitorHandles(pollManager,
+                new System.Collections.Generic.List<MonitorSocket> { monitor },
                 new[] { 0 }, 1, deadlineTicks, nowTicks);
             if (rc < 0)
                 return false;
@@ -268,8 +214,8 @@ internal static partial class PerfRunner
                 if (readyCount >= expectedReady)
                     return true;
             }
-            catch (ZlinkException ex) when (ex.Errno == ErrnoEagain
-                                            || ex.Errno == ErrnoEintr)
+            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno)
+                                            || IsInterrupted(ex.Errno))
             {
             }
             catch
@@ -277,16 +223,6 @@ internal static partial class PerfRunner
                 return false;
             }
         }
-
-    }
-
-    internal static long DeadlineTicksFromMilliseconds(int timeoutMs)
-    {
-        long boundedMs = Math.Max(1, timeoutMs);
-        long deltaTicks = (boundedMs * Stopwatch.Frequency) / 1000;
-        if (deltaTicks <= 0)
-            deltaTicks = 1;
-        return Stopwatch.GetTimestamp() + deltaTicks;
     }
 
     internal static bool IsStopTokenPayload(ReadOnlySpan<byte> payload)
@@ -296,67 +232,44 @@ internal static partial class PerfRunner
     }
 
     internal static int ResolveMultiHwmValue(string specificName,
-        string pattern = "")
+        PerfOptions options)
     {
-        int fallbackHwm = ResolveHwm(pattern);
-        int hwm = ParseFirstNonNegativeEnv(fallbackHwm, "PERF_HWM");
-        int specific = ParseFirstNonNegativeEnv(0, specificName);
-        return specific > 0 ? specific : hwm;
+        return options.ResolveMultiHwm(specificName);
     }
 
-    internal static int ResolveIoThreads()
+    internal static int ResolveIoThreads(PerfOptions options)
     {
-        // Align multi perf defaults with the core baseline policy unless the
-        // caller explicitly overrides them.
-        return ParseFirstPositiveEnv(4, "PERF_IO_THREADS");
+        return options.IoThreads;
     }
 
-    internal static int ResolveMultiMaxSockets()
+    internal static int ResolveMultiMaxSockets(PerfOptions options)
     {
-        int explicitMaxSockets = ParseFirstPositiveEnv(0,
-            "PERF_MAX_SOCKETS");
-        if (explicitMaxSockets > 0)
-            return explicitMaxSockets;
-
-        int clients = ParseFirstPositiveEnv(0, "PERF_CLIENTS");
-        if (clients <= 0)
-            return 0;
-
-        long required = (clients * 3L) + 4096L;
-        if (required > int.MaxValue)
-            return int.MaxValue;
-        return (int)required;
+        return options.MaxSockets;
     }
 
-    internal static void ApplyMultiServerContextOptions(Context ctx)
+    internal static void ApplyMultiServerContextOptions(Context ctx,
+        PerfOptions options)
     {
-        int ioThreads = ResolveIoThreads();
-        if (ioThreads > 0)
-            ctx.SetOption(ContextOption.IoThreads, ioThreads);
+        if (options.IoThreads > 0)
+            ctx.SetOption(ContextOption.IoThreads, options.IoThreads);
 
-        int maxSockets = ResolveMultiMaxSockets();
-        if (maxSockets > 0)
-            ctx.SetOption(ContextOption.MaxSockets, maxSockets);
+        if (options.MaxSockets > 0)
+            ctx.SetOption(ContextOption.MaxSockets, options.MaxSockets);
     }
 
-    internal static void ApplyMultiClientContextOptions(Context ctx)
+    internal static void ApplyMultiClientContextOptions(Context ctx,
+        PerfOptions options)
     {
-        int ioThreads = ResolveIoThreads();
-        if (ioThreads > 0)
-            ctx.SetOption(ContextOption.IoThreads, ioThreads);
-
-        int maxSockets = ResolveMultiMaxSockets();
-        if (maxSockets > 0)
-            ctx.SetOption(ContextOption.MaxSockets, maxSockets);
+        ApplyMultiServerContextOptions(ctx, options);
     }
 
     internal static void ApplyMultiSocketOptions(SocketBase socket,
-        string pattern = "")
+        PerfOptions options)
     {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", pattern);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", pattern);
-        int sndTimeo = ResolveMultiSndTimeoutMs();
-        int rcvTimeo = ResolveMultiRcvTimeoutMs();
+        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", options);
+        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", options);
+        int sndTimeo = ResolveMultiSndTimeoutMs(options);
+        int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
 
         socket.SetOption(SocketOptions.Linger, 0);
         socket.SetOption(SocketOptions.SndHwm, sndHwm);
@@ -365,9 +278,9 @@ internal static partial class PerfRunner
         socket.SetOption(SocketOptions.RcvTimeo, rcvTimeo);
     }
 
-    internal static int ResolveMultiLatencySampleCap()
+    internal static int ResolveMultiLatencySampleCap(PerfOptions options)
     {
-        return ParsePositiveEnv("PERF_LATENCY_SAMPLE_CAP", 200000);
+        return options.LatencySampleCap;
     }
 
     internal static bool IsCoreStreamServerTransport(string transport)
@@ -429,5 +342,4 @@ internal static partial class PerfRunner
         Console.WriteLine(
             $"RESULT,current,{pattern},{transport},{size},server_rcv_pending_end,{stats.RcvPendingEnd:F2}");
     }
-
 }

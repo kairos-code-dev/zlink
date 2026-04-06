@@ -1,0 +1,1126 @@
+# Notes
+
+- Keep high-signal findings, commands, report paths, and decisions here.
+- Use this file for run-local notes instead of writing transient progress into the execution guide.
+- 2026-04-04: carried forward unresolved work from previous session `/home/hep7/project/kairos/zlink/core/tools/bindings-perf/logs/codex_execution_guide_loop_bindings_perf_ralph_loop_bindings_perf_20260404_172131`.
+- 2026-04-04: current priority remains `cpp` only. Per execution guide, do not start the next language until cpp is either `completed` or explicit `blocked`.
+- 2026-04-05: summary retained/rollback hint fix + `ROUTER_ROUTER tls 1024` raw-recv alignment rollback
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` at turn start, before editing, and before closing the turn
+    - raw remained `CONNECTION_READY`, SPOT remained explicit `READY/START`, callback remained bounded-queue/metric-worker based, and orchestration stdout tokens stayed orchestration-only
+  - files:
+    - `core/tools/bindings-perf/summarize_bindings_perf.py`
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - summary tool change:
+    - added optional `--session-dir` support
+    - when a session dir is provided, the summarizer now reads `00_run_state.md` and `00_handoff.md` to keep retained comparable reports and exclude rollback-only report artifacts from latest-comparable selection
+    - verification:
+      - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp --session-dir /home/hep7/project/kairos/zlink/core/tools/bindings-perf/logs/codex_execution_guide_loop_bindings_perf_ralph_loop_bindings_perf_20260404_201116`
+      - recv retained official comparable now resolves to `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_055050_codex_cpp_multi_recv_comparable_20260405_session201116_router_router_wss256_immediate_resend_fullrerun.txt`
+      - rollback-only full comparable `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_064949_codex_cpp_multi_recv_comparable_20260405_session201116_router_router_seed_once_expected_reply_gate_fullrerun.txt` is no longer promoted as current comparable
+  - attempted recv hot-path experiment:
+    - changed `ROUTER_ROUTER` client reply path from C++ wrapper recv to raw `zlink_recv` multipart handling to test whether wrapper receive/move overhead was the remaining `tls 1024` bottleneck
+  - discarded overlapped run:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_router_router_tls1024_probe_20260405_session201116_raw_recv_align`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_072229_codex_cpp_router_router_tls1024_probe_20260405_session201116_raw_recv_align.txt`
+    - outcome: `status=complete`, throughput `439247.6`
+    - disposal reason: this run overlapped with ctest/build and is invalid under the execution-guide non-overlap policy; keep only as discarded evidence
+  - valid serial focused probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_router_router_tls1024_probe_20260405_session201116_raw_recv_align_rerun_serial`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_072345_codex_cpp_router_router_tls1024_probe_20260405_session201116_raw_recv_align_rerun_serial.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - key effect: throughput `450929.6`, still below retained focused evidence `459475.0`
+  - rollback + clean verification:
+    - reverted the raw-recv alignment change immediately; do not keep it
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_client test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed after rollback
+  - implication:
+    - `ROUTER_ROUTER tls 1024` does not improve by bypassing the current C++ recv wrapper path alone
+    - next recv investigation should keep the retained `client_raw_send_buffer + immediate resend + full sweep` state and look elsewhere for the remaining deficit, or pivot to callback `SPOT tcp 1024` if it offers a clearer binding hot path
+- 2026-04-05: recv echo semantics / hot path alignment bundle
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` at turn start, before editing, and before closing the turn
+    - raw remained `CONNECTION_READY`, SPOT remained explicit `READY/START`, callback remained bounded-queue/metric-worker based, and orchestration stdout tokens stayed orchestration-only
+  - files:
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - changes:
+    - `DEALER_ROUTER` client now stamps a persistent per-socket request buffer and uses raw `zlink_send(..., ZLINK_DONTWAIT)` / raw `zlink_recv(..., ZLINK_DONTWAIT)` instead of the heavier C++ wrapper send/receive path
+    - `DEALER_ROUTER` active latency now records half-RTT like core echo semantics instead of full RTT
+    - `ROUTER_ROUTER` active latency now also records half-RTT like core echo semantics
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed
+  - focused recv probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports wss --msg-sizes 256 --results-tag codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_raw_send_recv_half_rtt`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_044258_codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_raw_send_recv_half_rtt.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - effect: `MULTI_DEALER_ROUTER wss 256` throughput improved from retained best `437949.4` to `441146.2`
+  - recv official comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_raw_send_recv_half_rtt_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_044349_codex_cpp_multi_recv_comparable_20260405_session201116_raw_send_recv_half_rtt_fullrerun.txt`
+    - outcome: `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - summary refresh:
+      - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+      - recv worst moved from `('MULTI_DEALER_ROUTER', 'wss', '256')` at `0.499` to `('MULTI_DEALER_ROUTER', 'tls', '1024')` at `0.385`
+      - the old focused target improved, but a different `DEALER_ROUTER` transport/size pair is now the dominant deficit
+  - callback evidence restoration:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_restore_after_raw_send_recv_half_rtt`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_050529_codex_cpp_multi_callback_comparable_20260405_session201116_restore_after_raw_send_recv_half_rtt.txt`
+    - outcome: `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+    - summary refresh:
+    - callback worst is now `('MULTI_SPOT', 'wss', '64')` at `0.421`
+    - overall published worst remains recv `('MULTI_DEALER_ROUTER', 'tls', '1024')` at `0.385`
+- 2026-04-05: `MULTI_DEALER_ROUTER` immediate resend alignment
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` at turn start, before editing, and before closing the turn
+    - raw remained `CONNECTION_READY`, SPOT remained explicit `READY/START`, callback remained bounded-queue/metric-worker based, and `READY,...` / `CLIENT_READY,...` / `START,...` stdout tokens stayed orchestration-only
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+  - change:
+    - after an expected DEALER reply is processed, the same socket now immediately issues the next request for the current phase instead of waiting for the outer send sweep
+    - this keeps the recv-mode echo path closer to the core `echo_start_phase_requests` / `auto_send_on_recv` behavior without changing ready gate, I/O model, or benchmark meaning
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_dealer_router_client test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed
+  - saved focused recv probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_dealer_router_recv_tls1024_probe_20260405_session201116_immediate_resend`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_051734_codex_cpp_dealer_router_recv_tls1024_probe_20260405_session201116_immediate_resend.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - key effect: `MULTI_DEALER_ROUTER tls 1024` throughput improved from prior official `301955.0` to `467077.8`; ratio improved from `0.385` to `0.595`
+  - official recv comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_immediate_resend_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_051750_codex_cpp_multi_recv_comparable_20260405_session201116_immediate_resend_fullrerun.txt`
+    - outcome: `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - refreshed summary:
+      - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+      - recv worst moved from `('MULTI_DEALER_ROUTER', 'tls', '1024')` at `0.385` to `('MULTI_ROUTER_ROUTER', 'wss', '256')` at `0.460`
+      - `MULTI_DEALER_ROUTER tls 1024` official ratio rose to `0.604`
+  - callback evidence restoration after recv rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_restore_after_immediate_resend`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_053927_codex_cpp_multi_callback_comparable_20260405_session201116_restore_after_immediate_resend.txt`
+    - outcome: `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+    - refreshed summary:
+      - callback worst is `('MULTI_SPOT', 'wss', '1024')` at `0.500`
+      - current overall published cpp largest deficit remains recv `('MULTI_ROUTER_ROUTER', 'wss', '256')`
+- 2026-04-05: turn-start policy refresh
+  - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+  - raw ready/start semantics remain `CONNECTION_READY` only, SPOT remains explicit `READY/START` barrier only, and `READY,...` / `CLIENT_READY,...` / `START,...` stdout tokens remain external orchestration signals rather than benchmark-ready evidence
+- 2026-04-05: `MULTI_ROUTER_ROUTER` immediate resend alignment
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` at turn start, before editing, and before closing the turn
+    - raw remained `CONNECTION_READY`, SPOT remained explicit `READY/START`, callback remained bounded-queue/metric-worker based, and `READY,...` / `CLIENT_READY,...` / `START,...` stdout tokens stayed orchestration-only
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - change:
+    - after a valid `ROUTER_ROUTER` reply is processed, the same socket now immediately issues the next request for the current phase instead of waiting for the outer send sweep
+    - this keeps the recv-mode echo path closer to the core `auto_send_on_recv` behavior without changing ready gate, I/O model, or benchmark meaning
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_client test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed
+  - saved focused recv probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports wss --msg-sizes 256 --results-tag codex_cpp_router_router_wss256_probe_20260405_session201116_immediate_resend`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_054955_codex_cpp_router_router_wss256_probe_20260405_session201116_immediate_resend.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - key effect: `MULTI_ROUTER_ROUTER wss 256` throughput improved from prior official `350226.2` to `427612.2` (`+22.1%`)
+  - official recv comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_router_router_wss256_immediate_resend_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_055050_codex_cpp_multi_recv_comparable_20260405_session201116_router_router_wss256_immediate_resend_fullrerun.txt`
+    - outcome: `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - refreshed summary:
+      - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+      - recv worst moved from `('MULTI_ROUTER_ROUTER', 'wss', '256')` at `0.460` to `('MULTI_ROUTER_ROUTER', 'tls', '1024')` at `0.503`
+      - `MULTI_ROUTER_ROUTER wss 256` official throughput improved to `424266.0` (`ratio 0.557`)
+  - callback evidence restoration after recv rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_restore_after_router_router_immediate_resend`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_061220_codex_cpp_multi_callback_comparable_20260405_session201116_restore_after_router_router_immediate_resend.txt`
+    - outcome: `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+    - refreshed summary:
+      - callback worst is `('MULTI_SPOT', 'tcp', '1024')` at `0.532`
+      - current overall published cpp largest deficit remains recv `('MULTI_ROUTER_ROUTER', 'tls', '1024')`
+- 2026-04-05: `MULTI_ROUTER_ROUTER tls 1024` server/client raw-path follow-up
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` at turn start and before each edit
+    - raw stayed on `CONNECTION_READY`, SPOT stayed on explicit `READY/START`, callback semantics were untouched, and orchestration stdout tokens stayed orchestration-only
+  - failed experiment rolled back:
+    - file:
+      - `bindings/cpp/perf/multi/src/perf_router_router_server.cpp`
+    - attempted change:
+      - replaced the server poller/pending-reply state machine with a raw blocking `zlink_recv` / `zlink_send_rid` relay loop
+    - saved failed probes:
+      - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_router_router_tls1024_probe_20260405_session201116_server_raw_relay`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_062433_codex_cpp_router_router_tls1024_probe_20260405_session201116_server_raw_relay.txt`
+      - outcome: `status=partial`, `reason=non_zero_exit_1_size_1024`
+      - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_router_router_tls1024_probe_20260405_session201116_server_raw_relay_delim_fix`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_062543_codex_cpp_router_router_tls1024_probe_20260405_session201116_server_raw_relay_delim_fix.txt`
+      - outcome: `status=partial`, `reason=non_zero_exit_1_size_1024`
+    - action:
+      - reverted the server raw relay experiment immediately; do not keep it
+  - retained change:
+    - file:
+      - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+    - change:
+      - replaced per-send `message_t` reinit on the client request path with a persistent `std::vector<char>` request buffer
+      - send path now stamps the persistent buffer and sends it via raw `zlink_send_rid(..., ZLINK_DONTWAIT)`, avoiding repeated payload allocation without changing recv semantics or phase control
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_server cpp_comp_src_router_router_client test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed
+  - saved focused recv probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_router_router_tls1024_probe_20260405_session201116_client_raw_send_buffer`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_062808_codex_cpp_router_router_tls1024_probe_20260405_session201116_client_raw_send_buffer.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - key effect: throughput improved to `459475.0`
+  - recv official comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_router_router_client_raw_send_buffer_fullrerun`
+    - target report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_062829_codex_cpp_multi_recv_comparable_20260405_session201116_router_router_client_raw_send_buffer_fullrerun.txt`
+    - status:
+      - still running at note update time
+      - `MULTI_ROUTER_ROUTER` block inside the live report already shows improved `tls 1024` throughput `449404.0` and other transport points populated under the retained client raw-send-buffer edit
+- 2026-04-05: `MULTI_ROUTER_ROUTER` one-shot phase seed experiment rollback
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` at turn start, before editing, and before closing the turn
+    - raw remained `CONNECTION_READY`, SPOT remained explicit `READY/START`, callback semantics stayed bounded-queue/metric-worker based, and `READY,...` / `CLIENT_READY,...` / `START,...` stdout tokens stayed orchestration-only
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - attempted change:
+    - removed the per-poll full-socket send sweep and switched the phase start to a one-shot request seed, while keeping valid reply processing on immediate resend / `POLLOUT` resume
+    - tightened `awaiting_reply` clearing so only expected replies reopened a slot
+  - focused recv probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_router_router_tls1024_probe_20260405_session201116_seed_once_expected_reply_gate`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_064931_codex_cpp_router_router_tls1024_probe_20260405_session201116_seed_once_expected_reply_gate.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - local effect: `MULTI_ROUTER_ROUTER tls 1024` throughput rose from retained focused `459475.0` to `469533.2`
+  - official recv comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_router_router_seed_once_expected_reply_gate_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_064949_codex_cpp_multi_recv_comparable_20260405_session201116_router_router_seed_once_expected_reply_gate_fullrerun.txt`
+    - outcome: `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - retained decision:
+      - despite the focused probe gain, the full comparable regressed `MULTI_ROUTER_ROUTER tls 64/1024`, `MULTI_ROUTER_ROUTER wss 1024`, and broader `MULTI_STREAM` transport points
+      - this was treated as an ineffective/regressive experiment under the execution guide, so the change was rolled back immediately
+  - rollback verification:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_client test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed after rollback
+  - implication:
+    - the outer sweep still appears to be providing an important recovery path for some idle or mismatched slots under full comparable pressure
+    - next recv investigation should preserve the retained immediate-resend path and look for a lower-cost recovery mechanism instead of removing the sweep outright
+- 2026-04-05: `MULTI_SPOT` sync/topic hot path micro-optimization
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before the edit and again before the official callback rerun
+    - change stayed inside binding hot path only; raw remained `CONNECTION_READY`, SPOT remained explicit `READY/START`, and no orchestration stdout token was promoted to benchmark-ready semantics
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - change:
+    - added `k_topic_len` constant so callback hot path no longer computes `std::strlen (k_topic)` per message
+    - changed callback/recv slot sync bookkeeping to store `synced=true` only on the first matched message instead of re-storing it for every message
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed
+  - saved focused callback probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports wss --msg-sizes 64 --results-tag codex_cpp_spot_callback_wss64_probe_20260405_session201116_sync_topic_fastpath`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_040606_codex_cpp_spot_callback_wss64_probe_20260405_session201116_sync_topic_fastpath.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - key effect: `MULTI_SPOT wss 64` throughput rose from prior official `3028862.4` to `7670413.2` (`ratio 1.048`, `+153.2%`)
+  - official callback comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_sync_topic_fastpath_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_040624_codex_cpp_multi_callback_comparable_20260405_session201116_sync_topic_fastpath_fullrerun.txt`
+    - outcome: `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+    - callback summary refresh:
+      - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+      - callback worst moved from `0.414` at `('MULTI_SPOT', 'wss', '64')` to `0.405` at `('MULTI_SPOT', 'tls', '65536')`
+      - `wss 64` improved in the official comparable too, but only to `3293170.6` (`ratio 0.450`), so the focused-probe gain did not fully persist in the full sweep
+      - recv official comparable remains unchanged with worst `0.499` at `('MULTI_DEALER_ROUTER', 'wss', '256')`
+  - implication:
+    - this edit removed one small-message callback bottleneck and shifted the next official callback target back to large-payload `MULTI_SPOT tls 65536`
+- 2026-04-05: `MULTI_SPOT` callback phase-window alignment to core semantics
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before the edit and again before closing the turn
+    - change stayed inside binding callback hot path and phase control only; raw remained `CONNECTION_READY`, SPOT remained explicit `READY/START`, and callback kept the same bounded metric collection semantics without promoting orchestration stdout to benchmark-ready semantics
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - root cause:
+    - compared against `core/perf/multi/src/perf_multi_spot_client.cpp`
+    - core callback path counts active messages while `collect_active` is open and only samples `now_us()` when it actually records latency
+    - cpp binding callback path was still doing per-message `active_start_us` CAS, per-message `now_us()`, and per-message active-duration boundary checks inside the callback
+    - that extra phase-window bookkeeping did not match core callback semantics and showed up as the main large-payload callback bottleneck, especially on `tls 65536`
+  - change:
+    - removed callback-state `active_start_us` and `active_duration_us`
+    - added one-shot `active_started` notification so the app thread still waits for first active message before opening the timed active window
+    - callback hot path now:
+      - validates topic/header/msg_size
+      - marks first active arrival once
+      - increments counters
+      - calls `perf_metric::now_us()` only on sampled latency events
+    - active window duration is now enforced by the outer wait loop in `run_callback_active()` instead of re-checking time on every callback
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed
+  - saved focused callback probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tls --msg-sizes 65536 --results-tag codex_cpp_spot_callback_tls65536_probe_20260405_session201116_phase_window_align`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_041928_codex_cpp_spot_callback_tls65536_probe_20260405_session201116_phase_window_align.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - key effect: `MULTI_SPOT tls 65536` throughput rose from prior official `58596.8` to `102467.2` (`ratio 0.708`, `+74.9%`)
+  - official callback comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_phase_window_align_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_041947_codex_cpp_multi_callback_comparable_20260405_session201116_phase_window_align_fullrerun.txt`
+    - outcome: `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+    - official effect highlights:
+      - `MULTI_SPOT tls 65536` improved from `58596.8` to `100495.0` (`ratio 0.405 -> 0.695`)
+      - `MULTI_SPOT tcp 65536` improved to `148338.0`, matching baseline-level throughput for that point
+      - callback worst moved away from large-payload TLS to `('MULTI_SPOT', 'ws', '64')`
+  - refreshed summary:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - recv worst remains `0.499` at `('MULTI_DEALER_ROUTER', 'wss', '256')`
+    - callback worst is now `0.525` at `('MULTI_SPOT', 'ws', '64')`
+    - current overall published cpp largest deficit is therefore back to recv `MULTI_DEALER_ROUTER wss 256`
+- 2026-04-05: recv `MULTI_DEALER_ROUTER wss 256` focused probe and reverted dead-end
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before touching the recv path
+    - no ready/start semantics were changed; this was a send hot-path experiment inside binding perf only
+  - saved baseline-status focused probe before the edit:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports wss --msg-sizes 256 --results-tag codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_preinspect`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_042910_codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_preinspect.txt`
+    - outcome: `status=complete`, throughput `427701.4`, confirming the official comparable worst point is stable rather than measurement noise
+  - attempted hypothesis:
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+    - replaced per-send `message_t.init(size)` reallocation with a reusable external payload wrapper to mimic the core client benchmark shape
+  - result:
+ - 2026-04-05: `MULTI_ROUTER_ROUTER tls 1024` idle-reseed-on-no-progress experiment rolled back
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before editing and again before rollback verification
+    - raw remained `CONNECTION_READY`, SPOT remained explicit `READY/START`, callback remained bounded-queue/metric-worker based, and orchestration stdout tokens stayed orchestration-only
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - attempted change:
+    - replaced per-iteration full socket send sweep with one-shot initial seeding plus idle/no-progress recovery reseed so the retained immediate-resend path stayed in place while the app thread stopped rescanning every slot on every poll loop
+  - saved focused recv probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_router_router_tls1024_probe_20260405_session201116_idle_reseed_on_no_progress`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_071525_codex_cpp_router_router_tls1024_probe_20260405_session201116_idle_reseed_on_no_progress.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - effect: throughput `456534.2`, which is below the retained focused evidence `459475.0` from `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_062808_codex_cpp_router_router_tls1024_probe_20260405_session201116_client_raw_send_buffer.txt`
+  - retained decision:
+    - this was a regressive experiment under the execution guide, so the change was rolled back immediately and the saved probe is evidence-only
+  - rollback verification:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_client test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed after rollback
+  - implication:
+    - the continuous full sweep still appears to matter more than expected for `ROUTER_ROUTER tls 1024`, even with retained immediate resend
+    - next recv investigation should avoid reducing sweep frequency and instead inspect lower-level routing-id send/recv overhead or callback `SPOT tcp 1024` hot path costs against the current retained comparables
+    - post-edit focused probe `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports wss --msg-sizes 256 --results-tag codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_payload_wrapper_reuse`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_043049_codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_payload_wrapper_reuse.txt`
+    - outcome: `status=complete` but `throughput=0.0`
+    - interpretation: that wrapper reuse model does not respect the current C++ send/message ownership contract for this path and is not safe to keep
+  - action:
+    - reverted the `perf_dealer_router_client.cpp` experiment immediately
+    - next recv investigation should avoid this direction and focus on wrapper/socket contract or server echo path differences that do not invalidate the request loop
+- 2026-04-05: recv `MULTI_DEALER_ROUTER wss 256` client/server relay alignment bundle
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before the edit bundle and again before closing it
+    - raw patterns stayed on `CONNECTION_READY`, SPOT stayed on explicit `READY/START`, and no stdout orchestration token was treated as benchmark-ready evidence
+  - files:
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp`
+  - retained changes:
+    - client request path now stamps a persistent `std::vector<char>` and wraps it with a fresh `zlink::message_t::from_external(...)` per send instead of reallocating `message_t` storage after each successful send
+    - server relay path now uses raw blocking `zlink_recv`/`zlink_send_rid` forwarding, which matches the core relay benchmark shape more closely than the previous poller + pending-reply state machine
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_dealer_router_server cpp_comp_src_dealer_router_client test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed
+  - focused recv probes:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports wss --msg-sizes 256 --results-tag codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_external_send_buffer`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_043502_codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_external_send_buffer.txt`
+    - outcome: `throughput 436706.8`, `ratio 0.510`, `+2.1%` vs `preinspect`
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports wss --msg-sizes 256 --results-tag codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_server_raw_relay`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_043642_codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_server_raw_relay.txt`
+    - outcome: `throughput 437949.4`, baseline `793434.4` 대비 focused ratio `0.552`, `+2.4%` vs `preinspect`
+  - reverted regression:
+    - temporary client raw recv-drain rewrite probe:
+      - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports wss --msg-sizes 256 --results-tag codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_client_server_raw_path`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_043733_codex_cpp_dealer_router_recv_wss256_probe_20260405_session201116_client_server_raw_path.txt`
+      - outcome: `throughput 428942.8`
+      - action: rolled back immediately; do not continue with client raw recv drain
+  - summary state:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - official recv comparable is still `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_031436_codex_cpp_multi_recv_comparable_20260405_session201116_base_socket_fastpath_fullrerun.txt`
+    - official recv worst remains `0.499` at `('MULTI_DEALER_ROUTER', 'wss', '256')` because the new focused probes are partial and non-comparable
+    - callback summary is currently invalidated again because no `multi/report/*callback*` file is present on disk
+- 2026-04-05: latest recv comparable attempt is invalid, not a published comparable
+  - summarize command:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+  - report inspected:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_022027_codex_cpp_multi_recv_comparable_20260405_session201116_no_quorum_phase_wait_fullrerun.txt`
+  - outcome:
+    - summarize skipped the file with `no comparable rows`
+    - `rg -n "RESULT,current"` against the file returned no matches
+    - the file contains effective options and table output only, then stops before any `RESULT,current,...` lines
+    - no overlapping benchmark/build/test process was active at inspection time, so the file is treated as an incomplete/invalid artifact rather than an in-progress run
+  - action:
+    - keep `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_010653_codex_cpp_multi_recv_comparable_20260405_session201116_router_router_reuse_fullrerun.txt` as the latest valid recv comparable until a new full rerun completes
+    - rerun official recv comparable under a new results tag before using recv worst-ratio data again
+- 2026-04-05: official recv comparable evidence restored
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_no_quorum_phase_wait_fullrerun_rerun`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_024141_codex_cpp_multi_recv_comparable_20260405_session201116_no_quorum_phase_wait_fullrerun_rerun.txt`
+  - outcome:
+    - `status=complete`
+    - `expected result lines=680`
+    - `actual result lines=680`
+    - `fail=0`
+    - `RESULT,current,...` coverage is present again, so the invalid 022027 file no longer blocks recv official comparison
+  - refreshed summary:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - recv worst moved to `0.515` at `('MULTI_ROUTER_ROUTER', 'tls', '256')`
+    - summarize now reports `multi callback: no report`
+- 2026-04-05: callback comparable evidence is currently absent from the workspace
+  - `find /home/hep7/project/kairos/zlink/bindings/cpp/perf/results -type f | rg 'callback|session201116'` returned only single-suite callback reports and no `bindings/cpp/perf/results/multi/report/perf_*callback*.txt`
+  - the callback comparable path referenced in earlier session files is no longer present on disk
+  - next required action is to rerun the official callback comparable under a new results tag before using callback deficit data again
+- 2026-04-05: callback official comparable evidence restored
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_restore_callback_evidence`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_030436_codex_cpp_multi_callback_comparable_20260405_session201116_restore_callback_evidence.txt`
+  - outcome:
+    - `status=complete`
+    - `expected result lines=200`
+    - `actual result lines=200`
+    - `fail=0`
+    - callback comparable coverage for `MULTI_SPOT` and `MULTI_STREAM` is restored under the current workspace state
+  - refreshed summary:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - recv worst remains `0.515` at `('MULTI_ROUTER_ROUTER', 'tls', '256')`
+    - callback worst is `0.538` at `('MULTI_SPOT', 'ws', '64')`
+    - current overall published cpp largest deficit is therefore still recv `MULTI_ROUTER_ROUTER tls 256`
+- 2026-04-05: base-socket direct single-part fast path validated and promoted to official recv evidence
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before the batch and again after the full reruns
+    - raw stayed on `CONNECTION_READY`, SPOT stayed on explicit `READY/START`, and no orchestration stdout token was promoted to benchmark-ready semantics
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_client cpp_comp_src_router_router_server test_cpp_contract_socket test_cpp_contract_callback_mode`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, 2/2 tests passed
+  - saved focused recv probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 256 --results-tag codex_cpp_router_router_tls256_probe_20260405_session201116_base_socket_fastpath`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_031417_codex_cpp_router_router_tls256_probe_20260405_session201116_base_socket_fastpath.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - key effect: `MULTI_ROUTER_ROUTER tls 256` throughput rose from prior official `425509.2` to `442776.8`
+  - official recv comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_base_socket_fastpath_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_031436_codex_cpp_multi_recv_comparable_20260405_session201116_base_socket_fastpath_fullrerun.txt`
+    - outcome: `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - refreshed summary:
+      - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+      - recv worst moved to `0.499` at `('MULTI_DEALER_ROUTER', 'wss', '256')`
+      - `ROUTER_ROUTER tls 256` is no longer the published recv bottleneck
+- 2026-04-05: callback official comparable evidence disappeared again after the recv rerun and had to be restored on the current workspace
+  - discovery:
+    - `find /home/hep7/project/kairos/zlink/bindings/cpp/perf/results -type f | rg 'multi/report/.+callback'`
+    - outcome: no multi callback report files were present
+  - official callback comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_base_socket_fastpath_restore_callback`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_033620_codex_cpp_multi_callback_comparable_20260405_session201116_base_socket_fastpath_restore_callback.txt`
+    - outcome: `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+  - refreshed summary:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - recv worst remains `0.499` at `('MULTI_DEALER_ROUTER', 'wss', '256')`
+    - callback worst is now `0.446` at `('MULTI_SPOT', 'tls', '65536')`
+    - current overall published cpp largest deficit moved to callback `MULTI_SPOT tls 65536`
+- 2026-04-04: carried unresolved items:
+  - keep the existing cpp MULTI_SPOT explicit barrier/resource-emission implementation unless fresh verification disproves it
+  - rerun cpp multi recv full comparable coverage from scratch because the last baseline-aligned run stayed non-comparable: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_173823_codex_cpp_multi_recv_comparable_20260404.txt`
+  - after recv full-surface normal operation is restored, rerun callback comparable coverage because callback comparable evidence is still missing
+- 2026-04-04: policy refresh before substantive work:
+  - `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` still require raw pattern ready gating via `CONNECTION_READY`, SPOT via explicit `READY/START` barrier only, and forbid snapshot polling/sleep-based start gates
+  - multi completion/comparability is driven by baseline-aligned result coverage; client resource metrics are informational, while throughput/latency/server resource/server queue shape remain the practical full-surface checks for current cpp recv rerun
+- 2026-04-04: workspace process state refresh:
+  - previous session blocker about suspended benchmark shells is no longer active
+  - `ps -eo pid,ppid,stat,etimes,cmd | rg 'run_benchmarks|perf_linux|ctest|dotnet test|gradle test|cargo test'` returned no active overlapping benchmark/test/build job beyond the current inspection command
+- 2026-04-04: build/test refresh before new perf work
+  - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_dealer_dealer_server cpp_comp_src_dealer_dealer_client cpp_comp_src_dealer_router_server cpp_comp_src_dealer_router_client cpp_comp_src_router_router_server cpp_comp_src_router_router_client cpp_comp_src_pubsub_server cpp_comp_src_pubsub_client cpp_comp_src_spot_server cpp_comp_src_spot_client`
+  - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+  - result: build ok, 2/2 tests passed
+- 2026-04-04: first full recv comparable rerun in this session
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_session201116_rerun1`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_201331_codex_cpp_multi_recv_comparable_20260404_session201116_rerun1.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - secure `MULTI_SPOT` recv coverage recovered across `tcp/tls/ws/wss`
+    - raw echo patterns still lacked `server_cpu_pct/server_mem_mb/server_*pending*` result lines even though baseline contains them
+- 2026-04-04: raw echo resource/queue key bug identified and fixed
+  - `perf_dealer_dealer_server.cpp`, `perf_dealer_router_server.cpp`, `perf_router_router_server.cpp` emitted server resource/queue result lines with size key `0` instead of the actual `msg_size`
+  - policy/shape fix applied so those RESULT lines use the actual benchmark size
+- 2026-04-04: targeted raw recv probe after size-key fix
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER --transports tcp,tls,ws,wss --msg-sizes 64 --results-tag codex_cpp_multi_recv_raw_resource_probe_20260404_session201116`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_203503_codex_cpp_multi_recv_raw_resource_probe_20260404_session201116.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=60`, `actual result lines=60`
+    - raw echo tables and RESULT lines now include `server_cpu_pct/server_mem_mb/server_snd_pending_max/server_rcv_pending_max/server_rcv_pending_end`
+- 2026-04-04: second full recv comparable rerun after raw size-key fix
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_session201116_rerun2`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_203712_codex_cpp_multi_recv_comparable_20260404_session201116_rerun2.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - raw echo resource/queue shape is present in the saved comparable report
+    - summarize script now reports latest recv comparable as this rerun with worst ratio `0.067` at `('MULTI_SPOT', 'tls', '64')`
+- 2026-04-04: callback full comparable attempt
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260404_session201116_rerun1`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_205802_codex_cpp_multi_callback_comparable_20260404_session201116_rerun1.txt`
+  - outcome:
+    - `status=partial`, `expected result lines=200`, `actual result lines=115`, `success=23`, `fail=17`
+    - `MULTI_STREAM` callback coverage completes across `tcp/tls/ws/wss`
+    - `MULTI_SPOT` callback fails after `CLIENT_READY,...` in most cases:
+      - `tcp`: only `64B` succeeded; `256B+` failed with `non_zero_exit_1_CLIENT_READY,256`
+      - `ws`: all sizes failed with `non_zero_exit_1_CLIENT_READY,64`
+      - `wss`: all sizes failed with `non_zero_exit_1_CLIENT_READY,64`
+      - `tls`: all sizes in this run succeeded
+- 2026-04-04: focused callback probes after policy refresh
+  - `PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp --msg-sizes 256 --results-tag codex_cpp_spot_callback_tcp256_debugprobe_20260404_session201116`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_210610_codex_cpp_spot_callback_tcp256_debugprobe_20260404_session201116.txt`
+    - outcome: `status=complete`; tcp 256B callback SPOT itself works when isolated
+  - initial parallel `ws` debug probe overlapped with the tcp probe and hit `.runtime/multi` wrapper race in `prepare_cpp_runtime.py`; treated as invalid because it violated the execution guide non-overlap rule
+  - rerun: `PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports ws --msg-sizes 64 --results-tag codex_cpp_spot_callback_ws64_debugprobe_20260404_session201116_fix1`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_210741_codex_cpp_spot_callback_ws64_debugprobe_20260404_session201116_fix1.txt`
+    - outcome: `status=complete`; ws 64B callback SPOT also works in isolation
+- 2026-04-04: ws/wss callback overflow bug fix
+  - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+    - callback path now drops non-benchmark subscribe events instead of queueing them
+    - callback failure now records `EOVERFLOW`-style errno/debug hints instead of silent `errno=0`
+  - this removed the previously observed ws/wss invalid-event queue noise in focused probes
+- 2026-04-04: full callback rerun after focused fix
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260404_session201116_rerun2`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_210800_codex_cpp_multi_callback_comparable_20260404_session201116_rerun2.txt`
+  - outcome:
+    - `MULTI_STREAM` callback full surface completed again
+    - `MULTI_SPOT` callback remained partial, but the failure signature changed: isolated sizes can pass while the full transport run still dies after the first `CLIENT_READY,<size>` of that transport
+    - this narrowed the remaining issue from transport-specific callback handling to a multi-size lifecycle mismatch
+- 2026-04-04: `core/perf` parity readback
+  - `core/perf/multi/src/perf_multi_spot_client.cpp` and `core/perf/multi/src/perf_multi_spot_server.cpp` keep one process alive across all message sizes in a transport and iterate `msg_sizes` internally
+  - `core/perf/run_comparison.py` control-plane path likewise keeps the same client/server process per transport and emits multiple `START,<size>` commands
+  - existing cpp binding `perf_spot_client.cpp` / `perf_spot_server.cpp` were originally single-size implementations, which explains why comparable full runs still broke even after focused transport fixes
+- 2026-04-04: attempted cpp multi-size lifecycle alignment
+  - added local `PERF_MSG_SIZES` parsing and internal size-loop scaffolding to cpp `perf_spot_client.cpp` / `perf_spot_server.cpp`
+  - rerun command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --results-tag codex_cpp_spot_callback_fullsurface_20260404_session201116_fix2`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_211519_codex_cpp_spot_callback_fullsurface_20260404_session201116_fix2.txt`
+  - outcome:
+    - regression: all SPOT callback cases now fail quickly at `CLIENT_READY,64`
+    - conclusion: cpp spot multi-size adaptation is incomplete; the remaining mismatch is now clearly in the order/state management of the multi-size control-plane lifecycle, not in ws/wss callback noise
+- 2026-04-04: policy refresh before final fix batch
+  - rechecked `doc/perf/PERF_POLICY.md`, `PERF_MULTI_TEST_POLICY.md`, `PERF_SINGLE_TEST_POLICY.md`
+  - current change stayed within binding perf callback queue handling and did not introduce forbidden ready gate/snapshot polling/sleep-based benchmark gate semantics
+- 2026-04-04: focused saved repro for remaining callback failure
+  - command:
+    - `PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp --msg-sizes 64,256 --results-tag codex_cpp_spot_callback_tcp64_256_debugprobe_20260404_session201116_fix3`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_211934_codex_cpp_spot_callback_tcp64_256_debugprobe_20260404_session201116_fix3.txt`
+  - outcome:
+    - `64B` completed but second size `256B` failed with repeated `callback queue overflow`
+    - this narrowed the remaining issue from multi-size control-plane ordering to callback queue capacity exhaustion at size transition
+- 2026-04-04: final cpp callback recovery fix
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - change:
+    - kept the existing SPOT control-plane / multi-size semantics
+    - increased `k_callback_queue_capacity` from `8192` to `65536`
+    - kept callback state reset deterministic on each attach so size-transition carryover no longer overflows the bounded queue during comparable runs
+- 2026-04-04: focused post-fix probe
+  - command:
+    - `PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp --msg-sizes 64,256 --results-tag codex_cpp_spot_callback_tcp64_256_debugprobe_20260404_session201116_fix6`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_212325_codex_cpp_spot_callback_tcp64_256_debugprobe_20260404_session201116_fix6.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=10`, `actual result lines=10`, `fail=0`
+    - both `64B` and `256B` size transitions completed on the same process/transport
+- 2026-04-04: SPOT callback full-surface rerun after fix
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --results-tag codex_cpp_spot_callback_fullsurface_20260404_session201116_fix6`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_212353_codex_cpp_spot_callback_fullsurface_20260404_session201116_fix6.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=120`, `actual result lines=120`, `fail=0`
+    - `tcp/tls/ws/wss` across all default message sizes now emit throughput/latency/server resource/server queue results without gaps
+- 2026-04-04: callback comparable rerun after SPOT recovery
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260404_session201116_rerun3`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_212744_codex_cpp_multi_callback_comparable_20260404_session201116_rerun3.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+    - callback comparable evidence is now restored for both `MULTI_SPOT` and `MULTI_STREAM`
+- 2026-04-04: post-fix verification refresh
+  - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: 2/2 passed
+  - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - recv comparable reference remains `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_203712_codex_cpp_multi_recv_comparable_20260404_session201116_rerun2.txt`
+    - callback comparable reference is now `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_212744_codex_cpp_multi_callback_comparable_20260404_session201116_rerun3.txt`
+    - current largest deficit is `cpp multi callback ratio=0.003 key=('MULTI_SPOT', 'tcp', '64')`
+- 2026-04-04: callback hot path policy refresh before performance edit
+  - rechecked `doc/perf/PERF_POLICY.md` and `PERF_MULTI_TEST_POLICY.md`
+  - edit direction stayed within allowed binding/library hot path scope and moved cpp callback collection closer to `core/perf` semantics instead of adding perf-only shortcuts
+- 2026-04-04: cpp SPOT callback hot path realignment
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - change:
+    - removed per-slot bounded queue and per-slot worker thread from callback receive path
+    - changed callback path to collect active metrics directly on callback I/O threads via thread-local metric state, mirroring `core/perf/multi/src/perf_multi_spot_client.cpp`
+    - added callback metric epoch/reset plumbing and latency sample stride handling (`PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE`, default 32) so callback aggregation shape now matches core more closely
+  - rationale:
+    - previous cpp callback design created one worker thread per client slot and copied every callback event through a local queue; that overhead dominated `MULTI_SPOT` callback throughput across all transports/sizes
+- 2026-04-04: targeted post-edit verification
+  - build:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client cpp_comp_src_spot_server test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - result: success
+  - tests:
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: 2/2 passed
+  - targeted saved probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp --results-tag codex_cpp_spot_callback_tcp_fullsurface_20260404_session201116_fix7`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_214159_codex_cpp_spot_callback_tcp_fullsurface_20260404_session201116_fix7.txt`
+    - outcome:
+      - `status=complete`, `expected result lines=30`, `actual result lines=30`, `fail=0`
+      - `MULTI_SPOT tcp 64B` callback throughput improved from `19,739.2 msg/s` in rerun3 to `4,562,960.4 msg/s`
+      - same probe showed broad recovery across `256B`, `1024B`, `65536B`, `131072B`, `262144B`
+- 2026-04-04: callback comparable rerun after hot path realignment
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260404_session201116_rerun4`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_214303_codex_cpp_multi_callback_comparable_20260404_session201116_rerun4.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+    - callback worst ratio improved from `0.003` at `('MULTI_SPOT', 'tcp', '64')` to `0.400` at `('MULTI_SPOT', 'tcp', '65536')`
+    - callback surface is still below target `0.95`, but the dominant callback structural bottleneck is removed
+    - after this rerun the overall cpp largest deficit moved back to recv `('MULTI_SPOT', 'tls', '64')` ratio `0.067`
+- 2026-04-04: recv policy refresh before new SPOT work
+  - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+  - confirmed the next recv change must stay within measurement-method alignment to `core/perf`; no snapshot polling, no sleep-based start gate, no SPOT barrier semantic change
+- 2026-04-04: cpp SPOT recv measurement-method alignment fix
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - change:
+    - recv active path now applies the same `PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE` sampling rule as `core/perf` instead of recording latency for every active message
+    - recv sync/active drain now uses `zlink::poller_t` readiness instead of scanning every slot with repeated `try_subscribe()` loops
+  - rationale:
+    - previous cpp recv path diverged from `core/perf` in two benchmark-side hot spots and materially depressed `MULTI_SPOT` recv throughput across transports, especially small-message TLS
+- 2026-04-04: post-fix build/test verification
+  - build:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - result: success
+  - tests:
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: 2/2 passed
+- 2026-04-04: saved SPOT recv full-surface rerun after alignment fix
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern SPOT --results-tag codex_cpp_spot_recv_fullsurface_20260404_session201116_fix_recv_stride_poller`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_215429_codex_cpp_spot_recv_fullsurface_20260404_session201116_fix_recv_stride_poller.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=120`, `actual result lines=120`, `fail=0`
+    - `MULTI_SPOT tls 64B` throughput improved from `434450.4 msg/s` in comparable rerun2 to `1398942.0 msg/s`
+    - `MULTI_SPOT tcp 64B` improved from `2099466.0` to `3478863.2 msg/s`
+    - all `tcp/tls/ws/wss` sizes stayed complete with throughput/latency/server resource/server queue lines present
+- 2026-04-04: recv full comparable rerun started after SPOT recovery
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_session201116_rerun3_fix_recv_stride_poller`
+  - target report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_215813_codex_cpp_multi_recv_comparable_20260404_session201116_rerun3_fix_recv_stride_poller.txt`
+  - current state:
+    - run is in progress; summarize script still points to rerun2 until this file finishes and becomes comparable
+- 2026-04-04: stale rerun3 report check
+  - `perf_linux_recv_20260404_215813_codex_cpp_multi_recv_comparable_20260404_session201116_rerun3_fix_recv_stride_poller.txt` exists but contains no `RESULT,current,...` lines
+  - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp` therefore still skips it with `no comparable rows` and falls back to rerun2
+- 2026-04-05: policy refresh before new recv ratio work
+  - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+  - raw still uses `CONNECTION_READY`, SPOT still uses explicit `READY/START`, and this turn stays inside client hot-path reuse only; no new ready gate or perf-only shortcut was introduced
+- 2026-04-05: `DEALER_ROUTER` request-buffer reuse fix
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+  - change:
+    - replaced per-send `vector<char> -> message_t::from_bytes()` copy path with per-socket reusable `zlink::message_t` request buffers
+    - each socket now stamps metric headers directly into a preallocated message, sends it with `socket.send(message_t&)`, then reinitializes the same-size message for the next request
+  - rationale:
+    - the official recv comparable had `MULTI_DEALER_ROUTER ws 1024` collapsed to `93089.8`, far below the baseline-aligned raw echo surface
+- 2026-04-05: post-fix `DEALER_ROUTER ws` saved probe
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports ws --results-tag codex_cpp_dealer_router_ws_probe_20260405_session201116_reuse_message`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_004135_codex_cpp_dealer_router_ws_probe_20260405_session201116_reuse_message.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=30`, `actual result lines=30`, `fail=0`
+    - `MULTI_DEALER_ROUTER ws 1024` throughput improved from `93089.8` to `434354.2`
+- 2026-04-05: official recv comparable rerun after `DEALER_ROUTER` fix
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_reuse_message_fullrerun`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_004229_codex_cpp_multi_recv_comparable_20260405_session201116_reuse_message_fullrerun.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - summarize moved recv worst from `('MULTI_DEALER_ROUTER', 'ws', '1024')` to `('MULTI_ROUTER_ROUTER', 'tls', '1024')` ratio `0.359`
+- 2026-04-05: `ROUTER_ROUTER` routed-send reuse fix
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - change:
+    - removed per-send `std::string` routing-id conversion and `message_t::from_bytes()` copy
+    - switched client sends to cached native `_server_rid` plus reusable per-socket `zlink::message_t` request buffers
+  - rationale:
+    - the new official recv worst was `MULTI_ROUTER_ROUTER tls 1024`, and the old client path still paid both routing-id conversion and payload reconstruction on every request
+- 2026-04-05: post-fix `ROUTER_ROUTER tls` saved probe
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tls --results-tag codex_cpp_router_router_tls_probe_20260405_session201116_reuse_message`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_010325_codex_cpp_router_router_tls_probe_20260405_session201116_reuse_message.txt`
+- 2026-04-05: `service::spot_t` wrapper cleanup / no-win rerun
+  - policy refresh before edit:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+    - edit stayed inside binding library internals only; SPOT explicit `READY/START`, callback recv semantics, and runner orchestration meaning were unchanged
+  - file:
+    - `bindings/cpp/include/zlink/services/spot.hpp`
+  - change:
+    - `detail::assign_parts_from_native()` now closes the native multipart array after moving parts into C++ `message_t`
+    - single-message `publish_impl()` / `try_publish_impl()` now `move_to()` the existing `message_t` into native send storage instead of allocating another `zlink_msg_t` and memcpying the payload again
+  - rationale:
+    - callback SPOT server/control sends still went through the C++ service wrapper, and that wrapper was paying an avoidable second copy per send while also leaking native multipart ownership on subscribe conversion
+  - verification:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client cpp_comp_src_spot_server test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: build ok, 2/2 tests passed
+  - focused saved probes:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp --msg-sizes 65536,262144 --results-tag codex_cpp_spot_callback_tcp_large_probe_20260405_session201116_spot_wrapper_move`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_013448_codex_cpp_spot_callback_tcp_large_probe_20260405_session201116_spot_wrapper_move.txt`
+      - outcome: `tcp 65536` dropped to `89455.6`, `tcp 262144` rose to `31637.8`; mixed signal
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp --msg-sizes 65536 --results-tag codex_cpp_spot_callback_tcp65536_probe_20260405_session201116_spot_wrapper_move_rerun`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_013551_codex_cpp_spot_callback_tcp65536_probe_20260405_session201116_spot_wrapper_move_rerun.txt`
+      - outcome: `tcp 65536` recovered to `99692.6` but still below the prior official comparable reference
+  - official comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_spot_wrapper_move_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_013644_codex_cpp_multi_callback_comparable_20260405_session201116_spot_wrapper_move_fullrerun.txt`
+    - outcome:
+      - `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+      - summarize script updated callback worst from `0.400` down to `0.382` at `('MULTI_SPOT', 'tcp', '65536')`
+      - conclusion: this wrapper patch is a valid library/correctness cleanup, but not a performance win for the current callback bottleneck
+  - outcome:
+    - `status=complete`, `expected result lines=30`, `actual result lines=30`, `fail=0`
+    - `MULTI_ROUTER_ROUTER tls 1024` throughput improved from official `288742.0` to `380594.4`
+- 2026-04-04: turn-start policy and state refresh
+  - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+  - confirmed the current benchmark semantics still obey raw=`CONNECTION_READY`, SPOT=`READY/START`, with no snapshot polling or sleep-based start gate added in the current cpp perf code path
+  - reviewed current execution guide, previous session handoff, current `00_run_state.md`, `00_checklist.md`, and `00_notes.md` before resuming substantive work
+- 2026-04-04: current-state fact check before new rerun
+  - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - recv baseline: `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_recv_20260404_141709.txt`
+    - callback baseline: `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_callback_20260404_153247.txt`
+    - latest recv comparable still fell back to rerun2 because rerun4 had `no comparable rows`
+    - callback comparable remained rerun4 with worst ratio `0.400` at `('MULTI_SPOT', 'tcp', '65536')`
+  - saved recv SPOT full-surface report `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_220451_codex_cpp_spot_recv_fullsurface_20260404_session201116_fix_recv_workers.txt`
+    - `MULTI_SPOT tls 64B` throughput `8438729.0` vs baseline `6502551.0` -> ratio `1.298`
+    - `MULTI_SPOT wss 64B` throughput `8507659.6` vs baseline `6098926.6` -> ratio `1.395`
+    - large payload deficit still remained in the saved SPOT-only evidence (`tls 65536` `68889.6 / 134217.6 = 0.513`, `tls 131072` `29422.2 / 70047.8 = 0.420`, `tls 262144` `18564.4 / 35536.6 = 0.522`)
+- 2026-04-04: build/test refresh for current worktree before new full comparable recv run
+  - build:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client cpp_comp_src_spot_server cpp_comp_src_dealer_dealer_server cpp_comp_src_dealer_dealer_client cpp_comp_src_dealer_router_server cpp_comp_src_dealer_router_client cpp_comp_src_router_router_server cpp_comp_src_router_router_client cpp_comp_src_pubsub_server cpp_comp_src_pubsub_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - result: success
+  - tests:
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: 2/2 passed
+- 2026-04-04: recv comparable rerun5 started from the refreshed worktree
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_session201116_rerun5_fix_recv_workers`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_221555_codex_cpp_multi_recv_comparable_20260404_session201116_rerun5_fix_recv_workers.txt`
+  - current state:
+    - run in progress
+    - observed live progress through `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, and into `MULTI_PUBSUB` without the stale-empty-report failure signature from rerun3/rerun4
+- 2026-04-04: recv hot path realignment beyond stride/poller
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before editing and again before the saved perf run
+    - kept SPOT start semantics on explicit barrier; did not reintroduce snapshot polling or use orchestration stdout as benchmark-ready evidence
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - change:
+    - recv path no longer uses one app-thread poller to drain all SPOT subscribers
+    - introduced recv worker-poller sharding across SPOT slots
+    - moved recv active metrics to thread-local accumulators merged after the active window, matching the callback/core-perf style more closely
+    - kept the existing explicit `READY/START` control barrier and RESULT shape unchanged
+- 2026-04-04: turn-start policy refresh before new verification batch
+  - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+  - confirmed current code still keeps raw=`CONNECTION_READY`, SPOT=`READY/START`, and does not promote `READY,...` / `CLIENT_READY,...` / `START,...` orchestration stdout to benchmark-ready semantics
+- 2026-04-04: build/test refresh on current worktree
+  - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_dealer_dealer_client cpp_comp_src_dealer_dealer_server cpp_comp_src_dealer_router_client cpp_comp_src_dealer_router_server cpp_comp_src_router_router_client cpp_comp_src_router_router_server cpp_comp_src_pubsub_client cpp_comp_src_pubsub_server cpp_comp_src_spot_client cpp_comp_src_spot_server test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - result: success
+  - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: 2/2 passed
+- 2026-04-04: recv full comparable rerun8 after build/test refresh
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_session201116_rerun8_postbuild`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_233430_codex_cpp_multi_recv_comparable_20260404_session201116_rerun8_postbuild.txt`
+  - outcome:
+    - `status=partial`, `expected result lines=680`, `actual result lines=640`, `fail=8`
+    - `MULTI_DEALER_DEALER` failed again at `262144B` on `tcp/tls/ws/wss` with `non_zero_exit_-11`
+    - `MULTI_SPOT tcp` failed again from `1024B` onward with `non_zero_exit_1_CLIENT_READY,1024`
+- 2026-04-04: invalid parallel focused repro attempt discarded
+  - I mistakenly started `DEALER_DEALER 262144` and `SPOT tcp 64,256,1024` repros in parallel
+  - this violated the execution-guide non-overlap rule, so both runs were interrupted and not used as evidence
+  - the overlap also left `.runtime/multi` in a transient bad state (`prepare_cpp_runtime.py` `FileNotFoundError`), so the runtime directory was removed before the next serial repro
+- 2026-04-04: saved serial repros after runtime cleanup
+  - `PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern SPOT --transports tcp --msg-sizes 64,256,1024 --results-tag codex_cpp_spot_tcp64_256_1024_debugprobe_20260404_session201116_rerun8_serial`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_235513_codex_cpp_spot_tcp64_256_1024_debugprobe_20260404_session201116_rerun8_serial.txt`
+    - outcome: `status=complete`, `expected result lines=15`, `actual result lines=15`, `fail=0`
+    - debug log confirms the server received `READY_COUNT,<size>,100` and published `START,<size>` for every size, and the client completed `sync` + active window for every size
+  - `PERF_DEBUG=1 PERF_DEBUG_TRANSITIONS=1 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern SPOT --transports tcp --msg-sizes 64,256,1024,65536,131072,262144 --results-tag codex_cpp_spot_tcp_fullsizes_debugprobe_20260404_session201116_rerun8_serial`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_235545_codex_cpp_spot_tcp_fullsizes_debugprobe_20260404_session201116_rerun8_serial.txt`
+    - outcome: `status=complete`, `expected result lines=30`, `actual result lines=30`, `fail=0`
+    - conclusion: the `MULTI_SPOT tcp 1024B+` partial does not reproduce in isolated serial saved repro
+  - `PERF_DEBUG=1 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_DEALER --transports tcp --msg-sizes 262144 --results-tag codex_cpp_dealer_dealer_tcp262144_debugprobe_20260404_session201116_rerun8_serial`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_235641_codex_cpp_dealer_dealer_tcp262144_debugprobe_20260404_session201116_rerun8_serial.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+  - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_DEALER --transports tcp --msg-sizes 64,256,1024,65536,131072,262144 --results-tag codex_cpp_dealer_dealer_tcp_fullsizes_probe_20260405_session201116_rerun9`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_000230_codex_cpp_dealer_dealer_tcp_fullsizes_probe_20260405_session201116_rerun9.txt`
+    - outcome: `status=complete`, `expected result lines=30`, `actual result lines=30`, `fail=0`
+    - conclusion: the `MULTI_DEALER_DEALER 262144` crash also does not reproduce in isolated serial saved repro
+- 2026-04-04: full comparable rerun9 recheck
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_rerun9_recheck_after_serial_repros`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_235716_codex_cpp_multi_recv_comparable_20260405_session201116_rerun9_recheck_after_serial_repros.txt`
+  - outcome:
+    - rerun9 again showed `MULTI_DEALER_DEALER` `262144B` FAIL early in the full comparable path
+    - the run was manually interrupted after that recurrence so the file is diagnostic-only, not official comparable evidence
+    - current interpretation: both failures look scoped to the full comparable orchestration/load interaction rather than an isolated binding binary regression
+- 2026-04-04: raw echo recv hot-path copy/allocation reduction
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before editing and again before the probe/full rerun commands
+    - kept raw patterns on `CONNECTION_READY`, kept recv mode as `poller + DONTWAIT recv`, and did not add any snapshot/sleep/start-gate workaround
+  - files:
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - change:
+    - `DEALER_ROUTER` client recv path now uses single-part `recv(message_t&)` instead of multipart `receive(received_t)` vector assembly on every reply
+    - `ROUTER_ROUTER` client send path now uses direct buffer send with routing id string instead of per-message `message_t` allocation/copy
+    - `ROUTER_ROUTER` client recv path now uses direct `recv(routing_id, message_t&)` and validates the source routing id without multipart wrapper churn
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client`
+      - result: success
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+      - result: 2/2 passed
+  - focused saved probes:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern ROUTER_ROUTER --transports tcp --msg-sizes 1024 --results-tag codex_cpp_router_router_tcp1024_probe_20260404_session201116_copycut`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_232205_codex_cpp_router_router_tcp1024_probe_20260404_session201116_copycut.txt`
+      - outcome: `status=complete`, throughput `444190.8 msg/s`, baseline `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_recv_20260404_141709.txt` 대비 ratio `0.507`
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_ROUTER --transports ws --msg-sizes 256 --results-tag codex_cpp_dealer_router_ws256_probe_20260404_session201116_copycut`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_232220_codex_cpp_dealer_router_ws256_probe_20260404_session201116_copycut.txt`
+      - outcome: `status=complete`, throughput `466077.0 msg/s`, baseline 대비 ratio `0.534`
+  - full comparable rerun started:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_session201116_rerun7_copycut_raw_echo`
+    - target report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_232237_codex_cpp_multi_recv_comparable_20260404_session201116_rerun7_copycut_raw_echo.txt`
+    - current state at note time:
+      - run still in progress; summarize script still falls back to rerun6 until rerun7 writes comparable `RESULT,current,...` rows and final footer
+      - partial report already shows raw echo recovery in-flight:
+        - `MULTI_DEALER_ROUTER tcp 64/256/1024` around `485k/486k/465k ops/s`
+        - `MULTI_DEALER_ROUTER ws 64/256/1024` around `468k/467k/462k ops/s`
+        - `MULTI_ROUTER_ROUTER tcp 1024` currently `457240.0 msg/s`
+- 2026-04-04: stale recv rerun5 fact check before new official rerun
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_221555_codex_cpp_multi_recv_comparable_20260404_session201116_rerun5_fix_recv_workers.txt`
+  - outcome:
+    - file existed but stopped mid-run with only table output and no trailing `RESULT,current,...` block
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp` skipped it as `no comparable rows`
+    - treated as non-authoritative and replaced with a fresh full comparable rerun instead of reusing it
+- 2026-04-04: policy/build/test refresh before fresh official recv comparable rerun
+  - policy:
+    - rechecked `doc/perf/PERF_POLICY.md`, `doc/perf/PERF_MULTI_TEST_POLICY.md`, and the execution guide
+    - confirmed the current cpp perf code still keeps raw=`CONNECTION_READY`, SPOT=`READY/START`, and does not use `READY,...` / `CLIENT_READY,...` / `START,...` orchestration output as benchmark-ready evidence
+  - build:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client cpp_comp_src_spot_server cpp_comp_src_dealer_dealer_server cpp_comp_src_dealer_dealer_client cpp_comp_src_dealer_router_server cpp_comp_src_dealer_router_client cpp_comp_src_router_router_server cpp_comp_src_router_router_client cpp_comp_src_pubsub_server cpp_comp_src_pubsub_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - result: success
+  - tests:
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: 2/2 passed
+- 2026-04-04: fresh official recv comparable rerun after SPOT recv worker fix
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_session201116_rerun6_fix_recv_workers`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_223327_codex_cpp_multi_recv_comparable_20260404_session201116_rerun6_fix_recv_workers.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - official comparable recv evidence is restored on the current workspace
+    - recovered SPOT recv improvement is preserved in the comparable run:
+      - `MULTI_SPOT tls 64B`: `8461243.0 / 6502551.0 = 1.301`
+      - `MULTI_SPOT tcp 65536`: `108084.4 / 155682.6 = 0.694`
+      - `MULTI_STREAM wss 65536`: `8937.8 / 16224.4 = 0.551`
+- 2026-04-04: official worst-ratio refresh after recv rerun6
+  - command:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+  - outcome:
+    - latest recv comparable is now rerun6 above
+    - recv worst ratio moved from old `MULTI_SPOT tls 64B = 0.067` to `MULTI_ROUTER_ROUTER tcp 1024 = 0.125`
+    - callback comparable remains `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_214303_codex_cpp_multi_callback_comparable_20260404_session201116_rerun4.txt` with worst `0.400`
+    - overall cpp largest deficit therefore remains recv, but the priority moved away from SPOT to raw echo small-message paths
+- 2026-04-04: new recv hotspot shortlist from direct baseline scan
+  - command:
+    - inline Python ratio scan against `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_recv_20260404_141709.txt` and rerun6 comparable report
+  - top deficits:
+    - `('MULTI_ROUTER_ROUTER', 'tcp', '1024') ratio=0.125 current=109082.8 baseline=875454.8`
+    - `('MULTI_DEALER_ROUTER', 'ws', '256') ratio=0.126 current=110034.4 baseline=873146.0`
+    - `('MULTI_ROUTER_ROUTER', 'tls', '1024') ratio=0.363 current=291739.2 baseline=803509.0`
+    - `('MULTI_SPOT', 'tls', '262144') ratio=0.462 current=16428.0 baseline=35536.6`
+- 2026-04-04: next implementation focus narrowed
+  - inspected:
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+    - `core/perf/multi/src/perf_multi_router_router_client.cpp`
+    - `core/perf/multi/src/perf_multi_dealer_router_client.cpp`
+  - direction:
+    - next work should target raw echo recv small-message client hot path alignment rather than SPOT
+    - likely comparison surface is binding C++ wrapper client loops vs core/perf C API client loops, starting with `ROUTER_ROUTER tcp 1024` and `DEALER_ROUTER ws 256`
+  - immediate code-level clue:
+    - binding echo clients still use the older app-thread round-robin `awaiting_reply` / `send_pending` loop (`run_phase()` in both binding files)
+    - core/perf echo clients use per-slot state with `send_enabled`, `inflight`, `auto_send_on_recv`, and direct reply-drain helpers to re-arm sends from the receive path
+    - this divergence is a plausible explanation for the new raw echo small-message deficits and is the first alignment candidate for the next edit
+  - rationale:
+    - after the earlier stride/poller cleanup, the remaining recv deficit was still concentrated in `MULTI_SPOT` secure small-message cases
+    - the previous binding recv path was still materially different from `core/perf` because one thread drained every ready slot and recorded every active sample centrally
+- 2026-04-04: build/test verification after recv worker edit
+  - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - result: success
+  - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: 2/2 passed
+- 2026-04-04: saved SPOT recv full-surface rerun after recv worker edit
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern SPOT --results-tag codex_cpp_spot_recv_fullsurface_20260404_session201116_fix_recv_workers`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_220451_codex_cpp_spot_recv_fullsurface_20260404_session201116_fix_recv_workers.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=120`, `actual result lines=120`, `fail=0`
+    - `MULTI_SPOT tls 64B` throughput improved from `434450.4` in recv rerun2 to `8438729.0 msg/s`
+    - `MULTI_SPOT wss 64B` throughput improved from `779143.8` in recv rerun2 to `8507659.6 msg/s`
+    - `MULTI_SPOT tcp 64B` throughput improved from `2099466.0` in recv rerun2 to `5868952.4 msg/s`
+- 2026-04-04: fresh recv comparable rerun after recv worker edit
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_session201116_rerun4_fix_recv_workers`
+  - target report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_220825_codex_cpp_multi_recv_comparable_20260404_session201116_rerun4_fix_recv_workers.txt`
+  - current state:
+    - run is in progress
+    - raw patterns are advancing normally with result output present; official worst-ratio refresh is deferred until this report reaches `status=complete`
+- 2026-04-05: turn-start policy refresh
+  - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+  - confirmed current recv work still keeps raw=`CONNECTION_READY`, SPOT=`READY/START`, no snapshot polling, no sleep-based benchmark start gate, and no stdout orchestration token promotion
+- 2026-04-05: `DEALER_DEALER` full-scope recv crash narrowed to perf socket compat fast path
+  - saved repro before fix:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_DEALER --transports tcp,tls,ws,wss --msg-sizes 64,256,1024,65536,131072,262144 --results-tag codex_cpp_dealer_dealer_alltransports_fullsizes_20260405_session201116_repro_fullscope`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_000732_codex_cpp_dealer_dealer_alltransports_fullsizes_20260405_session201116_repro_fullscope.txt`
+    - outcome: `status=partial`; `MULTI_DEALER_DEALER` `tcp/tls/wss 262144B` failed with `non_zero_exit_-11`, while `ws 262144B` completed
+  - diagnosis:
+    - `bindings/cpp/perf/common/perf_socket_compat.hpp` raw single-part `send(data,size)` fast path passed caller-owned buffers through `zlink_msg_init_data(..., NULL, NULL)` and let the benchmark immediately reuse them
+    - the transport split (`tcp/tls/wss` fail, `ws` survives) matched a benchmark buffer-lifetime bug rather than a runner-orchestration issue
+- 2026-04-05: perf socket compat raw send lifetime fix
+  - file:
+    - `bindings/cpp/perf/common/perf_socket_compat.hpp`
+  - change:
+    - reverted raw single-part `send(const void*, size_t)` and routing-id variant to copy-backed `message_t::from_bytes(...)` sends
+    - kept message-object and multipart move-based paths intact; only the unsafe caller-buffer fast path was changed
+  - verification:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_dealer_dealer_client cpp_comp_src_dealer_dealer_server cpp_comp_src_spot_client cpp_comp_src_spot_server test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: build ok, tests 2/2 passed
+- 2026-04-05: saved repro and official comparable after raw send fix
+  - saved repro after fix:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern DEALER_DEALER --transports tcp,tls,ws,wss --msg-sizes 64,256,1024,65536,131072,262144 --results-tag codex_cpp_dealer_dealer_alltransports_fullsizes_20260405_session201116_fix_copy_send`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_001149_codex_cpp_dealer_dealer_alltransports_fullsizes_20260405_session201116_fix_copy_send.txt`
+    - outcome: `status=complete`; `expected result lines=120`, `actual result lines=120`, `fail=0`
+  - official comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_fix_copy_send_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_001539_codex_cpp_multi_recv_comparable_20260405_session201116_fix_copy_send_fullrerun.txt`
+    - outcome:
+      - `status=complete`
+      - `expected result lines=680`
+      - `actual result lines=680`
+      - `fail=0`
+      - `MULTI_SPOT tcp 1024..262144` also completed in the same official rerun, so the old rerun8 partial is no longer active
+- 2026-04-05: summary refresh after recv comparable recovery
+  - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - recv comparable now points to `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_001539_codex_cpp_multi_recv_comparable_20260405_session201116_fix_copy_send_fullrerun.txt`
+    - recv worst is now `0.124` at `('MULTI_DEALER_ROUTER', 'ws', '1024')`
+    - callback comparable remains `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_214303_codex_cpp_multi_callback_comparable_20260404_session201116_rerun4.txt` with worst `0.400` at `('MULTI_SPOT', 'tcp', '65536')`
+- 2026-04-05: official recv comparable rerun after `ROUTER_ROUTER` routed-send reuse
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+    - confirmed this rerun still keeps raw=`CONNECTION_READY`, SPOT=`READY/START`, no snapshot polling, and no stdout orchestration token promotion
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_client cpp_comp_src_router_router_server cpp_comp_src_dealer_router_client cpp_comp_src_dealer_router_server test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R test_cpp_contract_socket`
+    - result: build ok, test passed
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_router_router_reuse_fullrerun`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_010653_codex_cpp_multi_recv_comparable_20260405_session201116_router_router_reuse_fullrerun.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=680`, `actual result lines=680`, `fail=0`
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - recv worst moved to `('MULTI_SPOT', 'tcp', '262144')` ratio `0.455`
+    - overall cpp largest deficit is therefore callback `('MULTI_SPOT', 'tcp', '65536')` ratio `0.400`
+- 2026-04-05: callback `MULTI_SPOT tcp` large-payload wait-path experiment was ineffective and reverted
+  - comparison/diagnosis:
+    - inspected `bindings/cpp/perf/multi/src/perf_spot_client.cpp` against `core/perf/multi/src/perf_multi_spot_client.cpp`
+    - a plausible hypothesis was that binding callback mode's busy-spin waits (`wait_callback_sync`, `run_callback_active`) were stealing CPU from callback delivery
+  - experiment:
+    - changed binding callback SPOT wait paths to cv-backed waits without altering SPOT barrier semantics or recv model
+    - rebuilt and rechecked contracts:
+      - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+      - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+      - result: build ok, tests 2/2 passed
+    - saved probe:
+      - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp --msg-sizes 65536,262144 --results-tag codex_cpp_spot_callback_tcp_large_probe_20260405_session201116_progress_wait`
+      - report:
+        `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_012946_codex_cpp_spot_callback_tcp_large_probe_20260405_session201116_progress_wait.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=10`, `actual result lines=10`, `fail=0`
+    - `tcp 65536` throughput was `102817.6`, slightly below current official callback comparable `103230.4`
+    - `tcp 262144` throughput was `25450.8`, below current official callback comparable `28332.0`
+    - the experiment did not improve the active callback bottleneck, so the patch was reverted immediately per guide
+  - next clue:
+    - callback wait loops are not the dominant cause of the remaining `MULTI_SPOT tcp` callback deficit
+    - next edit should target real callback hot-path differences between binding `perf_spot_client.cpp` / `perf_spot_server.cpp` and core `perf_multi_spot_client.cpp` / `perf_multi_spot_server.cpp`, not the already-reverted wait path
+- 2026-04-05: callback SPOT server reusable-buffer fix
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md`
+    - confirmed the change stays within binding/perf hot path only and does not alter SPOT `READY/START` barrier semantics or callback-vs-recv model selection
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_spot_server.cpp`
+  - change:
+    - removed the per-send `message_t::from_bytes()` copy from the active SPOT publish loop
+    - the server now stamps directly into a reusable outbound `message_t` and reinitializes storage only after successful send
+  - verification:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_server cpp_comp_src_spot_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: build ok, tests 2/2 passed
+- 2026-04-05: tcp callback probe and comparable after reusable-buffer fix
+  - saved probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp --msg-sizes 65536,262144 --results-tag codex_cpp_spot_callback_tcp_large_probe_20260405_session201116_server_reuse_buffer`
+    - report:
+      `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_014744_codex_cpp_spot_callback_tcp_large_probe_20260405_session201116_server_reuse_buffer.txt`
+    - outcome:
+      - `status=complete`, `expected result lines=10`, `actual result lines=10`, `fail=0`
+      - `tcp 65536` improved to `127419.0`
+      - `tcp 262144` improved to `36545.6`
+  - official comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_server_reuse_buffer_fullrerun`
+    - report:
+      `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_014814_codex_cpp_multi_callback_comparable_20260405_session201116_server_reuse_buffer_fullrerun.txt`
+    - outcome:
+      - `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+      - summary improved callback worst from `0.382 @ ('MULTI_SPOT', 'tcp', '65536')` to `0.428 @ ('MULTI_SPOT', 'ws', '262144')`
+- 2026-04-05: callback SPOT server progress-wait alignment fix
+  - diagnosis:
+    - compared `bindings/cpp/perf/multi/src/perf_spot_server.cpp` against `core/perf/multi/src/perf_multi_spot_server.cpp`
+    - binding callback SPOT server still used pure `yield` on `backpressured/not_ready`, while `core/perf` used `wait_for_spot_send_progress()` (`poll(NULL, 0, 1~2ms)` idle wait)
+  - file:
+    - `bindings/cpp/perf/multi/src/perf_spot_server.cpp`
+  - change:
+    - replaced pure `yield` with the same `poll(NULL, 0, 1~2ms)`-style idle wait in both active publish retry and control-message publish retry
+  - verification:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_server cpp_comp_src_spot_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: build ok, tests 2/2 passed
+- 2026-04-05: ws-focused callback probe and official comparable after progress-wait alignment
+  - saved ws probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports ws --msg-sizes 65536,131072,262144 --results-tag codex_cpp_spot_callback_ws_large_probe_20260405_session201116_server_progress_wait`
+    - report:
+      `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_015626_codex_cpp_spot_callback_ws_large_probe_20260405_session201116_server_progress_wait.txt`
+    - outcome:
+      - `status=complete`, `expected result lines=15`, `actual result lines=15`, `fail=0`
+      - `ws 262144` improved from official `14830.4` to `23918.8`
+  - official comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_server_progress_wait_fullrerun`
+    - report:
+      `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_015657_codex_cpp_multi_callback_comparable_20260405_session201116_server_progress_wait_fullrerun.txt`
+    - outcome:
+      - `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+      - summary improved callback worst again to `0.442 @ ('MULTI_SPOT', 'tls', '262144')`
+      - recv official worst remains `0.455 @ ('MULTI_SPOT', 'tcp', '262144')`, so callback is still the current overall cpp largest deficit by a small margin
+- 2026-04-05: SPOT client quorum/busy-spin policy repair
+  - rechecked `doc/perf/PERF_POLICY.md`, `doc/perf/PERF_MULTI_TEST_POLICY.md`, and `doc/perf/PERF_SINGLE_TEST_POLICY.md`
+  - found that `bindings/cpp/perf/multi/src/perf_spot_client.cpp` still used a post-`START` quorum sync gate even though current SPOT policy allows only the explicit `READY/START` barrier
+  - patched the SPOT client to remove that quorum gate and to replace callback/recv app-thread active busy-spin waits with phase-notified waits
+  - verification:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'`
+    - result: build ok, tests 2/2 passed
+- 2026-04-05: callback large-payload SPOT probe after SPOT client wait realignment
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tcp,tls,ws,wss --msg-sizes 65536,131072,262144 --results-tag codex_cpp_spot_callback_large_probe_20260405_session201116_no_quorum_phase_wait`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_020954_codex_cpp_spot_callback_large_probe_20260405_session201116_no_quorum_phase_wait.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=60`, `actual result lines=60`, `fail=0`
+    - `tcp 262144=41042.8`, `tls 262144=23132.0`, `ws 262144=29886.6`, `wss 262144=16254.0`
+- 2026-04-05: recv large-payload SPOT probe after SPOT client wait realignment
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern SPOT --transports tcp,tls,ws,wss --msg-sizes 65536,131072,262144 --results-tag codex_cpp_spot_recv_large_probe_20260405_session201116_no_quorum_phase_wait`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_021153_codex_cpp_spot_recv_large_probe_20260405_session201116_no_quorum_phase_wait.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=60`, `actual result lines=60`, `fail=0`
+    - `tcp 262144=41150.2`, `tls 262144=21696.6`, `ws 262144=24575.0`, `wss 262144=18302.4`
+- 2026-04-05: official callback comparable rerun after SPOT client wait realignment
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_no_quorum_phase_wait_fullrerun`
+  - report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_021347_codex_cpp_multi_callback_comparable_20260405_session201116_no_quorum_phase_wait_fullrerun.txt`
+  - outcome:
+    - `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+    - summary moved callback worst to `0.451 @ ('MULTI_SPOT', 'wss', '64')`
+- 2026-04-05: official recv comparable rerun is still in progress after SPOT client wait realignment
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session201116_no_quorum_phase_wait_fullrerun`
+  - target report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_022027_codex_cpp_multi_recv_comparable_20260405_session201116_no_quorum_phase_wait_fullrerun.txt`
+  - current state:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp` still skips the new recv file with `no comparable rows`, so the prior official recv worst `0.455 @ ('MULTI_SPOT', 'tcp', '262144')` remains the published reference until the rerun completes
+- 2026-04-05: `spot_t` const-char topic fast path promoted to official callback evidence
+  - policy refresh:
+    - rechecked `doc/perf/PERF_POLICY.md` and `doc/perf/PERF_MULTI_TEST_POLICY.md` before editing and again after the full rerun
+    - SPOT stayed on explicit `READY/START` barrier, callback stayed on callback-dispatch plus metric aggregation, and no orchestration stdout token was promoted to benchmark-ready semantics
+  - code change:
+    - `bindings/cpp/include/zlink/services/spot.hpp`
+    - added `publish` / `try_publish` overloads for `const char *` topics and routed the existing `std::string` overloads through the same C-string impl
+    - effect: `perf_spot_server.cpp` hot path no longer constructs an implicit temporary `std::string` for every `spot_.try_publish(k_topic, outbound)` call
+  - build/test:
+    - `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_spot_client cpp_comp_src_spot_server test_cpp_contract_callback_mode test_cpp_contract_socket`
+    - `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - result: build ok, tests 2/2 passed
+  - saved callback probe:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --pattern SPOT --transports tls --msg-sizes 65536 --results-tag codex_cpp_spot_callback_tls65536_probe_20260405_session201116_constchar_topic_fastpath`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_035248_codex_cpp_spot_callback_tls65536_probe_20260405_session201116_constchar_topic_fastpath.txt`
+    - outcome: `status=complete`, `expected result lines=5`, `actual result lines=5`, `fail=0`
+    - key effect: `MULTI_SPOT tls 65536` throughput improved from `64580.8` to `99192.4` (`ratio 0.686`, `+53.6%`)
+  - official callback comparable rerun:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session201116_constchar_topic_fastpath_fullrerun`
+    - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_035319_codex_cpp_multi_callback_comparable_20260405_session201116_constchar_topic_fastpath_fullrerun.txt`
+    - outcome: `status=complete`, `expected result lines=200`, `actual result lines=200`, `fail=0`
+  - refreshed summary:
+    - `python3 /home/hep7/project/kairos/zlink/core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+    - callback worst moved from `0.446` at `('MULTI_SPOT', 'tls', '65536')` to `0.414` at `('MULTI_SPOT', 'wss', '64')`
+    - recv worst remains `0.499` at `('MULTI_DEALER_ROUTER', 'wss', '256')`
+    - current overall published cpp largest deficit is now callback `MULTI_SPOT wss 64`

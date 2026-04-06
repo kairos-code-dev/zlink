@@ -2,9 +2,8 @@
 
 mod common;
 
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use zlink::*;
 
 fn main() {
@@ -21,12 +20,14 @@ fn main() {
     let mon = SocketMonitor::open(&sender, MONITOR_EVENT_ALL).expect("monitor");
     common::wait_monitor_ready(&mon);
 
-    let stats = Arc::new(Mutex::new(common::LatencyStats::new()));
-    let finished = Arc::new(AtomicBool::new(false));
-    let (sc, fc) = (stats.clone(), finished.clone());
+    let collector = common::MetricCollector::new();
+    let stats = collector.shared();
+    let finished = common::CompletionSignal::new();
+    let sender_done = finished.clone();
+    let sc = stats.clone();
 
     receiver.on_receive(move |received| {
-        common::handle_recv(received.parts()[0].data(), &sc, &fc);
+        common::handle_recv(received.parts()[0].data(), &sc);
     }).expect("on_receive");
 
     let w = Duration::from_secs(config.warmup_seconds);
@@ -34,6 +35,7 @@ fn main() {
     let sz = config.size;
 
     let t = thread::spawn(move || {
+        let _guard = common::CompletionGuard::new(sender_done);
         common::send_loop(w, a, sz,
             |msg| { let _ = sender.send(msg); },
             |msg| sender.try_send(msg),
@@ -43,6 +45,6 @@ fn main() {
     common::wait_finished(&finished, config.warmup_seconds, config.duration_seconds);
     t.join().expect("join");
 
-    let result = stats.lock().unwrap().finish();
+    let result = collector.finish();
     common::print_result("PAIR", &config.transport, config.size, config.duration_seconds, &result);
 }

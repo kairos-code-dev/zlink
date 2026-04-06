@@ -95,19 +95,6 @@ int resolve_spot_phase_timeout_ms (
       "PERF_MULTI_SPOT_PHASE_TIMEOUT_MS", timeout_ms);
 }
 
-bool wait_for_spot_ready_settle (int timeout_ms_)
-{
-    if (timeout_ms_ <= 0)
-        return true;
-
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (timeout_ms_);
-    while (std::chrono::steady_clock::now () < deadline) {
-        std::this_thread::yield ();
-    }
-    return true;
-}
-
 bool parse_ready_payload (const std::string &raw_,
                           std::string *server_endpoint_out_,
                           std::string *registry_pub_out_,
@@ -234,19 +221,6 @@ struct callback_client_state_t
     std::vector<perf::multi::spot_callback_thread_metrics_t<callback_client_state_t> *>
       thread_metrics;
 };
-
-void collect_callback_thread_metrics (callback_client_state_t *state_,
-                                      unsigned long long *active_received_out_,
-                                      perf::multi::bench_latency_stats_t *latency_out_)
-{
-    perf::multi::collect_spot_callback_thread_metrics (
-      state_,
-      &state_->thread_metrics_mutex,
-      &state_->thread_metrics,
-      &state_->metrics_epoch,
-      active_received_out_,
-      latency_out_);
-}
 
 class callback_slot_t
 {
@@ -491,11 +465,6 @@ class spot_client_bench_t
               std::cout << "CLIENT_READY," << msg_size << std::endl;
               if (!wait_for_start_signal(msg_size, timeout_ms))
                   return false;
-              if (!wait_for_spot_ready_settle(
-                    perf::multi::parse_positive_env(
-                      "PERF_MULTI_SPOT_READY_SETTLE_MS", 1000))) {
-                  return false;
-              }
               debug_log("publishing ready count size=" + std::to_string(msg_size)
                         + " count=" + std::to_string(_slots.size()));
               if (!publish_control_ready_count(
@@ -693,7 +662,13 @@ class spot_client_bench_t
         _callback_state.collect_active.store (false, std::memory_order_release);
         stop_callbacks ();
 
-        collect_callback_thread_metrics (&_callback_state, &_active_count, &_latency);
+        perf::multi::collect_spot_callback_thread_metrics (
+          &_callback_state,
+          &_callback_state.thread_metrics_mutex,
+          &_callback_state.thread_metrics,
+          &_callback_state.metrics_epoch,
+          &_active_count,
+          &_latency);
         return _active_count > 0;
     }
 

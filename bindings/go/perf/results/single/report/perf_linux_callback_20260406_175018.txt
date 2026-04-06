@@ -1,0 +1,18 @@
+## Effective Options (start)
+  pattern:   SPOT
+  recv:      callback
+  duration:  1s
+  warmup:    1s
+  msg_sizes: 64
+  transports: tcp
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,SPOT,tcp,64,throughput,943.64
+RESULT,current,SPOT,tcp,64,bandwidth,57.60
+RESULT,current,SPOT,tcp,64,latency,693.35
+RESULT,current,SPOT,tcp,64,latency_p95,1099.76
+RESULT,current,SPOT,tcp,64,latency_p99,1623.74
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | SPOT | tcp | 64 | 943.64 | 57.60 | 693.35 | 1099.76 | 1623.74 |

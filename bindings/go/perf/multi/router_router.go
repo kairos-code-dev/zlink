@@ -161,11 +161,3 @@ func startMultiRouterEchoServer(server *zlink.RouterSocket) {
 		}
 	}()
 }
-
-func splitDuration(total time.Duration, parts int) time.Duration {
-	_ = parts
-	if total <= 0 {
-		return time.Second
-	}
-	return total
-}

@@ -10,9 +10,8 @@ internal static class PerfPubSub
     internal static int RunPubSub(string transport, int size)
     {
         int warmupCount = ResolveSingleWarmupCount("PUBSUB");
-        int settleMs = SingleSettleTimeMs;
-        int durationSeconds = ParseEnv("PERF_SINGLE_DURATION_SECONDS", 5);
-        int recvTimeoutMs = ParseEnvNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+        int durationSeconds = ResolveSingleDurationSeconds();
+        int recvTimeoutMs = ResolveSingleRcvTimeoutMs();
         int latCount = ResolveSingleLatencyCount("PUBSUB");
 
         using var ctx = new Context();
@@ -46,8 +45,6 @@ internal static class PerfPubSub
             {
                 return 2;
             }
-
-            Thread.Sleep(settleMs);
 
             if (!RunPhase(pub, sub, payload, payloadSize, 0, durationSeconds,
                     recvTimeoutMs, latCount, out long received,
@@ -109,7 +106,7 @@ internal static class PerfPubSub
         long deadlineTicks = active
             ? DeadlineTicksFromSeconds(durationSeconds)
             : 0;
-        long drainTicks = Math.Max(1,
+        long recvFlushTicks = Math.Max(1,
             (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
         long received = 0;
@@ -167,7 +164,7 @@ internal static class PerfPubSub
                     catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
                     {
                         if (done && Stopwatch.GetTimestamp() - lastRecvTicks
-                            >= drainTicks)
+                            >= recvFlushTicks)
                         {
                             break;
                         }

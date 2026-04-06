@@ -16,7 +16,10 @@ fn main() {
 
     let mut sockets: Vec<RouterSocket> = Vec::with_capacity(settings.clients);
     let mut inflight: Vec<bool> = vec![false; settings.clients];
-    let mut send_pending: Vec<bool> = vec![false; settings.clients];
+    let mut send_backpressure: Vec<common::backpressure::SocketBackpressure> =
+        (0..settings.clients)
+            .map(|_| common::backpressure::SocketBackpressure::new())
+            .collect();
 
     for i in 0..settings.clients {
         let sock = ctx.router_socket().expect("router");
@@ -43,12 +46,13 @@ fn main() {
     let run_phase = |phase: u32, duration: Duration, sockets: &[RouterSocket],
                      target: &RoutingId, poller: &Poller,
                      buf: &mut [u8], seq: &mut u64,
-                     inflight: &mut [bool], send_pending: &mut [bool],
+                     inflight: &mut [bool],
+                     send_backpressure: &mut [common::backpressure::SocketBackpressure],
                      count: &mut u64, lat: &mut common::LatencyStats| {
         let deadline = Instant::now() + duration;
         while Instant::now() < deadline {
             for i in 0..n {
-                if inflight[i] || send_pending[i] { continue; }
+                if inflight[i] || send_backpressure[i].is_pending() { continue; }
                 common::encode_header(buf, phase, msg_size as u32, *seq);
                 let msg = Message::from_bytes(buf).expect("msg");
                 match sockets[i].try_send(target, msg) {
@@ -57,8 +61,9 @@ fn main() {
                         inflight[i] = true;
                     }
                     _ => {
-                        send_pending[i] = true;
-                        let _ = poller.modify_socket(&sockets[i], POLLIN | POLLOUT);
+                        send_backpressure[i].mark_pending(|| {
+                            let _ = poller.modify_socket(&sockets[i], POLLIN | POLLOUT);
+                        });
                     }
                 }
             }
@@ -91,9 +96,10 @@ fn main() {
                         }
                     }
                 }
-                if ev.is_writable() && send_pending[i] {
-                    send_pending[i] = false;
-                    let _ = poller.modify_socket(&sockets[i], POLLIN);
+                if ev.is_writable() && send_backpressure[i].is_pending() {
+                    send_backpressure[i].clear_pending(|| {
+                        let _ = poller.modify_socket(&sockets[i], POLLIN);
+                    });
                 }
             }
         }
@@ -101,12 +107,12 @@ fn main() {
 
     run_phase(common::PHASE_WARMUP, Duration::from_secs(settings.warmup_seconds),
               &sockets, &server_rid, &poller, &mut buf, &mut seq,
-              &mut inflight, &mut send_pending,
+              &mut inflight, &mut send_backpressure,
               &mut 0u64, &mut common::LatencyStats::new());
 
     run_phase(common::PHASE_ACTIVE, Duration::from_secs(settings.duration_seconds),
               &sockets, &server_rid, &poller, &mut buf, &mut seq,
-              &mut inflight, &mut send_pending,
+              &mut inflight, &mut send_backpressure,
               &mut active_count, &mut latency_stats);
 
     if let Some(sock) = sockets.first() {
@@ -116,6 +122,11 @@ fn main() {
 
     let stats = latency_stats.finish();
     let final_stats = common::StatsResult { count: active_count, ..stats };
-    common::print_result("MULTI_ROUTER_ROUTER", &args.transport, msg_size,
-                         settings.duration_seconds, &final_stats);
+    let key = format!(
+        "RESULT,current,{},{},{}",
+        "MULTI_ROUTER_ROUTER", &args.transport, msg_size
+    );
+    let phase_result =
+        common::build_phase_result(msg_size, settings.duration_seconds, &final_stats);
+    common::print_phase_result(&key, &phase_result);
 }

@@ -1,0 +1,18 @@
+## Effective Options (start)
+  pattern:   ALL
+  recv:      callback
+  duration:  5s
+  warmup:    2s
+  msg_sizes: 64,256,1024,65536,131072,262144
+  transports: tcp
+  runs:      1
+## Effective Options (end)
+
+RESULT,current,PAIR,tcp,64,throughput,109.15
+RESULT,current,PAIR,tcp,64,bandwidth,6.66
+RESULT,current,PAIR,tcp,64,latency,97.66
+RESULT,current,PAIR,tcp,64,latency_p95,142.89
+RESULT,current,PAIR,tcp,64,latency_p99,254.49
+| lib | pattern | transport | size | throughput | bandwidth | latency | latency_p95 | latency_p99 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| current | PAIR | tcp | 64 | 109.15 | 6.66 | 97.66 | 142.89 | 254.49 |

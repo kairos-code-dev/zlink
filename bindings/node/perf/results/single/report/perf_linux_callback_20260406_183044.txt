@@ -1,0 +1,38 @@
+## Effective Options (start)
+- pattern: PAIR
+- recv_mode: callback
+- duration_seconds: 1
+- warmup_seconds: 1
+- msg_sizes: 64
+- runs: 1
+- transports: inproc
+- results_dir: /home/hep7/project/kairos/zlink/bindings/node/perf/results
+
+## PATTERN: PAIR
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 138.05 Kmsg/s | 8.84 MB/s | 10.294 | 13.378 | 14.041 |
+
+
+## Result Data
+RESULT,current,PAIR,inproc,64,throughput,138054.00
+RESULT,current,PAIR,inproc,64,bandwidth,8.84
+RESULT,current,PAIR,inproc,64,latency,10294.19
+RESULT,current,PAIR,inproc,64,latency_p95,13378.13
+RESULT,current,PAIR,inproc,64,latency_p99,14040.68
+
+## Effective Options (result)
+- pattern: PAIR
+- recv_mode: callback
+- duration_seconds: 1
+- warmup_seconds: 1
+- msg_sizes: 64
+- runs: 1
+- transports: inproc
+- results_dir: /home/hep7/project/kairos/zlink/bindings/node/perf/results
+- result_lines: 5
+## Status Summary
+- result_lines: 5
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5

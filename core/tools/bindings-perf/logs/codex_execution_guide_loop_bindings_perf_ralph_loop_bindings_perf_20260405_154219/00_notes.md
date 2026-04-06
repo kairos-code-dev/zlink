@@ -1,0 +1,164 @@
+# Notes
+
+- Keep high-signal findings, commands, report paths, and decisions here.
+- Use this file for run-local notes instead of writing transient progress into the execution guide.
+- Previous session carry-over confirmed: active language stays `cpp`; published official recv comparable still `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_055050_codex_cpp_multi_recv_comparable_20260405_session201116_router_router_wss256_immediate_resend_fullrerun.txt`.
+- Focused recv verification on current workspace:
+  - `./bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --recv recv --pattern ROUTER_ROUTER --transports tls --msg-sizes 1024 --results-tag codex_cpp_router_router_tls1024_probe_20260405_session154219_post_direct_single_recv`
+  - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_154434_codex_cpp_router_router_tls1024_probe_20260405_session154219_post_direct_single_recv.txt`
+  - throughput: `463490.8`
+- First full recv rerun before `PUBSUB` fix:
+  - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_154448_codex_cpp_multi_recv_comparable_20260405_session154219_post_direct_single_recv_fullrerun.txt`
+  - result: `partial`, fail=2
+  - failing surface: `MULTI_PUBSUB tls 262144`, `MULTI_PUBSUB wss 262144`, both `server_non_zero_exit_-11`
+- Repro isolation for `PUBSUB` secure large-message failure:
+  - single-size secure probe stayed clean: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_160552_codex_cpp_pubsub_secure_262144_probe_20260405_session154219.txt`
+  - secure full-size sequence reproduced the failure: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_160626_codex_cpp_pubsub_secure_fullsizes_probe_20260405_session154219.txt`
+- Root cause narrowed to `bindings/cpp/perf/multi/src/perf_pubsub_server.cpp`:
+  - retained successful code used an owned message copy per publish
+  - current workspace had changed to reusable external-buffer publish
+  - secure full-size sequence only failed under the external-buffer path
+- Fix applied:
+  - restored owned `zlink::message_t(payload.size())` + `memcpy` publish in `bindings/cpp/perf/multi/src/perf_pubsub_server.cpp`
+  - clean serial verification after fix: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_160855_codex_cpp_pubsub_secure_fullsizes_probe_20260405_session154219_owned_publish_fix_serial.txt`
+  - status: `complete`
+- Clean current-session official comparables after the `PUBSUB` fix:
+  - recv comparable: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_163013_codex_cpp_multi_recv_comparable_20260405_session154219_post_direct_single_recv_owned_pubsub_fix_fullrerun_serial.txt`
+  - callback comparable: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_165214_codex_cpp_multi_callback_comparable_20260405_session154219_post_recv_restore_serial.txt`
+  - direct ratio recalculation on those reports:
+    - recv worst: `0.262889` at `('MULTI_DEALER_ROUTER', 'tls', '64')`
+    - callback worst: `0.507622` at `('MULTI_SPOT', 'wss', '64')`
+- `DEALER_ROUTER` recv hot path follow-up:
+  - root cause candidate: current binding path had shifted to `received_t + std::vector<message_t>` receive churn on the echo reply path, unlike the lower-cost single-part path used by core perf semantics
+  - fix applied: switched `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp` and `bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp` to `recv(message_t)` / `recv(routing_id_t, message_t)` single-part flow
+  - focused verification: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_170102_codex_cpp_dealer_router_tls64_probe_20260405_session154219_single_part_fastpath.txt`
+  - throughput moved from official comparable `220295.4` to focused `478226.4`
+- `DEALER_DEALER` normal-operation regression:
+  - first post-fix full recv rerun `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_170118_codex_cpp_multi_recv_comparable_20260405_session154219_dealer_router_single_part_fastpath_fullrerun_serial.txt` became `partial`
+  - failure signature: `MULTI_DEALER_DEALER ws/wss 64` client fail
+  - root cause: `bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp` had moved to `socket_t::send(message_t)` but still treated success as `sent == payload_size`; this wrapper returns `0` on success
+  - focused repro before fix: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_172057_codex_cpp_dealer_dealer_ws_wss64_repro_20260405_session154219.txt`
+  - focused repro after fix: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_172123_codex_cpp_dealer_dealer_ws_wss64_repro_20260405_session154219_sendrc_fix.txt`
+  - result after fix: `complete`
+- New remaining blocker inside current workspace normal-operation:
+  - second post-fix full recv rerun `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_172148_codex_cpp_multi_recv_comparable_20260405_session154219_dealer_router_fastpath_dealer_dealer_sendrc_fix_fullrerun_serial.txt` was manually interrupted after surfacing a wider `MULTI_DEALER_DEALER 262144` fail across `tcp,tls,ws,wss`
+  - do not use that interrupted rerun for ratio decisions; use it only as evidence that full-surface normal operation is still broken on the current workspace
+- Discarded evidence:
+  - overlapped invalid probe aborted: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_160839_codex_cpp_pubsub_secure_fullsizes_probe_20260405_session154219_owned_publish_fix.txt`
+  - clean full recv rerun with fix was started but manually interrupted before completion, so do not use `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_161038_codex_cpp_multi_recv_comparable_20260405_session154219_post_direct_single_recv_owned_pubsub_fix_fullrerun.txt` for official ratio decisions
+- `MULTI_DEALER_DEALER 262144` root cause update:
+  - focused single-size repro across `tcp,tls,ws,wss` stayed clean: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_172811_codex_cpp_dealer_dealer_262144_repro_20260405_session154219.txt`
+  - full-size `tls` sequence reproduced the crash: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_173356_codex_cpp_dealer_dealer_tls_fullsizes_repro_20260405_session154219.txt`
+  - failure summary on that report showed `non_zero_exit_-11` at `262144`, which matched a client-side segmentation fault rather than transport timeout
+  - code root cause: `bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp` wrapped the reusable `_payload` vector with `message_from_external_buffer()` for every send, so secure transports could still be using that backing storage when the next send overwrote it
+  - fix: replace the external-buffer send with owned `zlink::message_t(_payload.size())` plus `memcpy`
+- post-fix retained verification:
+  - `tls` full-size sequence clean after fix:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_173531_codex_cpp_dealer_dealer_tls_fullsizes_repro_20260405_session154219_owned_send_fix.txt`
+  - `ws/wss` full-size sequence clean after fix:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_173628_codex_cpp_dealer_dealer_ws_wss_fullsizes_repro_20260405_session154219_owned_send_fix.txt`
+- current official recv rerun status after the fix:
+  - started rerun: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_173821_codex_cpp_multi_recv_comparable_20260405_session154219_post_dealer_dealer_owned_send_fix_fullrerun_serial.txt`
+  - this rerun is interrupted evidence only
+  - before interruption it had already completed:
+    - `MULTI_DEALER_DEALER` all `tcp,tls,ws,wss` sizes
+    - `MULTI_DEALER_ROUTER` all `tcp,tls,ws,wss` sizes
+    - `MULTI_ROUTER_ROUTER tcp` through `131072`
+  - no new fail row appeared before interruption, but the file is not official comparable evidence because it did not reach final completion/status summary
+- baseline files selected for this session:
+  - recv baseline: `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_recv_20260404_141709.txt`
+  - callback baseline: `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_callback_20260404_153247.txt`
+- core-aligned echo poller adjustment:
+  - root cause candidate: C++ binding echo recv clients still used a `100ms` default poller wait slice and handled `POLLOUT` before `POLLIN`, unlike core recv policy's short slice and recv-first drain progression
+  - fix applied:
+    - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`: default wait slice `100ms -> 10ms`, and event loop reordered to drain `POLLIN` before retrying `POLLOUT`
+    - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`: default wait slice `100ms -> 10ms`
+  - discarded overlapped evidence:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_181401_codex_cpp_dealer_router_tcp64_probe_20260405_session154219_pollslice_align.txt`
+    - this probe overlapped with the rebuild and must not be used for ratio or hotspot decisions
+  - clean focused proof after rebuild:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_181416_codex_cpp_dealer_router_tcp64_probe_20260405_session154219_pollslice_align_serial_rerun.txt`
+    - `MULTI_DEALER_ROUTER tcp 64` throughput improved to `534568.8` from prior official comparable `110501.0`
+- latest clean official recv comparable after the poll-slice fix:
+  - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_181429_codex_cpp_multi_recv_comparable_20260405_session154219_post_pollslice_align_fullrerun_serial.txt`
+  - result: `complete`, `fail=0`, `expected result lines=680`, `actual result lines=680`
+  - direct summary on that report via current session:
+    - recv worst: `0.323` at `('MULTI_DEALER_ROUTER', 'ws', '256')`
+    - previous official recv worst `('MULTI_DEALER_ROUTER', 'tls', '64')` `0.262889` no longer leads
+  - notable full-rerun movement:
+    - `MULTI_DEALER_ROUTER tcp 64` improved from prior official `110501.0` to new official `392585.2`
+    - `MULTI_ROUTER_ROUTER tls 1024` remained healthy at `451585.8`
+- callback comparable note:
+  - previous session/run-state text referenced `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_165214_codex_cpp_multi_callback_comparable_20260405_session154219_post_recv_restore_serial.txt`, but that file does not exist on disk
+  - first restored callback report `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_183925_codex_cpp_multi_callback_comparable_20260405_session154219_restore_missing_official_serial.txt` was valid when produced, but the next recv full rerun pruned it from `multi/report`
+  - final retained callback official comparable after recv rerun:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_191107_codex_cpp_multi_callback_comparable_20260405_session154219_post_recv_rerun_restore_serial.txt`
+    - `status=complete`, `fail=0`, `expected result lines=200`, `actual result lines=200`
+  - current callback summary on the retained official report:
+    - worst ratio `0.476` at `('MULTI_SPOT', 'ws', '64')`
+- `DEALER_ROUTER ws 256` recv follow-up:
+  - clean focused probe on current workspace:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_184623_codex_cpp_dealer_router_ws256_probe_20260405_session154219_post_callback_restore_serial.txt`
+    - throughput `521150.0`
+  - focused gain held in the next official comparable:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_184637_codex_cpp_multi_recv_comparable_20260405_session154219_post_ws256_probe_fullrerun_serial.txt`
+    - `MULTI_DEALER_ROUTER ws 256` official throughput `516593.2` (previous official `282196.0`)
+  - after the clean full rerun, recv largest deficit shifted away from dealer-router:
+    - new recv worst ratio `0.098` at `('MULTI_ROUTER_ROUTER', 'tcp', '256')`
+- `ROUTER_ROUTER tcp 256` recv follow-up:
+  - root cause candidate from core-vs-binding comparison:
+    - binding `perf_router_router_client.cpp` handled `POLLOUT` before `POLLIN`
+    - after a successfully received but non-metric / non-server reply, binding cleared `awaiting_reply` and then `continue`d without reseeding the next request
+    - core `perf_multi_router_router_client.cpp` keeps the recv-first drain ordering and re-arms the next request after any processed reply path
+  - fix applied in `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`:
+    - added a small `recv_reply(...)` helper to centralize routed single-part recv/decode
+    - changed event processing to `POLLIN` first, then optional `POLLOUT`
+    - after recv, the client now re-sends the next request when still inside the phase even if the reply was non-metric, while still counting throughput/latency only for expected server replies
+  - policy check before edit:
+    - raw remained `CONNECTION_READY`
+    - SPOT remained explicit `READY/START`
+    - recv model remained `poller POLLIN drain + POLLOUT backpressure`
+    - no snapshot polling / sleep-based start gate / orchestration-token promotion was introduced
+  - verification after edit:
+    - build: `cmake --build core/build --parallel $(nproc) --target cpp_comp_src_router_router_client cpp_comp_src_router_router_server`
+    - tests: `ctest --test-dir core/build --output-on-failure -R 'test_cpp_contract_(socket|callback_mode)'`
+    - both succeeded
+  - focused evidence:
+    - pre-edit probe:
+      - `./bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --recv recv --pattern ROUTER_ROUTER --transports tcp --msg-sizes 256 --results-tag codex_cpp_router_router_tcp256_probe_20260405_session154219_turn2_serial`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_192057_codex_cpp_router_router_tcp256_probe_20260405_session154219_turn2_serial.txt`
+      - throughput: `112941.2`
+    - post-edit probe:
+      - `./bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --recv recv --pattern ROUTER_ROUTER --transports tcp --msg-sizes 256 --results-tag codex_cpp_router_router_tcp256_probe_20260405_session154219_post_recv_reseed_align_serial`
+      - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_192252_codex_cpp_router_router_tcp256_probe_20260405_session154219_post_recv_reseed_align_serial.txt`
+      - throughput: `507956.8`
+  - full comparable follow-up:
+    - started official recv rerun:
+      - `./bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session154219_post_router_router_reseed_align_fullrerun_serial`
+      - live report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_192310_codex_cpp_multi_recv_comparable_20260405_session154219_post_router_router_reseed_align_fullrerun_serial.txt`
+    - at note update time the rerun is still in progress, so this live report must not be treated as retained official comparable yet
+- incomplete rerun cleanup:
+  - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_192310_codex_cpp_multi_recv_comparable_20260405_session154219_post_router_router_reseed_align_fullrerun_serial.txt` finished without footer/result summary
+  - keep it only as evidence of an incomplete run; do not use it for retained official ratio decisions
+- official recv comparable rebuilt cleanly:
+  - command: `./bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --recv recv --results-tag codex_cpp_multi_recv_comparable_20260405_session154219_post_router_router_reseed_align_fullrerun_serial_rerun2`
+  - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_194346_codex_cpp_multi_recv_comparable_20260405_session154219_post_router_router_reseed_align_fullrerun_serial_rerun2.txt`
+  - result: `status=complete`, `fail=0`, `expected result lines=680`, `actual result lines=680`
+  - recalculated recv worst on this official report:
+    - `0.187` at `('MULTI_ROUTER_ROUTER', 'tcp', '64')`
+  - notable `MULTI_ROUTER_ROUTER` movement versus prior retained official comparable:
+    - `tcp 256`: `91562.0 -> 495637.4`
+    - `tcp 64`: `530557.0 -> 175698.8`
+    - `ws 1024`: `500434.4 -> 315509.2`
+- official callback comparable rebuilt cleanly after recv rerun prune:
+  - command: `./bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --recv callback --results-tag codex_cpp_multi_callback_comparable_20260405_session154219_post_recv_rerun2_restore_serial`
+  - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260405_200445_codex_cpp_multi_callback_comparable_20260405_session154219_post_recv_rerun2_restore_serial.txt`
+  - result: `status=complete`, `fail=0`, `expected result lines=200`, `actual result lines=200`
+  - recalculated callback worst on this official report:
+    - `0.458` at `('MULTI_SPOT', 'ws', '64')`
+- focused recv follow-up for the new official recv worst:
+  - command: `./bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --recv recv --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64 --results-tag codex_cpp_router_router_tcp64_probe_20260405_session154219_post_rerun2_serial`
+  - report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260405_201222_codex_cpp_router_router_tcp64_probe_20260405_session154219_post_rerun2_serial.txt`
+  - result: `status=complete`, `fail=0`, `expected result lines=5`, `actual result lines=5`
+  - throughput: `500797.0`
+  - this focused throughput is far above the official full rerun value `175698.8`, so the next recv investigation should treat `ROUTER_ROUTER tcp 64` as a full-surface-only regression rather than a flat single-case fast-path break

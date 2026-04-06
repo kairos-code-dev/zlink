@@ -1,0 +1,165 @@
+# Notes
+
+- Keep high-signal findings, commands, report paths, and decisions here.
+- Use this file for run-local notes instead of writing transient progress into the execution guide.
+- 2026-04-04: previous session dir `/home/hep7/project/kairos/zlink/core/tools/bindings-perf/logs/codex_execution_guide_loop_bindings_perf_ralph_loop_bindings_perf_20260404_172004` had only template state files; no carried implementation state beyond "review previous session" instruction in handoff.
+- 2026-04-04: baseline selection from current baseline dir:
+  - recv: `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_recv_20260404_141709.txt`
+  - callback: `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_callback_20260404_153247.txt`
+- 2026-04-04: `python3 core/tools/bindings-perf/summarize_bindings_perf.py --languages cpp`
+  - latest cpp single report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/single/report/perf_linux_callback_20260402_132445_codex_probe_single_cpp_20260402.txt`
+  - latest cpp multi recv report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260402_153326_codex_full_recv_cpp_20260402_fix5.txt` -> no comparable rows
+  - latest cpp multi callback report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260402_133003_codex_probe_multi_callback_cpp_20260402_fix2.txt` -> warmup/duration mismatch
+- 2026-04-04: policy divergence found in cpp MULTI_SPOT:
+  - server `wait_for_spot_pub_ready()` polls `node_.status_snapshot()` and sleeps
+  - client `wait_for_sub_delivery_ready()` polls `node_.status_snapshot()` and sleeps
+  - both violate execution guide and `doc/perf` SPOT explicit READY/START barrier rule
+- 2026-04-04: code fix applied in:
+  - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_spot_server.cpp`
+  - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - change summary:
+    - removed snapshot/sleep-based SPOT ready gating
+    - added control-plane `READY_COUNT -> START` barrier aligned with runner semantics
+    - added client control endpoint binding plus server reverse connect handshake (`CLIENT_CONTROL_ENDPOINT`, `CONNECT_CONTROL`, `CONTROL_CONNECTED`)
+- 2026-04-04: verification results
+  - `ctest --test-dir /home/hep7/project/kairos/zlink/core/build --output-on-failure -R 'test_cpp_contract_(callback_mode|socket)'` -> 2/2 passed
+  - single probe:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/single/report/perf_linux_callback_20260404_173228_codex_spot_single_probe_20260404.txt`
+  - multi recv smoke:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_173203_codex_spot_barrier_smoke_recv_fixed_20260404.txt`
+  - multi callback smoke:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_173216_codex_spot_barrier_smoke_callback_fixed_20260404.txt`
+  - multi recv full-size tcp:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_173254_codex_spot_fullsizes_recv_20260404.txt`
+  - multi callback full-size tcp:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_callback_20260404_173321_codex_spot_fullsizes_callback_20260404.txt`
+- 2026-04-04: an early single probe overlapped with `ctest`; that overlapping measurement is invalid by execution-guide rules and was superseded by the later standalone single probe above.
+- 2026-04-04: post-fix summary still reports `no comparable multi report found yet` because the new SPOT validation runs intentionally used `warmup=1` and `duration=1`, and pattern coverage is SPOT-only rather than full cpp multi coverage.
+- 2026-04-04: baseline effective options confirmed for the next comparable rerun:
+  - recv baseline `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_recv_20260404_141709.txt`
+    - recv_mode=recv
+    - patterns=`MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_STREAM`
+    - transports=`tcp,tls,ws,wss`
+    - msg_sizes=`64,256,1024,65536,131072,262144`
+    - warmup_seconds=2
+    - duration_seconds=5
+    - clients=100
+  - callback baseline `/home/hep7/project/kairos/zlink/core/perf/baseline/perf_linux_callback_20260404_153247.txt`
+    - recv_mode=callback
+    - patterns=`MULTI_SPOT,MULTI_STREAM`
+    - transports=`tcp,tls,ws,wss`
+    - msg_sizes=`64,256,1024,65536,131072,262144`
+    - warmup_seconds=2
+    - duration_seconds=5
+    - clients=100
+- 2026-04-04 17:36:38 +0900: new comparable rerun was deferred because other benchmark jobs were already active:
+  - `bash ./run_benchmarks_multi.sh`
+  - `bash /home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh --duration 5 --transports tcp,tls,ws,wss --runs 1 --pattern DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM`
+  - `bash ./run_benchmarks.sh`
+  - per execution guide, no overlapping perf/test/build job is allowed during active perf measurement
+- 2026-04-04 17:38-17:57: baseline-aligned cpp multi recv comparable run
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404`
+  - saved report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_173823_codex_cpp_multi_recv_comparable_20260404.txt`
+  - summary:
+    - status `partial`
+    - expected result lines `680`
+    - actual result lines `620`
+    - summarize script verdict: `latest report not comparable (result coverage mismatch)`
+  - failure set:
+    - `MULTI_SPOT` `tls` all sizes failed with `non_zero_exit_1_size_64`
+    - `MULTI_SPOT` `wss` all sizes failed with `non_zero_exit_1_CLIENT_READY,64_size_64`
+  - metric-shape findings:
+    - `MULTI_DEALER_DEALER`: only `throughput/bandwidth/latency/latency_p95/latency_p99`
+    - `MULTI_DEALER_ROUTER`: only `throughput/bandwidth/latency/latency_p95/latency_p99`
+    - `MULTI_ROUTER_ROUTER`: only `throughput/bandwidth/latency/latency_p95/latency_p99`
+    - `MULTI_PUBSUB`, `MULTI_SPOT`, `MULTI_STREAM`: queue metrics exist, but this report has no `server_cpu_pct/server_mem_mb/client_cpu_pct/client_mem_mb` lines anywhere
+  - interpretation:
+    - current cpp recv surface is not yet policy-compliant full-surface normal operation
+    - next fix priority is not ratio tuning; it is result emission / metric coverage repair plus `MULTI_SPOT` secure transport failure repair
+- 2026-04-04: implementation comparison findings after recv comparable run
+  - binding cpp echo/raw multi servers currently end with `print_server_queue_metrics(...)` only and do not emit `server_cpu_pct/server_mem_mb`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_dealer_dealer_server.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_router_router_server.cpp`
+  - binding cpp clients currently call `print_result(...)` but have no `print_client_resource_result_lines(...)` equivalent
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_pubsub_client.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - core reference has explicit resource result emission helpers in:
+    - `/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_dealer_dealer_server.cpp`
+    - `/home/hep7/project/kairos/zlink/core/perf/multi/src/perf_multi_spot_server.cpp`
+    - `/home/hep7/project/kairos/zlink/core/perf/multi/common/perf_multi_client_helpers.hpp`
+- 2026-04-04 18:00-18:10: cpp multi recv resource/secure SPOT repair
+  - added shared resource probe/result helpers in `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/common/perf_common.hpp`
+  - added client resource result emission to:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_pubsub_client.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - added server resource result emission to:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_dealer_dealer_server.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_router_router_server.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_pubsub_server.cpp`
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/multi/src/perf_spot_server.cpp`
+  - secure SPOT control plane uses reverse connect on both ends, so control nodes must be dual-role for TLS/WSS
+    - server control node now sets both `set_tls_server(cert,key,false)` and `set_tls_client(ca,"localhost",false)`
+    - client control node now sets both `set_tls_server(cert,key,false)` and `set_tls_client(ca,"localhost",false)`
+- 2026-04-04 18:08: a parallel `tls` + `wss` debug rerun with `PERF_DEBUG=1 PERF_MULTI_CLIENTS=2` overlapped active perf jobs and violated the execution-guide single-run rule
+  - discarded report: `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_180755_codex_cpp_spot_tls_debug_20260404.txt`
+  - do not use that run for diagnosis or comparison
+- 2026-04-04 18:10-18:11: sequential secure SPOT recv debug reruns after control-plane TLS fix
+  - tls probe command:
+    - `PERF_DEBUG=1 PERF_MULTI_CLIENTS=2 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern SPOT --transports tls --msg-sizes 64 --results-tag codex_cpp_spot_tls_debug_fix_20260404`
+  - tls probe report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_181047_codex_cpp_spot_tls_debug_fix_20260404.txt`
+  - wss probe command:
+    - `PERF_DEBUG=1 PERF_MULTI_CLIENTS=2 ./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --pattern SPOT --transports wss --msg-sizes 64 --results-tag codex_cpp_spot_wss_debug_fix_20260404`
+  - wss probe report:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_181113_codex_cpp_spot_wss_debug_fix_20260404.txt`
+  - both probes completed `status=complete`
+  - tls failure before fix was `spot client failed errno=22`
+  - wss failure before fix was `spot client failed errno=110`
+  - after fix, both transports now emit throughput/latency plus `server_cpu_pct/server_mem_mb/server_*pending*`
+- 2026-04-04 18:12-18:16: attempted full comparable recv rerun
+  - command:
+    - `./bindings/cpp/perf/run_benchmarks_multi.sh --recv recv --results-tag codex_cpp_multi_recv_comparable_20260404_fix_resource_tls`
+  - partial report path:
+    - `/home/hep7/project/kairos/zlink/bindings/cpp/perf/results/multi/report/perf_linux_recv_20260404_181226_codex_cpp_multi_recv_comparable_20260404_fix_resource_tls.txt`
+  - run was stopped intentionally before completion so it does not count as comparable evidence
+  - reason for stopping:
+    - intermediate inspection showed shell summary still rendering `S.CPU%/S.Mem MB/Q.*` as `N/A` for `MULTI_DEALER_DEALER`
+    - secure SPOT debug reports now contain server resource lines, but client resource lines are still absent from the saved report
+  - next work:
+    - inspect why `client_cpu_pct/client_mem_mb` emitted by binding clients are not present in final report
+    - then restart the full comparable recv rerun from scratch, single-process only
+- 2026-04-04 18:2x: policy/comparison re-check before next rerun
+  - `doc/perf/PERF_MULTI_TEST_POLICY.md` sections 6.1, 6.6, 10 confirm:
+    - `client_cpu_pct/client_mem_mb` should be emitted by the client binary as RESULT lines
+    - those client resource metrics are informational and do not affect completion
+    - final aggregate/result table only reflects server resource metrics (`S.CPU%`, `S.Mem MB`)
+  - `core/perf/run_comparison.py` confirms the same implementation behavior:
+    - `parse_result_line()` accepts `client_cpu_pct/client_mem_mb`
+    - live callbacks can emit them
+    - final `current_results` / `expected_result_lines` / `actual_result_lines` for multi surfaces only count throughput, bandwidth, latency triplet, server resource, and server queue metrics
+  - conclusion:
+    - current recv partial report root cause is no longer "missing client resource metrics"
+    - remaining required work is still a fresh single-process full recv comparable rerun after the secure `MULTI_SPOT` fix
+- 2026-04-04 18:2x: rerun blocked by active external benchmark jobs in the shared workspace
+  - `pgrep -af 'run_benchmarks|ctest|dotnet test|gradle test|cargo test|run_binding'` showed:
+    - `bash ./run_benchmarks_multi.sh`
+    - `bash /home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh --duration 5 --transports tcp,tls,ws,wss --runs 1 --pattern DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM`
+    - `bash ./run_benchmarks.sh`
+  - execution guide forbids overlapping perf/build/test jobs, so this session deferred the new comparable rerun until those jobs finish
+- 2026-04-04 18:3x: the overlapping benchmark shells are not merely long-running; they are suspended/stopped
+  - `ps -o pid,etimes,stat,cmd -p 402920,403003,443466,604479` returned:
+    - `402920 ... T bash ./run_benchmarks_multi.sh`
+    - `403003 ... T bash /home/hep7/project/kairos/zlink/core/perf/run_benchmarks.sh --duration 5 --transports tcp,tls,ws,wss --runs 1 --pattern DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,STREAM`
+    - `443466 ... T bash ./run_benchmarks.sh`
+  - these look like user- or shell-owned stopped jobs rather than jobs this session may safely terminate
+  - until they are cleared or the user explicitly directs otherwise, a new full recv comparable rerun would violate the execution-guide non-overlap rule

@@ -276,4 +276,26 @@ class socket_t : public base_socket_t
 
 } // namespace zlink
 
+namespace perf {
+
+// Lightweight RAII wrapper that creates a zlink::socket_t and
+// closes it on destruction.  Shared by single and multi benchmarks.
+class socket_guard_t
+{
+  public:
+    socket_guard_t () : _sock () {}
+    socket_guard_t (zlink::context_t &ctx_, zlink::socket_type type_)
+        : _sock (ctx_, type_)
+    {
+    }
+
+    zlink::socket_t &sock () { return _sock; }
+    bool valid () const { return _sock.handle () != NULL; }
+
+  private:
+    zlink::socket_t _sock;
+};
+
+} // namespace perf
+
 #endif

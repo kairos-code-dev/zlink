@@ -8,8 +8,7 @@ use zlink::*;
 
 struct SocketState {
     index: usize,
-    pending: bool,
-    pollout_on: bool,
+    backpressure: common::backpressure::SocketBackpressure,
 }
 
 fn main() {
@@ -28,7 +27,10 @@ fn main() {
         sock.set_send_hwm(settings.hwm).expect("sndhwm");
         sock.connect(&args.endpoint).expect("connect");
         poller.add_socket(&sock, i, 0).expect("poller add"); // start with no events
-        states.push(SocketState { index: i, pending: false, pollout_on: false });
+        states.push(SocketState {
+            index: i,
+            backpressure: common::backpressure::SocketBackpressure::new(),
+        });
         sockets.push(sock);
     }
 
@@ -71,10 +73,13 @@ fn main() {
         count: active_count,
         ..stats
     };
-    common::print_result(
-        "MULTI_DEALER_DEALER", &args.transport, msg_size,
-        settings.duration_seconds, &final_stats,
+    let key = format!(
+        "RESULT,current,{},{},{}",
+        "MULTI_DEALER_DEALER", &args.transport, msg_size
     );
+    let phase_result =
+        common::build_phase_result(msg_size, settings.duration_seconds, &final_stats);
+    common::print_phase_result(&key, &phase_result);
 }
 
 fn run_send_phase(
@@ -98,7 +103,7 @@ fn run_send_phase(
         // Round-robin try send on non-pending sockets
         for i in 0..n {
             let si = (index + i) % n;
-            if states[si].pending {
+            if states[si].backpressure.is_pending() {
                 continue;
             }
 
@@ -116,25 +121,21 @@ fn run_send_phase(
                     }
                 }
                 Ok(SendResult::Backpressured) | Ok(SendResult::NotReady) => {
-                    states[si].pending = true;
-                    if !states[si].pollout_on {
+                    states[si].backpressure.mark_pending(|| {
                         let _ = poller.modify_socket(&sockets[si], POLLOUT);
-                        states[si].pollout_on = true;
-                    }
+                    });
                 }
                 Err(_) => {
-                    states[si].pending = true;
-                    if !states[si].pollout_on {
+                    states[si].backpressure.mark_pending(|| {
                         let _ = poller.modify_socket(&sockets[si], POLLOUT);
-                        states[si].pollout_on = true;
-                    }
+                    });
                 }
             }
         }
         index += 1;
 
         // If all sockets made progress, skip poll
-        let has_pending = states.iter().any(|s| s.pending);
+        let has_pending = states.iter().any(|s| s.backpressure.is_pending());
         if progress || !has_pending {
             continue;
         }
@@ -153,10 +154,10 @@ fn run_send_phase(
                 continue;
             }
             let st = &mut states[ev.token];
-            if st.pending {
-                st.pending = false;
-                let _ = poller.modify_socket(&sockets[st.index], 0);
-                st.pollout_on = false;
+            if st.backpressure.is_pending() {
+                st.backpressure.clear_pending(|| {
+                    let _ = poller.modify_socket(&sockets[st.index], 0);
+                });
             }
         }
     }

@@ -3,7 +3,7 @@ import threading
 
 import zlink
 
-from perf_multi_common import drain_len32be_frames, parse_server_args, safe_poll, tcp_endpoint
+from perf_multi_common import parse_len32be_frames, parse_server_args, safe_poll, tcp_endpoint
 
 
 def main(argv=None):
@@ -25,7 +25,7 @@ def main(argv=None):
         with lock:
             buffer = buffers.setdefault(routing_id, bytearray())
             buffer.extend(chunk)
-            frames = drain_len32be_frames(buffer)
+            frames = parse_len32be_frames(buffer)
         for frame in frames:
             server.send(frame, routing_id=routing_id)
 

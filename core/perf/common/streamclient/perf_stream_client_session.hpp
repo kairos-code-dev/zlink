@@ -348,6 +348,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         const std::shared_ptr<client_session_t> self = shared_from_this ();
 
         if (transport_mode == raw_transport_tcp) {
+            // Allocate transport objects during connect setup, before any
+            // active benchmark traffic is allowed on the session.
             tcp_socket.reset (new tcp::socket (io));
             tcp_socket->open (endpoint.protocol (), ec);
             if (ec) {
@@ -366,6 +368,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         }
 
         if (transport_mode == raw_transport_tls) {
+            // TLS stream allocation is also a one-time setup cost.
             tls_socket.reset (
               new boost::asio::ssl::stream<tcp::socket> (io, tls_ctx));
             tls_socket->next_layer ().open (endpoint.protocol (), ec);

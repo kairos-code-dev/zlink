@@ -2,8 +2,10 @@
 #define PERF_SINGLE_COMMON_HPP
 
 #include "perf_single_metric_header.hpp"
-#include "perf_single_tls.hpp"
-#include <zlink.hpp>
+#include "../../common/perf_latency_sampler.hpp"
+#include "../../common/perf_monitor_wait.hpp"
+#include "../../common/perf_socket_compat.hpp"
+#include "../../common/perf_tls.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -28,15 +30,9 @@ namespace single {
 typedef zlink::socket_t perf_socket_t;
 
 static const size_t MAX_SOCKET_STRING = 256;
-static const int SETTLE_TIME_MS = 100;
 
-struct latency_stats_t {
-    latency_stats_t () : mean_us (0.0), p95_us (0.0), p99_us (0.0) {}
-
-    double mean_us;
-    double p95_us;
-    double p99_us;
-};
+// Migrated to unified perf::latency_stats_t / perf::latency_sampler_t.
+typedef ::perf::latency_sampler_stats_t latency_stats_t;
 
 struct queue_stats_t {
     queue_stats_t ()
@@ -55,25 +51,7 @@ struct queue_stats_t {
     bool has_rcv_pending;
 };
 
-class latency_stats_builder_t
-{
-  public:
-    explicit latency_stats_builder_t (size_t sample_cap_ = 200000);
-    void add (double latency_us_);
-    unsigned long long count () const;
-    latency_stats_t snapshot ();
-
-  private:
-    static double percentile_from_sorted (const std::vector<double> &sorted_,
-                                          double q_);
-    unsigned long long next_rand_u64 ();
-
-    size_t _sample_cap;
-    unsigned long long _count;
-    double _sum_us;
-    unsigned long long _rng_state;
-    std::vector<double> _samples;
-};
+typedef ::perf::latency_sampler_t latency_stats_builder_t;
 
 class ctx_guard_t
 {
@@ -82,24 +60,14 @@ class ctx_guard_t
     ~ctx_guard_t ();
 
     zlink::context_t &ctx () { return _ctx; }
+    operator zlink::context_t &() { return _ctx; }
     bool valid () const { return _ctx.handle () != NULL; }
 
   private:
     zlink::context_t _ctx;
 };
 
-class socket_guard_t
-{
-  public:
-    socket_guard_t ();
-    socket_guard_t (ctx_guard_t &ctx_, zlink::socket_type type_);
-
-    perf_socket_t &sock () { return _sock; }
-    bool valid () const { return _sock.handle () != NULL; }
-
-  private:
-    perf_socket_t _sock;
-};
+using ::perf::socket_guard_t;
 
 // Reads positive integer env var; returns default when missing/invalid/non-positive.
 int parse_positive_env (const char *name_, int default_value_);
@@ -136,21 +104,16 @@ std::string bind_and_resolve_endpoint (perf_socket_t &socket_,
                                        const std::string &id);
 
 bool transport_available (const std::string &transport);
-void settle ();
 bool connect_checked (perf_socket_t &socket_, const std::string &endpoint);
 // Binds first socket and connects second socket to resolved endpoint.
 bool setup_connected_pair (perf_socket_t &bind_socket_,
                            perf_socket_t &connect_socket_,
                            const std::string &transport_,
                            const std::string &id_);
-bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor_,
-                                uint64_t event_type_,
-                                int64_t value_,
-                                int timeout_ms_);
-bool wait_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
-                                 uint32_t event_type_,
-                                 int64_t value_,
-                                 int timeout_ms_);
+// Migrated to unified perf::wait_socket_monitor_event /
+// perf::wait_service_monitor_event in common/perf_monitor_wait.hpp.
+using ::perf::wait_socket_monitor_event;
+using ::perf::wait_service_monitor_event;
 
 void print_result (const std::string &lib_type,
                    const std::string &pattern,
@@ -221,197 +184,12 @@ class queue_probe_t
     bool _rcv_seen;
 };
 
-queue_stats_t sample_queue_stats (queue_probe_t *queue_probe_);
-void print_fail_result (const std::string &lib_type,
-                        const std::string &pattern,
-                        const std::string &transport,
-                        size_t size,
-                        queue_probe_t *queue_probe_);
-
 typedef bool (*phase_send_fn_t) (void *userdata_,
                                  const void *data_,
                                  size_t size_);
 
-class callback_receiver_t
-{
-  public:
-    callback_receiver_t ();
-    ~callback_receiver_t ();
-
-    callback_receiver_t (const callback_receiver_t &) = delete;
-    callback_receiver_t &operator= (const callback_receiver_t &) = delete;
-
-    bool attach (perf_socket_t &socket_, queue_probe_t *queue_probe_);
-    bool begin_phase (uint32_t run_id_,
-                      perf_single_metric::phase_t phase_,
-                      size_t msg_size_,
-                      bool active_);
-    bool finish_phase (unsigned long long expected_count_,
-                       int recv_timeout_ms_,
-                       unsigned long long *received_out_,
-                       latency_stats_t *latency_out_);
-    bool failed () const;
-
-  private:
-    struct event_t
-    {
-        event_t ()
-            : token (0),
-              run_id (0),
-              msg_size (0),
-              active (false),
-              header_ok (false)
-        {
-        }
-
-        unsigned long long token;
-        uint32_t run_id;
-        size_t msg_size;
-        perf_single_metric::phase_t phase;
-        bool active;
-        bool header_ok;
-        perf_single_metric::header_t header;
-    };
-
-    static void recv_handler (const zlink_routing_id_t *source_rid_,
-                              zlink_msg_t *parts_,
-                              size_t part_count_,
-                              void *userdata_);
-    bool push_event (const event_t &event_);
-    void worker_loop ();
-
-    perf_socket_t *_socket;
-    queue_probe_t *_queue_probe;
-    std::vector<event_t> _queue;
-    size_t _queue_head;
-    size_t _queue_tail;
-    size_t _queue_count;
-    bool _stop_worker;
-    std::atomic<bool> _failed;
-    std::mutex _queue_mutex;
-    std::condition_variable _queue_cv;
-    std::thread _worker;
-
-    std::atomic<unsigned long long> _current_token;
-    std::atomic<uint32_t> _current_run_id;
-    std::atomic<size_t> _current_msg_size;
-    std::atomic<int> _current_phase;
-    std::atomic<bool> _current_active;
-
-    std::mutex _result_mutex;
-    std::condition_variable _result_cv;
-    unsigned long long _result_token;
-    unsigned long long _received_count;
-    latency_stats_builder_t _latency_builder;
-};
-
-class subscribe_callback_receiver_t
-{
-  public:
-    subscribe_callback_receiver_t ();
-    ~subscribe_callback_receiver_t ();
-
-    subscribe_callback_receiver_t (const subscribe_callback_receiver_t &) = delete;
-    subscribe_callback_receiver_t &
-    operator= (const subscribe_callback_receiver_t &) = delete;
-
-    bool attach_socket (perf_socket_t &socket_, queue_probe_t *queue_probe_);
-    bool attach_spot (zlink::service::spot_t &spot_, queue_probe_t *queue_probe_);
-    bool begin_phase (uint32_t run_id_,
-                      perf_single_metric::phase_t phase_,
-                      size_t msg_size_,
-                      bool active_,
-                      const std::string &topic_);
-    bool finish_phase (unsigned long long expected_count_,
-                       int recv_timeout_ms_,
-                       unsigned long long *received_out_,
-                       latency_stats_t *latency_out_);
-    bool failed () const;
-
-  private:
-    struct event_t
-    {
-        event_t ()
-            : token (0),
-              run_id (0),
-              msg_size (0),
-              active (false),
-              header_ok (false)
-        {
-        }
-
-        unsigned long long token;
-        uint32_t run_id;
-        size_t msg_size;
-        perf_single_metric::phase_t phase;
-        bool active;
-        bool header_ok;
-        perf_single_metric::header_t header;
-        std::string topic;
-    };
-
-    static void subscribe_handler (const zlink_routing_id_t *source_rid_,
-                                   const char *topic_,
-                                   size_t topic_len_,
-                                   zlink_msg_t *parts_,
-                                   size_t part_count_,
-                                   void *userdata_);
-    bool push_event (const event_t &event_);
-    void worker_loop ();
-
-    queue_probe_t *_queue_probe;
-    std::vector<event_t> _queue;
-    size_t _queue_head;
-    size_t _queue_tail;
-    size_t _queue_count;
-    bool _stop_worker;
-    std::atomic<bool> _failed;
-    std::mutex _queue_mutex;
-    std::condition_variable _queue_cv;
-    std::thread _worker;
-
-    std::atomic<unsigned long long> _current_token;
-    std::atomic<uint32_t> _current_run_id;
-    std::atomic<size_t> _current_msg_size;
-    std::atomic<int> _current_phase;
-    std::atomic<bool> _current_active;
-    std::string _expected_topic;
-
-    std::mutex _result_mutex;
-    std::condition_variable _result_cv;
-    unsigned long long _result_token;
-    unsigned long long _received_count;
-    latency_stats_builder_t _latency_builder;
-};
-
-bool run_callback_phase (callback_receiver_t &receiver_,
-                         phase_send_fn_t send_fn_,
-                         void *send_userdata_,
-                         std::vector<char> &payload_,
-                         size_t msg_size_,
-                         uint32_t run_id_,
-                         uint64_t &seq_,
-                         perf_single_metric::phase_t phase_,
-                         int warmup_count_,
-                         int duration_s_,
-                         int recv_timeout_ms_,
-                         unsigned long long *received_out_,
-                         latency_stats_t *latency_out_);
-
-bool run_subscribe_callback_phase (subscribe_callback_receiver_t &receiver_,
-                                   phase_send_fn_t send_fn_,
-                                   void *send_userdata_,
-                                   std::vector<char> &payload_,
-                                   size_t msg_size_,
-                                   uint32_t run_id_,
-                                   uint64_t &seq_,
-                                   perf_single_metric::phase_t phase_,
-                                   int warmup_count_,
-                                   int duration_s_,
-                                   int recv_timeout_ms_,
-                                   const std::string &topic_,
-                                   unsigned long long *received_out_,
-                                   latency_stats_t *latency_out_);
+#include "perf_single_report.hpp"
+#include "perf_single_callback_receiver.hpp"
 
 } // namespace single
 } // namespace perf

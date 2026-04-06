@@ -9,88 +9,9 @@
 namespace perf {
 namespace single {
 
-latency_stats_builder_t::latency_stats_builder_t (size_t sample_cap_)
-    : _sample_cap (sample_cap_ > 0 ? sample_cap_ : 1),
-      _count (0),
-      _sum_us (0.0),
-      _rng_state (0x9e3779b97f4a7c15ULL)
-{
-    _samples.reserve (_sample_cap);
-}
-
-void latency_stats_builder_t::add (double latency_us_)
-{
-    const double sample = latency_us_ >= 0.0 ? latency_us_ : 0.0;
-    ++_count;
-    _sum_us += sample;
-
-    if (_samples.size () < _sample_cap) {
-        _samples.push_back (sample);
-        return;
-    }
-
-    const unsigned long long slot = next_rand_u64 () % _count;
-    if (slot < static_cast<unsigned long long> (_sample_cap))
-        _samples[static_cast<size_t> (slot)] = sample;
-}
-
-unsigned long long latency_stats_builder_t::count () const
-{
-    return _count;
-}
-
-latency_stats_t latency_stats_builder_t::snapshot ()
-{
-    latency_stats_t out;
-    if (_count == 0)
-        return out;
-
-    out.mean_us = _sum_us / static_cast<double> (_count);
-    if (_samples.empty ()) {
-        out.p95_us = out.mean_us;
-        out.p99_us = out.mean_us;
-        return out;
-    }
-
-    std::sort (_samples.begin (), _samples.end ());
-    out.p95_us = percentile_from_sorted (_samples, 0.95);
-    out.p99_us = percentile_from_sorted (_samples, 0.99);
-    if (out.p95_us < out.mean_us)
-        out.p95_us = out.mean_us;
-    if (out.p99_us < out.p95_us)
-        out.p99_us = out.p95_us;
-    return out;
-}
-
-double latency_stats_builder_t::percentile_from_sorted (
-  const std::vector<double> &sorted_,
-  double q_)
-{
-    if (sorted_.empty ())
-        return 0.0;
-    if (q_ <= 0.0)
-        return sorted_.front ();
-    if (q_ >= 1.0)
-        return sorted_.back ();
-
-    const double pos = (sorted_.size () - 1) * q_;
-    const size_t lo = static_cast<size_t> (pos);
-    const size_t hi = lo + 1 < sorted_.size () ? lo + 1 : lo;
-    const double frac = pos - static_cast<double> (lo);
-    return sorted_[lo] + (sorted_[hi] - sorted_[lo]) * frac;
-}
-
-unsigned long long latency_stats_builder_t::next_rand_u64 ()
-{
-    if (_rng_state == 0)
-        _rng_state = 0x9e3779b97f4a7c15ULL;
-    unsigned long long x = _rng_state;
-    x ^= x << 13;
-    x ^= x >> 7;
-    x ^= x << 17;
-    _rng_state = x;
-    return x;
-}
+// latency_stats_builder_t methods removed: now a typedef to
+// the unified header-only perf::latency_sampler_t in
+// common/perf_latency_sampler.hpp.
 
 ctx_guard_t::ctx_guard_t () : _ctx ()
 {
@@ -102,13 +23,6 @@ ctx_guard_t::~ctx_guard_t ()
 {
     if (_ctx.handle ())
         (void) _ctx.shutdown ();
-}
-
-socket_guard_t::socket_guard_t () : _sock () {}
-
-socket_guard_t::socket_guard_t (ctx_guard_t &ctx_, zlink::socket_type type_)
-    : _sock (ctx_.ctx (), type_)
-{
 }
 
 int parse_positive_env (const char *name_, int default_value_)
@@ -351,6 +265,8 @@ bool transport_available (const std::string &transport)
     return true;
 }
 
+static const int SETTLE_TIME_MS = 100;
+
 void settle ()
 {
     std::this_thread::sleep_for (std::chrono::milliseconds (SETTLE_TIME_MS));
@@ -387,204 +303,9 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     return true;
 }
 
-bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor_,
-                                uint64_t event_type_,
-                                int64_t value_,
-                                int timeout_ms_)
-{
-    for (;;) {
-        const zlink::maybe_t<zlink_socket_monitor_event_t> event =
-          monitor_.try_recv();
-        if (!event)
-            break;
-        if (event->event != event_type_)
-            continue;
-        if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
-            continue;
-        return true;
-    }
-
-    zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
-    if (poller.add (monitor_, zlink::poll_event::pollin, NULL) != 0)
-        return false;
-
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (timeout_ms_);
-    while (std::chrono::steady_clock::now () < deadline) {
-        const auto remaining = deadline - std::chrono::steady_clock::now ();
-        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                         remaining)
-                         .count ();
-        if (wait_ms < 1)
-            wait_ms = 1;
-        const int rc = poller.wait_all (events, wait_ms);
-        if (rc < 0) {
-            if (errno == EINTR)
-                continue;
-            return false;
-        }
-        if (rc == 0)
-            continue;
-
-        for (;;) {
-            const zlink::maybe_t<zlink_socket_monitor_event_t> event =
-              monitor_.try_recv();
-            if (!event)
-                break;
-            if (event->event != event_type_)
-                continue;
-            if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
-                continue;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool wait_service_monitor_event (zlink::service_monitor_handle_t &monitor_,
-                                 uint32_t event_type_,
-                                 int64_t value_,
-                                 int timeout_ms_)
-{
-    for (;;) {
-        const zlink::maybe_t<zlink_service_monitor_event_t> event =
-          monitor_.try_recv();
-        if (!event)
-            break;
-        if (event->event_type != event_type_)
-            continue;
-        if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
-            continue;
-        return true;
-    }
-
-    zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
-    if (poller.add (monitor_, zlink::poll_event::pollin, NULL) != 0)
-        return false;
-
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (timeout_ms_);
-    while (std::chrono::steady_clock::now () < deadline) {
-        const auto remaining = deadline - std::chrono::steady_clock::now ();
-        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                         remaining)
-                         .count ();
-        if (wait_ms < 1)
-            wait_ms = 1;
-        const int rc = poller.wait_all (events, wait_ms);
-        if (rc < 0) {
-            if (errno == EINTR)
-                continue;
-            return false;
-        }
-        if (rc == 0)
-            continue;
-
-        for (;;) {
-            const zlink::maybe_t<zlink_service_monitor_event_t> event =
-              monitor_.try_recv();
-            if (!event)
-                break;
-            if (event->event_type != event_type_)
-                continue;
-            if (value_ >= 0 && static_cast<int64_t> (event->value) != value_)
-                continue;
-            return true;
-        }
-    }
-    return false;
-}
-
-void print_result (const std::string &lib_type,
-                   const std::string &pattern,
-                   const std::string &transport,
-                   size_t size,
-                   double throughput,
-                   double latency,
-                   double latency_p95,
-                   double latency_p99)
-{
-    const double latency_ms = latency / 1000.0;
-    const double latency_p95_ms = latency_p95 / 1000.0;
-    const double latency_p99_ms = latency_p99 / 1000.0;
-    const double bandwidth_mb_s =
-      (throughput * static_cast<double> (size)) / 1000000.0;
-
-    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
-              << "," << size << ",throughput," << std::fixed
-              << std::setprecision (2) << throughput << std::endl;
-    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
-              << "," << size << ",bandwidth," << std::fixed
-              << std::setprecision (2) << bandwidth_mb_s << std::endl;
-    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
-              << "," << size << ",latency," << std::fixed
-              << std::setprecision (2) << latency_ms << std::endl;
-    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
-              << "," << size << ",latency_p95," << std::fixed
-              << std::setprecision (2) << latency_p95_ms << std::endl;
-    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
-              << "," << size << ",latency_p99," << std::fixed
-              << std::setprecision (2) << latency_p99_ms << std::endl;
-}
-
-void print_queue_metrics (const std::string &lib_type,
-                          const std::string &pattern,
-                          const std::string &transport,
-                          size_t size,
-                          const queue_stats_t &queue_stats)
-{
-    if (queue_stats.has_snd_pending) {
-        std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
-                  << "," << size << ",snd_pending_max," << std::fixed
-                  << std::setprecision (2) << queue_stats.snd_pending_max
-                  << std::endl;
-    }
-
-    if (queue_stats.has_rcv_pending) {
-        std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
-                  << "," << size << ",rcv_pending_max," << std::fixed
-                  << std::setprecision (2) << queue_stats.rcv_pending_max
-                  << std::endl;
-        std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
-                  << "," << size << ",rcv_pending_end," << std::fixed
-                  << std::setprecision (2) << queue_stats.rcv_pending_end
-                  << std::endl;
-    }
-}
-
-void print_result (const std::string &lib_type,
-                   const std::string &pattern,
-                   const std::string &transport,
-                   size_t size,
-                   double throughput,
-                   double latency,
-                   double latency_p95,
-                   double latency_p99,
-                   const queue_stats_t &queue_stats)
-{
-    print_result (lib_type,
-                  pattern,
-                  transport,
-                  size,
-                  throughput,
-                  latency,
-                  latency_p95,
-                  latency_p99);
-    print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
-}
-
-void print_fail_result (const std::string &lib_type,
-                        const std::string &pattern,
-                        const std::string &transport,
-                        size_t size)
-{
-    std::cout << "FAIL," << lib_type << "," << pattern << "," << transport
-              << "," << size << std::endl;
-}
+// wait_socket_monitor_event / wait_service_monitor_event removed:
+// now provided by unified header common/perf_monitor_wait.hpp,
+// imported via using-declarations in perf_single_common.hpp.
 
 queue_probe_t::queue_probe_t (perf_socket_t *send_socket_,
                               perf_socket_t *recv_socket_)
@@ -746,27 +467,6 @@ queue_stats_t queue_probe_t::snapshot () const
         out.rcv_pending_end = static_cast<double> (_rcv_pending_end);
     }
     return out;
-}
-
-queue_stats_t sample_queue_stats (queue_probe_t *queue_probe_)
-{
-    if (!queue_probe_)
-        return queue_stats_t ();
-    queue_probe_->force_sample_send ();
-    queue_probe_->force_sample_recv ();
-    return queue_probe_->snapshot ();
-}
-
-void print_fail_result (const std::string &lib_type,
-                        const std::string &pattern,
-                        const std::string &transport,
-                        size_t size,
-                        queue_probe_t *queue_probe_)
-{
-    if (!queue_probe_)
-        return;
-    const queue_stats_t queue_stats = sample_queue_stats (queue_probe_);
-    print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
 }
 
 callback_receiver_t::callback_receiver_t ()
@@ -1365,10 +1065,12 @@ bool run_subscribe_callback_phase (subscribe_callback_receiver_t &receiver_,
     }
 
     if (!receiver_.finish_phase (
-          active ? 0ULL : sent_count, recv_timeout_ms_, received_out_, latency_out_)) {
+          active ? 0ULL : sent_count,
+          recv_timeout_ms_,
+          received_out_,
+          latency_out_)) {
         if (debug_enabled)
-            std::cerr << "subscribe_phase: finish failed sent_count=" << sent_count
-                      << " receiver_failed=" << receiver_.failed () << std::endl;
+            std::cerr << "subscribe_phase: finish_phase failed" << std::endl;
         return false;
     }
 

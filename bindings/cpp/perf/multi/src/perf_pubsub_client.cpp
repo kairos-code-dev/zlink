@@ -24,19 +24,17 @@ static const uint32_t k_run_id = 1;
 struct phase_config_t
 {
     int warmup_seconds;
-    int settle_ms;
     int active_seconds;
 };
 
 struct bench_result_t
 {
     unsigned long long warmup_count;
-    unsigned long long drain_count;
     unsigned long long active_count;
     perf::multi::bench_latency_stats_t latency;
 
     bench_result_t ()
-        : warmup_count (0), drain_count (0), active_count (0), latency ()
+        : warmup_count (0), active_count (0), latency ()
     {
     }
 };
@@ -69,7 +67,6 @@ class pubsub_client_bench_t
         _poll_events.reserve (_settings.clients);
 
         _phase_cfg.warmup_seconds = std::max (0, _settings.warmup_seconds);
-        _phase_cfg.settle_ms = std::max (0, _settings.settle_ms);
         _phase_cfg.active_seconds = std::max (1, _settings.duration_seconds);
     }
 
@@ -79,16 +76,10 @@ class pubsub_client_bench_t
             return false;
 
         std::cout << "CLIENT_READY," << _msg_size << std::endl;
-        perf::multi::settle ();
 
         if (!run_phase (perf_metric::phase_warmup,
                         std::chrono::seconds (_phase_cfg.warmup_seconds),
                         &_result.warmup_count,
-                        NULL))
-            return false;
-        if (!run_phase (perf_metric::phase_drain,
-                        std::chrono::milliseconds (_phase_cfg.settle_ms),
-                        &_result.drain_count,
                         NULL))
             return false;
         _resource_probe_start = perf::multi::start_resource_probe ();
@@ -118,11 +109,6 @@ class pubsub_client_bench_t
     unsigned long long warmup_count () const
     {
         return _result.warmup_count;
-    }
-
-    unsigned long long drain_count () const
-    {
-        return _result.drain_count;
     }
 
     unsigned long long active_count () const
@@ -201,9 +187,7 @@ class pubsub_client_bench_t
         const bool active_phase = phase == perf_metric::phase_active;
         auto deadline = std::chrono::steady_clock::now () + duration;
         const int active_search_extension_seconds =
-          std::max (2,
-                    _phase_cfg.warmup_seconds
-                      + std::max (1, (_phase_cfg.settle_ms + 999) / 1000));
+          std::max (2, _phase_cfg.warmup_seconds + 1);
         const auto active_search_deadline =
           deadline + std::chrono::seconds (active_search_extension_seconds);
         bool active_started = !active_phase;
@@ -369,7 +353,6 @@ bool perf_pubsub_client (const std::string &transport,
         std::cerr << "PUBSUB_CLIENT_FAIL,stage=" << bench.failure_stage ()
                   << ",transport=" << transport << ",size=" << msg_size
                   << ",warmup=" << bench.warmup_count ()
-                  << ",drain=" << bench.drain_count ()
                   << ",active=" << bench.active_count () << std::endl;
         return false;
     }

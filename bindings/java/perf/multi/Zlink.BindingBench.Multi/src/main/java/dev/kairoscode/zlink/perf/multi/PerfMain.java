@@ -15,6 +15,7 @@ public final class PerfMain {
         }
         String role = args[0].toLowerCase(Locale.ROOT);
         PerfUtil.Config config = PerfUtil.parseMultiArgs(args);
+        PerfUtil.validateMultiRecvMode(config);
         boolean serverRole = "--multi-server".equals(role);
         boolean clientRole = "--multi-client".equals(role);
         if (!serverRole && !clientRole) {

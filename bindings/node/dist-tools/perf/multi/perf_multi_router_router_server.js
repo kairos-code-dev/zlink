@@ -3,17 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist');
-function parseArgs(argv) {
-    const options = { endpoint: '' };
-    for (let i = 0; i < argv.length; i += 1) {
-        if (argv[i] === '--endpoint') {
-            options.endpoint = argv[++i];
-        }
-    }
-    return options;
-}
+const { parseMultiArgs } = require('./perf_multi_common');
 async function main() {
-    const options = parseArgs(process.argv.slice(2));
+    const options = parseMultiArgs(process.argv.slice(2), { msgSize: undefined, warmup: undefined, duration: undefined, clients: undefined, recv: undefined });
     const ctx = new zlink.Context();
     const router = new zlink.RouterSocket(ctx);
     let stop = false;

@@ -4,6 +4,7 @@
 #include "perf_common.hpp"
 #include "perf_common_multi.hpp"
 #include "perf_multi_client_helpers.hpp"
+#include "../../common/perf_tls_setup.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <atomic>
@@ -16,6 +17,8 @@
 #include <vector>
 
 namespace perf_multi_relay_server {
+
+using ::setup_tls_server;
 
 struct relay_server_config_t
 {

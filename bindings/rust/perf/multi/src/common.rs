@@ -1,18 +1,21 @@
 //! Multi perf common utilities.
 //! Protocol: server prints "READY,<endpoint>", client receives endpoint via CLI.
 //! Stop: client sends STOP_TOKEN, server detects and exits.
+#![allow(dead_code)]
 
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[path = "backpressure.rs"]
+pub mod backpressure;
+
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
 pub const HEADER_SIZE: usize = 32;
 pub const PHASE_ACTIVE: u32 = 0;
-pub const PHASE_DRAIN: u32 = 1;
-pub const PHASE_WARMUP: u32 = 2;
+pub const PHASE_WARMUP: u32 = 1;
+pub const MAGIC: u32 = 0x4d50_4631; // "MPF1"
 
 pub fn encode_header(buf: &mut [u8], phase: u32, msg_size: u32, seq: u64) {
-    let magic: u32 = 0x4d50_4631; // "MPF1"
-    buf[0..4].copy_from_slice(&magic.to_le_bytes());
+    buf[0..4].copy_from_slice(&MAGIC.to_le_bytes());
     buf[4..8].copy_from_slice(&0u32.to_le_bytes());
     buf[8..12].copy_from_slice(&phase.to_le_bytes());
     buf[12..16].copy_from_slice(&msg_size.to_le_bytes());
@@ -20,14 +23,36 @@ pub fn encode_header(buf: &mut [u8], phase: u32, msg_size: u32, seq: u64) {
     buf[24..32].copy_from_slice(&now_us().to_le_bytes());
 }
 
+pub struct MetricHeader {
+    pub magic: u32,
+    pub run_id: u32,
+    pub phase: u32,
+    pub msg_size: u32,
+    pub seq: u64,
+    pub sent_ts: u64,
+}
+
+pub fn decode_header(data: &[u8]) -> Option<MetricHeader> {
+    if data.len() < HEADER_SIZE {
+        return None;
+    }
+
+    Some(MetricHeader {
+        magic: u32::from_le_bytes(data[0..4].try_into().unwrap()),
+        run_id: u32::from_le_bytes(data[4..8].try_into().unwrap()),
+        phase: u32::from_le_bytes(data[8..12].try_into().unwrap()),
+        msg_size: u32::from_le_bytes(data[12..16].try_into().unwrap()),
+        seq: u64::from_le_bytes(data[16..24].try_into().unwrap()),
+        sent_ts: u64::from_le_bytes(data[24..32].try_into().unwrap()),
+    })
+}
+
 pub fn decode_phase(data: &[u8]) -> u32 {
-    if data.len() < HEADER_SIZE { return PHASE_WARMUP; }
-    u32::from_le_bytes(data[8..12].try_into().unwrap())
+    decode_header(data).map(|header| header.phase).unwrap_or(PHASE_WARMUP)
 }
 
 pub fn decode_sent_ts(data: &[u8]) -> u64 {
-    if data.len() < HEADER_SIZE { return 0; }
-    u64::from_le_bytes(data[24..32].try_into().unwrap())
+    decode_header(data).map(|header| header.sent_ts).unwrap_or(0)
 }
 
 pub fn now_us() -> u64 {
@@ -83,17 +108,48 @@ pub struct StatsResult {
     pub p99_us: f64,
 }
 
+#[derive(Default)]
+pub struct PhaseResult {
+    pub count: u64,
+    pub throughput: f64,
+    pub bandwidth: f64,
+    pub latency_mean_us: f64,
+    pub latency_p95_us: f64,
+    pub latency_p99_us: f64,
+}
+
+pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> PhaseResult {
+    let throughput = if duration_s == 0 {
+        0.0
+    } else {
+        stats.count as f64 / duration_s as f64
+    };
+    let bandwidth = throughput * size as f64 / 1_000_000.0;
+
+    PhaseResult {
+        count: stats.count,
+        throughput,
+        bandwidth,
+        latency_mean_us: stats.mean_us,
+        latency_p95_us: stats.p95_us,
+        latency_p99_us: stats.p99_us,
+    }
+}
+
 // -- RESULT output -----------------------------------------------------------
 
+pub fn print_phase_result(key: &str, phase: &PhaseResult) {
+    println!("{key},throughput,{:.3}", phase.throughput);
+    println!("{key},bandwidth,{:.3}", phase.bandwidth);
+    println!("{key},latency,{:.3}", phase.latency_mean_us / 1000.0);
+    println!("{key},latency_p95,{:.3}", phase.latency_p95_us / 1000.0);
+    println!("{key},latency_p99,{:.3}", phase.latency_p99_us / 1000.0);
+}
+
 pub fn print_result(pattern: &str, transport: &str, size: usize, duration_s: u64, stats: &StatsResult) {
-    let throughput = stats.count as f64 / duration_s as f64;
-    let bandwidth = throughput * size as f64 / 1_000_000.0;
     let key = format!("RESULT,current,{pattern},{transport},{size}");
-    println!("{key},throughput,{throughput:.3}");
-    println!("{key},bandwidth,{bandwidth:.3}");
-    println!("{key},latency,{:.3}", stats.mean_us / 1000.0);
-    println!("{key},latency_p95,{:.3}", stats.p95_us / 1000.0);
-    println!("{key},latency_p99,{:.3}", stats.p99_us / 1000.0);
+    let phase = build_phase_result(size, duration_s, stats);
+    print_phase_result(&key, &phase);
 }
 
 pub fn print_ready(endpoint: &str) {

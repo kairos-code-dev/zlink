@@ -1,0 +1,40 @@
+## Effective Options (start)
+- pattern: MULTI_SPOT
+- recv_mode: callback
+- duration_seconds: 1
+- warmup_seconds: 1
+- msg_sizes: 64
+- runs: 1
+- transports: tcp
+- results_dir: /home/hep7/project/kairos/zlink/bindings/node/perf/results
+- clients: 4
+
+## PATTERN: MULTI_SPOT
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 282.83 Kmsg/s | 18.10 MB/s | 769.792 | 1028.450 | 1066.728 |
+
+
+## Result Data
+RESULT,current,MULTI_SPOT,tcp,64,throughput,282828.00
+RESULT,current,MULTI_SPOT,tcp,64,bandwidth,18.10
+RESULT,current,MULTI_SPOT,tcp,64,latency,769791.88
+RESULT,current,MULTI_SPOT,tcp,64,latency_p95,1028450.26
+RESULT,current,MULTI_SPOT,tcp,64,latency_p99,1066728.14
+
+## Effective Options (result)
+- pattern: MULTI_SPOT
+- recv_mode: callback
+- duration_seconds: 1
+- warmup_seconds: 1
+- msg_sizes: 64
+- runs: 1
+- transports: tcp
+- results_dir: /home/hep7/project/kairos/zlink/bindings/node/perf/results
+- clients: 4
+- result_lines: 5
+## Status Summary
+- result_lines: 5
+- status: complete
+- expected_result_lines: 5
+- actual_result_lines: 5

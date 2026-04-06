@@ -3,6 +3,7 @@
 
 mod common;
 
+use common::backpressure::SocketBackpressure;
 use std::time::{Duration, Instant};
 use zlink::*;
 
@@ -40,23 +41,28 @@ fn main() {
 fn send_phase(pub_sock: &PubSocket, poller: &Poller, buf: &mut [u8], seq: &mut u64, msg_size: usize,
               phase: u32, duration: Duration) {
     let deadline = Instant::now() + duration;
-    let mut pending = false;
+    let mut backpressure = SocketBackpressure::new();
     while Instant::now() < deadline {
-        if !pending {
+        if !backpressure.is_pending() {
             common::encode_header(buf, phase, msg_size as u32, *seq);
             let msg = Message::from_bytes(buf).expect("msg");
             match pub_sock.try_publish("S", msg) {
                 Ok(SendResult::Sent) => { *seq += 1; }
                 _ => {
-                    pending = true;
-                    let _ = poller.modify_socket(pub_sock, POLLOUT);
+                    backpressure.mark_pending(|| {
+                        let _ = poller.modify_socket(pub_sock, POLLOUT);
+                    });
                 }
             }
         } else {
             let remain = (deadline - Instant::now()).as_millis() as i64;
             let wait = remain.min(50).max(1);
             if let Ok(Some(ev)) = poller.wait(wait) {
-                if ev.is_writable() { pending = false; }
+                if ev.is_writable() {
+                    backpressure.clear_pending(|| {
+                        let _ = poller.modify_socket(pub_sock, 0);
+                    });
+                }
             }
         }
     }

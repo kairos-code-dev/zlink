@@ -172,7 +172,7 @@ inline bool configure_spot_client_tls (SpotNode &node_,
     std::string cert;
     std::string key;
     std::string ca;
-    if (!try_resolve_perf_tls_paths (cert, key, ca))
+    if (!try_resolve_tls_paths (cert, key, ca))
         return false;
 
     return node_.set_tls_client (ca, "localhost", false) == 0;
@@ -188,7 +188,7 @@ inline bool configure_spot_server_tls (SpotNode &node_,
     std::string cert;
     std::string key;
     std::string ca;
-    if (!try_resolve_perf_tls_paths (cert, key, ca))
+    if (!try_resolve_tls_paths (cert, key, ca))
         return false;
 
     return node_.set_tls_server (cert, key) == 0;
@@ -204,7 +204,7 @@ inline bool configure_spot_control_tls (SpotNode &node_,
     std::string cert;
     std::string key;
     std::string ca;
-    if (!try_resolve_perf_tls_paths (cert, key, ca))
+    if (!try_resolve_tls_paths (cert, key, ca))
         return false;
 
     return node_.set_tls_server (cert, key, false) == 0

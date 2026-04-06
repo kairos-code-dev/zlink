@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-RUNNER="${ROOT_DIR}/perf/single/Zlink.BindingBench/build/install/zlink-java-perf-single/bin/zlink-java-perf-single"
-RESULTS_ROOT="${ROOT_DIR}/perf/results"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+RUNNER="${ROOT_DIR}/single/Zlink.BindingBench/build/install/zlink-java-perf-single/bin/zlink-java-perf-single"
+RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
 TRANSPORTS=""
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
@@ -107,7 +107,7 @@ prune_reports() {
 
 mkdir -p "${RESULTS_ROOT}/single/report"
 cd "${ROOT_DIR}"
-"${ROOT_DIR}/gradlew" :perf-single:installDist >/dev/null
+gradle :perf-single:installDist >/dev/null
 
 platform="$(detect_platform)"
 timestamp="$(date +%Y%m%d_%H%M%S)"

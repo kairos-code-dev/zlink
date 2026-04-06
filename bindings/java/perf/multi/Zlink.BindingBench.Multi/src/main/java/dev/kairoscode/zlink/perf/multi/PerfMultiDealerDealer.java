@@ -63,29 +63,24 @@ final class PerfMultiDealerDealer {
                     go.countDown();
                 }
                 PerfUtil.await(go, "dealer/dealer start", java.time.Duration.ofSeconds(10));
-                loop(client, config.size(), warmup, duration);
+                long warmupEnd = System.nanoTime() + warmup * 1_000_000_000L;
+                while (System.nanoTime() < warmupEnd) {
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
+                        client.send(List.of(m));
+                    }
+                }
+                long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
+                while (System.nanoTime() < activeEnd) {
+                    try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) {
+                        client.send(List.of(m));
+                    }
+                }
+                try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+                    client.send(List.of(m));
+                }
             }
         }, "multi-dd-client-" + index), config.warmupSeconds(), config.durationSeconds());
         return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
             config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
-    }
-
-    private static void loop(DealerSocket socket, int size, int warmupSeconds,
-                             int durationSeconds) {
-        long warmupEnd = System.nanoTime() + warmupSeconds * 1_000_000_000L;
-        while (System.nanoTime() < warmupEnd) {
-            send(socket, size, (byte) 2);
-        }
-        long activeEnd = System.nanoTime() + durationSeconds * 1_000_000_000L;
-        while (System.nanoTime() < activeEnd) {
-            send(socket, size, (byte) 0);
-        }
-        send(socket, size, (byte) 1);
-    }
-
-    private static void send(DealerSocket socket, int size, byte phase) {
-        try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
-            socket.send(List.of(payload));
-        }
     }
 }

@@ -7,7 +7,6 @@ import zlink
 from perf_multi_common import (
     CallbackMetrics,
     TOPIC,
-    latency_us_from_message,
     parse_client_args,
     print_result_lines,
     result_metrics,
@@ -21,9 +20,11 @@ def _make_client(ctx, endpoint, index):
     spot = node.wrap_handle()
     spot.set_subscription(TOPIC)
     return node, spot
+
+
 def main(argv=None):
     args = parse_client_args(
-        argv or sys.argv[1:], pattern="spot", allowed_recv={"recv", "callback"}
+        argv or sys.argv[1:], pattern="spot", allowed_recv={"callback"}
     )
     clients = []
     metrics_sink = CallbackMetrics()
@@ -50,12 +51,13 @@ def main(argv=None):
 
             if not metrics_sink.wait_ready(1.0):
                 raise RuntimeError('spot client did not receive any message')
+            count, latencies = metrics_sink.finish()
             elapsed = args.duration
             metrics = result_metrics(
-                count=metrics_sink.count,
+                count=count,
                 msg_size=args.msg_size,
                 elapsed_s=max(elapsed, 0.001),
-                latencies_us=metrics_sink.latencies,
+                latencies_us=latencies,
             )
             print_result_lines("MULTI_SPOT", "tcp", args.msg_size, metrics)
             sys.stdout.flush()

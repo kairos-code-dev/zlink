@@ -3,31 +3,12 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Net;
 using System.Threading;
 using Zlink;
-using TcpListener = System.Net.Sockets.TcpListener;
 
 internal static partial class PerfRunner
 {
     internal delegate bool PayloadHandler(ReadOnlySpan<byte> payload);
-
-    internal const uint PerfMetricMagic = 0x4D50_4631u; // "MPF1"
-    internal const int PerfMetricHeaderSize = 32;
-    internal const int ErrnoEintr = 4;
-    internal const int ErrnoEagain = 11;
-    private static readonly object IpcLock = new();
-    private static readonly HashSet<string> IpcPaths = new();
-    private static bool IpcCleanupHooked;
-
-    internal enum PerfPhase : uint
-    {
-        Unknown = 0,
-        Warmup = 1,
-        Active = 2,
-        Drain = 3,
-    }
 
     internal readonly struct PerfMetricHeader
     {
@@ -136,22 +117,6 @@ internal static partial class PerfRunner
         return socket.Send(buffer, flags);
     }
 
-    internal static int ParsePositiveEnv(string name, int defaultValue)
-    {
-        var raw = Environment.GetEnvironmentVariable(name);
-        if (int.TryParse(raw, out int parsed) && parsed > 0)
-            return parsed;
-        return defaultValue;
-    }
-
-    internal static int ParseNonNegativeEnv(string name, int defaultValue)
-    {
-        var raw = Environment.GetEnvironmentVariable(name);
-        if (int.TryParse(raw, out int parsed) && parsed >= 0)
-            return parsed;
-        return defaultValue;
-    }
-
     internal static bool WaitUntil(Func<bool> check, int timeoutMs,
         int intervalMs = 1)
     {
@@ -228,70 +193,6 @@ internal static partial class PerfRunner
         return value.ToString("F3", CultureInfo.InvariantCulture);
     }
 
-    internal static string EndpointFor(string transport, string name)
-    {
-        if (transport == "inproc")
-            return $"inproc://bench-{name}-{Guid.NewGuid()}";
-
-        if (transport == "ipc")
-        {
-            string endpoint = $"ipc:///tmp/zlink-bench-{name}-{GetPort()}.sock";
-            RegisterIpcEndpoint(endpoint);
-            return endpoint;
-        }
-
-        return $"{transport}://127.0.0.1:{GetPort()}";
-    }
-
-    internal static void ReservoirSample(List<double> samples, double value,
-        ref long seenCount, int cap, ref uint rngState)
-    {
-        if (cap <= 0)
-            return;
-
-        if (samples.Count < cap)
-        {
-            samples.Add(value);
-            seenCount++;
-            return;
-        }
-
-        seenCount++;
-        uint r = NextRandom(ref rngState);
-        long slot = r % seenCount;
-        if (slot < samples.Count)
-            samples[(int)slot] = value;
-    }
-
-    internal static (double mean, double p95, double p99) ComputeLatencyStats(
-        List<double> samples)
-    {
-        if (samples.Count == 0)
-            return (0.0, 0.0, 0.0);
-
-        double sum = 0.0;
-        for (int i = 0; i < samples.Count; i++)
-            sum += samples[i];
-
-        samples.Sort();
-        int p95Index = Math.Min(samples.Count - 1,
-            (int)Math.Ceiling(samples.Count * 0.95) - 1);
-        int p99Index = Math.Min(samples.Count - 1,
-            (int)Math.Ceiling(samples.Count * 0.99) - 1);
-        return (sum / samples.Count, samples[p95Index], samples[p99Index]);
-    }
-
-    internal static long TimestampUs()
-    {
-        long ts = Stopwatch.GetTimestamp();
-        return (long)(ts * (1_000_000.0 / Stopwatch.Frequency));
-    }
-
-    internal static ulong EpochUs()
-    {
-        return (ulong)(DateTime.UtcNow.Ticks / 10L);
-    }
-
     internal static bool StampMetricHeader(Span<byte> payload, uint runId,
         PerfPhase phase, int msgSize, ulong seq, ulong sentTsUs)
     {
@@ -336,30 +237,6 @@ internal static partial class PerfRunner
         return magic == PerfMetricMagic;
     }
 
-    private static uint NextRandom(ref uint state)
-    {
-        if (state == 0)
-            state = 0xA341316Cu;
-        uint x = state;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        state = x;
-        return x;
-    }
-
-    internal static bool IsWouldBlock(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EAgain || errno == ErrnoEagain;
-    }
-
-    internal static bool IsInterrupted(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EIntr || errno == ErrnoEintr;
-    }
-
     internal static bool IsTransientNetworkError(int errno)
     {
         ErrorCode code = ZlinkException.MapErrorCode(errno);
@@ -369,56 +246,4 @@ internal static partial class PerfRunner
                || code == ErrorCode.EConnRefused;
     }
 
-    private static void RegisterIpcEndpoint(string endpoint)
-    {
-        const string prefix = "ipc://";
-        if (!endpoint.StartsWith(prefix, StringComparison.Ordinal))
-            return;
-
-        string path = endpoint.Substring(prefix.Length);
-        if (path.Length == 0 || path[0] != '/')
-            return;
-
-        lock (IpcLock)
-        {
-            IpcPaths.Add(path);
-            TryDeleteFile(path);
-            if (!IpcCleanupHooked)
-            {
-                AppDomain.CurrentDomain.ProcessExit += (_, _) => CleanupIpcFiles();
-                IpcCleanupHooked = true;
-            }
-        }
-    }
-
-    private static void CleanupIpcFiles()
-    {
-        List<string> snapshot;
-        lock (IpcLock)
-            snapshot = new List<string>(IpcPaths);
-
-        foreach (string path in snapshot)
-            TryDeleteFile(path);
-    }
-
-    private static void TryDeleteFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-                File.Delete(path);
-        }
-        catch
-        {
-        }
-    }
-
-    private static int GetPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
 }

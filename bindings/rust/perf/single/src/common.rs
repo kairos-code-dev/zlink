@@ -4,14 +4,16 @@
 //!   - ready → warmup(duration) → active(duration)
 //!   - callback-only recv model
 //!   - metric header in payload for latency measurement
+#![allow(dead_code)]
 
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // -- Metric header (32 bytes) ------------------------------------------------
 // Layout matches core/perf single metric header:
 //   [0..4]   magic     u32 LE  0x53504631 ("SPF1")
 //   [4..8]   run_id    u32 LE
-//   [8..12]  phase     u32 LE  (0=active, 1=drain, 2=warmup)
+//   [8..12]  phase     u32 LE  (0=active, 1=warmup)
 //   [12..16] msg_size  u32 LE
 //   [16..24] seq       u64 LE
 //   [24..32] sent_ts   u64 LE  (microseconds since epoch)
@@ -19,8 +21,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub const HEADER_SIZE: usize = 32;
 pub const MAGIC: u32 = 0x5350_4631; // "SPF1"
 pub const PHASE_ACTIVE: u32 = 0;
-pub const PHASE_DRAIN: u32 = 1;
-pub const PHASE_WARMUP: u32 = 2;
+pub const PHASE_WARMUP: u32 = 1;
 
 pub fn encode_header(buf: &mut [u8], phase: u32, msg_size: u32, seq: u64) {
     buf[0..4].copy_from_slice(&MAGIC.to_le_bytes());
@@ -110,7 +111,43 @@ pub struct StatsResult {
     pub p99: f64,
 }
 
+#[derive(Default)]
+pub struct PhaseResult {
+    pub count: u64,
+    pub throughput: f64,
+    pub bandwidth: f64,
+    pub latency_mean: f64,
+    pub latency_p95: f64,
+    pub latency_p99: f64,
+}
+
+pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> PhaseResult {
+    let throughput = if duration_s == 0 {
+        0.0
+    } else {
+        stats.count as f64 / duration_s as f64
+    };
+    let bandwidth = throughput * size as f64 / 1_000_000.0;
+
+    PhaseResult {
+        count: stats.count,
+        throughput,
+        bandwidth,
+        latency_mean: stats.mean,
+        latency_p95: stats.p95,
+        latency_p99: stats.p99,
+    }
+}
+
 // -- RESULT output -----------------------------------------------------------
+
+pub fn print_phase_result(key: &str, phase: &PhaseResult) {
+    println!("{key},throughput,{:.2}", phase.throughput);
+    println!("{key},bandwidth,{:.6}", phase.bandwidth);
+    println!("{key},latency,{:.2}", phase.latency_mean);
+    println!("{key},latency_p95,{:.2}", phase.latency_p95);
+    println!("{key},latency_p99,{:.2}", phase.latency_p99);
+}
 
 pub fn print_result(
     pattern: &str,
@@ -119,14 +156,65 @@ pub fn print_result(
     duration_s: u64,
     stats: &StatsResult,
 ) {
-    let throughput = stats.count as f64 / duration_s as f64;
-    let bandwidth = throughput * size as f64 / 1_000_000.0;
     let key = format!("RESULT,current,{pattern},{transport},{size}");
-    println!("{key},throughput,{throughput:.2}");
-    println!("{key},bandwidth,{bandwidth:.6}");
-    println!("{key},latency,{:.2}", stats.mean);
-    println!("{key},latency_p95,{:.2}", stats.p95);
-    println!("{key},latency_p99,{:.2}", stats.p99);
+    let phase = build_phase_result(size, duration_s, stats);
+    print_phase_result(&key, &phase);
+}
+
+pub struct MetricCollector {
+    stats: Arc<Mutex<LatencyStats>>,
+}
+
+impl MetricCollector {
+    pub fn new() -> Self {
+        Self {
+            stats: Arc::new(Mutex::new(LatencyStats::new())),
+        }
+    }
+
+    pub fn shared(&self) -> Arc<Mutex<LatencyStats>> {
+        Arc::clone(&self.stats)
+    }
+
+    pub fn finish(&self) -> StatsResult {
+        self.stats.lock().unwrap().finish()
+    }
+}
+
+#[derive(Clone)]
+pub struct CompletionSignal {
+    state: Arc<(Mutex<bool>, Condvar)>,
+}
+
+impl CompletionSignal {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new((Mutex::new(false), Condvar::new())),
+        }
+    }
+
+    pub fn signal_done(&self) {
+        let (lock, condvar) = &*self.state;
+        let mut done = lock.lock().unwrap();
+        *done = true;
+        condvar.notify_all();
+    }
+}
+
+pub struct CompletionGuard {
+    signal: CompletionSignal,
+}
+
+impl CompletionGuard {
+    pub fn new(signal: CompletionSignal) -> Self {
+        Self { signal }
+    }
+}
+
+impl Drop for CompletionGuard {
+    fn drop(&mut self) {
+        self.signal.signal_done();
+    }
 }
 
 // -- Ready gate / callback handler -------------------------------------------
@@ -145,17 +233,9 @@ pub fn wait_monitor_ready(mon: &zlink::SocketMonitor) {
     }
 }
 
-/// Shared callback body: decode phase, record latency, signal drain.
-pub fn handle_recv(
-    data: &[u8],
-    stats: &std::sync::Mutex<LatencyStats>,
-    finished: &std::sync::atomic::AtomicBool,
-) {
+/// Shared callback body: decode phase and record active latency only.
+pub fn handle_recv(data: &[u8], stats: &std::sync::Mutex<LatencyStats>) {
     let phase = decode_phase(data);
-    if phase == PHASE_DRAIN {
-        finished.store(true, std::sync::atomic::Ordering::Release);
-        return;
-    }
     if phase == PHASE_ACTIVE {
         let sent_ts = decode_sent_ts(data);
         let latency = now_us().saturating_sub(sent_ts);
@@ -167,20 +247,16 @@ pub fn handle_recv(
 // Core single perf uses blocking send in the sender thread.
 // The sender must not set a send timeout – blocking is the intended behavior
 // so that natural backpressure throttles the sender.
-// Drain marker uses try_send in a retry loop to avoid deadlock when the
-// receiver has already stopped consuming.
-
 use zlink::{Message, SendResult};
 
-/// One-way send loop: warmup → active → drain.
+/// One-way send loop: warmup → active.
 /// `send_fn` performs the blocking send (may be plain or routed).
-/// `try_send_fn` performs non-blocking send for drain marker.
 pub fn send_loop<S, T>(
     warmup: Duration,
     active: Duration,
     msg_size: usize,
     send_fn: S,
-    try_send_fn: T,
+    _try_send_fn: T,
 ) where
     S: Fn(Message),
     T: Fn(Message) -> Result<SendResult, zlink::ZlinkError>,
@@ -206,23 +282,26 @@ pub fn send_loop<S, T>(
         seq += 1;
     }
 
-    // Drain marker – retry with try_send to avoid deadlock
-    for _ in 0..200 {
-        encode_header(&mut buf, PHASE_DRAIN, msg_size as u32, seq);
-        let msg = Message::from_bytes(&buf).expect("msg");
-        match try_send_fn(msg) {
-            Ok(SendResult::Sent) => return,
-            _ => { std::thread::sleep(Duration::from_millis(5)); }
-        }
-    }
 }
 
-/// Common receiver-side finish gate: wait for drain flag or timeout.
-pub fn wait_finished(finished: &std::sync::atomic::AtomicBool, warmup: u64, active: u64) {
-    let total = Duration::from_secs(warmup + active + 20);
-    let end = Instant::now() + total;
-    while !finished.load(std::sync::atomic::Ordering::Acquire) && Instant::now() < end {
-        std::thread::sleep(Duration::from_millis(10));
+/// Common receiver-side finish gate: wait for the sender window plus grace.
+pub fn wait_finished(signal: &CompletionSignal, warmup: u64, active: u64) {
+    let deadline = Instant::now() + Duration::from_secs(warmup + active + 20);
+    let (lock, condvar) = &*signal.state;
+    let mut done = lock.lock().unwrap();
+
+    while !*done {
+        let now = Instant::now();
+        if now >= deadline {
+            panic!("single perf sender did not finish before timeout");
+        }
+
+        let remaining = deadline.saturating_duration_since(now);
+        let (guard, wait_result) = condvar.wait_timeout(done, remaining).unwrap();
+        done = guard;
+        if wait_result.timed_out() && !*done {
+            panic!("single perf sender did not finish before timeout");
+        }
     }
 }
 
@@ -231,6 +310,7 @@ pub fn wait_finished(finished: &std::sync::atomic::AtomicBool, warmup: u64, acti
 pub struct PerfConfig {
     pub pattern: String,
     pub transport: String,
+    pub recv_mode: String,
     pub size: usize,
     pub warmup_seconds: u64,
     pub duration_seconds: u64,
@@ -244,6 +324,8 @@ impl PerfConfig {
         let mut duration = 5u64;
         let mut transport = "inproc".to_string();
         let mut pattern = "PAIR".to_string();
+        let mut recv_mode =
+            std::env::var("PERF_RECV_MODE").unwrap_or_else(|_| "callback".to_string());
 
         let mut i = 1;
         while i < args.len() {
@@ -268,13 +350,20 @@ impl PerfConfig {
                     pattern = args[i + 1].clone();
                     i += 2;
                 }
+                "--recv-mode" if i + 1 < args.len() => {
+                    recv_mode = args[i + 1].clone();
+                    i += 2;
+                }
                 _ => { i += 1; }
             }
         }
 
+        validate_callback_recv_mode(&recv_mode);
+
         Self {
             pattern,
             transport,
+            recv_mode,
             size,
             warmup_seconds: warmup,
             duration_seconds: duration,
@@ -288,5 +377,11 @@ impl PerfConfig {
             "tcp" => "tcp://127.0.0.1:0".to_string(),
             _ => format!("inproc://perf-{suffix}"),
         }
+    }
+}
+
+fn validate_callback_recv_mode(recv_mode: &str) {
+    if recv_mode != "callback" {
+        panic!("single perf requires callback recv mode, got `{recv_mode}`");
     }
 }

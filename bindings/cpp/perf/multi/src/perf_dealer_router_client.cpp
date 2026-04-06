@@ -26,7 +26,6 @@ static const char k_payload_fill = 'r';
 struct phase_config_t
 {
     int warmup_seconds;
-    int settle_ms;
     int active_seconds;
 };
 
@@ -85,7 +84,6 @@ class dealer_router_client_bench_t
         _poll_events.reserve (_settings.clients);
 
         _phase_cfg.warmup_seconds = std::max (0, _settings.warmup_seconds);
-        _phase_cfg.settle_ms = std::max (0, _settings.settle_ms);
         _phase_cfg.active_seconds = std::max (1, _settings.duration_seconds);
     }
 
@@ -94,15 +92,10 @@ class dealer_router_client_bench_t
         if (!setup_sockets ())
             return false;
 
-        perf::multi::settle ();
-
         if (!run_phase (perf_metric::phase_warmup,
                         _phase_cfg.warmup_seconds,
                         &_result.warmup_count,
                         NULL))
-            return false;
-
-        if (!drain_warmup_replies ())
             return false;
 
         _resource_probe_start = perf::multi::start_resource_probe ();
@@ -369,77 +362,6 @@ class dealer_router_client_bench_t
             *count_out = count;
         if (lat_out)
             *lat_out = latency.snapshot ();
-        return true;
-    }
-
-    bool drain_warmup_replies ()
-    {
-        if (_phase_cfg.settle_ms <= 0 || _socket_states.empty ())
-            return true;
-
-        const auto deadline = std::chrono::steady_clock::now ()
-                              + std::chrono::milliseconds (_phase_cfg.settle_ms);
-        while (std::chrono::steady_clock::now () < deadline) {
-            const int poll_rc =
-              _poller.wait_all (_poll_events, compute_wait_ms (deadline));
-            if (poll_rc < 0) {
-                if (errno == EINTR || errno == EAGAIN)
-                    continue;
-                return false;
-            }
-            if (poll_rc == 0)
-                continue;
-
-            for (size_t i = 0; i < _poll_events.size (); ++i) {
-                socket_state_t *state =
-                  static_cast<socket_state_t *> (_poll_events[i].user);
-                if (!state || !state->sock)
-                    continue;
-
-                if (!(_poll_events[i].revents
-                      & static_cast<short> (zlink::poll_event::pollin))) {
-                    if ((_poll_events[i].revents
-                         & static_cast<short> (zlink::poll_event::pollout))
-                        && state->send_pending) {
-                        if (!try_send_request (*state, perf_metric::phase_drain))
-                            return false;
-                    }
-                    continue;
-                }
-
-                for (;;) {
-                    perf_metric::header_t header;
-                    const int recv_rc = recv_reply (*state, &header);
-                    if (recv_rc < 0) {
-                        const int err = errno;
-                        if (err == EAGAIN)
-                            break;
-                        if (err == EINTR)
-                            continue;
-                        return false;
-                    }
-                    if (recv_rc > 0) {
-                        continue;
-                    }
-                    if (header.magic != perf_metric::k_magic
-                        || header.phase
-                             != static_cast<uint32_t> (perf_metric::phase_warmup)
-                        || header.msg_size != static_cast<uint32_t> (_msg_size)
-                        || header.run_id != _run_id) {
-                        continue;
-                    }
-                    state->awaiting_reply = false;
-                }
-
-                if ((_poll_events[i].revents
-                     & static_cast<short> (zlink::poll_event::pollout))
-                    && state->send_pending) {
-                    if (!try_send_request (*state, perf_metric::phase_drain))
-                        return false;
-                }
-            }
-        }
-
         return true;
     }
 

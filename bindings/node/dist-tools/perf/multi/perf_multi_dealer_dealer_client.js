@@ -3,29 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist');
 const { createPayload, sleepImmediate, stampPayload } = require('../common/perf_metrics');
-function parseArgs(argv) {
-    const options = { endpoint: '', msgSize: 256, warmup: 1, duration: 2, clients: 1 };
-    for (let i = 0; i < argv.length; i += 1) {
-        if (argv[i] === '--endpoint') {
-            options.endpoint = argv[++i];
-        }
-        else if (argv[i] === '--msg-size') {
-            options.msgSize = Number(argv[++i]);
-        }
-        else if (argv[i] === '--warmup') {
-            options.warmup = Number(argv[++i]);
-        }
-        else if (argv[i] === '--duration') {
-            options.duration = Number(argv[++i]);
-        }
-        else if (argv[i] === '--clients') {
-            options.clients = Number(argv[++i]);
-        }
-    }
-    return options;
-}
+const { parseMultiArgs } = require('./perf_multi_common');
 async function main() {
-    const options = parseArgs(process.argv.slice(2));
+    const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
     const clients = [];
     const warmupPayloads = [];

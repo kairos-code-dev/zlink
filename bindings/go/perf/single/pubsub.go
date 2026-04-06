@@ -66,6 +66,5 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 		perfcommon.Must(publisher.Publish("bench.topic", perfcommon.NewMessage(payload)))
 	}
 
-	time.Sleep(200 * time.Millisecond)
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }

@@ -6,14 +6,12 @@ internal static partial class PerfRunner
     internal static int RunMultiClient(string pattern, string transport, int size,
         string endpoint)
     {
-        string normalizedPattern = pattern.ToUpperInvariant();
-        string outputPattern = NormalizePerfPattern(normalizedPattern);
+        string outputPattern = NormalizePerfPattern(pattern);
         size = Math.Max(1, size);
+        PerfOptions preset = PerfOptions.FromMultiPattern(outputPattern);
 
         if (!ParseEndpointArg(endpoint, out string normalizedEndpoint))
             return 1;
-
-        Environment.SetEnvironmentVariable("PERF_PATTERN", outputPattern);
 
         var process = Process.GetCurrentProcess();
         TimeSpan cpuStart = process.TotalProcessorTime;
@@ -21,26 +19,16 @@ internal static partial class PerfRunner
 
         try
         {
-            int rc = outputPattern switch
+            var options = PerfOptions.CreateMulti(PerfExecutionKind.MultiClient,
+                outputPattern, transport, size, normalizedEndpoint,
+                preset.RecvMode);
+            if (!MultiPerfPatternRegistry.TryGet(outputPattern,
+                    out IPerfPattern perfPattern))
             {
-                "DEALER_DEALER" =>
-                    PerfDealerDealerClient.Run(transport, size,
-                        normalizedEndpoint),
-                "DEALER_ROUTER" =>
-                    PerfDealerRouterClient.Run(transport, size,
-                        normalizedEndpoint),
-                "ROUTER_ROUTER" =>
-                    PerfRouterRouterClient.Run(transport, size,
-                        normalizedEndpoint),
-                "PUBSUB" =>
-                    PerfPubSubClient.Run(transport, size, normalizedEndpoint),
-                "SPOT" =>
-                    PerfSpotClient.Run(transport, size, normalizedEndpoint),
-                "STREAM" => PrintStreamClientUnsupported(outputPattern,
-                    transport, size),
-                _ => 1,
-            };
+                return 1;
+            }
 
+            int rc = perfPattern.RunMultiClient(options);
             if (rc != 0)
                 return rc;
 
@@ -54,13 +42,6 @@ internal static partial class PerfRunner
             Console.Error.WriteLine($"multi_client_error:{ex.GetType().Name}:{ex.Message}\n{ex}");
             return 2;
         }
-    }
-
-    private static int PrintStreamClientUnsupported(string pattern,
-        string transport, int size)
-    {
-        Console.WriteLine($"UNSUPPORTED,{pattern},{transport},{size},stream_client_external");
-        return 0;
     }
 
     private static void EmitClientProcessMetrics(Process process,

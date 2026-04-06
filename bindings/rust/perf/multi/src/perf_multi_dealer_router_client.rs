@@ -16,7 +16,8 @@ fn main() {
 
     let mut sockets: Vec<DealerSocket> = Vec::with_capacity(settings.clients);
     let mut inflight: Vec<bool> = Vec::with_capacity(settings.clients);
-    let mut send_pending: Vec<bool> = Vec::with_capacity(settings.clients);
+    let mut send_backpressure: Vec<common::backpressure::SocketBackpressure> =
+        Vec::with_capacity(settings.clients);
 
     for i in 0..settings.clients {
         let sock = ctx.dealer_socket().expect("dealer");
@@ -26,7 +27,7 @@ fn main() {
         poller.add_socket(&sock, i, POLLIN).expect("poller add");
         sockets.push(sock);
         inflight.push(false);
-        send_pending.push(false);
+        send_backpressure.push(common::backpressure::SocketBackpressure::new());
     }
 
     std::thread::sleep(Duration::from_millis(500));
@@ -41,7 +42,8 @@ fn main() {
     // -- Helper: try send on socket i ----------------------------------------
     let try_send_one = |i: usize, sockets: &[DealerSocket], buf: &mut [u8],
                         seq: &mut u64, phase: u32, poller: &Poller,
-                        inflight: &mut [bool], send_pending: &mut [bool]| -> bool {
+                        inflight: &mut [bool],
+                        send_backpressure: &mut [common::backpressure::SocketBackpressure]| -> bool {
         if inflight[i] { return true; } // waiting for echo
         common::encode_header(buf, phase, msg_size as u32, *seq);
         let msg = Message::from_bytes(buf).expect("msg");
@@ -49,12 +51,12 @@ fn main() {
             Ok(SendResult::Sent) => {
                 *seq += 1;
                 inflight[i] = true;
-                send_pending[i] = false;
                 true
             }
             _ => {
-                send_pending[i] = true;
-                let _ = poller.modify_socket(&sockets[i], POLLIN | POLLOUT);
+                send_backpressure[i].mark_pending(|| {
+                    let _ = poller.modify_socket(&sockets[i], POLLIN | POLLOUT);
+                });
                 true
             }
         }
@@ -63,14 +65,15 @@ fn main() {
     // -- Phase runner --------------------------------------------------------
     let run_phase = |phase: u32, duration: Duration, sockets: &[DealerSocket],
                      poller: &Poller, buf: &mut [u8], seq: &mut u64,
-                     inflight: &mut [bool], send_pending: &mut [bool],
+                     inflight: &mut [bool],
+                     send_backpressure: &mut [common::backpressure::SocketBackpressure],
                      count: &mut u64, lat: &mut common::LatencyStats| {
         let deadline = Instant::now() + duration;
         while Instant::now() < deadline {
             // Send on non-inflight sockets
             for i in 0..n {
-                if !inflight[i] && !send_pending[i] {
-                    try_send_one(i, sockets, buf, seq, phase, poller, inflight, send_pending);
+                if !inflight[i] && !send_backpressure[i].is_pending() {
+                    try_send_one(i, sockets, buf, seq, phase, poller, inflight, send_backpressure);
                 }
             }
 
@@ -103,12 +106,13 @@ fn main() {
                         }
                     }
                 }
-                if ev.is_writable() && send_pending[i] {
-                    send_pending[i] = false;
-                    let _ = poller.modify_socket(&sockets[i], POLLIN);
+                if ev.is_writable() && send_backpressure[i].is_pending() {
+                    send_backpressure[i].clear_pending(|| {
+                        let _ = poller.modify_socket(&sockets[i], POLLIN);
+                    });
                     // Retry send
                     if !inflight[i] {
-                        try_send_one(i, sockets, buf, seq, phase, poller, inflight, send_pending);
+                        try_send_one(i, sockets, buf, seq, phase, poller, inflight, send_backpressure);
                     }
                 }
             }
@@ -120,7 +124,7 @@ fn main() {
         common::PHASE_WARMUP,
         Duration::from_secs(settings.warmup_seconds),
         &sockets, &poller, &mut buf, &mut seq,
-        &mut inflight, &mut send_pending,
+        &mut inflight, &mut send_backpressure,
         &mut 0u64, &mut common::LatencyStats::new(),
     );
 
@@ -129,7 +133,7 @@ fn main() {
         common::PHASE_ACTIVE,
         Duration::from_secs(settings.duration_seconds),
         &sockets, &poller, &mut buf, &mut seq,
-        &mut inflight, &mut send_pending,
+        &mut inflight, &mut send_backpressure,
         &mut active_count, &mut latency_stats,
     );
 

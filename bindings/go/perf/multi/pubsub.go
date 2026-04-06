@@ -25,9 +25,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	perfcommon.Must(publisher.Bind(endpoint))
 
 	stats := perfcommon.NewStats()
-	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
-	activeAt := time.Now().Add(cfg.warmup)
-	recvStopAt := stopAt.Add(500 * time.Millisecond)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
 	subs := make([]*zlink.SubSocket, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {
@@ -56,9 +54,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 				if err != nil {
 					return
 				}
-				if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-					stats.Add(sentAt)
-				}
+				perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
 			}))
 			continue
 		}
@@ -74,14 +70,14 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	if cfg.recvMode == "recv" {
 		go func() {
 			defer close(recvDone)
-			for time.Now().Before(recvStopAt) {
-				if !drainMultiPubSubAvailable(subs, stats, activeAt, recvStopAt) {
+			for time.Now().Before(window.StopAt) {
+				if !drainMultiPubSubAvailable(subs, stats, window.ActiveAt, window.StopAt) {
 					time.Sleep(50 * time.Microsecond)
 				}
 			}
 		}()
 	}
-	for time.Now().Before(stopAt) {
+	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
 		msg, err := zlink.NewMessage(payload)
 		if err != nil {
@@ -112,8 +108,6 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	}
 	if cfg.recvMode == "recv" {
 		<-recvDone
-	} else {
-		time.Sleep(500 * time.Millisecond)
 	}
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }

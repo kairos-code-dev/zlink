@@ -4,6 +4,7 @@
 #include "perf_common.hpp"
 #include "perf_common_multi.hpp"
 #include "perf_multi_metric_header.hpp"
+#include "../../common/perf_tls_setup.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
@@ -19,6 +20,8 @@
 #include <vector>
 
 namespace perf_multi_client {
+
+using ::setup_tls_client;
 
 static std::atomic<int> g_debug_one_way_logs(0);
 static std::atomic<int> g_debug_header_logs(0);

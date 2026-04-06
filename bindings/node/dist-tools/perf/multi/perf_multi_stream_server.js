@@ -3,18 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../dist');
-function parseArgs(argv) {
-    const options = { endpoint: '', recv: 'recv' };
-    for (let i = 0; i < argv.length; i += 1) {
-        if (argv[i] === '--endpoint') {
-            options.endpoint = argv[++i];
-        }
-        else if (argv[i] === '--recv') {
-            options.recv = argv[++i];
-        }
-    }
-    return options;
-}
+const { parseMultiArgs } = require('./perf_multi_common');
 function frame(buffer) {
     const framed = Buffer.allocUnsafe(buffer.length + 4);
     framed.writeUInt32BE(buffer.length, 0);
@@ -36,7 +25,7 @@ function parseFrames(state, chunk) {
     return payloads;
 }
 async function main() {
-    const options = parseArgs(process.argv.slice(2));
+    const options = parseMultiArgs(process.argv.slice(2), { msgSize: undefined, warmup: undefined, duration: undefined, clients: undefined });
     const ctx = new zlink.Context();
     const stream = new zlink.StreamSocket(ctx);
     const states = new Map();

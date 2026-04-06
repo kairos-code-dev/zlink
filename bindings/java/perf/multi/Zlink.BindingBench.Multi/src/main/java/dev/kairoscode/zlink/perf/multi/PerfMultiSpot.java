@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
 
 final class PerfMultiSpot {
     private static final String TOPIC = "perf.topic";
@@ -27,14 +28,20 @@ final class PerfMultiSpot {
             PerfUtil.waitForReadySignal(config.controlPort());
             long warmupEnd = System.nanoTime() + config.warmupSeconds() * 1_000_000_000L;
             while (System.nanoTime() < warmupEnd) {
-                send(publisher, config.size(), (byte) 2);
+                try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
+                    publisher.publish(TOPIC, List.of(m));
+                }
             }
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
-                send(publisher, config.size(), (byte) 0);
+                try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) {
+                    publisher.publish(TOPIC, List.of(m));
+                }
             }
             for (int i = 0; i < config.clients(); i++) {
-                send(publisher, config.size(), (byte) 1);
+                try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+                    publisher.publish(TOPIC, List.of(m));
+                }
             }
             return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
                 config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
@@ -66,15 +73,6 @@ final class PerfMultiSpot {
              Spot subscriber = new Spot(node);
         ) {
             configureNodeTlsClient(node, config.transport());
-            node.connectPeer(config.endpoint());
-            subscriber.setSubscription(TOPIC);
-            ready.countDown();
-            if (ready.getCount() == 0L) {
-                metrics.startResourceWindow();
-                PerfUtil.sendReadySignal(config.controlPort());
-                go.countDown();
-            }
-            PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
             if ("callback".equalsIgnoreCase(config.recvMode())) {
                 subscriber.onSubscribe((routingId, topic, received) -> {
                     if (received == null) {
@@ -85,8 +83,19 @@ final class PerfMultiSpot {
                             metrics, received);
                     }
                 });
-                PerfUtil.await(localDone, "spot multi callback", Duration.ofSeconds(
-                    warmup + duration + 20L));
+            }
+            node.connectPeer(config.endpoint());
+            subscriber.setSubscription(TOPIC);
+            ready.countDown();
+            if (ready.getCount() == 0L) {
+                metrics.startResourceWindow();
+                PerfUtil.sendReadySignal(config.controlPort());
+                go.countDown();
+            }
+            PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
+            if ("callback".equalsIgnoreCase(config.recvMode())) {
+                waitForStopOrDeadline(localDone, Duration.ofSeconds(
+                    warmup + duration + 10L));
                 return;
             }
             while (localDone.getCount() > 0L) {
@@ -140,9 +149,13 @@ final class PerfMultiSpot {
         }
     }
 
-    private static void send(Spot spot, int size, byte phase) {
-        try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
-            spot.publish(TOPIC, List.of(payload));
+    private static void waitForStopOrDeadline(CountDownLatch localDone,
+                                              Duration timeout) {
+        try {
+            localDone.await(timeout.toNanos(), TimeUnit.NANOSECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("spot multi callback interrupted", ex);
         }
     }
 

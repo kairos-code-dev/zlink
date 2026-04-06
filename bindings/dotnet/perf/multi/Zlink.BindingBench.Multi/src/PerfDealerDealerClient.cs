@@ -9,22 +9,20 @@ internal static class PerfDealerDealerClient
 {
     private const int SendBackoffPollTimeoutMs = 50;
 
-    internal static int Run(string transport, int size, string endpoint)
+    internal static int Run(PerfOptions options)
     {
-        const string pattern = "DEALER_DEALER";
-        size = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
-        int durationSeconds = ResolveMultiDurationSeconds();
-        int settleMs = ResolveMultiSettleMs();
-        int drainMs = ResolveMultiDrainMs(pattern);
-        int sizeTransitionDrainMs = ResolveMultiSizeTransitionDrainMs();
-        int sndTimeoutMs = ResolveMultiSndTimeoutMs();
-        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs();
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
-        int clientCount = ResolveMultiClients(pattern);
+        int size = Math.Max(1, options.Size);
+        int warmupSeconds = ResolveMultiWarmupSeconds(options);
+        int durationSeconds = ResolveMultiDurationSeconds(options);
+        int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
+        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
+        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
+        int clientCount = ResolveMultiClients(options);
+        string endpoint = options.Endpoint;
 
         using var ctx = new Context();
-        ApplyMultiClientContextOptions(ctx);
+        using var pollManager = new PollManager();
+        ApplyMultiClientContextOptions(ctx, options);
         var clients = new List<SocketBase>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
@@ -32,8 +30,8 @@ internal static class PerfDealerDealerClient
             for (int i = 0; i < clientCount; i++)
             {
                 var client = new DealerSocket(ctx);
-                ApplyMultiSocketOptions(client, pattern);
-                ConfigureTlsClientIfNeeded(client, transport);
+                ApplyMultiSocketOptions(client, options);
+                ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
@@ -42,8 +40,8 @@ internal static class PerfDealerDealerClient
                 monitors.Add(monitor);
             }
 
-            List<SocketBase> activeClients = WaitAllClientConnectReady(clients,
-                monitors, readyTimeoutMs);
+            List<SocketBase> activeClients = WaitAllClientConnectReady(
+                pollManager, clients, monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
                 Console.Error.WriteLine("multi_client_error:no_ready_connections");
@@ -53,9 +51,8 @@ internal static class PerfDealerDealerClient
             monitors.Clear();
 
             var slots = CreateSlots(activeClients, size);
-            if (!RunMultiDealerDealerClientLoop(slots, size, warmupSeconds,
-                    durationSeconds, settleMs, drainMs,
-                    sizeTransitionDrainMs))
+            if (!RunMultiDealerDealerClientLoop(pollManager, slots, size,
+                    warmupSeconds, durationSeconds))
             {
                 return 2;
             }
@@ -85,19 +82,16 @@ internal static class PerfDealerDealerClient
     }
 
     private static bool RunMultiDealerDealerClientLoop(
-        DealerDealerClientSlot[] slots, int msgSize, int warmupSeconds,
-            int durationSeconds, int settleMs, int drainMs,
-            int sizeTransitionDrainMs)
+        PollManager pollManager, DealerDealerClientSlot[] slots, int msgSize,
+        int warmupSeconds, int durationSeconds)
     {
         const uint runId = 1;
         ulong seq = 1;
         var sockets = CollectSockets(slots);
         var eventMasks = new PollEvents[slots.Length];
 
-        RunSendPhase(slots, sockets, eventMasks, msgSize, warmupSeconds,
-            PerfPhase.Warmup, runId, ref seq, sendActive: true);
-        RunSendPhase(slots, sockets, eventMasks, msgSize, settleMs / 1000.0,
-            PerfPhase.Drain, runId, ref seq, sendActive: false);
+        RunSendPhase(pollManager, slots, sockets, eventMasks, msgSize,
+            warmupSeconds, PerfPhase.Warmup, runId, ref seq, sendActive: true);
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
@@ -110,7 +104,7 @@ internal static class PerfDealerDealerClient
             {
                 ref DealerDealerClientSlot slot = ref slots[index];
                 if (slot.WaitingForWritable
-                    && !IsSocketWriteReady(index))
+                    && !IsSocketWriteReady(pollManager, index))
                 {
                     index++;
                     if (index == slots.Length)
@@ -143,20 +137,16 @@ internal static class PerfDealerDealerClient
                 continue;
             }
 
-            if (PollSocketEvents(sockets, eventMasks,
+            if (PollSocketEvents(pollManager, sockets, eventMasks,
                     ResolveSendPollTimeoutMs(false, benchDeadlineTicks)) <= 0)
                 continue;
         }
 
-        if (drainMs > 0)
-            Thread.Sleep(drainMs);
-        if (sizeTransitionDrainMs > 0)
-            Thread.Sleep(sizeTransitionDrainMs);
-
         return anySent;
     }
 
-    private static void RunSendPhase(DealerDealerClientSlot[] slots,
+    private static void RunSendPhase(PollManager pollManager,
+        DealerDealerClientSlot[] slots,
         IReadOnlyList<SocketBase> sockets, PollEvents[] eventMasks, int msgSize,
         double durationSeconds,
         PerfPhase phase, uint runId, ref ulong seq, bool sendActive)
@@ -175,7 +165,8 @@ internal static class PerfDealerDealerClient
                 ref DealerDealerClientSlot slot = ref slots[index];
                 if (sendActive)
                 {
-                    if (!slot.WaitingForWritable || IsSocketWriteReady(index))
+                    if (!slot.WaitingForWritable
+                        || IsSocketWriteReady(pollManager, index))
                     {
                         if (TrySendDealerDealer(ref slot, msgSize, runId,
                                 phase, ref seq))
@@ -205,7 +196,7 @@ internal static class PerfDealerDealerClient
                 continue;
             }
 
-            if (PollSocketEvents(sockets, eventMasks,
+            if (PollSocketEvents(pollManager, sockets, eventMasks,
                     ResolveSendPollTimeoutMs(progressed, deadlineTicks)) <= 0)
                 continue;
         }

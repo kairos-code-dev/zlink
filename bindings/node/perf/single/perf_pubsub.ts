@@ -4,10 +4,17 @@
 
 const zlink = require('../../dist');
 const {
-  attachCallbackCollector,
-  driveSender,
-  finishCollector
-} = require('./perf_single_common');
+  createMetricCollector,
+  createPayload,
+  createRunId,
+  decodeMetricHeader,
+  sleepImmediate,
+  stampPayload
+} = require('../common/perf_metrics');
+const {
+  callbackDrainTicks,
+  callbackSendBurstLimit
+} = require('./perf_callback_policy');
 
 async function runPubSubBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
@@ -21,17 +28,51 @@ async function runPubSubBenchmark(msgSize, options) {
     sub.connect(endpoint);
     sub.setSubscription(topic);
 
-    const state = attachCallbackCollector(
-      (handler) => sub.onSubscribe(handler),
-      msgSize,
-      options,
-      (_, __, parts) => parts[0].toBuffer()
-    );
+    const startedAtNs = process.hrtime.bigint();
+    const runId = createRunId();
+    const collector = createMetricCollector({ runId, msgSize });
+    const payload = createPayload(msgSize);
+    const sendBurstLimit = callbackSendBurstLimit(msgSize);
+    const drainTicks = callbackDrainTicks(msgSize);
+    const warmupUntilNs = startedAtNs
+      + BigInt(Math.floor(options.warmup * 1_000_000_000));
+    const stopAtNs = startedAtNs
+      + BigInt(Math.floor((options.warmup + options.duration) * 1_000_000_000));
 
-    await driveSender((payload) => (
-      pub.tryPublish(topic, payload) === zlink.SendResult.Sent
-    ), state);
-    return await finishCollector(state);
+    sub.onSubscribe((_, __, parts) => {
+      const messageBuffer = parts[0].toBuffer();
+      const header = decodeMetricHeader(messageBuffer);
+      collector.record(header, process.hrtime.bigint());
+    });
+
+    let turns = 0;
+    while (process.hrtime.bigint() < stopAtNs) {
+      for (
+        let i = 0;
+        i < sendBurstLimit && process.hrtime.bigint() < stopAtNs;
+        i += 1
+      ) {
+        stampPayload(payload, {
+          phase: process.hrtime.bigint() < warmupUntilNs ? 2 : 0,
+          runId,
+          msgSize
+        });
+        if (pub.tryPublish(topic, payload) !== zlink.SendResult.Sent) {
+          break;
+        }
+      }
+      turns += 1;
+      if (msgSize >= 65536 || (turns & 0x03) === 0) {
+        await sleepImmediate();
+      }
+    }
+
+    for (let i = 0; i < drainTicks; i += 1) {
+      await sleepImmediate();
+    }
+
+    const result = await collector.finish();
+    return result.latenciesUs;
   } finally {
     sub.close();
     pub.close();

@@ -36,13 +36,22 @@ final class PerfMultiPubSub {
             monitor.recv();
             long warmupEnd = System.nanoTime() + config.warmupSeconds() * 1_000_000_000L;
             while (System.nanoTime() < warmupEnd) {
-                send(pub, config.size(), (byte) 2);
+                try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) {
+                    pub.publish(TOPIC, List.of(m));
+                }
             }
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
-                send(pub, config.size(), (byte) 0);
+                try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) {
+                    pub.publish(TOPIC, List.of(m));
+                }
             }
-            sendStopBurst(pub, config.size(), config.clients());
+            int burst = Math.max(3, config.clients() * 3);
+            for (int i = 0; i < burst; i++) {
+                try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) {
+                    pub.publish(TOPIC, List.of(m));
+                }
+            }
             return new PerfUtil.Result("ok", "-", config.pattern(), config.transport(),
                 config.size(), 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, Double.NaN, Double.NaN);
         }
@@ -91,18 +100,5 @@ final class PerfMultiPubSub {
             }
         }, "multi-pubsub-client-" + index), config.warmupSeconds(), config.durationSeconds());
         return metrics.finishMulti(config);
-    }
-
-    private static void send(PubSocket pub, int size, byte phase) {
-        try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
-            pub.publish(TOPIC, List.of(payload));
-        }
-    }
-
-    private static void sendStopBurst(PubSocket pub, int size, int clients) {
-        int burst = Math.max(3, clients * 3);
-        for (int i = 0; i < burst; i++) {
-            send(pub, size, (byte) 1);
-        }
     }
 }

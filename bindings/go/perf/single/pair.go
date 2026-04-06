@@ -28,10 +28,9 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 
 	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
-	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
-	activeAt := time.Now().Add(cfg.warmup)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
-	for time.Now().Before(stopAt) {
+	for time.Now().Before(window.StopAt) {
 		perfcommon.StampPayload(payload)
 		err := client.Send(perfcommon.NewMessage(payload))
 		if err != nil {
@@ -49,9 +48,7 @@ func runPair(cfg benchmarkConfig) perfcommon.Result {
 		}
 		part, err := reply.SinglePartOrError()
 		perfcommon.Must(err)
-		if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-			stats.Add(sentAt)
-		}
+		perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
 		perfcommon.Must(reply.Close())
 	}
 

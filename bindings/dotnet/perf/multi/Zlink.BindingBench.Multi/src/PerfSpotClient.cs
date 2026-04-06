@@ -9,17 +9,18 @@ internal static class PerfSpotClient
 {
     private const string Pattern = "SPOT";
     private const uint ExpectedRunId = 1;
-    internal static int Run(string transport, int size, string endpoint)
+    internal static int Run(PerfOptions options)
     {
-        SpotClientConfig config = BuildConfig(transport, size);
-        PerfRecvMode recvMode = ResolveMultiRecvMode(Pattern);
+        SpotClientConfig config = BuildConfig(options);
+        PerfRecvMode recvMode = ResolveMultiRecvMode(options, Pattern);
 
         using var ctx = new Context();
-        ApplyMultiClientContextOptions(ctx);
+        ApplyMultiClientContextOptions(ctx, options);
         var slots = new List<SpotClientSlot>(config.ClientCount);
         try
         {
-            if (!TryParseSpotReadyEndpoint(endpoint, out string serverEndpoint))
+            if (!TryParseSpotReadyEndpoint(options.Endpoint,
+                    out string serverEndpoint))
             {
                 Console.Error.WriteLine("multi_client_error:invalid_spot_ready_payload");
                 return 1;
@@ -28,7 +29,7 @@ internal static class PerfSpotClient
             for (int i = 0; i < config.ClientCount; i++)
             {
                 SpotClientSlot slot = CreateSlot(ctx, config, recvMode,
-                    serverEndpoint);
+                    serverEndpoint, options);
                 slots.Add(slot);
             }
 
@@ -157,36 +158,37 @@ internal static class PerfSpotClient
         return 0;
     }
 
-    private static SpotClientSlot CreateSlot(Context ctx, SpotClientConfig config,
-        PerfRecvMode recvMode, string serverEndpoint)
+    private static SpotClientSlot CreateSlot(Context ctx,
+        SpotClientConfig config, PerfRecvMode recvMode, string serverEndpoint,
+        PerfOptions options)
     {
-            var node = new SpotNode(ctx);
+        var node = new SpotNode(ctx);
+        try
+        {
+            ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
+            ApplySpotNodeSubscriberOptions(node, options);
+            var subscriber = new Spot(node);
             try
             {
-                ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
-                ApplySpotNodeSubscriberOptions(node);
-                var subscriber = new Spot(node);
-                try
+                node.ConnectPeer(serverEndpoint);
+                subscriber.SetSubscription("bench");
+                if (recvMode == PerfRecvMode.Callback)
                 {
-                    node.ConnectPeer(serverEndpoint);
-                    subscriber.SetSubscription("bench");
-                    if (recvMode == PerfRecvMode.Callback)
+                    var callbackState = new SpotCallbackState(
+                        config.Size, config.LatencySampleCap);
+                    subscriber.OnSubscribe((_, parts) =>
                     {
-                        var callbackState = new SpotCallbackState(
-                            config.Size, config.LatencySampleCap);
-                        subscriber.OnSubscribe((_, parts) =>
-                        {
-                            callbackState.OnMessage(parts);
-                        });
-                        return new SpotClientSlot(node, subscriber, callbackState);
-                    }
-
-                    return new SpotClientSlot(node, subscriber, null);
+                        callbackState.OnMessage(parts);
+                    });
+                    return new SpotClientSlot(node, subscriber, callbackState);
                 }
-                catch
-                {
-                    subscriber.Dispose();
-                    throw;
+
+                return new SpotClientSlot(node, subscriber, null);
+            }
+            catch
+            {
+                subscriber.Dispose();
+                throw;
             }
         }
         catch
@@ -351,15 +353,15 @@ internal static class PerfSpotClient
         }
     }
 
-    private static SpotClientConfig BuildConfig(string transport, int size)
+    private static SpotClientConfig BuildConfig(PerfOptions options)
     {
         return new SpotClientConfig(
-            transport,
-            Math.Max(1, size),
-            ResolveMultiDurationSeconds(),
-            ResolveMultiLatencySampleCap(),
-            ResolveMultiClients(Pattern),
-            ResolveMultiConnectReadyTimeoutMs());
+            options.Transport,
+            Math.Max(1, options.Size),
+            ResolveMultiDurationSeconds(options),
+            ResolveMultiLatencySampleCap(options),
+            ResolveMultiClients(options),
+            ResolveMultiConnectReadyTimeoutMs(options));
     }
 
     private static SpotClientResult ComputeResult(SpotClientActiveStats stats,
@@ -379,13 +381,13 @@ internal static class PerfSpotClient
             latencyP99Us);
     }
 
-    private static void ApplySpotNodeSubscriberOptions(SpotNode node)
+    private static void ApplySpotNodeSubscriberOptions(SpotNode node,
+        PerfOptions options)
     {
-        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", Pattern);
-        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", Pattern);
-        int rcvTimeo = ResolveMultiRcvTimeoutMs();
-        int xpubNoDrop = ParsePositiveEnv("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0
-            ? 1 : 0;
+        int sndHwm = ResolveMultiHwmValue("PERF_SNDHWM", options);
+        int rcvHwm = ResolveMultiHwmValue("PERF_RCVHWM", options);
+        int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
+        int xpubNoDrop = options.SpotXpubNoDrop > 0 ? 1 : 0;
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
             SocketOptions.RcvHwm, rcvHwm);
         TrySetSpotNodeSocketOption(node, SpotNodeSocketRole.Sub,
@@ -510,7 +512,6 @@ internal static class PerfSpotClient
     {
         private readonly int _expectedMsgSize;
         private readonly double[] _samples;
-        private readonly object _samplesLock = new object();
         private int _sampleWriteIndex;
         private int _sawAnyPhase;
         private int _fatal;
@@ -573,24 +574,18 @@ internal static class PerfSpotClient
 
         internal void AddSample(double latencyUs)
         {
-            lock (_samplesLock)
-            {
-                int index = _sampleWriteIndex;
-                if ((uint)index >= (uint)_samples.Length)
-                    return;
-                _samples[index] = latencyUs;
-                _sampleWriteIndex = index + 1;
-            }
+            int index = Interlocked.Increment(ref _sampleWriteIndex) - 1;
+            if ((uint)index >= (uint)_samples.Length)
+                return;
+            _samples[index] = latencyUs;
         }
 
         internal void AppendSamples(List<double> destination)
         {
-            lock (_samplesLock)
-            {
-                int count = Math.Min(_sampleWriteIndex, _samples.Length);
-                for (int i = 0; i < count; i++)
-                    destination.Add(_samples[i]);
-            }
+            int count = Math.Min(Volatile.Read(ref _sampleWriteIndex),
+                _samples.Length);
+            for (int i = 0; i < count; i++)
+                destination.Add(_samples[i]);
         }
     }
 

@@ -162,6 +162,7 @@ class bench_client_t : public bench_client_iface_t
           timeout_error_measure (0),
           size_mismatch_measure (0),
           collect_metrics (false),
+          // RTT sample storage is provisioned once during bench setup.
           rtt_samples_bits (new std::atomic<uint64_t>[k_rtt_sample_capacity]),
           sample_overwrite_idx (0),
           endpoint (resolve_stream_target_endpoint (io, opt.host, opt.port)),
@@ -522,7 +523,7 @@ class bench_client_t : public bench_client_iface_t
         timeout_error_measure.fetch_add (count, std::memory_order_relaxed);
     }
 
-    int effective_phase_drain_ms (size_t size) const
+    int effective_phase_completion_ms (size_t size) const
     {
         int drain_ms = std::max (0, opt.drain_ms);
         // Large frames leave a longer tail of in-flight echoes in callback
@@ -557,7 +558,7 @@ class bench_client_t : public bench_client_iface_t
         mode.store (phase_idle, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
 
-        const int drain_ms = effective_phase_drain_ms (
+        const int drain_ms = effective_phase_completion_ms (
           phase_size.load (std::memory_order_acquire));
         if (drain_ms > 0) {
             const auto drain_deadline =

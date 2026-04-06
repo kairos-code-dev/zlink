@@ -16,10 +16,9 @@ internal static class PerfSpot
         int warmupCount = ResolveSingleWarmupCount("SPOT");
         if (size >= 65536 && warmupCount > 20)
             warmupCount = 20;
-        int durationSeconds = ParseEnv("PERF_SINGLE_DURATION_SECONDS", 5);
-        int recvTimeoutMs = ParseEnvNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+        int durationSeconds = PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5);
+        int recvTimeoutMs = PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
         int latCount = ResolveSingleLatencyCount("SPOT");
-        int settleMs = SingleSettleTimeMs;
 
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
@@ -30,11 +29,11 @@ internal static class PerfSpot
 
         try
         {
-            int sndHwm = ParseEnv("PERF_SINGLE_SNDHWM",
-                ParseEnv("PERF_SINGLE_HWM", 1000));
-            int rcvHwm = ParseEnv("PERF_SINGLE_RCVHWM",
-                ParseEnv("PERF_SINGLE_HWM", 1000));
-            int sndTimeo = ParseEnvNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
+            int sndHwm = PerfEnv.ReadPositive("PERF_SINGLE_SNDHWM",
+                PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000));
+            int rcvHwm = PerfEnv.ReadPositive("PERF_SINGLE_RCVHWM",
+                PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000));
+            int sndTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
             int subscriptionReadyTimeoutMs = ResolveSpotReadyTimeoutMs();
 
             pubNode.SetOption(SpotNodeSocketRole.Pub, SocketOptions.SndHwm,
@@ -77,8 +76,6 @@ internal static class PerfSpot
                     $"single_spot_error:warmup_failed:received={warmupReceived}:expected_nonzero");
                 return 2;
             }
-
-            Thread.Sleep(settleMs);
 
             if (!RunPhase(spotPub, spotSub, payload, payloadSize, phase: 1,
                     ref seq, 0, durationSeconds, latCount,
@@ -138,7 +135,7 @@ internal static class PerfSpot
         var samples = new List<double>(Math.Max(0, latCount));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
-        long drainTicks = Stopwatch.Frequency / 5;
+        long recvFlushTicks = Stopwatch.Frequency / 5;
 
         var recvThread = new Thread(() =>
         {
@@ -178,7 +175,7 @@ internal static class PerfSpot
                     }
 
                     if (done
-                        && Stopwatch.GetTimestamp() - lastRecvTicks >= drainTicks)
+                        && Stopwatch.GetTimestamp() - lastRecvTicks >= recvFlushTicks)
                         break;
                     Thread.Yield();
                 }

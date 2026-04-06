@@ -83,8 +83,6 @@ void run_pattern_pubsub (const std::string &transport,
           lib_name, "PUBSUB", transport, msg_size);
         return;
     }
-    perf::single::settle ();
-
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');

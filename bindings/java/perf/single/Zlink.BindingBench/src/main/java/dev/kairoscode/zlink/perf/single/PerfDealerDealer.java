@@ -47,9 +47,9 @@ final class PerfDealerDealer {
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENTS, 1,
                 Duration.ofSeconds(20), "dealer/dealer receiver ready");
             Thread traffic = SingleSendLoops.oneWaySend(
-                () -> send(sender, config.size(), (byte) 2),
-                () -> send(sender, config.size(), (byte) 0),
-                () -> send(sender, config.size(), (byte) 1),
+                () -> { try (Message m = PerfUtil.payload(config.size(), (byte) 2, System.nanoTime())) { sender.send(List.of(m)); } },
+                () -> { try (Message m = PerfUtil.payload(config.size(), (byte) 0, System.nanoTime())) { sender.send(List.of(m)); } },
+                () -> { try (Message m = PerfUtil.payload(config.size(), (byte) 1, System.nanoTime())) { sender.send(List.of(m)); } },
                 config.warmupSeconds(),
                 config.durationSeconds(),
                 metrics);
@@ -58,12 +58,6 @@ final class PerfDealerDealer {
                 config.warmupSeconds() + config.durationSeconds() + 10L));
             PerfUtil.join(traffic, "dealer/dealer sender", Duration.ofSeconds(10));
             return metrics.finishSingle(config);
-        }
-    }
-
-    private static void send(DealerSocket socket, int size, byte phase) {
-        try (Message message = PerfUtil.payload(size, phase, System.nanoTime())) {
-            socket.send(List.of(message));
         }
     }
 }

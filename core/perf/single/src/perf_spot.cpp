@@ -1,6 +1,5 @@
 #include "../common/bench_common.hpp"
 #include "../common/perf_single_metric_header.hpp"
-#include "../../common/perf_spot_handle.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -55,6 +54,8 @@ struct spot_client_state_t
         fatal (false),
         warmup_received (0),
         active_received (0),
+        warmup_processed (0),
+        active_processed (0),
         probe (NULL),
         callback_queue (NULL)
     {
@@ -66,11 +67,12 @@ struct spot_client_state_t
     std::atomic<bool> fatal;
     std::atomic<unsigned long long> warmup_received;
     std::atomic<unsigned long long> active_received;
+    std::atomic<unsigned long long> warmup_processed;
+    std::atomic<unsigned long long> active_processed;
     latency_stats_builder_t latency;
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
-    std::mutex latency_mutex;
     std::condition_variable cv;
 };
 
@@ -159,35 +161,44 @@ void spot_client_handler (const zlink_routing_id_t *,
     (void) single_enqueue_metric_event (state, header);
 }
 
-bool wait_for_spot_nodes_ready (void *sub_node_,
-                                void *pub_node_,
-                                int timeout_ms_)
+bool wait_for_spot_ready_barrier (void *pub_,
+                                  spot_client_state_t &state_,
+                                  size_t msg_size_,
+                                  int timeout_ms_)
 {
-    if (!sub_node_) {
-        (void) pub_node_;
+    if (!pub_)
         return false;
-    }
 
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
 
+    state_.warmup_received.store (0, std::memory_order_release);
+    std::vector<char> probe_payload (
+      std::max (msg_size_, perf_single_metric::header_size ()), 'p');
+
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_spot_node_status_t sub_status;
-        const bool sub_ok =
-          zlink_spot_node_status_snapshot (sub_node_, &sub_status) == 0
-          && sub_status.connected_peer_count > 0
-          && sub_status.ready_subject_count > 0;
-        if (sub_ok)
+        if (state_.warmup_received.load (std::memory_order_acquire) > 0)
             return true;
 
+        (void) perf_single_metric::stamp_payload (
+          probe_payload.data (), probe_payload.size (), state_.run_id,
+          perf_single_metric::phase_warmup, msg_size_, 0,
+          perf_single_metric::now_us ());
+
+        zlink_msg_t part;
+        if (zlink_msg_init_size (&part, probe_payload.size ()) != 0)
+            return false;
+        std::memcpy (
+          zlink_msg_data (&part), probe_payload.data (), probe_payload.size ());
+        (void) zlink_publish (pub_, k_topic, &part, 1, ZLINK_DONTWAIT);
+
         zlink_pollitem_t item = {NULL, 0, 0, 0};
-        if (zlink_poll (&item, 0, 5) < 0 && zlink_errno () != EINTR)
+        if (zlink_poll (&item, 0, 50) < 0 && zlink_errno () != EINTR)
             return false;
     }
 
-    errno = ETIMEDOUT;
-    return false;
+    return state_.warmup_received.load (std::memory_order_acquire) > 0;
 }
 
 void cleanup_spot_case (void **sub_handle_,
@@ -196,9 +207,9 @@ void cleanup_spot_case (void **sub_handle_,
                         void **pub_node_)
 {
     if (sub_handle_ && *sub_handle_)
-        perf_destroy_default_spot_handle (sub_handle_);
+        zlink_spot_destroy (sub_handle_);
     if (pub_handle_ && *pub_handle_)
-        perf_destroy_default_spot_handle (pub_handle_);
+        zlink_spot_destroy (pub_handle_);
     if (sub_node_ && *sub_node_)
         (void) zlink_spot_node_destroy (sub_node_);
     if (pub_node_ && *pub_node_)
@@ -298,16 +309,15 @@ bool run_phase_window (void *pub_,
     client_state_.fatal.store (false, std::memory_order_release);
     client_state_.warmup_received.store (0, std::memory_order_release);
     client_state_.active_received.store (0, std::memory_order_release);
+    client_state_.warmup_processed.store (0, std::memory_order_release);
+    client_state_.active_processed.store (0, std::memory_order_release);
     client_state_.active_deadline_us.store (
       phase_ == perf_single_metric::phase_active
         ? perf_single_metric::now_us ()
             + static_cast<uint64_t> (std::max (1, duration_s_) * 1000000ULL)
         : 0,
       std::memory_order_release);
-    {
-        std::lock_guard<std::mutex> lock (client_state_.latency_mutex);
-        client_state_.latency = latency_stats_builder_t ();
-    }
+    client_state_.latency = latency_stats_builder_t ();
 
     unsigned long long sent_count = 0;
     if (!run_publish_window (pub_,
@@ -323,7 +333,7 @@ bool run_phase_window (void *pub_,
 
     const bool active_phase = phase_ == perf_single_metric::phase_active;
     const int drain_timeout_ms =
-      single_phase_drain_timeout_ms (
+      single_phase_completion_timeout_ms (
         duration_s_, resolve_single_recv_timeout_ms ());
     const bool drained = single_wait_for_phase_processed (
       client_state_, phase_, sent_count, drain_timeout_ms);
@@ -358,7 +368,6 @@ bool run_phase_window (void *pub_,
           / elapsed_s;
     }
     if (latency_out_) {
-        std::lock_guard<std::mutex> lock (client_state_.latency_mutex);
         *latency_out_ = client_state_.latency.snapshot ();
     }
 
@@ -417,11 +426,11 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    pub = perf_create_default_spot_handle (pub_node);
-    sub = perf_create_default_spot_handle (sub_node);
+    pub = zlink_spot_new (pub_node);
+    sub = zlink_spot_new (sub_node);
     if (!pub || !sub) {
-        perf_destroy_default_spot_handle (&sub);
-        perf_destroy_default_spot_handle (&pub);
+        zlink_spot_destroy (&sub);
+        zlink_spot_destroy (&pub);
         zlink_spot_node_destroy (&sub_node);
         zlink_spot_node_destroy (&pub_node);
         return 1;
@@ -442,8 +451,8 @@ int run_case (const std::string &lib_name_,
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] callback handler attach failed err="
                       << zlink_errno () << std::endl;
-        perf_destroy_default_spot_handle (&sub);
-        perf_destroy_default_spot_handle (&pub);
+        zlink_spot_destroy (&sub);
+        zlink_spot_destroy (&pub);
         zlink_spot_node_destroy (&sub_node);
         zlink_spot_node_destroy (&pub_node);
         return 1;
@@ -488,11 +497,11 @@ int run_case (const std::string &lib_name_,
     metric_worker.state = &client_state;
     metric_worker.queue = &metric_queue;
 
-    if (!wait_for_spot_nodes_ready (
-          sub_node, pub_node,
+    if (!wait_for_spot_ready_barrier (
+          pub, client_state, msg_size_,
           resolve_spot_subscription_ready_timeout_ms (transport_))) {
         if (bench_debug_enabled ())
-            std::cerr << "[perf-spot] ready wait failed" << std::endl;
+            std::cerr << "[perf-spot] ready barrier failed" << std::endl;
         cleanup_spot_case (&sub, &pub, &sub_node, &pub_node);
         return 1;
     }

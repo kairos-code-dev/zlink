@@ -2,11 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-REPO_DIR="$(cd "${ROOT_DIR}/../.." && pwd)"
-RUNNER="${ROOT_DIR}/perf/multi/Zlink.BindingBench.Multi/build/install/zlink-java-perf-multi/bin/zlink-java-perf-multi"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_DIR="$(cd "${ROOT_DIR}/../../.." && pwd)"
+RUNNER="${ROOT_DIR}/multi/Zlink.BindingBench.Multi/build/install/zlink-java-perf-multi/bin/zlink-java-perf-multi"
 STREAM_CLIENT="${REPO_DIR}/core/build/bin/perf_stream_client"
-RESULTS_ROOT="${ROOT_DIR}/perf/results"
+RESULTS_ROOT="${ROOT_DIR}/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
@@ -177,7 +177,7 @@ prune_reports() {
 
 mkdir -p "${RESULTS_ROOT}/multi/tmp" "${RESULTS_ROOT}/multi/report"
 cd "${ROOT_DIR}"
-"${ROOT_DIR}/gradlew" :perf-multi:installDist >/dev/null
+gradle :perf-multi:installDist >/dev/null
 
 platform="$(detect_platform)"
 timestamp="$(date +%Y%m%d_%H%M%S)"

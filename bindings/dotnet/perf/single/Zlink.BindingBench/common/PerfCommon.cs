@@ -1,22 +1,11 @@
 using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Net;
 using System.Threading;
 using Zlink;
-using TcpListener = System.Net.Sockets.TcpListener;
 
 internal static partial class PerfRunner
 {
-    private const int ErrnoEintr = 4;
-    private const int ErrnoEagain = 11;
-    internal const int SingleSettleTimeMs = 100;
     internal const int SingleConnectWaitMs = 300;
-    private static readonly object IpcLock = new();
-    private static readonly HashSet<string> IpcPaths = new();
-    private static bool IpcCleanupHooked;
 
     internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
@@ -148,13 +137,6 @@ internal static partial class PerfRunner
             $"RESULT,current,{pattern},{transport},{size},latency_p99,{latP99Ms}");
     }
 
-    internal static int PrintUnsupported(string pattern, string transport,
-        int size, string reason)
-    {
-        Console.WriteLine($"UNSUPPORTED,{pattern},{transport},{size},{reason}");
-        return 0;
-    }
-
     private static double BandwidthMbps(double throughput, int size)
     {
         return (throughput * size) / 1_000_000.0;
@@ -165,32 +147,20 @@ internal static partial class PerfRunner
         return latencyUs / 1000.0;
     }
 
-    internal static int ParseEnv(string name, int defaultValue)
-    {
-        var v = Environment.GetEnvironmentVariable(name);
-        return int.TryParse(v, out var p) && p > 0 ? p : defaultValue;
-    }
-
-    internal static int ParseEnvNonNegative(string name, int defaultValue)
-    {
-        var v = Environment.GetEnvironmentVariable(name);
-        return int.TryParse(v, out var p) && p >= 0 ? p : defaultValue;
-    }
-
     private static int ResolveSingleHwmValue(string specificName)
     {
-        int hwm = ParseEnv("PERF_SINGLE_HWM", 1000);
-        int specific = ParseEnv(specificName, 0);
+        int hwm = PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000);
+        int specific = PerfEnv.ReadPositive(specificName, 0);
         return specific > 0 ? specific : hwm;
     }
 
     private static int ResolveSingleMaxSockets()
     {
-        int explicitMaxSockets = ParseEnv("PERF_MAX_SOCKETS", 0);
+        int explicitMaxSockets = PerfEnv.ReadPositive("PERF_MAX_SOCKETS", 0);
         if (explicitMaxSockets > 0)
             return explicitMaxSockets;
 
-        int clients = ParseEnv("PERF_CLIENTS", 0);
+        int clients = PerfEnv.ReadPositive("PERF_CLIENTS", 0);
         if (clients <= 0)
             return 0;
 
@@ -202,7 +172,7 @@ internal static partial class PerfRunner
 
     internal static void ApplySingleContextOptions(Context ctx)
     {
-        int ioThreads = ParseEnvNonNegative("PERF_IO_THREADS", 0);
+        int ioThreads = PerfEnv.ReadNonNegative("PERF_IO_THREADS", 0);
         if (ioThreads > 0)
             ctx.SetOption(ContextOption.IoThreads, ioThreads);
 
@@ -216,8 +186,8 @@ internal static partial class PerfRunner
         int sndHwm = ResolveSingleHwmValue("PERF_SINGLE_SNDHWM");
         int rcvHwm = ResolveSingleHwmValue("PERF_SINGLE_RCVHWM");
 
-        int sndTimeo = ParseEnvNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
-        int rcvTimeo = ParseEnvNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+        int sndTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
+        int rcvTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
 
         socket.SetOption(SocketOptions.Linger, 0);
         socket.SetOption(SocketOptions.SndHwm, sndHwm);
@@ -231,7 +201,17 @@ internal static partial class PerfRunner
         int fallback = pattern.Equals("SPOT", StringComparison.OrdinalIgnoreCase)
             ? 200
             : 1000;
-        return ParseEnv("PERF_WARMUP_COUNT", fallback);
+        return PerfEnv.ReadPositive("PERF_WARMUP_COUNT", fallback);
+    }
+
+    internal static int ResolveSingleDurationSeconds()
+    {
+        return PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5);
+    }
+
+    internal static int ResolveSingleRcvTimeoutMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
     }
 
     internal static int ResolveSingleLatencyCount(string pattern)
@@ -239,107 +219,17 @@ internal static partial class PerfRunner
         int fallback = pattern.Equals("SPOT", StringComparison.OrdinalIgnoreCase)
             ? 200
             : 500;
-        return ParseEnv("PERF_LAT_COUNT", fallback);
+        return PerfEnv.ReadPositive("PERF_LAT_COUNT", fallback);
     }
 
     internal static int ResolveSpotDiscoveryTimeoutMs()
     {
-        return ParseEnvNonNegative("PERF_SPOT_DISCOVERY_TIMEOUT_MS", 4000);
+        return PerfEnv.ReadNonNegative("PERF_SPOT_DISCOVERY_TIMEOUT_MS", 4000);
     }
 
     internal static int ResolveSpotReadyTimeoutMs()
     {
-        return ParseEnvNonNegative("PERF_SPOT_READY_TIMEOUT_MS", 2000);
-    }
-
-    internal static bool IsSecureTransport(string transport)
-    {
-        return transport.Equals("tls", StringComparison.OrdinalIgnoreCase)
-               || transport.Equals("wss", StringComparison.OrdinalIgnoreCase);
-    }
-
-    internal static long TimestampUs()
-    {
-        long ts = Stopwatch.GetTimestamp();
-        return (long)(ts * (1_000_000.0 / Stopwatch.Frequency));
-    }
-
-    internal static long DeadlineTicksFromSeconds(int seconds)
-    {
-        int boundedSeconds = Math.Max(1, seconds);
-        return Stopwatch.GetTimestamp()
-            + ((long)boundedSeconds * Stopwatch.Frequency);
-    }
-
-    internal static long DeadlineTicksFromMilliseconds(int milliseconds)
-    {
-        long boundedMs = Math.Max(1, milliseconds);
-        long deltaTicks = (boundedMs * Stopwatch.Frequency) / 1000;
-        if (deltaTicks <= 0)
-            deltaTicks = 1;
-        return Stopwatch.GetTimestamp() + deltaTicks;
-    }
-
-    internal static double ElapsedSecondsFromTicks(long startTicks,
-        long endTicks)
-    {
-        long deltaTicks = Math.Max(0, endTicks - startTicks);
-        return deltaTicks / (double)Stopwatch.Frequency;
-    }
-
-    internal static void StampHeader(Span<byte> header, long tsUs)
-    {
-        if (header.Length < 8)
-            throw new ArgumentException("header length must be >= 8", nameof(header));
-
-        BinaryPrimitives.WriteInt64LittleEndian(header, tsUs);
-    }
-
-    internal static long DecodeHeader(ReadOnlySpan<byte> header)
-    {
-        if (header.Length < 8)
-            throw new ArgumentException("header length must be >= 8", nameof(header));
-
-        return BinaryPrimitives.ReadInt64LittleEndian(header);
-    }
-
-    internal static void ReservoirSample(List<double> samples, double value,
-        ref long seenCount, int cap, ref uint rngState)
-    {
-        if (cap <= 0)
-            return;
-
-        if (samples.Count < cap)
-        {
-            samples.Add(value);
-            seenCount++;
-            return;
-        }
-
-        seenCount++;
-        uint r = NextRandom(ref rngState);
-        long slot = r % seenCount;
-        if (slot < samples.Count)
-            samples[(int)slot] = value;
-    }
-
-    internal static (double mean, double p95, double p99) ComputeLatencyStats(
-        List<double> samples)
-    {
-        if (samples.Count == 0)
-            return (0.0, 0.0, 0.0);
-
-        double sum = 0.0;
-        for (int i = 0; i < samples.Count; i++)
-            sum += samples[i];
-
-        samples.Sort();
-        int p95Index = Math.Min(samples.Count - 1,
-            (int)Math.Ceiling(samples.Count * 0.95) - 1);
-        int p99Index = Math.Min(samples.Count - 1,
-            (int)Math.Ceiling(samples.Count * 0.99) - 1);
-
-        return (sum / samples.Count, samples[p95Index], samples[p99Index]);
+        return PerfEnv.ReadNonNegative("PERF_SPOT_READY_TIMEOUT_MS", 2000);
     }
 
     internal static void PrintSingleProcessMetrics(string pattern, string transport,
@@ -361,119 +251,4 @@ internal static partial class PerfRunner
         Console.WriteLine($"RESULT,current,{pattern},{transport},{size},rcv_pending_end,0");
     }
 
-    private static uint NextRandom(ref uint state)
-    {
-        if (state == 0)
-            state = 0xA341316Cu;
-
-        uint x = state;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        state = x;
-        return x;
-    }
-
-    private static bool IsWouldBlock(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EAgain || errno == ErrnoEagain;
-    }
-
-    private static bool IsInterrupted(int errno)
-    {
-        ErrorCode code = ZlinkException.MapErrorCode(errno);
-        return code == ErrorCode.EIntr || errno == ErrnoEintr;
-    }
-
-    internal static string EndpointFor(string transport, string name)
-    {
-        if (transport == "inproc")
-            return $"inproc://bench-{name}-{Guid.NewGuid()}";
-
-        if (transport == "ipc")
-        {
-            string endpoint = $"ipc:///tmp/zlink-bench-{name}-{GetPort()}.sock";
-            RegisterIpcEndpoint(endpoint);
-            return endpoint;
-        }
-
-        return $"{transport}://127.0.0.1:{GetPort()}";
-    }
-
-    private static void RegisterIpcEndpoint(string endpoint)
-    {
-        const string prefix = "ipc://";
-        if (!endpoint.StartsWith(prefix, StringComparison.Ordinal))
-            return;
-
-        string path = endpoint.Substring(prefix.Length);
-        if (path.Length == 0 || path[0] != '/')
-            return;
-
-        lock (IpcLock)
-        {
-            IpcPaths.Add(path);
-            TryDeleteFile(path);
-            if (!IpcCleanupHooked)
-            {
-                AppDomain.CurrentDomain.ProcessExit += (_, _) => CleanupIpcFiles();
-                IpcCleanupHooked = true;
-            }
-        }
-    }
-
-    private static void CleanupIpcFiles()
-    {
-        List<string> snapshot;
-        lock (IpcLock)
-            snapshot = new List<string>(IpcPaths);
-
-        foreach (string path in snapshot)
-            TryDeleteFile(path);
-    }
-
-    internal static void TryDisposeQuietly(IDisposable? disposable)
-    {
-        if (disposable == null)
-            return;
-
-        try
-        {
-            disposable.Dispose();
-        }
-        catch
-        {
-        }
-    }
-
-    internal static void TryDisposeAllQuietly(params IDisposable?[] disposables)
-    {
-        if (disposables == null)
-            return;
-
-        foreach (IDisposable? disposable in disposables)
-            TryDisposeQuietly(disposable);
-    }
-
-    private static void TryDeleteFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-                File.Delete(path);
-        }
-        catch
-        {
-        }
-    }
-
-    private static int GetPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
 }

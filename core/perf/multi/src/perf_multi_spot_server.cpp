@@ -5,7 +5,6 @@
 #include "../common/perf_multi_spot_control.hpp"
 #include "../common/perf_multi_spot_handshake.hpp"
 #include "../common/perf_multi_spot_phase.hpp"
-#include "../../common/perf_spot_handle.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 #include <algorithm>
 #include <atomic>
@@ -517,8 +516,6 @@ int run_server_benchmark(const std::string &lib_name,
     }
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
-    sync_spot_internal_mesh_pub_hwm(
-      bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm));
     ctx_guard_t ctx;
     if (!ctx.valid())
         return 1;

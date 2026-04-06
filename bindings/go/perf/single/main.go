@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"strings"
 	"time"
 
 	"zlink/perf/internal/perfcommon"
@@ -29,15 +28,22 @@ var (
 func main() {
 	flag.Parse()
 
+	loaded := perfcommon.LoadSingleConfig(
+		*pattern,
+		*transport,
+		*msgSize,
+		*warmup,
+		*duration,
+		*recvMode,
+	)
 	cfg := benchmarkConfig{
-		pattern:   strings.ToUpper(*pattern),
-		transport: strings.ToLower(*transport),
-		msgSize:   *msgSize,
-		warmup:    time.Duration(*warmup) * time.Second,
-		duration:  time.Duration(*duration) * time.Second,
-		recvMode:  strings.ToLower(*recvMode),
+		pattern:   loaded.Pattern,
+		transport: loaded.Transport,
+		msgSize:   loaded.MsgSize,
+		warmup:    loaded.Warmup,
+		duration:  loaded.Duration,
+		recvMode:  loaded.RecvMode.String(),
 	}
-	perfcommon.ValidateCommon(cfg.transport, cfg.msgSize, cfg.recvMode)
 
 	var result perfcommon.Result
 	switch cfg.pattern {

@@ -23,8 +23,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	startMultiRouterEchoServer(router)
 
 	stats := perfcommon.NewStats()
-	stopAt := time.Now().Add(cfg.warmup + cfg.duration)
-	activeAt := time.Now().Add(cfg.warmup)
+	window := perfcommon.NewBenchmarkWindow(cfg.warmup, cfg.duration)
 
 	type dealerClient struct {
 		ctx     *zlink.Context
@@ -76,7 +75,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 			defer wg.Done()
 
 			payload := perfcommon.PreparePayload(cfg.msgSize)
-			for time.Now().Before(stopAt) {
+			for time.Now().Before(window.StopAt) {
 				perfcommon.StampPayload(payload)
 				err := socket.Send(perfcommon.NewMessage(payload))
 				if err != nil {
@@ -94,9 +93,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 				}
 				part, err := reply.SinglePartOrError()
 				if err == nil {
-					if sentAt, ok := perfcommon.SentAtFromMessage(part); ok && time.Now().After(activeAt) {
-						stats.Add(sentAt)
-					}
+					perfcommon.RecordMessageLatency(stats, window.ActiveAt, part)
 				}
 				_ = reply.Close()
 			}
@@ -109,31 +106,25 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 
 func waitForDealerReady(dealer *zlink.DealerSocket) {
 	payload := perfcommon.PreparePayload(64)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		perfcommon.StampPayload(payload)
-		err := dealer.Send(perfcommon.NewMessage(payload))
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				continue
+	perfcommon.Must(perfcommon.WaitReady(perfcommon.ReadyConfig{
+		Name: "multi dealer/router perf endpoint",
+		Probe: func() (bool, error) {
+			perfcommon.StampPayload(payload)
+			err := dealer.Send(perfcommon.NewMessage(payload))
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					return false, nil
+				}
+				return false, fmt.Errorf("multi dealer/router ready send: %w", err)
 			}
-			perfcommon.Must(fmt.Errorf("multi dealer/router ready send: %w", err))
-		}
-		reply, ok, err := dealer.TryRecv()
-		if err != nil {
-			perfcommon.Must(fmt.Errorf("multi dealer/router ready recv: %w", err))
-		}
-		if !ok || reply == nil {
-			continue
-		}
-		perfcommon.Must(reply.Close())
-		return
-	}
-	perfcommon.Must(&multiDealerRouterReadyError{})
-}
-
-type multiDealerRouterReadyError struct{}
-
-func (e *multiDealerRouterReadyError) Error() string {
-	return "multi dealer/router perf endpoint did not become ready"
+			reply, ok, err := dealer.TryRecv()
+			if err != nil {
+				return false, fmt.Errorf("multi dealer/router ready recv: %w", err)
+			}
+			if !ok || reply == nil {
+				return false, nil
+			}
+			return true, reply.Close()
+		},
+	}))
 }

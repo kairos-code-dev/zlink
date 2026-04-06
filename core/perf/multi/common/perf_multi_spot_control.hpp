@@ -3,7 +3,8 @@
 
 #include "perf_common.hpp"
 #include "perf_multi_spot_handshake.hpp"
-#include "../../common/perf_spot_handle.hpp"
+#include "perf_multi_spot_handle.hpp"
+#include "../../common/perf_tls_setup.hpp"
 
 #include <atomic>
 #include <cerrno>
@@ -13,6 +14,9 @@
 #include <thread>
 
 namespace perf_multi_spot_control {
+
+using ::setup_tls_client;
+using ::setup_tls_server;
 
 struct client_session_t
 {

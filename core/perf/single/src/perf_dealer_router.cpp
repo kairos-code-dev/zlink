@@ -34,7 +34,6 @@ struct dealer_router_callback_state_t
     queue_probe_t *probe;
     single_callback_metric_queue_t *callback_queue;
     std::mutex mutex;
-    std::mutex latency_mutex;
     std::condition_variable cv;
 };
 
@@ -99,22 +98,6 @@ inline bool setup_dealer_router_session (void *router,
     return setup_connected_pair (router, dealer, transport, pair_id);
 }
 
-inline int send_single_part_blocking (void *socket, zlink_msg_t *part)
-{
-    if (!socket || !part)
-        return -1;
-
-    while (true) {
-        if (::zlink_send (socket, part, 1, 0) >= 0)
-            return 1;
-
-        const int err = zlink_errno ();
-        if (err == EINTR)
-            continue;
-        return err == EAGAIN ? 0 : -1;
-    }
-}
-
 inline bool run_oneway_phase (void *dealer,
                               std::vector<char> *payload,
                               dealer_router_callback_state_t *state,
@@ -143,10 +126,7 @@ inline bool run_oneway_phase (void *dealer,
         : 0,
       std::memory_order_release);
     state->probe = queue_probe;
-    {
-        std::lock_guard<std::mutex> lock (state->latency_mutex);
-        state->latency = latency_stats_builder_t ();
-    }
+    state->latency = latency_stats_builder_t ();
 
     bool send_failed = false;
     unsigned long long successful_send_count = 0;
@@ -176,13 +156,21 @@ inline bool run_oneway_phase (void *dealer,
             memcpy (::zlink_msg_data (&part), payload->data (),
                     state->payload_size);
         }
-        const int send_rc = send_single_part_blocking (dealer, &part);
-        if (send_rc < 0) {
+
+        perf_send_class_t send_class = perf_send_fatal;
+        while (true) {
+            send_class = perf_classify_send_result (
+              ::zlink_send (dealer, &part, 1, 0));
+            if (send_class != perf_send_retry)
+                break;
+        }
+
+        if (send_class == perf_send_fatal) {
             ::zlink_msg_close (&part);
             send_failed = true;
             break;
         }
-        if (send_rc == 0) {
+        if (send_class == perf_send_backpressure) {
             ::zlink_msg_close (&part);
             if (!single_wait_for_send_backpressure (queue_probe)) {
                 send_failed = true;
@@ -200,7 +188,7 @@ inline bool run_oneway_phase (void *dealer,
         queue_probe->force_sample_send ();
 
     const int drain_timeout_ms =
-      single_phase_drain_timeout_ms (duration_s, recv_timeout_ms);
+      single_phase_completion_timeout_ms (duration_s, recv_timeout_ms);
     const bool drained = single_wait_for_phase_processed (
       *state, phase, successful_send_count, drain_timeout_ms);
 
@@ -217,7 +205,6 @@ inline bool run_oneway_phase (void *dealer,
         if (*out_received == 0 || !out_latency) {
             return false;
         }
-        std::lock_guard<std::mutex> lock (state->latency_mutex);
         *out_latency = state->latency.snapshot ();
         if (state->latency.count () == 0)
             return false;

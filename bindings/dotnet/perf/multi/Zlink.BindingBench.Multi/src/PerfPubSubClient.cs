@@ -7,27 +7,23 @@ using static PerfRunner;
 
 internal static class PerfPubSubClient
 {
-    internal static int Run(string transport, int size,
-        string endpoint)
+    internal static int Run(PerfOptions options)
     {
-        const string pattern = "PUBSUB";
-        size = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
-        int durationSeconds = ResolveMultiDurationSeconds();
-        int settleMs = ResolveMultiSettleMs();
-        int drainMs = ResolveMultiDrainMs(pattern);
-        int sizeTransitionDrainMs = ResolveMultiSizeTransitionDrainMs();
-        bool activeWarmup = ResolveMultiActiveWarmup();
-        int warmupDrainMs = ResolveMultiWarmupDrainMs(drainMs);
-        int sndTimeoutMs = ResolveMultiSndTimeoutMs();
-        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs();
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
-        int latencySampleCap = ResolveMultiLatencySampleCap();
-        int clientCount = ResolveMultiClients(pattern);
-        int pollTimeoutMs = ResolveEffectiveMultiClientPollTimeoutMs();
+        int size = Math.Max(1, options.Size);
+        int warmupSeconds = ResolveMultiWarmupSeconds(options);
+        int durationSeconds = ResolveMultiDurationSeconds(options);
+        bool activeWarmup = ResolveMultiActiveWarmup(options);
+        int sndTimeoutMs = ResolveMultiSndTimeoutMs(options);
+        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
+        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
+        int latencySampleCap = ResolveMultiLatencySampleCap(options);
+        int clientCount = ResolveMultiClients(options);
+        int pollTimeoutMs = ResolveEffectiveMultiClientPollTimeoutMs(options);
+        string endpoint = options.Endpoint;
 
         using var ctx = new Context();
-        ApplyMultiClientContextOptions(ctx);
+        using var pollManager = new PollManager();
+        ApplyMultiClientContextOptions(ctx, options);
         var clients = new List<SocketBase>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
@@ -35,8 +31,8 @@ internal static class PerfPubSubClient
             for (int i = 0; i < clientCount; i++)
             {
                 var client = new SubSocket(ctx);
-                ApplyMultiSocketOptions(client, pattern);
-                ConfigureTlsClientIfNeeded(client, transport);
+                ApplyMultiSocketOptions(client, options);
+                ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.SetOption(SocketOptions.SndTimeo, sndTimeoutMs);
                 client.SetOption(SocketOptions.RcvTimeo, rcvTimeoutMs);
                 client.SetOption(SocketOptions.Subscribe, string.Empty);
@@ -46,8 +42,8 @@ internal static class PerfPubSubClient
                 monitors.Add(monitor);
             }
 
-            List<SocketBase> activeClients = WaitAllClientConnectReady(clients,
-                monitors, readyTimeoutMs);
+            List<SocketBase> activeClients = WaitAllClientConnectReady(
+                pollManager, clients, monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
                 Console.Error.WriteLine("multi_client_error:no_ready_connections");
@@ -57,12 +53,11 @@ internal static class PerfPubSubClient
             monitors.Clear();
 
             var recv = new byte[Math.Max(256, Math.Max(size, MultiStopToken.Length))];
-            var result = RunMultiPubSubClientLoop(activeClients, recv,
-                size, latencySampleCap, pollTimeoutMs,
-                warmupSeconds, durationSeconds, settleMs, drainMs,
-                sizeTransitionDrainMs, activeWarmup, warmupDrainMs);
+            var result = RunMultiPubSubClientLoop(pollManager, activeClients,
+                recv, size, latencySampleCap, pollTimeoutMs,
+                warmupSeconds, durationSeconds, activeWarmup);
 
-            PrintResult(pattern, transport, size, result.throughput,
+            PrintResult(options.Pattern, options.Transport, size, result.throughput,
                 result.latencyUs, result.latencyP95Us, result.latencyP99Us);
             return 0;
         }
@@ -75,11 +70,10 @@ internal static class PerfPubSubClient
 
     private static (double throughput, double latencyUs, double latencyP95Us,
         double latencyP99Us)
-        RunMultiPubSubClientLoop(List<SocketBase> activeClients,
+        RunMultiPubSubClientLoop(PollManager pollManager,
+            List<SocketBase> activeClients,
             byte[] recv, int msgSize, int latencySampleCap, int pollTimeoutMs,
-            int warmupSeconds,
-            int durationSeconds, int settleMs, int drainMs,
-            int sizeTransitionDrainMs, bool activeWarmup, int warmupDrainMs)
+            int warmupSeconds, int durationSeconds, bool activeWarmup)
     {
         const uint expectedRunId = 1;
         var latSamples = new List<double>(latencySampleCap);
@@ -94,53 +88,34 @@ internal static class PerfPubSubClient
                 + (long)Math.Max(0, warmupSeconds) * Stopwatch.Frequency;
             while (Stopwatch.GetTimestamp() < warmupDeadlineTicks)
             {
-                if (PollSocketReadReady(activeClients, pollTimeoutMs) <= 0)
+                if (PollSocketReadReady(pollManager, activeClients,
+                        pollTimeoutMs) <= 0)
                     continue;
 
                 for (int i = 0; i < activeClients.Count; i++)
                 {
-                    if (!IsSocketReadReady(i))
+                    if (!IsSocketReadReady(pollManager, i))
                         continue;
                     DrainReadableSocket(activeClients[i], recv.AsSpan(),
                         static _ => true);
                 }
             }
 
-            if (warmupDrainMs > 0)
-                Thread.Sleep(warmupDrainMs);
-        }
-
-        if (settleMs > 0)
-        {
-            long settleDeadlineTicks = Stopwatch.GetTimestamp()
-                + (long)Math.Max(0, settleMs) * Stopwatch.Frequency / 1000;
-            while (Stopwatch.GetTimestamp() < settleDeadlineTicks)
-            {
-                if (PollSocketReadReady(activeClients, pollTimeoutMs) <= 0)
-                    continue;
-
-                for (int i = 0; i < activeClients.Count; i++)
-                {
-                    if (!IsSocketReadReady(i))
-                        continue;
-                    DrainReadableSocket(activeClients[i], recv.AsSpan(),
-                        static _ => true);
-                }
-            }
         }
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
-            if (PollSocketReadReady(activeClients, pollTimeoutMs) <= 0)
+            if (PollSocketReadReady(pollManager, activeClients,
+                    pollTimeoutMs) <= 0)
             {
                 continue;
             }
 
             for (int i = 0; i < activeClients.Count; i++)
             {
-                if (!IsSocketReadReady(i))
+                if (!IsSocketReadReady(pollManager, i))
                     continue;
 
                 DrainReadableSocket(activeClients[i], recv.AsSpan(), body =>
@@ -169,11 +144,6 @@ internal static class PerfPubSubClient
                 });
             }
         }
-
-        if (drainMs > 0)
-            Thread.Sleep(drainMs);
-        if (sizeTransitionDrainMs > 0)
-            Thread.Sleep(sizeTransitionDrainMs);
 
         double configuredSeconds = Math.Max(1.0, durationSeconds);
         double throughput = measureCount / configuredSeconds;

@@ -22,7 +22,6 @@ struct multi_bench_settings_t
     int warmup_seconds;
     int active_warmup;
     int duration_seconds;
-    int settle_ms;
     int client_poll_timeout_ms;
     int connect_ready_timeout_ms;
     int sndtimeo_ms;
@@ -162,7 +161,6 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     out.active_warmup = parse_positive_env ("PERF_ACTIVE_WARMUP", 0) > 0 ? 1 : 0;
     out.duration_seconds = parse_positive_env_alias (
       "PERF_DURATION_SECONDS", "PERF_MULTI_DURATION_SECONDS", 5, 1);
-    out.settle_ms = parse_positive_env ("PERF_SETTLE_MS", 500);
     out.client_poll_timeout_ms = parse_positive_env (
       "PERF_CLIENT_POLL_TIMEOUT_MS", 0);
     out.connect_ready_timeout_ms = parse_positive_env_alias (

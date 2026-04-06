@@ -5,11 +5,9 @@ internal static partial class PerfRunner
 {
     internal static int RunMultiServer(string pattern, string transport, int size)
     {
-        string normalizedPattern = pattern.ToUpperInvariant();
-        string outputPattern = NormalizePerfPattern(normalizedPattern);
+        string outputPattern = NormalizePerfPattern(pattern);
         size = Math.Max(1, size);
-
-        Environment.SetEnvironmentVariable("PERF_PATTERN", outputPattern);
+        PerfOptions preset = PerfOptions.FromMultiPattern(outputPattern);
 
         var process = Process.GetCurrentProcess();
         TimeSpan cpuStart = process.TotalProcessorTime;
@@ -17,17 +15,15 @@ internal static partial class PerfRunner
 
         try
         {
-            int rc = outputPattern switch
+            var options = PerfOptions.CreateMulti(PerfExecutionKind.MultiServer,
+                outputPattern, transport, size, string.Empty, preset.RecvMode);
+            if (!MultiPerfPatternRegistry.TryGet(outputPattern,
+                    out IPerfPattern perfPattern))
             {
-                "DEALER_DEALER" => PerfDealerDealerServer.Run(transport, size),
-                "DEALER_ROUTER" => PerfDealerRouterServer.Run(transport, size),
-                "ROUTER_ROUTER" => PerfRouterRouterServer.Run(transport, size),
-                "PUBSUB" => PerfPubSubServer.Run(transport, size),
-                "SPOT" => PerfSpotServer.Run(transport, size),
-                "STREAM" => PerfStreamServer.Run(transport, size),
-                _ => 1,
-            };
+                return 1;
+            }
 
+            int rc = perfPattern.RunMultiServer(options);
             if (rc != 0)
                 return rc;
 
@@ -46,8 +42,7 @@ internal static partial class PerfRunner
     internal static int PrintUnsupported(string pattern, string transport,
         int size, string reason)
     {
-        Console.WriteLine($"UNSUPPORTED,{pattern},{transport},{size},{reason}");
-        return 0;
+        return PerfShared.PrintUnsupported(pattern, transport, size, reason);
     }
 
     private static void EmitServerProcessMetrics(Process process,

@@ -6,24 +6,23 @@ using static PerfRunner;
 
 internal static class PerfDealerDealerServer
 {
-    internal static int Run(string transport, int size)
+    internal static int Run(PerfOptions options)
     {
-        const string pattern = "DEALER_DEALER";
-        size = Math.Max(1, size);
-        int warmupSeconds = ResolveMultiWarmupSeconds();
-        int durationSeconds = ResolveMultiDurationSeconds();
-        int settleMs = ResolveMultiSettleMs();
-        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs();
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs();
-        int latencySampleCap = ResolveMultiLatencySampleCap();
-        int clientCount = ResolveMultiClients(pattern);
-        string endpoint = MultiEndpointFor(transport, "multi-dealer-dealer");
+        int size = Math.Max(1, options.Size);
+        int warmupSeconds = ResolveMultiWarmupSeconds(options);
+        int durationSeconds = ResolveMultiDurationSeconds(options);
+        int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
+        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
+        int latencySampleCap = ResolveMultiLatencySampleCap(options);
+        int clientCount = ResolveMultiClients(options);
+        string endpoint = MultiEndpointFor(options.Transport,
+            "multi-dealer-dealer", options);
 
         using var ctx = new Context();
-        ApplyMultiServerContextOptions(ctx);
+        ApplyMultiServerContextOptions(ctx, options);
         using var server = new DealerSocket(ctx);
-        ApplyMultiSocketOptions(server, pattern);
-        ConfigureTlsServerIfNeeded(server, transport);
+        ApplyMultiSocketOptions(server, options);
+        ConfigureTlsServerIfNeeded(server, options.Transport);
 
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
@@ -44,11 +43,6 @@ internal static class PerfDealerDealerServer
                 PerfPhase.Warmup, warmupSeconds, false, false,
                 latSamples, ref sampleSeen, ref rng))
             return 2;
-        if (!RunReceivePhase(server, payload, size, expectedRunId,
-                PerfPhase.Drain, settleMs / 1000.0, false, false,
-                latSamples, ref sampleSeen, ref rng))
-            return 2;
-
         long recvCount = 0;
         if (!RunReceivePhase(server, payload, size, expectedRunId,
                 PerfPhase.Active, Math.Max(1, durationSeconds), true, true,
@@ -66,7 +60,7 @@ internal static class PerfDealerDealerServer
         double latencyUs = latency.mean > 0.0 ? latency.mean : fallbackLatencyUs;
         double latencyP95Us = latency.p95 > 0.0 ? latency.p95 : latencyUs;
         double latencyP99Us = latency.p99 > 0.0 ? latency.p99 : latencyP95Us;
-        PrintResult(pattern, transport, size, throughput, latencyUs,
+        PrintResult(options.Pattern, options.Transport, size, throughput, latencyUs,
             latencyP95Us, latencyP99Us);
         return 0;
     }

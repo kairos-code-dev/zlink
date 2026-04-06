@@ -53,16 +53,16 @@ zlink는 8종의 소켓 타입을 제공한다.
 
 ```
 통신 상대가 외부 클라이언트(브라우저, 게임)인가?
-├── Yes → STREAM (ws/wss/tcp/tls)
-└── No → zlink 소켓 간 통신
-         ├── 1:1 전용인가?
-         │   └── Yes → PAIR
-         └── No → N:M 통신
-              ├── 발행-구독 (브로드캐스트)인가?
-              │   ├── 프록시/브로커 필요 → XPUB/XSUB
-              │   └── 단순 발행-구독 → PUB/SUB
-              └── 요청-응답 / 라우팅인가?
-                  └── DEALER/ROUTER
++-- Yes → STREAM (ws/wss/tcp/tls)
++-- No → zlink 소켓 간 통신
+         +-- 1:1 전용인가?
+         |   +-- Yes → PAIR
+         +-- No → N:M 통신
+              +-- 발행-구독 (브로드캐스트)인가?
+              |   +-- 프록시/브로커 필요 → XPUB/XSUB
+              |   +-- 단순 발행-구독 → PUB/SUB
+              +-- 요청-응답 / 라우팅인가?
+                  +-- DEALER/ROUTER
 ```
 
 ### 사용 사례별 추천

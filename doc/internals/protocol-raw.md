@@ -9,10 +9,10 @@ A protocol dedicated to the STREAM socket. Used for communication with external 
 
 ## 2. Wire Format
 ```
-┌──────────────────────┬─────────────────────────────┐
-│  Length (4 Bytes)    │     Payload (N Bytes)       │
-│  (Big Endian)        │                             │
-└──────────────────────┴─────────────────────────────┘
++----------------------+-----------------------------+
+|  Length (4 Bytes)    |     Payload (N Bytes)       |
+|  (Big Endian)        |                             |
++----------------------+-----------------------------+
 ```
 
 - Length: Pure payload length (4B Big Endian)

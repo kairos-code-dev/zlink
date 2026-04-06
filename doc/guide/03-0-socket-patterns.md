@@ -54,16 +54,16 @@ Only valid socket combinations can be connected. Connecting incompatible sockets
 
 ```
 Is the communication peer an external client (browser, game)?
-├── Yes → STREAM (ws/wss/tcp/tls)
-└── No → Communication between zlink sockets
-         ├── Is it 1:1 exclusive?
-         │   └── Yes → PAIR
-         └── No → N:M communication
-              ├── Publish-subscribe (broadcast)?
-              │   ├── Proxy/broker needed → XPUB/XSUB
-              │   └── Simple pub-sub → PUB/SUB
-              └── Request-reply / routing?
-                  └── DEALER/ROUTER
++-- Yes → STREAM (ws/wss/tcp/tls)
++-- No → Communication between zlink sockets
+         +-- Is it 1:1 exclusive?
+         |   +-- Yes → PAIR
+         +-- No → N:M communication
+              +-- Publish-subscribe (broadcast)?
+              |   +-- Proxy/broker needed → XPUB/XSUB
+              |   +-- Simple pub-sub → PUB/SUB
+              +-- Request-reply / routing?
+                  +-- DEALER/ROUTER
 ```
 
 ### Recommendations by Use Case

@@ -479,7 +479,7 @@ flowchart LR
 ## 4. 요청/응답 프록시 -- ROUTER/DEALER
 
 ```
-Client (DEALER) ──► ROUTER ══ proxy ══► DEALER ──► Server (ROUTER)
+Client (DEALER) --> ROUTER == proxy ==> DEALER --> Server (ROUTER)
 ```
 
 === "C"

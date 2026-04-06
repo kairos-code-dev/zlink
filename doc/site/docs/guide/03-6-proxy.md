@@ -478,7 +478,7 @@ build a manual proxy using public APIs only.
 ## 4. Request/Reply Proxy -- ROUTER/DEALER
 
 ```
-Client (DEALER) ──► ROUTER ══ proxy ══► DEALER ──► Server (ROUTER)
+Client (DEALER) --> ROUTER == proxy ==> DEALER --> Server (ROUTER)
 ```
 
 === "C"

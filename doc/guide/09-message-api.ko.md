@@ -27,32 +27,32 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 내부 저장 전략이 자동으로 결정된다:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  zlink_msg_t (64 bytes)                     │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  VSM (≤33B):  [ type | size | data ····················· ]  │
-│                               ↑ data가 struct 내부에 inline │
-│                                                             │
-│  LMSG (>33B): [ type | content_ptr | ··· ]                  │
-│                           ↓                                 │
-│                  ┌────────────────────┐                      │
-│                  │ heap buffer        │                      │
-│                  │ + refcount         │                      │
-│                  └────────────────────┘                      │
-│                    │
-│  CMSG:        [ type | data_ptr | ··· ]                     │
-│                           ↓                                 │
-│                  ┌────────────────────┐                      │
-│                  │ external const buf │  ← free 안 함       │
-│                  └────────────────────┘                      │
-│                    │
-│  ZCLMSG:      [ type | data_ptr | ffn_ptr | hint | ··· ]   │
-│                           ↓          ↓                      │
-│                  ┌──────────┐   ffn(data, hint)로 해제      │
-│                  │ user buf │                                │
-│                  └──────────┘                                │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+|                  zlink_msg_t (64 bytes)                     |
++-------------------------------------------------------------+
+|                                                             |
+|  VSM (≤33B):  [ type | size | data ····················· ]  |
+|                               ↑ data가 struct 내부에 inline |
+|                                                             |
+|  LMSG (>33B): [ type | content_ptr | ··· ]                  |
+|                           ↓                                 |
+|                  +--------------------+                      |
+|                  | heap buffer        |                      |
+|                  | + refcount         |                      |
+|                  +--------------------+                      |
+|                    |
+|  CMSG:        [ type | data_ptr | ··· ]                     |
+|                           ↓                                 |
+|                  +--------------------+                      |
+|                  | external const buf |  ← free 안 함       |
+|                  +--------------------+                      |
+|                    |
+|  ZCLMSG:      [ type | data_ptr | ffn_ptr | hint | ··· ]   |
+|                           ↓          ↓                      |
+|                  +----------+   ffn(data, hint)로 해제      |
+|                  | user buf |                                |
+|                  +----------+                                |
++-------------------------------------------------------------+
 ```
 
 핵심: `zlink_msg_t` struct 자체는 stack/배열에 놓이고, 큰 data만 heap을
@@ -80,15 +80,15 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 
 ```
 zlink_msg_move(dest, src)             zlink_msg_copy(dest, src)
-─────────────────────────             ─────────────────────────
+-------------------------             -------------------------
 
 Before:                               Before:
-  src:  [data───→ buf]                  src:  [data───→ buf (rc=1)]
+  src:  [data---→ buf]                  src:  [data---→ buf (rc=1)]
   dest: [empty]                         dest: [empty]
 
 After:                                After:
-  src:  [empty]       ← 빈 상태        src:  [data───→ buf (rc=2)]
-  dest: [data───→ buf]                  dest: [data───┘           ]
+  src:  [empty]       ← 빈 상태        src:  [data---→ buf (rc=2)]
+  dest: [data---→ buf]                  dest: [data---+           ]
                                                      ↑ 같은 buffer 공유
 ```
 

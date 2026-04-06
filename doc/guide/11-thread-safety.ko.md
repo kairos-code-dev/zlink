@@ -9,9 +9,9 @@
 호출할 수 있습니다.
 
 ```
-  Thread A ─── zlink_send(socket, ...) ───┐
-  Thread B ─── zlink_send(socket, ...) ───┼──► 같은 소켓, mutex 불필요
-  Thread C ─── zlink_send(socket, ...) ───┘
+  Thread A --- zlink_send(socket, ...) ---+
+  Thread B --- zlink_send(socket, ...) ---+--> 같은 소켓, mutex 불필요
+  Thread C --- zlink_send(socket, ...) ---+
 ```
 
 **유일하게 thread-safe가 아닌 것:** `zlink_msg_t`. 메시지 객체는 한 번에

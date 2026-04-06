@@ -138,7 +138,7 @@ while (running) {
 ## 4. Request/Reply Proxy — ROUTER/DEALER
 
 ```
-Client (DEALER) ──► ROUTER ══ proxy ══► DEALER ──► Server (ROUTER)
+Client (DEALER) --> ROUTER == proxy ==> DEALER --> Server (ROUTER)
 ```
 
 ```c

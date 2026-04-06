@@ -9,9 +9,9 @@ SPOT, or Discovery handle across multiple threads and call its
 APIs without adding your own mutex or lock.
 
 ```
-  Thread A ─── zlink_send(socket, ...) ───┐
-  Thread B ─── zlink_send(socket, ...) ───┼──► same socket, no mutex needed
-  Thread C ─── zlink_send(socket, ...) ───┘
+  Thread A --- zlink_send(socket, ...) ---+
+  Thread B --- zlink_send(socket, ...) ---+--> same socket, no mutex needed
+  Thread C --- zlink_send(socket, ...) ---+
 ```
 
 There is only **one thing that is NOT thread-safe**: `zlink_msg_t`.

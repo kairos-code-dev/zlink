@@ -1,5 +1,12 @@
-/* Ensure ASCII art diagrams render with proper monospace alignment */
-.md-typeset pre > code {
+/* Ensure ASCII art diagrams render with proper monospace alignment.
+   JetBrains Mono lacks CJK glyphs, so browsers fall back to a
+   proportional-width font for Korean/Chinese/Japanese characters,
+   breaking box-drawing alignment. Adding CJK-aware monospace fonts
+   in the fallback chain fixes this. */
+.md-typeset pre > code,
+.md-typeset code {
+  font-family: 'JetBrains Mono', 'Noto Sans Mono CJK KR', 'D2Coding',
+               'Nanum Gothic Coding', 'Source Han Mono', monospace;
   font-variant-ligatures: none;
 }
 
